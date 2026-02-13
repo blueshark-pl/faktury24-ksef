@@ -75,3 +75,8 @@ custom styles.
 - Commit: e653c40
 - Czas: 0.2h
 - Do sprawdzenia manualnie: klik w „Komunikaty MF” w stopce na `/users/login` i po zalogowaniu powinien pokazać okno z treścią.
+
+- Naprawa: usunięcie `onclick="return false"` z linków otwierających modale (w tym „Komunikaty MF”), bo w niektórych przypadkach blokowało otwarcie.
+- Commit: 2188faa
+- Czas: 0.1h
+- Do sprawdzenia manualnie: klik „Komunikaty MF” zawsze otwiera modal (nawet gdy pokazuje „Brak komunikatów.”).
