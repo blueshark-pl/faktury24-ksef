@@ -749,41 +749,15 @@ class KsefAuthorizationsController extends AppController
             }
         }
 
-        // Lekka próba – najpierw uprawnienia (personal grants), bo to najlepiej wykrywa brak nadań.
-        // Fallback: mała strona metadanych, jeśli endpoint uprawnień jest niedostępny (np. 404).
+        // Lekka próba – mała strona metadanych, aby ocenić dostępność
         try {
-            $checkKind = 'personalGrants';
-            try {
-                $ksef->queryPersonalGrants(
-                    companyId: $companyId,
-                    environment: $environment,
-                    filters: ['permissionState' => 'Active'],
-                    pageOffset: 0,
-                    pageSize: 1,
-                    overrideIdentifierNip: $asNip !== '' ? $asNip : null,
-                    enableTrace: false
-                );
-            } catch (\Throwable $e) {
-                $msg = $e->getMessage();
-                $code = (int)$e->getCode();
-
-                $is404 = $code === 404 || str_contains($msg, ' 404') || str_contains($msg, 'HTTP 404');
-                if (!$is404) {
-                    throw $e;
-                }
-
-                // Fallback: metadata (connectivity only)
-                $checkKind = 'receivedMetadata';
-                $filters = ['subjectType' => 'Subject2'];
-                $ksef->queryReceivedMetadata($companyId, $environment, $filters, 0, 1, $asNip ?: null);
-            }
+            $filters = ['subjectType' => 'Subject2'];
+            $result = $ksef->queryReceivedMetadata($companyId, $environment, $filters, 0, 1, $asNip ?: null);
             $this->request->getSession()->write('Ksef.status', [
                 'active' => true,
                 'env'    => $environment,
                 'ts'     => time(),
                 'lastError' => null,
-                'checkKind' => $checkKind,
-                'reason' => null,
                 'usingMaster' => $usingMaster,
                 'usingMasterMode' => $usingMasterMode,
                 'identifierNip' => $identifierNip,
@@ -793,20 +767,11 @@ class KsefAuthorizationsController extends AppController
             $this->Flash->success('Połączenie z KSeF: aktywne.');
         } catch (\Throwable $e) {
             $details = $this->formatKsefError($e);
-            $msg = $e->getMessage();
-            $code = (int)$e->getCode();
-            $reason = null;
-            // best-effort: rozróżnij brak uprawnień od braku połączenia
-            if ($code === 401 || $code === 403 || str_contains($msg, ' 401') || str_contains($msg, 'HTTP 401') || str_contains($msg, ' 403') || str_contains($msg, 'HTTP 403')) {
-                $reason = 'no_permissions';
-            }
             $this->request->getSession()->write('Ksef.status', [
                 'active' => false,
                 'env'    => $environment,
                 'ts'     => time(),
                 'lastError' => $details,
-                'checkKind' => 'personalGrants',
-                'reason' => $reason,
                 'usingMaster' => $usingMaster,
                 'usingMasterMode' => $usingMasterMode,
                 'identifierNip' => $identifierNip,
