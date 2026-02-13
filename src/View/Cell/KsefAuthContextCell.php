@@ -124,9 +124,14 @@ final class KsefAuthContextCell extends Cell
         $connText = null;
         $connClass = 'text-muted';
         $connTooltip = null;
+        $invoiceWriteOk = false;
 
         if (is_array($status) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
             $active = (bool)$status['active'];
+
+            $isInvoiceWriteCheck = (($status['checkKind'] ?? null) === 'personalGrants')
+                && (($status['permissionType'] ?? null) === 'InvoiceWrite');
+            $invoiceWriteOk = $active && $isInvoiceWriteCheck;
 
             $lastError = trim((string)($status['lastError'] ?? ''));
 
@@ -156,6 +161,7 @@ final class KsefAuthContextCell extends Cell
             'connText' => $connText,
             'connClass' => $connClass,
             'connTooltip' => $connTooltip,
+            'invoiceWriteOk' => $invoiceWriteOk,
         ]);
     }
 }

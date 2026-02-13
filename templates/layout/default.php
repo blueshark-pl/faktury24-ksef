@@ -837,6 +837,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             setInlineVisible(connSep, true);
                             setInlineVisible(conn, true);
 
+                            var msgSep = byId('ksef-auth-invoicewrite-msg-sep');
+                            var msg = byId('ksef-auth-invoicewrite-msg');
+                            if (msgSep && msg) {
+                                setInlineVisible(msgSep, active);
+                                setInlineVisible(msg, active);
+                            }
+
                             var lines = [];
                             if (status.ts) {
                                 var ts = parseInt(status.ts, 10) || 0;
