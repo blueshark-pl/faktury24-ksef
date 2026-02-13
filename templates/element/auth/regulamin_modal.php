@@ -262,6 +262,15 @@ for ($i = 1; $i < count($chunks); $i += 3) {
               <section class="reg-section" id="<?= h($sec['id']) ?>">
                 <h3><?= h($sec['heading']) ?></h3>
                 <div class="reg-text"><?= h($sec['content']) ?></div>
+                <?php if (($sec['id'] ?? '') === 'reg-par-14'): ?>
+                  <div class="mt-3">
+                    <a href="#" role="button"
+                       class="btn btn-sm btn-outline-secondary"
+                       data-open-dpa="1">
+                      Otwórz Załącznik nr 1 (DPA)
+                    </a>
+                  </div>
+                <?php endif; ?>
               </section>
             <?php endforeach; ?>
           </div>
@@ -301,6 +310,34 @@ for ($i = 1; $i < count($chunks); $i += 3) {
       if (!targetEl) return;
 
       scrollModalBody(modalEl, targetEl);
+    });
+
+    document.addEventListener('click', function(e){
+      const trigger = e.target && e.target.closest && e.target.closest('#regulaminModal [data-open-dpa]');
+      if (!trigger) return;
+
+      e.preventDefault();
+
+      if (!window.bootstrap || !bootstrap.Modal) {
+        return;
+      }
+
+      const regulaminEl = document.getElementById('regulaminModal');
+      const dpaEl = document.getElementById('dpaModal');
+      if (!regulaminEl || !dpaEl) {
+        return;
+      }
+
+      const regulaminModal = bootstrap.Modal.getOrCreateInstance(regulaminEl);
+      const dpaModal = bootstrap.Modal.getOrCreateInstance(dpaEl);
+
+      const showDpaAfterHide = function () {
+        regulaminEl.removeEventListener('hidden.bs.modal', showDpaAfterHide);
+        dpaModal.show();
+      };
+
+      regulaminEl.addEventListener('hidden.bs.modal', showDpaAfterHide);
+      regulaminModal.hide();
     });
   })();
 </script>

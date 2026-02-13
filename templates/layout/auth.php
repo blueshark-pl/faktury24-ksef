@@ -91,6 +91,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
     <?= $this->element('auth/regulamin_modal') ?>
     <?= $this->element('auth/polityka_prywatnosci_modal') ?>
+    <?= $this->element('auth/dpa_modal') ?>
     <?= $this->fetch('ksefModals') ?>
 
     <style>
