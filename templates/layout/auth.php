@@ -67,6 +67,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <img src="/img/logo-faktury24.png" alt="Faktury24">
               </a>
             </div>
+            <?= $this->cell('KsefStatus::banner') ?>
             <?= $this->fetch('content') ?>
           </div>
         </div>

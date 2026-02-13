@@ -14,13 +14,31 @@ final class KsefStatusCell extends Cell
 {
     public function display(): void
     {
-        $this->set($this->buildViewData());
+        $this->set($this->buildViewData(false));
+    }
+
+    public function banner(): void
+    {
+        $this->set($this->buildViewData(true));
     }
 
     /**
-     * @return array{enabled:bool,status:string,statusText:string,statusClass:string,messageTitle:?string,messageText:?string,tooltip:?string}
+     * @return array{
+     *   enabled:bool,
+     *   status:string,
+     *   statusText:string,
+     *   statusClass:string,
+     *   messageTitle:?string,
+     *   messageText:?string,
+     *   tooltip:?string,
+     *   messages:array,
+     *   activeMessages:array,
+     *   upcomingMessages:array,
+     *   important:?array,
+     *   showBanner:bool
+     * }
      */
-    private function buildViewData(): array
+    private function buildViewData(bool $forBanner): array
     {
         $config = (array)(Configure::read('LatarniaKsef') ?? []);
         $baseUrl = trim((string)($config['baseUrl'] ?? ''));
@@ -34,18 +52,27 @@ final class KsefStatusCell extends Cell
                 'messageTitle' => null,
                 'messageText' => null,
                 'tooltip' => null,
+                'messages' => [],
+                'activeMessages' => [],
+                'upcomingMessages' => [],
+                'important' => null,
+                'showBanner' => false,
             ];
         }
 
         $timeout = (int)($config['timeout'] ?? 4);
         $cacheConfig = (string)($config['cacheConfig'] ?? 'latarniaKsef');
 
-        $payload = $this->readOrFetchStatus($baseUrl, $timeout, $cacheConfig);
+        $payload = $this->readOrFetchPayload($baseUrl, $timeout, $cacheConfig);
 
         $status = strtoupper((string)($payload['status'] ?? ''));
         [$statusText, $statusClass] = $this->mapStatus($status);
 
-        $activeMessage = $this->pickActiveMessage((array)($payload['messages'] ?? []));
+        $messages = $this->normalizeMessages((array)($payload['messages'] ?? []));
+        $activeMessages = $this->filterActiveMessages($messages);
+        $upcomingMessages = $this->filterUpcomingMessages($messages);
+
+        $activeMessage = $activeMessages[0] ?? null;
         $messageTitle = $activeMessage ? (string)($activeMessage['title'] ?? '') : '';
         $messageText = $activeMessage ? (string)($activeMessage['text'] ?? '') : '';
 
@@ -64,6 +91,11 @@ final class KsefStatusCell extends Cell
         }
         $tooltip = $tooltipParts ? implode("\n", $tooltipParts) : null;
 
+        $important = $this->pickImportantMessage($activeMessages, $upcomingMessages);
+
+        // On login page we want a clearly visible message if there is anything important.
+        $showBanner = $forBanner && is_array($important);
+
         return [
             'enabled' => true,
             'status' => $status,
@@ -72,13 +104,18 @@ final class KsefStatusCell extends Cell
             'messageTitle' => $messageTitle,
             'messageText' => $messageText,
             'tooltip' => $tooltip,
+            'messages' => $messages,
+            'activeMessages' => $activeMessages,
+            'upcomingMessages' => $upcomingMessages,
+            'important' => $important,
+            'showBanner' => $showBanner,
         ];
     }
 
-    private function readOrFetchStatus(string $baseUrl, int $timeout, string $cacheConfig): array
+    private function readOrFetchPayload(string $baseUrl, int $timeout, string $cacheConfig): array
     {
         try {
-            $cached = Cache::read('latarnia_status', $cacheConfig);
+            $cached = Cache::read('latarnia_payload_v1', $cacheConfig);
             if (is_array($cached) && $cached !== []) {
                 return $cached;
             }
@@ -89,11 +126,28 @@ final class KsefStatusCell extends Cell
 
         try {
             $client = new LatarniaKsefClient($baseUrl, null, $timeout);
-            $payload = $client->fetchStatus();
+            $statusPayload = $client->fetchStatus();
+            $messages = (array)($statusPayload['messages'] ?? []);
+
+            // Ensure we have messages regardless of status, to show MF communications on click.
+            if ($messages === []) {
+                try {
+                    $messagesPayload = $client->fetchMessages();
+                    $messages = is_array($messagesPayload) ? $messagesPayload : [];
+                } catch (\Throwable $e) {
+                    Log::notice('Latarnia KSeF fetchMessages failed: ' . $e->getMessage());
+                }
+            }
+
+            $payload = [
+                'status' => $statusPayload['status'] ?? null,
+                'messages' => $messages,
+                'fetchedAt' => time(),
+            ];
 
             if (is_array($payload) && $payload !== []) {
                 try {
-                    Cache::write('latarnia_status', $payload, $cacheConfig);
+                    Cache::write('latarnia_payload_v1', $payload, $cacheConfig);
                 } catch (\Throwable $e) {
                     Log::warning('Latarnia KSeF cache write failed: ' . $e->getMessage());
                 }
@@ -154,38 +208,156 @@ final class KsefStatusCell extends Cell
 
     private function isMessageActive(array $msg, FrozenTime $now): bool
     {
-        foreach (['published', 'start', 'end'] as $key) {
-            if (!isset($msg[$key]) || !is_string($msg[$key]) || trim($msg[$key]) === '') {
-                continue;
-            }
+        $msg = $this->withParsedDates($msg);
 
-            try {
-                $msg[$key] = new FrozenTime($msg[$key]);
-            } catch (\Throwable $e) {
-                // ignore invalid date
-                unset($msg[$key]);
-            }
+        if (isset($msg['_published']) && $msg['_published'] instanceof FrozenTime && $msg['_published']->isFuture()) {
+            return false;
         }
-
-        if (isset($msg['published']) && $msg['published'] instanceof FrozenTime) {
-            if ($msg['published']->isFuture()) {
-                return false;
-            }
+        if (isset($msg['_start']) && $msg['_start'] instanceof FrozenTime && $msg['_start']->gt($now)) {
+            return false;
         }
-
-        if (isset($msg['start']) && $msg['start'] instanceof FrozenTime) {
-            if ($msg['start']->gt($now)) {
-                return false;
-            }
-        }
-
-        if (isset($msg['end']) && $msg['end'] instanceof FrozenTime) {
-            if ($msg['end']->lt($now)) {
-                return false;
-            }
+        if (isset($msg['_end']) && $msg['_end'] instanceof FrozenTime && $msg['_end']->lt($now)) {
+            return false;
         }
 
         return true;
+    }
+
+    private function normalizeMessages(array $messages): array
+    {
+        if ($messages === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($messages as $msg) {
+            if (!is_array($msg)) {
+                continue;
+            }
+            $msg = $this->withParsedDates($msg);
+            $out[] = $msg;
+        }
+
+        // Sort: active first, then upcoming, then others; within group newest first.
+        $now = FrozenTime::now();
+        usort($out, function (array $a, array $b) use ($now): int {
+            $ag = $this->messageGroup($a, $now);
+            $bg = $this->messageGroup($b, $now);
+            if ($ag !== $bg) {
+                return $ag <=> $bg;
+            }
+            $ap = (string)($a['published'] ?? $a['start'] ?? $a['end'] ?? '');
+            $bp = (string)($b['published'] ?? $b['start'] ?? $b['end'] ?? '');
+            return strcmp($bp, $ap);
+        });
+
+        return $out;
+    }
+
+    private function filterActiveMessages(array $messages): array
+    {
+        $now = FrozenTime::now();
+        $active = [];
+        foreach ($messages as $msg) {
+            if ($this->isMessageActive($msg, $now)) {
+                $active[] = $msg;
+            }
+        }
+        return $active;
+    }
+
+    private function filterUpcomingMessages(array $messages): array
+    {
+        $now = FrozenTime::now();
+        $upcoming = [];
+        foreach ($messages as $msg) {
+            $msg = $this->withParsedDates($msg);
+            if (!isset($msg['_start']) || !$msg['_start'] instanceof FrozenTime) {
+                continue;
+            }
+            if ($msg['_start']->lte($now)) {
+                continue;
+            }
+            $upcoming[] = $msg;
+        }
+
+        usort($upcoming, function (array $a, array $b): int {
+            /** @var FrozenTime|null $as */
+            $as = $a['_start'] ?? null;
+            /** @var FrozenTime|null $bs */
+            $bs = $b['_start'] ?? null;
+            if (!$as instanceof FrozenTime) {
+                return 1;
+            }
+            if (!$bs instanceof FrozenTime) {
+                return -1;
+            }
+            return $as->getTimestamp() <=> $bs->getTimestamp();
+        });
+
+        return $upcoming;
+    }
+
+    private function pickImportantMessage(array $activeMessages, array $upcomingMessages): ?array
+    {
+        if ($activeMessages !== []) {
+            return $activeMessages[0];
+        }
+
+        if ($upcomingMessages === []) {
+            return null;
+        }
+
+        // Show upcoming message if it starts within 7 days.
+        $now = FrozenTime::now();
+        $candidate = $upcomingMessages[0];
+        $candidate = $this->withParsedDates($candidate);
+
+        /** @var FrozenTime|null $start */
+        $start = $candidate['_start'] ?? null;
+        if (!$start instanceof FrozenTime) {
+            return null;
+        }
+
+        if ($start->lte($now->addDays(7))) {
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    private function withParsedDates(array $msg): array
+    {
+        foreach (['published' => '_published', 'start' => '_start', 'end' => '_end'] as $src => $dst) {
+            if (!isset($msg[$src]) || !is_string($msg[$src]) || trim($msg[$src]) === '') {
+                continue;
+            }
+            if (isset($msg[$dst]) && $msg[$dst] instanceof FrozenTime) {
+                continue;
+            }
+            try {
+                $msg[$dst] = new FrozenTime($msg[$src]);
+            } catch (\Throwable $e) {
+                unset($msg[$dst]);
+            }
+        }
+
+        return $msg;
+    }
+
+    private function messageGroup(array $msg, FrozenTime $now): int
+    {
+        // 0 - active, 1 - upcoming, 2 - other
+        if ($this->isMessageActive($msg, $now)) {
+            return 0;
+        }
+
+        $msg = $this->withParsedDates($msg);
+        if (isset($msg['_start']) && $msg['_start'] instanceof FrozenTime && $msg['_start']->gt($now)) {
+            return 1;
+        }
+
+        return 2;
     }
 
     private function truncate(string $text, int $maxLen): string
