@@ -6,7 +6,7 @@
  * Layout: 'auth'
  */
 $this->setLayout('auth');
-$this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
+$this->assign('title', __('Weryfikacja konta'));
 ?>
 <div class="card custom-card shadow-none my-auto">
   <div class="card-body p-5">
@@ -62,9 +62,9 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
 
         <?php if (!empty($secretDataUri)): ?>
           <div class="text-center mb-3">
-            <img src="<?= h($secretDataUri) ?>" alt="<?= __d('cake_d_c/users', 'Authenticator QR Code') ?>" class="img-fluid"/>
+            <img src="<?= h($secretDataUri) ?>" alt="<?= __('Kod QR do aplikacji uwierzytelniającej') ?>" class="img-fluid"/>
             <p class="small text-muted mt-2">
-              <?= __d('cake_d_c/users', 'Scan this QR code in your authenticator app, then enter the code below.') ?>
+              <?= __('Zeskanuj kod QR w aplikacji uwierzytelniającej, a następnie wpisz kod poniżej.') ?>
             </p>
           </div>
         <?php endif; ?>
@@ -73,10 +73,10 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
         <?= $this->Form->control('code', ['type' => 'hidden', 'id' => 'totpCode', 'label' => false]) ?>
 
         <label class="form-label text-default d-block mb-2">
-          <?= __d('cake_d_c/users', 'Verification Code') ?>
+          <?= __('Kod weryfikacyjny') ?>
         </label>
 
-        <div class="row g-2 justify-content-center mb-2" inputmode="numeric" aria-label="<?= __d('cake_d_c/users', '6-digit verification code') ?>">
+        <div class="row g-2 justify-content-center mb-2" inputmode="numeric" aria-label="<?= __('6-cyfrowy kod weryfikacyjny') ?>">
           <?php for ($i = 1; $i <= 6; $i++): ?>
             <div class="col-2 col-sm-2 col-md-2" style="max-width:80px;">
               <input
@@ -88,7 +88,7 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
                 class="form-control form-control-lg text-center otp-digit"
                 id="otp<?= $i ?>"
                 data-index="<?= $i ?>"
-                aria-label="<?= __d('cake_d_c/users', 'Digit {0}', $i) ?>"
+                aria-label="<?= __('Cyfra {0}', $i) ?>"
               >
             </div>
           <?php endfor; ?>
@@ -100,13 +100,13 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
 
         <div class="d-grid mt-2">
             <?= $this->Form->button(
-                __d('cake_d_c/users', 'Verify'),
+            __('Zweryfikuj'),
                 [
                 'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
                 'id' => 'verifyBtn',
                 'escapeTitle' => true,
                 'type' => 'submit',
-                'data-loading-text' => __d('cake_d_c/users', 'Verifying...'),
+            'data-loading-text' => __('Weryfikacja...'),
                 'disabled' => true,   // ⬅ startowo zablokowany
                 ]
             ) ?>
@@ -130,7 +130,7 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
     <div class="text-center">
       <p class="fs-12 text-danger mt-3 mb-0">
         <sup><i class="ri-asterisk"></i></sup>
-        <?= __d('cake_d_c/users', 'Don’t share the verification code with anyone!') ?>
+        <?= __('Nie udostępniaj kodu weryfikacyjnego nikomu!') ?>
       </p>
     </div>
   </div>

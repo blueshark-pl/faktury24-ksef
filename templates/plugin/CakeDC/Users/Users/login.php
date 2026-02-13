@@ -8,7 +8,7 @@
 use Cake\Core\Configure;
 
 $this->setLayout('auth');
-$this->assign('title', __d('cake_d_c/users', 'Sign In'));
+$this->assign('title', __('Zaloguj się'));
 
 // zbierz social przyciski raz
 $socialButtons = (array)($this->User->socialLoginList() ?? []);
@@ -54,9 +54,9 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
         </div>
 
         <label for="signin-password" class="form-label text-default d-block">
-          <?= __d('cake_d_c/users', 'Password') ?>
+          <?= __('Hasło') ?>
           <?= $this->Html->link(
-                __d('cake_d_c/users', 'Reset Password'),
+                __('Nie pamiętasz hasła?'),
                 ['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'requestResetPassword'],
                 ['class' => 'float-end link-danger op-5 fw-medium fs-12']
           ) ?>
@@ -68,7 +68,7 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
             'type' => 'password',
             'label' => false,
             'class' => 'form-control form-control-lg',
-            'placeholder' => strtolower(__d('cake_d_c/users', 'Password')),
+            'placeholder' => __('Wpisz hasło'),
             'required' => true,
             'autocomplete' => 'current-password'
           ]) ?>
@@ -89,7 +89,7 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
             <div class="form-check">
               <?= $this->Form->control(Configure::read('Users.Key.Data.rememberMe'), [
                 'type'    => 'checkbox',
-                'label'   => __d('cake_d_c/users', 'Remember me'),
+                'label'   => __('Zapamiętaj mnie'),
                 'checked' => (bool)Configure::read('Users.RememberMe.checked'),
                 'hiddenField' => false,
                 'id'      => 'rememberMe',
@@ -101,7 +101,7 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
 
         <?php if ($hasSocial): ?>
           <div class="text-center my-3 authentication-barrier">
-            <span class="op-4 fs-11"><?= __d('cake_d_c/users', 'OR Sign In With') ?></span>
+            <span class="op-4 fs-11"><?= __('Lub zaloguj się przez') ?></span>
           </div>
           <div class="d-flex align-items-center justify-content-center gap-3 mb-3 flex-wrap">
             <?= implode(' ', $socialButtons); ?>
@@ -114,7 +114,7 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
             [
               'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
               'id' => 'loginBtn',
-              'data-loading-text' => __d('cake_d_c/users', 'Signing in...'),
+              'data-loading-text' => __('Logowanie...'),
               'disabled' => true, // odblokujemy w JS po wypełnieniu pól
             ]
           ) ?>
@@ -179,7 +179,7 @@ $this->Html->scriptBlock(<<<'JS'
     if (isLoading) {
       btn.disabled = true;
       btn.dataset.originalText = btn.dataset.originalText || btn.textContent.trim();
-      btn.textContent = btn.getAttribute('data-loading-text') || 'Signing in...';
+      btn.textContent = btn.getAttribute('data-loading-text') || 'Logowanie...';
       const sp = document.createElement('span');
       sp.className = 'spinner-border spinner-border-sm';
       sp.setAttribute('role','status'); sp.setAttribute('aria-hidden','true');

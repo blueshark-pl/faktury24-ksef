@@ -9,7 +9,7 @@
  * @var \CakeDC\Users\Model\Entity\User $user
  */
 $this->setLayout('auth');
-$this->assign('title', __d('cake_d_c/users', 'Reset Password'));
+$this->assign('title', __('Reset hasła'));
 ?>
 <div class="card custom-card shadow-none my-auto">
   <div class="card-body p-5">
@@ -55,13 +55,13 @@ $this->assign('title', __d('cake_d_c/users', 'Reset Password'));
 
         <div class="d-grid mt-2">
           <?= $this->Form->button(
-            __d('cake_d_c/users', 'Submit'),
+            __('Wyślij'),
             [
               'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
               'id' => 'resetBtn',
               'type' => 'submit',
               'escapeTitle' => true,
-              'data-loading-text' => __d('cake_d_c/users', 'Sending...'),
+              'data-loading-text' => __('Wysyłanie...'),
               'disabled' => true,
             ]
           ) ?>
@@ -119,13 +119,13 @@ $this->Html->scriptBlock(<<<'JS'
     if (isLoading) {
       submitBtn.disabled = true;
       submitBtn.dataset.originalText = submitBtn.dataset.originalText || submitBtn.textContent.trim();
-      submitBtn.textContent = submitBtn.getAttribute('data-loading-text') || 'Sending...';
+      submitBtn.textContent = submitBtn.getAttribute('data-loading-text') || 'Wysyłanie...';
       const sp = document.createElement('span');
       sp.className = 'spinner-border spinner-border-sm';
       sp.setAttribute('role','status'); sp.setAttribute('aria-hidden','true');
       sp.style.marginLeft = '0.5rem'; submitBtn.appendChild(sp);
     } else {
-      const label = submitBtn.dataset.originalText || 'Submit';
+      const label = submitBtn.dataset.originalText || 'Wyślij';
       submitBtn.textContent = label; toggle();
     }
   }

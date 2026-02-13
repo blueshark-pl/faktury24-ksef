@@ -13,6 +13,11 @@ Ten plik opisuje zasady pracy Copilota w tym repo.
 - Nie poprawiam rzeczy „przy okazji”.
 - Jeśli zauważysz problem obok, dopisz krótki TODO w README (albo w najbliższym tematycznie pliku docs, jeśli README jest ogólne).
 
+## Nie usuwam wcześniejszych zmian
+
+- Nie usuwaj/nie nadpisuj wcześniej wprowadzonych modyfikacji (szczególnie `templates/plugin/**` oraz custom UI auth) bez jednoznacznej prośby lub uzasadnionej potrzeby.
+- Jeśli musisz coś „cofnąć”, najpierw sprawdź call sites i potencjalny regres (auth/i18n/modale) oraz opisz w commicie dlaczego.
+
 ## Weryfikacja (minimalny standard)
 
 Zanim uznam zmianę za zakończoną:

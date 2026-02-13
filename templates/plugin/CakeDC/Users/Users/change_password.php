@@ -12,7 +12,7 @@ use Cake\Core\Configure;
 $isResetFlow = empty($validatePassword);
 if ($isResetFlow) {
         $this->setLayout('auth');
-        $this->assign('title', __d('cake_d_c/users', 'Reset Password'));
+    $this->assign('title', __('Reset hasła'));
 }
 ?>
 
@@ -74,7 +74,7 @@ if ($isResetFlow) {
 
                     <div class="d-grid mt-4">
                         <?= $this->Form->button(
-                            __d('cake_d_c/users', 'Submit'),
+                            __('Zapisz'),
                             [
                                 'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
                                 'id' => 'changePasswordBtn',
@@ -132,7 +132,7 @@ if ($isResetFlow) {
                 sp.style.marginLeft = '0.5rem';
                 btn.appendChild(sp);
             } else {
-                const label = btn.dataset.originalText || 'Submit';
+                const label = btn.dataset.originalText || 'Zapisz';
                 btn.textContent = label;
                 toggle();
             }

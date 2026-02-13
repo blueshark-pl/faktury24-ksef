@@ -6,7 +6,7 @@
  * Layout: 'auth'
  */
 $this->setLayout('auth');
-$this->assign('title', __d('cake_d_c/users', 'Login via Email Link'));
+$this->assign('title', __('Logowanie linkiem'));
 ?>
 
 <div class="card custom-card shadow-none my-auto">
@@ -38,7 +38,7 @@ $this->assign('title', __d('cake_d_c/users', 'Login via Email Link'));
         ]) ?>
 
         <label for="email" class="form-label text-default">
-          <?= __d('cake_d_c/users', 'Email') ?>
+          <?= __('Adres e-mail') ?>
         </label>
         <div class="position-relative mb-3">
           <?= $this->Form->control('email', [
@@ -46,7 +46,7 @@ $this->assign('title', __d('cake_d_c/users', 'Login via Email Link'));
             'type' => 'email',
             'label' => false,
             'class' => 'form-control form-control-lg',
-            'placeholder' => __d('cake_d_c/users', 'Enter your email'),
+            'placeholder' => __('Wpisz adres e-mail'),
             'required' => true,
             'autocomplete' => 'email',
           ]) ?>
@@ -60,13 +60,13 @@ $this->assign('title', __d('cake_d_c/users', 'Login via Email Link'));
 
         <div class="d-grid mt-2">
           <?= $this->Form->button(
-            __d('cake_d_c/users', 'Submit'),
+            __('Wyślij link'),
             [
               'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
               'id' => 'loginLinkBtn',
               'type' => 'submit',
               'escapeTitle' => true,
-              'data-loading-text' => __d('cake_d_c/users', 'Sending...'),
+              'data-loading-text' => __('Wysyłanie...'),
               'disabled' => true,
             ]
           ) ?>
@@ -117,13 +117,13 @@ $this->Html->scriptBlock(<<<'JS'
     if (isLoading) {
       submitBtn.disabled = true;
       submitBtn.dataset.originalText = submitBtn.dataset.originalText || submitBtn.textContent.trim();
-      submitBtn.textContent = submitBtn.getAttribute('data-loading-text') || 'Sending...';
+      submitBtn.textContent = submitBtn.getAttribute('data-loading-text') || 'Wysyłanie...';
       const sp = document.createElement('span');
       sp.className = 'spinner-border spinner-border-sm';
       sp.setAttribute('role','status'); sp.setAttribute('aria-hidden','true');
       sp.style.marginLeft = '0.5rem'; submitBtn.appendChild(sp);
     } else {
-      const label = submitBtn.dataset.originalText || 'Submit';
+      const label = submitBtn.dataset.originalText || 'Wyślij link';
       submitBtn.textContent = label; toggle();
     }
   }
