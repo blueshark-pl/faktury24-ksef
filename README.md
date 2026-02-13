@@ -130,3 +130,8 @@ custom styles.
 - Commit: 3a1ee5a
 - Czas: 0.1h
 - Do sprawdzenia manualnie: świeżo zarejestrowany użytkownik po zalogowaniu trafia na onboarding, a po uzupełnieniu firmy trafia na dashboard (bez pętli przekierowań).
+
+- Logi: naprawa warningów `Error saving user ... password after rehashing: identifier Password not found` przez przejście na konfigurację rehash per-authenticator (`Auth.PasswordRehash.authenticators`) i wyłączenie deprecated `Auth.PasswordRehash.identifiers`.
+- Commit: 5c8ccee
+- Czas: 0.1h
+- Do sprawdzenia manualnie: zaloguj się kilka razy i potwierdź, że warning nie pojawia się w `logs/error.log`.
