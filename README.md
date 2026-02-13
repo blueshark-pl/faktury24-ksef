@@ -100,3 +100,8 @@ custom styles.
 - Commit: 9ec90ef
 - Czas: 0.1h
 - Do sprawdzenia manualnie: w DPA wygląd spisu treści i sekcji jest 1:1 jak w Regulaminie.
+
+- Auth (CakeDC Users): wymuszenie locale `pl` + override tłumaczeń domeny `cake_d_c/users`, żeby UI nie mieszał EN/PL.
+- Commit: a3b6c26
+- Czas: 0.2h
+- Do sprawdzenia manualnie: `/users/login`, `/users/register`, reset hasła i komunikaty flash powinny być po polsku.
