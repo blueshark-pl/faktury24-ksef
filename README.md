@@ -65,3 +65,8 @@ custom styles.
 - Commit: cf38fb9
 - Czas: 0.5h
 - Do sprawdzenia manualnie: czy stopka pokazuje `KSeF: ...` oraz czy przy braku API stopka nie „wybucha” (powinno być „Brak danych”).
+
+- Komunikaty MF: klikalny link w stopce otwiera modal z listą komunikatów (aktywne + nadchodzące) oraz banner na stronie logowania dla ważnych/nadchodzących zdarzeń.
+- Commit: aff11d0
+- Czas: 0.5h
+- Do sprawdzenia manualnie: na `/users/login` widoczny banner przy nadchodzącym wyłączeniu i link „Komunikaty MF” otwiera modal niezależnie od statusu.
