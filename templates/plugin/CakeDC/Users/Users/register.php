@@ -11,7 +11,7 @@
 use Cake\Core\Configure;
 
 $this->setLayout('auth');
-$this->assign('title', __d('cake_d_c/users', 'Register'));
+$this->assign('title', __('Rejestracja'));
 ?>
 <div class="card custom-card shadow-none my-auto">
   <div class="card-body p-5">
@@ -36,6 +36,9 @@ $this->assign('title', __d('cake_d_c/users', 'Register'));
           'id' => 'register-form',
           'class' => 'needs-validation',
           'novalidate' => true,
+          // `username` jest ukryte i synchronizowane z `email` w JS.
+          // Musi być odblokowane dla FormProtection, aby nie powodowało "Tampered field".
+          'unlockedFields' => ['username'],
         ]) ?>
 
         <?php
@@ -47,6 +50,8 @@ $this->assign('title', __d('cake_d_c/users', 'Register'));
           'id' => 'usernameHidden',
           'label' => false,
         ]) ?>
+
+        <?php $this->Form->unlockField('username'); ?>
 
         <label for="reg-email" class="form-label text-default"><?= __('Adres e-mail') ?></label>
         <div class="position-relative mb-3">
