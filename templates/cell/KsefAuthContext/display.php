@@ -25,17 +25,16 @@ if (is_string($connTooltip) && trim($connTooltip) !== '') {
 $fullTooltip = $fullTooltipParts ? implode("\n\n", $fullTooltipParts) : null;
 ?>
 <span class="mx-2">•</span>
-<span class="small text-muted"<?= $fullTooltip ? ' title="' . h($fullTooltip) . '"' : '' ?>>
+<span id="ksef-auth-context" class="small text-muted" data-ksef-env="<?= h($environment) ?>"<?= $fullTooltip ? ' title="' . h($fullTooltip) . '"' : '' ?>>
   KSeF (firma):
-  <span class="fw-semibold <?= h($certClass) ?>"><?= h($certText) ?></span>
-  <?php if (is_string($grantsHintText) && trim($grantsHintText) !== ''): ?>
-    <span class="mx-1">·</span>
-    <span class="<?= h($grantsHintClass) ?>"><?= h($grantsHintText) ?></span>
-  <?php endif; ?>
-  <?php if (is_string($connText) && trim($connText) !== ''): ?>
-    <span class="mx-1">·</span>
-    <span class="<?= h($connClass) ?>"><?= h($connText) ?></span>
-  <?php endif; ?>
+  <span id="ksef-auth-cert" class="fw-semibold <?= h($certClass) ?>"><?= h($certText) ?></span>
+
+  <span id="ksef-auth-grants-sep" class="mx-1"<?= (is_string($grantsHintText) && trim($grantsHintText) !== '') ? '' : ' style="display:none"' ?>>·</span>
+  <span id="ksef-auth-grants" class="<?= h($grantsHintClass) ?>"<?= (is_string($grantsHintText) && trim($grantsHintText) !== '') ? '' : ' style="display:none"' ?>><?= h((string)$grantsHintText) ?></span>
+
+  <span id="ksef-auth-conn-sep" class="mx-1"<?= (is_string($connText) && trim($connText) !== '') ? '' : ' style="display:none"' ?>>·</span>
+  <span id="ksef-auth-conn" class="<?= h($connClass) ?>"<?= (is_string($connText) && trim($connText) !== '') ? '' : ' style="display:none"' ?>><?= h((string)$connText) ?></span>
+
   <span class="mx-1">·</span>
-  <span class="text-muted"><?= h(strtoupper($environment)) ?></span>
+  <span id="ksef-auth-env" class="text-muted"><?= h(strtoupper($environment)) ?></span>
 </span>

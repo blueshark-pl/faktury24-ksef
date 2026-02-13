@@ -230,7 +230,7 @@ return [
         [
             'role' => 'user',
             'controller' => 'KsefAuthorizations',
-            'action' => ['received', 'issued', 'status'],
+            'action' => ['received', 'issued', 'status', 'statusAjax'],
         ],
 
         // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany

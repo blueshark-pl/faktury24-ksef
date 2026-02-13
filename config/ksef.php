@@ -10,6 +10,12 @@ return [
         // Cel: status/opcje KSeF oparte o centralny cert master, bez uploadu certów przez userów.
         'forceMasterCert' => true,
 
+        // Cache statusu InvoiceWrite (sekundy)
+        // Server-side: statusAjax() reużywa wynik z sesji, jeśli jest świeży.
+        // Client-side: layout reużywa wynik z localStorage, aby ograniczyć ruch.
+        'statusCacheSeconds' => 180,
+        'statusClientCacheSeconds' => 300,
+
         // gdzie zapisujemy meta per NIP (encryptionKey)
         'metaDir' => ROOT . DS . 'var' . DS . 'ksef' . DS . 'meta',
 

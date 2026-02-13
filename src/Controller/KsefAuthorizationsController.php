@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Model\Table\InvoicesTable;
+use Cake\Core\Configure;
 use Cake\I18n\FrozenDate;
 use Cake\Datasource\Paging\Exception\PageOutOfBoundsException;
 use Cake\Utility\Text;
@@ -511,6 +512,11 @@ class KsefAuthorizationsController extends AppController
      */
     public function uploadCertificate()
     {
+        if ((bool)(Configure::read('Ksef.forceMasterCert') ?? false)) {
+            $this->Flash->error('Wgrywanie certyfikatów jest wyłączone. System używa certyfikatu MASTER.');
+            return $this->redirect(['action' => 'index']);
+        }
+
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
         if ($companyId === '') {
@@ -782,6 +788,11 @@ class KsefAuthorizationsController extends AppController
             }
         }
 
+        if ((bool)(Configure::read('Ksef.forceMasterCert') ?? false)) {
+            $usingMaster = true;
+            $usingMasterMode = 'forced';
+        }
+
         // Status = czy mamy uprawnienie InvoiceWrite (wystawianie) w personal grants.
         try {
             $filters = [
@@ -794,7 +805,7 @@ class KsefAuthorizationsController extends AppController
                 environment: $environment,
                 filters: $filters,
                 pageOffset: 0,
-                pageSize: 1,
+                pageSize: 10,
                 overrideIdentifierNip: $identifierNip,
             );
 
@@ -847,6 +858,196 @@ class KsefAuthorizationsController extends AppController
 
         // Wróć na referer lub na listę "received"
         return $this->redirect($this->referer(['controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $environment]]));
+    }
+
+    /**
+     * AJAX/JSON: sprawdza uprawnienie InvoiceWrite (personal grants) i zapisuje wynik do sesji.
+     * Używane przez layout (cache po stronie przeglądarki) – aby nie przeładowywać strony.
+     */
+    public function statusAjax()
+    {
+        $this->request->allowMethod(['get']);
+
+        $identity    = $this->request->getAttribute('identity');
+        $companyId   = (string)($identity?->get('company_id') ?? '');
+        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = ($environment === 'prod') ? 'prod' : 'test';
+        $force       = (bool)$this->request->getQuery('force', false);
+        $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
+
+        if ($companyId === '') {
+            return $this->response
+                ->withStatus(400)
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error' => 'Brak powiązania z firmą.',
+                ], JSON_UNESCAPED_UNICODE));
+        }
+
+        // Cache w sesji: jeśli status jest świeży, nie odpytywać KSeF.
+        $cacheSeconds = (int)(Configure::read('Ksef.statusCacheSeconds') ?? 180);
+        if ($cacheSeconds < 10) { $cacheSeconds = 10; }
+        if ($cacheSeconds > 900) { $cacheSeconds = 900; }
+
+        if (!$force) {
+            $existing = $this->request->getSession()->read('Ksef.status');
+            if (is_array($existing)
+                && (($existing['env'] ?? null) === $environment)
+                && (($existing['checkKind'] ?? null) === 'personalGrants')
+                && (($existing['permissionType'] ?? null) === 'InvoiceWrite')
+            ) {
+                $ts = (int)($existing['ts'] ?? 0);
+                if ($ts > 0 && (time() - $ts) < $cacheSeconds) {
+                    return $this->response
+                        ->withType('application/json')
+                        ->withStringBody(json_encode([
+                            'success' => true,
+                            'cached' => true,
+                            'status' => $existing,
+                        ], JSON_UNESCAPED_UNICODE));
+                }
+            }
+        }
+
+        // NIP firmy (fallback jeśli nie podano as_nip)
+        $companyNip = '';
+        try {
+            /** @var \App\Model\Table\CompaniesTable $Companies */
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->select(['nip'])->where(['Companies.id' => $companyId])->first();
+            $companyNip = preg_replace('/\D/', '', (string)($company?->nip ?? ''));
+        } catch (\Throwable) {
+            $companyNip = '';
+        }
+
+        $identifierNip = $asNip !== '' ? $asNip : $companyNip;
+        if ($identifierNip === '') {
+            $status = [
+                'active' => false,
+                'env'    => $environment,
+                'ts'     => time(),
+                'lastError' => 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+                'usingMaster' => true,
+                'usingMasterMode' => (bool)(Configure::read('Ksef.forceMasterCert') ?? false) ? 'forced' : null,
+                'identifierNip' => null,
+            ];
+            $this->request->getSession()->write('Ksef.status', $status);
+
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error' => $status['lastError'],
+                    'status' => $status,
+                ], JSON_UNESCAPED_UNICODE));
+        }
+
+        $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+
+        // Diagnoza kontekstu (best-effort)
+        $diag = null;
+        try {
+            $diag = $ksef->diagnoseAuthContext($companyId, $environment, $identifierNip);
+        } catch (\Throwable) {
+            $diag = null;
+        }
+
+        $usingMaster = false;
+        $usingMasterMode = null;
+        $diagIdentifierNip = null;
+        if (is_array($diag)) {
+            $diagIdentifierNip = (string)($diag['identifierNip'] ?? '') ?: null;
+            if (($diag['authMethod'] ?? '') === 'certificate') {
+                if (!empty($diag['masterCertCompanyId']) && ($diag['certCompanyId'] ?? '') !== $companyId) {
+                    $usingMaster = true;
+                    $usingMasterMode = 'configured';
+                } elseif (($diag['certSource'] ?? null) === 'master') {
+                    $usingMaster = true;
+                    $usingMasterMode = 'fallback';
+                }
+            }
+        }
+        if ((bool)(Configure::read('Ksef.forceMasterCert') ?? false)) {
+            $usingMaster = true;
+            $usingMasterMode = 'forced';
+        }
+
+        try {
+            $filters = [
+                'permissionState' => 'Active',
+                'permissionTypes' => ['InvoiceWrite'],
+            ];
+            $result = $ksef->queryPersonalGrants(
+                companyId: $companyId,
+                environment: $environment,
+                filters: $filters,
+                pageOffset: 0,
+                pageSize: 10,
+                overrideIdentifierNip: $identifierNip,
+            );
+
+            $items = [];
+            if (is_array($result)) {
+                if (isset($result['permissions']) && is_array($result['permissions'])) {
+                    $items = $result['permissions'];
+                } elseif (isset($result['items']) && is_array($result['items'])) {
+                    $items = $result['items'];
+                }
+            }
+            $hasInvoiceWrite = is_array($items) && count($items) > 0;
+
+            $status = [
+                'active' => $hasInvoiceWrite,
+                'env'    => $environment,
+                'ts'     => time(),
+                'lastError' => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+                'usingMaster' => $usingMaster,
+                'usingMasterMode' => $usingMasterMode,
+                'identifierNip' => $diagIdentifierNip ?: $identifierNip,
+                'authMethod' => is_array($diag) ? ($diag['authMethod'] ?? null) : null,
+                'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
+            ];
+            $this->request->getSession()->write('Ksef.status', $status);
+
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => true,
+                    'cached' => false,
+                    'status' => $status,
+                ], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            $details = $this->formatKsefError($e);
+            $status = [
+                'active' => false,
+                'env'    => $environment,
+                'ts'     => time(),
+                'lastError' => $details,
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+                'usingMaster' => $usingMaster,
+                'usingMasterMode' => $usingMasterMode,
+                'identifierNip' => $diagIdentifierNip ?: $identifierNip,
+                'authMethod' => is_array($diag) ? ($diag['authMethod'] ?? null) : null,
+                'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
+            ];
+            $this->request->getSession()->write('Ksef.status', $status);
+
+            return $this->response
+                ->withStatus(200)
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error' => $details,
+                    'cached' => false,
+                    'status' => $status,
+                ], JSON_UNESCAPED_UNICODE));
+        }
     }
 
     /**

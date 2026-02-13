@@ -111,10 +111,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             $usingMaster = false;
             $usingMasterMode = '';
             $identifierNip = '';
+            $checkKind = '';
+            $permissionType = '';
             if (is_array($status)) {
                 $active = (bool)($status['active'] ?? false);
                 $envSide = $status['env'] ?? null;
                 $lastError = $status['lastError'] ?? null;
+                $checkKind = (string)($status['checkKind'] ?? '');
+                $permissionType = (string)($status['permissionType'] ?? '');
                 $ts = (int)($status['ts'] ?? 0);
                 if ($ts > 0) {
                     try {
@@ -152,11 +156,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             }
             ?>
             <div class="px-2 pb-3">
-                            <?php if ($state === 'unknown'): ?>
-              <div class="rounded-3 border p-3 mb-3 border-danger">
+                            <div id="ksef-ajax-unknown" class="rounded-3 border p-3 mb-3 border-danger<?= $state === 'unknown' ? '' : ' d-none' ?>">
                 <div class="d-flex align-items-start gap-3">
                   <div class="pt-1">
-                    <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
+                                        <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: #9ca3af;"></span>
                   </div>
                   <div class="flex-grow-1">
                                         <h6 class="mb-1">KSeF (InvoiceWrite): Niezweryfikowano</h6>
@@ -169,58 +172,43 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                          class="btn btn-outline-secondary btn-sm">
                         Podgląd odebranych
                       </a>
-                                            <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'status', '?' => ['env' => 'test']]) ?>"
-                                                 class="btn btn-outline-primary btn-sm">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" data-ksef-invoicewrite-refresh>
                                                 Sprawdź InvoiceWrite
-                                            </a>
+                                            </button>
                     </div>
                   </div>
                 </div>
               </div>
-              <?php endif; ?>
-                            <?php if ($state === 'inactive'): ?>
-              <div class="rounded-3 p-3 mb-3">
+
+                            <div id="ksef-ajax-inactive" class="rounded-3 p-3 mb-3<?= $state === 'inactive' ? '' : ' d-none' ?>">
                 <div class="d-flex align-items-center gap-3 flex-wrap">
-                  <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
+                                    <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: #ef4444;"></span>
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <span class="text-danger fw-semibold">Brak InvoiceWrite</span>
-                    <?php if (!empty($lastError) && is_string($lastError)): ?>
-                      <span class="text-muted small">Błąd: <?= h($lastError) ?></span>
-                    <?php endif; ?>
-                    <?php if ($fullTimeStr): ?>
-                      <span class="text-muted small">Ostatnia próba: <strong><?= h($fullTimeStr) ?></strong></span>
-                    <?php endif; ?>
+                                        <span id="ksef-ajax-inactive-title" class="text-danger fw-semibold">Brak InvoiceWrite</span>
+                                        <span id="ksef-ajax-inactive-error" class="text-muted small"<?= (!empty($lastError) && is_string($lastError)) ? '' : ' style="display:none"' ?>>Błąd: <?= h((string)$lastError) ?></span>
+                                        <span id="ksef-ajax-inactive-ts" class="text-muted small"<?= $fullTimeStr ? '' : ' style="display:none"' ?>>Ostatnia próba: <strong><?= h((string)$fullTimeStr) ?></strong></span>
                   </div>
-                  <!-- <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ksefVideoModal">Instrukcja wideo</button>
-                    <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'test']]) ?>" class="btn btn-outline-secondary btn-sm">Podgląd odebranych (test)</a>
-                  </div> -->
+                                    <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież</button>
+                                    </div>
                 </div>
               </div>
-              <?php endif; ?>
-                            <?php if ($state === 'active'): ?>
-              <div class="rounded-3 p-3 mb-3">
+
+                            <div id="ksef-ajax-active" class="rounded-3 p-3 mb-3<?= $state === 'active' ? '' : ' d-none' ?>">
                 <div class="d-flex align-items-center gap-3 flex-wrap">
-                  <span class="ksef-dot pulse" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
+                                    <span class="ksef-dot pulse" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: #22c55e;"></span>
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <span class="text-success fw-semibold">InvoiceWrite: aktywne</span>
-                    <?php if ($envSide): ?>
-                      <span class="text-muted small">Środowisko: <?= h(strtoupper((string)$envSide)) ?></span>
-                    <?php endif; ?>
-                    <?php if ($fullTimeStr): ?>
-                      <span class="text-muted small">Ostatnie potwierdzenie: <strong><?= h($fullTimeStr) ?></strong></span>
-                    <?php endif; ?>
-                    <?php if ($usingMaster): ?>
-                      <span class="text-warning small" data-bs-toggle="tooltip" data-bs-placement="top" title="Używany certyfikat master (tryb: <?= h($usingMasterMode ?: 'nieznany') ?>)<?= $identifierNip ? (' – NIP: ' . h($identifierNip)) : '' ?>.">MASTER</span>
-                    <?php endif; ?>
+                                        <span id="ksef-ajax-active-title" class="text-success fw-semibold">InvoiceWrite: aktywne</span>
+                                        <span id="ksef-ajax-env" class="text-muted small"<?= $envSide ? '' : ' style="display:none"' ?>>Środowisko: <span id="ksef-ajax-env-value"><?= h(strtoupper((string)$envSide)) ?></span></span>
+                                        <span id="ksef-ajax-active-ts" class="text-muted small"<?= $fullTimeStr ? '' : ' style="display:none"' ?>>Ostatnie potwierdzenie: <strong><?= h((string)$fullTimeStr) ?></strong></span>
+                                        <span id="ksef-ajax-master" class="text-warning small"<?= $usingMaster ? '' : ' style="display:none"' ?> data-bs-toggle="tooltip" data-bs-placement="top" title="Używany certyfikat master (tryb: <?= h($usingMasterMode ?: 'nieznany') ?>)<?= $identifierNip ? (' – NIP: ' . h($identifierNip)) : '' ?>.">MASTER</span>
                   </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                     <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'test']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
-                    <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'status', '?' => ['env' => $envSide ?: 'test']]) ?>" class="btn btn-outline-secondary btn-sm">Odśwież status</a>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
                   </div>
                 </div>
               </div>
-              <?php endif; ?>
               
                 <style>
                     @keyframes ksefPulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0.6);} 70% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(34,197,94,0);} 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0);} }
@@ -731,6 +719,248 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             }
           });
         </script>
+
+                <?php
+                    $identityLayout = $this->request->getAttribute('identity');
+                    $companyIdLayout = (string)($identityLayout?->get('company_id') ?? '');
+                    $ksefAjaxUrl = $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'statusAjax']);
+                    $ksefClientTtl = (int)(Configure::read('Ksef.statusClientCacheSeconds') ?? 300);
+                    if ($ksefClientTtl < 30) { $ksefClientTtl = 30; }
+                    if ($ksefClientTtl > 3600) { $ksefClientTtl = 3600; }
+                ?>
+                <script>
+                    (function() {
+                        function byId(id) { return document.getElementById(id); }
+                        function nowSec() { return Math.floor(Date.now() / 1000); }
+                        function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+                        function formatTs(ts) {
+                            try {
+                                var d = new Date(ts * 1000);
+                                return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+                            } catch (e) {
+                                return '';
+                            }
+                        }
+
+                        function setVisible(el, visible) {
+                            if (!el) return;
+                            if (visible) {
+                                el.classList.remove('d-none');
+                            } else {
+                                el.classList.add('d-none');
+                            }
+                        }
+
+                        function setInlineVisible(el, visible) {
+                            if (!el) return;
+                            el.style.display = visible ? '' : 'none';
+                        }
+
+                        function updateTooltip(el, title) {
+                            if (!el) return;
+                            el.setAttribute('title', title || '');
+                            if (window.bootstrap && typeof bootstrap.Tooltip === 'function') {
+                                var inst = bootstrap.Tooltip.getInstance(el);
+                                if (inst && typeof inst.setContent === 'function') {
+                                    inst.setContent({ '.tooltip-inner': title || '' });
+                                }
+                            }
+                        }
+
+                        function applyStatusToOffcanvas(status) {
+                            if (!status || typeof status !== 'object') return;
+                            var state = 'unknown';
+                            if (Object.prototype.hasOwnProperty.call(status, 'active')) {
+                                state = status.active ? 'active' : 'inactive';
+                            }
+
+                            setVisible(byId('ksef-ajax-unknown'), state === 'unknown');
+                            setVisible(byId('ksef-ajax-inactive'), state === 'inactive');
+                            setVisible(byId('ksef-ajax-active'), state === 'active');
+
+                            var ts = status.ts ? parseInt(status.ts, 10) : 0;
+                            var fullTs = ts > 0 ? formatTs(ts) : '';
+                            var lastError = (typeof status.lastError === 'string') ? status.lastError.trim() : '';
+                            var env = (typeof status.env === 'string' && status.env) ? status.env : '';
+
+                            // inactive
+                            var inactiveErr = byId('ksef-ajax-inactive-error');
+                            if (inactiveErr) {
+                                inactiveErr.textContent = lastError ? ('Błąd: ' + lastError) : '';
+                                setInlineVisible(inactiveErr, !!lastError);
+                            }
+                            var inactiveTs = byId('ksef-ajax-inactive-ts');
+                            if (inactiveTs) {
+                                inactiveTs.innerHTML = fullTs ? ('Ostatnia próba: <strong>' + fullTs + '</strong>') : '';
+                                setInlineVisible(inactiveTs, !!fullTs);
+                            }
+
+                            // active
+                            var activeTs = byId('ksef-ajax-active-ts');
+                            if (activeTs) {
+                                activeTs.innerHTML = fullTs ? ('Ostatnie potwierdzenie: <strong>' + fullTs + '</strong>') : '';
+                                setInlineVisible(activeTs, !!fullTs);
+                            }
+                            var envWrap = byId('ksef-ajax-env');
+                            var envVal = byId('ksef-ajax-env-value');
+                            if (envVal) envVal.textContent = env ? env.toUpperCase() : '';
+                            setInlineVisible(envWrap, !!env);
+
+                            var master = !!status.usingMaster;
+                            var masterMode = (typeof status.usingMasterMode === 'string') ? status.usingMasterMode : '';
+                            var nip = (typeof status.identifierNip === 'string') ? status.identifierNip : '';
+                            var masterEl = byId('ksef-ajax-master');
+                            if (masterEl) {
+                                setInlineVisible(masterEl, master);
+                                var t = 'Używany certyfikat master' + (masterMode ? (' (tryb: ' + masterMode + ')') : '') + (nip ? (' – NIP: ' + nip) : '') + '.';
+                                updateTooltip(masterEl, t);
+                            }
+                        }
+
+                        function applyStatusToFooter(status) {
+                            if (!status || typeof status !== 'object') return;
+                            var ctx = byId('ksef-auth-context');
+                            var connSep = byId('ksef-auth-conn-sep');
+                            var conn = byId('ksef-auth-conn');
+                            if (!conn || !connSep) return;
+
+                            var active = !!status.active;
+                            var text = active ? 'InvoiceWrite: OK' : 'InvoiceWrite: brak';
+                            conn.textContent = text;
+                            conn.classList.remove('text-success', 'text-danger', 'text-muted', 'text-warning');
+                            conn.classList.add(active ? 'text-success' : 'text-danger');
+                            setInlineVisible(connSep, true);
+                            setInlineVisible(conn, true);
+
+                            var lines = [];
+                            if (status.ts) {
+                                var ts = parseInt(status.ts, 10) || 0;
+                                if (ts > 0) lines.push('Ostatnia diagnoza: ' + formatTs(ts));
+                            }
+                            if (!active && typeof status.lastError === 'string' && status.lastError.trim()) {
+                                lines.push('Błąd: ' + status.lastError.trim());
+                            }
+
+                            if (ctx && lines.length) {
+                                var base = ctx.getAttribute('title') || '';
+                                // Usuń poprzedni blok (heurystycznie po "Ostatnia diagnoza")
+                                var cut = base.split('\n\nOstatnia diagnoza:')[0];
+                                var merged = (cut ? cut.trim() : '');
+                                var extra = lines.join('\n');
+                                ctx.setAttribute('title', merged ? (merged + '\n\n' + extra) : extra);
+                            }
+                        }
+
+                        var baseUrl = <?= json_encode($ksefAjaxUrl, JSON_UNESCAPED_SLASHES) ?>;
+                        var companyId = <?= json_encode($companyIdLayout, JSON_UNESCAPED_SLASHES) ?>;
+                        var clientTtl = <?= (int)$ksefClientTtl ?>;
+
+                        function getEnv() {
+                            var ctx = byId('ksef-auth-context');
+                            var env = ctx ? (ctx.getAttribute('data-ksef-env') || '') : '';
+                            if (!env) {
+                                env = <?= json_encode((string)($envSide ?: 'test'), JSON_UNESCAPED_SLASHES) ?>;
+                            }
+                            env = (env === 'prod') ? 'prod' : 'test';
+                            return env;
+                        }
+
+                        function cacheKey(env) {
+                            return 'ksef:status:InvoiceWrite:' + (companyId || '-') + ':' + env;
+                        }
+
+                        function readCached(env) {
+                            try {
+                                var raw = localStorage.getItem(cacheKey(env));
+                                if (!raw) return null;
+                                var data = JSON.parse(raw);
+                                if (!data || typeof data !== 'object') return null;
+                                if (!data.savedAt || !data.status) return null;
+                                if ((nowSec() - parseInt(data.savedAt, 10)) > clientTtl) return null;
+                                return data.status;
+                            } catch (e) {
+                                return null;
+                            }
+                        }
+
+                        function writeCached(env, status) {
+                            try {
+                                localStorage.setItem(cacheKey(env), JSON.stringify({ savedAt: nowSec(), status: status }));
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+
+                        var inFlight = false;
+                        function setButtonsBusy(busy) {
+                            document.querySelectorAll('[data-ksef-invoicewrite-refresh]').forEach(function(btn) {
+                                btn.disabled = !!busy;
+                            });
+                        }
+
+                        function refresh(force) {
+                            var env = getEnv();
+
+                            if (!force) {
+                                var cached = readCached(env);
+                                if (cached) {
+                                    applyStatusToOffcanvas(cached);
+                                    applyStatusToFooter(cached);
+                                    return Promise.resolve({ cached: true, status: cached });
+                                }
+                            }
+
+                            if (inFlight) return Promise.resolve({ inFlight: true });
+                            inFlight = true;
+                            setButtonsBusy(true);
+
+                            var url = baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + 'env=' + encodeURIComponent(env);
+                            if (force) url += '&force=1';
+
+                            return fetch(url, { credentials: 'same-origin' })
+                                .then(function(r) { return r.json(); })
+                                .then(function(json) {
+                                    if (json && json.status) {
+                                        writeCached(env, json.status);
+                                        applyStatusToOffcanvas(json.status);
+                                        applyStatusToFooter(json.status);
+                                    }
+                                    return json;
+                                })
+                                .catch(function() {
+                                    return null;
+                                })
+                                .finally(function() {
+                                    inFlight = false;
+                                    setButtonsBusy(false);
+                                });
+                        }
+
+                        document.addEventListener('DOMContentLoaded', function() {
+                            if (!byId('ksef-auth-context')) {
+                                return;
+                            }
+                            // Always AJAX: odczytaj cache i w razie potrzeby odśwież.
+                            refresh(false);
+
+                            // Manual refresh
+                            document.querySelectorAll('[data-ksef-invoicewrite-refresh]').forEach(function(btn) {
+                                btn.addEventListener('click', function() {
+                                    refresh(true);
+                                });
+                            });
+
+                            // Przy otwarciu offcanvas – odśwież (z cache/localStorage, a nie zawsze z serwera)
+                            var offcanvasEl = document.getElementById('switcher-canvas');
+                            if (offcanvasEl) {
+                                offcanvasEl.addEventListener('shown.bs.offcanvas', function() {
+                                    refresh(false);
+                                });
+                            }
+                        });
+                    })();
+                </script>
     
 </body>
 </html>
