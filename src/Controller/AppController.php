@@ -52,7 +52,8 @@ class AppController extends Controller
          */
         //$this->loadComponent('FormProtection');
     }
-        public function beforeFilter(EventInterface $event)
+
+    public function beforeFilter(EventInterface $event)
     {
         parent::beforeFilter($event);
 

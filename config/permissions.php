@@ -132,23 +132,45 @@ return [
             'action' => 'display',
         ],
 
+        // podstawowe uprawnienia dla roli user w aplikacji (bez pluginów)
+        [
+            'role' => 'user',
+            'prefix' => '*',
+            'plugin' => null,
+            'controller' => '*',
+            'action' => '*',
+        ],
+
         // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
         [
-            'role' => '*',
+            'role' => 'user',
             'controller' => 'Companies',
             'action' => ['onboarding', 'saveOnboarding'],
+            
+        ],
+        [
+            'role' => 'user',
+            'action' => ['gusLookup'],
+            'action' => ['index'],
+            
+        ],
+        [
+            'role' => 'user',
+            'controller' => 'Contractors',
+            'action' => ['GusLookup'],
+            
         ],
 
         // podstawowy landing po zalogowaniu
         [
-            'role' => '*',
+            'role' => 'user',
             'controller' => 'Dashboard',
             'action' => ['index'],
         ],
 
         // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany
         [
-            'role' => '*',
+            'role' => 'user',
             'controller' => 'TwoFactor',
             'action' => ['index', 'enable', 'verify', 'disable'],
         ],

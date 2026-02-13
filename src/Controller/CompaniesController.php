@@ -18,7 +18,11 @@ class CompaniesController extends AppController
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
             // jeśli nie zalogowany — przekieruj na login
-            return $this->redirect(['controller' => 'Users', 'action' => 'login']);
+            return $this->redirect([
+                'plugin' => 'CakeDC/Users',
+                'controller' => 'Users',
+                'action' => 'login',
+            ]);
         }
 
         // jeśli user ma już firmę — nie pokazuj onboardingu
