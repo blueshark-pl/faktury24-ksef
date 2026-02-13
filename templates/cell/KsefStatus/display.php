@@ -38,7 +38,7 @@ $fmt = function ($t): string {
     <span class="text-muted"><?= h(mb_strlen($messageTitle) > 80 ? (mb_substr($messageTitle, 0, 79) . '…') : $messageTitle) ?></span>
   <?php endif; ?>
   <span class="mx-1">·</span>
-  <a href="#" role="button" onclick="return false"
+  <a href="#" role="button"
      data-bs-toggle="modal" data-bs-target="#<?= h($modalId) ?>"
      class="text-decoration-none <?= h($badgeClass) ?>">
     Komunikaty MF<?= $hasAnyMessages ? ' (' . (int)count($messages) . ')' : '' ?>

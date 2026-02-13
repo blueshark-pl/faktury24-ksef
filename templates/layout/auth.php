@@ -82,9 +82,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           <?php endif; ?>
           <?= $this->cell('KsefStatus') ?>
           <span class="mx-2">•</span>
-          <a href="#" role="button" onclick="return false" data-bs-toggle="modal" data-bs-target="#regulaminModal"><?= __('Regulamin') ?></a>
+          <a href="#" role="button" data-bs-toggle="modal" data-bs-target="#regulaminModal"><?= __('Regulamin') ?></a>
           <span class="mx-2">•</span>
-          <a href="#" role="button" onclick="return false" data-bs-toggle="modal" data-bs-target="#privacyModal"><?= __('Polityka prywatności') ?></a>
+          <a href="#" role="button" data-bs-toggle="modal" data-bs-target="#privacyModal"><?= __('Polityka prywatności') ?></a>
         </div>
       </div>
     </div>
