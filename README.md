@@ -23,6 +23,11 @@ composer create-project --prefer-dist cakephp/app
 - Czas: 0.2h
 - Do sprawdzenia manualnie: nowy user -> login -> onboarding -> zapisz -> dashboard; wejscie w faktury i gusLookup bez 403/petli.
 
+- PL na ekranach logowania: przywrocenie wymuszenia locale w kodzie (bootstrap) przez ustawienie `Cake\I18n\I18n::setLocale()`/`setDefaultLocale()`, zeby tlumaczenia `cake_d_c/users` z `resources/locales/pl` znow dzialaly.
+- Commit: 74a7dc9
+- Czas: 0.1h
+- Do sprawdzenia manualnie: `/users/login` oraz `/users/register` – etykiety i komunikaty z pluginu powinny byc po polsku.
+
 ```
 
 In case you want to use a custom app dir name (e.g. `/myapp/`):
