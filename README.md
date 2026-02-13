@@ -85,3 +85,8 @@ custom styles.
 - Commit: 3e7992c
 - Czas: 0.2h
 - Do sprawdzenia manualnie: klik „Komunikaty MF” na `/users/login` i po zalogowaniu otwiera modal; w konsoli brak błędu `...reading 'backdrop'`.
+
+- UI: ujednolicenie przycisku „Zamknij” w modalu „Komunikaty MF” ze stylem z Regulaminu/Polityki (btn-outline-secondary).
+- Commit: 3444460
+- Czas: 0.1h
+- Do sprawdzenia manualnie: w modalu „Komunikaty MF” przycisk „Zamknij” ma identyczny wygląd jak w Regulamin/Polityka.
