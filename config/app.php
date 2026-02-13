@@ -62,7 +62,7 @@ return [
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
         // App version displayed in footers (format: 1.<month>.<day> (<build>)).
-        'version' => '1.2.13 (2)',
+        'version' => '1.2.13 (3)',
         // Optional: branding for system emails (HTML layout)
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),
@@ -72,6 +72,17 @@ return [
             'templates' => [ROOT . DS . 'templates' . DS],
             'locales' => [RESOURCES . 'locales' . DS],
         ],
+    ],
+
+    /*
+     * Publiczne API Latarni KSeF (bez autoryzacji)
+     * - /status: aktualny status + komunikaty (jeśli dotyczy)
+     * - /messages: lista komunikatów (opcjonalnie)
+     */
+    'LatarniaKsef' => [
+        'baseUrl' => env('LATARNIA_KSEF_BASE_URL', 'https://api-latarnia.ksef.mf.gov.pl'),
+        'timeout' => (int)env('LATARNIA_KSEF_HTTP_TIMEOUT', 4),
+        'cacheConfig' => 'latarniaKsef',
     ],
 
     /*
@@ -136,6 +147,15 @@ return [
             'serialize' => true,
             'duration' => '+1 years',
             'url' => env('CACHE_CAKEMODEL_URL', null),
+        ],
+
+        // Cache for public Latarnia KSeF status/messages.
+        'latarniaKsef' => [
+            'className' => FileEngine::class,
+            'prefix' => 'latarnia_ksef_',
+            'path' => CACHE,
+            'serialize' => true,
+            'duration' => '+2 minutes',
         ],
     ],
 

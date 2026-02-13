@@ -79,6 +79,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             <span class="mx-2">•</span>
             <span>Wersja: <?= h($appVersion) ?></span>
           <?php endif; ?>
+          <?= $this->cell('KsefStatus') ?>
           <span class="mx-2">•</span>
           <a href="#" role="button" onclick="return false" data-bs-toggle="modal" data-bs-target="#regulaminModal"><?= __('Regulamin') ?></a>
           <span class="mx-2">•</span>
