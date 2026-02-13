@@ -35,6 +35,22 @@ final class KsefAuthContextCell extends Cell
         $certText = 'cert: brak';
         $certClass = 'text-danger';
 
+        $grantsHintText = null;
+        $grantsHintClass = 'text-warning';
+
+        $companyNip = '';
+        try {
+            /** @var \App\Model\Table\CompaniesTable $Companies */
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()
+                ->select(['nip'])
+                ->where(['Companies.id' => $companyId])
+                ->first();
+            $companyNip = preg_replace('/\D/', '', (string)($company?->nip ?? ''));
+        } catch (\Throwable) {
+            $companyNip = '';
+        }
+
         $tooltipParts = [];
 
         if (is_array($diag)) {
@@ -88,6 +104,16 @@ final class KsefAuthContextCell extends Cell
             if ($identifierNip !== '') {
                 $tooltipParts[] = 'Identifier NIP: ' . $identifierNip;
             }
+
+            // Heuristic: master cert used for a different NIP than the company.
+            // This typically means the company must grant permissions (pełnomocnictwo/uprawnienia) in KSeF.
+            $idNipNorm = preg_replace('/\D/', '', $identifierNip);
+            if ($usingMaster && $idNipNorm !== '' && $companyNip !== '' && $idNipNorm !== $companyNip) {
+                $grantsHintText = 'uprawnienia: wymagane';
+                $grantsHintClass = 'text-warning';
+                $tooltipParts[] = 'Company NIP: ' . $companyNip;
+                $tooltipParts[] = 'Hint: wymagane uprawnienia firmy dla NIP identyfikatora.';
+            }
             if ($masterCertCompanyId !== '') {
                 $tooltipParts[] = 'Master cert companyId: ' . $masterCertCompanyId;
             }
@@ -101,14 +127,29 @@ final class KsefAuthContextCell extends Cell
 
         if (is_array($status) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
             $active = (bool)$status['active'];
-            $connText = $active ? 'połączenie: OK' : 'Brak połączenia z KSeF';
+
+            $lastError = trim((string)($status['lastError'] ?? ''));
+            $looksLikePermissionError = false;
+            if (!$active && $lastError !== '') {
+                $le = mb_strtolower($lastError);
+                $looksLikePermissionError = str_contains($le, '401')
+                    || str_contains($le, '403')
+                    || str_contains($le, 'unauthorized')
+                    || str_contains($le, 'forbidden')
+                    || str_contains($le, 'uprawn')
+                    || str_contains($le, 'permission')
+                    || str_contains($le, 'brak dost');
+            }
+
+            $connText = $active
+                ? 'połączenie: OK'
+                : ($looksLikePermissionError ? 'Brak uprawnień w KSeF' : 'Brak połączenia z KSeF');
             $connClass = $active ? 'text-success' : 'text-danger';
 
             $ts = isset($status['ts']) ? (int)$status['ts'] : 0;
             if ($ts > 0) {
                 $connTooltip = 'Ostatnia diagnoza: ' . date('Y-m-d H:i:s', $ts);
             }
-            $lastError = trim((string)($status['lastError'] ?? ''));
             if (!$active && $lastError !== '') {
                 $connTooltip = trim(($connTooltip ? ($connTooltip . "\n") : '') . 'Błąd: ' . $lastError);
             }
@@ -121,6 +162,8 @@ final class KsefAuthContextCell extends Cell
             'environment' => $environment,
             'certText' => $certText,
             'certClass' => $certClass,
+            'grantsHintText' => $grantsHintText,
+            'grantsHintClass' => $grantsHintClass,
             'tooltip' => $tooltip,
             'connText' => $connText,
             'connClass' => $connClass,
