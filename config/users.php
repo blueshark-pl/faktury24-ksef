@@ -1,6 +1,16 @@
 <?php
 return [
     'Users.Registration.active' => true, //enable or disable password meter. Defaults to true
+
+    // CakeDC Users: password rehash
+    // The plugin loads identifiers inside authenticators (Auth.Authenticators.*.identifier).
+    // Using deprecated `Auth.PasswordRehash.identifiers` causes warnings because the global
+    // identifier collection is empty in the service loader.
+    'Auth.PasswordRehash.identifiers' => [],
+    'Auth.PasswordRehash.authenticators' => [
+        'Form' => 'Authentication.Password',
+    ],
+
     // 2FA (Google Authenticator) – opt-in per user.
     // Global OTP processing must be enabled, while requirement is decided by checker.
     'OneTimePasswordAuthenticator.login' => true,
