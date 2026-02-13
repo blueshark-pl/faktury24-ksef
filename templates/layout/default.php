@@ -902,14 +902,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         function refresh(force) {
                             var env = getEnv();
 
-                            if (!force) {
-                                var cached = readCached(env);
-                                if (cached) {
-                                    applyStatusToOffcanvas(cached);
-                                    applyStatusToFooter(cached);
-                                    return Promise.resolve({ cached: true, status: cached });
-                                }
-                            }
+                            // Tryb FORCE (tymczasowo): pomijamy localStorage, aby zawsze dostać świeży wynik.
+                            // (Cache zostaje w kodzie, ale nie jest używany.)
 
                             if (inFlight) return Promise.resolve({ inFlight: true });
                             inFlight = true;
@@ -922,7 +916,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 .then(function(r) { return r.json(); })
                                 .then(function(json) {
                                     if (json && json.status) {
-                                        writeCached(env, json.status);
+                                        if (!force) {
+                                            writeCached(env, json.status);
+                                        }
                                         applyStatusToOffcanvas(json.status);
                                         applyStatusToFooter(json.status);
                                     }
@@ -941,8 +937,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             if (!byId('ksef-auth-context')) {
                                 return;
                             }
-                            // Always AJAX: odczytaj cache i w razie potrzeby odśwież.
-                            refresh(false);
+                            // Always AJAX (force): zawsze odśwież z serwera (bez cache).
+                            refresh(true);
 
                             // Manual refresh
                             document.querySelectorAll('[data-ksef-invoicewrite-refresh]').forEach(function(btn) {
@@ -955,7 +951,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             var offcanvasEl = document.getElementById('switcher-canvas');
                             if (offcanvasEl) {
                                 offcanvasEl.addEventListener('shown.bs.offcanvas', function() {
-                                    refresh(false);
+                                    refresh(true);
                                 });
                             }
                         });
