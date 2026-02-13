@@ -902,8 +902,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         function refresh(force) {
                             var env = getEnv();
 
-                            // Tryb FORCE (tymczasowo): pomijamy localStorage, aby zawsze dostać świeży wynik.
-                            // (Cache zostaje w kodzie, ale nie jest używany.)
+                            // Cache (client): localStorage z TTL.
+                            // Cache (server): statusAjax bez `force=1` może zwrócić wynik z sesji.
+                            if (!force) {
+                                var cached = readCached(env);
+                                if (cached) {
+                                    applyStatusToOffcanvas(cached);
+                                    applyStatusToFooter(cached);
+                                    return Promise.resolve({ cached: true, status: cached });
+                                }
+                            }
 
                             if (inFlight) return Promise.resolve({ inFlight: true });
                             inFlight = true;
@@ -916,9 +924,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 .then(function(r) { return r.json(); })
                                 .then(function(json) {
                                     if (json && json.status) {
-                                        if (!force) {
-                                            writeCached(env, json.status);
-                                        }
+                                        writeCached(env, json.status);
                                         applyStatusToOffcanvas(json.status);
                                         applyStatusToFooter(json.status);
                                     }
@@ -937,8 +943,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             if (!byId('ksef-auth-context')) {
                                 return;
                             }
-                            // Always AJAX (force): zawsze odśwież z serwera (bez cache).
-                            refresh(true);
+                            // Always AJAX + cache: pokaż natychmiast z localStorage, a w razie potrzeby pobierz.
+                            refresh(false);
 
                             // Manual refresh
                             document.querySelectorAll('[data-ksef-invoicewrite-refresh]').forEach(function(btn) {
@@ -951,7 +957,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             var offcanvasEl = document.getElementById('switcher-canvas');
                             if (offcanvasEl) {
                                 offcanvasEl.addEventListener('shown.bs.offcanvas', function() {
-                                    refresh(true);
+                                    refresh(false);
                                 });
                             }
                         });

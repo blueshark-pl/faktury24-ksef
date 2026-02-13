@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Model\Table\InvoicesTable;
+use Cake\Cache\Cache;
 use Cake\Core\Configure;
 use Cake\I18n\FrozenDate;
 use Cake\Datasource\Paging\Exception\PageOutOfBoundsException;
@@ -945,6 +946,29 @@ class KsefAuthorizationsController extends AppController
                 ], JSON_UNESCAPED_UNICODE));
         }
 
+        // Cache współdzielony po stronie PHP (dla wielu userów tej samej firmy).
+        // `force=1` pomija cache odczytu, ale nadal zapisujemy świeży wynik.
+        $cacheKey = 'ksef_status_invoicewrite_' . sha1($companyId . '|' . $environment . '|' . $identifierNip);
+        if (!$force) {
+            $cachedStatus = Cache::read($cacheKey, 'ksefStatus');
+            if (is_array($cachedStatus)
+                && (($cachedStatus['env'] ?? null) === $environment)
+                && (($cachedStatus['checkKind'] ?? null) === 'personalGrants')
+                && (($cachedStatus['permissionType'] ?? null) === 'InvoiceWrite')
+            ) {
+                $this->request->getSession()->write('Ksef.status', $cachedStatus);
+
+                return $this->response
+                    ->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success' => true,
+                        'cached' => true,
+                        'cachedScope' => 'php',
+                        'status' => $cachedStatus,
+                    ], JSON_UNESCAPED_UNICODE));
+            }
+        }
+
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
 
         // Diagnoza kontekstu (best-effort)
@@ -1013,6 +1037,7 @@ class KsefAuthorizationsController extends AppController
                 'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
             ];
             $this->request->getSession()->write('Ksef.status', $status);
+            Cache::write($cacheKey, $status, 'ksefStatus');
 
             return $this->response
                 ->withType('application/json')
@@ -1037,6 +1062,7 @@ class KsefAuthorizationsController extends AppController
                 'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
             ];
             $this->request->getSession()->write('Ksef.status', $status);
+            Cache::write($cacheKey, $status, 'ksefStatus');
 
             return $this->response
                 ->withStatus(200)

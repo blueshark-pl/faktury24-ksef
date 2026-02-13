@@ -17,7 +17,7 @@ return [
      * Development Mode:
      * true: Errors and warnings shown.
      */
-    'debug' => filter_var(env('DEBUG', true), FILTER_VALIDATE_BOOLEAN),
+    'debug' => filter_var(env('DEBUG', false), FILTER_VALIDATE_BOOLEAN),
 
     /*
      * Configure basic information about the application.
@@ -156,6 +156,16 @@ return [
             'path' => CACHE,
             'serialize' => true,
             'duration' => '+2 minutes',
+        ],
+
+        // Cache for internal KSeF status checks (InvoiceWrite via personal grants).
+        // Shared per company/env/NIP to reduce load on KSeF.
+        'ksefStatus' => [
+            'className' => FileEngine::class,
+            'prefix' => 'ksef_status_',
+            'path' => CACHE,
+            'serialize' => true,
+            'duration' => env('KSEF_STATUS_CACHE_DURATION', '+3 minutes'),
         ],
     ],
 
