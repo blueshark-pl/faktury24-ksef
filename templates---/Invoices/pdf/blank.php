@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        html, body { margin: 0; padding: 0; }
+        /* Keep intentionally blank */
+    </style>
+</head>
+<body>
+</body>
+</html>

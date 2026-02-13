@@ -1,0 +1,80 @@
+.tree-view {
+  font-size: 14px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tree-view ul {
+  margin: 0;
+  padding: 0;
+  padding-left: 13px;
+}
+
+.tree-view > ul {
+  padding-left: 0;
+}
+
+.tree-view li {
+  list-style-type: none;
+}
+
+.tree-view .list-item {
+  cursor: default;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tree-view .name {
+  background-repeat: no-repeat;
+  background-position: 2px 50%;
+  padding-left: 25px;
+  line-height: 25px;
+  height: 25px;
+  margin-left: 15px;
+}
+
+.tree-view .file > .list-item .name {
+  background-image: url(images/file.png);
+}
+
+.tree-view .directory > .list-item .name {
+  background-image: url(images/folder.png);
+}
+
+.tree-view .entry.selected:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 25px;
+  background-color: #f5f5f5;
+  z-index: -1;
+}
+
+.tree-view .directory.open > .list-item:before {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 25px;
+  background-image: url(images/chevron-down.png);
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+}
+
+.tree-view .directory.closed > .list-item:before {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 25px;
+  background-image: url(images/chevron-right.png);
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+}
+
+.tree-view .file > .list-item:before {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 25px;
+}

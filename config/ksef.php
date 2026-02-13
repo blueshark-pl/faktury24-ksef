@@ -1,0 +1,26 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'Ksef' => [
+        // gdzie jest master cert
+        'masterCertDir' => ROOT . DS . 'resources' . DS . 'ksef_certs' . DS . 'master',
+
+        // gdzie zapisujemy meta per NIP (encryptionKey)
+        'metaDir' => ROOT . DS . 'var' . DS . 'ksef' . DS . 'meta',
+
+        // jeśli chcesz na Windows wymusić CA bundle (opcjonalnie)
+        'caBundle' => ROOT . DS . 'resources' . DS . 'cacert.pem',
+
+        // diagnostyka: nigdy na prod
+        'skipTlsVerify' => false,
+
+        // opcje buildera
+        'validateXml' => true,
+        'verifyCertificateChain' => true,
+        'asyncMaxConcurrency' => 8,
+
+        // opcjonalnie: nadpisanie API url
+        // 'apiUrl' => 'https://ksef.mf.gov.pl/api/v2',
+    ],
+];

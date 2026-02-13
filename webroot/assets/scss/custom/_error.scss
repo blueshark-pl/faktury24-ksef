@@ -1,0 +1,88 @@
+.error-bg {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    background-image: url(../images/media/backgrounds/6.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    &:before {
+        position: absolute;
+        content: "";
+        background: linear-gradient(to top right, $primary-08, $primary-08);
+        width: 100%;
+        height: 100%;
+        inset-inline-end: 0;
+        inset-block-end: 0;
+        inset-inline-start: 0;
+        inset-block-start: 0;
+    }
+    .authentication-cover{
+        background-color: $white !important;
+    }
+    .aunthentication-cover-content{
+        background-color: $white !important;
+        backdrop-filter: blur(30px);
+    }
+    .particles-js-canvas-el{
+        z-index: 0;
+        opacity: 0.7;
+        position: absolute;
+       }
+}
+.error-text{
+    position: relative;
+}
+.error-page {
+    position: absolute;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+.error-text {
+    font-size: 11rem;
+    font-weight: 500;
+    line-height: 1;
+}
+@media (max-width: 575.98px) {
+    .error-text {
+        font-size: 3rem;
+    }
+}
+
+.error-bg{
+    .error-img{
+        position: relative;
+        overflow: hidden;
+        z-index: 1;
+        &:before {
+          content: "";
+          position: absolute;
+          z-index: -1;
+          height: 100px;
+          width: 100px;
+          inset-inline-start: -22px;
+          background-repeat: no-repeat;
+          inset-block-end: -21px;  
+          border: 10px solid $primary-005;
+          border-radius: 50%;
+        }
+        &:after{
+          content: "";
+          position: absolute;
+          z-index: -1;
+          height: 150px;
+          width: 150px;
+          inset-inline-end: -34px;
+          background-repeat: no-repeat;
+          inset-block-start: -32px;   
+          border: 10px solid $primary-005;
+          border-radius: 50%;
+        }
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "key_file": "Partnersc.key",
+    "crt_file": "Partnersc.crt",
+    "combined_pem": "combined.pem",
+    "uploaded_at": "2026-01-12T14:37:49+00:00",
+    "pass_cipher": "XyrGsljVuKxwVaZk3RjfhU8AI/Ko8Z6LAkJEj0fUfzCDdWAsd/zpwMu//5DTsUDH",
+    "file": "certificate.p12",
+    "format": "p12"
+}

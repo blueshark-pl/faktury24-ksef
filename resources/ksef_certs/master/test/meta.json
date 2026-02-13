@@ -1,0 +1,9 @@
+{
+    "key_file": "faktury24.key",
+    "crt_file": "faktury24.crt",
+    "combined_pem": "combined.pem",
+    "uploaded_at": "2025-11-04T11:37:17+00:00",
+    "pass_cipher": "jiCn0wuTaV+3+lyhcaU6y1GlrfKWRpxqlruLLf9imd6A1DLz2ftRgbprqw7Oqbk8",
+    "file": "certificate.p12",
+    "format": "p12"
+}

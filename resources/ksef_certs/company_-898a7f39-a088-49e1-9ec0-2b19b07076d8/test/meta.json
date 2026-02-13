@@ -1,0 +1,9 @@
+{
+    "key_file": "fak24.key",
+    "crt_file": "fak24.crt",
+    "combined_pem": "combined.pem",
+    "uploaded_at": "2026-01-28T13:46:39+00:00",
+    "pass_cipher": "WHA/v6LCRYbjWF4rPhnaFr0UjyoQHc0ojy1Tzr5SQjVwYxDdfZirhv84CvK/4+On",
+    "file": "certificate.p12",
+    "format": "p12"
+}
