@@ -131,16 +131,6 @@ return [
             'controller' => 'Pages',
             'action' => 'display',
         ],
-
-        // podstawowe uprawnienia dla roli user w aplikacji (bez pluginów)
-        [
-            'role' => 'user',
-            'prefix' => '*',
-            'plugin' => null,
-            'controller' => '*',
-            'action' => '*',
-        ],
-
         // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
         [
             'role' => 'user',
@@ -150,8 +140,40 @@ return [
         ],
         [
             'role' => 'user',
-            'action' => ['gusLookup'],
-            'action' => ['index'],
+            'controller' => ['Invoices'],
+            'action' => [
+                'index',
+                'view',
+                'add',
+                'addVat',
+                'addCurrency',
+                'addNoVat',
+                'addProforma',
+                'addAdvance',
+                'edit',
+                'delete',
+                'validateAjax',
+                'nbpRate',
+                'nbpCurrencies',
+                'proformaSearch',
+                'proformaDetails',
+                'addCorrection',
+                'addMargin',
+                'addInternal',
+                'addInternalEvidence',
+                'addOss',
+                'print',
+                'export',
+                'bulkAction',
+                'sendToKsef',
+                'refreshKsefStatus',
+                'downloadKsef',
+                'downloadFa3Xml',
+                'downloadUpo',
+                'downloadUpoPdf',
+                'upoHtml',
+                'metadataKsef',
+            ],
             
         ],
         [
