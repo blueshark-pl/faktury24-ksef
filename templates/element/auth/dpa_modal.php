@@ -77,79 +77,128 @@ for ($i = 1; $i < count($chunks); $i += 3) {
 ?>
 
 <style>
-  #<?= h($modalId) ?> .legal-shell{
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 1rem;
+  #<?= h($modalId) ?> .modal-content{
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    box-shadow: 0 34px 110px rgba(15, 23, 42, 0.22);
+    overflow: hidden;
+    background: #fff;
   }
-  @media (max-width: 992px){
-    #<?= h($modalId) ?> .legal-shell{ grid-template-columns: 1fr; }
+  #<?= h($modalId) ?> .modal-header{
+    background: linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 100%);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.10);
   }
-  #<?= h($modalId) ?> .legal-toc{
-    position: sticky;
-    top: .5rem;
-    align-self: start;
-    max-height: calc(100vh - 260px);
-    overflow: auto;
-    border: 1px solid rgba(0,0,0,.08);
-    border-radius: .75rem;
-    padding: .75rem;
-    background: rgba(255,255,255,.65);
-    backdrop-filter: blur(6px);
+  #<?= h($modalId) ?> .modal-title{
+    font-weight: 900;
+    letter-spacing: 0.01em;
   }
-  #<?= h($modalId) ?> .legal-toc a{
-    display: block;
-    padding: .35rem .5rem;
-    border-radius: .5rem;
-    text-decoration: none;
-    color: inherit;
+  #<?= h($modalId) ?> .modal-body{
+    color: #0b0f19;
+    background: #fff;
   }
-  #<?= h($modalId) ?> .legal-toc a:hover{ background: rgba(0,0,0,.04); }
-  #<?= h($modalId) ?> .legal-content section{
-    padding-top: .25rem;
-    margin-bottom: 1rem;
+
+  #<?= h($modalId) ?> .reg-preamble{
+    font-size: 14px;
+    line-height: 1.75;
+    color: #0b0f19;
+    margin: 0 0 10px;
   }
-  #<?= h($modalId) ?> .legal-content h3{
-    font-size: 1.05rem;
-    margin: 0 0 .5rem;
+
+  #<?= h($modalId) ?> .reg-section{
+    padding-top: 14px;
+    margin-top: 18px;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
   }
-  #<?= h($modalId) ?> .legal-text{
+  #<?= h($modalId) ?> .reg-section h3{
+    font-size: 18px;
+    font-weight: 900;
+    margin: 0 0 10px;
+    letter-spacing: 0.01em;
+  }
+  #<?= h($modalId) ?> .reg-text{
+    font-size: 14px;
+    line-height: 1.8;
     white-space: pre-wrap;
-    line-height: 1.45;
+    color: #0b0f19;
+  }
+
+  #<?= h($modalId) ?> .reg-toc{
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(248,250,252,0.6);
+  }
+  #<?= h($modalId) ?> .reg-toc-title{
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: rgba(15, 23, 42, 0.65);
+  }
+  #<?= h($modalId) ?> .reg-toc a{
+    display: block;
+    padding: 9px 10px;
+    border-radius: 10px;
+    color: rgba(15, 23, 42, 0.92);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  #<?= h($modalId) ?> .reg-toc a:hover{
+    background: rgba(var(--primary-rgb), 0.10);
+  }
+
+  #<?= h($modalId) ?> .reg-meta{
+    font-size: 12px;
+    color: rgba(15, 23, 42, 0.65);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  @media (min-width: 992px){
+    #<?= h($modalId) ?> .reg-toc{
+      position: sticky;
+      top: 0;
+    }
   }
 </style>
 
 <div class="modal fade" id="<?= h($modalId) ?>" tabindex="-1" aria-labelledby="<?= h($modalId) ?>Label" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title fs-5" id="<?= h($modalId) ?>Label">Załącznik nr 1 – DPA</h2>
+        <div>
+          <h5 class="modal-title" id="<?= h($modalId) ?>Label">Załącznik nr 1 (DPA)</h5>
+          <div class="reg-meta"><?= h('Umowa Powierzenia Przetwarzania Danych Osobowych') ?></div>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
 
       <div class="modal-body">
-        <div class="legal-shell">
-          <nav class="legal-toc" aria-label="Spis treści DPA">
-            <div class="small text-muted mb-2">Spis treści</div>
-            <?php if ($preamble !== ''): ?>
-              <a href="#" data-dpa-scroll="#dpa-preamble">Wstęp</a>
-            <?php endif; ?>
-            <?php foreach ($sections as $sec): ?>
-              <a href="#" data-dpa-scroll="#<?= h($sec['id']) ?>"><?= h($sec['toc']) ?></a>
-            <?php endforeach; ?>
-          </nav>
+        <div class="row g-4">
+          <div class="col-12 col-lg-4">
+            <div class="reg-toc">
+              <div class="reg-toc-title mb-2">Spis paragrafów</div>
+              <?php foreach ($sections as $sec): ?>
+                <a href="#<?= h($sec['id']) ?>" data-dpa-scroll="#<?= h($sec['id']) ?>"><?= h($sec['toc']) ?></a>
+              <?php endforeach; ?>
+            </div>
+          </div>
 
-          <div class="legal-content">
-            <?php if ($preamble !== ''): ?>
-              <section id="dpa-preamble" class="mb-4">
-                <div class="legal-text"><?= h($preamble) ?></div>
-              </section>
+          <div class="col-12 col-lg-8">
+            <?php if (trim($preamble) !== ''): ?>
+              <?php foreach (preg_split("/\r\n|\n|\r/", (string)$preamble) as $line): ?>
+                <?php if (trim((string)$line) !== ''): ?>
+                  <p class="reg-preamble"><?= h($line) ?></p>
+                <?php endif; ?>
+              <?php endforeach; ?>
             <?php endif; ?>
 
             <?php foreach ($sections as $sec): ?>
-              <section class="dpa-section" id="<?= h($sec['id']) ?>">
+              <section class="reg-section" id="<?= h($sec['id']) ?>">
                 <h3><?= h($sec['heading']) ?></h3>
-                <div class="legal-text"><?= h($sec['content']) ?></div>
+                <div class="reg-text"><?= h($sec['content']) ?></div>
               </section>
             <?php endforeach; ?>
           </div>
@@ -172,8 +221,9 @@ for ($i = 1; $i < count($chunks); $i += 3) {
 
       const bodyRect = body.getBoundingClientRect();
       const targetRect = targetEl.getBoundingClientRect();
-      const delta = (targetRect.top - bodyRect.top) + body.scrollTop - 8;
-      body.scrollTo({ top: delta, behavior: 'smooth' });
+      const top = (targetRect.top - bodyRect.top) + body.scrollTop - 10;
+
+      body.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     }
 
     document.addEventListener('click', function(e){
