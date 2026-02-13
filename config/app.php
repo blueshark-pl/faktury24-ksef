@@ -61,7 +61,7 @@ return [
         'imageBaseUrl' => 'img/',
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
-        // App version displayed in footers (format: 1.<month>.<day> (<build>)).
+        'version' => '1.2.13 (13)',
         'version' => '1.2.13 (12)',
         // Optional: branding for system emails (HTML layout)
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
@@ -128,7 +128,9 @@ return [
         '_cake_translations_' => [
             'className' => FileEngine::class,
             'prefix' => 'myapp_cake_translations_',
-            'path' => CACHE . 'persistent' . DS,
+            // Keep translations cache separate from other persistent cache files.
+            // This prevents issues if a single old cache file becomes inaccessible.
+            'path' => CACHE . 'translations' . DS,
             'serialize' => true,
             'duration' => '+1 years',
             'url' => env('CACHE_CAKECORE_URL', null),
