@@ -203,6 +203,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         <span id="ksef-ajax-active-ts" class="text-muted small"<?= $fullTimeStr ? '' : ' style="display:none"' ?>>Ostatnie potwierdzenie: <strong><?= h((string)$fullTimeStr) ?></strong></span>
                                         <span id="ksef-ajax-master" class="text-warning small"<?= $usingMaster ? '' : ' style="display:none"' ?> data-bs-toggle="tooltip" data-bs-placement="top" title="Używany certyfikat master (tryb: <?= h($usingMasterMode ?: 'nieznany') ?>)<?= $identifierNip ? (' – NIP: ' . h($identifierNip)) : '' ?>.">MASTER</span>
                   </div>
+                                    <div class="w-100"></div>
+                                    <div class="text-muted small">
+                                        Faktury24 mają uprawnienia do wystawienia faktur w Twoim imieniu.
+                                    </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                     <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'test']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
