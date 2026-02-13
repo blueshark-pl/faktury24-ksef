@@ -227,6 +227,11 @@ return [
             'controller' => 'Dashboard',
             'action' => ['index'],
         ],
+        [
+            'role' => 'user',
+            'controller' => 'KsefAuthorizations',
+            'action' => ['received', 'issued'],
+        ],
 
         // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany
         [
