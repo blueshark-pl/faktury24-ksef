@@ -25,9 +25,29 @@ class CompaniesController extends AppController
             ]);
         }
 
+        // Jeśli identity nie jest odświeżone, a w DB user ma już firmę, nie pokazuj onboardingu.
+        try {
+            /** @var \App\Model\Table\UsersTable $Users */
+            $Users = $this->fetchTable('Users');
+            $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
+            if (!empty($dbUser->company_id)) {
+                try {
+                    if (!$this->components()->has('Authentication')) {
+                        $this->loadComponent('Authentication.Authentication');
+                    }
+                    $this->Authentication->setIdentity($dbUser);
+                } catch (\Throwable) {
+                    // best-effort
+                }
+                return $this->redirect(['action' => 'edit', (string)$dbUser->company_id]);
+            }
+        } catch (\Throwable) {
+            // best-effort
+        }
+
         // jeśli user ma już firmę — nie pokazuj onboardingu
         if (!empty($identity->get('company_id'))) {
-            return $this->redirect(['controller' => 'Dashboard', 'action' => 'index']);
+            return $this->redirect(['action' => 'edit', (string)$identity->get('company_id')]);
         }
 
         /** @var \Cake\ORM\Table $Companies */
@@ -55,18 +75,19 @@ class CompaniesController extends AppController
         throw new \Cake\Http\Exception\UnauthorizedException('Musisz być zalogowany.');
     }
 
-    // gdyby ktoś próbował drugi raz
-    if (!empty($identity->get('company_id'))) {
-        $this->Flash->info('Masz już przypisaną firmę.');
-        return $this->redirect(['controller' => 'Dashboard', 'action' => 'index']);
-    }
-
     /** @var \App\Model\Table\CompaniesTable $Companies */
     $Companies = $this->fetchTable('Companies');
     /** @var \App\Model\Table\CompanyBankAccountsTable $CompanyBankAccounts */
     $CompanyBankAccounts = $this->fetchTable('CompanyBankAccounts');
     /** @var \App\Model\Table\UsersTable $Users */
     $Users = $this->fetchTable('Users');
+
+    // jeśli user ma już firmę (nawet jeśli identity nie jest odświeżone) — nie pozwól wykonać onboardingu drugi raz
+    $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
+    if (!empty($dbUser->company_id)) {
+        $this->Flash->info('Masz już przypisaną firmę. Zmień dane w edycji firmy.');
+        return $this->redirect(['action' => 'edit', (string)$dbUser->company_id]);
+    }
 
     $companyData = (array)($this->request->getData('company') ?? []);
     $banksInput  = (array)($this->request->getData('banks') ?? []);
@@ -77,7 +98,7 @@ class CompaniesController extends AppController
         return strtoupper(preg_replace('/\s+/', '', (string)$v));
     };
 
-    // 1) Zbuduj encję firmy
+    // 1) Zbuduj encję firmy (onboarding tworzy nową firmę)
     $company = $Companies->newEmptyEntity();
     $company = $Companies->patchEntity($company, $companyData);
 
@@ -151,12 +172,14 @@ class CompaniesController extends AppController
                 }
             }
 
-            // 3) Przypnij usera do firmy
+            // 3) Przypnij usera do firmy (tylko jeśli jeszcze nie ma)
             $user = $Users->get($identity->getIdentifier());
-            $user->set('company_id', $company->id);
-            if (!$Users->save($user)) {
-                $firstError = current(current($user->getErrors() ?: [['__all__' => ['Nie udało się przypisać użytkownika do firmy.']]]));
-                throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);
+            if (empty($user->company_id)) {
+                $user->set('company_id', $company->id);
+                if (!$Users->save($user)) {
+                    $firstError = current(current($user->getErrors() ?: [['__all__' => ['Nie udało się przypisać użytkownika do firmy.']]]));
+                    throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);
+                }
             }
 
             // 4) Skopiuj domyślne (systemowe) serie faktur dla nowej firmy

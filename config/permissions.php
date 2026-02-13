@@ -135,7 +135,7 @@ return [
         [
             'role' => 'user',
             'controller' => 'Companies',
-            'action' => ['onboarding', 'saveOnboarding'],
+            'action' => ['onboarding', 'saveOnboarding', 'edit'],
             
         ],
         [

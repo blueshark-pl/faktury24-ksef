@@ -61,6 +61,30 @@ class AppController extends Controller
         if (!$identity) {
             return; // nie zalogowany → nic nie rób
         }
+
+        // Jeśli identity nie ma company_id, ale w DB user ma już przypisaną firmę,
+        // ustaw kontekst na podstawie DB (zapobiega pętli redirectów po onboardingu).
+        if (empty($identity->get('company_id'))) {
+            try {
+                /** @var \App\Model\Table\UsersTable $Users */
+                $Users = $this->fetchTable('Users');
+                $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
+                if (!empty($dbUser->company_id)) {
+                    $this->currentCompanyId = $dbUser->company_id;
+                    try {
+                        if (!$this->components()->has('Authentication')) {
+                            $this->loadComponent('Authentication.Authentication');
+                        }
+                        $this->Authentication->setIdentity($dbUser);
+                    } catch (\Throwable) {
+                        // best-effort
+                    }
+                    return;
+                }
+            } catch (\Throwable) {
+                // best-effort
+            }
+        }
         // debug($identity->get('company_id'));
         // jeśli user ma już firmę → zapewnij skopiowanie systemowych serii (idempotentnie)
         if (!empty($identity->get('company_id'))) {
