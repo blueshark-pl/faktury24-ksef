@@ -17,6 +17,12 @@ If Composer is installed globally, run
 
 ```bash
 composer create-project --prefer-dist cakephp/app
+
+- Uprawnienia/onboarding: rola user ma pelny dostep do kontrolerow aplikacji (bez pluginow), odswiezanie identity po zapisie onboardingu oraz redirect do logowania (CakeDC/Users).
+- Commit: 0acd398
+- Czas: 0.2h
+- Do sprawdzenia manualnie: nowy user -> login -> onboarding -> zapisz -> dashboard; wejscie w faktury i gusLookup bez 403/petli.
+
 ```
 
 In case you want to use a custom app dir name (e.g. `/myapp/`):
