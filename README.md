@@ -105,3 +105,8 @@ custom styles.
 - Commit: a3b6c26
 - Czas: 0.2h
 - Do sprawdzenia manualnie: `/users/login`, `/users/register`, reset hasła i komunikaty flash powinny być po polsku.
+
+- 2FA: dopisanie linków do pobrania Google Authenticator (Android/iOS) na ekranie weryfikacji + dopięcie brakujących tłumaczeń (Verify/Verifying/Don’t share...).
+- Commit: d3d85c2
+- Czas: 0.1h
+- Do sprawdzenia manualnie: `/users/verify` ma linki do sklepów i wszystkie etykiety/ostrzeżenia są po polsku.
