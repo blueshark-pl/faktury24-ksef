@@ -630,6 +630,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                       Wersja: <?= h($appVersion) ?>
                     <?php endif; ?>
                                         <?= $this->cell('KsefStatus') ?>
+                                                                                <?= $this->cell('KsefAuthContext') ?>
                 </span>
             </div>
         </footer>
