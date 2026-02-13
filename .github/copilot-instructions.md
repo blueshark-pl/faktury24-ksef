@@ -63,4 +63,9 @@ Jeśli czegoś nie da się zweryfikować (np. brak SMTP/sekretów/backendu):
   3) mały, logiczny commit (bez mieszania tematów)
   4) `git push` na aktualny branch
 
+- Jeśli w repo są lokalne zmiany **niezrobione przeze mnie** i nie mają commita (np. ktoś coś poprawił na branchu/maszynie):
+  - nie robię `git restore` / czyszczenia „żeby było czysto”,
+  - opisuję je krótko (co i dlaczego) i **commituję** jako osobny, logiczny commit,
+  - wyjątek: `git restore` tylko w naprawdę uzasadnionych przypadkach (np. ewidentny śmietnik/artefakty) i wtedy w commicie/PR opisuję uzasadnienie.
+
 - Commit message z prostym prefiksem: `docs:`, `fix:`, `feat:`, `refactor:`.
