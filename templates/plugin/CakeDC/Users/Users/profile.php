@@ -9,24 +9,6 @@
                     <?= $this->element('Users/settings_nav') ?>
                 </div>
             </div>
-
-            <div class="card custom-card">
-                <div class="card-header justify-content-between">
-                    <div class="card-title">Zmień hasło</div>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-2">Zaktualizuj hasło, aby chronić swoje konto.</p>
-                    <?php if (!empty($isCurrentUser)) : ?>
-                        <?= $this->Html->link(
-                            'Zmień hasło',
-                            ['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'changePassword'],
-                            ['class' => 'btn btn-primary btn-wave btn-sm']
-                        ); ?>
-                    <?php else: ?>
-                        <span class="text-muted small">Tylko zalogowany użytkownik może zmienić swoje hasło.</span>
-                    <?php endif; ?>
-                </div>
-            </div>
         </div>
 
         <div class="col-xl-9">
@@ -122,7 +104,7 @@
 
                     <div class="tab-pane overflow-hidden p-0 border-0" id="security-tab-pane" role="tabpanel" aria-labelledby="security-tab" tabindex="0">
                         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-1">
-                            <div class="fw-semibold d-block fs-15"><?= __('Bezpieczeństwo') ?></div>
+                            <div class="fw-semibold d-block fs-15"><?= __('Zmień hasło') ?></div>
                         </div>
                         <p class="text-muted mb-2">Możesz zmienić hasło przyciskiem po lewej stronie.</p>
                         <?php if (!empty($isCurrentUser)) : ?>

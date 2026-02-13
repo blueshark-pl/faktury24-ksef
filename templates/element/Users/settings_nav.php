@@ -1,6 +1,6 @@
 <?php
 /**
- * Wspólna nawigacja ustawień użytkownika: Konto / Bezpieczeństwo / 2FA.
+ * Wspólna nawigacja ustawień użytkownika: Konto / Zmień hasło / 2FA.
  * Używana w widokach CakeDC/Users oraz w app TwoFactor.
  *
  * @var \Cake\View\View $this
@@ -13,7 +13,7 @@ $action = (string)($request->getParam('action') ?? '');
 
 $isAccount = ($plugin === 'CakeDC/Users' && $controller === 'Users' && $action === 'profile');
 
-// Traktujemy wszystkie akcje związane ze zmianą hasła jako "Bezpieczeństwo"
+// Traktujemy wszystkie akcje związane ze zmianą hasła jako "Zmień hasło"
 $isSecurity = ($plugin === 'CakeDC/Users' && $controller === 'Users' && in_array($action, [
     'changePassword',
     'requestResetPassword',
@@ -29,7 +29,7 @@ $items = [
         'active' => $isAccount,
     ],
     [
-        'label' => 'Bezpieczeństwo',
+        'label' => 'Zmień hasło',
         'url' => ['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'changePassword'],
         'active' => $isSecurity,
     ],
