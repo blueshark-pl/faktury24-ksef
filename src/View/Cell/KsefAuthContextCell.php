@@ -101,7 +101,7 @@ final class KsefAuthContextCell extends Cell
 
         if (is_array($status) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
             $active = (bool)$status['active'];
-            $connText = $active ? 'połączenie: OK' : 'połączenie: błąd';
+            $connText = $active ? 'połączenie: OK' : 'Brak połączenia z KSeF';
             $connClass = $active ? 'text-success' : 'text-danger';
 
             $ts = isset($status['ts']) ? (int)$status['ts'] : 0;
