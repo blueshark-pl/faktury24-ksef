@@ -658,6 +658,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     </div>
     <div id="responsive-overlay"></div>
     <!-- Scroll To Top -->
+
+    <?= $this->fetch('ksefModals') ?>
     
     <!-- Modal: Instrukcja KSeF (YouTube) -->
     <div class="modal fade" id="ksefVideoModal" tabindex="-1" aria-labelledby="ksefVideoModalLabel" aria-hidden="true">
