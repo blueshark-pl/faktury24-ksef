@@ -46,7 +46,6 @@ $fmt = function ($t): string {
 </span>
 
 <?php if (!$modalRendered): $modalRendered = true; ?>
-  <?php $this->start('ksefModals'); ?>
   <div class="modal fade" id="<?= h($modalId) ?>" tabindex="-1" aria-labelledby="<?= h($modalLabelId) ?>" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
       <div class="modal-content">
@@ -183,5 +182,32 @@ $fmt = function ($t): string {
       </div>
     </div>
   </div>
-  <?php $this->end(); ?>
+  <script>
+    (function () {
+      var modalId = '<?= h($modalId) ?>';
+
+      function ensureModalAtBody() {
+        var modalEl = document.getElementById(modalId);
+        if (!modalEl) {
+          return;
+        }
+        if (modalEl.parentElement !== document.body) {
+          document.body.appendChild(modalEl);
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', ensureModalAtBody);
+      document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!target || !target.closest) {
+          return;
+        }
+        var trigger = target.closest('[data-bs-target="#' + modalId + '"]');
+        if (!trigger) {
+          return;
+        }
+        ensureModalAtBody();
+      }, true);
+    })();
+  </script>
 <?php endif; ?>
