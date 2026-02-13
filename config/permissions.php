@@ -131,6 +131,27 @@ return [
             'controller' => 'Pages',
             'action' => 'display',
         ],
+
+        // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
+        [
+            'role' => '*',
+            'controller' => 'Companies',
+            'action' => ['onboarding', 'saveOnboarding'],
+        ],
+
+        // podstawowy landing po zalogowaniu
+        [
+            'role' => '*',
+            'controller' => 'Dashboard',
+            'action' => ['index'],
+        ],
+
+        // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany
+        [
+            'role' => '*',
+            'controller' => 'TwoFactor',
+            'action' => ['index', 'enable', 'verify', 'disable'],
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',
