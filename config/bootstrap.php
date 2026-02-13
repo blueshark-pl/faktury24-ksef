@@ -39,6 +39,7 @@ use Cake\Datasource\ConnectionManager;
 use Cake\Error\ErrorTrap;
 use Cake\Error\ExceptionTrap;
 use Cake\Http\ServerRequest;
+use Cake\I18n\I18n;
 use Cake\Log\Log;
 use Cake\Mailer\Mailer;
 use Cake\Mailer\TransportFactory;
@@ -119,7 +120,10 @@ mb_internal_encoding(Configure::read('App.encoding'));
  * Set the default locale. This controls how dates, number and currency is
  * formatted and sets the default language to use for translations.
  */
-ini_set('intl.default_locale', Configure::read('App.defaultLocale'));
+$defaultLocale = (string)Configure::read('App.defaultLocale', 'pl');
+ini_set('intl.default_locale', $defaultLocale);
+I18n::setDefaultLocale($defaultLocale);
+I18n::setLocale($defaultLocale);
 
 /*
  * Register application error and exception handlers.
