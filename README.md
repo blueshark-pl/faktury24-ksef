@@ -80,3 +80,8 @@ custom styles.
 - Commit: 2188faa
 - Czas: 0.1h
 - Do sprawdzenia manualnie: klik „Komunikaty MF” zawsze otwiera modal (nawet gdy pokazuje „Brak komunikatów.”).
+
+- Naprawa: „Komunikaty MF” modal nie jest już renderowany przez blok view z Cell (renderuje się wprost i jest przenoszony do `<body>`), co eliminuje błąd JS i brak okna.
+- Commit: 3e7992c
+- Czas: 0.2h
+- Do sprawdzenia manualnie: klik „Komunikaty MF” na `/users/login` i po zalogowaniu otwiera modal; w konsoli brak błędu `...reading 'backdrop'`.
