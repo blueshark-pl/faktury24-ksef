@@ -152,15 +152,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             }
             ?>
             <div class="px-2 pb-3">
-              <?php if ($state === 'unknown'): ?>
+                            <?php if ($state === 'unknown'): ?>
               <div class="rounded-3 border p-3 mb-3 border-danger">
                 <div class="d-flex align-items-start gap-3">
                   <div class="pt-1">
                     <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
                   </div>
                   <div class="flex-grow-1">
-                    <h6 class="mb-1">Połączenie z KSeF: Niezweryfikowano</h6>
-                    <p class="mb-2 text-muted">Nie sprawdzono jeszcze połączenia w tej sesji. Skorzystaj z krótkiej instrukcji wideo, aby poprawnie przygotować integrację i pliki certyfikatu.</p>
+                                        <h6 class="mb-1">KSeF (InvoiceWrite): Niezweryfikowano</h6>
+                                        <p class="mb-2 text-muted">Nie sprawdzono jeszcze w tej sesji, czy masz aktywne uprawnienie <strong>InvoiceWrite</strong> (wystawianie faktur) dla firmy. Certyfikaty są obsługiwane centralnie (MASTER).</p>
                     <div class="d-flex flex-wrap gap-2">
                       <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ksefVideoModal">
                         Instrukcja wideo (YouTube)
@@ -169,17 +169,21 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                          class="btn btn-outline-secondary btn-sm">
                         Podgląd odebranych
                       </a>
+                                            <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'status', '?' => ['env' => 'test']]) ?>"
+                                                 class="btn btn-outline-primary btn-sm">
+                                                Sprawdź InvoiceWrite
+                                            </a>
                     </div>
                   </div>
                 </div>
               </div>
               <?php endif; ?>
-              <?php if ($state === 'inactive'): ?>
+                            <?php if ($state === 'inactive'): ?>
               <div class="rounded-3 p-3 mb-3">
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                   <span class="ksef-dot" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="text-danger fw-semibold">Niedostępne</span>
+                                        <span class="text-danger fw-semibold">Brak InvoiceWrite</span>
                     <?php if (!empty($lastError) && is_string($lastError)): ?>
                       <span class="text-muted small">Błąd: <?= h($lastError) ?></span>
                     <?php endif; ?>
@@ -194,12 +198,12 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 </div>
               </div>
               <?php endif; ?>
-              <?php if ($state === 'active'): ?>
+                            <?php if ($state === 'active'): ?>
               <div class="rounded-3 p-3 mb-3">
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                   <span class="ksef-dot pulse" style="width:12px;height:12px;border-radius:50%;display:inline-block;background: <?= h($dotColor) ?>;"></span>
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="text-success fw-semibold">Aktywne</span>
+                                        <span class="text-success fw-semibold">InvoiceWrite: aktywne</span>
                     <?php if ($envSide): ?>
                       <span class="text-muted small">Środowisko: <?= h(strtoupper((string)$envSide)) ?></span>
                     <?php endif; ?>

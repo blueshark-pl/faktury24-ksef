@@ -119,7 +119,7 @@ final class KsefAuthContextCell extends Cell
             }
         }
 
-        // If user used "Status" action recently, show last known connectivity.
+        // Jeśli user odświeżył status, pokaż ostatni znany wynik checka uprawnienia InvoiceWrite.
         $status = $this->request->getSession()->read('Ksef.status');
         $connText = null;
         $connClass = 'text-muted';
@@ -129,21 +129,9 @@ final class KsefAuthContextCell extends Cell
             $active = (bool)$status['active'];
 
             $lastError = trim((string)($status['lastError'] ?? ''));
-            $looksLikePermissionError = false;
-            if (!$active && $lastError !== '') {
-                $le = mb_strtolower($lastError);
-                $looksLikePermissionError = str_contains($le, '401')
-                    || str_contains($le, '403')
-                    || str_contains($le, 'unauthorized')
-                    || str_contains($le, 'forbidden')
-                    || str_contains($le, 'uprawn')
-                    || str_contains($le, 'permission')
-                    || str_contains($le, 'brak dost');
-            }
 
-            $connText = $active
-                ? 'połączenie: OK'
-                : ($looksLikePermissionError ? 'Brak uprawnień w KSeF' : 'Brak połączenia z KSeF');
+            // Semantyka: active=true => mamy InvoiceWrite, active=false => brak InvoiceWrite albo błąd weryfikacji.
+            $connText = $active ? 'InvoiceWrite: OK' : 'InvoiceWrite: brak';
             $connClass = $active ? 'text-success' : 'text-danger';
 
             $ts = isset($status['ts']) ? (int)$status['ts'] : 0;

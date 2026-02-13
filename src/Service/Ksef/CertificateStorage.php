@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Service\Ksef;
 
 use App\Utility\TokenVault;
+use Cake\Core\Configure;
 use Cake\Chronos\Chronos;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -113,6 +114,41 @@ final class CertificateStorage
     public function getCertificateFor(string $companyId, string $environment): ?array
     {
         $env = ($environment === 'prod') ? 'prod' : 'test';
+
+        // Jeśli wymuszamy cert master, ignoruj certyfikaty firmowe.
+        $forceMaster = (bool)(Configure::read('Ksef.forceMasterCert') ?? false);
+        if ($forceMaster) {
+            $fallbackDir = $this->baseDir . DIRECTORY_SEPARATOR . 'master' . DIRECTORY_SEPARATOR . $env;
+            $fallbackMeta = $fallbackDir . DIRECTORY_SEPARATOR . 'meta.json';
+            if (!is_file($fallbackMeta)) {
+                return null;
+            }
+
+            $meta = json_decode((string)file_get_contents($fallbackMeta), true) ?: [];
+            $file = isset($meta['file']) ? (string)$meta['file'] : '';
+            if ($file !== '' && str_ends_with($file, '.p12')) {
+                $path = $fallbackDir . DIRECTORY_SEPARATOR . $file;
+                if (is_file($path)) {
+                    $pass = !empty($meta['pass_cipher']) ? TokenVault::decrypt((string)$meta['pass_cipher']) : null;
+                    return ['path' => $path, 'passphrase' => $pass, 'source' => 'master'];
+                }
+            }
+            if (!empty($meta['combined_pem'])) {
+                $pemPath = $fallbackDir . DIRECTORY_SEPARATOR . (string)$meta['combined_pem'];
+                if (is_file($pemPath)) {
+                    return ['path' => $pemPath, 'passphrase' => null, 'source' => 'master'];
+                }
+            }
+            if ($file !== '') {
+                $path = $fallbackDir . DIRECTORY_SEPARATOR . $file;
+                if (is_file($path)) {
+                    $pass = !empty($meta['pass_cipher']) ? TokenVault::decrypt((string)$meta['pass_cipher']) : null;
+                    return ['path' => $path, 'passphrase' => $pass, 'source' => 'master'];
+                }
+            }
+            return null;
+        }
+
         // 1) Ścieżka firmowa
         $dir = $this->dirPath($companyId, $env);
         $metaPath = $dir . DIRECTORY_SEPARATOR . 'meta.json';

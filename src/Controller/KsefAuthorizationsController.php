@@ -723,6 +723,39 @@ class KsefAuthorizationsController extends AppController
         $environment = (string)$this->request->getQuery('env', 'test');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
+        if ($companyId === '') {
+            $this->Flash->error('Brak powiązania z firmą.');
+            return $this->redirect($this->referer(['controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $environment]]));
+        }
+
+        // NIP firmy (fallback jeśli nie podano as_nip)
+        $companyNip = '';
+        try {
+            /** @var \App\Model\Table\CompaniesTable $Companies */
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->select(['nip'])->where(['Companies.id' => $companyId])->first();
+            $companyNip = preg_replace('/\D/', '', (string)($company?->nip ?? ''));
+        } catch (\Throwable) {
+            $companyNip = '';
+        }
+
+        $identifierNip = $asNip !== '' ? $asNip : $companyNip;
+        if ($identifierNip === '') {
+            $this->request->getSession()->write('Ksef.status', [
+                'active' => false,
+                'env'    => ($environment === 'prod') ? 'prod' : 'test',
+                'ts'     => time(),
+                'lastError' => 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+                'usingMaster' => true,
+                'usingMasterMode' => 'forced',
+                'identifierNip' => null,
+            ]);
+            $this->Flash->error('KSeF: brak NIP firmy – nie można sprawdzić uprawnień.');
+            return $this->redirect($this->referer(['controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $environment]]));
+        }
+
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
 
         // Diagnoza kontekstu (łagodne, bez błędu dla UI)
@@ -749,36 +782,67 @@ class KsefAuthorizationsController extends AppController
             }
         }
 
-        // Lekka próba – mała strona metadanych, aby ocenić dostępność
+        // Status = czy mamy uprawnienie InvoiceWrite (wystawianie) w personal grants.
         try {
-            $filters = ['subjectType' => 'Subject2'];
-            $result = $ksef->queryReceivedMetadata($companyId, $environment, $filters, 0, 1, $asNip ?: null);
+            $filters = [
+                'permissionState' => 'Active',
+                'permissionTypes' => ['InvoiceWrite'],
+            ];
+
+            $result = $ksef->queryPersonalGrants(
+                companyId: $companyId,
+                environment: $environment,
+                filters: $filters,
+                pageOffset: 0,
+                pageSize: 1,
+                overrideIdentifierNip: $identifierNip,
+            );
+
+            $items = [];
+            if (is_array($result)) {
+                if (isset($result['permissions']) && is_array($result['permissions'])) {
+                    $items = $result['permissions'];
+                } elseif (isset($result['items']) && is_array($result['items'])) {
+                    $items = $result['items'];
+                }
+            }
+
+            $hasInvoiceWrite = is_array($items) && count($items) > 0;
             $this->request->getSession()->write('Ksef.status', [
-                'active' => true,
-                'env'    => $environment,
+                'active' => $hasInvoiceWrite,
+                'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
-                'lastError' => null,
+                'lastError' => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
                 'usingMaster' => $usingMaster,
                 'usingMasterMode' => $usingMasterMode,
                 'identifierNip' => $identifierNip,
                 'authMethod' => $diag['authMethod'] ?? null,
                 'certSource' => $diag['certSource'] ?? null,
             ]);
-            $this->Flash->success('Połączenie z KSeF: aktywne.');
+
+            if ($hasInvoiceWrite) {
+                $this->Flash->success('KSeF: uprawnienie InvoiceWrite (wystawianie) aktywne.');
+            } else {
+                $this->Flash->error('KSeF: brak uprawnienia InvoiceWrite (wystawianie).');
+            }
         } catch (\Throwable $e) {
             $details = $this->formatKsefError($e);
             $this->request->getSession()->write('Ksef.status', [
                 'active' => false,
-                'env'    => $environment,
+                'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
                 'lastError' => $details,
+                'checkKind' => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
                 'usingMaster' => $usingMaster,
                 'usingMasterMode' => $usingMasterMode,
                 'identifierNip' => $identifierNip,
                 'authMethod' => $diag['authMethod'] ?? null,
                 'certSource' => $diag['certSource'] ?? null,
             ]);
-            $this->Flash->error('Połączenie z KSeF: niedostępne – ' . $details);
+            $this->Flash->error('KSeF: nie udało się sprawdzić uprawnienia InvoiceWrite – ' . $details);
         }
 
         // Wróć na referer lub na listę "received"

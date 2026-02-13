@@ -6,6 +6,10 @@ return [
         // gdzie jest master cert
         'masterCertDir' => ROOT . DS . 'resources' . DS . 'ksef_certs' . DS . 'master',
 
+        // Wymuś używanie certyfikatu master (ignoruj certyfikaty firmowe)
+        // Cel: status/opcje KSeF oparte o centralny cert master, bez uploadu certów przez userów.
+        'forceMasterCert' => true,
+
         // gdzie zapisujemy meta per NIP (encryptionKey)
         'metaDir' => ROOT . DS . 'var' . DS . 'ksef' . DS . 'meta',
 
