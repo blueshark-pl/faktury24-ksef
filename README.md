@@ -125,3 +125,8 @@ custom styles.
 - Commit: ec2527a
 - Czas: 0.1h
 - Do sprawdzenia manualnie: rejestracja działa bez błędu, a w bazie `users.username` = e-mail.
+
+- Logowanie/onboarding: dopisanie uprawnień dla roli `user` do `Companies::onboarding/saveOnboarding` (oraz podstawowych akcji `Dashboard` i `TwoFactor`), żeby nie było pętli redirectów (`ERR_TOO_MANY_REDIRECTS`) po rejestracji.
+- Commit: 3a1ee5a
+- Czas: 0.1h
+- Do sprawdzenia manualnie: świeżo zarejestrowany użytkownik po zalogowaniu trafia na onboarding, a po uzupełnieniu firmy trafia na dashboard (bez pętli przekierowań).
