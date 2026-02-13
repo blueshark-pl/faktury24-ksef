@@ -61,8 +61,7 @@ return [
         'imageBaseUrl' => 'img/',
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
-        'version' => '1.2.13 (13)',
-        'version' => '1.2.13 (12)',
+        'version' => '1.2.13 (15)',
         // Optional: branding for system emails (HTML layout)
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),

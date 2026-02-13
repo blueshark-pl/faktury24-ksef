@@ -1,7 +1,11 @@
 <?php
 return [
     'Users.Registration.active' => true, //enable or disable password meter. Defaults to true
-    'OneTimePasswordAuthenticator.login' => false,
+    // 2FA (Google Authenticator) – opt-in per user.
+    // Global OTP processing must be enabled, while requirement is decided by checker.
+    'OneTimePasswordAuthenticator.login' => true,
+    'OneTimePasswordAuthenticator.checker' => \App\Authentication\OptInOneTimePasswordAuthenticationChecker::class,
+    'OneTimePasswordAuthenticator.issuer' => 'Faktury24',
     'Users.Email.mailerClass' => \App\Mailer\MyUsersMailer::class,
     'Users.passwordMeter.enabled' => true, //enable or disable password meter. Defaults to true
     'Users.passwordMeter.requiredScore' => 1, //int value from 1 to 4 (25%,50%,75%,100%). Defaults to 1

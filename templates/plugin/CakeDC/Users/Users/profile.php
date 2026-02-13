@@ -13,6 +13,9 @@
                         <li class="nav-item me-0" role="presentation">
                             <a class="nav-link bg-light d-inline-flex w-100 mb-0" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'changePassword']) ?>">Bezpieczeństwo</a>
                         </li>
+                        <li class="nav-item me-0" role="presentation">
+                            <a class="nav-link bg-light d-inline-flex w-100 mb-0" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'TwoFactor', 'action' => 'index']) ?>">Ustawienia 2FA</a>
+                        </li>
                     </ul>
                 </div>
             </div>

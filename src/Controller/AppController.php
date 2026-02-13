@@ -81,6 +81,7 @@ class AppController extends Controller
         $allowed = [
             'Companies' => ['onboarding', 'saveOnboarding'],
             'Users'     => ['login', 'logout', 'register'],
+            'TwoFactor' => ['index', 'enable', 'verify', 'disable'],
         ];
 
         $controller = $this->request->getParam('controller');
