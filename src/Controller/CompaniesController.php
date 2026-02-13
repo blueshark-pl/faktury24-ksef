@@ -171,7 +171,15 @@ class CompaniesController extends AppController
 
         // 4) Odśwież identity (żeby company_id było od razu w sesji)
         $user = $this->fetchTable('Users')->get($identity->getIdentifier());
-        $this->Authentication->setIdentity($user);
+        try {
+            if (!$this->components()->has('Authentication')) {
+                $this->loadComponent('Authentication.Authentication');
+            }
+            $this->Authentication->setIdentity($user);
+        } catch (\Throwable) {
+            // Jeśli nie uda się odświeżyć sesji (brak middleware/service), onboarding i tak jest zapisany w DB.
+            // W razie potrzeby user może odświeżyć stronę / zalogować się ponownie.
+        }
 
         $this->Flash->success('Dane firmy zapisane. Domyślne serie zostały skonfigurowane. Witamy w Faktury24!');
         return $this->redirect(['controller' => 'Dashboard', 'action' => 'index']);
