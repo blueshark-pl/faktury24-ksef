@@ -13,6 +13,7 @@ $title = $this->fetch('title') ?: 'ZYNIX – Admin & Dashboard';
 $lang  = 'pl';
 $dir   = 'ltr';
 $isDemo = (bool)(Configure::read('App.demo') ?? false);
+$appVersion = trim((string)(Configure::read('App.version') ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="<?= h($lang) ?>" dir="<?= h($dir) ?>"
@@ -624,6 +625,10 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                     </a> All
                     rights
                     reserved
+                    <?php if ($appVersion !== ''): ?>
+                      <span class="mx-2">•</span>
+                      Wersja: <?= h($appVersion) ?>
+                    <?php endif; ?>
                 </span>
             </div>
         </footer>

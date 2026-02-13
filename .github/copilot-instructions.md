@@ -41,6 +41,14 @@ Jeśli czegoś nie da się zweryfikować (np. brak SMTP/sekretów/backendu):
 - Zmiany schematu rób przez migracje (CakePHP Migrations), nie „ręcznie” w bazie.
 - Kontrolery mają być „slim”, logika domenowa w warstwie modelu/serwisów.
 
+## Wersjonowanie aplikacji
+
+- Numer wersji trzymamy w `config/app.php` jako `App.version` i wyświetlamy go w stopce (layout `auth` i `default`).
+- Format: `1.<miesiąc>.<dzień> (<build>)` np. `1.2.13 (1)`.
+- Zasady podbijania:
+  - Jeśli zmieniasz dzień pracy: ustaw `miesiąc.dzień` na aktualną datę i zacznij build od `(1)`.
+  - Jeśli robisz kolejne commity tego samego dnia: zwiększaj tylko `<build>` o `+1`.
+
 ## Git: każda zmiana = commit + push
 
 - Po każdej zmianie w repo (kod/konfig/dokumentacja/migracje) kończ pracę pełnym cyklem:

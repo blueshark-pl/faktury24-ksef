@@ -5,7 +5,12 @@
  *
  * Zakłada, że statyczne pliki są w /webroot/assets/...
  */
+
+use Cake\Core\Configure;
+
 $this->assign('title', $this->fetch('title') ?: 'Sign In');
+
+$appVersion = trim((string)(Configure::read('App.version') ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr"
@@ -70,6 +75,10 @@ $this->assign('title', $this->fetch('title') ?: 'Sign In');
       <div class="auth-footer" role="contentinfo">
         <div class="auth-footer-inner">
           Copyright © Partner S.C. All rights reserved
+          <?php if ($appVersion !== ''): ?>
+            <span class="mx-2">•</span>
+            <span>Wersja: <?= h($appVersion) ?></span>
+          <?php endif; ?>
           <span class="mx-2">•</span>
           <a href="#" role="button" onclick="return false" data-bs-toggle="modal" data-bs-target="#regulaminModal"><?= __('Regulamin') ?></a>
           <span class="mx-2">•</span>
