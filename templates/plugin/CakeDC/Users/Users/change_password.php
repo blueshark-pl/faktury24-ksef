@@ -165,14 +165,7 @@ if ($isResetFlow) {
             <div class="col-xl-3">
                     <div class="card custom-card">
                             <div class="card-body">
-                                    <ul class="nav flex-column gap-1 nav-pills tab-style-7" role="tablist">
-                                            <li class="nav-item me-0" role="presentation">
-                                                    <a class="nav-link d-inline-flex w-100 mb-2 bg-light" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>">Konto</a>
-                                            </li>
-                                            <li class="nav-item me-0" role="presentation">
-                                                    <a class="nav-link d-inline-flex w-100 mb-0 bg-light active" aria-current="page">Bezpieczeństwo</a>
-                                            </li>
-                                    </ul>
+                            <?= $this->element('Users/settings_nav') ?>
                             </div>
                     </div>
             </div>

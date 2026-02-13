@@ -6,17 +6,7 @@
         <div class="col-xl-3">
             <div class="card custom-card">
                 <div class="card-body">
-                    <ul class="nav flex-column gap-1 nav-pills tab-style-7" role="tablist">
-                        <li class="nav-item me-0" role="presentation">
-                            <a class="nav-link d-inline-flex w-100 mb-2 bg-light active" id="account" data-bs-toggle="tab" role="tab" data-bs-target="#account-pane">Konto</a>
-                        </li>
-                        <li class="nav-item me-0" role="presentation">
-                            <a class="nav-link bg-light d-inline-flex w-100 mb-0" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'changePassword']) ?>">Bezpieczeństwo</a>
-                        </li>
-                        <li class="nav-item me-0" role="presentation">
-                            <a class="nav-link bg-light d-inline-flex w-100 mb-0" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'TwoFactor', 'action' => 'index']) ?>">Ustawienia 2FA</a>
-                        </li>
-                    </ul>
+                    <?= $this->element('Users/settings_nav') ?>
                 </div>
             </div>
 

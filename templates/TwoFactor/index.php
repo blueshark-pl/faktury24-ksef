@@ -5,7 +5,15 @@ $this->assign('title', 'Uwierzytelnianie dwuskładnikowe (2FA)');
 ?>
 
 <div class="row">
-  <div class="col-xl-8">
+  <div class="col-xl-3">
+    <div class="card custom-card">
+      <div class="card-body">
+        <?= $this->element('Users/settings_nav') ?>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-9">
     <div class="card custom-card">
       <div class="card-header justify-content-between">
         <div class="card-title">Uwierzytelnianie dwuskładnikowe (2FA)</div>
