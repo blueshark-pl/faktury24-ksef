@@ -50,7 +50,7 @@ return [
     'App' => [
         'namespace' => 'App',
         'encoding' => env('APP_ENCODING', 'UTF-8'),
-        'defaultLocale' => env('APP_DEFAULT_LOCALE', 'pl_PL'),
+        'defaultLocale' => env('APP_DEFAULT_LOCALE', 'pl'),
         'defaultTimezone' => env('APP_DEFAULT_TIMEZONE', 'Europe/Warsaw'),
         'base' => false,
         'dir' => 'src',
@@ -62,7 +62,7 @@ return [
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
         // App version displayed in footers (format: 1.<month>.<day> (<build>)).
-        'version' => '1.2.13 (10)',
+        'version' => '1.2.13 (11)',
         // Optional: branding for system emails (HTML layout)
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),

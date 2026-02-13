@@ -1,0 +1,103 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: faktury24\\n"
+"POT-Creation-Date: 2026-02-13\\n"
+"PO-Revision-Date: 2026-02-13\\n"
+"Language-Team: faktury24\\n"
+"MIME-Version: 1.0\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+"Content-Transfer-Encoding: 8bit\\n"
+"Language: pl\\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\\n"
+
+# Overrides for CakeDC/Users PL to eliminate mixed EN/PL UI
+# Domain used by plugin: __d('cake_d_c/users', ...)
+
+msgid "Please enable Google Authenticator first."
+msgstr "Najpierw włącz Google Authenticator."
+
+msgid "Verification code is invalid. Try again"
+msgstr "Kod weryfikacyjny jest nieprawidłowy. Spróbuj ponownie."
+
+msgid "Could not associate account, please try again."
+msgstr "Nie udało się powiązać konta. Spróbuj ponownie."
+
+msgid "Social account was associated."
+msgstr "Konto społecznościowe zostało powiązane."
+
+msgid "Could not proceed with social account. Please try again"
+msgstr "Nie udało się kontynuować logowania przez konto społecznościowe. Spróbuj ponownie."
+
+msgid "Could not identify your account, please try again"
+msgstr "Nie udało się zidentyfikować konta. Spróbuj ponownie."
+
+msgid "Social account already associated to another user"
+msgstr "To konto społecznościowe jest już powiązane z innym użytkownikiem."
+
+msgid "Could not find user data"
+msgstr "Nie znaleziono danych użytkownika."
+
+msgid "Could not verify, please try again"
+msgstr "Nie udało się zweryfikować. Spróbuj ponownie."
+
+msgid "Google Authenticator token was successfully reset"
+msgstr "Token Google Authenticator został zresetowany."
+
+msgid "Reset Google Authenticator Token"
+msgstr "Zresetuj token Google Authenticator"
+
+msgid "Role: {0}"
+msgstr "Rola: {0}"
+
+msgid "Role"
+msgstr "Rola"
+
+msgid "User could not be added:"
+msgstr "Nie udało się dodać użytkownika:"
+
+msgid "Change Password"
+msgstr "Zmień hasło"
+
+msgid "First Name"
+msgstr "Imię"
+
+msgid "Last Name"
+msgstr "Nazwisko"
+
+msgid "Token Expires"
+msgstr "Wygaśnięcie tokenu"
+
+msgid "Activation Date"
+msgstr "Data aktywacji"
+
+msgid "Tos Date"
+msgstr "Data akceptacji regulaminu"
+
+msgid "Connected with {0}"
+msgstr "Połączono z {0}"
+
+msgid "Connect with {0}"
+msgstr "Połącz z {0}"
+
+msgid "Are you sure you want to reset token for user \"{0}\"?"
+msgstr "Na pewno chcesz zresetować token dla użytkownika „{0}”?"
+
+msgid "Verification Code"
+msgstr "Kod weryfikacyjny"
+
+msgid "reCaptcha is not configured! Please configure Users.reCaptcha.key"
+msgstr "reCaptcha nie jest skonfigurowana! Skonfiguruj Users.reCaptcha.key"
+
+msgid ""
+"If the link is not correctly displayed, please copy the following address in "
+"your web browser {0}"
+msgstr ""
+"Jeśli link nie wyświetla się poprawnie, skopiuj poniższy adres do przeglądarki: "
+"{0}"
+
+msgid ""
+"<span class=\"glyphicon glyphicon-log-in\" aria-hidden=\"true\"></span> "
+"Verify"
+msgstr ""
+"<span class=\"glyphicon glyphicon-log-in\" aria-hidden=\"true\"></span> "
+"Zweryfikuj"
