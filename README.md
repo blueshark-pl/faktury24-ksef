@@ -51,3 +51,12 @@ Other environment agnostic settings can be changed in `config/app.php`.
 The app skeleton uses [Milligram](https://milligram.io/) (v1.3) minimalist CSS
 framework by default. You can, however, replace it with any other library or
 custom styles.
+
+## Dziennik prac (czas człowieka)
+
+### 2026-02-13
+
+- Dodanie wersjonowania aplikacji i wyświetlanie wersji w stopkach (auth + default).
+- Commit: 61c8ef3
+- Czas: 0.5h
+- Do sprawdzenia manualnie: stopka na `/users/login` oraz w layoutcie `default` po zalogowaniu.
