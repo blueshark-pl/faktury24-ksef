@@ -90,3 +90,8 @@ custom styles.
 - Commit: 3444460
 - Czas: 0.1h
 - Do sprawdzenia manualnie: w modalu „Komunikaty MF” przycisk „Zamknij” ma identyczny wygląd jak w Regulamin/Polityka.
+
+- Regulamin: dodanie linku „Załącznik nr 1 (DPA)” w §14 i osobnego modala DPA (sticky TOC + smooth-scroll) z przełączaniem między modalami.
+- Commit: 93ea2d7
+- Czas: 0.2h
+- Do sprawdzenia manualnie: na `/users/login` w Regulaminie klik „Otwórz Załącznik nr 1 (DPA)” zamyka Regulamin i otwiera DPA; przycisk „Wróć do Regulaminu” działa w drugą stronę.
