@@ -27,8 +27,7 @@ $fullTooltip = $fullTooltipParts ? implode("\n\n", $fullTooltipParts) : null;
 ?>
 <span class="mx-2">•</span>
 <span id="ksef-auth-context" class="small text-muted" data-ksef-env="<?= h($environment) ?>"<?= $fullTooltip ? ' title="' . h($fullTooltip) . '"' : '' ?>>
-  KSeF (firma):
-  <span id="ksef-auth-cert" class="fw-semibold <?= h($certClass) ?>"><?= h($certText) ?></span>
+  KSeF:
 
   <span id="ksef-auth-grants-sep" class="mx-1"<?= (is_string($grantsHintText) && trim($grantsHintText) !== '') ? '' : ' style="display:none"' ?>>·</span>
   <span id="ksef-auth-grants" class="<?= h($grantsHintClass) ?>"<?= (is_string($grantsHintText) && trim($grantsHintText) !== '') ? '' : ' style="display:none"' ?>><?= h((string)$grantsHintText) ?></span>
