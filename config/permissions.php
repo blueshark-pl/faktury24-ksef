@@ -179,8 +179,46 @@ return [
         [
             'role' => 'user',
             'controller' => 'Contractors',
-            'action' => ['GusLookup'],
+            'action' => [
+                'gusLookup',
+                'search',
+                'index',
+                'view',
+                'add',
+                'viewJson',
+                'edit',
+                'delete',
+                'export',
+                'invoices',
+            ],
             
+        ],
+
+        // towary i usługi
+        [
+            'role' => 'user',
+            'controller' => 'Products',
+            'action' => [
+                'index',
+                'view',
+                'viewJson',
+                'add',
+                'edit',
+                'delete',
+                'export',
+                'search',
+            ],
+        ],
+        [
+            'role' => 'user',
+            'controller' => 'Units',
+            'action' => [
+                'index',
+                'view',
+                'add',
+                'edit',
+                'delete',
+            ],
         ],
 
         // podstawowy landing po zalogowaniu
