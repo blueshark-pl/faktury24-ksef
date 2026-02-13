@@ -128,6 +128,8 @@ final class KsefAuthContextCell extends Cell
         if (is_array($status) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
             $active = (bool)$status['active'];
 
+            $reason = (string)($status['reason'] ?? '');
+
             $lastError = trim((string)($status['lastError'] ?? ''));
             $looksLikePermissionError = false;
             if (!$active && $lastError !== '') {
@@ -141,9 +143,11 @@ final class KsefAuthContextCell extends Cell
                     || str_contains($le, 'brak dost');
             }
 
+            $isNoPermissions = (!$active) && ($reason === 'no_permissions' || $looksLikePermissionError);
+
             $connText = $active
                 ? 'połączenie: OK'
-                : ($looksLikePermissionError ? 'Brak uprawnień w KSeF' : 'Brak połączenia z KSeF');
+                : ($isNoPermissions ? 'Brak uprawnień w KSeF' : 'Brak połączenia z KSeF');
             $connClass = $active ? 'text-success' : 'text-danger';
 
             $ts = isset($status['ts']) ? (int)$status['ts'] : 0;
