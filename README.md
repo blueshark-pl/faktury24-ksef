@@ -115,3 +115,13 @@ custom styles.
 - Commit: 4758dbe
 - Czas: 0.1h
 - Do sprawdzenia manualnie: odśwież `/users/login` (i inne widoki) i potwierdź brak warningu `SplFileInfo::openFile(...cake_d_c.users.pl_PL): Permission denied`; katalog `tmp/cache/translations` powinien się utworzyć automatycznie.
+
+- 2FA (opcja dla chętnych): dodanie opt-in 2FA per user (wymagane tylko gdy `secret_verified=1`) + ekran ustawień `/konto/2fa` (włącz/zweryfikuj/wyłącz).
+- Commit: b75164d
+- Czas: 0.3h
+- Do sprawdzenia manualnie: użytkownik bez 2FA loguje się bez weryfikacji; po włączeniu i weryfikacji 2FA logowanie przekierowuje na `/users/verify`.
+
+- Rejestracja: naprawa błędu `Tampered field username` (ukryte `username` jest odblokowane i synchronizowane z `email`).
+- Commit: ec2527a
+- Czas: 0.1h
+- Do sprawdzenia manualnie: rejestracja działa bez błędu, a w bazie `users.username` = e-mail.
