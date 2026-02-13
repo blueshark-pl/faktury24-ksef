@@ -95,3 +95,8 @@ custom styles.
 - Commit: 93ea2d7
 - Czas: 0.2h
 - Do sprawdzenia manualnie: na `/users/login` w Regulaminie klik „Otwórz Załącznik nr 1 (DPA)” zamyka Regulamin i otwiera DPA; przycisk „Wróć do Regulaminu” działa w drugą stronę.
+
+- UI: modal DPA ma identyczny layout i style jak modal Regulaminu (spis, typografia, header, karty).
+- Commit: 9ec90ef
+- Czas: 0.1h
+- Do sprawdzenia manualnie: w DPA wygląd spisu treści i sekcji jest 1:1 jak w Regulaminie.
