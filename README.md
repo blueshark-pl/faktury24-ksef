@@ -70,3 +70,8 @@ custom styles.
 - Commit: aff11d0
 - Czas: 0.5h
 - Do sprawdzenia manualnie: na `/users/login` widoczny banner przy nadchodzącym wyłączeniu i link „Komunikaty MF” otwiera modal niezależnie od statusu.
+
+- Naprawa: modal „Komunikaty MF” renderowany na poziomie `<body>` (blok `ksefModals`), żeby nie znikał przy kliknięciu (wcześniej backdrop był, ale okno nie). 
+- Commit: e653c40
+- Czas: 0.2h
+- Do sprawdzenia manualnie: klik w „Komunikaty MF” w stopce na `/users/login` i po zalogowaniu powinien pokazać okno z treścią.
