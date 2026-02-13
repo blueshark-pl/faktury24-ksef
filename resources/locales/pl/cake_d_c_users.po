@@ -85,6 +85,30 @@ msgstr "Na pewno chcesz zresetować token dla użytkownika „{0}”?"
 msgid "Verification Code"
 msgstr "Kod weryfikacyjny"
 
+msgid "Verify"
+msgstr "Zweryfikuj"
+
+msgid "Verifying..."
+msgstr "Weryfikowanie..."
+
+msgid "Don't share the verification code with anyone!"
+msgstr "Nie udostępniaj nikomu kodu weryfikacyjnego!"
+
+msgid "Don’t share the verification code with anyone!"
+msgstr "Nie udostępniaj nikomu kodu weryfikacyjnego!"
+
+msgid "Authenticator QR Code"
+msgstr "Kod QR do aplikacji uwierzytelniającej"
+
+msgid "Scan this QR code in your authenticator app, then enter the code below."
+msgstr "Zeskanuj ten kod QR w aplikacji uwierzytelniającej, a następnie wpisz kod poniżej."
+
+msgid "6-digit verification code"
+msgstr "6-cyfrowy kod weryfikacyjny"
+
+msgid "Digit {0}"
+msgstr "Cyfra {0}"
+
 msgid "reCaptcha is not configured! Please configure Users.reCaptcha.key"
 msgstr "reCaptcha nie jest skonfigurowana! Skonfiguruj Users.reCaptcha.key"
 

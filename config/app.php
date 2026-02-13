@@ -62,7 +62,7 @@ return [
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
         // App version displayed in footers (format: 1.<month>.<day> (<build>)).
-        'version' => '1.2.13 (11)',
+        'version' => '1.2.13 (12)',
         // Optional: branding for system emails (HTML layout)
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),

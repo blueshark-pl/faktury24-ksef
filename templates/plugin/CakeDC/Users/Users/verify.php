@@ -27,6 +27,27 @@ $this->assign('title', __d('cake_d_c/users', 'Verify Your Account'));
       <?= __('Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej.') ?>
     </p>
 
+    <div class="rounded-3 border bg-light-subtle p-3 mb-4">
+      <div class="fw-semibold mb-1">
+        <?= __('Korzystamy z aplikacji Google Authenticator (2FA).') ?>
+      </div>
+      <div class="small text-muted mb-2">
+        <?= __('Pobierz aplikację na telefon:') ?>
+      </div>
+      <div class="d-flex flex-wrap gap-2 justify-content-center">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
+           target="_blank" rel="noopener noreferrer">
+          <?= __('Android (Google Play)') ?>
+        </a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="https://apps.apple.com/us/app/google-authenticator/id388497605"
+           target="_blank" rel="noopener noreferrer">
+          <?= __('iOS (App Store)') ?>
+        </a>
+      </div>
+    </div>
+
     <div class="row gy-3">
       <div class="col-xl-12">
         <?= $this->Form->create(null, [
