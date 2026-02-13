@@ -60,3 +60,8 @@ custom styles.
 - Commit: 61c8ef3
 - Czas: 0.5h
 - Do sprawdzenia manualnie: stopka na `/users/login` oraz w layoutcie `default` po zalogowaniu.
+
+- Latarnia KSeF: pobieranie publicznego statusu i komunikatu + wyświetlanie w stopkach (auth + default).
+- Commit: cf38fb9
+- Czas: 0.5h
+- Do sprawdzenia manualnie: czy stopka pokazuje `KSeF: ...` oraz czy przy braku API stopka nie „wybucha” (powinno być „Brak danych”).
