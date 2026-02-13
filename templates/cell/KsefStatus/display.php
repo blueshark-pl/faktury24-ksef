@@ -177,7 +177,7 @@ $fmt = function ($t): string {
         </div>
         <div class="modal-footer">
           <a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="https://ksef.mf.gov.pl/">Strona KSeF (MF)</a>
-          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Zamknij</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zamknij</button>
         </div>
       </div>
     </div>
