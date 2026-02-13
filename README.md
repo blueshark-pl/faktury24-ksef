@@ -110,3 +110,8 @@ custom styles.
 - Commit: d3d85c2
 - Czas: 0.1h
 - Do sprawdzenia manualnie: `/users/verify` ma linki do sklepów i wszystkie etykiety/ostrzeżenia są po polsku.
+
+- Naprawa: przeniesienie cache tłumaczeń (`_cake_translations_`) do `tmp/cache/translations`, żeby ominąć `Permission denied` na pojedynczym pliku cache w `tmp/cache/persistent`.
+- Commit: 4758dbe
+- Czas: 0.1h
+- Do sprawdzenia manualnie: odśwież `/users/login` (i inne widoki) i potwierdź brak warningu `SplFileInfo::openFile(...cake_d_c.users.pl_PL): Permission denied`; katalog `tmp/cache/translations` powinien się utworzyć automatycznie.
