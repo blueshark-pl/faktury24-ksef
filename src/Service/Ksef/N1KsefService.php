@@ -81,7 +81,7 @@ final class N1KsefService
         ?string $overrideIdentifierNip,
         ?string $overrideApiUrl,
         bool $withEncryptionKey,
-        bool $enableTrace
+        bool $enableTrace = false
     ): ClientBuilder {
         $traceEnabled = $enableTrace || $this->isAppDebugEnabled();
         $contextKey = $this->ctx($companyId, $environment);
