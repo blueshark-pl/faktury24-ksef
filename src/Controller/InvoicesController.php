@@ -1761,6 +1761,26 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'InvoiceContents' => ['Vats']
         ]);
 
+        $kind = strtolower((string)($invoice->type ?? ''));
+        $this->set('kind', $kind);
+        $this->set('isEdit', true);
+
+        // Render the same templates as the corresponding add_* forms (where safe)
+        $templateMap = [
+            'vat'      => 'add',
+            'currency' => 'add_currency',
+            'novat'    => 'add_no_vat',
+            'proforma' => 'add_proforma',
+            'margin'   => 'add_margin',
+        ];
+        if (isset($templateMap[$kind])) {
+            $tpl = $templateMap[$kind];
+            $tplPath = ROOT . DS . 'templates' . DS . 'Invoices' . DS . $tpl . '.php';
+            if (is_file($tplPath)) {
+                $this->viewBuilder()->setTemplate($tpl);
+            }
+        }
+
         // Słowniki VAT do widoku
         $Vats        = $this->fetchTable('Vats');
         $vatRows     = $Vats->find()->select(['id','name','rate'])->order(['rate' => 'DESC'])->all();
@@ -1779,36 +1799,76 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $items   = (array)($data['items'] ?? []);
             $contents = [];
             $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
-            foreach ($items as $row) {
-                $name = trim((string)($row['name'] ?? ''));
-                if ($name === '') { continue; }
-                $qty   = $num($row['quantity'] ?? 0);
-                $price = $num($row['price'] ?? 0);
-                $disc  = $num($row['discount_percent'] ?? 0);
-                $vatId = $row['vat_code_id'] ?? null;
-                $rate  = $noVat ? 0.0 : (float)($vatRatesMap[$vatId] ?? 0);
 
-                $unitAfterDisc = $price * (1 - ($disc/100));
-                $netto  = round($qty * $unitAfterDisc, 2);
-                $tax    = $noVat ? 0.0 : round($netto * ($rate/100), 2);
-                $brutto = round($netto + $tax, 2);
+            if (($invoice->type ?? null) === 'margin') {
+                // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
+                $totalSales = 0.0; $totalPurchase = 0.0;
+                foreach ($items as $row) {
+                    $name = trim((string)($row['name'] ?? ''));
+                    if ($name === '') { continue; }
 
-                $sumNet   += $netto;
-                $sumTax   += $tax;
-                $sumGross += $brutto;
+                    $qty      = $num($row['quantity'] ?? 0);
+                    $saleUnit = $num($row['price'] ?? 0);          // brutto/szt.
+                    $buyUnit  = $num($row['purchase_price'] ?? 0); // brutto/szt.
 
-                $contents[] = [
-                    'vat_code_id'      => $noVat ? null : $vatId,
-                    'name'             => $name,
-                    'product_desc'     => (string)($row['product_desc'] ?? ''),
-                    'quantity'         => $qty,
-                    'unit'             => (string)($row['unit'] ?? 'szt.'),
-                    'price'            => $price,
-                    'discount_percent' => $disc,
-                    'netto'            => $netto,
-                    'brutto'           => $brutto,
-                    'gtu_code'         => (string)($row['gtu_code'] ?? ''),
-                ];
+                    $lineGross = round($qty * $saleUnit, 2);
+                    $lineBuy   = round($qty * $buyUnit, 2);
+
+                    $totalSales    += $lineGross;
+                    $totalPurchase += $lineBuy;
+
+                    $contents[] = [
+                        'vat_code_id'      => null,
+                        'name'             => $name,
+                        'product_desc'     => (string)($row['product_desc'] ?? ''),
+                        'quantity'         => $qty,
+                        'unit'             => (string)($row['unit'] ?? 'szt.'),
+                        'price'            => $saleUnit,
+                        'purchase_price'   => $buyUnit,
+                        'discount_percent' => 0,
+                        'netto'            => $lineGross,
+                        'brutto'           => $lineGross,
+                        'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                    ];
+                }
+
+                $rate = (float)($data['margin_vat_rate'] ?? 23);
+                $marginGross = max(0.0, $totalSales - $totalPurchase);
+                $sumTax   = $rate > 0 ? round($marginGross * ($rate / (100.0 + $rate)), 2) : 0.0;
+                $sumGross = round($totalSales, 2);
+                $sumNet   = round($sumGross - $sumTax, 2);
+            } else {
+                foreach ($items as $row) {
+                    $name = trim((string)($row['name'] ?? ''));
+                    if ($name === '') { continue; }
+                    $qty   = $num($row['quantity'] ?? 0);
+                    $price = $num($row['price'] ?? 0);
+                    $disc  = $num($row['discount_percent'] ?? 0);
+                    $vatId = $row['vat_code_id'] ?? null;
+                    $rate  = $noVat ? 0.0 : (float)($vatRatesMap[$vatId] ?? 0);
+
+                    $unitAfterDisc = $price * (1 - ($disc/100));
+                    $netto  = round($qty * $unitAfterDisc, 2);
+                    $tax    = $noVat ? 0.0 : round($netto * ($rate/100), 2);
+                    $brutto = round($netto + $tax, 2);
+
+                    $sumNet   += $netto;
+                    $sumTax   += $tax;
+                    $sumGross += $brutto;
+
+                    $contents[] = [
+                        'vat_code_id'      => $noVat ? null : $vatId,
+                        'name'             => $name,
+                        'product_desc'     => (string)($row['product_desc'] ?? ''),
+                        'quantity'         => $qty,
+                        'unit'             => (string)($row['unit'] ?? 'szt.'),
+                        'price'            => $price,
+                        'discount_percent' => $disc,
+                        'netto'            => $netto,
+                        'brutto'           => $brutto,
+                        'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                    ];
+                }
             }
 
             if (empty($contents)) {
@@ -1943,52 +2003,52 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
     public function editVat($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editCurrency($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editNoVat($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editProforma($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editAdvance($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editCorrection($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editMargin($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editInternal($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editInternalEvidence($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     public function editOss($id = null)
     {
-        return $this->setAction('edit', $id);
+        return $this->edit($id);
     }
 
     /**

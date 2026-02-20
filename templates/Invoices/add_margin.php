@@ -7,7 +7,9 @@
  * @var array $vatRatesMap id => rate
  * @var array|null $recentContractors [['id'=>..,'label'=>..,'name'=>..,'nip'=>..,'street'=>..,'zip'=>..,'city'=>..,'country'=>..,'email'=>..,'phone'=>..], ...]
  */
-$this->assign('title', 'Create Invoice');
+$__isEdit = isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false;
+$__pageTitle = $__isEdit ? 'Edit Invoice' : 'Create Invoice';
+$this->assign('title', $__pageTitle);
 
 // pre-render VAT select do klonowania w wierszach
 $vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
@@ -48,11 +50,11 @@ $gtuSelectHtml .= '</select>';
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
   <div>
-    <h1 class="page-title fw-medium fs-18 mb-2">Create Invoice</h1>
+    <h1 class="page-title fw-medium fs-18 mb-2"><?= h($__pageTitle) ?></h1>
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
       <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Invoice</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Create Invoice</li>
+      <li class="breadcrumb-item active" aria-current="page"><?= h($__pageTitle) ?></li>
     </ol>
   </div>
   <div class="btn-list">
@@ -305,7 +307,7 @@ $gtuSelectHtml .= '</select>';
   <div class="col-xxl-12">
     <div class="card custom-card">
       <div class="card-header d-md-flex d-block">
-        <div class="card-title">Create Invoice</div>
+        <div class="card-title"><?= h($__pageTitle) ?></div>
         <div class="ms-auto mt-md-0 mt-2">
           <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
             'class' => 'btn btn-sm btn-primary', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
