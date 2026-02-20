@@ -6,7 +6,47 @@
  * @var array $vatRatesMap id => rate
  * @var array|null $recentContractors [['id'=>..,'label'=>..,'name'=>..,'nip'=>..,'street'=>..,'zip'=>..,'city'=>..,'country'=>..,'email'=>..,'phone'=>..], ...]
  */
-$this->assign('title', 'Wystaw fakturę');
+$__isEdit = !empty($isEdit) || !empty($invoice?->id) || (isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false);
+$__pageTitle = $__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę';
+$this->assign('title', $__pageTitle);
+
+$__prefillContractor = null;
+try {
+  $c = $invoice->invoice_contractor ?? null;
+  if (!empty($c)) {
+    $__prefillContractor = [
+      'id' => $invoice->contractor_id ?? null,
+      'name' => (string)($c->name ?? ''),
+      'label' => (string)($c->name ?? ''),
+      'nip' => (string)($c->nip ?? ''),
+      'street' => (string)($c->street ?? ''),
+      'zip' => (string)($c->zip ?? ''),
+      'city' => (string)($c->city ?? ''),
+      'country' => (string)($c->country ?? ''),
+      'email' => (string)($c->email ?? ''),
+      'phone' => (string)($c->phone ?? ''),
+    ];
+  }
+} catch (\Throwable) {
+  $__prefillContractor = null;
+}
+
+$__prefillItems = [];
+try {
+  if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
+    foreach ($invoice->invoice_contents as $it) {
+      $__prefillItems[] = [
+        'name' => (string)($it->name ?? ''),
+        'quantity' => $it->quantity ?? 1,
+        'price' => $it->price ?? 0,
+        'discount_percent' => $it->discount_percent ?? 0,
+        'gtu_code' => (string)($it->gtu_code ?? ''),
+      ];
+    }
+  }
+} catch (\Throwable) {
+  $__prefillItems = [];
+}
 
 // no-VAT: brak selektora stawek VAT w tym widoku
 
@@ -43,11 +83,11 @@ $gtuSelectHtml .= '</select>';
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
   <div>
-    <h1 class="page-title fw-medium fs-18 mb-2">Wystaw fakturę</h1>
+    <h1 class="page-title fw-medium fs-18 mb-2"><?= h($__pageTitle) ?></h1>
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
       <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Faktury</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Wystaw fakturę</li>
+      <li class="breadcrumb-item active" aria-current="page"><?= h($__pageTitle) ?></li>
     </ol>
   </div>
   <div class="btn-list">
@@ -110,14 +150,14 @@ $gtuSelectHtml .= '</select>';
             <div class="col-lg-2">
             <?= $this->Form->control('date', [
               'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
-              'value' => date('Y-m-d')
+              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->date) ? $invoice->date->format('Y-m-d') : null)
             ]) ?>
             </div>
 
             <div class="col-lg-2">
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => date('Y-m-d')
+              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
             ]) ?>
             </div>
 
@@ -127,13 +167,13 @@ $gtuSelectHtml .= '</select>';
             <?= $this->Form->control('paymentmethod', [
               'label' => 'Metoda płatności', 'type' => 'select',
               'options' => ['transfer' => 'Przelew', 'cash' => 'Gotówka', 'card' => 'Karta'],
-              'class' => 'form-select', 'value' => 'transfer'
+              'class' => 'form-select', 'value' => !$__isEdit ? 'transfer' : ($invoice->paymentmethod ?? null)
             ]) ?>
             </div>
             
               <div class="col-lg-2">
                 <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => 0
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => !$__isEdit ? 0 : ($invoice->alreadypaid ?? 0)
                 ]) ?>
               </div>
               
@@ -332,7 +372,7 @@ $gtuSelectHtml .= '</select>';
                     <div class="col-8"><?= $this->Form->control('invoice_recipient.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                     <div class="col-4"><?= $this->Form->control('invoice_recipient.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                    <div class="col-6"><?= $this->Form->control('invoice_recipient.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
+                    <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_recipient.country', $opts); ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                 </div>
@@ -350,7 +390,7 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                   <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
+                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                 </div>
@@ -1358,6 +1398,11 @@ $(function () {
   var nbpRateUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"nbpRate","_ext"=>"json"]) ?>';
   var nbpCurrenciesUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"nbpCurrencies","_ext"=>"json"]) ?>';
   var seriesNextNumberUrl = '<?= $this->Url->build(['controller'=>'InvoiceSeries','action'=>'nextNumber','_ext'=>'json']) ?>';
+  var isEdit = <?= json_encode($__isEdit ?? false) ?>;
+  var editPrefill = {
+    contractor: <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
+    items: <?= json_encode($__prefillItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
+  };
   var seriesPeriods = {
     '2b4003f9-06ec-4a97-b8ce-9a1b767d1f7a': 'roczny',
     '803fdc39-7c49-4921-a6ac-6c929fc0b6f5': 'ciągły', 
@@ -1912,6 +1957,56 @@ $('#gus-fetch-btn').on('click', function(){
     $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
   })();
+
+  // ====== PREFILL: EDIT MODE ======
+  function getItemRows(){ return $itemsBody.find('tr').has('.item-product-select'); }
+  function prefillRow($tr, item){
+    if (!$tr || !$tr.length || !item) return;
+    var name = (item.name || '').toString();
+    var qty = (typeof item.quantity !== 'undefined' && item.quantity !== null) ? item.quantity : 1;
+    var price = (typeof item.price !== 'undefined' && item.price !== null) ? item.price : 0;
+    var disc = (typeof item.discount_percent !== 'undefined' && item.discount_percent !== null) ? item.discount_percent : 0;
+    var gtu = (item.gtu_code || '').toString();
+
+    $tr.find('.item-qty').val(qty);
+    $tr.find('.item-price').val(Number(price || 0).toFixed(2));
+    $tr.find('.item-disc').val(Number(disc || 0));
+    if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
+
+    $tr.find('.item-name-hidden').val(name);
+    var $sel = $tr.find('.item-product-select');
+    if ($sel.length && name) {
+      var optVal = 'NEW:'+name;
+      $sel.find('option[value="'+optVal.replace(/"/g,'\\"')+'"]').remove();
+      var opt = new Option(name, optVal, true, true);
+      $sel.append(opt).trigger('change');
+    }
+    rowCalc($tr);
+  }
+  function prefillItems(items){
+    if (!items || !items.length) return;
+    prefillRow(getItemRows().first(), items[0]);
+    for (var i=1; i<items.length; i++){
+      $('#btn-add-item').trigger('click');
+      prefillRow(getItemRows().last(), items[i]);
+    }
+    allCalc();
+  }
+
+  if (isEdit) {
+    try {
+      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
+        applyContractor(editPrefill.contractor);
+      } else {
+        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
+      }
+      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Edit prefill failed', e);
+    }
+  }
 
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
