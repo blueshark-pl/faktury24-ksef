@@ -339,8 +339,8 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
         <div class="card-title">Korekta faktury – marża</div>
         <div class="ms-auto mt-md-0 mt-2">
-          <?= $this->Form->button('Zapisz korektę i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-            'class' => 'btn btn-sm btn-primary', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+          <?= $this->Form->button('Zapisz', [
+            'class' => 'btn btn-sm btn-primary'
           ]) ?>
         </div>
       </div>
@@ -654,8 +654,8 @@ $gtuSelectHtml .= '</select>';
         <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
           <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
         </button>
-        <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-          'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+        <?= $this->Form->button('Zapisz', [
+          'class' => 'btn btn-primary m-1'
         ]) ?>
       </div>
     </div>
