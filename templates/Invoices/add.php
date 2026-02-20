@@ -8,6 +8,7 @@
  */
 $__isEdit = !empty($isEdit) || !empty($invoice?->id);
 $this->assign('title', $__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę');
+$__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
 
 $__prefillContractor = null;
 try {
@@ -736,13 +737,18 @@ $gtuSelectHtml .= '</select>';
         <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
           <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
         </button>
-        <?= $this->Form->button('<i class="ri-save-line ms-1 align-middle d-inline-block"></i> Zapisz', [
-          'class' => 'btn btn-outline-primary m-1', 'escapeTitle' => false, 'name' => 'save_only'
-        ]) ?>
-        
-        <!-- <?= $this->Form->button('Zapisz i wyślij do KSeF x<i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-          'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
-        ]) ?> -->
+        <?php if ($__ksefModeEnabled): ?>
+          <?= $this->Form->button('<i class="ri-save-line ms-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
+            'class' => 'btn btn-outline-primary m-1', 'escapeTitle' => false, 'name' => 'save_only'
+          ]) ?>
+          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+            'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+          ]) ?>
+        <?php else: ?>
+          <?= $this->Form->button('<i class="ri-save-line ms-1 align-middle d-inline-block"></i> Zapisz i wystaw', [
+            'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_only'
+          ]) ?>
+        <?php endif; ?>
       </div>
     </div>
   </div>

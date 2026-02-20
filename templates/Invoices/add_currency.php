@@ -9,6 +9,7 @@
 $__isEdit = !empty($isEdit) || !empty($invoice?->id) || (isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false);
 $__pageTitle = $__isEdit ? 'Edytuj fakturę walutową' : 'Faktura walutowa';
 $this->assign('title', $__pageTitle);
+$__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
 
 $__prefillContractor = null;
 try {
@@ -382,9 +383,20 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
   <div class="card-title">Faktura walutowa</div>
         <div class="ms-auto mt-md-0 mt-2">
-          <?= $this->Form->button('Zapisz', [
-            'class' => 'btn btn-sm btn-primary'
-          ]) ?>
+          <?php if ($__ksefModeEnabled): ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-sm btn-outline-primary',
+              'name' => 'save_only'
+            ]) ?>
+            <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+              'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+            ]) ?>
+          <?php else: ?>
+            <?= $this->Form->button('Zapisz i wystaw', [
+              'class' => 'btn btn-sm btn-primary',
+              'name' => 'save_only'
+            ]) ?>
+          <?php endif; ?>
         </div>
       </div>
 
@@ -634,9 +646,20 @@ $gtuSelectHtml .= '</select>';
         <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
           <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
         </button>
-        <?= $this->Form->button('Zapisz', [
-          'class' => 'btn btn-primary m-1'
-        ]) ?>
+        <?php if ($__ksefModeEnabled): ?>
+          <?= $this->Form->button('Zapisz jako roboczą', [
+            'class' => 'btn btn-outline-primary m-1',
+            'name' => 'save_only'
+          ]) ?>
+          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+            'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+          ]) ?>
+        <?php else: ?>
+          <?= $this->Form->button('Zapisz i wystaw', [
+            'class' => 'btn btn-primary m-1',
+            'name' => 'save_only'
+          ]) ?>
+        <?php endif; ?>
       </div>
     </div>
   </div>

@@ -33,6 +33,28 @@ class InvoicesController extends AppController
     private const FORM_SCHEMA_VER   = '1-0E';
     private const FORM_VARIANT      = '3';
 
+    private function isKsefModeEnabled(?string $companyId): bool
+    {
+        if (empty($companyId)) {
+            return true;
+        }
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()
+                ->select(['id', 'ksef_mode_enabled'])
+                ->where(['id' => $companyId])
+                ->first();
+            if ($company === null) {
+                return true;
+            }
+
+            return (bool)($company->ksef_mode_enabled ?? true);
+        } catch (\Throwable) {
+            // Fallback-safe: do not block by default if setting unavailable
+            return true;
+        }
+    }
+
     private function rowHasUserData(array $row): bool
     {
         $keys = ['name', 'quantity', 'price', 'discount_percent', 'vat_code_id', 'gtu_code', 'product_desc', 'purchase_price'];
@@ -1690,6 +1712,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
             // Opcjonalna ścieżka: po zapisie wyślij od razu do KSeF z przesłanego pliku XML (FA (3))
             $doSend = (int)($data['ksef_send'] ?? 0) === 1;
+            if (!$this->isKsefModeEnabled((string)$companyId)) {
+                $doSend = false;
+            }
             if ($doSend) {
                 $envRaw = (string)($data['ksef_env'] ?? 'test');
                 $environment = ($envRaw === 'prod') ? 'prod' : 'test';
@@ -3637,6 +3662,11 @@ private function makeClient(string $environment): KsefClient
         $companyId = (string)($identity?->get('company_id') ?? '');
         $env = (string)$this->request->getQuery('env', 'test');
         $environment = ($env === 'prod') ? 'prod' : 'test';
+
+        if (!$this->isKsefModeEnabled($companyId)) {
+            $this->Flash->error('Tryb KSeF jest wyłączony dla tej firmy. Włącz KSeF w ustawieniach firmy, aby wysyłać dokumenty.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
 
         $invoice = $this->Invoices->get($id, contain: ['InvoiceContractors','InvoiceCompanyDetails','InvoiceContents' => ['Vats'], 'Companies']);
 

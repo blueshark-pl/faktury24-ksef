@@ -38,7 +38,7 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
 - [x] **Stały pasek statusu u góry** (globalnie):
   - `Tryb KSeF: WŁ / WYŁ`,
   - `Uprawnienia KSeF: OK / brak / wymagane`.
-- [ ] **Warunkowe etykiety przycisków**:
+- [x] **Warunkowe etykiety przycisków**:
   - KSeF WŁ: `Zapisz i wyślij do KSeF` + `Zapisz jako robocza`,
   - KSeF WYŁ: `Zapisz i wystaw` / `Zapisz i wyślij do kontrahenta` (bez KSeF).
 - [ ] **Usunięcie zbędnych elementów modal/JS KSeF** tam, gdzie nie ma już akcji „save_and_send_ksef”.
