@@ -4,18 +4,22 @@
  * @var \App\Model\Entity\Invoice $invoice
  * @var array $vats id => label
  * @var array $vatRatesMap id => rate
+ * @var bool|null $isEdit
  */
-$this->assign('title', 'Faktura zaliczkowa');
+$__isEdit = !empty($isEdit) || !$invoice->isNew();
+$__isFinal = (strtolower((string)($invoice->type ?? '')) === 'final') || (!empty($invoice->is_final) && (int)$invoice->is_final === 1);
+$__pageTitle = $__isEdit ? ($__isFinal ? 'Edytuj fakturę końcową' : 'Edytuj fakturę zaliczkową') : 'Faktura zaliczkowa';
+$this->assign('title', $__pageTitle);
 ?>
 
 <?= $this->Form->create($invoice, ['class' => 'needs-validation', 'novalidate' => true]) ?>
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
   <div>
-    <h1 class="page-title fw-medium fs-18 mb-2">Faktura zaliczkowa</h1>
+    <h1 class="page-title fw-medium fs-18 mb-2"><?= h($__pageTitle) ?></h1>
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
       <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Faktury</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Zaliczka</li>
+      <li class="breadcrumb-item active" aria-current="page"><?= $__isFinal ? 'Końcowa' : 'Zaliczka' ?></li>
     </ol>
   </div>
   <div class="btn-list">
@@ -60,7 +64,11 @@ $this->assign('title', 'Faktura zaliczkowa');
         <div class="row g-2 align-items-end">
           <div class="col-md-5">
             <?= $this->Form->control('advance_gross', [
-              'label' => 'Kwota zaliczki (brutto)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => 0
+              'label' => $__isFinal ? 'Kwota końcowa (brutto)' : 'Kwota zaliczki (brutto)',
+              'type' => 'number',
+              'step' => '0.01',
+              'class' => 'form-control',
+              'value' => $invoice->isNew() ? 0 : ($invoice->advance_gross ?? ($invoice->total ?? 0))
             ]) ?>
             <div id="overpay-warning" class="text-danger small mt-1" style="display:none;">
               Kwota przekracza pozostałą do rozliczenia.
@@ -69,24 +77,28 @@ $this->assign('title', 'Faktura zaliczkowa');
           <div class="col-md-4">
             <label class="form-label">Stawka VAT zaliczki</label>
             <select name="advance_vat_code_id" id="advance-vat" class="form-select">
+              <?php $selectedVat = $invoice->advance_vat_code_id ?? null; ?>
               <?php foreach (($vats ?? []) as $id => $label): ?>
-                <option value="<?= h($id) ?>"><?= h($label) ?></option>
+                <option value="<?= h($id) ?>" <?= ((string)$id === (string)$selectedVat) ? 'selected' : '' ?>><?= h($label) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
           <div class="col-md-3">
             <?= $this->Form->control('currency', [
-              'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency', 'value' => 'PLN',
+              'label' => 'Waluta',
+              'class' => 'form-select',
+              'id' => 'currency',
+              'value' => $invoice->isNew() ? 'PLN' : ($invoice->currency ?? 'PLN'),
               'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
             ]) ?>
           </div>
           <div class="col-12 d-flex gap-2 align-items-center mt-2">
-            <?= $this->Form->hidden('is_final', ['id' => 'is-final', 'value' => 0]) ?>
-            <button type="button" id="btn-finalize" class="btn btn-outline-success btn-sm">
+            <?= $this->Form->hidden('is_final', ['id' => 'is-final', 'value' => $__isFinal ? 1 : 0]) ?>
+            <button type="button" id="btn-finalize" class="btn btn-outline-success btn-sm" <?= $__isEdit ? 'disabled' : '' ?>>
               <i class="ri-check-double-line me-1"></i> Zapłacono całość (ustaw pozostałą kwotę)
             </button>
-            <small class="text-muted">Ustawi kwotę zaliczki na pozostałą do rozliczenia i oznaczy dokument jako końcowy.</small>
-            <span id="final-badge" class="badge bg-success" style="display:none;">Faktura końcowa</span>
+            <small class="text-muted"><?= $__isEdit ? 'W trybie edycji nie przełączamy typu dokumentu; możesz ręcznie skorygować kwotę.' : 'Ustawi kwotę zaliczki na pozostałą do rozliczenia i oznaczy dokument jako końcowy.' ?></small>
+            <span id="final-badge" class="badge bg-success" style="<?= $__isFinal ? '' : 'display:none;' ?>">Faktura końcowa</span>
           </div>
         </div>
 
@@ -116,7 +128,7 @@ $this->assign('title', 'Faktura zaliczkowa');
             </small>
           </div>
           <div class="col-md-4">
-            <?= $this->Form->control('date', ['type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'value' => date('Y-m-d')]) ?>
+            <?= $this->Form->control('date', ['type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'value' => $invoice->isNew() ? date('Y-m-d') : ($invoice->date ? $invoice->date->format('Y-m-d') : date('Y-m-d'))]) ?>
             <small class="text-muted">&nbsp;</small>
           </div>
           <div class="col-md-4">
@@ -125,7 +137,7 @@ $this->assign('title', 'Faktura zaliczkowa');
               'label' => 'Termin płatności',
               'class' => 'form-control',
               'id' => 'payment-date',
-              'value' => date('Y-m-d', strtotime('+7 days'))
+              'value' => $invoice->isNew() ? date('Y-m-d', strtotime('+7 days')) : ($invoice->paymentdate ? $invoice->paymentdate->format('Y-m-d') : date('Y-m-d', strtotime('+7 days')))
             ]) ?>
             <small class="text-muted">Możesz zmienić domyślny termin (7 dni).</small>
           </div>
@@ -195,6 +207,8 @@ $this->assign('title', 'Faktura zaliczkowa');
 
 <script>
 (function(){
+  var isEdit = <?= json_encode($__isEdit) ?>;
+  var currentIsFinal = <?= json_encode($__isFinal) ?>;
   var csrf = $('meta[name="csrfToken"]').attr('content') || '';
   var searchUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"proformaSearch","_ext"=>"json"]) ?>';
   var detailsUrlBase = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"proformaDetails"]) ?>';
@@ -211,6 +225,10 @@ $this->assign('title', 'Faktura zaliczkowa');
   var finalExists = false;
 
   function setFormLocked(locked){
+    if (isEdit) {
+      // W edycji nie blokujemy formularza na podstawie istnienia końcowej
+      return;
+    }
     var $form = $('form');
     var $controls = $form.find('input, select, textarea, button');
     // leave proforma select enabled to allow switching offers
@@ -280,34 +298,47 @@ $this->assign('title', 'Faktura zaliczkowa');
       .on('select2:clear', function(){ updateNumberHint(); });
   }
 
-  function loadDetails(id){
+  function loadDetails(id, preserveExisting){
     $.ajax({ url: detailsUrlBase + '/' + encodeURIComponent(id) + '.json', method:'GET', headers:{ 'Accept':'application/json' } })
       .done(function(res){
         if (!res || !res.success) return;
         var p = res.proforma || {};
-  // currency
-        $('#currency').val(p.currency||'PLN');
-  finalExists = !!p.final_exists;
+        // currency
+        if (!isEdit && (p.currency||'')) {
+          $('#currency').val(p.currency||'PLN');
+        }
+
+        finalExists = !!p.final_exists;
         // totals and remaining
         proformaTotal = parseFloat(p.total||0) || 0;
         advancesTotal = parseFloat(p.advances_total||0) || 0;
         remainingTotal = Math.max(0, proformaTotal - advancesTotal);
-        if (remainingTotal > 0) {
-          $('[name="advance_gross"]').val(remainingTotal.toFixed(2));
+
+        if (!isEdit && !preserveExisting) {
+          if (remainingTotal > 0) {
+            $('[name="advance_gross"]').val(remainingTotal.toFixed(2));
+          } else {
+            $('[name="advance_gross"]').val('0.00');
+          }
+          $('#is-final').val(0); // nie oznaczaj automatycznie jako końcowej
+          $('#final-badge').hide();
+          // finalize button + global lockout
+          $('#btn-finalize').prop('disabled', !!finalExists);
+          if (finalExists) {
+            $('#final-lockout').html('<i class="ri-error-warning-line me-1"></i> Faktura końcowa została już wystawiona dla tej oferty. Formularz zablokowany.').show();
+            setFormLocked(true);
+          } else {
+            $('#final-lockout').hide().empty();
+            setFormLocked(false);
+          }
         } else {
-          $('[name="advance_gross"]').val('0.00');
+          // edit mode: tylko informacyjnie
+          $('#final-lockout').hide().empty();
+          if (currentIsFinal) {
+            $('#is-final').val(1);
+            $('#final-badge').show();
+          }
         }
-  $('#is-final').val(0); // nie oznaczaj automatycznie jako końcowej
-  $('#final-badge').hide();
-  // finalize button + global lockout
-  $('#btn-finalize').prop('disabled', !!finalExists);
-  if (finalExists) {
-    $('#final-lockout').html('<i class="ri-error-warning-line me-1"></i> Faktura końcowa została już wystawiona dla tej oferty. Formularz zablokowany.').show();
-    setFormLocked(true);
-  } else {
-    $('#final-lockout').hide().empty();
-    setFormLocked(false);
-  }
         recompute();
         // summary
         var html = ''+
@@ -414,19 +445,21 @@ $this->assign('title', 'Faktura zaliczkowa');
       $save.prop('disabled', false);
     }
 
-    // Auto-mark final when equal to remaining (and > 0)
-    if (!overpay && remainingTotal > 0) {
-      var equalRemaining = (Math.abs(gross - remainingTotal) <= 0.005 && gross > 0);
-      if (equalRemaining && !finalExists) {
-        $('#is-final').val(1);
-        $('#final-badge').show();
-        ensureFinalSeries();
-      } else {
-        // Jeżeli kwota nie jest równa pozostałej — traktuj jako zaliczkową
-        $('#is-final').val(0);
-        $('#final-badge').hide();
-        // Jeśli końcowa już istnieje — nie pozwalaj oznaczyć jako końcową (utrzymujemy 0)
-        ensureAdvanceSeries();
+    if (!isEdit) {
+      // Auto-mark final when equal to remaining (and > 0)
+      if (!overpay && remainingTotal > 0) {
+        var equalRemaining = (Math.abs(gross - remainingTotal) <= 0.005 && gross > 0);
+        if (equalRemaining && !finalExists) {
+          $('#is-final').val(1);
+          $('#final-badge').show();
+          ensureFinalSeries();
+        } else {
+          // Jeżeli kwota nie jest równa pozostałej — traktuj jako zaliczkową
+          $('#is-final').val(0);
+          $('#final-badge').hide();
+          // Jeśli końcowa już istnieje — nie pozwalaj oznaczyć jako końcową (utrzymujemy 0)
+          ensureAdvanceSeries();
+        }
       }
     }
   }
@@ -464,6 +497,9 @@ $this->assign('title', 'Faktura zaliczkowa');
 
   // Finalization button
   $('#btn-finalize').on('click', function(){
+    if (isEdit) {
+      return;
+    }
     if (finalExists) {
       showToast('Końcowa już wystawiona — nie można utworzyć kolejnej.', 'warning');
       return;
@@ -475,6 +511,27 @@ $this->assign('title', 'Faktura zaliczkowa');
       recompute();
       ensureFinalSeries();
       showToast('Ustawiono pełne rozliczenie — przełączono serię na końcową.', 'success');
+    }
+  });
+
+  // Init for edit: if proforma already set, load details and preselect
+  $(function(){
+    var pid = $('#proforma-id').val();
+    if (pid) {
+      loadDetails(pid, true);
+      // try to show it as selected in select2
+      try {
+        $.ajax({ url: detailsUrlBase + '/' + encodeURIComponent(pid) + '.json', method:'GET', headers:{ 'Accept':'application/json' } })
+          .done(function(res){
+            var p = (res && res.success) ? (res.proforma||{}) : {};
+            var label = (p.fullnumber || p.id || pid);
+            var opt = new Option(label, pid, true, true);
+            $('#proforma-select').append(opt).trigger('change');
+          });
+      } catch(_){ }
+    }
+    if (currentIsFinal) {
+      $('#final-badge').show();
     }
   });
 

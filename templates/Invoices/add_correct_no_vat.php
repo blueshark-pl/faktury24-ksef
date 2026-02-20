@@ -2219,7 +2219,7 @@ $('#gus-fetch-btn').on('click', function(){
   $(document).on('click', '.contractor-menu .action-open-catalog', function(e){ e.preventDefault(); openCatalog(); });
 
   // Prefill z oryginału: kontrahent + pozycje
-  <?php if (!empty($original)): ?>
+  <?php if (!empty($original) && empty($isEdit)): ?>
     try {
       var d = {
         contractor: {

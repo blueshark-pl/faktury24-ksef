@@ -456,7 +456,7 @@ $gtuSelectHtml .= '</select>';
                 </div>
               </div>
 
-                <?php if (isset($original)): ?>
+        				<?php if (isset($original) && empty($isEdit)): ?>
                 <?php
                   // Normalize original contractor to plain array for JS
                   $origCtrArr = null;

@@ -1755,11 +1755,25 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
      */
     public function edit($id = null)
     {
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
         // Załaduj fakturę z pozycjami i snapshotem kontrahenta
         $invoice = $this->Invoices->get($id, contain: [
             'InvoiceContractors',
             'InvoiceContents' => ['Vats']
         ]);
+
+        // Ujednolić property dla szablonów (część widoków używa invoice_contractor)
+        try {
+            if (empty($invoice->invoice_contractor) && !empty($invoice->invoice_contractors) && is_iterable($invoice->invoice_contractors)) {
+                $first = null;
+                foreach ($invoice->invoice_contractors as $x) { $first = $x; break; }
+                if ($first) {
+                    $invoice->set('invoice_contractor', $first);
+                }
+            }
+        } catch (\Throwable) { /* ignore */ }
 
         $kind = strtolower((string)($invoice->type ?? ''));
         $this->set('kind', $kind);
@@ -1772,13 +1786,71 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'novat'    => 'add_no_vat',
             'proforma' => 'add_proforma',
             'margin'   => 'add_margin',
+            'advance'  => 'add_advance',
+            'final'    => 'add_advance',
         ];
-        if (isset($templateMap[$kind])) {
+        if ($kind === 'correction') {
+            $original = null;
+            try {
+                $origId = $invoice->parent_id ?? null;
+                if (!empty($origId) && !empty($companyId)) {
+                    $original = $this->Invoices->find()
+                        ->contain(['InvoiceContractors','InvoiceContents' => ['Vats']])
+                        ->where(['Invoices.company_id' => $companyId, 'Invoices.id' => $origId])
+                        ->first();
+                }
+            } catch (\Throwable) {
+                $original = null;
+            }
+
+            if (!empty($original)) {
+                // normalizacja invoice_contractor dla szablonów korekt
+                try {
+                    if (empty($original->invoice_contractor) && !empty($original->invoice_contractors) && is_iterable($original->invoice_contractors)) {
+                        $first = null;
+                        foreach ($original->invoice_contractors as $x) { $first = $x; break; }
+                        if ($first) {
+                            $original->set('invoice_contractor', $first);
+                        }
+                    }
+                } catch (\Throwable) { /* ignore */ }
+                $this->set('original', $original);
+            }
+
+            $originalType = strtolower((string)($original->type ?? ''));
+            if ($originalType === 'novat') {
+                $tpl = 'add_correct_no_vat';
+            } elseif ($originalType === 'margin') {
+                $tpl = 'add_correct_margin';
+            } elseif ($originalType === 'currency') {
+                $tpl = 'add_correct_currency';
+            } else {
+                $tpl = 'add_correct';
+            }
+            $tplPath = ROOT . DS . 'templates' . DS . 'Invoices' . DS . $tpl . '.php';
+            if (is_file($tplPath)) {
+                $this->viewBuilder()->setTemplate($tpl);
+            }
+        } elseif (isset($templateMap[$kind])) {
             $tpl = $templateMap[$kind];
             $tplPath = ROOT . DS . 'templates' . DS . 'Invoices' . DS . $tpl . '.php';
             if (is_file($tplPath)) {
                 $this->viewBuilder()->setTemplate($tpl);
             }
+        }
+
+        // Prefill pól specyficznych dla zaliczki/końcowej (szablon add_advance ma osobne pola)
+        if (in_array($kind, ['advance','final'], true)) {
+            try {
+                $invoice->set('proforma_id', $invoice->parent_id ?? null);
+                $invoice->set('advance_gross', (float)($invoice->total ?? 0));
+                $firstVat = null;
+                if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
+                    foreach ($invoice->invoice_contents as $it) { $firstVat = $it->vat_code_id ?? null; break; }
+                }
+                $invoice->set('advance_vat_code_id', $firstVat);
+                $invoice->set('is_final', $kind === 'final' ? 1 : 0);
+            } catch (\Throwable) { /* ignore */ }
         }
 
         // Słowniki VAT do widoku
@@ -1800,7 +1872,127 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $contents = [];
             $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
 
-            if (($invoice->type ?? null) === 'margin') {
+            if (in_array($kind, ['advance','final'], true)) {
+                // Edycja zaliczki/końcowej: pozycja wyliczana z pól formularza add_advance
+                $proformaId = $data['proforma_id'] ?? ($invoice->parent_id ?? null);
+                if (empty($proformaId)) {
+                    $this->Flash->error('Wybierz proformę/ofertę do powiązania zaliczki.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+                $advanceGross = $num($data['advance_gross'] ?? 0);
+                if ($advanceGross <= 0) {
+                    $this->Flash->error('Kwota zaliczki musi być większa od zera.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
+                // Pobierz proformę (weryfikacja company_id jeśli dostępne)
+                $Proformas = $this->fetchTable('Invoices');
+                $proformaQ = $Proformas->find()->contain(['InvoiceContractors'])
+                    ->where(['Invoices.id' => $proformaId, 'Invoices.type' => 'proforma']);
+                if (!empty($companyId)) {
+                    $proformaQ->where(['Invoices.company_id' => $companyId]);
+                }
+                $proforma = $proformaQ->first();
+                if (!$proforma) {
+                    $this->Flash->error('Nie znaleziono wskazanej proformy/oferty.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
+                // Suma innych dokumentów do tej proformy (bez aktualnie edytowanego)
+                $sumAdvances = (float)($Proformas->find()
+                    ->select(['s' => $Proformas->find()->func()->sum('total')])
+                    ->where([
+                        'parent_id' => $proformaId,
+                        'type IN' => ['advance','final'],
+                        'id !=' => $invoice->id,
+                    ] + (!empty($companyId) ? ['company_id' => $companyId] : []))
+                    ->enableHydration(false)
+                    ->first()['s'] ?? 0.0);
+
+                $hasFinal = (bool)$Proformas->find()
+                    ->select(['id'])
+                    ->where([
+                        'parent_id' => $proformaId,
+                        'type' => 'final',
+                        'id !=' => $invoice->id,
+                    ] + (!empty($companyId) ? ['company_id' => $companyId] : []))
+                    ->limit(1)
+                    ->count();
+
+                $remainingToSettle = round(max(0.0, ((float)$proforma->total) - $sumAdvances), 2);
+                $isFinal = ($kind === 'final');
+
+                if ($hasFinal && !$isFinal) {
+                    $this->Flash->error('Faktura końcowa została już wystawiona dla tej oferty.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+                if ($remainingToSettle <= 0.0) {
+                    $this->Flash->error('Proforma została już w całości rozliczona.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
+                $vatCodeId = $data['advance_vat_code_id'] ?? null;
+                if (!$vatCodeId) {
+                    $this->Flash->error('Wybierz stawkę VAT dla zaliczki.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
+                $rate   = (float)($vatRatesMap[$vatCodeId] ?? 0);
+                $nettoA = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
+                $taxA   = round($advanceGross - $nettoA, 2);
+                $bruttoA = round($advanceGross, 2);
+
+                if (!$isFinal && ($bruttoA - $remainingToSettle > 0.01)) {
+                    $this->Flash->error('Kwota zaliczki przekracza pozostałą do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+                if ($isFinal && (abs($bruttoA - $remainingToSettle) > 0.01)) {
+                    $this->Flash->error('Dla faktury końcowej kwota musi równać się pozostałej do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
+                $sumNet   = $nettoA;
+                $sumTax   = $taxA;
+                $sumGross = $bruttoA;
+
+                $lineNamePrefix = $isFinal ? 'Faktura końcowa do oferty ' : 'Zaliczka do oferty ';
+                $contents[] = [
+                    'vat_code_id'      => $vatCodeId,
+                    'name'             => $lineNamePrefix . (string)($proforma->fullnumber ?? $proforma->id),
+                    'product_desc'     => '',
+                    'quantity'         => 1,
+                    'unit'             => 'szt.',
+                    'price'            => $nettoA,
+                    'discount_percent' => 0,
+                    'netto'            => $nettoA,
+                    'brutto'           => $bruttoA,
+                    'gtu_code'         => '',
+                ];
+
+                // Bind parent proforma + currency from proforma
+                $data['parent_id'] = $proforma->id;
+                $data['currency'] = (string)($proforma->currency ?? ($data['currency'] ?? $invoice->currency ?? 'PLN'));
+                // Snapshot nabywcy: jeśli brak w formularzu, uzupełnij z proformy
+                if (empty($data['invoice_contractor']) || !is_array($data['invoice_contractor'])) {
+                    $data['invoice_contractor'] = [
+                        'name' => (string)($proforma->invoice_contractor->name ?? ''),
+                        'nip' => (string)($proforma->invoice_contractor->nip ?? ''),
+                        'street' => (string)($proforma->invoice_contractor->street ?? ''),
+                        'zip' => (string)($proforma->invoice_contractor->zip ?? ''),
+                        'city' => (string)($proforma->invoice_contractor->city ?? ''),
+                        'country' => (string)($proforma->invoice_contractor->country ?? 'PL'),
+                        'account_number' => (string)($proforma->invoice_contractor->account_number ?? ''),
+                    ];
+                }
+            } elseif (($invoice->type ?? null) === 'margin') {
                 // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
                 $totalSales = 0.0; $totalPurchase = 0.0;
                 foreach ($items as $row) {
@@ -1953,6 +2145,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             }
             foreach (['number','day','month','year','day_year','invoice_series_id'] as $k) {
                 if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
+            }
+
+            // Powiązanie z proformą przy zaliczce/końcowej
+            if (in_array($kind, ['advance','final'], true) && array_key_exists('parent_id', $data)) {
+                $invoicePatch['parent_id'] = $data['parent_id'];
             }
 
             $conn = $this->Invoices->getConnection();

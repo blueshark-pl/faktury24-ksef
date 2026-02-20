@@ -74,7 +74,7 @@ $gtuSelectHtml .= '</select>';
   </div>
 <?php endif; ?>
 
-<?php if (!empty($original)): ?>
+<?php if (!empty($original) && empty($isEdit)): ?>
 <script>
   window._originalPrefill = {
     contractor: {
