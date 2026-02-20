@@ -1941,6 +1941,56 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $this->set(compact('invoice', 'companies', 'parentInvoices', 'vats', 'vatRatesMap'));
     }
 
+    public function editVat($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editCurrency($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editNoVat($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editProforma($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editAdvance($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editCorrection($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editMargin($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editInternal($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editInternalEvidence($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
+    public function editOss($id = null)
+    {
+        return $this->setAction('edit', $id);
+    }
+
     /**
      * Delete method
      *

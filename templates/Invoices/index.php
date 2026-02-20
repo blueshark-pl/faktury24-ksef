@@ -746,10 +746,25 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                     $__ksefNonEditable = ['queued', 'sent', 'accepted', 'approved'];
                     $__ksefSentOk = (preg_match('/^\d{3}$/', $__ksefStatusForEdit) === 1 && (int)$__ksefStatusForEdit === 200);
                     $__invoiceEditable = ($__ksefNumForEdit === '') && !$__ksefSentOk && !in_array($__ksefStatusKey, $__ksefNonEditable, true);
+
+                    $__typeKeyForEdit = strtolower((string)($inv->type ?? ''));
+                    $__editActionByType = [
+                      'vat' => 'editVat',
+                      'currency' => 'editCurrency',
+                      'novat' => 'editNoVat',
+                      'proforma' => 'editProforma',
+                      'advance' => 'editAdvance',
+                      'correction' => 'editCorrection',
+                      'margin' => 'editMargin',
+                      'internal' => 'editInternal',
+                      'internalevidence' => 'editInternalEvidence',
+                      'oss' => 'editOss',
+                    ];
+                    $__editAction = $__editActionByType[$__typeKeyForEdit] ?? 'edit';
                   ?>
                   <?php if ($__invoiceEditable): ?>
                   <li>
-                    <?= $this->Html->link('<i class="ri-edit-2-line me-2"></i> Edytuj', ['action' => 'edit', $inv->id], [
+                    <?= $this->Html->link('<i class="ri-edit-2-line me-2"></i> Edytuj', ['action' => $__editAction, $inv->id], [
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Edytuj'
                     ]) ?>
                   </li>
