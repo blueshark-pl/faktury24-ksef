@@ -32,6 +32,57 @@ class InvoicesController extends AppController
     private const FORM_CODE_SYSTEM  = 'FA (3)';
     private const FORM_SCHEMA_VER   = '1-0E';
     private const FORM_VARIANT      = '3';
+
+    private function rowHasUserData(array $row): bool
+    {
+        $keys = ['name', 'quantity', 'price', 'discount_percent', 'vat_code_id', 'gtu_code', 'product_desc', 'purchase_price'];
+        foreach ($keys as $k) {
+            if (!array_key_exists($k, $row)) {
+                continue;
+            }
+            $v = $row[$k];
+            if (is_string($v) && trim($v) !== '') {
+                return true;
+            }
+            if (is_numeric($v) && (float)$v !== 0.0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hydrateInvoiceDraftFromData(Invoice $invoice, array $data): void
+    {
+        $ctr = (array)($data['invoice_contractor'] ?? []);
+        if (!empty($ctr)) {
+            $invoice->set('invoice_contractor', (object)$ctr);
+        }
+
+        $items = (array)($data['items'] ?? []);
+        if (!empty($items)) {
+            $prefill = [];
+            foreach ($items as $row) {
+                $r = (array)$row;
+                if (!$this->rowHasUserData($r)) {
+                    continue;
+                }
+                $prefill[] = (object)[
+                    'name'             => (string)($r['name'] ?? ''),
+                    'quantity'         => $r['quantity'] ?? 1,
+                    'price'            => $r['price'] ?? 0,
+                    'discount_percent' => $r['discount_percent'] ?? 0,
+                    'vat_code_id'      => $r['vat_code_id'] ?? null,
+                    'gtu_code'         => (string)($r['gtu_code'] ?? ''),
+                    'product_desc'     => (string)($r['product_desc'] ?? ''),
+                    'purchase_price'   => $r['purchase_price'] ?? 0,
+                    'price_mode'       => (string)($r['price_mode'] ?? 'net'),
+                ];
+            }
+            $invoice->set('invoice_contents', $prefill);
+        }
+    }
+
     /**
      * Validate invoice form data via AJAX (no save)
      * POST /invoices/validate-ajax
@@ -819,6 +870,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         if ($this->request->is('post')) {
         $data = $this->request->getData();
+        $this->hydrateInvoiceDraftFromData($invoice, (array)$data);
 
         // Ensure parent binding for corrections
         if ($kind === 'correction') {
@@ -860,7 +912,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $totalSales = 0.0; $totalPurchase = 0.0;
             foreach ($items as $idx => $row) {
                 $name = trim((string)($row['name'] ?? ''));
-                if ($name === '') continue;
+                if ($name === '') {
+                    if ($this->rowHasUserData((array)$row)) {
+                        throw new \RuntimeException('Pozycja #' . ((int)$idx + 1) . ': uzupełnij nazwę produktu/usługi.');
+                    }
+                    continue;
+                }
 
                 $qty        = $num($row['quantity'] ?? 0);
                 $saleUnit   = $num($row['price'] ?? 0);           // brutto/szt.
@@ -1064,9 +1121,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
             }
         } else {
-            foreach ($items as $row) {
+            foreach ($items as $idx => $row) {
                 $name = trim((string)($row['name'] ?? ''));
-                if ($name === '') continue;
+                if ($name === '') {
+                    if ($this->rowHasUserData((array)$row)) {
+                        throw new \RuntimeException('Pozycja #' . ((int)$idx + 1) . ': uzupełnij nazwę produktu/usługi.');
+                    }
+                    continue;
+                }
 
                 $qty       = $num($row['quantity'] ?? 0);
                 $price     = $num($row['price'] ?? 0);
@@ -1861,6 +1923,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         if ($this->request->is(['patch', 'post', 'put'])) {
             $data = (array)$this->request->getData();
+            $this->hydrateInvoiceDraftFromData($invoice, $data);
 
             $num = static function($val): float {
                 $s = str_replace([' ', ','], ['', '.'], (string)$val);
@@ -1995,9 +2058,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } elseif (($invoice->type ?? null) === 'margin') {
                 // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
                 $totalSales = 0.0; $totalPurchase = 0.0;
-                foreach ($items as $row) {
+                foreach ($items as $idx => $row) {
                     $name = trim((string)($row['name'] ?? ''));
-                    if ($name === '') { continue; }
+                    if ($name === '') {
+                        if ($this->rowHasUserData((array)$row)) {
+                            throw new \RuntimeException('Pozycja #' . ((int)$idx + 1) . ': uzupełnij nazwę produktu/usługi.');
+                        }
+                        continue;
+                    }
 
                     $qty      = $num($row['quantity'] ?? 0);
                     $saleUnit = $num($row['price'] ?? 0);          // brutto/szt.
@@ -2030,9 +2098,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $sumGross = round($totalSales, 2);
                 $sumNet   = round($sumGross - $sumTax, 2);
             } else {
-                foreach ($items as $row) {
+                foreach ($items as $idx => $row) {
                     $name = trim((string)($row['name'] ?? ''));
-                    if ($name === '') { continue; }
+                    if ($name === '') {
+                        if ($this->rowHasUserData((array)$row)) {
+                            throw new \RuntimeException('Pozycja #' . ((int)$idx + 1) . ': uzupełnij nazwę produktu/usługi.');
+                        }
+                        continue;
+                    }
                     $qty   = $num($row['quantity'] ?? 0);
                     $price = $num($row['price'] ?? 0);
                     $disc  = $num($row['discount_percent'] ?? 0);

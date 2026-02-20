@@ -2409,7 +2409,20 @@ $('#gus-fetch-btn').on('click', function(){
   });
 
   // ====== WALIDACJA: min 1 wiersz ======
+  function syncItemNamesBeforeSubmit(){
+    $itemsBody.find('tr').each(function(){
+      var $tr = $(this);
+      if (!$tr.find('.item-name-hidden').length) return;
+      var $nameHidden = $tr.find('.item-name-hidden');
+      var current = ($nameHidden.val() || '').toString().trim();
+      if (current !== '') return;
+      var selectedText = ($tr.find('.item-product-select option:selected').text() || '').toString().trim();
+      if (!selectedText || selectedText === 'Wybierz lub wpisz produkt') return;
+      $nameHidden.val(selectedText);
+    });
+  }
   $form.on('submit', function (e) {
+    syncItemNamesBeforeSubmit();
     var rows = $itemsBody.find('tr').length - 2;
     if (rows < 1) { e.preventDefault(); e.stopPropagation(); toast('Dodaj co najmniej jedną pozycję.'); return false; }
     $form.addClass('was-validated');
