@@ -739,6 +739,21 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Podgląd'
                     ]) ?>
                   </li>
+                  <?php
+                    $__ksefNumForEdit = trim((string)($inv->ksef_number ?? ''));
+                    $__ksefStatusForEdit = trim((string)($inv->ksef_status ?? ''));
+                    $__ksefStatusKey = strtolower($__ksefStatusForEdit);
+                    $__ksefNonEditable = ['queued', 'sent', 'accepted', 'approved'];
+                    $__ksefSentOk = (preg_match('/^\d{3}$/', $__ksefStatusForEdit) === 1 && (int)$__ksefStatusForEdit === 200);
+                    $__invoiceEditable = ($__ksefNumForEdit === '') && !$__ksefSentOk && !in_array($__ksefStatusKey, $__ksefNonEditable, true);
+                  ?>
+                  <?php if ($__invoiceEditable): ?>
+                  <li>
+                    <?= $this->Html->link('<i class="ri-edit-2-line me-2"></i> Edytuj', ['action' => 'edit', $inv->id], [
+                      'class' => 'dropdown-item', 'escape' => false, 'title' => 'Edytuj'
+                    ]) ?>
+                  </li>
+                  <?php endif; ?>
                   <li>
                     <?= $this->Html->link('<i class="ri-printer-line me-2"></i> Drukuj PDF', ['action' => 'print', $inv->id], [
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF', 'target' => '_blank'
