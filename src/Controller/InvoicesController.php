@@ -124,6 +124,102 @@ class InvoicesController extends AppController
         }
     }
 
+    private function validateSendDateWindow(Invoice $invoice): ?string
+    {
+        try {
+            $issueDateRaw = $invoice->date;
+            if ($issueDateRaw === null || $issueDateRaw === '') {
+                return 'Brak daty wystawienia (P_1).';
+            }
+            $issueDate = new \DateTimeImmutable(is_object($issueDateRaw) && method_exists($issueDateRaw, 'format')
+                ? $issueDateRaw->format('Y-m-d')
+                : (string)$issueDateRaw);
+            $minDate = (new \DateTimeImmutable('today'))->modify('-1 day');
+            if ($issueDate < $minDate) {
+                return 'Data faktury (P_1) musi być nie wcześniejsza niż wczoraj (' . $minDate->format('Y-m-d') . ').';
+            }
+        } catch (\Throwable) {
+            return 'Nie udało się zweryfikować daty faktury (P_1).';
+        }
+
+        return null;
+    }
+
+    private function ensureInvoiceNumberForSend(Invoice $invoice, string $companyId): void
+    {
+        $fullnumber = trim((string)($invoice->fullnumber ?? ''));
+        if ($fullnumber !== '') {
+            return;
+        }
+
+        $seriesId = (string)($invoice->invoice_series_id ?? '');
+        if ($seriesId === '') {
+            throw new \RuntimeException('Brak przypisanej serii numeracji dla dokumentu.');
+        }
+
+        $issueDateRaw = $invoice->date;
+        $issueDate = is_object($issueDateRaw) && method_exists($issueDateRaw, 'format')
+            ? $issueDateRaw->format('Y-m-d')
+            : (string)$issueDateRaw;
+        if ($issueDate === '') {
+            $issueDate = date('Y-m-d');
+        }
+
+        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+        $series = $InvoiceSeries->find()
+            ->contain(['InvoiceSeriesPeriods'])
+            ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
+            ->first();
+        if (!$series) {
+            throw new \RuntimeException('Nie znaleziono serii numeracji dla dokumentu.');
+        }
+
+        $dateObject = new \DateTimeImmutable($issueDate);
+        $year = (int)$dateObject->format('Y');
+        $month = (int)$dateObject->format('m');
+
+        $where = [
+            'company_id' => $companyId,
+            'invoice_series_id' => $series->id,
+            'fullnumber IS NOT' => null,
+            'id !=' => $invoice->id,
+        ];
+
+        $periodName = (string)($series->invoice_series_period->name ?? '');
+        if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
+            $where['year'] = $year;
+            $where['month'] = $month;
+        } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
+            $where['year'] = $year;
+        }
+
+        $lastInvoice = $this->Invoices->find()
+            ->where($where)
+            ->order(['number' => 'DESC', 'id' => 'DESC'])
+            ->first();
+
+        if ($lastInvoice) {
+            $extractedNumber = !empty($lastInvoice->number)
+                ? (int)$lastInvoice->number
+                : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
+            $nextNumber = $extractedNumber + 1;
+        } else {
+            $nextNumber = (int)($series->starting_number ?: 1);
+        }
+
+        $template = (string)($series->series_template ?: '[numer]');
+        $invoice->set('fullnumber', $this->formatInvoicePattern($template, $nextNumber, $issueDate));
+        $invoice->set('number', $nextNumber);
+        $invoice->set('day', (int)$dateObject->format('d'));
+        $invoice->set('month', (int)$dateObject->format('m'));
+        $invoice->set('year', (int)$dateObject->format('Y'));
+        $invoice->set('day_year', (int)$dateObject->format('z') + 1);
+
+        if (!$this->Invoices->save($invoice)) {
+            throw new \RuntimeException('Nie udało się nadać numeru dokumentu przed wysyłką do KSeF.');
+        }
+    }
+
     /**
      * Validate invoice form data via AJAX (no save)
      * POST /invoices/validate-ajax
@@ -1819,6 +1915,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
             // Opcjonalna ścieżka: po zapisie wyślij od razu do KSeF z przesłanego pliku XML (FA (3))
             if ($doSend) {
+                $dateError = $this->validateSendDateWindow($invoice);
+                if ($dateError !== null) {
+                    $this->Flash->error($dateError . ' Wysyłka do KSeF została zablokowana.');
+                    return $this->redirect(['action' => 'view', $invoice->id]);
+                }
+
+                $invoice->set('workflow_status', 'sending');
+                $Invoices->save($invoice);
+
                 $envRaw = (string)($data['ksef_env'] ?? 'test');
                 $environment = ($envRaw === 'prod') ? 'prod' : 'test';
 
@@ -1959,6 +2064,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'InvoiceContractors',
             'InvoiceContents' => ['Vats']
         ]);
+
+        $workflowStatus = strtolower(trim((string)($invoice->workflow_status ?? '')));
+        if (in_array($workflowStatus, ['sending', 'sent'], true)) {
+            $this->Flash->warning('Ten dokument jest już wysłany do KSeF i nie może być edytowany. Wystaw korektę.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
 
         // Ujednolić property dla szablonów (część widoków używa invoice_contractor)
         try {
@@ -3778,6 +3889,22 @@ private function makeClient(string $environment): KsefClient
         }
 
         $invoice = $this->Invoices->get($id, contain: ['InvoiceContractors','InvoiceCompanyDetails','InvoiceContents' => ['Vats'], 'Companies']);
+
+        $dateError = $this->validateSendDateWindow($invoice);
+        if ($dateError !== null) {
+            $this->Flash->error($dateError . ' Wysyłka do KSeF została zablokowana.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
+
+        try {
+            $this->ensureInvoiceNumberForSend($invoice, $companyId);
+        } catch (\Throwable $e) {
+            $this->Flash->error($e->getMessage());
+            return $this->redirect(['action' => 'view', $id]);
+        }
+
+        $invoice->set('workflow_status', 'sending');
+        $this->Invoices->save($invoice);
 
         // 1) XML z uploadu
         $xml = null;

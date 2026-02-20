@@ -747,10 +747,12 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                   <?php
                     $__ksefNumForEdit = trim((string)($inv->ksef_number ?? ''));
                     $__ksefStatusForEdit = trim((string)($inv->ksef_status ?? ''));
+                    $__workflowStatusForEdit = strtolower(trim((string)($inv->workflow_status ?? '')));
                     $__ksefStatusKey = strtolower($__ksefStatusForEdit);
                     $__ksefNonEditable = ['queued', 'sent', 'accepted', 'approved'];
                     $__ksefSentOk = (preg_match('/^\d{3}$/', $__ksefStatusForEdit) === 1 && (int)$__ksefStatusForEdit === 200);
-                    $__invoiceEditable = ($__ksefNumForEdit === '') && !$__ksefSentOk && !in_array($__ksefStatusKey, $__ksefNonEditable, true);
+                    $__workflowLocked = in_array($__workflowStatusForEdit, ['sending', 'sent'], true);
+                    $__invoiceEditable = ($__ksefNumForEdit === '') && !$__ksefSentOk && !in_array($__ksefStatusKey, $__ksefNonEditable, true) && !$__workflowLocked;
 
                     $__typeKeyForEdit = strtolower((string)($inv->type ?? ''));
                     $__editActionByType = [

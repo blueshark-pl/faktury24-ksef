@@ -54,8 +54,8 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
 
 ### Etap 3 (finalizacja i wysyłka)
 
-- [ ] Akcja `Zatwierdź i wyślij do KSeF` z potwierdzeniem blokady edycji.
-- [ ] Przy wysyłce:
+- [x] Akcja `Zatwierdź i wyślij do KSeF` z potwierdzeniem blokady edycji.
+- [x] Przy wysyłce:
   - nadanie lokalnego numeru faktury,
   - przejście do statusu `sending` / `sent` / `error`,
   - blokada edycji treści (zmiany wyłącznie korektą).
