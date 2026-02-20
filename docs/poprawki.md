@@ -45,12 +45,12 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
 
 ### Etap 2 (robocze faktury)
 
-- [ ] Nowy status dokumentu: `draft` (robocza, bez numeru faktury i bez numeru KSeF).
-- [ ] Pole: `planned_ksef_send_at` (data planowanej wysyłki).
-- [ ] Lista roboczych:
+- [x] Nowy status dokumentu: `draft` (robocza, bez numeru faktury i bez numeru KSeF).
+- [x] Pole: `planned_ksef_send_at` (data planowanej wysyłki).
+- [x] Lista roboczych:
   - kolumny: status, data planowanej wysyłki, kontrahent, kwota,
   - szybkie akcje: `Edytuj`, `Usuń`, `Wyślij teraz`, `Zaplanuj`.
-- [ ] Banner po logowaniu: `Masz X roboczych faktur niewysłanych do KSeF` + link.
+- [x] Banner po logowaniu: `Masz X roboczych faktur niewysłanych do KSeF` + link.
 
 ### Etap 3 (finalizacja i wysyłka)
 

@@ -55,6 +55,25 @@ class InvoicesController extends AppController
         }
     }
 
+    private function shouldSendToKsefNow(array $data): bool
+    {
+        if ((int)($data['ksef_send'] ?? 0) === 1) {
+            return true;
+        }
+
+        return array_key_exists('save_and_send_ksef', $data);
+    }
+
+    private function nonDraftConditions(): array
+    {
+        return [
+            'OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft'],
+            ],
+        ];
+    }
+
     private function rowHasUserData(array $row): bool
     {
         $keys = ['name', 'quantity', 'price', 'discount_percent', 'vat_code_id', 'gtu_code', 'product_desc', 'purchase_price'];
@@ -368,9 +387,10 @@ public function index()
     $to       = $this->request->getQuery('to');
     $currency = $this->request->getQuery('currency');
 
-        $query = $this->Invoices->find()
+                $query = $this->Invoices->find()
             ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip']); }])
-      ->where(['Invoices.company_id' => $companyId]);
+            ->where(['Invoices.company_id' => $companyId])
+            ->where($this->nonDraftConditions());
 
     if ($q !== '') {
       $query->where(function($exp) use ($q) {
@@ -471,7 +491,7 @@ public function index()
     $yearStart = (new \DateTimeImmutable('first day of january'))->format('Y-m-d');
     $today     = (new \DateTimeImmutable('today'))->format('Y-m-d');
 
-    $base = $this->Invoices->find()->where(['company_id' => $companyId]);
+    $base = $this->Invoices->find()->where(['company_id' => $companyId])->where($this->nonDraftConditions());
 
     // daty graniczne
 $yearStart = (new \DateTimeImmutable('first day of january'))->format('Y-m-d');
@@ -509,40 +529,44 @@ $stats = [
     // rok bieżący
     'year_total'       => $sum([
                             'Invoices.company_id' => $companyId,
-                            'Invoices.date >='    => $yearStart,
+                                     'Invoices.date >='    => $yearStart,
                             'Invoices.date <='    => $today,
+                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
                          ]),
     'year_count'       => $cnt([
                             'Invoices.company_id' => $companyId,
-                            'Invoices.date >='    => $yearStart,
+                                     'Invoices.date >='    => $yearStart,
                             'Invoices.date <='    => $today,
+                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
                          ]),
     'year_paid'        => $sum([
                             'Invoices.company_id' => $companyId,
                             'Invoices.paymentstate'=> 'paid',
-                            'Invoices.date >='    => $yearStart,
+                                     'Invoices.date >='    => $yearStart,
                             'Invoices.date <='    => $today,
+                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
                          ]),
 
     // paid
-    'paid_total'       => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid']),
-    'paid_count'       => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid']),
-    'paid_avg'         => $avg(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid']),
+    'paid_total'       => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'paid_count'       => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'paid_avg'         => $avg(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
 
     // pending (unpaid/partial)
-    'pending_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']]),
-    'pending_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']]),
-    'remaining_total'  => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']], 'Invoices.remaining'),
+    'pending_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'pending_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'remaining_total'  => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]], 'Invoices.remaining'),
 
     // overdue
-    'overdue_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue']),
-    'overdue_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue']),
+    'overdue_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'overdue_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
 
     // bieżący miesiąc
     'month_paid_count' => $cnt([
                             'Invoices.company_id' => $companyId,
                             'Invoices.paymentstate'=> 'paid',
                             'Invoices.date >='    => $monthStart,
+                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
                          ]),
 
     // opcjonalnie: maks. opóźnienie w dniach (jeśli chcesz policzyć – tu zostaw 0 albo zrób osobne zapytanie)
@@ -551,6 +575,84 @@ $stats = [
 
     $this->set(compact('invoices','stats','advanceCounts','finalByProforma','advancesByProforma'));
 }
+
+    public function drafts()
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $query = $this->Invoices->find()
+            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip']); }])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.workflow_status' => 'draft',
+            ])
+            ->orderDesc('Invoices.created');
+
+        $drafts = $this->paginate($query, ['limit' => 20]);
+        $this->set(compact('drafts'));
+    }
+
+    public function sendDraftNow(string $id)
+    {
+        $this->request->allowMethod(['post']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        $invoice = $this->Invoices->find()
+            ->where(['id' => $id, 'company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            $this->Flash->error('Nie znaleziono faktury roboczej.');
+            return $this->redirect(['action' => 'drafts']);
+        }
+        if ((string)($invoice->workflow_status ?? '') !== 'draft') {
+            $this->Flash->warning('Ta faktura nie ma statusu roboczego.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
+
+        return $this->sendToKsef($id);
+    }
+
+    public function scheduleDraft(string $id)
+    {
+        $this->request->allowMethod(['post']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        $invoice = $this->Invoices->find()
+            ->where(['id' => $id, 'company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            $this->Flash->error('Nie znaleziono faktury roboczej.');
+            return $this->redirect(['action' => 'drafts']);
+        }
+        if ((string)($invoice->workflow_status ?? '') !== 'draft') {
+            $this->Flash->warning('Ta faktura nie ma statusu roboczego.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
+
+        $planned = trim((string)$this->request->getData('planned_ksef_send_at'));
+        if ($planned === '') {
+            $invoice->set('planned_ksef_send_at', null);
+            $this->Invoices->save($invoice);
+            $this->Flash->success('Usunięto datę planowanej wysyłki.');
+            return $this->redirect(['action' => 'drafts']);
+        }
+
+        try {
+            $date = new \DateTimeImmutable($planned);
+            $invoice->set('planned_ksef_send_at', $date->format('Y-m-d'));
+            $this->Invoices->save($invoice);
+            $this->Flash->success('Zapisano termin planowanej wysyłki.');
+        } catch (\Throwable) {
+            $this->Flash->error('Nieprawidłowa data planowanej wysyłki.');
+        }
+
+        return $this->redirect(['action' => 'drafts']);
+    }
 
 
     /**
@@ -892,6 +994,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         if ($this->request->is('post')) {
         $data = $this->request->getData();
+        $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
+        $doSend = $ksefModeEnabled ? $this->shouldSendToKsefNow((array)$data) : false;
+        $isDraftWorkflow = $ksefModeEnabled && !$doSend;
         $this->hydrateInvoiceDraftFromData($invoice, (array)$data);
 
         // Ensure parent binding for corrections
@@ -1261,8 +1366,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             return null;
         }
 
-        // Wygeneruj numer faktury jeśli nie podano
-        if (empty($data['fullnumber'])) {
+        // Wygeneruj numer faktury jeśli nie podano (z wyjątkiem draftu)
+        if (!$isDraftWorkflow && empty($data['fullnumber'])) {
             $issueDate = $data['date'] ?: date('Y-m-d');
             $dateObject = new \DateTime($issueDate);
             $year = $dateObject->format('Y');
@@ -1521,7 +1626,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'tax' => $tax,
             'alreadypaid' => $alreadypaid,
             'remaining' => $remaining,
-            'fullnumber' => $data['fullnumber'],
+            'fullnumber' => $isDraftWorkflow ? null : ($data['fullnumber'] ?? null),
             'currency' => $cur,
             'currency_date' => $currencyDate,
             'currency_exchange' => $currencyExchange,
@@ -1529,6 +1634,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'is_print' => false,
             'is_sent' => false,
             'is_api' => false,
+            'workflow_status' => $isDraftWorkflow ? 'draft' : 'issued',
+            'planned_ksef_send_at' => !empty($data['planned_ksef_send_at']) ? $data['planned_ksef_send_at'] : null,
             // New flags
             'is_receipt_invoice' => (!empty($data['is_receipt_invoice']) || $fpFlag) ? 1 : 0, // Faktura do paragonu (FP)
             'is_split_payment'   => !empty($data['is_split_payment']) ? 1 : 0,   // Mechanizm podzielonej płatności (MPP)
@@ -1536,7 +1643,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'receipt_number'     => $data['receipt_number'] ?? null,
             'receipt_date'       => !empty($data['receipt_date']) ? $data['receipt_date'] : null,
             // Nowe pola dla składników daty i numeru
-            'number' => $this->extractNumberFromFullnumber($data['fullnumber']),
+            'number' => (!$isDraftWorkflow && !empty($data['fullnumber'])) ? $this->extractNumberFromFullnumber((string)$data['fullnumber']) : null,
             'day' => (int) $dateObject->format('d'),
             'month' => (int) $dateObject->format('m'),
             'year' => (int) $dateObject->format('Y'),
@@ -1711,10 +1818,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $conn->commit();
 
             // Opcjonalna ścieżka: po zapisie wyślij od razu do KSeF z przesłanego pliku XML (FA (3))
-            $doSend = (int)($data['ksef_send'] ?? 0) === 1;
-            if (!$this->isKsefModeEnabled((string)$companyId)) {
-                $doSend = false;
-            }
             if ($doSend) {
                 $envRaw = (string)($data['ksef_env'] ?? 'test');
                 $environment = ($envRaw === 'prod') ? 'prod' : 'test';
@@ -1758,6 +1861,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
                         $invoice->set('ksef_desc',   trim($desc . $refs));
                         $invoice->set('ksef_number', (string)($res['ksefNumber'] ?? ''));
+                        $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
+                        $invoice->set('planned_ksef_send_at', null);
                         $Invoices->save($invoice); // best-effort
 
                         if (class_exists('Cake\\Log\\Log')) {
@@ -1770,11 +1875,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                             $this->Flash->error('Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . (string)($res['statusDesc'] ?? ''));
                         }
                     } catch (\Throwable $e) {
+                        $invoice->set('workflow_status', 'error');
+                        $Invoices->save($invoice);
                         $this->Flash->error('Błąd wysyłki do KSeF: ' . $e->getMessage());
                     }
                 }
             } else {
-                $this->Flash->success($kind === 'novat' ? 'Faktura bez VAT została utworzona.' : 'Dokument został utworzony.');
+                $this->Flash->success($isDraftWorkflow
+                    ? 'Dokument roboczy został zapisany.'
+                    : ($kind === 'novat' ? 'Faktura bez VAT została utworzona.' : 'Dokument został utworzony.'));
             }
 
             return $this->redirect(['action' => 'view', $invoice->id]);
@@ -3706,6 +3815,8 @@ private function makeClient(string $environment): KsefClient
             // Nowe: zapisz referencje w dedykowanych polach
             $invoice->set('ksef_session_reference', (string)($res['sessionReference'] ?? ''));
             $invoice->set('ksef_invoice_reference', (string)($res['invoiceReference'] ?? ''));
+            $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
+            $invoice->set('planned_ksef_send_at', null);
             $this->Invoices->save($invoice);
 
             // Log
@@ -3772,6 +3883,8 @@ private function makeClient(string $environment): KsefClient
                 $this->Flash->error('Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . (string)($res['statusDesc'] ?? ''));
             }
         } catch (\Throwable $e) {
+            $invoice->set('workflow_status', 'error');
+            $this->Invoices->save($invoice);
             if ($jsonMode) {
                 return $this->response->withStatus(500)->withType('application/json')
                     ->withStringBody(json_encode(['success' => false, 'error' => $e->getMessage()]));

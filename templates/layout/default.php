@@ -625,6 +625,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             </div>
                                             <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
                                         </div>
+                                        <?php $draftInvoicesCount = (int)($draftInvoicesCount ?? 0); ?>
+                                        <?php if ($draftInvoicesCount > 0): ?>
+                                            <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+                                                <div>
+                                                    Masz <strong><?= $draftInvoicesCount ?></strong> roboczych faktur niewysłanych do KSeF.
+                                                </div>
+                                                <a class="btn btn-sm btn-outline-warning" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Invoices', 'action' => 'drafts']) ?>">Przejdź do roboczych</a>
+                                            </div>
+                                        <?php endif; ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
                                                 <div class="flex-grow-1">

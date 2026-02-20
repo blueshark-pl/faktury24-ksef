@@ -227,6 +227,15 @@ class InvoicesTable extends Table
             ->boolean('is_api')
             ->notEmptyString('is_api');
 
+        $validator
+            ->scalar('workflow_status')
+            ->maxLength('workflow_status', 24)
+            ->allowEmptyString('workflow_status');
+
+        $validator
+            ->date('planned_ksef_send_at')
+            ->allowEmptyDate('planned_ksef_send_at');
+
         return $validator;
     }
 

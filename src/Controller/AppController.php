@@ -53,6 +53,26 @@ class AppController extends Controller
 
         $this->set('ksefModeEnabled', $enabled);
     }
+
+    private function setDraftsViewVars(?string $companyId): void
+    {
+        $draftCount = 0;
+        if (!empty($companyId)) {
+            try {
+                $Invoices = $this->fetchTable('Invoices');
+                $draftCount = (int)$Invoices->find()
+                    ->where([
+                        'company_id' => $companyId,
+                        'workflow_status' => 'draft',
+                    ])
+                    ->count();
+            } catch (\Throwable) {
+                $draftCount = 0;
+            }
+        }
+
+        $this->set('draftInvoicesCount', $draftCount);
+    }
     /**
      * Initialization hook method.
      *
@@ -82,6 +102,7 @@ class AppController extends Controller
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
             $this->set('ksefModeEnabled', true);
+            $this->set('draftInvoicesCount', 0);
             return; // nie zalogowany → nic nie rób
         }
 
@@ -95,6 +116,7 @@ class AppController extends Controller
                 if (!empty($dbUser->company_id)) {
                     $this->currentCompanyId = $dbUser->company_id;
                     $this->setKsefModeViewVars((string)$dbUser->company_id);
+                    $this->setDraftsViewVars((string)$dbUser->company_id);
                     try {
                         if (!$this->components()->has('Authentication')) {
                             $this->loadComponent('Authentication.Authentication');
@@ -115,6 +137,7 @@ class AppController extends Controller
             try {
                 $this->currentCompanyId = $identity->get('company_id');
                 $this->setKsefModeViewVars((string)$this->currentCompanyId);
+                $this->setDraftsViewVars((string)$this->currentCompanyId);
                 /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
                 $InvoiceSeries = $this->fetchTable('InvoiceSeries');
                 $copied = $InvoiceSeries->copySystemSeriesForCompany($identity->get('company_id'));
@@ -128,6 +151,7 @@ class AppController extends Controller
         }
 
         $this->set('ksefModeEnabled', true);
+        $this->set('draftInvoicesCount', 0);
 
         // whitelist akcji (żeby nie robić pętli)
         $allowed = [
