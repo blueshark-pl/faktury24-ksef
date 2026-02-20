@@ -47,6 +47,8 @@ use Cake\ORM\Entity;
  * @property bool $is_api
  * @property string|null $workflow_status
  * @property \Cake\I18n\Date|null $planned_ksef_send_at
+ * @property string|null $upo_xml
+ * @property \Cake\I18n\DateTime|null $upo_downloaded_at
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -109,6 +111,8 @@ class Invoice extends Entity
         'is_api' => true,
         'workflow_status' => true,
         'planned_ksef_send_at' => true,
+        'upo_xml' => true,
+        'upo_downloaded_at' => true,
         'ksef_status' => true,
         'ksef_number' => true,
         'ksef_desc' => true,

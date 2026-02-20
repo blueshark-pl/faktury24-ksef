@@ -124,6 +124,52 @@ class InvoicesController extends AppController
         }
     }
 
+    private function logKsefSendEvent(?string $companyId, ?string $invoiceId, string $eventType, array $context = []): void
+    {
+        try {
+            $payload = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $conn = ConnectionManager::get('default');
+            $conn->insert('ksef_send_logs', [
+                'id' => Text::uuid(),
+                'company_id' => (string)($companyId ?? ''),
+                'invoice_id' => (string)($invoiceId ?? ''),
+                'event_type' => $eventType,
+                'status_code' => isset($context['status_code']) ? (string)$context['status_code'] : null,
+                'message' => isset($context['message']) ? (string)$context['message'] : null,
+                'payload' => $payload,
+                'created' => (new FrozenTime())->format('Y-m-d H:i:s'),
+            ], [
+                'id' => 'string',
+                'company_id' => 'string',
+                'invoice_id' => 'string',
+                'event_type' => 'string',
+                'status_code' => 'string',
+                'message' => 'string',
+                'payload' => 'string',
+                'created' => 'datetime',
+            ]);
+        } catch (\Throwable) {
+            // best-effort only
+        }
+    }
+
+    private function storeUpoXmlForInvoice(string $companyId, string $ksefNumber, string $xml): void
+    {
+        try {
+            $invoice = $this->Invoices->find()
+                ->where(['company_id' => $companyId, 'ksef_number' => $ksefNumber])
+                ->first();
+            if ($invoice === null) {
+                return;
+            }
+            $invoice->set('upo_xml', $xml);
+            $invoice->set('upo_downloaded_at', new FrozenTime());
+            $this->Invoices->save($invoice);
+        } catch (\Throwable) {
+            // best-effort only
+        }
+    }
+
     private function validateSendDateWindow(Invoice $invoice): ?string
     {
         try {
@@ -1917,6 +1963,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             if ($doSend) {
                 $dateError = $this->validateSendDateWindow($invoice);
                 if ($dateError !== null) {
+                    $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'blocked', [
+                        'message' => $dateError,
+                        'source' => 'add',
+                    ]);
                     $this->Flash->error($dateError . ' Wysyłka do KSeF została zablokowana.');
                     return $this->redirect(['action' => 'view', $invoice->id]);
                 }
@@ -1954,9 +2004,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
 
                 if (!is_string($xml) || trim($xml) === '') {
+                    $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'xml_missing', [
+                        'message' => 'Brak XML FA(3) po upload/generowaniu.',
+                        'source' => 'add',
+                    ]);
                     $this->Flash->warning('Brak pliku XML FA (3) i nie udało się wygenerować poprawnego XML. Zapisano fakturę, ale nie wysłano do KSeF.');
                 } else {
                     try {
+                        $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'send_attempt', [
+                            'source' => 'add',
+                            'env' => $environment,
+                        ]);
                         $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
                         $res = $service->sendInvoiceXml((string)$companyId, $environment, $xml);
 
@@ -1975,13 +2033,31 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         }
 
                         if (!empty($res['ok'])) {
+                            $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'send_success', [
+                                'source' => 'add',
+                                'env' => $environment,
+                                'status_code' => (string)($res['statusCode'] ?? ''),
+                                'ksef_number' => (string)($res['ksefNumber'] ?? ''),
+                                'session_reference' => (string)($res['sessionReference'] ?? ''),
+                            ]);
                             $this->Flash->success('Wysłano do KSeF. Numer KSeF: ' . (string)$res['ksefNumber']);
                         } else {
+                            $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'send_error', [
+                                'source' => 'add',
+                                'env' => $environment,
+                                'status_code' => (string)($res['statusCode'] ?? ''),
+                                'message' => (string)($res['statusDesc'] ?? ''),
+                            ]);
                             $this->Flash->error('Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . (string)($res['statusDesc'] ?? ''));
                         }
                     } catch (\Throwable $e) {
                         $invoice->set('workflow_status', 'error');
                         $Invoices->save($invoice);
+                        $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'send_exception', [
+                            'source' => 'add',
+                            'env' => $environment,
+                            'message' => $e->getMessage(),
+                        ]);
                         $this->Flash->error('Błąd wysyłki do KSeF: ' . $e->getMessage());
                     }
                 }
@@ -2709,6 +2785,11 @@ private function makeClient(string $environment): KsefClient
 
         // 3) Jeśli już mamy PDF z KSeF – zwróć bezpośrednio
         if ($isPdf) {
+            $this->logKsefSendEvent((string)$companyId, (string)($invoiceRow->id ?? ''), 'upo_downloaded', [
+                'source' => 'downloadUpo',
+                'format' => 'pdf',
+                'ksef_number' => $ksefNumber,
+            ]);
             return $this->response
                 ->withType('application/pdf')
                 ->withHeader('Content-Length', (string)strlen($bin))
@@ -2718,6 +2799,12 @@ private function makeClient(string $environment): KsefClient
 
         // 4) Jeżeli mamy XML – wyślij do lokalnego API, aby wygenerować PDF
         if ($isXml) {
+            $this->storeUpoXmlForInvoice((string)$companyId, $ksefNumber, $bin);
+            $this->logKsefSendEvent((string)$companyId, (string)($invoiceRow->id ?? ''), 'upo_downloaded', [
+                'source' => 'downloadUpo',
+                'format' => 'xml',
+                'ksef_number' => $ksefNumber,
+            ]);
             try {
                 $apiUrl = getenv('UPO_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/upo';
                 $http = new \Cake\Http\Client(['timeout' => 60]);
@@ -3871,6 +3958,110 @@ private function makeClient(string $environment): KsefClient
             ->withStringBody(json_encode(['success' => true, 'results' => $results]));
     }
 
+    private function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'test', ?string $xml = null, string $source = 'sendToKsef'): array
+    {
+        if (!$this->isKsefModeEnabled($companyId)) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
+                'source' => $source,
+                'message' => 'Tryb KSeF wyłączony dla firmy.',
+            ]);
+            return ['success' => false, 'error' => 'Tryb KSeF jest wyłączony dla tej firmy.'];
+        }
+
+        $dateError = $this->validateSendDateWindow($invoice);
+        if ($dateError !== null) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
+                'source' => $source,
+                'message' => $dateError,
+            ]);
+            return ['success' => false, 'error' => $dateError . ' Wysyłka do KSeF została zablokowana.'];
+        }
+
+        try {
+            $this->ensureInvoiceNumberForSend($invoice, $companyId);
+        } catch (\Throwable $e) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
+                'source' => $source,
+                'message' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+
+        $invoice->set('workflow_status', 'sending');
+        $this->Invoices->save($invoice);
+
+        if (!is_string($xml) || trim($xml) === '') {
+            try {
+                $xml = $this->buildFa3Xml($invoice);
+            } catch (\Throwable) {
+                $xml = '';
+            }
+        }
+
+        if (!is_string($xml) || trim($xml) === '') {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'xml_missing', [
+                'source' => $source,
+                'message' => 'Brak XML FA(3) po upload/generowaniu.',
+            ]);
+            $invoice->set('workflow_status', 'error');
+            $this->Invoices->save($invoice);
+            return ['success' => false, 'error' => 'Brak poprawnego XML FA (3). Operacja przerwana.'];
+        }
+
+        try {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_attempt', [
+                'source' => $source,
+                'env' => $environment,
+            ]);
+
+            $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+            $res = $service->sendInvoiceXml($companyId, $environment, $xml);
+
+            $desc = (string)($res['statusDesc'] ?? '');
+            $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
+            $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
+            $invoice->set('ksef_desc', trim($desc . $refs));
+            $invoice->set('ksef_number', (string)($res['ksefNumber'] ?? ''));
+            $invoice->set('ksef_session_reference', (string)($res['sessionReference'] ?? ''));
+            $invoice->set('ksef_invoice_reference', (string)($res['invoiceReference'] ?? ''));
+            $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
+            $invoice->set('planned_ksef_send_at', null);
+            $this->Invoices->save($invoice);
+
+            if (!empty($res['ok'])) {
+                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_success', [
+                    'source' => $source,
+                    'env' => $environment,
+                    'status_code' => (string)($res['statusCode'] ?? ''),
+                    'ksef_number' => (string)($res['ksefNumber'] ?? ''),
+                    'session_reference' => (string)($res['sessionReference'] ?? ''),
+                ]);
+            } else {
+                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_error', [
+                    'source' => $source,
+                    'env' => $environment,
+                    'status_code' => (string)($res['statusCode'] ?? ''),
+                    'message' => (string)($res['statusDesc'] ?? ''),
+                ]);
+            }
+
+            return [
+                'success' => !empty($res['ok']),
+                'error' => !empty($res['ok']) ? null : ('Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . (string)($res['statusDesc'] ?? '')),
+                'result' => $res,
+            ];
+        } catch (\Throwable $e) {
+            $invoice->set('workflow_status', 'error');
+            $this->Invoices->save($invoice);
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_exception', [
+                'source' => $source,
+                'env' => $environment,
+                'message' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'error' => 'Błąd wysyłki do KSeF: ' . $e->getMessage()];
+        }
+    }
+
     /**
      * POST /invoices/send-to-ksef/{id}?env=test|prod
      * Opcja ponownego wysłania istniejącej faktury do KSeF (na podstawie przesłanego XML lub generatora FA(3)).
@@ -3883,28 +4074,7 @@ private function makeClient(string $environment): KsefClient
         $env = (string)$this->request->getQuery('env', 'test');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
-        if (!$this->isKsefModeEnabled($companyId)) {
-            $this->Flash->error('Tryb KSeF jest wyłączony dla tej firmy. Włącz KSeF w ustawieniach firmy, aby wysyłać dokumenty.');
-            return $this->redirect(['action' => 'view', $id]);
-        }
-
         $invoice = $this->Invoices->get($id, contain: ['InvoiceContractors','InvoiceCompanyDetails','InvoiceContents' => ['Vats'], 'Companies']);
-
-        $dateError = $this->validateSendDateWindow($invoice);
-        if ($dateError !== null) {
-            $this->Flash->error($dateError . ' Wysyłka do KSeF została zablokowana.');
-            return $this->redirect(['action' => 'view', $id]);
-        }
-
-        try {
-            $this->ensureInvoiceNumberForSend($invoice, $companyId);
-        } catch (\Throwable $e) {
-            $this->Flash->error($e->getMessage());
-            return $this->redirect(['action' => 'view', $id]);
-        }
-
-        $invoice->set('workflow_status', 'sending');
-        $this->Invoices->save($invoice);
 
         // 1) XML z uploadu
         $xml = null;
@@ -3919,40 +4089,22 @@ private function makeClient(string $environment): KsefClient
             }
         } catch (\Throwable) { /* ignore */ }
 
-        // 2) Jeśli brak uploadu – wygeneruj
-        if (!is_string($xml) || trim($xml) === '') {
-            try { $xml = $this->buildFa3Xml($invoice); } catch (\Throwable) { $xml = ''; }
-        }
-
-        if (!is_string($xml) || trim($xml) === '') {
-            $this->Flash->error('Brak poprawnego XML FA (3). Operacja przerwana.');
-            return $this->redirect(['action' => 'view', $id]);
-        }
-
         $jsonMode = $this->request->is('ajax') || $this->request->getQuery('_ext') === 'json' || $this->request->accepts('application/json');
         try {
-            $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
-            $res = $service->sendInvoiceXml($companyId, $environment, $xml);
+            $send = $this->sendInvoiceToKsefCore($invoice, $companyId, $environment, $xml, 'sendToKsef');
+            $res = (array)($send['result'] ?? []);
 
-            $desc = (string)($res['statusDesc'] ?? '');
-            $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
-            $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
-            $invoice->set('ksef_desc',   trim($desc . $refs));
-            $invoice->set('ksef_number', (string)($res['ksefNumber'] ?? ''));
-            // Nowe: zapisz referencje w dedykowanych polach
-            $invoice->set('ksef_session_reference', (string)($res['sessionReference'] ?? ''));
-            $invoice->set('ksef_invoice_reference', (string)($res['invoiceReference'] ?? ''));
-            $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
-            $invoice->set('planned_ksef_send_at', null);
-            $this->Invoices->save($invoice);
-
-            // Log
-            if (class_exists('Cake\\Log\\Log')) {
-                \Cake\Log\Log::info('[KSeF][send] inv=' . $id . ' env=' . $environment . ' code=' . ($res['statusCode'] ?? '') . ' desc=' . ($res['statusDesc'] ?? '') . ' ksef=' . ($res['ksefNumber'] ?? '') . ' S=' . ($res['sessionReference'] ?? '') . ' I=' . ($res['invoiceReference'] ?? ''));
+            if (!$send['success']) {
+                if ($jsonMode) {
+                    return $this->response->withStatus(400)->withType('application/json')
+                        ->withStringBody(json_encode(['success' => false, 'error' => (string)($send['error'] ?? 'Błąd wysyłki')]));
+                }
+                $this->Flash->error((string)($send['error'] ?? 'Błąd wysyłki do KSeF.'));
+                return $this->redirect(['action' => 'view', $id]);
             }
 
             if ($jsonMode) {
-                $ok = !empty($res['ok']);
+                $ok = true;
                 $payload = [
                     'success' => $ok,
                     'statusCode' => (int)($res['statusCode'] ?? 0),
@@ -4003,15 +4155,8 @@ private function makeClient(string $environment): KsefClient
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             }
-
-            if (!empty($res['ok'])) {
-                $this->Flash->success('Wysłano do KSeF. Numer KSeF: ' . (string)$res['ksefNumber']);
-            } else {
-                $this->Flash->error('Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . (string)($res['statusDesc'] ?? ''));
-            }
+            $this->Flash->success('Wysłano do KSeF. Numer KSeF: ' . (string)($res['ksefNumber'] ?? ''));
         } catch (\Throwable $e) {
-            $invoice->set('workflow_status', 'error');
-            $this->Invoices->save($invoice);
             if ($jsonMode) {
                 return $this->response->withStatus(500)->withType('application/json')
                     ->withStringBody(json_encode(['success' => false, 'error' => $e->getMessage()]));
@@ -4020,6 +4165,77 @@ private function makeClient(string $environment): KsefClient
         }
 
         return $this->redirect(['action' => 'view', $id]);
+    }
+
+    /**
+     * GET|POST /invoices/run-planned-drafts?env=test|prod&limit=50
+     * Uruchamia wsadową wysyłkę zaplanowanych dokumentów roboczych (workflow_status=draft).
+     */
+    public function runPlannedDrafts(): Response
+    {
+        $this->request->allowMethod(['get', 'post']);
+
+        $identity = $this->request->getAttribute('identity');
+        $schedulerKey = (string)(Configure::read('App.ksefSchedulerKey') ?? '');
+        $providedKey = (string)$this->request->getQuery('key', '');
+        if (!$identity) {
+            if ($schedulerKey === '' || !hash_equals($schedulerKey, $providedKey)) {
+                return $this->response
+                    ->withStatus(403)
+                    ->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success' => false,
+                        'error' => 'Brak autoryzacji do uruchomienia scheduler-a.',
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
+        }
+
+        $env = (string)$this->request->getQuery('env', 'test');
+        $environment = ($env === 'prod') ? 'prod' : 'test';
+        $limit = max(1, min(200, (int)$this->request->getQuery('limit', 50)));
+        $today = (new FrozenTime('today'))->format('Y-m-d');
+
+        $due = $this->Invoices->find()
+            ->contain(['InvoiceContractors','InvoiceCompanyDetails','InvoiceContents' => ['Vats'], 'Companies'])
+            ->where([
+                'Invoices.workflow_status' => 'draft',
+                'Invoices.planned_ksef_send_at IS NOT' => null,
+                'Invoices.planned_ksef_send_at <=' => $today,
+            ])
+            ->orderAsc('Invoices.planned_ksef_send_at')
+            ->limit($limit)
+            ->all();
+
+        $summary = [
+            'environment' => $environment,
+            'today' => $today,
+            'checked' => 0,
+            'sent' => 0,
+            'failed' => 0,
+            'items' => [],
+        ];
+
+        foreach ($due as $invoice) {
+            $summary['checked']++;
+            $companyId = (string)($invoice->company_id ?? '');
+            $result = $this->sendInvoiceToKsefCore($invoice, $companyId, $environment, null, 'scheduler');
+            if (!empty($result['success'])) {
+                $summary['sent']++;
+            } else {
+                $summary['failed']++;
+            }
+            $summary['items'][] = [
+                'invoice_id' => (string)$invoice->id,
+                'company_id' => $companyId,
+                'fullnumber' => (string)($invoice->fullnumber ?? ''),
+                'success' => (bool)($result['success'] ?? false),
+                'error' => (string)($result['error'] ?? ''),
+            ];
+        }
+
+        return $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     /**

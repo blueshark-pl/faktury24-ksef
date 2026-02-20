@@ -131,6 +131,11 @@ return [
             'controller' => 'Pages',
             'action' => 'display',
         ],
+        [
+            'role' => '*',
+            'controller' => 'Invoices',
+            'action' => ['runPlannedDrafts'],
+        ],
         // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
         [
             'role' => 'user',

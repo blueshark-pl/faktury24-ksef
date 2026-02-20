@@ -59,15 +59,20 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
   - nadanie lokalnego numeru faktury,
   - przejście do statusu `sending` / `sent` / `error`,
   - blokada edycji treści (zmiany wyłącznie korektą).
-- [ ] Odbiór i zapis numeru KSeF + UPO.
+- [x] Odbiór i zapis numeru KSeF + UPO.
 
 ### Etap 4 (walidacje i automaty)
 
-- [ ] Walidacja przed wysyłką do KSeF:
+- [x] Walidacja przed wysyłką do KSeF:
   - `P_1 (data faktury) >= dzisiaj - 1 dzień`,
   - w przeciwnym razie blokada + komunikat.
-- [ ] Scheduler: wysyłka zaplanowanych roboczych w zadanym dniu.
-- [ ] Log zdarzeń wysyłki (audit trail + diagnostyka).
+- [x] Scheduler: wysyłka zaplanowanych roboczych w zadanym dniu.
+- [x] Log zdarzeń wysyłki (audit trail + diagnostyka).
+
+#### Notatka operacyjna (scheduler)
+
+- Endpoint wsadowy: `GET/POST /invoices/run-planned-drafts?env=test|prod&limit=50&key=...`
+- Dla uruchomień bez sesji użytkownika wymagany jest klucz `App.ksefSchedulerKey`.
 
 ## Ryzyka / czasochłonność
 

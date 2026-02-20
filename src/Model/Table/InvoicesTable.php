@@ -236,6 +236,14 @@ class InvoicesTable extends Table
             ->date('planned_ksef_send_at')
             ->allowEmptyDate('planned_ksef_send_at');
 
+        $validator
+            ->scalar('upo_xml')
+            ->allowEmptyString('upo_xml');
+
+        $validator
+            ->dateTime('upo_downloaded_at')
+            ->allowEmptyDateTime('upo_downloaded_at');
+
         return $validator;
     }
 
