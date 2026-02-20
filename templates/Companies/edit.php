@@ -184,6 +184,21 @@ $this->assign('title', 'Edycja firmy');
                         ]) ?>
                   </div>
                 </div>
+                <div class="col-xl-12">
+                  <div class="form-check form-switch vat-switch mt-1">
+                    <?= $this->Form->control('ksef_mode_enabled', [
+                      'type' => 'checkbox',
+                      'label' => ['text' => 'Wysyłam dokumenty do KSeF', 'class' => 'form-check-label'],
+                      'class' => 'form-check-input',
+                      'templates' => [
+                        'inputContainer' => '<div class="form-check form-switch vat-switch">{{content}}</div>',
+                        'input' => '<input type="{{type}}" name="{{name}}"{{attrs}}/>',
+                        'label' => '<label{{attrs}}>{{text}}</label>',
+                      ],
+                    ]) ?>
+                  </div>
+                  <div class="form-text">Wyłącz tylko jeśli firma ma pracować poza KSeF (bez wysyłki dokumentów do KSeF).</div>
+                </div>
               </div>
             </div>
           </div>

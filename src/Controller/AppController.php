@@ -31,6 +31,28 @@ use Cake\Log\Log;
 class AppController extends Controller
 {
     public $currentCompanyId = null;
+
+    private function setKsefModeViewVars(?string $companyId): void
+    {
+        $enabled = true;
+        if (!empty($companyId)) {
+            try {
+                $Companies = $this->fetchTable('Companies');
+                $company = $Companies->find()
+                    ->select(['id', 'ksef_mode_enabled'])
+                    ->where(['id' => $companyId])
+                    ->first();
+                if ($company !== null) {
+                    $enabled = (bool)($company->ksef_mode_enabled ?? true);
+                }
+            } catch (\Throwable) {
+                // migration not applied or temporary DB issue -> default safe behavior
+                $enabled = true;
+            }
+        }
+
+        $this->set('ksefModeEnabled', $enabled);
+    }
     /**
      * Initialization hook method.
      *
@@ -59,6 +81,7 @@ class AppController extends Controller
 
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
+            $this->set('ksefModeEnabled', true);
             return; // nie zalogowany → nic nie rób
         }
 
@@ -71,6 +94,7 @@ class AppController extends Controller
                 $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
                 if (!empty($dbUser->company_id)) {
                     $this->currentCompanyId = $dbUser->company_id;
+                    $this->setKsefModeViewVars((string)$dbUser->company_id);
                     try {
                         if (!$this->components()->has('Authentication')) {
                             $this->loadComponent('Authentication.Authentication');
@@ -90,6 +114,7 @@ class AppController extends Controller
         if (!empty($identity->get('company_id'))) {
             try {
                 $this->currentCompanyId = $identity->get('company_id');
+                $this->setKsefModeViewVars((string)$this->currentCompanyId);
                 /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
                 $InvoiceSeries = $this->fetchTable('InvoiceSeries');
                 $copied = $InvoiceSeries->copySystemSeriesForCompany($identity->get('company_id'));
@@ -101,6 +126,8 @@ class AppController extends Controller
             }
             return; // nic więcej – logika poniżej dotyczy braku firmy
         }
+
+        $this->set('ksefModeEnabled', true);
 
         // whitelist akcji (żeby nie robić pętli)
         $allowed = [

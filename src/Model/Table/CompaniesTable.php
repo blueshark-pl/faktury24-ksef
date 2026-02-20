@@ -156,6 +156,10 @@ class CompaniesTable extends Table
             ->notEmptyString('vat_payer');
 
         $validator
+            ->boolean('ksef_mode_enabled')
+            ->notEmptyString('ksef_mode_enabled');
+
+        $validator
             ->date('register_date')
             ->allowEmptyDate('register_date');
 

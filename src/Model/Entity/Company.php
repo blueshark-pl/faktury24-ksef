@@ -24,6 +24,7 @@ use Cake\ORM\Entity;
  * @property string|null $logo_url
  * @property string|null $issuer
  * @property bool $vat_payer
+ * @property bool $ksef_mode_enabled
  * @property \Cake\I18n\Date|null $register_date
  * @property \Cake\I18n\Date|null $subscription_end
  * @property bool $is_active
@@ -65,6 +66,7 @@ class Company extends Entity
         'logo_url' => true,
         'issuer' => true,
         'vat_payer' => true,
+        'ksef_mode_enabled' => true,
         'register_date' => true,
         'subscription_end' => true,
         'is_active' => true,

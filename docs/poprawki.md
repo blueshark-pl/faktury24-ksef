@@ -34,8 +34,8 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
 
 ### Etap 1 (najwyższy priorytet)
 
-- [ ] **Ustawienie firmy**: `Wysyłam dokumenty do KSeF: TAK/NIE` (domyślnie TAK).
-- [ ] **Stały pasek statusu u góry** (globalnie):
+- [x] **Ustawienie firmy**: `Wysyłam dokumenty do KSeF: TAK/NIE` (domyślnie TAK).
+- [x] **Stały pasek statusu u góry** (globalnie):
   - `Tryb KSeF: WŁ / WYŁ`,
   - `Uprawnienia KSeF: OK / brak / wymagane`.
 - [ ] **Warunkowe etykiety przycisków**:
