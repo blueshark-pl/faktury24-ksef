@@ -4,6 +4,8 @@
  * @var \App\Model\Entity\CompanyBankAccount $bankAccount
  */
 $this->assign('title', 'Onboarding firmy');
+
+$profileMode = (string)($this->request->getData('company.profile_mode') ?? $company->profile_mode ?? 'business');
 ?>
 
 <!-- Page Header -->
@@ -84,7 +86,7 @@ $this->assign('title', 'Onboarding firmy');
           <div class="card-title">Podpowiedzi</div>
         </div>
         <div class="card-body small text-muted">
-          <div class="mb-2"><i class="ri-information-line me-1"></i> Wymagane: <strong>Nazwa</strong> (oraz <strong>NIP</strong> jeżeli VAT).</div>
+          <div class="mb-2"><i class="ri-information-line me-1"></i> Zacznij od <strong>NIP</strong> (jeżeli masz), potem uzupełnij nazwę i adres.</div>
           <div><i class="ri-time-line me-1"></i> Rachunek bankowy możesz dodać później w „Konta bankowe”.</div>
         </div>
       </div>
@@ -111,28 +113,23 @@ $this->assign('title', 'Onboarding firmy');
           </div>
 
           <div class="row gy-3">
-            <div class="col-xl-8">
-              <?= $this->Form->control('company.name', [
-                    'label' => 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>',
-                    'escape' => false,
-                    'required' => true,
-                    'class' => 'form-control',
-                    'placeholder' => 'np. ACME Sp. z o.o.',
-                    'value' => $company->name ?? '',
-              ]) ?>
-              <div class="form-text">Pełna nazwa zgodna z dokumentami rejestrowymi.</div>
-              <div class="invalid-feedback">Podaj nazwę firmy.</div>
-            </div>
-            <div class="col-xl-4">
-              <?= $this->Form->control('company.altname', [
-                    'label' => 'Nazwa skrócona',
-                    'class' => 'form-control',
-                    'placeholder' => 'np. ACME',
-              ]) ?>
+            <div class="col-xl-12">
+              <label class="form-label">Typ podmiotu</label>
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="company[profile_mode]" id="profile-mode-business" value="business" <?= $profileMode === 'business' ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="profile-mode-business">Firma / JDG</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="company[profile_mode]" id="profile-mode-private-rental" value="private_rental" <?= $profileMode === 'private_rental' ? 'checked' : '' ?>>
+                  <label class="form-check-label" for="profile-mode-private-rental">Najem prywatny (osoba fizyczna)</label>
+                </div>
+              </div>
+              <div class="form-text">Wybierz tryb zgodny z profilem podmiotu. Dla najmu prywatnego NIP i REGON są opcjonalne.</div>
             </div>
 
             <div class="col-xl-4">
-              <label class="form-label">NIP</label>
+              <label class="form-label" id="company-nip-label">NIP</label>
               <div class="input-group">
                 <?= $this->Form->control('company.nip', [
                       'label' => false,
@@ -140,6 +137,7 @@ $this->assign('title', 'Onboarding firmy');
                       'placeholder' => '6571234567',
                       'maxlength' => 10,
                       'pattern' => '\\d{10}',
+                      'id' => 'company-nip',
                       'templates' => ['inputContainer' => '{{content}}']
                 ]) ?>
                 <button class="btn btn-outline-secondary" type="button" id="company-gus-fetch">
@@ -147,10 +145,10 @@ $this->assign('title', 'Onboarding firmy');
                   <i class="ri-database-2-line me-1"></i> Pobierz z GUS
                 </button>
               </div>
-              <div class="form-text">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
+              <div class="form-text" id="company-nip-help">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
               <div class="invalid-feedback">NIP powinien mieć 10 cyfr.</div>
             </div>
-            <div class="col-xl-4">
+            <div class="col-xl-4" id="company-regon-wrap">
               <?= $this->Form->control('company.regon', [
                     'label' => 'REGON',
                     'class' => 'form-control',
@@ -162,6 +160,27 @@ $this->assign('title', 'Onboarding firmy');
                     'label' => 'Kraj',
                     'class' => 'form-control',
                     'value' => 'PL',
+              ]) ?>
+            </div>
+
+            <div class="col-xl-8">
+              <?= $this->Form->control('company.name', [
+                    'label' => 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>',
+                    'escape' => false,
+                    'required' => true,
+                    'class' => 'form-control',
+                    'placeholder' => 'np. ACME Sp. z o.o.',
+                    'id' => 'company-name',
+                    'value' => $company->name ?? '',
+              ]) ?>
+              <div class="form-text" id="company-name-help">Pełna nazwa zgodna z dokumentami rejestrowymi.</div>
+              <div class="invalid-feedback">Podaj nazwę firmy.</div>
+            </div>
+            <div class="col-xl-4">
+              <?= $this->Form->control('company.altname', [
+                    'label' => 'Nazwa skrócona',
+                    'class' => 'form-control',
+                    'placeholder' => 'np. ACME',
               ]) ?>
             </div>
 
@@ -392,7 +411,55 @@ $this->assign('title', 'Onboarding firmy');
 //   }
 
   // NIP numeric only (10 digits)
-  const nipInput = document.querySelector('input[name="company[nip]"]');
+  const nipInput = document.getElementById('company-nip');
+  const profileBusiness = document.getElementById('profile-mode-business');
+  const profilePrivateRental = document.getElementById('profile-mode-private-rental');
+  const regonWrap = document.getElementById('company-regon-wrap');
+  const nipLabel = document.getElementById('company-nip-label');
+  const nipHelp = document.getElementById('company-nip-help');
+  const nameLabel = document.querySelector('label[for="company-name"]');
+  const nameHelp = document.getElementById('company-name-help');
+  const gusButton = document.getElementById('company-gus-fetch');
+
+  function isPrivateRentalProfile() {
+    return !!profilePrivateRental?.checked;
+  }
+
+  function toggleProfileModeUi() {
+    const isPrivateRental = isPrivateRentalProfile();
+
+    if (regonWrap) {
+      regonWrap.style.display = isPrivateRental ? 'none' : '';
+      regonWrap.querySelectorAll('input,select,textarea').forEach((el) => {
+        el.disabled = isPrivateRental;
+      });
+    }
+
+    if (nipLabel) {
+      nipLabel.textContent = isPrivateRental ? 'NIP (opcjonalnie)' : 'NIP';
+    }
+    if (nipHelp) {
+      nipHelp.textContent = isPrivateRental
+        ? 'Opcjonalnie: 10 cyfr (bez myślników). Dla najmu prywatnego możesz zostawić puste.'
+        : '10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.';
+    }
+    if (nameLabel) {
+      nameLabel.innerHTML = isPrivateRental
+        ? 'Imię i nazwisko <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>'
+        : 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>';
+    }
+    if (nameHelp) {
+      nameHelp.textContent = isPrivateRental
+        ? 'Podaj dane osoby fizycznej prowadzącej najem prywatny.'
+        : 'Pełna nazwa zgodna z dokumentami rejestrowymi.';
+    }
+    if (gusButton) {
+      gusButton.disabled = isPrivateRental;
+      gusButton.classList.toggle('disabled', isPrivateRental);
+      gusButton.title = isPrivateRental ? 'Dla najmu prywatnego pobieranie z GUS jest wyłączone.' : '';
+    }
+  }
+
   if (nipInput) {
     nipInput.addEventListener('input', (e) => {
       let v = e.target.value.replace(/\D/g,'').slice(0,10);
@@ -404,6 +471,11 @@ $this->assign('title', 'Onboarding firmy');
       }
     });
   }
+
+  [profileBusiness, profilePrivateRental].forEach((el) => {
+    el?.addEventListener('change', toggleProfileModeUi);
+  });
+  toggleProfileModeUi();
 
   // GUS fetch for company
   const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';

@@ -737,29 +737,39 @@ class KsefAuthorizationsController extends AppController
 
         // NIP firmy (fallback jeśli nie podano as_nip)
         $companyNip = '';
+        $companyProfileMode = 'business';
         try {
             /** @var \App\Model\Table\CompaniesTable $Companies */
             $Companies = $this->fetchTable('Companies');
-            $company = $Companies->find()->select(['nip'])->where(['Companies.id' => $companyId])->first();
+            $company = $Companies->find()->select(['nip', 'profile_mode'])->where(['Companies.id' => $companyId])->first();
             $companyNip = preg_replace('/\D/', '', (string)($company?->nip ?? ''));
+            $companyProfileMode = (string)($company?->profile_mode ?? 'business');
         } catch (\Throwable) {
             $companyNip = '';
+            $companyProfileMode = 'business';
         }
 
         $identifierNip = $asNip !== '' ? $asNip : $companyNip;
         if ($identifierNip === '') {
+            $isPrivateRental = $companyProfileMode === 'private_rental';
             $this->request->getSession()->write('Ksef.status', [
                 'active' => false,
                 'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
-                'lastError' => 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
+                'lastError' => $isPrivateRental
+                    ? 'Profil najmu prywatnego bez NIP: pominięto weryfikację uprawnień KSeF.'
+                    : 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
                 'checkKind' => 'personalGrants',
                 'permissionType' => 'InvoiceWrite',
                 'usingMaster' => true,
                 'usingMasterMode' => 'forced',
                 'identifierNip' => null,
             ]);
-            $this->Flash->error('KSeF: brak NIP firmy – nie można sprawdzić uprawnień.');
+            if ($isPrivateRental) {
+                $this->Flash->info('KSeF: profil najmu prywatnego bez NIP – pominięto weryfikację uprawnień.');
+            } else {
+                $this->Flash->error('KSeF: brak NIP firmy – nie można sprawdzić uprawnień.');
+            }
             return $this->redirect($this->referer(['controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $environment]]));
         }
 
@@ -913,22 +923,28 @@ class KsefAuthorizationsController extends AppController
 
         // NIP firmy (fallback jeśli nie podano as_nip)
         $companyNip = '';
+        $companyProfileMode = 'business';
         try {
             /** @var \App\Model\Table\CompaniesTable $Companies */
             $Companies = $this->fetchTable('Companies');
-            $company = $Companies->find()->select(['nip'])->where(['Companies.id' => $companyId])->first();
+            $company = $Companies->find()->select(['nip', 'profile_mode'])->where(['Companies.id' => $companyId])->first();
             $companyNip = preg_replace('/\D/', '', (string)($company?->nip ?? ''));
+            $companyProfileMode = (string)($company?->profile_mode ?? 'business');
         } catch (\Throwable) {
             $companyNip = '';
+            $companyProfileMode = 'business';
         }
 
         $identifierNip = $asNip !== '' ? $asNip : $companyNip;
         if ($identifierNip === '') {
+            $isPrivateRental = $companyProfileMode === 'private_rental';
             $status = [
                 'active' => false,
                 'env'    => $environment,
                 'ts'     => time(),
-                'lastError' => 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
+                'lastError' => $isPrivateRental
+                    ? 'Profil najmu prywatnego bez NIP: pominięto weryfikację uprawnień KSeF.'
+                    : 'Brak NIP firmy – nie można sprawdzić uprawnień w KSeF.',
                 'checkKind' => 'personalGrants',
                 'permissionType' => 'InvoiceWrite',
                 'usingMaster' => true,
@@ -940,8 +956,8 @@ class KsefAuthorizationsController extends AppController
             return $this->response
                 ->withType('application/json')
                 ->withStringBody(json_encode([
-                    'success' => false,
-                    'error' => $status['lastError'],
+                    'success' => $isPrivateRental,
+                    'error' => $isPrivateRental ? null : $status['lastError'],
                     'status' => $status,
                 ], JSON_UNESCAPED_UNICODE));
         }

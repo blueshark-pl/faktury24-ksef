@@ -29,6 +29,7 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\Date|null $subscription_end
  * @property bool $is_active
  * @property string|null $invoice_template
+ * @property string $profile_mode
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -71,6 +72,7 @@ class Company extends Entity
         'subscription_end' => true,
         'is_active' => true,
         'invoice_template' => true,
+        'profile_mode' => true,
         'created' => true,
         'modified' => true,
         'company_bank_accounts' => true,

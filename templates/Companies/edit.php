@@ -116,14 +116,30 @@ $this->assign('title', 'Edycja firmy');
             </div>
             <div class="card-body">
               <div class="row gy-3">
+                <div class="col-xl-12">
+                  <label class="form-label">Typ podmiotu</label>
+                  <div class="d-flex flex-wrap gap-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="profile_mode" id="profile-mode-business" value="business" <?= (string)($company->profile_mode ?? 'business') === 'business' ? 'checked' : '' ?>>
+                      <label class="form-check-label" for="profile-mode-business">Firma / JDG</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="profile_mode" id="profile-mode-private-rental" value="private_rental" <?= (string)($company->profile_mode ?? 'business') === 'private_rental' ? 'checked' : '' ?>>
+                      <label class="form-check-label" for="profile-mode-private-rental">Najem prywatny (osoba fizyczna)</label>
+                    </div>
+                  </div>
+                  <div class="form-text">Dla najmu prywatnego NIP i REGON są opcjonalne.</div>
+                </div>
+
                 <div class="col-xl-8">
                     <?= $this->Form->control('name', [
                       'label' => ['text' => 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>', 'escape' => false],
                         'required' => true,
                         'class' => 'form-control',
                         'placeholder' => 'np. ACME Sp. z o.o.',
+                        'id' => 'company-name',
                   ]) ?>
-                  <div class="form-text">Pełna nazwa zgodna z dokumentami rejestrowymi.</div>
+                  <div class="form-text" id="company-name-help">Pełna nazwa zgodna z dokumentami rejestrowymi.</div>
                   <div class="invalid-feedback">Podaj nazwę firmy.</div>
                 </div>
                 <div class="col-xl-4">
@@ -145,7 +161,7 @@ $this->assign('title', 'Edycja firmy');
             <div class="card-body">
               <div class="row gy-3">
                 <div class="col-xl-4">
-                  <label class="form-label">NIP</label>
+                  <label class="form-label" id="company-nip-label">NIP</label>
                   <div class="input-group">
                         <?= $this->Form->control('nip', [
                           'label' => false,
@@ -153,6 +169,7 @@ $this->assign('title', 'Edycja firmy');
                           'placeholder' => '6571234567',
                           'maxlength' => 10,
                           'pattern' => '\\d{10}',
+                          'id' => 'company-nip',
                           'templates' => ['inputContainer' => '{{content}}']
                     ]) ?>
                     <button class="btn btn-outline-secondary" type="button" id="company-gus-fetch">
@@ -160,10 +177,10 @@ $this->assign('title', 'Edycja firmy');
                       <i class="ri-database-2-line me-1"></i> Pobierz z GUS
                     </button>
                   </div>
-                  <div class="form-text">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
+                  <div class="form-text" id="company-nip-help">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
                   <div class="invalid-feedback">NIP powinien mieć 10 cyfr.</div>
                 </div>
-                <div class="col-xl-4">
+                <div class="col-xl-4" id="company-regon-wrap">
                     <?= $this->Form->control('regon', [
                       'label' => ['text' => 'REGON', 'class' => 'mb-2'],
                         'class' => 'form-control',
@@ -543,7 +560,57 @@ $this->assign('title', 'Edycja firmy');
 //   }
 
   // NIP numeric only (10 digits)
-  const nipInput = document.querySelector('input[name="nip"]');
+  const nipInput = document.getElementById('company-nip');
+  const profileBusiness = document.getElementById('profile-mode-business');
+  const profilePrivateRental = document.getElementById('profile-mode-private-rental');
+  const regonWrap = document.getElementById('company-regon-wrap');
+  const nipLabel = document.getElementById('company-nip-label');
+  const nipHelp = document.getElementById('company-nip-help');
+  const nameLabel = document.querySelector('label[for="company-name"]');
+  const nameHelp = document.getElementById('company-name-help');
+  const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
+  const btnGus = document.getElementById('company-gus-fetch');
+  const spin   = document.getElementById('company-gus-spin');
+
+  function isPrivateRentalProfile() {
+    return !!profilePrivateRental?.checked;
+  }
+
+  function toggleProfileModeUi() {
+    const isPrivateRental = isPrivateRentalProfile();
+
+    if (regonWrap) {
+      regonWrap.style.display = isPrivateRental ? 'none' : '';
+      regonWrap.querySelectorAll('input,select,textarea').forEach((el) => {
+        el.disabled = isPrivateRental;
+      });
+    }
+
+    if (nipLabel) {
+      nipLabel.textContent = isPrivateRental ? 'NIP (opcjonalnie)' : 'NIP';
+    }
+    if (nipHelp) {
+      nipHelp.textContent = isPrivateRental
+        ? 'Opcjonalnie: 10 cyfr (bez myślników). Dla najmu prywatnego możesz zostawić puste.'
+        : '10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.';
+    }
+    if (nameLabel) {
+      nameLabel.innerHTML = isPrivateRental
+        ? 'Imię i nazwisko <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>'
+        : 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>';
+    }
+    if (nameHelp) {
+      nameHelp.textContent = isPrivateRental
+        ? 'Podaj dane osoby fizycznej prowadzącej najem prywatny.'
+        : 'Pełna nazwa zgodna z dokumentami rejestrowymi.';
+    }
+    if (btnGus) {
+      btnGus.disabled = isPrivateRental;
+      btnGus.classList.toggle('disabled', isPrivateRental);
+      btnGus.title = isPrivateRental ? 'Dla najmu prywatnego pobieranie z GUS jest wyłączone.' : '';
+    }
+  }
+
   if (nipInput) {
     nipInput.addEventListener('input', (e) => {
       let v = e.target.value.replace(/\D/g,'').slice(0,10);
@@ -556,10 +623,12 @@ $this->assign('title', 'Edycja firmy');
     });
   }
 
+  [profileBusiness, profilePrivateRental].forEach((el) => {
+    el?.addEventListener('change', toggleProfileModeUi);
+  });
+  toggleProfileModeUi();
+
   // GUS fetch for company
-  const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
-  const btnGus = document.getElementById('company-gus-fetch');
-  const spin   = document.getElementById('company-gus-spin');
   btnGus?.addEventListener('click', async () => {
     const nip = (nipInput?.value || '').replace(/\D+/g,'');
     if (!nip || nip.length !== 10) {

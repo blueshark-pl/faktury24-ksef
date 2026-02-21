@@ -90,6 +90,9 @@ class CompaniesController extends AppController
     }
 
     $companyData = (array)($this->request->getData('company') ?? []);
+    if (empty($companyData['profile_mode'])) {
+        $companyData['profile_mode'] = 'business';
+    }
     $banksInput  = (array)($this->request->getData('banks') ?? []);
     $defaultIdx  = (int)($this->request->getData('banks_default') ?? 0);
 
@@ -304,6 +307,9 @@ class CompaniesController extends AppController
         if ($this->request->is(['patch', 'post', 'put'])) {
             // patchuj bez namespacu: pola formularza są płaskie (name, street, itd.)
             $dataCompany = (array)$this->request->getData();
+            if (empty($dataCompany['profile_mode'])) {
+                $dataCompany['profile_mode'] = 'business';
+            }
             $dataCompany['id'] = $ctxCompanyId; // wymuś właściwe ID
             $company = $this->Companies->patchEntity($company, $dataCompany);
 

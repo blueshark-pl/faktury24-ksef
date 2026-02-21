@@ -97,6 +97,32 @@ class CompaniesTable extends Table
             ->allowEmptyString('nip');
 
         $validator
+            ->add('nip', 'digitsIfProvided', [
+                'rule' => function ($value): bool {
+                    $v = preg_replace('/\D+/', '', (string)$value);
+                    return $v === '' || strlen($v) === 10;
+                },
+                'message' => 'NIP powinien mieć 10 cyfr.',
+            ]);
+
+        $validator
+            ->add('nip', 'requiredForBusinessVat', [
+                'rule' => function ($value, $context): bool {
+                    $data = (array)($context['data'] ?? []);
+                    $profileMode = (string)($data['profile_mode'] ?? 'business');
+                    $vatPayer = (bool)($data['vat_payer'] ?? false);
+
+                    if ($profileMode !== 'business' || $vatPayer !== true) {
+                        return true;
+                    }
+
+                    $v = preg_replace('/\D+/', '', (string)$value);
+                    return strlen($v) === 10;
+                },
+                'message' => 'Dla firmy (VAT) podaj poprawny NIP (10 cyfr).',
+            ]);
+
+        $validator
             ->scalar('regon')
             ->maxLength('regon', 14)
             ->allowEmptyString('regon');
@@ -175,6 +201,12 @@ class CompaniesTable extends Table
             ->scalar('invoice_template')
             ->maxLength('invoice_template', 64)
             ->allowEmptyString('invoice_template');
+
+        $validator
+            ->scalar('profile_mode')
+            ->maxLength('profile_mode', 32)
+            ->inList('profile_mode', ['business', 'private_rental'])
+            ->notEmptyString('profile_mode');
 
         return $validator;
     }
