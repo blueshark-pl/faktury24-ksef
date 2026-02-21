@@ -300,11 +300,7 @@ $gtuSelectHtml .= '</select>';
               </small>
             </div>
             <div class="col-lg-3 mt-2">
-              <?= $this->Form->control('template', [
-                'label' => 'Szablon wydruku', 'type' => 'select', 'class' => 'form-select',
-                'options' => ['default' => 'Domyślny', 'compact' => 'Kompaktowy', 'pro' => 'PRO'],
-                'value' => 'default'
-              ]) ?>
+              <?= $this->element('invoice_template_picker', ['fieldName' => 'template']) ?>
             </div>
             <div class="col-lg-3">
               <?= $this->Form->control('issuer', [
