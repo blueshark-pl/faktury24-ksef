@@ -103,6 +103,4 @@ Jeśli priorytetem jest szybki efekt dla klientów, najlepiej zacząć od **Etap
 - [ ] Autouzupełnianie danych po NIP w pierwszym kroku po logowaniu / onboardingu.
 - [ ] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + rozważyć import rachunków bankowych.
 - [ ] E-mail jako pole wymagane w procesie rejestracji konta.
-- [ ] Szablony faktur: dodać miniatury / podgląd (preview) przy wyborze.
 - [ ] Poprawić autouzupełnianie adresu: uwzględnić numer lokalu, jeśli występuje.
-- [ ] Zweryfikować i udostępnić brakujący dostęp w profilu użytkownika (zgłoszony brak dostępu).
