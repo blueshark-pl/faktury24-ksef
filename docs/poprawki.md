@@ -90,3 +90,19 @@ To zmniejszy liczbę błędów operacyjnych i pytań użytkowników.
 ---
 
 Jeśli priorytetem jest szybki efekt dla klientów, najlepiej zacząć od **Etapu 1 + minimalnego Etapu 2** (draft + lista + „wyślij teraz”).
+
+## Kolejne uwagi do TODO (rejestracja / onboarding)
+
+### Etap 5 (onboarding i dane firmy)
+
+- [ ] Scenariusz „najem prywatny” (osoba fizyczna nie-JDG, z obowiązkiem KSeF):
+  - dedykowany tryb profilu podmiotu,
+  - walidacje pól adekwatne dla osoby fizycznej,
+  - brak blokad KSeF dla tego typu podmiotu.
+- [ ] Kolejność danych w rejestracji: rozważyć podanie NIP jako pierwszego kroku.
+- [ ] Autouzupełnianie danych po NIP w pierwszym kroku po logowaniu / onboardingu.
+- [ ] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + rozważyć import rachunków bankowych.
+- [ ] E-mail jako pole wymagane w procesie rejestracji konta.
+- [ ] Szablony faktur: dodać miniatury / podgląd (preview) przy wyborze.
+- [ ] Poprawić autouzupełnianie adresu: uwzględnić numer lokalu, jeśli występuje.
+- [ ] Zweryfikować i udostępnić brakujący dostęp w profilu użytkownika (zgłoszony brak dostępu).
