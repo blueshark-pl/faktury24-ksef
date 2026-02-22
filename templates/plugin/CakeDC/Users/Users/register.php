@@ -12,6 +12,7 @@ use Cake\Core\Configure;
 
 $this->setLayout('auth');
 $this->assign('title', __('Rejestracja'));
+$this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12 col-12');
 ?>
 <div class="card custom-card shadow-none my-auto">
   <div class="card-body p-5">
@@ -437,13 +438,3 @@ $this->Html->scriptBlock(<<<JS
 })();
 JS, ['block' => 'bottom']);
 
-$this->Html->css(<<<'CSS'
-.authentication .row.justify-content-center > .col-xxl-4.col-xl-5.col-lg-6.col-md-8.col-sm-10.col-12 {
-  max-width: min(1120px, 96vw) !important;
-  flex: 0 0 min(1120px, 96vw) !important;
-}
-
-.authentication .card.custom-card.shadow-none.my-auto {
-  width: 100%;
-}
-CSS, ['block' => 'css']);

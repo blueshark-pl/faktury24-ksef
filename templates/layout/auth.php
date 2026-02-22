@@ -11,6 +11,7 @@ use Cake\Core\Configure;
 $this->assign('title', $this->fetch('title') ?: 'Sign In');
 
 $appVersion = trim((string)(Configure::read('App.version') ?? ''));
+$authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col-md-8 col-sm-10 col-12');
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr"
@@ -61,7 +62,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
       <div class="container">
         <div class="row justify-content-center">
-          <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-8 col-sm-10 col-12">
+          <div class="<?= h($authColumnClass) ?>">
             <div class="mb-3 d-flex justify-content-center auth-logo">
               <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none" aria-label="Faktury24">
                 <img src="/img/logo-faktury24.png" alt="Faktury24">
