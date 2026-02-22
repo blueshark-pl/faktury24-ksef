@@ -93,7 +93,6 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
         <div id="reg-company-bank-accounts-hidden"></div>
 
         <div class="border rounded p-3 mb-3 bg-light-subtle">
-          <p class="fw-medium mb-2"><?= __('Dane firmy do onboardingu') ?></p>
           <div class="row g-2">
             <div class="col-12">
               <?= $this->Form->control('additional_data.onboarding_prefill.name', [
@@ -148,7 +147,6 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
               ]) ?>
             </div>
           </div>
-          <div class="form-text"><?= __('NIP i dane firmy są wymagane przy rejestracji. Dane zostaną automatycznie przeniesione do onboardingu.') ?></div>
         </div>
 
         <label for="reg-password" class="form-label text-default"><?= __('Hasło') ?></label>
