@@ -268,7 +268,12 @@ $this->assign('title', __('Rejestracja'));
 </div>
 
 <?php
-$this->Html->scriptBlock(<<<'JS'
+$gusLookupUrl = json_encode(
+  $this->Url->build(['plugin' => false, 'controller' => 'Contractors', 'action' => 'gusLookup']),
+  JSON_UNESCAPED_SLASHES
+);
+
+$this->Html->scriptBlock(<<<JS
 (function(){
   const form        = document.getElementById('register-form');
   const emailInput  = document.getElementById('reg-email');
@@ -290,6 +295,7 @@ $this->Html->scriptBlock(<<<'JS'
   const btn         = document.getElementById('registerBtn');
   let submitting    = false;
   const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
+  const gusLookupUrl = {$gusLookupUrl};
 
   function syncUsername(){
     if (!userHidden || !emailInput) return;
@@ -377,7 +383,7 @@ $this->Html->scriptBlock(<<<'JS'
       gusBtn.disabled = true;
       gusSpin?.classList.remove('d-none');
 
-      const res = await fetch('<?= $this->Url->build(['plugin' => false, 'controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
+      const res = await fetch(gusLookupUrl, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
