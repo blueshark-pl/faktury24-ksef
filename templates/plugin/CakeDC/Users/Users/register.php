@@ -398,7 +398,7 @@ $this->Html->scriptBlock(<<<JS
     unique.forEach((iban, idx) => {
       const input = document.createElement('input');
       input.type = 'hidden';
-      input.name = `additional_data[onboarding_prefill][bank_accounts][${idx}]`;
+      input.name = 'additional_data[onboarding_prefill][bank_accounts][' + idx + ']';
       input.value = iban;
       onbBankAccountsHidden.appendChild(input);
     });
