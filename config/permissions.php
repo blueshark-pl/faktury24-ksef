@@ -131,6 +131,13 @@ return [
             'controller' => 'Pages',
             'action' => 'display',
         ],
+        // rejestracja: pobranie danych firmy po NIP z GUS (bez zalogowania)
+        [
+            'role' => '*',
+            'controller' => 'Contractors',
+            'action' => ['gusLookup'],
+            'bypassAuth' => true,
+        ],
         [
             'role' => '*',
             'controller' => 'Invoices',
