@@ -438,8 +438,12 @@ $this->Html->scriptBlock(<<<JS
 JS, ['block' => 'bottom']);
 
 $this->Html->css(<<<'CSS'
-.authentication .col-xxl-4.col-xl-5.col-lg-6.col-md-8.col-sm-10.col-12 {
-  max-width: min(920px, 96vw);
-  flex: 0 0 min(920px, 96vw);
+.authentication .row.justify-content-center > .col-xxl-4.col-xl-5.col-lg-6.col-md-8.col-sm-10.col-12 {
+  max-width: min(1120px, 96vw) !important;
+  flex: 0 0 min(1120px, 96vw) !important;
+}
+
+.authentication .card.custom-card.shadow-none.my-auto {
+  width: 100%;
 }
 CSS, ['block' => 'css']);
