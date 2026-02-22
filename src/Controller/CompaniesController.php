@@ -30,9 +30,12 @@ class CompaniesController extends AppController
 
         $existing = $Companies->find()
             ->select(['id', 'name'])
-            ->where([
-                "REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')" => $nip,
-            ])
+            ->where(function ($exp, $q) use ($nip) {
+                return $exp->eq(
+                    $q->newExpr("REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')"),
+                    $nip
+                );
+            })
             ->first();
 
         return $this->response->withType('application/json')
@@ -159,9 +162,12 @@ class CompaniesController extends AppController
     if (strlen($normalizedNip) === 10) {
         $existingCompanyByNip = $Companies->find()
             ->select(['id'])
-            ->where([
-                "REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')" => $normalizedNip,
-            ])
+            ->where(function ($exp, $q) use ($normalizedNip) {
+                return $exp->eq(
+                    $q->newExpr("REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')"),
+                    $normalizedNip
+                );
+            })
             ->first();
         if ($existingCompanyByNip) {
             $this->Flash->error('Firma z podanym NIP już istnieje w systemie.');
