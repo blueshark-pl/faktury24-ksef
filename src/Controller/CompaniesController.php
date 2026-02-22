@@ -61,6 +61,34 @@ class CompaniesController extends AppController
             'is_default' => true,
         ]);
 
+        // Prefill from registration (additional_data.onboarding_prefill), if available.
+        try {
+            $Users = $this->fetchTable('Users');
+            $user = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'additional_data']]);
+            $additionalData = (array)($user->additional_data ?? []);
+            $prefill = (array)($additionalData['onboarding_prefill'] ?? []);
+
+            if (!empty($prefill)) {
+                $map = [
+                    'name' => 'name',
+                    'nip' => 'nip',
+                    'street' => 'street',
+                    'postal_code' => 'postal_code',
+                    'city' => 'city',
+                    'country' => 'country',
+                ];
+
+                foreach ($map as $src => $dst) {
+                    $val = trim((string)($prefill[$src] ?? ''));
+                    if ($val !== '') {
+                        $company->set($dst, $val);
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // best-effort
+        }
+
         $this->set(compact('company', 'bankAccount'));
     }
     /**
@@ -179,6 +207,11 @@ class CompaniesController extends AppController
             $user = $Users->get($identity->getIdentifier());
             if (empty($user->company_id)) {
                 $user->set('company_id', $company->id);
+                $additionalData = (array)($user->get('additional_data') ?? []);
+                if (isset($additionalData['onboarding_prefill'])) {
+                    unset($additionalData['onboarding_prefill']);
+                    $user->set('additional_data', $additionalData);
+                }
                 if (!$Users->save($user)) {
                     $firstError = current(current($user->getErrors() ?: [['__all__' => ['Nie udało się przypisać użytkownika do firmy.']]]));
                     throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);

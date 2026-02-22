@@ -67,6 +67,34 @@ $this->assign('title', __('Rejestracja'));
           ]) ?>
         </div>
 
+        <label for="reg-company-nip" class="form-label text-default"><?= __('NIP (opcjonalnie, przyspiesza onboarding)') ?></label>
+        <div class="position-relative mb-2">
+          <div class="input-group">
+            <?= $this->Form->control('additional_data.onboarding_prefill.nip', [
+              'id' => 'reg-company-nip',
+              'label' => false,
+              'class' => 'form-control form-control-lg',
+              'placeholder' => __('np. 6571234567'),
+              'maxlength' => 10,
+              'inputmode' => 'numeric',
+              'templates' => ['inputContainer' => '{{content}}'],
+            ]) ?>
+            <button class="btn btn-outline-secondary" type="button" id="reg-gus-fetch">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="reg-gus-spin"></span>
+              <i class="ri-database-2-line me-1"></i><?= __('Pobierz z GUS') ?>
+            </button>
+          </div>
+          <div class="form-text"><?= __('Po rejestracji dane firmy zostaną wstępnie uzupełnione w onboardingu.') ?></div>
+        </div>
+
+        <div id="reg-gus-preview" class="alert alert-light border small d-none mb-3"></div>
+
+        <?= $this->Form->hidden('additional_data.onboarding_prefill.name', ['id' => 'reg-onb-name']) ?>
+        <?= $this->Form->hidden('additional_data.onboarding_prefill.street', ['id' => 'reg-onb-street']) ?>
+        <?= $this->Form->hidden('additional_data.onboarding_prefill.postal_code', ['id' => 'reg-onb-postal-code']) ?>
+        <?= $this->Form->hidden('additional_data.onboarding_prefill.city', ['id' => 'reg-onb-city']) ?>
+        <?= $this->Form->hidden('additional_data.onboarding_prefill.country', ['id' => 'reg-onb-country']) ?>
+
         <label for="reg-password" class="form-label text-default"><?= __('Hasło') ?></label>
         <div class="position-relative mb-3">
           <?= $this->Form->control('password', [
@@ -210,8 +238,18 @@ $this->Html->scriptBlock(<<<'JS'
   const firstName   = document.getElementById('reg-first-name');
   const lastName    = document.getElementById('reg-last-name');
   const tosInput    = document.getElementById('reg-tos');
+  const nipInput    = document.getElementById('reg-company-nip');
+  const gusBtn      = document.getElementById('reg-gus-fetch');
+  const gusSpin     = document.getElementById('reg-gus-spin');
+  const gusPreview  = document.getElementById('reg-gus-preview');
+  const onbName     = document.getElementById('reg-onb-name');
+  const onbStreet   = document.getElementById('reg-onb-street');
+  const onbPostal   = document.getElementById('reg-onb-postal-code');
+  const onbCity     = document.getElementById('reg-onb-city');
+  const onbCountry  = document.getElementById('reg-onb-country');
   const btn         = document.getElementById('registerBtn');
   let submitting    = false;
+  const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
 
   function syncUsername(){
     if (!userHidden || !emailInput) return;
@@ -269,7 +307,65 @@ $this->Html->scriptBlock(<<<'JS'
     }
   }
 
-  [emailInput, passInput, pass2Input, firstName, lastName, tosInput].filter(Boolean).forEach(el => {
+  function setOnboardingPrefill(c){
+    if (onbName) onbName.value = (c?.name || '').trim();
+    if (onbStreet) onbStreet.value = (c?.street || '').trim();
+    if (onbPostal) onbPostal.value = (c?.zip || '').trim();
+    if (onbCity) onbCity.value = (c?.city || '').trim();
+    if (onbCountry) onbCountry.value = (c?.country || 'PL').trim();
+  }
+
+  function setGusPreview(text, isError){
+    if (!gusPreview) return;
+    gusPreview.classList.remove('d-none', 'alert-light', 'alert-danger');
+    gusPreview.classList.add(isError ? 'alert-danger' : 'alert-light');
+    gusPreview.textContent = text;
+  }
+
+  nipInput?.addEventListener('input', () => {
+    nipInput.value = (nipInput.value || '').replace(/\D/g, '').slice(0, 10);
+  });
+
+  gusBtn?.addEventListener('click', async () => {
+    const nip = (nipInput?.value || '').replace(/\D/g, '');
+    if (nip.length !== 10) {
+      setGusPreview('Podaj prawidłowy NIP (10 cyfr).', true);
+      return;
+    }
+
+    try {
+      gusBtn.disabled = true;
+      gusSpin?.classList.remove('d-none');
+
+      const res = await fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({ nip }),
+      });
+
+      const data = await res.json();
+      if (!data?.success) {
+        setGusPreview(data?.message || 'Nie udało się pobrać danych z GUS.', true);
+        return;
+      }
+
+      const c = data.contractor || {};
+      setOnboardingPrefill(c);
+      setGusPreview('Pobrano dane z GUS. W onboardingu pola firmy będą już uzupełnione.', false);
+    } catch (e) {
+      setGusPreview('Błąd połączenia z GUS.', true);
+    } finally {
+      gusBtn.disabled = false;
+      gusSpin?.classList.add('d-none');
+    }
+  });
+
+  [emailInput, passInput, pass2Input, firstName, lastName, tosInput, nipInput].filter(Boolean).forEach(el => {
     ['input','keyup','change'].forEach(ev => el.addEventListener(ev, toggle));
     el.addEventListener('paste', () => setTimeout(toggle,0));
   });

@@ -100,7 +100,7 @@ Jeśli priorytetem jest szybki efekt dla klientów, najlepiej zacząć od **Etap
   - walidacje pól adekwatne dla osoby fizycznej,
   - brak blokad KSeF dla tego typu podmiotu.
 - [x] Kolejność danych w rejestracji: rozważyć podanie NIP jako pierwszego kroku.
-- [ ] Autouzupełnianie danych po NIP w pierwszym kroku po logowaniu / onboardingu.
+- [x] Autouzupełnianie danych po NIP w pierwszym kroku po logowaniu / onboardingu.
 - [ ] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + rozważyć import rachunków bankowych.
 - [x] E-mail jako pole wymagane w procesie rejestracji konta.
 - [ ] Poprawić autouzupełnianie adresu: uwzględnić numer lokalu, jeśli występuje.
