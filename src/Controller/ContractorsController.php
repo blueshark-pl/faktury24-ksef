@@ -5,6 +5,7 @@ namespace App\Controller;
 use Cake\Core\Configure;
 use Cake\Http\Exception\BadRequestException;
 use Cake\Utility\Text;
+use Cake\Http\Client;
 use GusApi\GusApi;
 use GusApi\Exception\InvalidUserKeyException;
 use GusApi\Exception\NotFoundException;
@@ -87,6 +88,37 @@ public function gusLookup()
                 'country'=> 'PL',
             ];
 
+            // Weryfikacja statusu VAT (Biała lista MF) - best effort.
+            $vat = [
+                'statusVat' => null,
+                'requestId' => null,
+                'requestDateTime' => null,
+                'accountNumbers' => [],
+            ];
+
+            try {
+                $wlBase = rtrim((string)Configure::read('WlApi.baseUrl', 'https://wl-api.mf.gov.pl'), '/');
+                $wlDate = date('Y-m-d');
+                $client = new Client(['timeout' => 8]);
+                $wlResp = $client->get($wlBase . '/api/search/nip/' . $nip, ['date' => $wlDate], [
+                    'headers' => ['Accept' => 'application/json'],
+                ]);
+
+                if ($wlResp->isOk()) {
+                    $wlData = (array)$wlResp->getJson();
+                    $result = (array)($wlData['result'] ?? []);
+                    $subject = (array)($result['subject'] ?? []);
+                    $vat['statusVat'] = (string)($subject['statusVat'] ?? '') ?: null;
+                    $vat['requestId'] = (string)($result['requestId'] ?? '') ?: null;
+                    $vat['requestDateTime'] = (string)($result['requestDateTime'] ?? '') ?: null;
+                    $vat['accountNumbers'] = array_values(array_filter((array)($subject['accountNumbers'] ?? []), function ($v) {
+                        return trim((string)$v) !== '';
+                    }));
+                }
+            } catch (\Throwable) {
+                // bez blokowania GUS lookup
+            }
+
             // (opcjonalnie) normalizacja kodu pocztowego 00-000
             if (preg_match('/^(\d{2})(\d{3})$/', $contractor['zip'], $m)) {
                 $contractor['zip'] = $m[1] . '-' . $m[2];
@@ -96,6 +128,7 @@ public function gusLookup()
                 ->withStringBody(json_encode([
                     'success'    => true,
                     'contractor' => $contractor,
+                    'vat'        => $vat,
                 ]));
 
         } catch (InvalidUserKeyException $e) {

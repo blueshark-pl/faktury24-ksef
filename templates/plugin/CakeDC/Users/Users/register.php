@@ -413,8 +413,16 @@ $this->Html->scriptBlock(<<<JS
       }
 
       const c = data.contractor || {};
+      const vat = data.vat || {};
       setOnboardingPrefill(c);
-      setGusPreview('Pobrano dane z GUS. W onboardingu pola firmy będą już uzupełnione.', false);
+
+      const vatLabel = (vat.statusVat || '').trim();
+      const accountsCount = Array.isArray(vat.accountNumbers) ? vat.accountNumbers.length : 0;
+      const vatMsg = vatLabel
+        ? (' Status VAT (MF): ' + vatLabel + (accountsCount > 0 ? ('; rachunki: ' + accountsCount) : '') + '.')
+        : '';
+
+      setGusPreview('Pobrano dane z GUS.' + vatMsg, false);
     } catch (e) {
       setGusPreview('Błąd połączenia z GUS.', true);
     } finally {
