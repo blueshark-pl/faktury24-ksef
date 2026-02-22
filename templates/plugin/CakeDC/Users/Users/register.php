@@ -294,7 +294,9 @@ $this->Html->scriptBlock(<<<JS
   const onbCountry  = document.getElementById('reg-company-country-visible');
   const btn         = document.getElementById('registerBtn');
   let submitting    = false;
-  const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
+  const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content')
+    || form?.querySelector('input[name="_csrfToken"]')?.value
+    || '';
   const gusLookupUrl = {$gusLookupUrl};
 
   function syncUsername(){
