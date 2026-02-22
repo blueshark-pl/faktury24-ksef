@@ -84,7 +84,6 @@ $this->assign('title', __('Rejestracja'));
               <i class="ri-database-2-line me-1"></i><?= __('Pobierz z GUS') ?>
             </button>
           </div>
-          <div class="form-text"><?= __('Po rejestracji dane firmy zostaną wstępnie uzupełnione w onboardingu.') ?></div>
         </div>
 
         <div id="reg-gus-preview" class="alert alert-light border small d-none mb-3"></div>
@@ -437,3 +436,10 @@ $this->Html->scriptBlock(<<<JS
   });
 })();
 JS, ['block' => 'bottom']);
+
+$this->Html->css(<<<'CSS'
+.authentication .col-xxl-4.col-xl-5.col-lg-6.col-md-8.col-sm-10.col-12 {
+  max-width: min(920px, 96vw);
+  flex: 0 0 min(920px, 96vw);
+}
+CSS, ['block' => 'css']);
