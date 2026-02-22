@@ -76,6 +76,7 @@ public function gusLookup()
                     (string)$r->getPropertyNumber(),
                     (string)$r->getApartmentNumber(),
                 ]))),
+                'local_number' => trim((string)$r->getApartmentNumber()),
                 'zip'    => (string)$r->getZipCode(),
                 'city'   => (string)$r->getCity(),
                 'country'=> 'PL',

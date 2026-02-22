@@ -109,6 +109,14 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
               ]) ?>
             </div>
             <div class="col-4">
+              <?= $this->Form->control('additional_data.onboarding_prefill.local_number', [
+                'id' => 'reg-company-local-number',
+                'label' => __('Nr lokalu'),
+                'class' => 'form-control',
+                'placeholder' => __('np. 3'),
+              ]) ?>
+            </div>
+            <div class="col-4">
               <?= $this->Form->control('additional_data.onboarding_prefill.postal_code', [
                 'id' => 'reg-company-postal-code',
                 'label' => __('Kod pocztowy'),
@@ -289,6 +297,7 @@ $this->Html->scriptBlock(<<<JS
   const gusPreview  = document.getElementById('reg-gus-preview');
   const onbName     = document.getElementById('reg-company-name');
   const onbStreet   = document.getElementById('reg-company-street');
+  const onbLocalNo  = document.getElementById('reg-company-local-number');
   const onbPostal   = document.getElementById('reg-company-postal-code');
   const onbCity     = document.getElementById('reg-company-city');
   const onbCountry  = document.getElementById('reg-company-country-visible');
@@ -358,6 +367,7 @@ $this->Html->scriptBlock(<<<JS
   function setOnboardingPrefill(c){
     if (onbName) onbName.value = (c?.name || '').trim();
     if (onbStreet) onbStreet.value = (c?.street || '').trim();
+    if (onbLocalNo) onbLocalNo.value = (c?.local_number || '').trim();
     if (onbPostal) onbPostal.value = (c?.zip || '').trim();
     if (onbCity) onbCity.value = (c?.city || '').trim();
     if (onbCountry) onbCountry.value = (c?.country || 'PL').trim();

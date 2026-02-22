@@ -73,6 +73,7 @@ class CompaniesController extends AppController
                     'name' => 'name',
                     'nip' => 'nip',
                     'street' => 'street',
+                    'local_number' => 'local_number',
                     'postal_code' => 'postal_code',
                     'city' => 'city',
                     'country' => 'country',
