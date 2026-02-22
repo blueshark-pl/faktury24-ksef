@@ -140,6 +140,12 @@ return [
         ],
         [
             'role' => '*',
+            'controller' => 'Companies',
+            'action' => ['nipExists'],
+            'bypassAuth' => true,
+        ],
+        [
+            'role' => '*',
             'controller' => 'Invoices',
             'action' => ['runPlannedDrafts'],
         ],

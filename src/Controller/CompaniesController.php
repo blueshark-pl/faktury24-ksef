@@ -11,6 +11,38 @@ namespace App\Controller;
 class CompaniesController extends AppController
 {
 
+    public function nipExists()
+    {
+        $this->request->allowMethod(['get', 'post']);
+
+        $nip = preg_replace('/\D+/', '', (string)($this->request->getData('nip') ?: $this->request->getQuery('nip')));
+        if ($nip === '' || strlen($nip) !== 10) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => true,
+                    'exists' => false,
+                    'message' => null,
+                ]));
+        }
+
+        /** @var \App\Model\Table\CompaniesTable $Companies */
+        $Companies = $this->fetchTable('Companies');
+
+        $existing = $Companies->find()
+            ->select(['id', 'name'])
+            ->where([
+                "REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')" => $nip,
+            ])
+            ->first();
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success' => true,
+                'exists' => (bool)$existing,
+                'message' => $existing ? 'Firma z podanym NIP już istnieje w systemie.' : null,
+            ]));
+    }
+
     public function onboarding()
     {
         $this->request->allowMethod(['get']);
@@ -122,6 +154,28 @@ class CompaniesController extends AppController
     if (empty($companyData['profile_mode'])) {
         $companyData['profile_mode'] = 'business';
     }
+
+    $normalizedNip = preg_replace('/\D+/', '', (string)($companyData['nip'] ?? ''));
+    if (strlen($normalizedNip) === 10) {
+        $existingCompanyByNip = $Companies->find()
+            ->select(['id'])
+            ->where([
+                "REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '')" => $normalizedNip,
+            ])
+            ->first();
+        if ($existingCompanyByNip) {
+            $this->Flash->error('Firma z podanym NIP już istnieje w systemie.');
+            $company = $Companies->newEntity($companyData);
+            $bankAccount = $CompanyBankAccounts->newEmptyEntity([
+                'currency' => 'PLN',
+                'is_default' => true,
+            ]);
+            $this->set(compact('company', 'bankAccount'));
+
+            return $this->render('onboarding');
+        }
+    }
+
     $banksInput  = (array)($this->request->getData('banks') ?? []);
     $defaultIdx  = (int)($this->request->getData('banks_default') ?? 0);
 

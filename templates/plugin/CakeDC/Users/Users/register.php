@@ -88,6 +88,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
         </div>
 
         <div id="reg-gus-preview" class="alert alert-light border small d-none mb-3"></div>
+        <div id="reg-nip-exists-preview" class="alert alert-warning border small d-none mb-3"></div>
         <div id="reg-company-bank-accounts-hidden"></div>
 
         <div class="border rounded p-3 mb-3 bg-light-subtle">
@@ -281,6 +282,10 @@ $gusLookupUrl = json_encode(
   $this->Url->build(['plugin' => false, 'controller' => 'Contractors', 'action' => 'gusLookup']),
   JSON_UNESCAPED_SLASHES
 );
+$nipExistsUrl = json_encode(
+  $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'nipExists']),
+  JSON_UNESCAPED_SLASHES
+);
 
 $this->Html->scriptBlock(<<<JS
 (function(){
@@ -296,6 +301,7 @@ $this->Html->scriptBlock(<<<JS
   const gusBtn      = document.getElementById('reg-gus-fetch');
   const gusSpin     = document.getElementById('reg-gus-spin');
   const gusPreview  = document.getElementById('reg-gus-preview');
+  const nipExistsPreview = document.getElementById('reg-nip-exists-preview');
   const onbName     = document.getElementById('reg-company-name');
   const onbStreet   = document.getElementById('reg-company-street');
   const onbLocalNo  = document.getElementById('reg-company-local-number');
@@ -309,6 +315,8 @@ $this->Html->scriptBlock(<<<JS
     || form?.querySelector('input[name="_csrfToken"]')?.value
     || '';
   const gusLookupUrl = {$gusLookupUrl};
+  const nipExistsUrl = {$nipExistsUrl};
+  let nipCheckTimer = null;
 
   function syncUsername(){
     if (!userHidden || !emailInput) return;
@@ -411,8 +419,45 @@ $this->Html->scriptBlock(<<<JS
     gusPreview.textContent = text;
   }
 
+  function setNipExistsPreview(text){
+    if (!nipExistsPreview) return;
+    if (!text) {
+      nipExistsPreview.classList.add('d-none');
+      nipExistsPreview.textContent = '';
+      return;
+    }
+    nipExistsPreview.classList.remove('d-none');
+    nipExistsPreview.textContent = text;
+  }
+
+  async function checkCompanyNipExists(nip){
+    try {
+      const res = await fetch(nipExistsUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({ nip }),
+      });
+      const data = await res.json();
+      setNipExistsPreview(data?.exists ? (data?.message || 'Firma z podanym NIP już istnieje w systemie.') : '');
+    } catch (e) {
+      // best effort
+    }
+  }
+
   nipInput?.addEventListener('input', () => {
     nipInput.value = (nipInput.value || '').replace(/\D/g, '').slice(0, 10);
+    const nip = (nipInput.value || '').trim();
+    if (nipCheckTimer) clearTimeout(nipCheckTimer);
+    if (nip.length !== 10) {
+      setNipExistsPreview('');
+      return;
+    }
+    nipCheckTimer = setTimeout(() => checkCompanyNipExists(nip), 300);
   });
 
   gusBtn?.addEventListener('click', async () => {

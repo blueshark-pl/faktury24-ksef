@@ -146,6 +146,7 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
                 </button>
               </div>
               <div class="form-text" id="company-nip-help">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
+              <div class="alert alert-warning small py-2 px-3 mt-2 d-none" id="company-nip-exists-alert"></div>
               <div class="invalid-feedback">NIP powinien mieć 10 cyfr.</div>
             </div>
             <div class="col-xl-4" id="company-regon-wrap">
@@ -420,6 +421,9 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
   const nameLabel = document.querySelector('label[for="company-name"]');
   const nameHelp = document.getElementById('company-name-help');
   const gusButton = document.getElementById('company-gus-fetch');
+  const nipExistsAlert = document.getElementById('company-nip-exists-alert');
+  const nipExistsUrl = '<?= $this->Url->build(['controller' => 'Companies', 'action' => 'nipExists']) ?>';
+  let nipCheckTimer = null;
 
   function isPrivateRentalProfile() {
     return !!profilePrivateRental?.checked;
@@ -469,6 +473,42 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
       } else {
         e.target.classList.remove('is-invalid');
       }
+
+      if (nipCheckTimer) clearTimeout(nipCheckTimer);
+      if (v.length !== 10) {
+        if (nipExistsAlert) {
+          nipExistsAlert.classList.add('d-none');
+          nipExistsAlert.textContent = '';
+        }
+        return;
+      }
+
+      nipCheckTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(nipExistsUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-CSRF-Token': CSRF_TOKEN,
+            },
+            body: JSON.stringify({ nip: v }),
+          });
+          const data = await res.json();
+          if (nipExistsAlert) {
+            if (data?.exists) {
+              nipExistsAlert.textContent = data?.message || 'Firma z podanym NIP już istnieje w systemie.';
+              nipExistsAlert.classList.remove('d-none');
+            } else {
+              nipExistsAlert.classList.add('d-none');
+              nipExistsAlert.textContent = '';
+            }
+          }
+        } catch (err) {
+          // best effort
+        }
+      }, 300);
     });
   }
 
