@@ -38,6 +38,32 @@ class UsersTable extends BaseUsersTable
             ->notEmptyString('email', 'E-mail jest wymagany.')
             ->email('email', false, 'Podaj poprawny adres e-mail.');
 
+        $validator
+            ->add('additional_data', 'registrationCompanyPrefillRequired', [
+                'rule' => function ($value): bool {
+                    $data = (array)$value;
+                    $prefill = (array)($data['onboarding_prefill'] ?? []);
+
+                    $nip = preg_replace('/\D+/', '', (string)($prefill['nip'] ?? ''));
+                    $name = trim((string)($prefill['name'] ?? ''));
+                    $street = trim((string)($prefill['street'] ?? ''));
+                    $postalCode = trim((string)($prefill['postal_code'] ?? ''));
+                    $city = trim((string)($prefill['city'] ?? ''));
+                    $country = trim((string)($prefill['country'] ?? ''));
+
+                    $postalOk = (bool)preg_match('/^\d{2}-\d{3}$/', $postalCode)
+                        || (bool)preg_match('/^\d{5}$/', $postalCode);
+
+                    return strlen($nip) === 10
+                        && $name !== ''
+                        && $street !== ''
+                        && $postalOk
+                        && $city !== ''
+                        && $country !== '';
+                },
+                'message' => 'NIP i dane firmy są wymagane przy rejestracji.',
+            ]);
+
         return $validator;
     }
 

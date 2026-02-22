@@ -68,7 +68,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
           ]) ?>
         </div>
 
-        <label for="reg-company-nip" class="form-label text-default"><?= __('NIP (opcjonalnie, przyspiesza onboarding)') ?></label>
+        <label for="reg-company-nip" class="form-label text-default"><?= __('NIP firmy') ?></label>
         <div class="position-relative mb-2">
           <div class="input-group">
             <?= $this->Form->control('additional_data.onboarding_prefill.nip', [
@@ -77,6 +77,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
               'class' => 'form-control form-control-lg',
               'placeholder' => __('np. 6571234567'),
               'maxlength' => 10,
+              'required' => true,
               'inputmode' => 'numeric',
               'templates' => ['inputContainer' => '{{content}}'],
             ]) ?>
@@ -100,6 +101,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
                 'label' => __('Nazwa firmy / imię i nazwisko'),
                 'class' => 'form-control',
                 'placeholder' => __('np. ACME Sp. z o.o.'),
+                'required' => true,
               ]) ?>
             </div>
             <div class="col-8">
@@ -108,6 +110,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
                 'label' => __('Ulica i numer'),
                 'class' => 'form-control',
                 'placeholder' => __('np. Lipowa 12/3'),
+                'required' => true,
               ]) ?>
             </div>
             <div class="col-4">
@@ -124,6 +127,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
                 'label' => __('Kod pocztowy'),
                 'class' => 'form-control',
                 'placeholder' => __('00-000'),
+                'required' => true,
               ]) ?>
             </div>
             <div class="col-8">
@@ -131,6 +135,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
                 'id' => 'reg-company-city',
                 'label' => __('Miasto'),
                 'class' => 'form-control',
+                'required' => true,
               ]) ?>
             </div>
             <div class="col-4">
@@ -139,10 +144,11 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
                 'label' => __('Kraj'),
                 'class' => 'form-control',
                 'value' => 'PL',
+                'required' => true,
               ]) ?>
             </div>
           </div>
-          <div class="form-text"><?= __('Te pola zostaną automatycznie przeniesione do formularza onboarding po pierwszym logowaniu.') ?></div>
+          <div class="form-text"><?= __('NIP i dane firmy są wymagane przy rejestracji. Dane zostaną automatycznie przeniesione do onboardingu.') ?></div>
         </div>
 
         <label for="reg-password" class="form-label text-default"><?= __('Hasło') ?></label>
@@ -345,8 +351,25 @@ $this->Html->scriptBlock(<<<JS
     return !!tosInput.checked;
   }
 
+  function validCompanyPrefill(){
+    const nip = (nipInput?.value || '').replace(/\D/g, '');
+    const name = (onbName?.value || '').trim();
+    const street = (onbStreet?.value || '').trim();
+    const postal = (onbPostal?.value || '').trim();
+    const city = (onbCity?.value || '').trim();
+    const country = (onbCountry?.value || '').trim();
+    const postalOk = /^\d{2}-\d{3}$/.test(postal) || /^\d{5}$/.test(postal);
+
+    return nip.length === 10
+      && name.length > 0
+      && street.length > 0
+      && postalOk
+      && city.length > 0
+      && country.length > 0;
+  }
+
   function valid(){
-    return validEmail() && validPasswords() && validName() && validTos();
+    return validEmail() && validPasswords() && validName() && validCompanyPrefill() && validTos();
   }
 
   function toggle(){
@@ -508,7 +531,7 @@ $this->Html->scriptBlock(<<<JS
     }
   });
 
-  [emailInput, passInput, pass2Input, firstName, lastName, tosInput, nipInput].filter(Boolean).forEach(el => {
+  [emailInput, passInput, pass2Input, firstName, lastName, tosInput, nipInput, onbName, onbStreet, onbPostal, onbCity, onbCountry].filter(Boolean).forEach(el => {
     ['input','keyup','change'].forEach(ev => el.addEventListener(ev, toggle));
     el.addEventListener('paste', () => setTimeout(toggle,0));
   });
