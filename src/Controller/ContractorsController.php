@@ -68,15 +68,20 @@ public function gusLookup()
             // ewentualnie możesz tu wstawić logikę wyboru po typie.
             $r = $reports[0];
 
+            $apartmentNumberRaw = trim((string)$r->getApartmentNumber());
+            $localNumber = $apartmentNumberRaw;
+            if ($apartmentNumberRaw !== '' && preg_match('/^(\d+)/', $apartmentNumberRaw, $m)) {
+                $localNumber = (string)$m[1];
+            }
+
             $contractor = [
                 'name'   => trim((string)$r->getName()),
                 'nip'    => $nip,
                 'street' => trim(implode(' ', array_filter([
                     (string)$r->getStreet(),
                     (string)$r->getPropertyNumber(),
-                    (string)$r->getApartmentNumber(),
                 ]))),
-                'local_number' => trim((string)$r->getApartmentNumber()),
+                'local_number' => $localNumber,
                 'zip'    => (string)$r->getZipCode(),
                 'city'   => (string)$r->getCity(),
                 'country'=> 'PL',
