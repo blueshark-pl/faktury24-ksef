@@ -43,9 +43,6 @@ $this->assign('title', 'Edycja firmy');
         <span class="badge rounded-pill bg-secondary" id="step-badge-2">2</span><span class="fw-medium" id="step-label-2">Rachunek bankowy</span>
       </div>
       <div class="text-muted">—</div>
-      <div class="d-flex align-items-center gap-2" data-tab="#preferences-tab-pane">
-        <span class="badge rounded-pill bg-secondary" id="step-badge-3">3</span><span class="fw-medium" id="step-label-3">Preferencje</span>
-      </div>
     </div>
   </div>
 </div>
@@ -67,12 +64,6 @@ $this->assign('title', 'Edycja firmy');
               <a class="nav-link bg-light d-inline-flex w-100 mb-1" id="bank-tab" data-bs-toggle="tab"
                  data-bs-target="#bank-tab-pane" role="tab" aria-controls="bank-tab-pane">
                 <i class="ri-bank-line me-2"></i>Rachunek bankowy
-              </a>
-            </li>
-            <li class="nav-item me-0" role="presentation">
-              <a class="nav-link bg-light d-inline-flex w-100" id="preferences-tab" data-bs-toggle="tab"
-                 data-bs-target="#preferences-tab-pane" role="tab" aria-controls="preferences-tab-pane">
-                <i class="ri-settings-3-line me-2"></i>Preferencje
               </a>
             </li>
           </ul>
@@ -442,28 +433,6 @@ $this->assign('title', 'Edycja firmy');
             </script>
 
         </div>
-        </div>
-
-
-        <!-- Preferencje -->
-        <div class="tab-pane overflow-hidden p-0 border-0" id="preferences-tab-pane" role="tabpanel" aria-labelledby="preferences-tab" tabindex="0">
-          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
-            <div class="fw-semibold d-block fs-15">Preferencje faktur</div>
-            <span class="badge bg-light text-muted">krok 3/3</span>
-          </div>
-
-          <div class="row gy-3">
-            <div class="col-xl-6">
-                <?= $this->Form->control('invoice_template', [
-                  'label' => ['text' => 'Szablon faktury'],
-                    'class' => 'form-control',
-                    'type' => 'select',
-                    'options' => ['default' => 'Domyślny', 'modern' => 'Modern', 'pro' => 'Pro'],
-                    'empty' => false,
-                    'value' => 'default',
-              ]) ?>
-            </div>
-          </div>
         </div>
       </div>
 
