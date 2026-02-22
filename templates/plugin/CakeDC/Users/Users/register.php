@@ -88,6 +88,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
         </div>
 
         <div id="reg-gus-preview" class="alert alert-light border small d-none mb-3"></div>
+        <div id="reg-company-bank-accounts-hidden"></div>
 
         <div class="border rounded p-3 mb-3 bg-light-subtle">
           <p class="fw-medium mb-2"><?= __('Dane firmy do onboardingu') ?></p>
@@ -301,6 +302,7 @@ $this->Html->scriptBlock(<<<JS
   const onbPostal   = document.getElementById('reg-company-postal-code');
   const onbCity     = document.getElementById('reg-company-city');
   const onbCountry  = document.getElementById('reg-company-country-visible');
+  const onbBankAccountsHidden = document.getElementById('reg-company-bank-accounts-hidden');
   const btn         = document.getElementById('registerBtn');
   let submitting    = false;
   const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content')
@@ -373,6 +375,35 @@ $this->Html->scriptBlock(<<<JS
     if (onbCountry) onbCountry.value = (c?.country || 'PL').trim();
   }
 
+  function normalizeImportedIban(v){
+    const raw = (String(v || '')).replace(/\s+/g, '').toUpperCase();
+    if (!raw) return '';
+    if (/^\d{26}$/.test(raw)) return 'PL' + raw;
+    return raw;
+  }
+
+  function setPrefillBankAccounts(accounts){
+    if (!onbBankAccountsHidden) return;
+    onbBankAccountsHidden.innerHTML = '';
+
+    const unique = [];
+    const seen = new Set();
+    (Array.isArray(accounts) ? accounts : []).forEach((acc) => {
+      const iban = normalizeImportedIban(acc);
+      if (!iban || seen.has(iban)) return;
+      seen.add(iban);
+      unique.push(iban);
+    });
+
+    unique.forEach((iban, idx) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = `additional_data[onboarding_prefill][bank_accounts][${idx}]`;
+      input.value = iban;
+      onbBankAccountsHidden.appendChild(input);
+    });
+  }
+
   function setGusPreview(text, isError){
     if (!gusPreview) return;
     gusPreview.classList.remove('d-none', 'alert-light', 'alert-danger');
@@ -415,11 +446,12 @@ $this->Html->scriptBlock(<<<JS
       const c = data.contractor || {};
       const vat = data.vat || {};
       setOnboardingPrefill(c);
+      setPrefillBankAccounts(vat.accountNumbers || []);
 
       const vatLabel = (vat.statusVat || '').trim();
       const accountsCount = Array.isArray(vat.accountNumbers) ? vat.accountNumbers.length : 0;
       const vatMsg = vatLabel
-        ? (' Status VAT (MF): ' + vatLabel + (accountsCount > 0 ? ('; rachunki: ' + accountsCount) : '') + '.')
+        ? (' Status VAT (MF): ' + vatLabel + (accountsCount > 0 ? ('; rachunki: ' + accountsCount + ' (zostaną dodane automatycznie, jeśli nie wpiszesz własnych)') : '') + '.')
         : '';
 
       setGusPreview('Pobrano dane z GUS.' + vatMsg, false);

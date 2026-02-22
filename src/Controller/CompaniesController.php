@@ -129,6 +129,57 @@ class CompaniesController extends AppController
     $normalizeIban = static function (?string $v): string {
         return strtoupper(preg_replace('/\s+/', '', (string)$v));
     };
+    $normalizeImportedIban = static function (?string $v) use ($normalizeIban): string {
+        $iban = $normalizeIban($v);
+        if ($iban !== '' && preg_match('/^\d{26}$/', $iban)) {
+            $iban = 'PL' . $iban;
+        }
+
+        return $iban;
+    };
+
+    // Jeśli użytkownik nie podał ręcznie rachunków, spróbuj użyć rachunków z prefilla (MF WL z rejestracji).
+    $hasManualBankInput = false;
+    foreach ($banksInput as $row) {
+        if ($normalizeIban((string)($row['iban'] ?? '')) !== '') {
+            $hasManualBankInput = true;
+
+            break;
+        }
+    }
+
+    if (!$hasManualBankInput) {
+        try {
+            $userForPrefill = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'additional_data']]);
+            $additionalData = (array)($userForPrefill->get('additional_data') ?? []);
+            $prefill = (array)($additionalData['onboarding_prefill'] ?? []);
+            $prefillBankAccounts = (array)($prefill['bank_accounts'] ?? []);
+
+            $autofillBanks = [];
+            foreach ($prefillBankAccounts as $rawAccount) {
+                $iban = $normalizeImportedIban((string)$rawAccount);
+                if ($iban === '') {
+                    continue;
+                }
+                if (isset($autofillBanks[$iban])) {
+                    continue;
+                }
+                $autofillBanks[$iban] = [
+                    'iban' => $iban,
+                    'currency' => 'PLN',
+                    'bank_name' => null,
+                    'label' => null,
+                ];
+            }
+
+            if (!empty($autofillBanks)) {
+                $banksInput = array_values($autofillBanks);
+                $defaultIdx = 0;
+            }
+        } catch (\Throwable) {
+            // best-effort
+        }
+    }
 
     // 1) Zbuduj encję firmy (onboarding tworzy nową firmę)
     $company = $Companies->newEmptyEntity();
