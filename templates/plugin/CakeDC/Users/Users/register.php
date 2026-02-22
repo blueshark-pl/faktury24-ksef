@@ -89,11 +89,51 @@ $this->assign('title', __('Rejestracja'));
 
         <div id="reg-gus-preview" class="alert alert-light border small d-none mb-3"></div>
 
-        <?= $this->Form->hidden('additional_data.onboarding_prefill.name', ['id' => 'reg-onb-name']) ?>
-        <?= $this->Form->hidden('additional_data.onboarding_prefill.street', ['id' => 'reg-onb-street']) ?>
-        <?= $this->Form->hidden('additional_data.onboarding_prefill.postal_code', ['id' => 'reg-onb-postal-code']) ?>
-        <?= $this->Form->hidden('additional_data.onboarding_prefill.city', ['id' => 'reg-onb-city']) ?>
-        <?= $this->Form->hidden('additional_data.onboarding_prefill.country', ['id' => 'reg-onb-country']) ?>
+        <div class="border rounded p-3 mb-3 bg-light-subtle">
+          <p class="fw-medium mb-2"><?= __('Dane firmy do onboardingu') ?></p>
+          <div class="row g-2">
+            <div class="col-12">
+              <?= $this->Form->control('additional_data.onboarding_prefill.name', [
+                'id' => 'reg-company-name',
+                'label' => __('Nazwa firmy / imię i nazwisko'),
+                'class' => 'form-control',
+                'placeholder' => __('np. ACME Sp. z o.o.'),
+              ]) ?>
+            </div>
+            <div class="col-8">
+              <?= $this->Form->control('additional_data.onboarding_prefill.street', [
+                'id' => 'reg-company-street',
+                'label' => __('Ulica i numer'),
+                'class' => 'form-control',
+                'placeholder' => __('np. Lipowa 12/3'),
+              ]) ?>
+            </div>
+            <div class="col-4">
+              <?= $this->Form->control('additional_data.onboarding_prefill.postal_code', [
+                'id' => 'reg-company-postal-code',
+                'label' => __('Kod pocztowy'),
+                'class' => 'form-control',
+                'placeholder' => __('00-000'),
+              ]) ?>
+            </div>
+            <div class="col-8">
+              <?= $this->Form->control('additional_data.onboarding_prefill.city', [
+                'id' => 'reg-company-city',
+                'label' => __('Miasto'),
+                'class' => 'form-control',
+              ]) ?>
+            </div>
+            <div class="col-4">
+              <?= $this->Form->control('additional_data.onboarding_prefill.country', [
+                'id' => 'reg-company-country-visible',
+                'label' => __('Kraj'),
+                'class' => 'form-control',
+                'value' => 'PL',
+              ]) ?>
+            </div>
+          </div>
+          <div class="form-text"><?= __('Te pola zostaną automatycznie przeniesione do formularza onboarding po pierwszym logowaniu.') ?></div>
+        </div>
 
         <label for="reg-password" class="form-label text-default"><?= __('Hasło') ?></label>
         <div class="position-relative mb-3">
@@ -242,11 +282,11 @@ $this->Html->scriptBlock(<<<'JS'
   const gusBtn      = document.getElementById('reg-gus-fetch');
   const gusSpin     = document.getElementById('reg-gus-spin');
   const gusPreview  = document.getElementById('reg-gus-preview');
-  const onbName     = document.getElementById('reg-onb-name');
-  const onbStreet   = document.getElementById('reg-onb-street');
-  const onbPostal   = document.getElementById('reg-onb-postal-code');
-  const onbCity     = document.getElementById('reg-onb-city');
-  const onbCountry  = document.getElementById('reg-onb-country');
+  const onbName     = document.getElementById('reg-company-name');
+  const onbStreet   = document.getElementById('reg-company-street');
+  const onbPostal   = document.getElementById('reg-company-postal-code');
+  const onbCity     = document.getElementById('reg-company-city');
+  const onbCountry  = document.getElementById('reg-company-country-visible');
   const btn         = document.getElementById('registerBtn');
   let submitting    = false;
   const csrfToken   = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
@@ -337,7 +377,7 @@ $this->Html->scriptBlock(<<<'JS'
       gusBtn.disabled = true;
       gusSpin?.classList.remove('d-none');
 
-      const res = await fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
+      const res = await fetch('<?= $this->Url->build(['plugin' => false, 'controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
