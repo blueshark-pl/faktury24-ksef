@@ -13,15 +13,6 @@ use CakeDC\Users\Model\Table\UsersTable as BaseUsersTable;
 
 class UsersTable extends BaseUsersTable
 {
-    public function beforeSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
-    {
-        // afterSave() dostaje encję już jako persisted (isNew=false),
-        // dlatego zapamiętujemy tutaj czy to był CREATE.
-        if (!isset($options['__isCreate'])) {
-            $options['__isCreate'] = $entity->isNew();
-        }
-    }
-
     public function initialize(array $config): void
     {
         parent::initialize($config);
@@ -100,8 +91,7 @@ class UsersTable extends BaseUsersTable
     public function afterSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
     {
         // Reaguj tylko po utworzeniu konta i tylko gdy user nie ma jeszcze firmy.
-        $isCreate = (bool)($options['__isCreate'] ?? false);
-        if (!$isCreate || !empty($entity->get('company_id'))) {
+        if (!$entity->isNew() || !empty($entity->get('company_id'))) {
             return;
         }
 
