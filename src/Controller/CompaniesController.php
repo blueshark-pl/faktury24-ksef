@@ -641,7 +641,7 @@ class CompaniesController extends AppController
                         }
                     }
 
-                    $savedSeriesIdsByKey = [];
+                    $savedSeriesByKey = [];
                     foreach ($invoiceSeriesInput as $key => $row) {
                         $row = (array)$row;
                         if (!empty($row['_delete'])) {
@@ -685,7 +685,10 @@ class CompaniesController extends AppController
                             $seriesEntity = $existingSeries[$rowId];
                             if (!empty($seriesEntity->parent_id) || (int)($seriesEntity->is_blocked ?? 0) === 1) {
                                 Log::info('Companies.edit: skip update for read-only system series id=' . $rowId, ['series_debug']);
-                                $savedSeriesIdsByKey[(string)$key] = (string)$seriesEntity->id;
+                                $savedSeriesByKey[(string)$key] = [
+                                    'id' => (string)$seriesEntity->id,
+                                    'type' => (string)($seriesEntity->type ?? 'vat'),
+                                ];
                                 continue;
                             }
                             $seriesEntity = $InvoiceSeries->patchEntity($seriesEntity, $payload);
@@ -701,21 +704,26 @@ class CompaniesController extends AppController
                             throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);
                         }
                         Log::info('Companies.edit: series saved id=' . (string)$seriesEntity->id . ' key=' . (string)$key, ['series_debug']);
-                        $savedSeriesIdsByKey[(string)$key] = (string)$seriesEntity->id;
+                        $savedSeriesByKey[(string)$key] = [
+                            'id' => (string)$seriesEntity->id,
+                            'type' => (string)($seriesEntity->type ?? 'vat'),
+                        ];
                     }
 
-                    if (!empty($savedSeriesIdsByKey)) {
-                        $selectedSeriesId = null;
-                        if ($invoiceSeriesDefaultKey !== '' && isset($savedSeriesIdsByKey[$invoiceSeriesDefaultKey])) {
-                            $selectedSeriesId = $savedSeriesIdsByKey[$invoiceSeriesDefaultKey];
+                    if (!empty($savedSeriesByKey)) {
+                        $selectedSeries = null;
+                        if ($invoiceSeriesDefaultKey !== '' && isset($savedSeriesByKey[$invoiceSeriesDefaultKey])) {
+                            $selectedSeries = $savedSeriesByKey[$invoiceSeriesDefaultKey];
                         } else {
-                            $selectedSeriesId = (string)reset($savedSeriesIdsByKey);
+                            $selectedSeries = reset($savedSeriesByKey) ?: null;
                         }
 
-                        $InvoiceSeries->updateAll(['is_default' => 0], ['company_id' => $ctxCompanyId]);
-                        if ($selectedSeriesId !== '') {
+                        if (!empty($selectedSeries['id']) && !empty($selectedSeries['type'])) {
+                            $selectedSeriesId = (string)$selectedSeries['id'];
+                            $selectedType = (string)$selectedSeries['type'];
+                            $InvoiceSeries->updateAll(['is_default' => 0], ['company_id' => $ctxCompanyId, 'type' => $selectedType]);
                             $InvoiceSeries->updateAll(['is_default' => 1], ['company_id' => $ctxCompanyId, 'id' => $selectedSeriesId]);
-                            Log::info('Companies.edit: default series set id=' . $selectedSeriesId . ' company=' . $ctxCompanyId, ['series_debug']);
+                            Log::info('Companies.edit: default series set id=' . $selectedSeriesId . ' type=' . $selectedType . ' company=' . $ctxCompanyId, ['series_debug']);
                         }
                     }
                 });

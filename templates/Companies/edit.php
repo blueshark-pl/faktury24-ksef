@@ -451,7 +451,7 @@ $this->assign('title', 'Edycja firmy');
           </div>
 
           <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
-            Zarządzaj seriami numeracji faktur dla firmy. Jedna seria może być domyślna.
+            Zarządzaj seriami numeracji faktur dla firmy. Domyślna seria jest ustawiana per typ dokumentu.
             <?php if (!empty($copiedSeriesCount)): ?>
               <div class="mt-1">Widoczne serie przekopiowane systemowo: <strong><?= (int)$copiedSeriesCount ?></strong> (oznaczone badge „Systemowa”).</div>
             <?php endif; ?>

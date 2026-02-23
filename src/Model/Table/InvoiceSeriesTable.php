@@ -233,11 +233,16 @@ class InvoiceSeriesTable extends Table
         $typeIdsMap = array_fill_keys(array_map('strval', $typeIds), true);
         $periodIdsMap = array_fill_keys(array_map('strval', $periodIds), true);
 
-        // default handling: if company has no default, preserve original default from system (first fallback)
-        $companyHasDefault = $this->find()
+        // default handling per document type
+        $existingDefaultsByType = $this->find()
+            ->select(['type'])
             ->where(['company_id' => $companyId, 'is_default' => 1])
-            ->count() > 0;
-        $defaultAssigned = $companyHasDefault;
+            ->enableHydration(false)
+            ->all()
+            ->extract('type')
+            ->filter(static fn ($type) => $type !== null && $type !== '')
+            ->toList();
+        $defaultAssignedByType = array_fill_keys(array_map('strval', $existingDefaultsByType), true);
 
         $copied = 0;
         foreach ($systemSeriesList as $orig) {
@@ -255,10 +260,12 @@ class InvoiceSeriesTable extends Table
                 $periodId = '';
             }
 
+            $origType = (string)($orig->type ?? 'vat');
+
             $isDefault = 0;
-            if (!$defaultAssigned && !empty($orig->is_default)) {
+            if (empty($defaultAssignedByType[$origType]) && !empty($orig->is_default)) {
                 $isDefault = 1;
-                $defaultAssigned = true;
+                $defaultAssignedByType[$origType] = true;
             }
 
             $data = [
@@ -286,17 +293,35 @@ class InvoiceSeriesTable extends Table
             }
         }
 
-        // fallback: if still no default for company, set first available as default
-        if (!$defaultAssigned) {
-            $first = $this->find()
+        // fallback per type: if a type exists without default, set first series for that type as default
+        $typesInCompany = $this->find()
+            ->select(['type'])
+            ->where(['company_id' => $companyId])
+            ->enableHydration(false)
+            ->all()
+            ->extract('type')
+            ->filter(static fn ($type) => $type !== null && $type !== '')
+            ->toList();
+        $typesInCompany = array_values(array_unique(array_map('strval', $typesInCompany)));
+
+        foreach ($typesInCompany as $typeCode) {
+            $hasDefaultForType = $this->find()
+                ->where(['company_id' => $companyId, 'type' => $typeCode, 'is_default' => 1])
+                ->count() > 0;
+            if ($hasDefaultForType) {
+                continue;
+            }
+
+            $firstForType = $this->find()
                 ->select(['id'])
-                ->where(['company_id' => $companyId])
+                ->where(['company_id' => $companyId, 'type' => $typeCode])
                 ->orderAsc('created')
                 ->first();
-            if ($first) {
-                $this->updateAll(['is_default' => 1], ['id' => $first->id, 'company_id' => $companyId]);
-                Log::info('InvoiceSeries.copySystemSeriesForCompany: fallback default set id=' . (string)$first->id . ' company=' . $companyId, ['series_init']);
-                $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.defaultFallback', ['company_id' => $companyId, 'id' => (string)$first->id]);
+
+            if ($firstForType) {
+                $this->updateAll(['is_default' => 1], ['id' => $firstForType->id, 'company_id' => $companyId]);
+                Log::info('InvoiceSeries.copySystemSeriesForCompany: fallback default set id=' . (string)$firstForType->id . ' type=' . $typeCode . ' company=' . $companyId, ['series_init']);
+                $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.defaultFallback', ['company_id' => $companyId, 'type' => $typeCode, 'id' => (string)$firstForType->id]);
             }
         }
 
