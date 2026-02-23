@@ -217,24 +217,12 @@ class UsersTable extends BaseUsersTable
 
     public function validationDefault(Validator $validator): Validator
     {
-        $validator = parent::validationDefault($validator);
-
-        $validator
-            ->requirePresence('email', 'create')
-            ->notEmptyString('email', 'E-mail jest wymagany.')
-            ->email('email', false, 'Podaj poprawny adres e-mail.');
-
-        return $validator;
+        return parent::validationDefault($validator);
     }
 
     public function validationRegister(Validator $validator)
     {
         $validator = parent::validationRegister($validator);
-
-        $validator
-            ->requirePresence('email', 'create')
-            ->notEmptyString('email', 'E-mail jest wymagany.')
-            ->email('email', false, 'Podaj poprawny adres e-mail.');
 
         $validator
             ->add('additional_data', 'registrationCompanyPrefillRequired', [
