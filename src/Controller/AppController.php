@@ -118,6 +118,16 @@ class AppController extends Controller
                     $this->setKsefModeViewVars((string)$dbUser->company_id);
                     $this->setDraftsViewVars((string)$dbUser->company_id);
                     try {
+                        /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
+                        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+                        $copied = $InvoiceSeries->copySystemSeriesForCompany((string)$dbUser->company_id);
+                        if ($copied > 0) {
+                            Log::info('Skopiowano '.$copied.' systemowych serii dla firmy '.$dbUser->company_id.' (stale identity path)', ['series_init']);
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Nie udało się skopiować systemowych serii (stale identity path): '.$e->getMessage(), ['series_init']);
+                    }
+                    try {
                         if (!$this->components()->has('Authentication')) {
                             $this->loadComponent('Authentication.Authentication');
                         }

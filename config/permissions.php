@@ -201,6 +201,9 @@ return [
                 'downloadUpoPdf',
                 'upoHtml',
                 'metadataKsef',
+                'drafts',
+                'sendDraftNow',
+                'scheduleDraft',
             ],
             
         ],
