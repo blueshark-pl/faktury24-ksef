@@ -43,6 +43,9 @@ $this->assign('title', 'Edycja firmy');
         <span class="badge rounded-pill bg-secondary" id="step-badge-2">2</span><span class="fw-medium" id="step-label-2">Rachunek bankowy</span>
       </div>
       <div class="text-muted">—</div>
+      <div class="d-flex align-items-center gap-2" data-tab="#series-tab-pane">
+        <span class="badge rounded-pill bg-secondary" id="step-badge-3">3</span><span class="fw-medium" id="step-label-3">Serie numeracji</span>
+      </div>
     </div>
   </div>
 </div>
@@ -64,6 +67,12 @@ $this->assign('title', 'Edycja firmy');
               <a class="nav-link bg-light d-inline-flex w-100 mb-1" id="bank-tab" data-bs-toggle="tab"
                  data-bs-target="#bank-tab-pane" role="tab" aria-controls="bank-tab-pane">
                 <i class="ri-bank-line me-2"></i>Rachunek bankowy
+              </a>
+            </li>
+            <li class="nav-item me-0" role="presentation">
+              <a class="nav-link bg-light d-inline-flex w-100" id="series-tab" data-bs-toggle="tab"
+                 data-bs-target="#series-tab-pane" role="tab" aria-controls="series-tab-pane">
+                <i class="ri-hashtag me-2"></i>Serie numeracji
               </a>
             </li>
           </ul>
@@ -434,6 +443,153 @@ $this->assign('title', 'Edycja firmy');
 
         </div>
         </div>
+
+        <div class="tab-pane overflow-hidden p-0 border-0" id="series-tab-pane" role="tabpanel" aria-labelledby="series-tab" tabindex="0">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
+            <div class="fw-semibold d-block fs-15">Serie numeracji</div>
+            <span class="badge bg-light text-muted">krok 3/3</span>
+          </div>
+
+          <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
+            Zarządzaj seriami numeracji faktur dla firmy. Jedna seria może być domyślna.
+          </div>
+
+          <?php $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0; ?>
+          <div id="series-list" class="d-flex flex-column gap-3" data-next-index="<?= (int)$initialSeriesCount ?>">
+            <?php foreach ((array)$invoiceSeriesRows as $idx => $series): ?>
+              <div class="series-item card border-0 shadow-xs" data-index="<?= (int)$idx ?>">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                      <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="<?= (int)$idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?>>
+                      <span class="badge <?= !empty($series->is_default) ? 'bg-primary-soft text-primary' : 'bg-light text-muted' ?>"><?= !empty($series->is_default) ? 'Domyślna' : '—' ?></span>
+                      <?php if (!empty($series->is_blocked)): ?>
+                        <span class="badge bg-warning-transparent">Systemowa</span>
+                      <?php endif; ?>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= !empty($series->is_blocked) ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
+                      <i class="ri-delete-bin-line"></i> Usuń
+                    </button>
+                  </div>
+
+                  <input type="hidden" name="invoice_series_rows[<?= (int)$idx ?>][id]" value="<?= h((string)$series->id) ?>">
+                  <input type="hidden" class="series-delete-flag" name="invoice_series_rows[<?= (int)$idx ?>][_delete]" value="0">
+
+                  <div class="row gy-3">
+                    <div class="col-xl-3">
+                      <label class="form-label">Nazwa serii</label>
+                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][name]" class="form-control" value="<?= h((string)$series->name) ?>" required>
+                    </div>
+                    <div class="col-xl-3">
+                      <label class="form-label">Typ dokumentu</label>
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][type]" class="form-control">
+                        <?php foreach ((array)$invoiceTypeOptions as $typeCode => $typeLabel): ?>
+                          <option value="<?= h((string)$typeCode) ?>" <?= ((string)($series->type ?? 'vat') === (string)$typeCode) ? 'selected' : '' ?>><?= h((string)$typeLabel) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div class="col-xl-3">
+                      <label class="form-label">Typ serii</label>
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_type_id]" class="form-control">
+                        <option value="">—</option>
+                        <?php foreach ((array)$invoiceSeriesTypeOptions as $typeId => $typeName): ?>
+                          <option value="<?= h((string)$typeId) ?>" <?= ((string)($series->invoice_series_type_id ?? '') === (string)$typeId) ? 'selected' : '' ?>><?= h((string)$typeName) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div class="col-xl-3">
+                      <label class="form-label">Okres numeracji</label>
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_period_id]" class="form-control">
+                        <option value="">—</option>
+                        <?php foreach ((array)$invoiceSeriesPeriodOptions as $periodId => $periodName): ?>
+                          <option value="<?= h((string)$periodId) ?>" <?= ((string)($series->invoice_series_period_id ?? '') === (string)$periodId) ? 'selected' : '' ?>><?= h((string)$periodName) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div class="col-xl-9">
+                      <label class="form-label">Wzorzec numeracji</label>
+                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][series_template]" class="form-control" value="<?= h((string)$series->series_template) ?>" required>
+                    </div>
+                    <div class="col-xl-3">
+                      <label class="form-label">Numer początkowy</label>
+                      <input type="number" min="1" step="1" name="invoice_series_rows[<?= (int)$idx ?>][starting_number]" class="form-control" value="<?= h((string)$series->starting_number) ?>">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
+
+          <div id="series-empty-state" class="alert alert-light border small <?= $initialSeriesCount > 0 ? 'd-none' : '' ?>">
+            Brak serii. Dodaj pierwszą serię numeracji.
+          </div>
+
+          <template id="series-row-template">
+            <div class="series-item card border-0 shadow-xs" data-index="__INDEX__">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="d-flex align-items-center gap-2">
+                    <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="__INDEX__">
+                    <span class="badge bg-light text-muted">—</span>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-danger series-remove" title="Usuń serię">
+                    <i class="ri-delete-bin-line"></i> Usuń
+                  </button>
+                </div>
+
+                <input type="hidden" name="invoice_series_rows[__INDEX__][id]" value="">
+                <input type="hidden" class="series-delete-flag" name="invoice_series_rows[__INDEX__][_delete]" value="0">
+
+                <div class="row gy-3">
+                  <div class="col-xl-3">
+                    <label class="form-label">Nazwa serii</label>
+                    <input type="text" name="invoice_series_rows[__INDEX__][name]" class="form-control" value="" required>
+                  </div>
+                  <div class="col-xl-3">
+                    <label class="form-label">Typ dokumentu</label>
+                    <select name="invoice_series_rows[__INDEX__][type]" class="form-control">
+                      <?php foreach ((array)$invoiceTypeOptions as $typeCode => $typeLabel): ?>
+                        <option value="<?= h((string)$typeCode) ?>" <?= (string)$typeCode === 'vat' ? 'selected' : '' ?>><?= h((string)$typeLabel) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-xl-3">
+                    <label class="form-label">Typ serii</label>
+                    <select name="invoice_series_rows[__INDEX__][invoice_series_type_id]" class="form-control">
+                      <option value="">—</option>
+                      <?php foreach ((array)$invoiceSeriesTypeOptions as $typeId => $typeName): ?>
+                        <option value="<?= h((string)$typeId) ?>"><?= h((string)$typeName) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-xl-3">
+                    <label class="form-label">Okres numeracji</label>
+                    <select name="invoice_series_rows[__INDEX__][invoice_series_period_id]" class="form-control">
+                      <option value="">—</option>
+                      <?php foreach ((array)$invoiceSeriesPeriodOptions as $periodId => $periodName): ?>
+                        <option value="<?= h((string)$periodId) ?>"><?= h((string)$periodName) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-xl-9">
+                    <label class="form-label">Wzorzec numeracji</label>
+                    <input type="text" name="invoice_series_rows[__INDEX__][series_template]" class="form-control" value="NR/[M]/[Y]" required>
+                  </div>
+                  <div class="col-xl-3">
+                    <label class="form-label">Numer początkowy</label>
+                    <input type="number" min="1" step="1" name="invoice_series_rows[__INDEX__][starting_number]" class="form-control" value="1">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <div class="mt-3 d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="series-add">
+              <i class="ri-add-line"></i> Dodaj serię
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="card-footer border-top-0 d-flex justify-content-between align-items-center">
@@ -450,6 +606,8 @@ $this->assign('title', 'Edycja firmy');
         <?php
             $this->Form->unlockField('banks');
             $this->Form->unlockField('banks_default');
+          $this->Form->unlockField('invoice_series_rows');
+          $this->Form->unlockField('invoice_series_default_key');
         ?>
       <?= $this->Form->end() ?>
     </div>
@@ -934,6 +1092,125 @@ $this->assign('title', 'Edycja firmy');
     }
   });
 
+})();
+</script>
+<script>
+(function initInvoiceSeries(){
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initInvoiceSeries, { once: true }); return; }
+
+  const list = document.getElementById('series-list');
+  const addBtn = document.getElementById('series-add');
+  const tpl = document.getElementById('series-row-template');
+  const emptyState = document.getElementById('series-empty-state');
+  if (!list || !addBtn || !tpl) return;
+
+  function visibleItems() {
+    return Array.from(list.querySelectorAll('.series-item')).filter((item) => {
+      const del = item.querySelector('.series-delete-flag');
+      return del ? del.value !== '1' : true;
+    });
+  }
+
+  function updateEmptyState() {
+    if (!emptyState) return;
+    emptyState.classList.toggle('d-none', visibleItems().length > 0);
+  }
+
+  function syncDefault() {
+    const activeItems = visibleItems();
+    const radios = activeItems.map((item) => item.querySelector('.series-default')).filter(Boolean);
+    if (radios.length === 0) {
+      list.querySelectorAll('.series-item .series-default').forEach((radio) => { radio.checked = false; });
+      list.querySelectorAll('.series-item .badge').forEach((badge) => {
+        if (!badge.classList.contains('bg-warning-transparent')) {
+          badge.className = 'badge bg-light text-muted';
+          badge.textContent = '—';
+        }
+      });
+      return;
+    }
+
+    let target = radios.find((r) => r.checked);
+    if (!target) target = radios[0];
+    radios.forEach((r) => { r.checked = (r === target); });
+
+    list.querySelectorAll('.series-item').forEach((item) => {
+      const del = item.querySelector('.series-delete-flag');
+      const isDeleted = del && del.value === '1';
+      const badge = item.querySelector('.badge');
+      const radio = item.querySelector('.series-default');
+      if (!badge || !radio) return;
+      if (isDeleted) {
+        badge.className = 'badge bg-light text-muted';
+        badge.textContent = '—';
+        return;
+      }
+      if (radio.checked) {
+        badge.className = 'badge bg-primary-soft text-primary';
+        badge.textContent = 'Domyślna';
+      } else {
+        badge.className = 'badge bg-light text-muted';
+        badge.textContent = '—';
+      }
+    });
+  }
+
+  function nextIndex() {
+    const current = parseInt(list.dataset.nextIndex || '0', 10) || 0;
+    list.dataset.nextIndex = String(current + 1);
+    return current;
+  }
+
+  addBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const idx = nextIndex();
+    const html = tpl.innerHTML.replace(/__INDEX__/g, String(idx));
+    const holder = document.createElement('div');
+    holder.innerHTML = html.trim();
+    const row = holder.firstElementChild;
+    if (!row) return;
+    list.appendChild(row);
+
+    const nameInput = row.querySelector('input[name="invoice_series_rows[' + idx + '][name]"]');
+    if (nameInput) nameInput.focus();
+
+    updateEmptyState();
+    syncDefault();
+  });
+
+  list.addEventListener('change', (e) => {
+    if (e.target.classList.contains('series-default')) {
+      const item = e.target.closest('.series-item');
+      const del = item?.querySelector('.series-delete-flag');
+      if (del && del.value === '1') {
+        e.target.checked = false;
+        return;
+      }
+      syncDefault();
+    }
+  });
+
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('.series-remove');
+    if (!btn || btn.disabled) return;
+
+    const item = btn.closest('.series-item');
+    if (!item) return;
+
+    const deleteFlag = item.querySelector('.series-delete-flag');
+    if (deleteFlag) {
+      deleteFlag.value = '1';
+      item.classList.add('d-none');
+    } else {
+      item.remove();
+    }
+
+    syncDefault();
+    updateEmptyState();
+  });
+
+  syncDefault();
+  updateEmptyState();
 })();
 </script>
 

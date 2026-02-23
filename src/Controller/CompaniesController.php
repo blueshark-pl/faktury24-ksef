@@ -449,6 +449,43 @@ class CompaniesController extends AppController
             ->orderAsc('created')
             ->all();
 
+        /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
+        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+        $invoiceSeriesRows = $InvoiceSeries->find()
+            ->where(['company_id' => $ctxCompanyId])
+            ->orderDesc('is_default')
+            ->orderAsc('name')
+            ->all();
+
+        $invoiceSeriesTypeOptions = [];
+        try {
+            $InvoiceSeriesTypes = $this->fetchTable('InvoiceSeriesTypes');
+            $invoiceSeriesTypeOptions = $InvoiceSeriesTypes->find('list', keyField: 'id', valueField: 'name')->toArray();
+        } catch (\Throwable) {
+            $invoiceSeriesTypeOptions = [];
+        }
+
+        $invoiceSeriesPeriodOptions = [];
+        try {
+            $InvoiceSeriesPeriods = $this->fetchTable('InvoiceSeriesPeriods');
+            $invoiceSeriesPeriodOptions = $InvoiceSeriesPeriods->find('list', keyField: 'id', valueField: 'name')->toArray();
+        } catch (\Throwable) {
+            $invoiceSeriesPeriodOptions = [];
+        }
+
+        $invoiceTypeOptions = [
+            'vat' => 'Faktura VAT',
+            'novat' => 'Faktura bez VAT',
+            'currency' => 'Faktura walutowa',
+            'margin' => 'Faktura marża',
+            'proforma' => 'Faktura proforma',
+            'advance' => 'Faktura zaliczkowa',
+            'correction' => 'Faktura korygująca',
+            'internal' => 'Dowód wewnętrzny',
+            'internal_evidence' => 'Dowód wewnętrzny (ewidencja)',
+            'oss' => 'Faktura OSS',
+        ];
+
         if ($this->request->is(['patch', 'post', 'put'])) {
             // patchuj bez namespacu: pola formularza są płaskie (name, street, itd.)
             $dataCompany = (array)$this->request->getData();
@@ -461,6 +498,17 @@ class CompaniesController extends AppController
             // Banki z formularza (podobnie jak w onboardingu)
             $banksInput = (array)($this->request->getData('banks') ?? []);
             $defaultIdx = (int)($this->request->getData('banks_default') ?? 0);
+            $invoiceSeriesInput = (array)($this->request->getData('invoice_series_rows') ?? []);
+            $invoiceSeriesDefaultKey = (string)($this->request->getData('invoice_series_default_key') ?? '');
+            $invoiceSeriesDeleteIds = [];
+            foreach ($invoiceSeriesInput as $seriesRow) {
+                $seriesRow = (array)$seriesRow;
+                $rowId = trim((string)($seriesRow['id'] ?? ''));
+                $isDelete = !empty($seriesRow['_delete']);
+                if ($isDelete && $rowId !== '') {
+                    $invoiceSeriesDeleteIds[] = $rowId;
+                }
+            }
 
             $normalizeIban = static function (?string $v): string {
                 return strtoupper(preg_replace('/\s+/', '', (string)$v));
@@ -473,12 +521,18 @@ class CompaniesController extends AppController
                     $company,
                     $banksInput,
                     $defaultIdx,
-                    $normalizeIban
+                    $normalizeIban,
+                    $invoiceSeriesInput,
+                    $invoiceSeriesDefaultKey,
+                    $invoiceSeriesDeleteIds,
+                    $invoiceTypeOptions
                 ) {
                     /** @var \App\Model\Table\CompaniesTable $Companies */
                     $Companies = $this->fetchTable('Companies');
                     /** @var \App\Model\Table\CompanyBankAccountsTable $CompanyBankAccounts */
                     $CompanyBankAccounts = $this->fetchTable('CompanyBankAccounts');
+                    /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
+                    $InvoiceSeries = $this->fetchTable('InvoiceSeries');
 
                     // 1) Zapisz dane firmy
                     if (!$Companies->saveOrFail($company)) {
@@ -529,6 +583,98 @@ class CompaniesController extends AppController
                             }
                         }
                     }
+
+                    // 4) Serie numeracji (tworzenie/edycja/usuwanie + domyślna)
+                    $existingSeries = $InvoiceSeries->find()
+                        ->where(['company_id' => $ctxCompanyId])
+                        ->all()
+                        ->indexBy('id')
+                        ->toArray();
+
+                    if (!empty($invoiceSeriesDeleteIds)) {
+                        foreach ($invoiceSeriesDeleteIds as $deleteId) {
+                            $deleteId = (string)$deleteId;
+                            if ($deleteId === '' || !isset($existingSeries[$deleteId])) {
+                                continue;
+                            }
+                            $toDelete = $existingSeries[$deleteId];
+                            if ((int)($toDelete->is_blocked ?? 0) === 1) {
+                                throw new \RuntimeException('Nie można usunąć zablokowanej serii: ' . (string)$toDelete->name);
+                            }
+                            if (!$InvoiceSeries->delete($toDelete)) {
+                                throw new \RuntimeException('Nie udało się usunąć serii: ' . (string)$toDelete->name);
+                            }
+                            unset($existingSeries[$deleteId]);
+                        }
+                    }
+
+                    $savedSeriesIdsByKey = [];
+                    foreach ($invoiceSeriesInput as $key => $row) {
+                        $row = (array)$row;
+                        if (!empty($row['_delete'])) {
+                            continue;
+                        }
+                        $rowId = trim((string)($row['id'] ?? ''));
+                        $name = trim((string)($row['name'] ?? ''));
+                        $template = trim((string)($row['series_template'] ?? ''));
+                        $startingNumber = (int)($row['starting_number'] ?? 1);
+                        $type = trim((string)($row['type'] ?? 'vat'));
+
+                        if ($name === '' && $template === '') {
+                            continue;
+                        }
+                        if ($name === '') {
+                            throw new \RuntimeException('Nazwa serii jest wymagana.');
+                        }
+                        if ($template === '') {
+                            throw new \RuntimeException('Wzorzec numeracji jest wymagany dla serii: ' . $name);
+                        }
+                        if ($startingNumber < 1) {
+                            $startingNumber = 1;
+                        }
+                        if (!array_key_exists($type, $invoiceTypeOptions)) {
+                            $type = 'vat';
+                        }
+
+                        $payload = [
+                            'company_id' => $ctxCompanyId,
+                            'name' => $name,
+                            'series_template' => $template,
+                            'starting_number' => $startingNumber,
+                            'type' => $type,
+                            'invoice_series_type_id' => trim((string)($row['invoice_series_type_id'] ?? '')) ?: null,
+                            'invoice_series_period_id' => trim((string)($row['invoice_series_period_id'] ?? '')) ?: null,
+                            'is_system' => 0,
+                            'is_default' => false,
+                        ];
+
+                        if ($rowId !== '' && isset($existingSeries[$rowId])) {
+                            $seriesEntity = $existingSeries[$rowId];
+                            $seriesEntity = $InvoiceSeries->patchEntity($seriesEntity, $payload);
+                        } else {
+                            $seriesEntity = $InvoiceSeries->newEntity($payload);
+                        }
+
+                        if (!$InvoiceSeries->save($seriesEntity)) {
+                            $firstError = current(current($seriesEntity->getErrors() ?: [['__all__' => ['Nie udało się zapisać serii numeracji.']]]));
+                            throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);
+                        }
+                        $savedSeriesIdsByKey[(string)$key] = (string)$seriesEntity->id;
+                    }
+
+                    if (!empty($savedSeriesIdsByKey)) {
+                        $selectedSeriesId = null;
+                        if ($invoiceSeriesDefaultKey !== '' && isset($savedSeriesIdsByKey[$invoiceSeriesDefaultKey])) {
+                            $selectedSeriesId = $savedSeriesIdsByKey[$invoiceSeriesDefaultKey];
+                        } else {
+                            $selectedSeriesId = (string)reset($savedSeriesIdsByKey);
+                        }
+
+                        $InvoiceSeries->updateAll(['is_default' => 0], ['company_id' => $ctxCompanyId]);
+                        if ($selectedSeriesId !== '') {
+                            $InvoiceSeries->updateAll(['is_default' => 1], ['company_id' => $ctxCompanyId, 'id' => $selectedSeriesId]);
+                        }
+                    }
                 });
 
                 $this->Flash->success('Dane firmy zapisane.');
@@ -538,7 +684,15 @@ class CompaniesController extends AppController
             }
         }
 
-        $this->set(compact('company', 'bankAccount', 'existingAccounts'));
+        $this->set(compact(
+            'company',
+            'bankAccount',
+            'existingAccounts',
+            'invoiceSeriesRows',
+            'invoiceSeriesTypeOptions',
+            'invoiceSeriesPeriodOptions',
+            'invoiceTypeOptions'
+        ));
         // $this->render('edit');
     }
 
