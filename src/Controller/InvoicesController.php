@@ -1750,6 +1750,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         // flags mapping
         $fpFlag = !empty($data['flags']['fp']);
 
+        $resolvedNumber = null;
+        if (isset($nextNumber) && is_numeric($nextNumber)) {
+            $resolvedNumber = (int)$nextNumber;
+        } elseif (!empty($data['fullnumber'])) {
+            $resolvedNumber = $this->extractNumberFromFullnumber((string)$data['fullnumber']);
+        }
+        if (empty($resolvedNumber) || $resolvedNumber < 1) {
+            $resolvedNumber = 1;
+        }
+
         $invoiceData = [
             'hash' => substr(md5(uniqid()), 0, 32), // 32-znakowy hash
             'company_id' => $companyId,
@@ -1785,7 +1795,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'receipt_number'     => $data['receipt_number'] ?? null,
             'receipt_date'       => !empty($data['receipt_date']) ? $data['receipt_date'] : null,
             // Nowe pola dla składników daty i numeru
-            'number' => (!$isDraftWorkflow && !empty($data['fullnumber'])) ? $this->extractNumberFromFullnumber((string)$data['fullnumber']) : null,
+            'number' => $resolvedNumber,
             'day' => (int) $dateObject->format('d'),
             'month' => (int) $dateObject->format('m'),
             'year' => (int) $dateObject->format('Y'),
