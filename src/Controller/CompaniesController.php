@@ -598,7 +598,7 @@ class CompaniesController extends AppController
                                 continue;
                             }
                             $toDelete = $existingSeries[$deleteId];
-                            if ((int)($toDelete->is_blocked ?? 0) === 1) {
+                            if (!empty($toDelete->parent_id) || (int)($toDelete->is_blocked ?? 0) === 1) {
                                 throw new \RuntimeException('Nie można usunąć zablokowanej serii: ' . (string)$toDelete->name);
                             }
                             if (!$InvoiceSeries->delete($toDelete)) {

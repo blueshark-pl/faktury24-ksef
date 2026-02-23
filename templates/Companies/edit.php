@@ -457,17 +457,18 @@ $this->assign('title', 'Edycja firmy');
           <?php $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0; ?>
           <div id="series-list" class="d-flex flex-column gap-3" data-next-index="<?= (int)$initialSeriesCount ?>">
             <?php foreach ((array)$invoiceSeriesRows as $idx => $series): ?>
+              <?php $isSystemCopiedSeries = !empty($series->parent_id) || !empty($series->is_blocked); ?>
               <div class="series-item card border-0 shadow-xs" data-index="<?= (int)$idx ?>">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-center mb-2">
                     <div class="d-flex align-items-center gap-2">
                       <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="<?= (int)$idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?>>
                       <span class="badge <?= !empty($series->is_default) ? 'bg-primary-soft text-primary' : 'bg-light text-muted' ?>"><?= !empty($series->is_default) ? 'Domyślna' : '—' ?></span>
-                      <?php if (!empty($series->is_blocked)): ?>
+                      <?php if ($isSystemCopiedSeries): ?>
                         <span class="badge bg-warning-transparent">Systemowa</span>
                       <?php endif; ?>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= !empty($series->is_blocked) ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
+                    <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= $isSystemCopiedSeries ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
                       <i class="ri-delete-bin-line"></i> Usuń
                     </button>
                   </div>
