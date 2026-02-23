@@ -37,6 +37,22 @@ use Cake\Validation\Validator;
  */
 class InvoiceSeriesTable extends Table
 {
+    private function traceSeries(string $message, array $context = []): void
+    {
+        try {
+            $line = sprintf(
+                "%s %s %s%s",
+                date('Y-m-d H:i:s'),
+                $message,
+                $context ? json_encode($context, JSON_UNESCAPED_UNICODE) : '',
+                PHP_EOL
+            );
+            file_put_contents(LOGS . 'series-save.log', $line, FILE_APPEND);
+        } catch (\Throwable) {
+            // diagnostic-only path
+        }
+    }
+
     public function beforeSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
     {
         $payload = [
@@ -56,6 +72,7 @@ class InvoiceSeriesTable extends Table
         ];
 
         Log::debug('InvoiceSeries.beforeSave payload=' . json_encode($payload, JSON_UNESCAPED_UNICODE), ['series_save']);
+        $this->traceSeries('InvoiceSeries.beforeSave', $payload);
     }
 
     public function afterSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
@@ -71,6 +88,7 @@ class InvoiceSeriesTable extends Table
         ];
 
         Log::info('InvoiceSeries.afterSave payload=' . json_encode($payload, JSON_UNESCAPED_UNICODE), ['series_save']);
+        $this->traceSeries('InvoiceSeries.afterSave', $payload);
     }
 
     /**
@@ -183,14 +201,17 @@ class InvoiceSeriesTable extends Table
             ->all();
         if (!$systemSeries->count()) {
             Log::warning('InvoiceSeries.copySystemSeriesForCompany: no system series found (is_system=1)', ['series_init']);
+            $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.noSystemRows', ['company_id' => $companyId]);
             return 0;
         }
 
         $systemSeriesList = $systemSeries->toList();
         Log::info('InvoiceSeries.copySystemSeriesForCompany: source count=' . count($systemSeriesList) . ' company=' . $companyId, ['series_init']);
+        $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.source', ['company_id' => $companyId, 'count' => count($systemSeriesList)]);
         $systemSeriesIds = array_values(array_filter(array_map(static fn ($row) => (string)($row->id ?? ''), $systemSeriesList)));
         if ($systemSeriesIds === []) {
             Log::warning('InvoiceSeries.copySystemSeriesForCompany: source rows without ids company=' . $companyId, ['series_init']);
+            $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.noSourceIds', ['company_id' => $companyId]);
             return 0;
         }
 
@@ -204,6 +225,7 @@ class InvoiceSeriesTable extends Table
             ->toList();
         $existingParentIds = array_filter($existingParentIds); // remove nulls
         Log::info('InvoiceSeries.copySystemSeriesForCompany: existing copies=' . count($existingParentIds) . ' company=' . $companyId, ['series_init']);
+        $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.existingCopies', ['company_id' => $companyId, 'count' => count($existingParentIds)]);
 
         // reference sets for nullable FK fields
         $typeIds = $this->InvoiceSeriesTypes->find()->select(['id'])->enableHydration(false)->all()->extract('id')->toList();
@@ -257,8 +279,10 @@ class InvoiceSeriesTable extends Table
             if ($this->save($entity)) {
                 $copied++;
                 Log::info('InvoiceSeries.copySystemSeriesForCompany: copied series parent_id=' . (string)$orig->id . ' new_id=' . (string)$entity->id . ' company=' . $companyId, ['series_init']);
+                $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.copied', ['company_id' => $companyId, 'parent_id' => (string)$orig->id, 'new_id' => (string)$entity->id]);
             } else {
                 Log::warning('Nie udało się skopiować serii systemowej: ' . json_encode($entity->getErrors()), ['series_init']);
+                $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.copyFailed', ['company_id' => $companyId, 'parent_id' => (string)$orig->id, 'errors' => $entity->getErrors()]);
             }
         }
 
@@ -272,10 +296,12 @@ class InvoiceSeriesTable extends Table
             if ($first) {
                 $this->updateAll(['is_default' => 1], ['id' => $first->id, 'company_id' => $companyId]);
                 Log::info('InvoiceSeries.copySystemSeriesForCompany: fallback default set id=' . (string)$first->id . ' company=' . $companyId, ['series_init']);
+                $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.defaultFallback', ['company_id' => $companyId, 'id' => (string)$first->id]);
             }
         }
 
         Log::info('InvoiceSeries.copySystemSeriesForCompany: copied total=' . $copied . ' company=' . $companyId, ['series_init']);
+        $this->traceSeries('InvoiceSeries.copySystemSeriesForCompany.done', ['company_id' => $companyId, 'copied' => $copied]);
 
         return $copied;
     }
