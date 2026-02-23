@@ -48,14 +48,16 @@ class Application extends BaseApplication
         // Call parent to load bootstrap from files.
         parent::bootstrap();
 
+        // Musi być ustawione PRZED załadowaniem pluginu CakeDC/Users,
+        // bo plugin bootstrap czyta Users.config tylko podczas swojego startu.
+        Configure::write('Users.config', ['users']);
+
         if (PHP_SAPI !== 'cli') {
             // The bake plugin requires fallback table classes to work properly
             FactoryLocator::add('Table', (new TableLocator())->allowFallbackClass(false));
         }
     $this->addPlugin(\CakeDC\Users\Plugin::class);
     // CakePdf is auto-loaded via config/plugins.php; avoid double-loading here
-        // Uncomment the line below to load your custom users.php config file
-        Configure::write('Users.config', ['users']);
     }
 
     /**
