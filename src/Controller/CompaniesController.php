@@ -457,11 +457,12 @@ class CompaniesController extends AppController
             ->where(['company_id' => $ctxCompanyId])
             ->orderDesc('is_default')
             ->orderAsc('name')
-            ->all();
+            ->all()
+            ->toList();
 
-        Log::info('Companies.edit: initial invoice series count=' . $invoiceSeriesRows->count() . ' for company=' . $ctxCompanyId, ['series_debug']);
+        Log::info('Companies.edit: initial invoice series count=' . count($invoiceSeriesRows) . ' for company=' . $ctxCompanyId, ['series_debug']);
 
-        if ($invoiceSeriesRows->count() === 0) {
+        if (count($invoiceSeriesRows) === 0) {
             try {
                 $copied = $InvoiceSeries->copySystemSeriesForCompany((string)$ctxCompanyId);
                 Log::info('Companies.edit: copySystemSeriesForCompany copied=' . (int)$copied . ' for company=' . $ctxCompanyId, ['series_debug']);
@@ -469,8 +470,9 @@ class CompaniesController extends AppController
                     ->where(['company_id' => $ctxCompanyId])
                     ->orderDesc('is_default')
                     ->orderAsc('name')
-                    ->all();
-                Log::info('Companies.edit: post-copy invoice series count=' . $invoiceSeriesRows->count() . ' for company=' . $ctxCompanyId, ['series_debug']);
+                    ->all()
+                    ->toList();
+                Log::info('Companies.edit: post-copy invoice series count=' . count($invoiceSeriesRows) . ' for company=' . $ctxCompanyId, ['series_debug']);
             } catch (\Throwable) {
                 Log::error('Companies.edit: copySystemSeriesForCompany failed for company=' . $ctxCompanyId, ['series_debug']);
                 // best-effort; view still renders without rows

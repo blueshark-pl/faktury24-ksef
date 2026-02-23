@@ -459,7 +459,7 @@ $this->assign('title', 'Edycja firmy');
 
           <?php $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0; ?>
           <div id="series-list" class="d-flex flex-column gap-3" data-next-index="<?= (int)$initialSeriesCount ?>">
-            <?php foreach ((array)$invoiceSeriesRows as $idx => $series): ?>
+            <?php foreach ($invoiceSeriesRows as $idx => $series): ?>
               <?php $isSystemCopiedSeries = !empty($series->parent_id) || !empty($series->is_blocked); ?>
               <div class="series-item card border-0 shadow-xs" data-index="<?= (int)$idx ?>">
                 <div class="card-body">
