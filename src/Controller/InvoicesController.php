@@ -266,6 +266,38 @@ class InvoicesController extends AppController
         }
     }
 
+    private function normalizeDraftDateBeforeSend(Invoice $invoice): void
+    {
+        if ((string)($invoice->workflow_status ?? '') !== 'draft') {
+            return;
+        }
+
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $issueDateRaw = $invoice->date;
+        $issueDate = is_object($issueDateRaw) && method_exists($issueDateRaw, 'format')
+            ? $issueDateRaw->format('Y-m-d')
+            : (string)$issueDateRaw;
+
+        if ($issueDate === $today) {
+            return;
+        }
+
+        $todayObj = new \DateTimeImmutable($today);
+        $invoice->set('date', $today);
+        $invoice->set('day', (int)$todayObj->format('d'));
+        $invoice->set('month', (int)$todayObj->format('m'));
+        $invoice->set('year', (int)$todayObj->format('Y'));
+        $invoice->set('day_year', (int)$todayObj->format('z') + 1);
+
+        // Wymuś przeliczenie numeru po zmianie daty.
+        $invoice->set('fullnumber', null);
+        $invoice->set('number', null);
+
+        if (!$this->Invoices->save($invoice, ['checkRules' => false, 'validate' => false])) {
+            throw new \RuntimeException('Nie udało się zaktualizować daty dokumentu roboczego przed wysyłką do KSeF.');
+        }
+    }
+
     /**
      * Validate invoice form data via AJAX (no save)
      * POST /invoices/validate-ajax
@@ -3988,6 +4020,7 @@ private function makeClient(string $environment): KsefClient
         }
 
         try {
+            $this->normalizeDraftDateBeforeSend($invoice);
             $this->ensureInvoiceNumberForSend($invoice, $companyId);
         } catch (\Throwable $e) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [

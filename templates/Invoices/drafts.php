@@ -33,6 +33,8 @@ $editActionByType = [
     'internalevidence' => 'editInternalEvidence',
     'oss' => 'editOss',
 ];
+
+  $todayDate = (new \DateTimeImmutable('today'))->format('Y-m-d');
 ?>
 
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -75,6 +77,11 @@ $editActionByType = [
               $editAction = $editActionByType[$typeKey] ?? 'edit';
               $contractor = $inv->invoice_contractor ?? null;
               $planned = $inv->planned_ksef_send_at;
+                $issueDateValue = $inv->date ? $inv->date->format('Y-m-d') : '';
+                $sendConfirmText = 'Wysłać tę fakturę roboczą do KSeF teraz?';
+                if ($issueDateValue !== '' && $issueDateValue !== $todayDate) {
+                  $sendConfirmText .= "\n\nUwaga: data faktury ($issueDateValue) jest inna niż dzisiaj ($todayDate). Przed wysyłką zostanie zmieniona na dzisiejszą.";
+                }
               $plannedValue = '';
               if ($planned) {
                   $plannedValue = is_object($planned) && method_exists($planned, 'format')
@@ -104,7 +111,7 @@ $editActionByType = [
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
                   <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-secondary']) ?>
-                  <?= $this->Form->postLink('Wyślij teraz', ['action' => 'sendDraftNow', $inv->id], ['class' => 'btn btn-outline-success', 'confirm' => 'Wysłać tę fakturę roboczą do KSeF teraz?']) ?>
+                  <?= $this->Form->postLink('Wyślij teraz', ['action' => 'sendDraftNow', $inv->id], ['class' => 'btn btn-outline-success', 'confirm' => $sendConfirmText]) ?>
                   <?= $this->Form->postLink('Usuń', ['action' => 'delete', $inv->id], ['class' => 'btn btn-outline-danger', 'confirm' => 'Usunąć tę fakturę roboczą?']) ?>
                 </div>
               </td>
