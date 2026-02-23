@@ -46,6 +46,9 @@ class ContractorsSettingsTable extends Table
         $v->inList('attach_invoice_pdf_mode', ['inherit','yes','no'], 'Nieprawidłowa wartość.');
         $v->allowEmptyString('attach_invoice_pdf_mode');
 
+        $v->scalar('notify_invoice_message');
+        $v->allowEmptyString('notify_invoice_message');
+
         return $v;
     }
 

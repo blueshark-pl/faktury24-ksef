@@ -516,6 +516,7 @@ $companyId = $identity?->get('company_id');
       ]) ?>
       <?= $this->Form->hidden('id', ['id' => 'contractor-id']) ?>
       <?= $this->Form->hidden('_method', ['value' => 'POST', 'id' => 'contractor-method']) ?>
+      <?= $this->Form->hidden('contractor_settings_enabled', ['value' => '1', 'id' => 'contractor-settings-enabled']) ?>
 
       <div class="modal-body">
         <?= $this->Form->hidden('company_id', ['value' => $companyId]) ?>
@@ -548,7 +549,30 @@ $companyId = $identity?->get('company_id');
                 ]) ?>
               </div>
             </div>
+            <small class="text-muted d-block mb-2">Aktywny = wyłączenie ukrywa go na liście i blokuje użycie w nowych dokumentach.</small>
             <div class="row g-3">
+              <div class="col-md-6" id="nip-group">
+                <div class="form-group">
+                  <label for="nip">NIP</label>
+                  <div class="input-group">
+                    <?= $this->Form->control('nip', [
+                      'label' => false, 'id' => 'nip',
+                      'class' => 'form-control', 'maxlength' => 10,
+                      'placeholder' => '6571234567',
+                      'templates' => ['inputContainer' => '{{content}}']
+                    ]) ?>
+                    <button class="btn btn-outline-secondary" type="button" id="gus-fetch">
+                      <span class="spinner-border spinner-border-sm me-1 d-none" id="gus-spin"></span>
+                      <i class="ri-database-2-line me-1"></i> Pobierz z GUS
+                    </button>
+                  </div>
+                  <div class="help-slot">
+                    <small class="text-muted">Krok 1: wpisz NIP i pobierz dane z GUS. System uzupełni nazwę i adres.</small>
+                    <div id="contractor-vat-status" class="small mt-1 d-none"></div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Pola: firma -->
               <div id="company-fields" class="row g-3">
                 <div class="col-md-8">
@@ -556,16 +580,6 @@ $companyId = $identity?->get('company_id');
                     <?= $this->Form->control('name', [
                       'label' => 'Nazwa*', 'class' => 'form-control',
                       'placeholder' => 'np. ACME Sp. z o.o.',
-                      'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
-                    ]) ?>
-                    <div class="help-slot"></div>
-                  </div>
-                </div>
-                <div class="col-md-4">
-                  <div class="form-group">
-                    <?= $this->Form->control('altname', [
-                      'label' => 'Nazwa skrócona', 'class' => 'form-control',
-                      'placeholder' => 'ACME',
                       'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
                     ]) ?>
                     <div class="help-slot"></div>
@@ -608,30 +622,6 @@ $companyId = $identity?->get('company_id');
                   </div>
                 </div>
               </div>
-
-              <!-- przełącznik typu przeniesiony wyżej -->
-
-              <div class="col-md-6" id="nip-group">
-                <div class="form-group">
-                  <label for="nip">NIP</label>
-                  <div class="input-group">
-                    <?= $this->Form->control('nip', [
-                      'label' => false, 'id' => 'nip',
-                      'class' => 'form-control', 'maxlength' => 10,
-                      'placeholder' => '6571234567',
-                      'templates' => ['inputContainer' => '{{content}}']
-                    ]) ?>
-                    <button class="btn btn-outline-secondary" type="button" id="gus-fetch">
-                      <span class="spinner-border spinner-border-sm me-1 d-none" id="gus-spin"></span>
-                      <i class="ri-database-2-line me-1"></i> Pobierz z GUS
-                    </button>
-                  </div>
-                  <div class="help-slot">
-                    <small class="text-muted">Automatycznie uzupełni adres i nazwę z rejestru GUS.</small>
-                    <div id="contractor-vat-status" class="small mt-1 d-none"></div>
-                  </div>
-                </div>
-              </div>
               <div class="col-12 d-none" id="pesel-toggle-row">
                 <div class="form-check form-switch">
                   <input class="form-check-input" type="checkbox" id="show-pesel">
@@ -665,7 +655,7 @@ $companyId = $identity?->get('company_id');
               <div class="col-md-6">
                 <div class="form-group">
                   <?= $this->Form->control('email', [
-                    'label' => 'Email', 'class' => 'form-control', 'type' => 'email',
+                    'label' => 'Email', 'class' => 'form-control', 'type' => 'email', 'id' => 'contractor-email',
                     'placeholder' => 'biuro@firma.pl',
                     'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
                   ]) ?>
@@ -681,6 +671,38 @@ $companyId = $identity?->get('company_id');
                   ]) ?>
                   <div class="help-slot"></div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border rounded p-3" id="contractor-email-settings-section">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <strong class="small">Ustawienia e-mailowe</strong>
+            </div>
+            <div class="row g-3">
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="notify-invoice-email" name="notify_invoice_email" value="1">
+                  <label class="form-check-label" for="notify-invoice-email">Powiadomienie o wystawieniu faktury/rachunku do kontrahenta</label>
+                </div>
+                <small class="text-muted">Po włączeniu tej opcji adres e-mail kontrahenta staje się wymagany.</small>
+              </div>
+              <div class="col-12">
+                <label for="notify-invoice-message" class="form-label">Wiadomość</label>
+                <textarea id="notify-invoice-message" name="notify_invoice_message" class="form-control" rows="7">Dzień dobry,
+
+informujemy, że została wystawiona faktura nr [NUMER] z dnia [DATA] na kwotę [KWOTA] [WALUTA].
+Termin płatności: [TERMIN].
+Forma płatności: [FORMA].
+
+Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawiania faktur i obsługi KSeF.</textarea>
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="attach-invoice-pdf" name="attach_invoice_pdf" value="1">
+                  <label class="form-check-label" for="attach-invoice-pdf">Dołączaj dokument (PDF)</label>
+                </div>
+                <small class="text-muted">Domyślnie: wyłączone.</small>
               </div>
             </div>
           </div>
@@ -726,6 +748,34 @@ $companyId = $identity?->get('company_id');
                   <label for="country-ui" class="form-label mb-0">Kraj</label>
                   <input type="text" id="country-ui" class="form-control" placeholder="Wybierz kraj">
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border rounded p-3">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <strong class="small">Adres korespondencyjny (opcjonalnie)</strong>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="use-correspondence-address">
+                <label class="form-check-label" for="use-correspondence-address">Dodać adres korespondencyjny?</label>
+              </div>
+            </div>
+            <div class="row g-3 d-none" id="correspondence-address-fields">
+              <div class="col-md-4">
+                <label for="correspondence-city" class="form-label">Miejscowość</label>
+                <input type="text" id="correspondence-city" name="correspondence_city" class="form-control">
+              </div>
+              <div class="col-md-4">
+                <label for="correspondence-street" class="form-label">Ulica i nr</label>
+                <input type="text" id="correspondence-street" name="correspondence_street" class="form-control">
+              </div>
+              <div class="col-md-2">
+                <label for="correspondence-postal-code" class="form-label">Kod pocztowy</label>
+                <input type="text" id="correspondence-postal-code" name="correspondence_postal_code" class="form-control" placeholder="00-000">
+              </div>
+              <div class="col-md-2">
+                <label for="correspondence-country" class="form-label">Kraj</label>
+                <input type="text" id="correspondence-country" name="correspondence_country" class="form-control" value="PL" maxlength="2">
               </div>
             </div>
           </div>
@@ -1023,6 +1073,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const personNipGroup = document.getElementById('person-nip-group');
   const personNipInput = document.getElementById('person-nip');
   const contractorVatStatus = document.getElementById('contractor-vat-status');
+  const notifyInvoiceEmailToggle = document.getElementById('notify-invoice-email');
+  const notifyInvoiceMessage = document.getElementById('notify-invoice-message');
+  const contractorEmailInput = document.getElementById('contractor-email');
+  const contractorEmailSettingsSection = document.getElementById('contractor-email-settings-section');
+  const useCorrespondenceAddress = document.getElementById('use-correspondence-address');
+  const correspondenceAddressFields = document.getElementById('correspondence-address-fields');
   const companyFields = document.getElementById('company-fields');
   const personFields  = document.getElementById('person-fields');
   const nipInput   = document.getElementById('nip');
@@ -1097,6 +1153,22 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       // best effort
     }
+  }
+
+  function applyEmailNotificationRequirements() {
+    if (!notifyInvoiceEmailToggle || !contractorEmailInput) return;
+    contractorEmailInput.required = !!notifyInvoiceEmailToggle.checked;
+  }
+
+  function applyCorrespondenceAddressUi() {
+    if (!correspondenceAddressFields || !useCorrespondenceAddress) return;
+    const enabled = !!useCorrespondenceAddress.checked;
+    correspondenceAddressFields.classList.toggle('d-none', !enabled);
+    correspondenceAddressFields.querySelectorAll('input,select,textarea').forEach((el) => {
+      if (!enabled) {
+        el.value = '';
+      }
+    });
   }
 
   // Initialize intl-tel-input on phone field
@@ -1225,11 +1297,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('recipient-section')?.classList.toggle('d-none', peselMode);
     document.getElementById('recipient-toggle-row')?.classList.toggle('d-none', peselMode);
     if (peselMode) { addRecipientToggle.checked = false; recipientFields?.classList.add('d-none'); }
+    if (contractorEmailSettingsSection) {
+      contractorEmailSettingsSection.classList.toggle('d-none', peselMode);
+      if (peselMode && notifyInvoiceEmailToggle) {
+        notifyInvoiceEmailToggle.checked = false;
+      }
+    }
     // defaults for legal basis
     // privacy controls removed
     // clear previous errors
     clearInvalid(nipInput); clearInvalid(peselInput);
     clearInvalid(nameInput); clearInvalid(firstName); clearInvalid(lastName);
+    applyEmailNotificationRequirements();
+    if (peselMode && useCorrespondenceAddress) {
+      useCorrespondenceAddress.checked = false;
+      applyCorrespondenceAddressUi();
+    }
 
     // In edit mode: always hide recipient section regardless of type
     try {
@@ -1243,6 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         rt?.classList.add('d-none');
         rf?.classList.add('d-none');
         if (ar) { ar.checked = false; ar.disabled = true; }
+        contractorEmailSettingsSection?.classList.add('d-none');
       }
     } catch {}
   }
@@ -1261,6 +1345,9 @@ document.addEventListener('DOMContentLoaded', () => {
     nipGroup?.classList.add('d-none');
     if (gusBtn) gusBtn.disabled = peselMode ? true : false; // GUS never for person
   });
+
+  notifyInvoiceEmailToggle?.addEventListener('change', applyEmailNotificationRequirements);
+  useCorrespondenceAddress?.addEventListener('change', applyCorrespondenceAddressUi);
 
   // Live validation for person NIP (optional)
   personNipInput?.addEventListener('input', () => {
@@ -1331,6 +1418,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   usePesel?.addEventListener('change', applyModeUI);
   applyModeUI();
+  applyEmailNotificationRequirements();
+  applyCorrespondenceAddressUi();
   // Country-specific required fields (PL requires city/street/postal_code)
   function applyCountryRequirements() {
     const isPL = (countryHidden?.value || '').toUpperCase() === 'PL';
@@ -1435,6 +1524,20 @@ document.addEventListener('DOMContentLoaded', () => {
     recipientToggleRow?.classList.remove('d-none');
     recipientFields?.classList.add('d-none');
     if (addRecipientToggle) { addRecipientToggle.disabled = false; addRecipientToggle.checked = false; }
+    contractorEmailSettingsSection?.classList.remove('d-none');
+    if (notifyInvoiceEmailToggle) notifyInvoiceEmailToggle.checked = false;
+    if (notifyInvoiceMessage) notifyInvoiceMessage.value = `Dzień dobry,
+
+  informujemy, że została wystawiona faktura nr [NUMER] z dnia [DATA] na kwotę [KWOTA] [WALUTA].
+  Termin płatności: [TERMIN].
+  Forma płatności: [FORMA].
+
+  Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawiania faktur i obsługi KSeF.`;
+    const attachPdfToggle = document.getElementById('attach-invoice-pdf');
+    if (attachPdfToggle) attachPdfToggle.checked = false;
+    if (useCorrespondenceAddress) useCorrespondenceAddress.checked = false;
+    applyEmailNotificationRequirements();
+    applyCorrespondenceAddressUi();
     // Ensure UI reflects default add mode
     try { applyModeUI(); } catch {}
   }
@@ -1456,6 +1559,7 @@ document.addEventListener('DOMContentLoaded', () => {
       idField.value = id;
       methodFld.value = 'PUT';
       form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'edit']) ?>/' + id);
+      contractorEmailSettingsSection?.classList.add('d-none');
 
           // Hide recipient section entirely during edit
           const recipientSection = document.getElementById('recipient-section');
@@ -1491,6 +1595,15 @@ document.addEventListener('DOMContentLoaded', () => {
         setVal('input[name="postal_code"]', c.postal_code);
         setVal('input[name="city"]',        c.city);
         setVal('input[name="street"]',      c.street);
+        setVal('input[name="correspondence_country"]', c.correspondence_country || 'PL');
+        setVal('input[name="correspondence_postal_code"]', c.correspondence_postal_code);
+        setVal('input[name="correspondence_city"]', c.correspondence_city);
+        setVal('input[name="correspondence_street"]', c.correspondence_street);
+        const hasCorrespondence = !!(c.correspondence_city || c.correspondence_street || c.correspondence_postal_code || c.correspondence_country);
+        if (useCorrespondenceAddress) {
+          useCorrespondenceAddress.checked = hasCorrespondence;
+          applyCorrespondenceAddressUi();
+        }
         // local_number removed; captured in street field
         const notes = form.querySelector('textarea[name="notes"]'); if (notes) notes.value = c.notes ?? '';
         const chk = form.querySelector('input[name="is_active"]'); if (chk) chk.checked = Number(c.is_active) === 1;
@@ -1958,9 +2071,21 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    clearInvalid(contractorEmailInput);
+    if (notifyInvoiceEmailToggle?.checked && !(contractorEmailInput?.value || '').trim()) {
+      setInvalid(contractorEmailInput, 'Adres e-mail jest wymagany, gdy włączone są powiadomienia e-mail.');
+      toastBody.textContent = 'Podaj adres e-mail kontrahenta.'; toast.show();
+      return;
+    }
+
     const mode = modalEl.dataset.mode || 'add';
     const action = form.getAttribute('action');
     const fd = new FormData(form);
+    if (!useCorrespondenceAddress?.checked) {
+      ['correspondence_city', 'correspondence_street', 'correspondence_postal_code', 'correspondence_country'].forEach((f) => {
+        fd.set(f, '');
+      });
+    }
     // normalize digits-only values
     if (nipInput) fd.set('nip', onlyDigits(nipInput.value || ''));
     if (peselInput) fd.set('pesel', onlyDigits(peselInput.value || ''));

@@ -22,6 +22,10 @@ use Cake\ORM\Entity;
  * @property string|null $postal_code
  * @property string|null $city
  * @property string|null $street
+ * @property string|null $correspondence_street
+ * @property string|null $correspondence_postal_code
+ * @property string|null $correspondence_city
+ * @property string|null $correspondence_country
  * @property string|null $local_number
  * @property string|null $phone
  * @property string|null $email
@@ -61,6 +65,10 @@ class Contractor extends Entity
         'postal_code' => true,
         'city' => true,
         'street' => true,
+        'correspondence_street' => true,
+        'correspondence_postal_code' => true,
+        'correspondence_city' => true,
+        'correspondence_country' => true,
         'local_number' => true,
         'phone' => true,
         'email' => true,

@@ -104,3 +104,7 @@ Jeśli priorytetem jest szybki efekt dla klientów, najlepiej zacząć od **Etap
 - [ ] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + rozważyć import rachunków bankowych.
 - [x] E-mail jako pole wymagane w procesie rejestracji konta.
 - [x] Poprawić autouzupełnianie adresu: uwzględnić numer lokalu, jeśli występuje.
+
+### TODO (kolejna iteracja)
+
+- [ ] Towary/usługi: dodać sekcję „Zaawansowane” na szczegóły wymagane dla JPK/KSeF.

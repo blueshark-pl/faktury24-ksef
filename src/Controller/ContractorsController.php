@@ -324,6 +324,7 @@ $this->set(compact('contractors'));
         if ($this->request->is('post')) {
             $data = $this->request->getData();
             $data['company_id'] = $companyId;
+            $notificationsEnabled = !empty($data['notify_invoice_email']);
             // normalize NIP for duplicate check
             if (isset($data['nip'])) {
                 $data['nip'] = preg_replace('/\D+/', '', (string)$data['nip']);
@@ -338,6 +339,26 @@ $this->set(compact('contractors'));
                             'message' => 'Nazwa kontrahenta jest wymagana.'
                         ]));
                 }
+                if ($notificationsEnabled && empty(trim((string)($data['email'] ?? '')))) {
+                    return $this->response->withType('application/json')
+                        ->withStringBody(json_encode([
+                            'success' => false,
+                            'message' => 'Aby włączyć powiadomienie e-mail, podaj adres e-mail kontrahenta.'
+                        ]));
+                }
+            }
+
+            if ($notificationsEnabled && empty(trim((string)($data['email'] ?? '')))) {
+                if ($this->request->is('ajax')) {
+                    return $this->response->withType('application/json')
+                        ->withStringBody(json_encode([
+                            'success' => false,
+                            'message' => 'Aby włączyć powiadomienie e-mail, podaj adres e-mail kontrahenta.'
+                        ]));
+                }
+                $this->Flash->error(__('Aby włączyć powiadomienie e-mail, podaj adres e-mail kontrahenta.'));
+
+                return $this->redirect(['action' => 'index']);
             }
 
             // Prevent duplicate contractor by NIP within same company
@@ -364,6 +385,21 @@ $this->set(compact('contractors'));
             $contractor = $this->Contractors->patchEntity($contractor, $data);
             
             if ($this->Contractors->save($contractor)) {
+                $settingsError = $this->saveContractorNotificationSettings($companyId, (string)$contractor->id, $data);
+                if ($settingsError !== null) {
+                    $this->Contractors->delete($contractor);
+                    if ($this->request->is('ajax')) {
+                        return $this->response->withType('application/json')
+                            ->withStringBody(json_encode([
+                                'success' => false,
+                                'message' => $settingsError,
+                            ]));
+                    }
+                    $this->Flash->error(__($settingsError));
+
+                    return $this->redirect(['action' => 'index']);
+                }
+
                 if ($this->request->is('ajax')) {
                     return $this->response->withType('application/json')
                         ->withStringBody(json_encode([
@@ -415,7 +451,7 @@ public function viewJson($id)
 
     $c = $this->Contractors->find()
         ->where(['Contractors.id' => $id, 'Contractors.company_id' => $companyId])
-        ->select(['id','name','altname','nip','pesel','email','phone','country','postal_code','city','street','local_number','notes','privacy_consent','privacy_basis','is_active'])
+        ->select(['id','name','altname','nip','pesel','email','phone','country','postal_code','city','street','local_number','correspondence_street','correspondence_postal_code','correspondence_city','correspondence_country','notes','privacy_consent','privacy_basis','is_active'])
         ->firstOrFail();
 
     return $this->response->withType('application/json')
@@ -423,6 +459,49 @@ public function viewJson($id)
             'success' => true,
             'contractor' => $c,
         ]));
+}
+
+private function saveContractorNotificationSettings(string $companyId, string $contractorId, array $data): ?string
+{
+    if (empty($data['contractor_settings_enabled'])) {
+        return null;
+    }
+
+    $notifyEmail = !empty($data['notify_invoice_email']);
+    $email = trim((string)($data['email'] ?? ''));
+    if ($notifyEmail && $email === '') {
+        return 'Aby włączyć powiadomienie e-mail, podaj adres e-mail kontrahenta.';
+    }
+
+    $defaultMessage = "Dzień dobry,\n\n"
+        . "informujemy, że została wystawiona faktura nr [NUMER] z dnia [DATA] na kwotę [KWOTA] [WALUTA].\n"
+        . "Termin płatności: [TERMIN].\n"
+        . "Forma płatności: [FORMA].\n\n"
+        . "Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawiania faktur i obsługi KSeF.";
+
+    $message = trim((string)($data['notify_invoice_message'] ?? ''));
+    if ($message === '') {
+        $message = $defaultMessage;
+    }
+
+    $ContractorsSettings = $this->fetchTable('ContractorsSettings');
+    $settings = $ContractorsSettings->find()
+        ->where(['company_id' => $companyId, 'contractor_id' => $contractorId])
+        ->first() ?? $ContractorsSettings->newEmptyEntity();
+
+    $patch = [
+        'company_id' => $companyId,
+        'contractor_id' => $contractorId,
+        'notify_email' => $notifyEmail,
+        'notify_invoice_message' => $message,
+        'attach_invoice_pdf_mode' => !empty($data['attach_invoice_pdf']) ? 'yes' : 'no',
+    ];
+    $settings = $ContractorsSettings->patchEntity($settings, $patch);
+    if (!$ContractorsSettings->save($settings)) {
+        return 'Nie udało się zapisać ustawień e-mailowych kontrahenta.';
+    }
+
+    return null;
 }
 
     /**

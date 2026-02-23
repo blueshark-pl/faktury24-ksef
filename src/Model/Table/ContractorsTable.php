@@ -234,6 +234,26 @@ class ContractorsTable extends Table
             ->allowEmptyString('street');
 
         $validator
+            ->scalar('correspondence_street')
+            ->maxLength('correspondence_street', 160)
+            ->allowEmptyString('correspondence_street');
+
+        $validator
+            ->scalar('correspondence_postal_code')
+            ->maxLength('correspondence_postal_code', 16)
+            ->allowEmptyString('correspondence_postal_code');
+
+        $validator
+            ->scalar('correspondence_city')
+            ->maxLength('correspondence_city', 120)
+            ->allowEmptyString('correspondence_city');
+
+        $validator
+            ->scalar('correspondence_country')
+            ->maxLength('correspondence_country', 2)
+            ->allowEmptyString('correspondence_country');
+
+        $validator
             ->scalar('local_number')
             ->maxLength('local_number', 32)
             ->allowEmptyString('local_number');
