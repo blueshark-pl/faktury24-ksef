@@ -452,6 +452,9 @@ $this->assign('title', 'Edycja firmy');
 
           <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
             Zarządzaj seriami numeracji faktur dla firmy. Jedna seria może być domyślna.
+            <?php if (!empty($copiedSeriesCount)): ?>
+              <div class="mt-1">Widoczne serie przekopiowane systemowo: <strong><?= (int)$copiedSeriesCount ?></strong> (oznaczone badge „Systemowa”).</div>
+            <?php endif; ?>
           </div>
 
           <?php $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0; ?>

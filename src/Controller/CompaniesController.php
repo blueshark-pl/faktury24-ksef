@@ -477,6 +477,13 @@ class CompaniesController extends AppController
             }
         }
 
+        $copiedSeriesCount = 0;
+        foreach ($invoiceSeriesRows as $seriesRow) {
+            if (!empty($seriesRow->parent_id)) {
+                $copiedSeriesCount++;
+            }
+        }
+
         $invoiceSeriesTypeOptions = [];
         try {
             $InvoiceSeriesTypes = $this->fetchTable('InvoiceSeriesTypes');
@@ -719,6 +726,7 @@ class CompaniesController extends AppController
             'bankAccount',
             'existingAccounts',
             'invoiceSeriesRows',
+            'copiedSeriesCount',
             'invoiceSeriesTypeOptions',
             'invoiceSeriesPeriodOptions',
             'invoiceTypeOptions'
