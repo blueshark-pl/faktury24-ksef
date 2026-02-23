@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use Cake\Log\Log;
+
 /**
  * Companies Controller
  *
@@ -457,15 +459,20 @@ class CompaniesController extends AppController
             ->orderAsc('name')
             ->all();
 
+        Log::info('Companies.edit: initial invoice series count=' . $invoiceSeriesRows->count() . ' for company=' . $ctxCompanyId, ['series_debug']);
+
         if ($invoiceSeriesRows->count() === 0) {
             try {
-                $InvoiceSeries->copySystemSeriesForCompany((string)$ctxCompanyId);
+                $copied = $InvoiceSeries->copySystemSeriesForCompany((string)$ctxCompanyId);
+                Log::info('Companies.edit: copySystemSeriesForCompany copied=' . (int)$copied . ' for company=' . $ctxCompanyId, ['series_debug']);
                 $invoiceSeriesRows = $InvoiceSeries->find()
                     ->where(['company_id' => $ctxCompanyId])
                     ->orderDesc('is_default')
                     ->orderAsc('name')
                     ->all();
+                Log::info('Companies.edit: post-copy invoice series count=' . $invoiceSeriesRows->count() . ' for company=' . $ctxCompanyId, ['series_debug']);
             } catch (\Throwable) {
+                Log::error('Companies.edit: copySystemSeriesForCompany failed for company=' . $ctxCompanyId, ['series_debug']);
                 // best-effort; view still renders without rows
             }
         }
@@ -605,16 +612,20 @@ class CompaniesController extends AppController
                         ->toArray();
 
                     if (!empty($invoiceSeriesDeleteIds)) {
+                        Log::info('Companies.edit: requested invoice series deletes=' . json_encode($invoiceSeriesDeleteIds), ['series_debug']);
                         foreach ($invoiceSeriesDeleteIds as $deleteId) {
                             $deleteId = (string)$deleteId;
                             if ($deleteId === '' || !isset($existingSeries[$deleteId])) {
+                                Log::warning('Companies.edit: delete skipped, series not found id=' . $deleteId . ' company=' . $ctxCompanyId, ['series_debug']);
                                 continue;
                             }
                             $toDelete = $existingSeries[$deleteId];
                             if (!empty($toDelete->parent_id) || (int)($toDelete->is_blocked ?? 0) === 1) {
+                                Log::warning('Companies.edit: delete blocked for system series id=' . $deleteId . ' name=' . (string)$toDelete->name, ['series_debug']);
                                 throw new \RuntimeException('Nie można usunąć zablokowanej serii: ' . (string)$toDelete->name);
                             }
                             if (!$InvoiceSeries->delete($toDelete)) {
+                                Log::error('Companies.edit: delete failed for series id=' . $deleteId . ' company=' . $ctxCompanyId, ['series_debug']);
                                 throw new \RuntimeException('Nie udało się usunąć serii: ' . (string)$toDelete->name);
                             }
                             unset($existingSeries[$deleteId]);
@@ -664,14 +675,18 @@ class CompaniesController extends AppController
                         if ($rowId !== '' && isset($existingSeries[$rowId])) {
                             $seriesEntity = $existingSeries[$rowId];
                             $seriesEntity = $InvoiceSeries->patchEntity($seriesEntity, $payload);
+                            Log::info('Companies.edit: updating series id=' . $rowId . ' payload=' . json_encode($payload), ['series_debug']);
                         } else {
                             $seriesEntity = $InvoiceSeries->newEntity($payload);
+                            Log::info('Companies.edit: creating series payload=' . json_encode($payload), ['series_debug']);
                         }
 
                         if (!$InvoiceSeries->save($seriesEntity)) {
+                            Log::error('Companies.edit: save series failed errors=' . json_encode($seriesEntity->getErrors()) . ' payload=' . json_encode($payload), ['series_debug']);
                             $firstError = current(current($seriesEntity->getErrors() ?: [['__all__' => ['Nie udało się zapisać serii numeracji.']]]));
                             throw new \RuntimeException(is_array($firstError) ? (string)current($firstError) : (string)$firstError);
                         }
+                        Log::info('Companies.edit: series saved id=' . (string)$seriesEntity->id . ' key=' . (string)$key, ['series_debug']);
                         $savedSeriesIdsByKey[(string)$key] = (string)$seriesEntity->id;
                     }
 
@@ -686,6 +701,7 @@ class CompaniesController extends AppController
                         $InvoiceSeries->updateAll(['is_default' => 0], ['company_id' => $ctxCompanyId]);
                         if ($selectedSeriesId !== '') {
                             $InvoiceSeries->updateAll(['is_default' => 1], ['company_id' => $ctxCompanyId, 'id' => $selectedSeriesId]);
+                            Log::info('Companies.edit: default series set id=' . $selectedSeriesId . ' company=' . $ctxCompanyId, ['series_debug']);
                         }
                     }
                 });
@@ -693,6 +709,7 @@ class CompaniesController extends AppController
                 $this->Flash->success('Dane firmy zapisane.');
                 return $this->redirect(['action' => 'edit', $ctxCompanyId]);
             } catch (\Throwable $e) {
+                Log::error('Companies.edit: save transaction failed company=' . $ctxCompanyId . ' message=' . $e->getMessage(), ['series_debug']);
                 $this->Flash->error('Nie udało się zapisać zmian: ' . $e->getMessage());
             }
         }

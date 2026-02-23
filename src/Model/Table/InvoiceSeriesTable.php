@@ -143,12 +143,15 @@ class InvoiceSeriesTable extends Table
             ->enableHydration(true)
             ->all();
         if (!$systemSeries->count()) {
+            Log::warning('InvoiceSeries.copySystemSeriesForCompany: no system series found (is_system=1)', ['series_init']);
             return 0;
         }
 
         $systemSeriesList = $systemSeries->toList();
+        Log::info('InvoiceSeries.copySystemSeriesForCompany: source count=' . count($systemSeriesList) . ' company=' . $companyId, ['series_init']);
         $systemSeriesIds = array_values(array_filter(array_map(static fn ($row) => (string)($row->id ?? ''), $systemSeriesList)));
         if ($systemSeriesIds === []) {
+            Log::warning('InvoiceSeries.copySystemSeriesForCompany: source rows without ids company=' . $companyId, ['series_init']);
             return 0;
         }
 
@@ -161,6 +164,7 @@ class InvoiceSeriesTable extends Table
             ->extract('parent_id')
             ->toList();
         $existingParentIds = array_filter($existingParentIds); // remove nulls
+        Log::info('InvoiceSeries.copySystemSeriesForCompany: existing copies=' . count($existingParentIds) . ' company=' . $companyId, ['series_init']);
 
         // reference sets for nullable FK fields
         $typeIds = $this->InvoiceSeriesTypes->find()->select(['id'])->enableHydration(false)->all()->extract('id')->toList();
@@ -213,6 +217,7 @@ class InvoiceSeriesTable extends Table
             $entity = $this->newEntity($data, ['validate' => true]);
             if ($this->save($entity)) {
                 $copied++;
+                Log::info('InvoiceSeries.copySystemSeriesForCompany: copied series parent_id=' . (string)$orig->id . ' new_id=' . (string)$entity->id . ' company=' . $companyId, ['series_init']);
             } else {
                 Log::warning('Nie udało się skopiować serii systemowej: ' . json_encode($entity->getErrors()), ['series_init']);
             }
@@ -227,8 +232,11 @@ class InvoiceSeriesTable extends Table
                 ->first();
             if ($first) {
                 $this->updateAll(['is_default' => 1], ['id' => $first->id, 'company_id' => $companyId]);
+                Log::info('InvoiceSeries.copySystemSeriesForCompany: fallback default set id=' . (string)$first->id . ' company=' . $companyId, ['series_init']);
             }
         }
+
+        Log::info('InvoiceSeries.copySystemSeriesForCompany: copied total=' . $copied . ' company=' . $companyId, ['series_init']);
 
         return $copied;
     }
