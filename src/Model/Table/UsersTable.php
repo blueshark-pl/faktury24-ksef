@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 namespace App\Model\Table;
 
+use ArrayObject;
 use Cake\Datasource\EntityInterface;
+use Cake\Event\EventInterface;
 use Cake\Log\Log;
 use Cake\ORM\RulesChecker;
 use Cake\Validation\Validator;
@@ -24,6 +26,43 @@ class UsersTable extends BaseUsersTable
             file_put_contents(LOGS . 'register-company.log', $line, FILE_APPEND);
         } catch (\Throwable) {
             // diagnostic only
+        }
+    }
+
+    public function beforeSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
+    {
+        // afterSave() dostaje encję już jako persisted (isNew=false),
+        // dlatego zapamiętujemy tutaj czy to był CREATE.
+        if (!isset($options['__isCreate'])) {
+            $options['__isCreate'] = $entity->isNew();
+        }
+
+        $additionalData = (array)($entity->get('additional_data') ?? []);
+        $prefill = (array)($additionalData['onboarding_prefill'] ?? []);
+        $this->traceRegisterCompany('Users.beforeSave.enter', [
+            'user_id' => (string)($entity->get('id') ?? ''),
+            'is_new' => $entity->isNew() ? 1 : 0,
+            '__isCreate' => (bool)($options['__isCreate'] ?? false) ? 1 : 0,
+            'has_company_id' => !empty($entity->get('company_id')) ? 1 : 0,
+            'has_prefill' => !empty($prefill) ? 1 : 0,
+            'prefill_keys' => array_keys($prefill),
+        ]);
+
+        // Główna ścieżka: przy CREATE od razu utwórz/podepnij firmę,
+        // aby user zapisał się już z company_id.
+        $isCreate = (bool)($options['__isCreate'] ?? false);
+        if ($isCreate && empty($entity->get('company_id'))) {
+            $this->traceRegisterCompany('Users.beforeSave.createDetected', ['user_id' => (string)$entity->get('id')]);
+            $resolved = $this->resolveCompanyFromPrefill($entity);
+            if (!empty($resolved['company_id'])) {
+                $entity->set('company_id', (string)$resolved['company_id']);
+                if (array_key_exists('additional_data', $resolved)) {
+                    $entity->set('additional_data', $resolved['additional_data']);
+                }
+                $this->traceRegisterCompany('Users.beforeSave.companyAssigned', ['company_id' => (string)$resolved['company_id']]);
+            } else {
+                $this->traceRegisterCompany('Users.beforeSave.companyNotResolved', ['user_id' => (string)$entity->get('id')]);
+            }
         }
     }
 
@@ -229,5 +268,42 @@ class UsersTable extends BaseUsersTable
         ]);
 
         return $rules;
+    }
+
+    public function afterSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
+    {
+        // Reaguj tylko po utworzeniu konta i tylko gdy user nie ma jeszcze firmy.
+        $isCreate = (bool)($options['__isCreate'] ?? false);
+        $this->traceRegisterCompany('Users.afterSave.enter', [
+            'user_id' => (string)($entity->get('id') ?? ''),
+            '__isCreate' => $isCreate ? 1 : 0,
+            'has_company_id' => !empty($entity->get('company_id')) ? 1 : 0,
+        ]);
+        if (!$isCreate || !empty($entity->get('company_id'))) {
+            $this->traceRegisterCompany('Users.afterSave.skip', [
+                'reason' => !$isCreate ? 'not_create' : 'already_has_company',
+                'user_id' => (string)($entity->get('id') ?? ''),
+            ]);
+            return;
+        }
+
+        // Fallback: jeśli z jakiegoś powodu beforeSave nie ustawił firmy,
+        // spróbuj jeszcze raz po zapisie użytkownika.
+        $resolved = $this->resolveCompanyFromPrefill($entity);
+        if (empty($resolved['company_id'])) {
+            $this->traceRegisterCompany('Users.afterSave.fallbackNotResolved', ['user_id' => (string)$entity->get('id')]);
+            return;
+        }
+
+        $user = $this->get((string)$entity->get('id'));
+        $user->set('company_id', (string)$resolved['company_id']);
+        if (array_key_exists('additional_data', $resolved)) {
+            $user->set('additional_data', $resolved['additional_data']);
+        }
+        $this->save($user, ['checkRules' => false, 'validate' => false]);
+        $this->traceRegisterCompany('Users.afterSave.fallbackSaved', [
+            'user_id' => (string)$entity->get('id'),
+            'company_id' => (string)$resolved['company_id'],
+        ]);
     }
 }
