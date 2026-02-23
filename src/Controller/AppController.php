@@ -16,11 +16,10 @@ declare(strict_types=1);
  */
 namespace App\Controller;
 
-use App\Model\Table\UsersTable as AppUsersTable;
 use Cake\Controller\Controller;
 use Cake\Event\EventInterface;
-use Cake\Log\Log;
 use Cake\Routing\Router;
+use Cake\Log\Log;
 /**
  * Application Controller
  *
@@ -130,12 +129,8 @@ class AppController extends Controller
                 'identity_id' => (string)$identity->getIdentifier(),
             ]);
             try {
-                /** @var \Cake\ORM\Table|\App\Model\Table\UsersTable $Users */
-                $Users = $this->getTableLocator()->get('Users', ['className' => AppUsersTable::class]);
-                $this->traceRegisterCompany('App.beforeFilter.usersTableClass', [
-                    'class' => get_class($Users),
-                    'has_ensure_method' => method_exists($Users, 'ensureCompanyForUserId') ? 1 : 0,
-                ]);
+                /** @var \App\Model\Table\UsersTable $Users */
+                $Users = $this->fetchTable('Users');
                 $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id', 'additional_data']]);
                 $this->traceRegisterCompany('App.beforeFilter.dbUserLoaded', [
                     'user_id' => (string)$dbUser->id,

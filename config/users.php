@@ -1,9 +1,5 @@
 <?php
 return [
-    // Ważne dla CakeDC/Users: wymuś App\Model\Table\UsersTable,
-    // aby działały nasze hooki beforeSave/afterSave i przypięcie firmy.
-    'Users.table' => 'App.Users',
-
     'Users.Registration.active' => true, //enable or disable password meter. Defaults to true
 
     // CakeDC Users: password rehash
