@@ -465,10 +465,11 @@ $this->assign('title', 'Edycja firmy');
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-center mb-2">
                     <div class="d-flex align-items-center gap-2">
-                      <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="<?= (int)$idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?>>
+                      <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="<?= (int)$idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?> <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
                       <span class="badge <?= !empty($series->is_default) ? 'bg-primary-soft text-primary' : 'bg-light text-muted' ?>"><?= !empty($series->is_default) ? 'Domyślna' : '—' ?></span>
                       <?php if ($isSystemCopiedSeries): ?>
                         <span class="badge bg-warning-transparent">Systemowa</span>
+                        <span class="badge bg-light text-muted">Tylko podgląd</span>
                       <?php endif; ?>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= $isSystemCopiedSeries ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
@@ -482,11 +483,11 @@ $this->assign('title', 'Edycja firmy');
                   <div class="row gy-3">
                     <div class="col-xl-3">
                       <label class="form-label">Nazwa serii</label>
-                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][name]" class="form-control" value="<?= h((string)$series->name) ?>" required>
+                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][name]" class="form-control" value="<?= h((string)$series->name) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : 'required' ?>>
                     </div>
                     <div class="col-xl-3">
                       <label class="form-label">Typ dokumentu</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][type]" class="form-control">
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][type]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
                         <?php foreach ((array)$invoiceTypeOptions as $typeCode => $typeLabel): ?>
                           <option value="<?= h((string)$typeCode) ?>" <?= ((string)($series->type ?? 'vat') === (string)$typeCode) ? 'selected' : '' ?>><?= h((string)$typeLabel) ?></option>
                         <?php endforeach; ?>
@@ -494,7 +495,7 @@ $this->assign('title', 'Edycja firmy');
                     </div>
                     <div class="col-xl-3">
                       <label class="form-label">Typ serii</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_type_id]" class="form-control">
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_type_id]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
                         <option value="">—</option>
                         <?php foreach ((array)$invoiceSeriesTypeOptions as $typeId => $typeName): ?>
                           <option value="<?= h((string)$typeId) ?>" <?= ((string)($series->invoice_series_type_id ?? '') === (string)$typeId) ? 'selected' : '' ?>><?= h((string)$typeName) ?></option>
@@ -503,7 +504,7 @@ $this->assign('title', 'Edycja firmy');
                     </div>
                     <div class="col-xl-3">
                       <label class="form-label">Okres numeracji</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_period_id]" class="form-control">
+                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_period_id]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
                         <option value="">—</option>
                         <?php foreach ((array)$invoiceSeriesPeriodOptions as $periodId => $periodName): ?>
                           <option value="<?= h((string)$periodId) ?>" <?= ((string)($series->invoice_series_period_id ?? '') === (string)$periodId) ? 'selected' : '' ?>><?= h((string)$periodName) ?></option>
@@ -512,11 +513,11 @@ $this->assign('title', 'Edycja firmy');
                     </div>
                     <div class="col-xl-9">
                       <label class="form-label">Wzorzec numeracji</label>
-                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][series_template]" class="form-control" value="<?= h((string)$series->series_template) ?>" required>
+                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][series_template]" class="form-control" value="<?= h((string)$series->series_template) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : 'required' ?>>
                     </div>
                     <div class="col-xl-3">
                       <label class="form-label">Numer początkowy</label>
-                      <input type="number" min="1" step="1" name="invoice_series_rows[<?= (int)$idx ?>][starting_number]" class="form-control" value="<?= h((string)$series->starting_number) ?>">
+                      <input type="number" min="1" step="1" name="invoice_series_rows[<?= (int)$idx ?>][starting_number]" class="form-control" value="<?= h((string)$series->starting_number) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : '' ?>>
                     </div>
                   </div>
                 </div>

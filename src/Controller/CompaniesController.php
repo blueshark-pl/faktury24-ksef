@@ -681,6 +681,11 @@ class CompaniesController extends AppController
 
                         if ($rowId !== '' && isset($existingSeries[$rowId])) {
                             $seriesEntity = $existingSeries[$rowId];
+                            if (!empty($seriesEntity->parent_id) || (int)($seriesEntity->is_blocked ?? 0) === 1) {
+                                Log::info('Companies.edit: skip update for read-only system series id=' . $rowId, ['series_debug']);
+                                $savedSeriesIdsByKey[(string)$key] = (string)$seriesEntity->id;
+                                continue;
+                            }
                             $seriesEntity = $InvoiceSeries->patchEntity($seriesEntity, $payload);
                             Log::info('Companies.edit: updating series id=' . $rowId . ' payload=' . json_encode($payload), ['series_debug']);
                         } else {
