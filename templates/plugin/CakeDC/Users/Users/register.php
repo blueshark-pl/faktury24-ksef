@@ -53,6 +53,7 @@ $this->set('authColumnClass', 'col-xxl-9 col-xl-10 col-lg-11 col-md-11 col-sm-12
         ]) ?>
 
         <?php $this->Form->unlockField('username'); ?>
+        <?php $this->Form->unlockField('additional_data.onboarding_prefill.bank_accounts'); ?>
 
         <label for="reg-email" class="form-label text-default"><?= __('Adres e-mail') ?></label>
         <div class="position-relative mb-3">
