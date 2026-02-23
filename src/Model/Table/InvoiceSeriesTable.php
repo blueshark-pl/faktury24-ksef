@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 namespace App\Model\Table;
 
+use ArrayObject;
 use Cake\Log\Log;
+use Cake\Datasource\EntityInterface;
+use Cake\Event\EventInterface;
 use Cake\ORM\Query\SelectQuery;
 use Cake\ORM\RulesChecker;
 use Cake\ORM\Table;
@@ -34,6 +37,42 @@ use Cake\Validation\Validator;
  */
 class InvoiceSeriesTable extends Table
 {
+    public function beforeSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
+    {
+        $payload = [
+            'id' => (string)($entity->get('id') ?? ''),
+            'company_id' => (string)($entity->get('company_id') ?? ''),
+            'parent_id' => (string)($entity->get('parent_id') ?? ''),
+            'invoice_series_type_id' => (string)($entity->get('invoice_series_type_id') ?? ''),
+            'invoice_series_period_id' => (string)($entity->get('invoice_series_period_id') ?? ''),
+            'is_default' => (int)($entity->get('is_default') ?? 0),
+            'name' => (string)($entity->get('name') ?? ''),
+            'type' => (string)($entity->get('type') ?? ''),
+            'series_template' => (string)($entity->get('series_template') ?? ''),
+            'starting_number' => (int)($entity->get('starting_number') ?? 0),
+            'is_system' => (int)($entity->get('is_system') ?? 0),
+            'is_blocked' => (int)($entity->get('is_blocked') ?? 0),
+            'is_new' => $entity->isNew() ? 1 : 0,
+        ];
+
+        Log::debug('InvoiceSeries.beforeSave payload=' . json_encode($payload, JSON_UNESCAPED_UNICODE), ['series_save']);
+    }
+
+    public function afterSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
+    {
+        $payload = [
+            'id' => (string)($entity->get('id') ?? ''),
+            'company_id' => (string)($entity->get('company_id') ?? ''),
+            'parent_id' => (string)($entity->get('parent_id') ?? ''),
+            'is_default' => (int)($entity->get('is_default') ?? 0),
+            'is_system' => (int)($entity->get('is_system') ?? 0),
+            'is_blocked' => (int)($entity->get('is_blocked') ?? 0),
+            'is_new' => $entity->isNew() ? 1 : 0,
+        ];
+
+        Log::info('InvoiceSeries.afterSave payload=' . json_encode($payload, JSON_UNESCAPED_UNICODE), ['series_save']);
+    }
+
     /**
      * Initialize method
      *
