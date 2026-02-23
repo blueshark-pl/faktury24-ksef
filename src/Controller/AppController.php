@@ -112,7 +112,18 @@ class AppController extends Controller
             try {
                 /** @var \App\Model\Table\UsersTable $Users */
                 $Users = $this->fetchTable('Users');
-                $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
+                $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id', 'additional_data']]);
+                if (empty($dbUser->company_id) && method_exists($Users, 'ensureCompanyForUserId')) {
+                    try {
+                        /** @var string|null $ensuredCompanyId */
+                        $ensuredCompanyId = $Users->ensureCompanyForUserId((string)$dbUser->id);
+                        if (!empty($ensuredCompanyId)) {
+                            $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
+                        }
+                    } catch (\Throwable) {
+                        // best-effort
+                    }
+                }
                 if (!empty($dbUser->company_id)) {
                     $this->currentCompanyId = $dbUser->company_id;
                     $this->setKsefModeViewVars((string)$dbUser->company_id);

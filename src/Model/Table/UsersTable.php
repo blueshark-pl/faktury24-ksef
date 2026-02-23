@@ -13,6 +13,22 @@ use CakeDC\Users\Model\Table\UsersTable as BaseUsersTable;
 
 class UsersTable extends BaseUsersTable
 {
+    private function traceRegisterCompany(string $message, array $context = []): void
+    {
+        try {
+            $line = sprintf(
+                "%s %s %s%s",
+                date('Y-m-d H:i:s'),
+                $message,
+                $context ? json_encode($context, JSON_UNESCAPED_UNICODE) : '',
+                PHP_EOL
+            );
+            file_put_contents(LOGS . 'register-company.log', $line, FILE_APPEND);
+        } catch (\Throwable) {
+            // diagnostic only
+        }
+    }
+
     public function beforeSave(EventInterface $event, EntityInterface $entity, ArrayObject $options): void
     {
         // afterSave() dostaje encję już jako persisted (isNew=false),
@@ -25,14 +41,40 @@ class UsersTable extends BaseUsersTable
         // aby user zapisał się już z company_id.
         $isCreate = (bool)($options['__isCreate'] ?? false);
         if ($isCreate && empty($entity->get('company_id'))) {
+            $this->traceRegisterCompany('Users.beforeSave.createDetected', ['user_id' => (string)$entity->get('id')]);
             $resolved = $this->resolveCompanyFromPrefill($entity);
             if (!empty($resolved['company_id'])) {
                 $entity->set('company_id', (string)$resolved['company_id']);
                 if (array_key_exists('additional_data', $resolved)) {
                     $entity->set('additional_data', $resolved['additional_data']);
                 }
+                $this->traceRegisterCompany('Users.beforeSave.companyAssigned', ['company_id' => (string)$resolved['company_id']]);
             }
         }
+    }
+
+    public function ensureCompanyForUserId(string $userId): ?string
+    {
+        $user = $this->get($userId);
+        if (!empty($user->company_id)) {
+            return (string)$user->company_id;
+        }
+
+        $this->traceRegisterCompany('Users.ensureCompanyForUserId.start', ['user_id' => $userId]);
+        $resolved = $this->resolveCompanyFromPrefill($user);
+        if (empty($resolved['company_id'])) {
+            $this->traceRegisterCompany('Users.ensureCompanyForUserId.noCompanyResolved', ['user_id' => $userId]);
+            return null;
+        }
+
+        $user->set('company_id', (string)$resolved['company_id']);
+        if (array_key_exists('additional_data', $resolved)) {
+            $user->set('additional_data', $resolved['additional_data']);
+        }
+        $this->save($user, ['checkRules' => false, 'validate' => false]);
+        $this->traceRegisterCompany('Users.ensureCompanyForUserId.saved', ['user_id' => $userId, 'company_id' => (string)$resolved['company_id']]);
+
+        return (string)$resolved['company_id'];
     }
 
     /**
@@ -44,6 +86,7 @@ class UsersTable extends BaseUsersTable
         $additionalData = (array)($entity->get('additional_data') ?? []);
         $prefill = (array)($additionalData['onboarding_prefill'] ?? []);
         if (empty($prefill)) {
+            $this->traceRegisterCompany('Users.resolveCompanyFromPrefill.emptyPrefill', ['user_id' => (string)$entity->get('id')]);
             return [];
         }
 
@@ -55,6 +98,7 @@ class UsersTable extends BaseUsersTable
         $country = trim((string)($prefill['country'] ?? ''));
 
         if ($name === '' || $street === '' || $postalCode === '' || $city === '') {
+            $this->traceRegisterCompany('Users.resolveCompanyFromPrefill.missingRequired', ['user_id' => (string)$entity->get('id')]);
             return [];
         }
 
@@ -100,9 +144,11 @@ class UsersTable extends BaseUsersTable
 
                 if (!$Companies->save($company)) {
                     Log::error('Rejestracja: nie udało się utworzyć firmy dla usera ' . (string)$entity->get('id') . ': ' . json_encode($company->getErrors()), ['register_company']);
+                    $this->traceRegisterCompany('Users.resolveCompanyFromPrefill.companySaveFailed', ['user_id' => (string)$entity->get('id'), 'errors' => $company->getErrors()]);
                     return [];
                 }
                 $companyId = (string)$company->id;
+                $this->traceRegisterCompany('Users.resolveCompanyFromPrefill.companyCreated', ['user_id' => (string)$entity->get('id'), 'company_id' => $companyId]);
 
                 // Opcjonalnie: bank accounts z prefilla (np. MF)
                 $prefillBankAccounts = (array)($prefill['bank_accounts'] ?? []);
@@ -142,6 +188,7 @@ class UsersTable extends BaseUsersTable
             ];
         } catch (\Throwable $e) {
             Log::error('Rejestracja: wyjątek przy tworzeniu/przypinaniu firmy dla usera ' . (string)$entity->get('id') . ': ' . $e->getMessage(), ['register_company']);
+            $this->traceRegisterCompany('Users.resolveCompanyFromPrefill.exception', ['user_id' => (string)$entity->get('id'), 'message' => $e->getMessage()]);
 
             return [];
         }
