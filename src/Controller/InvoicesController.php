@@ -2179,6 +2179,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         // Załaduj fakturę z pozycjami i snapshotem kontrahenta
         $invoice = $this->Invoices->get($id, contain: [
+            'InvoiceSeries',
             'InvoiceContractors',
             'InvoiceContents' => ['Vats']
         ]);
@@ -2197,6 +2198,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 if ($first) {
                     $invoice->set('invoice_contractor', $first);
                 }
+            }
+            // Prefill selecta serii (templates/add*.php używają pola `series`)
+            if (empty($invoice->series) && !empty($invoice->invoice_series) && !empty($invoice->invoice_series->name)) {
+                $invoice->set('series', (string)$invoice->invoice_series->name);
             }
         } catch (\Throwable) { /* ignore */ }
 
@@ -2530,9 +2535,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // Seria -> invoice_series_id (bez automatycznego nadawania numeru)
             if (!empty($data['series'])) {
                 $InvoiceSeriesTable = $this->fetchTable('InvoiceSeries');
-                $series = $InvoiceSeriesTable->find()
-                    ->where(['InvoiceSeries.company_id' => $invoice->company_id, 'InvoiceSeries.name' => $data['series']])
-                    ->first();
+                $seriesValue = (string)$data['series'];
+                $seriesQuery = $InvoiceSeriesTable->find()
+                    ->where(['InvoiceSeries.company_id' => $invoice->company_id]);
+
+                if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $seriesValue)) {
+                    $seriesQuery->where(['InvoiceSeries.id' => $seriesValue]);
+                } else {
+                    $seriesQuery->where(['InvoiceSeries.name' => $seriesValue]);
+                }
+
+                $series = $seriesQuery->first();
                 if ($series) {
                     $data['invoice_series_id'] = $series->id;
                 }
