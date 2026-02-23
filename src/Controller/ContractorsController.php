@@ -20,6 +20,60 @@ use Cake\View\JsonView;
 class ContractorsController extends AppController
 {
 
+    public function vatStatusLookup()
+    {
+        $this->request->allowMethod(['post']);
+
+        $nip = preg_replace('/\D+/', '', (string)$this->request->getData('nip'));
+        if (!$nip || strlen($nip) !== 10) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'message' => 'Brak lub błędny NIP',
+                ]));
+        }
+
+        try {
+            $vat = [
+                'statusVat' => null,
+                'requestId' => null,
+                'requestDateTime' => null,
+                'accountNumbers' => [],
+            ];
+
+            $wlBase = rtrim((string)Configure::read('WlApi.baseUrl', 'https://wl-api.mf.gov.pl'), '/');
+            $wlDate = date('Y-m-d');
+            $client = new Client(['timeout' => 8]);
+            $wlResp = $client->get($wlBase . '/api/search/nip/' . $nip, ['date' => $wlDate], [
+                'headers' => ['Accept' => 'application/json'],
+            ]);
+
+            if ($wlResp->isOk()) {
+                $wlData = (array)$wlResp->getJson();
+                $result = (array)($wlData['result'] ?? []);
+                $subject = (array)($result['subject'] ?? []);
+                $vat['statusVat'] = (string)($subject['statusVat'] ?? '') ?: null;
+                $vat['requestId'] = (string)($result['requestId'] ?? '') ?: null;
+                $vat['requestDateTime'] = (string)($result['requestDateTime'] ?? '') ?: null;
+                $vat['accountNumbers'] = array_values(array_filter((array)($subject['accountNumbers'] ?? []), function ($v) {
+                    return trim((string)$v) !== '';
+                }));
+            }
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => true,
+                    'vat' => $vat,
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ]));
+        }
+    }
+
 public function gusLookup()
     {
         $this->request->allowMethod(['post']);

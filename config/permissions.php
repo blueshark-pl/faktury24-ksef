@@ -209,6 +209,7 @@ return [
             'controller' => 'Contractors',
             'action' => [
                 'gusLookup',
+                'vatStatusLookup',
                 'search',
                 'index',
                 'view',

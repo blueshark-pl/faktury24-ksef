@@ -61,7 +61,7 @@ return [
         'imageBaseUrl' => 'img/',
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
-        'version' => '1.2.22 (14)',
+        'version' => '1.2.22 (15)',
         'ksefSchedulerKey' => env('APP_KSEF_SCHEDULER_KEY', ''),
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),

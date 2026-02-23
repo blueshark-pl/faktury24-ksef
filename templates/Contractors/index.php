@@ -628,6 +628,7 @@ $companyId = $identity?->get('company_id');
                   </div>
                   <div class="help-slot">
                     <small class="text-muted">Automatycznie uzupełni adres i nazwę z rejestru GUS.</small>
+                    <div id="contractor-vat-status" class="small mt-1 d-none"></div>
                   </div>
                 </div>
               </div>
@@ -1021,6 +1022,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const showNip = document.getElementById('show-nip');
   const personNipGroup = document.getElementById('person-nip-group');
   const personNipInput = document.getElementById('person-nip');
+  const contractorVatStatus = document.getElementById('contractor-vat-status');
   const companyFields = document.getElementById('company-fields');
   const personFields  = document.getElementById('person-fields');
   const nipInput   = document.getElementById('nip');
@@ -1045,6 +1047,57 @@ document.addEventListener('DOMContentLoaded', () => {
   const recipientCity       = document.getElementById('recipient-city');
   const recipientStreet     = document.getElementById('recipient-street');
   const recipientPostal     = document.getElementById('recipient-postal');
+  let contractorVatTimer = null;
+
+  function clearContractorVatStatus() {
+    if (!contractorVatStatus) return;
+    contractorVatStatus.classList.add('d-none');
+    contractorVatStatus.classList.remove('text-success', 'text-warning', 'text-muted');
+    contractorVatStatus.textContent = '';
+  }
+
+  function showContractorVatStatus(vat) {
+    if (!contractorVatStatus) return;
+
+    const statusRaw = String(vat?.statusVat || '').trim();
+    const status = statusRaw.toLowerCase();
+    const accountsCount = Array.isArray(vat?.accountNumbers) ? vat.accountNumbers.length : 0;
+
+    contractorVatStatus.classList.remove('d-none', 'text-success', 'text-warning', 'text-muted');
+    if (status === 'czynny') contractorVatStatus.classList.add('text-success');
+    else if (statusRaw) contractorVatStatus.classList.add('text-warning');
+    else contractorVatStatus.classList.add('text-muted');
+
+    contractorVatStatus.textContent = 'Status VAT (Biała lista): '
+      + (statusRaw || 'brak danych')
+      + (accountsCount > 0 ? (', rachunki: ' + accountsCount) : '');
+  }
+
+  async function checkContractorVatStatus(nip) {
+    if (!nip || nip.length !== 10) {
+      clearContractorVatStatus();
+      return;
+    }
+
+    try {
+      const res = await fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'vatStatusLookup']) ?>', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': CSRF_TOKEN,
+        },
+        body: JSON.stringify({ nip }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        showContractorVatStatus(data?.vat || {});
+      }
+    } catch (err) {
+      // best effort
+    }
+  }
 
   // Initialize intl-tel-input on phone field
   let iti = null;
@@ -1159,6 +1212,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lastName)     lastName.required     = peselMode;
     // GUS: never allow in person mode (no GUS for individuals)
     if (gusBtn) gusBtn.disabled = peselMode ? true : false;
+    if (peselMode) {
+      clearContractorVatStatus();
+    }
     // PESEL: show toggle in person mode, field hidden by default
     peselToggleRow?.classList.toggle('d-none', !peselMode);
     if (peselMode) { if (showPesel) showPesel.checked = false; peselGroup?.classList.add('d-none'); }
@@ -1312,8 +1368,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const v = onlyDigits(nipInput.value);
     nipInput.value = v; // enforce digits
     clearInvalid(nipInput);
+    if (contractorVatTimer) clearTimeout(contractorVatTimer);
+    if (v.length !== 10) {
+      clearContractorVatStatus();
+    }
     if (v.length === 10 && !validateNIP(v)) {
       setInvalid(nipInput, 'Nieprawidłowy NIP — sprawdź sumę kontrolną.');
+      clearContractorVatStatus();
+      return;
+    }
+    if (v.length === 10) {
+      contractorVatTimer = setTimeout(() => checkContractorVatStatus(v), 350);
     }
   });
   nipInput?.addEventListener('blur', () => {
@@ -1343,6 +1408,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // reset do dodawania
   function resetFormToAdd() {
     form.reset();
+    clearContractorVatStatus();
     idField.value = '';
     methodFld.value = 'POST';
     form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'add']) ?>');
@@ -2122,14 +2188,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (data.success) {
         const c = data.contractor || {};
+        const vat = data.vat || {};
         setVal('input[name="name"]',        c.name);
         setVal('input[name="city"]',        c.city);
         setVal('input[name="postal_code"]', c.zip);
         setVal('input[name="country"]',     c.country || 'PL');
         setVal('input[name="street"]',      c.street);
+        showContractorVatStatus(vat);
         toastBody.textContent = 'Pobrano dane z GUS.';
         toast.show();
       } else {
+        checkContractorVatStatus(nip);
         toastBody.textContent = data.message || 'Brak danych w GUS.';
         toast.show();
       }
