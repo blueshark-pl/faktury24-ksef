@@ -30,22 +30,6 @@ use Cake\Log\Log;
  */
 class AppController extends Controller
 {
-    private function traceRegisterCompany(string $message, array $context = []): void
-    {
-        try {
-            $line = sprintf(
-                "%s %s %s%s",
-                date('Y-m-d H:i:s'),
-                $message,
-                $context ? json_encode($context, JSON_UNESCAPED_UNICODE) : '',
-                PHP_EOL
-            );
-            file_put_contents(LOGS . 'register-company.log', $line, FILE_APPEND);
-        } catch (\Throwable) {
-            // diagnostic only
-        }
-    }
-
     public $currentCompanyId = null;
 
     private function setKsefModeViewVars(?string $companyId): void
@@ -125,36 +109,18 @@ class AppController extends Controller
         // Jeśli identity nie ma company_id, ale w DB user ma już przypisaną firmę,
         // ustaw kontekst na podstawie DB (zapobiega pętli redirectów po onboardingu).
         if (empty($identity->get('company_id'))) {
-            $this->traceRegisterCompany('App.beforeFilter.identityWithoutCompany', [
-                'identity_id' => (string)$identity->getIdentifier(),
-            ]);
             try {
                 /** @var \App\Model\Table\UsersTable $Users */
                 $Users = $this->fetchTable('Users');
                 $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id', 'additional_data']]);
-                $this->traceRegisterCompany('App.beforeFilter.dbUserLoaded', [
-                    'user_id' => (string)$dbUser->id,
-                    'has_company_id' => !empty($dbUser->company_id) ? 1 : 0,
-                ]);
                 if (empty($dbUser->company_id) && method_exists($Users, 'ensureCompanyForUserId')) {
                     try {
                         /** @var string|null $ensuredCompanyId */
                         $ensuredCompanyId = $Users->ensureCompanyForUserId((string)$dbUser->id);
-                        $this->traceRegisterCompany('App.beforeFilter.ensureCompanyResult', [
-                            'user_id' => (string)$dbUser->id,
-                            'ensured_company_id' => (string)($ensuredCompanyId ?? ''),
-                        ]);
                         if (!empty($ensuredCompanyId)) {
                             $dbUser = $Users->get($identity->getIdentifier(), ['fields' => ['id', 'company_id']]);
-                            $this->traceRegisterCompany('App.beforeFilter.dbUserReloadedAfterEnsure', [
-                                'user_id' => (string)$dbUser->id,
-                                'company_id' => (string)($dbUser->company_id ?? ''),
-                            ]);
                         }
                     } catch (\Throwable) {
-                        $this->traceRegisterCompany('App.beforeFilter.ensureCompanyException', [
-                            'user_id' => (string)$dbUser->id,
-                        ]);
                         // best-effort
                     }
                 }

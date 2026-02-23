@@ -37,17 +37,6 @@ class UsersTable extends BaseUsersTable
             $options['__isCreate'] = $entity->isNew();
         }
 
-        $additionalData = (array)($entity->get('additional_data') ?? []);
-        $prefill = (array)($additionalData['onboarding_prefill'] ?? []);
-        $this->traceRegisterCompany('Users.beforeSave.enter', [
-            'user_id' => (string)($entity->get('id') ?? ''),
-            'is_new' => $entity->isNew() ? 1 : 0,
-            '__isCreate' => (bool)($options['__isCreate'] ?? false) ? 1 : 0,
-            'has_company_id' => !empty($entity->get('company_id')) ? 1 : 0,
-            'has_prefill' => !empty($prefill) ? 1 : 0,
-            'prefill_keys' => array_keys($prefill),
-        ]);
-
         // Główna ścieżka: przy CREATE od razu utwórz/podepnij firmę,
         // aby user zapisał się już z company_id.
         $isCreate = (bool)($options['__isCreate'] ?? false);
@@ -60,8 +49,6 @@ class UsersTable extends BaseUsersTable
                     $entity->set('additional_data', $resolved['additional_data']);
                 }
                 $this->traceRegisterCompany('Users.beforeSave.companyAssigned', ['company_id' => (string)$resolved['company_id']]);
-            } else {
-                $this->traceRegisterCompany('Users.beforeSave.companyNotResolved', ['user_id' => (string)$entity->get('id')]);
             }
         }
     }
@@ -286,16 +273,7 @@ class UsersTable extends BaseUsersTable
     {
         // Reaguj tylko po utworzeniu konta i tylko gdy user nie ma jeszcze firmy.
         $isCreate = (bool)($options['__isCreate'] ?? false);
-        $this->traceRegisterCompany('Users.afterSave.enter', [
-            'user_id' => (string)($entity->get('id') ?? ''),
-            '__isCreate' => $isCreate ? 1 : 0,
-            'has_company_id' => !empty($entity->get('company_id')) ? 1 : 0,
-        ]);
         if (!$isCreate || !empty($entity->get('company_id'))) {
-            $this->traceRegisterCompany('Users.afterSave.skip', [
-                'reason' => !$isCreate ? 'not_create' : 'already_has_company',
-                'user_id' => (string)($entity->get('id') ?? ''),
-            ]);
             return;
         }
 
@@ -303,7 +281,6 @@ class UsersTable extends BaseUsersTable
         // spróbuj jeszcze raz po zapisie użytkownika.
         $resolved = $this->resolveCompanyFromPrefill($entity);
         if (empty($resolved['company_id'])) {
-            $this->traceRegisterCompany('Users.afterSave.fallbackNotResolved', ['user_id' => (string)$entity->get('id')]);
             return;
         }
 
@@ -313,9 +290,5 @@ class UsersTable extends BaseUsersTable
             $user->set('additional_data', $resolved['additional_data']);
         }
         $this->save($user, ['checkRules' => false, 'validate' => false]);
-        $this->traceRegisterCompany('Users.afterSave.fallbackSaved', [
-            'user_id' => (string)$entity->get('id'),
-            'company_id' => (string)$resolved['company_id'],
-        ]);
     }
 }
