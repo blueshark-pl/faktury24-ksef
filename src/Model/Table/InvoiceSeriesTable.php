@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Model\Table;
 
+use Cake\Log\Log;
 use Cake\ORM\Query\SelectQuery;
 use Cake\ORM\RulesChecker;
 use Cake\ORM\Table;
@@ -145,43 +146,90 @@ class InvoiceSeriesTable extends Table
             return 0;
         }
 
+        $systemSeriesList = $systemSeries->toList();
+        $systemSeriesIds = array_values(array_filter(array_map(static fn ($row) => (string)($row->id ?? ''), $systemSeriesList)));
+        if ($systemSeriesIds === []) {
+            return 0;
+        }
+
         // existing copies (parent_id matching system ids)
         $existingParentIds = $this->find()
             ->select(['parent_id'])
-            ->where(['company_id' => $companyId, 'parent_id IN' => $systemSeries->extract('id')->toList()])
+            ->where(['company_id' => $companyId, 'parent_id IN' => $systemSeriesIds])
             ->enableHydration(false)
             ->all()
             ->extract('parent_id')
             ->toList();
         $existingParentIds = array_filter($existingParentIds); // remove nulls
 
-        // (previously we avoided multiple defaults) – per request: force copied series to have is_default = 1
+        // reference sets for nullable FK fields
+        $typeIds = $this->InvoiceSeriesTypes->find()->select(['id'])->enableHydration(false)->all()->extract('id')->toList();
+        $periodIds = $this->InvoiceSeriesPeriods->find()->select(['id'])->enableHydration(false)->all()->extract('id')->toList();
+        $typeIdsMap = array_fill_keys(array_map('strval', $typeIds), true);
+        $periodIdsMap = array_fill_keys(array_map('strval', $periodIds), true);
+
+        // default handling: if company has no default, preserve original default from system (first fallback)
+        $companyHasDefault = $this->find()
+            ->where(['company_id' => $companyId, 'is_default' => 1])
+            ->count() > 0;
+        $defaultAssigned = $companyHasDefault;
 
         $copied = 0;
-        foreach ($systemSeries as $orig) {
+        foreach ($systemSeriesList as $orig) {
             if ($orig->id && in_array($orig->id, $existingParentIds, true)) {
                 continue; // already copied
             }
+
+            $typeId = (string)($orig->invoice_series_type_id ?? '');
+            if ($typeId !== '' && !isset($typeIdsMap[$typeId])) {
+                $typeId = '';
+            }
+
+            $periodId = (string)($orig->invoice_series_period_id ?? '');
+            if ($periodId !== '' && !isset($periodIdsMap[$periodId])) {
+                $periodId = '';
+            }
+
+            $isDefault = 0;
+            if (!$defaultAssigned && !empty($orig->is_default)) {
+                $isDefault = 1;
+                $defaultAssigned = true;
+            }
+
             $data = [
-                'parent_id' => $orig->id,
+                // keep id auto-generated; map required fields explicitly
                 'company_id' => $companyId,
-                'type' => $orig->type ?? null,
+                'invoice_series_type_id' => $typeId !== '' ? $typeId : null,
+                'parent_id' => $orig->id,
+                'invoice_series_period_id' => $periodId !== '' ? $periodId : null,
+                'is_default' => $isDefault,
                 'name' => $orig->name,
+                'type' => $orig->type ?? 'vat',
                 'series_template' => $orig->series_template,
-                'starting_number' => $orig->starting_number,
-                'invoice_series_type_id' => $orig->invoice_series_type_id,
-                'invoice_series_period_id' => $orig->invoice_series_period_id,
+                'starting_number' => (int)($orig->starting_number ?? 1),
                 'is_system' => 0,
                 'is_blocked' => 1,
-                // force default (per business request to copy with is_default = 1)
-                'is_default' => 1,
             ];
             $entity = $this->newEntity($data, ['validate' => true]);
             if ($this->save($entity)) {
                 $copied++;
-                // no need to toggle flags; all copies marked default intentionally
+            } else {
+                Log::warning('Nie udało się skopiować serii systemowej: ' . json_encode($entity->getErrors()), ['series_init']);
             }
         }
+
+        // fallback: if still no default for company, set first available as default
+        if (!$defaultAssigned) {
+            $first = $this->find()
+                ->select(['id'])
+                ->where(['company_id' => $companyId])
+                ->orderAsc('created')
+                ->first();
+            if ($first) {
+                $this->updateAll(['is_default' => 1], ['id' => $first->id, 'company_id' => $companyId]);
+            }
+        }
+
         return $copied;
     }
 }

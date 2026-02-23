@@ -457,6 +457,19 @@ class CompaniesController extends AppController
             ->orderAsc('name')
             ->all();
 
+        if ($invoiceSeriesRows->count() === 0) {
+            try {
+                $InvoiceSeries->copySystemSeriesForCompany((string)$ctxCompanyId);
+                $invoiceSeriesRows = $InvoiceSeries->find()
+                    ->where(['company_id' => $ctxCompanyId])
+                    ->orderDesc('is_default')
+                    ->orderAsc('name')
+                    ->all();
+            } catch (\Throwable) {
+                // best-effort; view still renders without rows
+            }
+        }
+
         $invoiceSeriesTypeOptions = [];
         try {
             $InvoiceSeriesTypes = $this->fetchTable('InvoiceSeriesTypes');
