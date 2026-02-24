@@ -135,3 +135,11 @@ custom styles.
 - Commit: 5c8ccee
 - Czas: 0.1h
 - Do sprawdzenia manualnie: zaloguj się kilka razy i potwierdź, że warning nie pojawia się w `logs/error.log`.
+
+## TODO (Invoices)
+
+- Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
+- Rozdzielić bardzo duże metody `handleAdd()` i `edit()` w [src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) na serwisy domenowe (numeracja, walidacja pozycji, snapshot nabywcy, wysyłka KSeF), żeby ograniczyć regresje.
+- Ujednolicić model pola serii (nazwa vs UUID) między frontendem i backendem: dziś `series` bywa nazwą, a mapowanie kończy na `invoice_series_id`; warto przejść na stabilny identyfikator + jawny DTO mapowania.
+- Dodać testy integracyjne dla scenariuszy roboczych i KSeF: zapis draftu, zmiana serii przy edycji, wysyłka draftu z datą inną niż dziś, renumeracja po zmianie daty.
+- Naprawić migrację testową `20251002120002_AddUniqueNipToCompanies` pod SQLite (błąd `MODIFY`), bo obecnie blokuje `composer test` i utrudnia pełną weryfikację modułu.
