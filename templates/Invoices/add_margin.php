@@ -307,9 +307,6 @@ $gtuSelectHtml .= '</select>';
                 Rachunki firmy dodasz w <em>Ustawienia → Moja firma → Rachunki bankowe</em> lub bezpośrednio tutaj przyciskiem „Dodaj rachunek”.
               </small>
             </div>
-            <div class="col-lg-3 mt-2">
-              <?= $this->element('invoice_template_picker', ['fieldName' => 'template']) ?>
-            </div>
             <div class="col-lg-3">
               <?= $this->Form->control('issuer', [
                 'label' => 'Wystawca (issuer)', 'class' => 'form-control',
