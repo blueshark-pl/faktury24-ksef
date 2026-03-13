@@ -609,6 +609,7 @@ $this->assign('title', 'Edycja firmy');
 
       <!-- Rejestry -->
       <div class="tab-pane overflow-hidden p-0 border-0" id="registers-tab-pane" role="tabpanel" aria-labelledby="registers-tab" tabindex="0">
+       <div class="px-3 pt-3 pb-2">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
           <div class="fw-semibold d-block fs-15">Rejestry firmy</div>
           <span class="badge bg-light text-muted">krok 4/4</span>
@@ -688,6 +689,7 @@ $this->assign('title', 'Edycja firmy');
             <i class="ri-add-line"></i> Dodaj rejestr
           </button>
         </div>
+       </div>
       </div>
 
       <div class="card-footer border-top-0 d-flex justify-content-between align-items-center">
