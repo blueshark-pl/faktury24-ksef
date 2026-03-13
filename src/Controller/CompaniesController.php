@@ -435,7 +435,7 @@ class CompaniesController extends AppController
         // Załaduj firmę wyłącznie po ctxCompanyId, razem z relacjami potrzebnymi w edycji
         $company = $this->Companies->find()
             ->where(['Companies.id' => $ctxCompanyId])
-            ->contain(['CompanyBankAccounts'])
+            ->contain(['CompanyBankAccounts', 'CompanyRegisters'])
             ->firstOrFail();
         // Dostosowanie widoku (przeniesiony z onboardingu) do edycji:
         // zapewnij kontekst rachunku bankowego i ewentualnej listy rachunków
@@ -450,6 +450,14 @@ class CompaniesController extends AppController
             ->orderAsc('is_default')
             ->orderAsc('created')
             ->all();
+
+        /** @var \App\Model\Table\CompanyRegistersTable $CompanyRegisters */
+        $CompanyRegisters = $this->fetchTable('CompanyRegisters');
+        $existingRegisters = $CompanyRegisters->find()
+            ->where(['company_id' => $ctxCompanyId])
+            ->orderAsc('created')
+            ->all()
+            ->toList();
 
         /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
         $InvoiceSeries = $this->fetchTable('InvoiceSeries');
@@ -528,6 +536,7 @@ class CompaniesController extends AppController
             $banksInput = (array)($this->request->getData('banks') ?? []);
             $defaultIdx = (int)($this->request->getData('banks_default') ?? 0);
             $invoiceSeriesInput = (array)($this->request->getData('invoice_series_rows') ?? []);
+            $registersInput = (array)($this->request->getData('company_registers') ?? []);
             $invoiceSeriesDefaultKey = (string)($this->request->getData('invoice_series_default_key') ?? '');
             $invoiceSeriesDeleteIds = [];
             foreach ($invoiceSeriesInput as $seriesRow) {
@@ -554,7 +563,8 @@ class CompaniesController extends AppController
                     $invoiceSeriesInput,
                     $invoiceSeriesDefaultKey,
                     $invoiceSeriesDeleteIds,
-                    $invoiceTypeOptions
+                    $invoiceTypeOptions,
+                    $registersInput
                 ) {
                     /** @var \App\Model\Table\CompaniesTable $Companies */
                     $Companies = $this->fetchTable('Companies');
@@ -610,6 +620,35 @@ class CompaniesController extends AppController
                                 $fieldInfo  = ' (wiersz #' . ($idx + 1) . ')';
                                 throw new \RuntimeException((is_array($firstError) ? (string)current($firstError) : (string)$firstError) . $fieldInfo);
                             }
+                        }
+                    }
+
+                    // 3a) Rejestry firmy (replace strategy — usuń stare, wstaw nowe)
+                    /** @var \App\Model\Table\CompanyRegistersTable $CompanyRegisters */
+                    $CompanyRegisters = $this->fetchTable('CompanyRegisters');
+                    $CompanyRegisters->deleteAll(['company_id' => $ctxCompanyId]);
+                    foreach ($registersInput as $idx => $regRow) {
+                        $regRow = (array)$regRow;
+                        $rName  = trim((string)($regRow['name'] ?? ''));
+                        $rKrs   = trim((string)($regRow['krs'] ?? ''));
+                        $rRegon = trim((string)($regRow['regon'] ?? ''));
+                        $rBdo   = trim((string)($regRow['bdo'] ?? ''));
+
+                        // pomijaj całkowicie puste wiersze
+                        if ($rName === '' && $rKrs === '' && $rRegon === '' && $rBdo === '') {
+                            continue;
+                        }
+
+                        $regEntity = $CompanyRegisters->newEntity([
+                            'company_id' => $ctxCompanyId,
+                            'name'       => $rName !== '' ? $rName : null,
+                            'krs'        => $rKrs !== '' ? $rKrs : null,
+                            'regon'      => $rRegon !== '' ? $rRegon : null,
+                            'bdo'        => $rBdo !== '' ? $rBdo : null,
+                        ]);
+                        if (!$CompanyRegisters->save($regEntity)) {
+                            $firstError = current(current($regEntity->getErrors() ?: [['__all__' => ['Nie udało się zapisać rejestru.']]]));
+                            throw new \RuntimeException((is_array($firstError) ? (string)current($firstError) : (string)$firstError) . ' (rejestr #' . ($idx + 1) . ')');
                         }
                     }
 
@@ -740,6 +779,7 @@ class CompaniesController extends AppController
             'company',
             'bankAccount',
             'existingAccounts',
+            'existingRegisters',
             'invoiceSeriesRows',
             'copiedSeriesCount',
             'invoiceSeriesTypeOptions',

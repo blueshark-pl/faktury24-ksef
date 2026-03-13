@@ -46,6 +46,10 @@ $this->assign('title', 'Edycja firmy');
       <div class="d-flex align-items-center gap-2" data-tab="#series-tab-pane">
         <span class="badge rounded-pill bg-secondary" id="step-badge-3">3</span><span class="fw-medium" id="step-label-3">Serie numeracji</span>
       </div>
+      <div class="text-muted">—</div>
+      <div class="d-flex align-items-center gap-2" data-tab="#registers-tab-pane">
+        <span class="badge rounded-pill bg-secondary" id="step-badge-4">4</span><span class="fw-medium" id="step-label-4">Rejestry</span>
+      </div>
     </div>
   </div>
 </div>
@@ -73,6 +77,12 @@ $this->assign('title', 'Edycja firmy');
               <a class="nav-link bg-light d-inline-flex w-100" id="series-tab" data-bs-toggle="tab"
                  data-bs-target="#series-tab-pane" role="tab" aria-controls="series-tab-pane">
                 <i class="ri-hashtag me-2"></i>Serie numeracji
+              </a>
+            </li>
+            <li class="nav-item me-0" role="presentation">
+              <a class="nav-link bg-light d-inline-flex w-100" id="registers-tab" data-bs-toggle="tab"
+                 data-bs-target="#registers-tab-pane" role="tab" aria-controls="registers-tab-pane">
+                <i class="ri-file-list-3-line me-2"></i>Rejestry
               </a>
             </li>
           </ul>
@@ -106,7 +116,7 @@ $this->assign('title', 'Edycja firmy');
         <div class="tab-pane show active overflow-hidden p-0 border-0" id="account-pane" role="tabpanel" aria-labelledby="account" tabindex="0">
           <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
             <div class="fw-semibold d-block fs-15">Dane firmy</div>
-            <span class="badge bg-light text-muted">krok 1/3</span>
+            <span class="badge bg-light text-muted">krok 1/4</span>
           </div>
 
           <!-- Sekcja: Dane podstawowe -->
@@ -447,7 +457,7 @@ $this->assign('title', 'Edycja firmy');
         <div class="tab-pane overflow-hidden p-0 border-0" id="series-tab-pane" role="tabpanel" aria-labelledby="series-tab" tabindex="0">
           <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
             <div class="fw-semibold d-block fs-15">Serie numeracji</div>
-            <span class="badge bg-light text-muted">krok 3/3</span>
+            <span class="badge bg-light text-muted">krok 3/4</span>
           </div>
 
           <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
@@ -597,6 +607,89 @@ $this->assign('title', 'Edycja firmy');
         </div>
       </div>
 
+      <!-- Rejestry -->
+      <div class="tab-pane overflow-hidden p-0 border-0" id="registers-tab-pane" role="tabpanel" aria-labelledby="registers-tab" tabindex="0">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
+          <div class="fw-semibold d-block fs-15">Rejestry firmy</div>
+          <span class="badge bg-light text-muted">krok 4/4</span>
+        </div>
+
+        <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
+          Dodaj rejestry firmy — KRS, REGON, BDO. Żadne pole nie jest wymagane. Możesz dodać wiele wpisów tego samego typu.
+        </div>
+
+        <?php $registersArr = isset($existingRegisters) ? (array)$existingRegisters : []; ?>
+        <div id="registers-list" class="d-flex flex-column gap-3">
+          <?php if (!empty($registersArr)): ?>
+            <?php foreach ($registersArr as $i => $reg): ?>
+              <div class="register-item card border-0 shadow-xs" data-index="<?= (int)$i ?>">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge bg-light text-muted">Rejestr #<?= (int)$i + 1 ?></span>
+                    <button type="button" class="btn btn-sm btn-outline-danger register-remove" title="Usuń rejestr">
+                      <i class="ri-delete-bin-line"></i> Usuń
+                    </button>
+                  </div>
+                  <div class="row gy-3">
+                    <div class="col-xl-6">
+                      <label class="form-label">Nazwa rejestru</label>
+                      <input type="text" name="company_registers[<?= (int)$i ?>][name]" class="form-control" placeholder="np. Rejestr BDO główny" value="<?= h((string)($reg->name ?? '')) ?>">
+                    </div>
+                    <div class="col-xl-6">
+                      <label class="form-label">KRS</label>
+                      <input type="text" name="company_registers[<?= (int)$i ?>][krs]" class="form-control" placeholder="np. 0000123456" maxlength="20" value="<?= h((string)($reg->krs ?? '')) ?>">
+                    </div>
+                    <div class="col-xl-6">
+                      <label class="form-label">REGON</label>
+                      <input type="text" name="company_registers[<?= (int)$i ?>][regon]" class="form-control" placeholder="np. 123456789" maxlength="20" value="<?= h((string)($reg->regon ?? '')) ?>">
+                    </div>
+                    <div class="col-xl-6">
+                      <label class="form-label">BDO</label>
+                      <input type="text" name="company_registers[<?= (int)$i ?>][bdo]" class="form-control" placeholder="np. 000012345" maxlength="20" value="<?= h((string)($reg->bdo ?? '')) ?>">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <div class="register-item card border-0 shadow-xs" data-index="0">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-light text-muted">Rejestr #1</span>
+                  <button type="button" class="btn btn-sm btn-outline-danger register-remove" disabled title="Nie można usunąć jedynego wiersza">
+                    <i class="ri-delete-bin-line"></i> Usuń
+                  </button>
+                </div>
+                <div class="row gy-3">
+                  <div class="col-xl-6">
+                    <label class="form-label">Nazwa rejestru</label>
+                    <input type="text" name="company_registers[0][name]" class="form-control" placeholder="np. Rejestr BDO główny">
+                  </div>
+                  <div class="col-xl-6">
+                    <label class="form-label">KRS</label>
+                    <input type="text" name="company_registers[0][krs]" class="form-control" placeholder="np. 0000123456" maxlength="20">
+                  </div>
+                  <div class="col-xl-6">
+                    <label class="form-label">REGON</label>
+                    <input type="text" name="company_registers[0][regon]" class="form-control" placeholder="np. 123456789" maxlength="20">
+                  </div>
+                  <div class="col-xl-6">
+                    <label class="form-label">BDO</label>
+                    <input type="text" name="company_registers[0][bdo]" class="form-control" placeholder="np. 000012345" maxlength="20">
+                  </div>
+                </div>
+              </div>
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <div class="mt-3">
+          <button type="button" class="btn btn-outline-primary btn-sm" id="register-add">
+            <i class="ri-add-line"></i> Dodaj rejestr
+          </button>
+        </div>
+      </div>
+
       <div class="card-footer border-top-0 d-flex justify-content-between align-items-center">
   <div class="small text-success">
     <i class="ri-shield-check-line me-1"></i> Twoje dane są bezpieczne.
@@ -613,6 +706,7 @@ $this->assign('title', 'Edycja firmy');
             $this->Form->unlockField('banks_default');
           $this->Form->unlockField('invoice_series_rows');
           $this->Form->unlockField('invoice_series_default_key');
+          $this->Form->unlockField('company_registers');
         ?>
       <?= $this->Form->end() ?>
     </div>
@@ -1216,6 +1310,86 @@ $this->assign('title', 'Edycja firmy');
 
   syncDefault();
   updateEmptyState();
+})();
+</script>
+
+<script>
+(function initRegisters(){
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initRegisters, { once: true }); return; }
+
+  const list = document.getElementById('registers-list');
+  const addBtn = document.getElementById('register-add');
+  if (!list || !addBtn) return;
+
+  let nextIdx = list.querySelectorAll('.register-item').length;
+
+  function updateBadgesAndRemoveButtons() {
+    const items = list.querySelectorAll('.register-item');
+    items.forEach((item, i) => {
+      const badge = item.querySelector('.badge');
+      if (badge) badge.textContent = 'Rejestr #' + (i + 1);
+      const removeBtn = item.querySelector('.register-remove');
+      if (removeBtn) {
+        removeBtn.disabled = (items.length <= 1);
+        removeBtn.title = items.length <= 1 ? 'Nie można usunąć jedynego wiersza' : 'Usuń rejestr';
+      }
+    });
+  }
+
+  function createRow(idx) {
+    const html = `
+      <div class="register-item card border-0 shadow-xs" data-index="${idx}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="badge bg-light text-muted">Rejestr #${idx + 1}</span>
+            <button type="button" class="btn btn-sm btn-outline-danger register-remove" title="Usuń rejestr">
+              <i class="ri-delete-bin-line"></i> Usuń
+            </button>
+          </div>
+          <div class="row gy-3">
+            <div class="col-xl-6">
+              <label class="form-label">Nazwa rejestru</label>
+              <input type="text" name="company_registers[${idx}][name]" class="form-control" placeholder="np. Rejestr BDO główny">
+            </div>
+            <div class="col-xl-6">
+              <label class="form-label">KRS</label>
+              <input type="text" name="company_registers[${idx}][krs]" class="form-control" placeholder="np. 0000123456" maxlength="20">
+            </div>
+            <div class="col-xl-6">
+              <label class="form-label">REGON</label>
+              <input type="text" name="company_registers[${idx}][regon]" class="form-control" placeholder="np. 123456789" maxlength="20">
+            </div>
+            <div class="col-xl-6">
+              <label class="form-label">BDO</label>
+              <input type="text" name="company_registers[${idx}][bdo]" class="form-control" placeholder="np. 000012345" maxlength="20">
+            </div>
+          </div>
+        </div>
+      </div>`;
+    const holder = document.createElement('div');
+    holder.innerHTML = html.trim();
+    return holder.firstElementChild;
+  }
+
+  addBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const row = createRow(nextIdx++);
+    list.appendChild(row);
+    const nameInput = row.querySelector('input[name*="[name]"]');
+    if (nameInput) nameInput.focus();
+    updateBadgesAndRemoveButtons();
+  });
+
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('.register-remove');
+    if (!btn || btn.disabled) return;
+    const item = btn.closest('.register-item');
+    if (!item) return;
+    item.remove();
+    updateBadgesAndRemoveButtons();
+  });
+
+  updateBadgesAndRemoveButtons();
 })();
 </script>
 

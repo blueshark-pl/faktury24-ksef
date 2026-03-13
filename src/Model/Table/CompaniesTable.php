@@ -12,6 +12,7 @@ use Cake\Validation\Validator;
  * Companies Model
  *
  * @property \App\Model\Table\CompanyBankAccountsTable&\Cake\ORM\Association\HasMany $CompanyBankAccounts
+ * @property \App\Model\Table\CompanyRegistersTable&\Cake\ORM\Association\HasMany $CompanyRegisters
  * @property \App\Model\Table\ContractorsTable&\Cake\ORM\Association\HasMany $Contractors
  * @property \App\Model\Table\InvoiceSeriesTable&\Cake\ORM\Association\HasMany $InvoiceSeries
  * @property \App\Model\Table\InvoicesTable&\Cake\ORM\Association\HasMany $Invoices
@@ -53,6 +54,9 @@ class CompaniesTable extends Table
         $this->addBehavior('Timestamp');
 
         $this->hasMany('CompanyBankAccounts', [
+            'foreignKey' => 'company_id',
+        ]);
+        $this->hasMany('CompanyRegisters', [
             'foreignKey' => 'company_id',
         ]);
         $this->hasMany('Contractors', [
