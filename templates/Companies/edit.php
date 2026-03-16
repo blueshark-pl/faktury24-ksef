@@ -355,7 +355,8 @@ $this->assign('title', 'Edycja firmy');
                   <div class="row gy-3">
                     <div class="col-xl-8">
                       <label class="form-label">IBAN</label>
-                      <input type="text" name="banks[<?= (int)$i ?>][iban]" class="form-control iban-input" placeholder="PL00 0000 0000 0000 0000 0000 0000" maxlength="34" value="<?= h($ibanFmt) ?>">
+                      <input type="text" name="banks[<?= (int)$i ?>][iban]" class="form-control iban-input" placeholder="PL00 0000 0000 0000 0000 0000 0000" maxlength="42" value="<?= h($ibanFmt) ?>">
+                      <div class="invalid-feedback">Nieprawidłowy numer IBAN.</div>
                       <div class="form-text">np. <code>PL</code> + 26 cyfr. Spacje dozwolone – usuniemy przy zapisie.</div>
                     </div>
                     <div class="col-xl-4">
@@ -395,7 +396,8 @@ $this->assign('title', 'Edycja firmy');
                 <div class="row gy-3">
                   <div class="col-xl-8">
                     <label class="form-label">IBAN</label>
-                    <input type="text" name="banks[0][iban]" class="form-control iban-input" placeholder="PL00 0000 0000 0000 0000 0000 0000" maxlength="34">
+                    <input type="text" name="banks[0][iban]" class="form-control iban-input" placeholder="PL00 0000 0000 0000 0000 0000 0000" maxlength="42">
+                    <div class="invalid-feedback">Nieprawidłowy numer IBAN.</div>
                     <div class="form-text">np. <code>PL</code> + 26 cyfr. Spacje dozwolone – usuniemy przy zapisie.</div>
                   </div>
                   <div class="col-xl-4">
@@ -1005,19 +1007,66 @@ $this->assign('title', 'Edycja firmy');
     return remainder === 1;
   }
 
-  // delegacja inputów IBAN + paste
+  function validateIbanInput(input) {
+    const raw = normalizeIban(input.value);
+    input.value = formatIban(raw);
+
+    const feedback = input.parentElement?.querySelector('.invalid-feedback');
+
+    // puste = neutralne (ani valid ani invalid)
+    if (raw === '') {
+      input.classList.remove('is-invalid', 'is-valid');
+      input.setCustomValidity('');
+      if (feedback) feedback.textContent = 'Nieprawidłowy numer IBAN.';
+      return;
+    }
+
+    // sprawdź duplikaty
+    const siblings = [...list.querySelectorAll('.iban-input')].filter(x => x !== input);
+    const duplicate = siblings.some(x => normalizeIban(x.value) === raw);
+
+    // sprawdź format i sumę kontrolną
+    const validFormat = ibanValid(raw);
+
+    if (duplicate) {
+      input.classList.add('is-invalid');
+      input.classList.remove('is-valid');
+      input.setCustomValidity('Duplikat IBAN w formularzu');
+      if (feedback) feedback.textContent = 'Duplikat — ten numer IBAN jest już dodany wyżej.';
+    } else if (!validFormat) {
+      input.classList.add('is-invalid');
+      input.classList.remove('is-valid');
+      input.setCustomValidity('Nieprawidłowy numer IBAN');
+      if (feedback) {
+        // bardziej szczegółowy komunikat
+        if (raw.length < 15) {
+          feedback.textContent = 'Numer IBAN jest za krótki (min. 15 znaków).';
+        } else if (!/^[A-Z]{2}/.test(raw)) {
+          feedback.textContent = 'IBAN musi zaczynać się od 2-literowego kodu kraju (np. PL).';
+        } else {
+          feedback.textContent = 'Nieprawidłowa suma kontrolna IBAN — sprawdź numer.';
+        }
+      }
+    } else {
+      input.classList.remove('is-invalid');
+      input.classList.add('is-valid');
+      input.setCustomValidity('');
+      if (feedback) feedback.textContent = '';
+    }
+
+    input.dataset.duplicate = duplicate ? '1' : '0';
+  }
+
+  // delegacja: walidacja na input, blur i paste
   list.addEventListener('input', (e)=>{
     if (!e.target.classList.contains('iban-input')) return;
-    const raw = normalizeIban(e.target.value);
-    e.target.value = formatIban(raw);
-    const siblings = [...list.querySelectorAll('.iban-input')].filter(x => x !== e.target);
-    const duplicate = siblings.some(x => normalizeIban(x.value) === raw && raw !== '');
-    const ok = (raw==='' || (ibanValid(raw) && !duplicate));
-    e.target.classList.toggle('is-invalid', !ok);
-    e.target.dataset.duplicate = duplicate ? '1' : '0';
-    if (duplicate) e.target.setCustomValidity('Duplikat IBAN w formularzu');
-    else e.target.setCustomValidity('');
+    validateIbanInput(e.target);
   });
+
+  list.addEventListener('blur', (e)=>{
+    if (!e.target.classList.contains('iban-input')) return;
+    validateIbanInput(e.target);
+  }, true); // capture phase for blur
 
   list.addEventListener('paste', (e)=>{
     if (!e.target.classList.contains('iban-input')) return;
@@ -1025,8 +1074,13 @@ $this->assign('title', 'Edycja firmy');
     if (clipboard) {
       e.preventDefault();
       e.target.value = formatIban(clipboard);
-      e.target.dispatchEvent(new Event('input', {bubbles:true}));
+      validateIbanInput(e.target);
     }
+  });
+
+  // walidacja istniejących IBAN przy załadowaniu strony
+  list.querySelectorAll('.iban-input').forEach(inp => {
+    if (normalizeIban(inp.value) !== '') validateIbanInput(inp);
   });
 
   // --- 2) Dodawanie z podpowiedzią etykiety + autofocus + scroll
@@ -1049,9 +1103,12 @@ $this->assign('title', 'Edycja firmy');
       } else {
         el.value = '';
       }
-      el.classList.remove('is-invalid');
+      el.classList.remove('is-invalid', 'is-valid');
       el.setCustomValidity('');
     });
+
+    // wyczyść feedback validation messages
+    tpl.querySelectorAll('.invalid-feedback').forEach(fb => { fb.textContent = 'Nieprawidłowy numer IBAN.'; });
 
     // aktywuj Usuń
     const removeBtn = tpl.querySelector('.bank-remove');
@@ -1392,6 +1449,14 @@ $this->assign('title', 'Edycja firmy');
   /* delikatny glow dla błędnych pól */
   .form-control.is-invalid {
     box-shadow: 0 0 0 .2rem rgba(220,53,69,.15);
+  }
+  /* zielony glow dla poprawnych pól */
+  .form-control.is-valid {
+    box-shadow: 0 0 0 .2rem rgba(25,135,84,.12);
+  }
+  /* pokaż invalid-feedback pod inputem z is-invalid */
+  .iban-input.is-invalid ~ .invalid-feedback {
+    display: block;
   }
   /* hover na kartach banków */
   .bank-item.card {
