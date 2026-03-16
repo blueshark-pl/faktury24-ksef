@@ -124,7 +124,9 @@ $gtuSelectHtml .= '</select>';
         <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
       </div>
 
@@ -396,6 +398,105 @@ $gtuSelectHtml .= '</select>';
           </div>
         </div>
 
+        <!-- ADNOTACJE -->
+        <div class="tab-pane fade" id="pane-annotations" role="tabpanel" aria-labelledby="tab-annotations">
+          <div class="vstack gap-3">
+            <p class="text-muted small mb-0">Dodatkowe adnotacje KSeF — zaznacz jeśli faktura dotyczy jednej z poniższych procedur.</p>
+
+            <!-- Metoda kasowa -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-cash-method" name="annotations[cash_method]" value="1">
+                <label class="form-check-label" for="ann-cash-method">Metoda kasowa</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Metoda kasowa"
+                data-bs-content="<div class='small text-start'>Oznacza, że sprzedawca (co do zasady mały podatnik stosujący metodę kasową) rozlicza VAT dopiero po otrzymaniu zapłaty. Dla nabywcy odliczenie VAT z&nbsp;takiej faktury następuje nie wcześniej niż po zapłacie.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Odwrotne obciążenie -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-reverse-charge" name="annotations[reverse_charge]" value="1">
+                <label class="form-check-label" for="ann-reverse-charge">Odwrotne obciążenie</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Odwrotne obciążenie"
+                data-bs-content="<div class='small text-start'>VAT rozlicza nabywca, a&nbsp;nie sprzedawca. Adnotacja może występować tam, gdzie przepisy przewidują taki mechanizm, w&nbsp;tym czasowo dla niektórych transakcji z&nbsp;art.&nbsp;145e ustawy o&nbsp;VAT.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Procedura trójstronna uproszczona -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-triangular" name="annotations[triangular]" value="1">
+                <label class="form-check-label" for="ann-triangular">Procedura trójstronna uproszczona</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Procedura trójstronna uproszczona"
+                data-bs-content="<div class='small text-start'>Unijna transakcja 3&nbsp;firm z&nbsp;3 różnych państw UE, gdzie towar jedzie od pierwszego dostawcy do ostatniego nabywcy, a&nbsp;środkowy podmiot korzysta z&nbsp;uproszczenia. Na fakturze musi być specjalna adnotacja, a&nbsp;VAT rozlicza ostatni nabywca.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Procedura marży -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-margin" name="annotations[margin_procedure]" value="1">
+                <label class="form-check-label" for="ann-margin">Procedura marży</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Procedura marży"
+                data-bs-content="<div class='small text-start'>VAT liczy się tylko od marży sprzedawcy, nie od całej wartości sprzedaży. Dotyczy towarów używanych, dzieł sztuki, przedmiotów kolekcjonerskich i&nbsp;antyków, a&nbsp;osobno także usług turystyki.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Procedura OSS -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-oss" name="annotations[oss]" value="1">
+                <label class="form-check-label" for="ann-oss">Procedura OSS (One Stop Shop)</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Procedura OSS"
+                data-bs-content="<div class='small text-start'>Rozliczanie VAT od określonej sprzedaży B2C w&nbsp;UE przez jeden system w&nbsp;jednym państwie, zamiast rejestrować się do VAT w&nbsp;każdym kraju osobno. Dotyczy sprzedaży do konsumentów w&nbsp;innych krajach UE.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Oznaczenie TP -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-tp" name="annotations[tp]" value="1">
+                <label class="form-check-label" for="ann-tp">Oznaczenie TP (powiązania)</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Oznaczenie TP"
+                data-bs-content="<div class='small text-start'>Informacja, że między sprzedawcą a&nbsp;nabywcą istnieją powiązania. To przede wszystkim oznaczenie ewidencyjne/JPK; w&nbsp;KSeF może pojawić się na fakturze jako dodatkowa informacja.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Zwrot akcyzy -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-excise-return" name="annotations[excise_return]" value="1">
+                <label class="form-check-label" for="ann-excise-return">Zwrot akcyzy</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Zwrot akcyzy"
+                data-bs-content="<div class='small text-start'>Dodatkowa informacja związana ze zwrotem podatku akcyzowego zawartego w&nbsp;cenie oleju napędowego. Dotyczy głównie paliwa do produkcji rolnej; producent rolny składa wniosek na podstawie faktur, a&nbsp;urząd gminy nanosi adnotację o&nbsp;przyjęciu do zwrotu.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
         <!-- ZAAWANSOWANE -->
         <div class="tab-pane fade" id="pane-adv" role="tabpanel" aria-labelledby="tab-adv">
           <div class="row g-3">
@@ -431,6 +532,103 @@ $gtuSelectHtml .= '</select>';
                 <i class="ri-question-line"></i>
               </button>
             </div>
+          </div>
+        </div>
+
+        <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
+        <div class="tab-pane fade" id="pane-intl" role="tabpanel" aria-labelledby="tab-intl">
+          <div class="vstack gap-4">
+
+            <!-- Sprzedawca -->
+            <div>
+              <h6 class="fw-semibold mb-3"><i class="ri-building-line me-1"></i> Moje dane sprzedawcy</h6>
+              <div class="row g-3">
+                <div class="col-md-2">
+                  <?= $this->Form->control('seller_vat_prefix', [
+                    'label' => 'Prefiks VAT',
+                    'class' => 'form-control',
+                    'placeholder' => 'np. PL',
+                    'maxlength' => 2
+                  ]) ?>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Numer VAT-UE
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer VAT-UE sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer identyfikacji podatkowej z prefiksem kraju UE, wymagany przy transakcjach unijnych B2B (WDT, usługi dla podatnika z&nbsp;UE, procedura trójstronna).</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_vat_eu', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL1234567890']) ?>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Numer EORI
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer EORI sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer do operacji celnych &mdash; import/eksport poza UE, odprawy celne. To numer celny, nie vatowski.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_eori', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL123456789000']) ?>
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-0">
+
+            <!-- Kontrahent -->
+            <div>
+              <h6 class="fw-semibold mb-3"><i class="ri-user-line me-1"></i> Dane kontrahenta (nabywcy)</h6>
+              <div class="row g-3">
+                <div class="col-md-2">
+                  <?= $this->Form->control('buyer_vat_prefix', [
+                    'label' => 'Prefiks VAT',
+                    'class' => 'form-control',
+                    'placeholder' => 'np. DE',
+                    'maxlength' => 2
+                  ]) ?>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Numer VAT-UE
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer VAT-UE nabywcy"
+                      data-bs-content="<div class='small text-start'>Numer identyfikacji podatkowej z prefiksem kraju UE nabywcy, wymagany przy transakcjach unijnych B2B.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('buyer_vat_eu', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. DE123456789']) ?>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Numer EORI
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer EORI nabywcy"
+                      data-bs-content="<div class='small text-start'>Numer do operacji celnych nabywcy &mdash; import/eksport poza UE, odprawy celne.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('buyer_eori', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. DE123456789000']) ?>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Identyfikator podatkowy inny
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Identyfikator podatkowy inny"
+                      data-bs-content="<div class='small text-start'>Gdy kontrahent nie ma polskiego NIP ani numeru VAT-UE, ale posiada inny numer podatkowy. W&nbsp;KSeF pole &laquo;identyfikator podatkowy inny niż NIP&raquo; z&nbsp;opcjonalnym kodem kraju.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('buyer_tax_id_other', ['label' => false, 'class' => 'form-control', 'placeholder' => 'Inny numer podatkowy nabywcy']) ?>
+                </div>
+                <div class="col-md-3">
+                  <?= $this->Form->control('buyer_tax_id_other_country', [
+                    'label' => 'Kod kraju (inny ID)',
+                    'class' => 'form-control',
+                    'placeholder' => 'np. US',
+                    'maxlength' => 2
+                  ]) ?>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1186,6 +1384,90 @@ $gtuSelectHtml .= '</select>';
         
         <?= $this->Form->control('description', ['label' => 'Opis', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control']) ?>
         <?= $this->Form->control('barcode', ['label' => 'Kod kreskowy', 'class' => 'form-control']) ?>
+
+        <!-- Dodatkowe pola KSeF -->
+        <hr class="my-2">
+        <p class="text-muted small mb-2"><i class="ri-information-line me-1"></i> Pola opcjonalne (KSeF / klasyfikacje)</p>
+
+        <div class="row g-2">
+          <div class="col-4">
+            <label class="form-label">GTIN
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="GTIN" data-bs-content="<div class='small'>Unikatowy kod handlowy produktu (EAN/UPC). Np.&nbsp;5901234123457.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </label>
+            <?= $this->Form->control('gtin', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 5901234123457']) ?>
+          </div>
+          <div class="col-4">
+            <label class="form-label">CN
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Kod CN" data-bs-content="<div class='small'>Kod towaru wg Nomenklatury Scalonej (CN) &mdash; klasyfikacja dla VAT i&nbsp;obrotu międzynarodowego.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </label>
+            <?= $this->Form->control('cn_code', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 8471 30 00']) ?>
+          </div>
+          <div class="col-4">
+            <label class="form-label">PKOB
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="PKOB" data-bs-content="<div class='small'>Kod wg Polskiej Klasyfikacji Obiektów Budowlanych &mdash; stosowany przy obiektach budowlanych.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </label>
+            <?= $this->Form->control('pkob', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 1110']) ?>
+          </div>
+        </div>
+
+        <div class="row g-2 mt-1">
+          <div class="col-6">
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" id="prod-attachment15" name="is_attachment15" value="1">
+              <label class="form-check-label" for="prod-attachment15">Towar/usługa z zał. 15</label>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Załącznik 15" data-bs-content="<div class='small'>Pozycja z&nbsp;załącznika nr&nbsp;15 ustawy o&nbsp;VAT &mdash; podlega obowiązkowemu mechanizmowi podzielonej płatności (MPP).</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Kwota podatku akcyzowego
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Akcyza" data-bs-content="<div class='small'>Kwota akcyzy zawarta w&nbsp;cenie towaru (dotyczy np.&nbsp;paliw, alkoholu, wyrobów tytoniowych).</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </label>
+            <?= $this->Form->control('excise_amount', ['label' => false, 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'placeholder' => '0.00']) ?>
+          </div>
+        </div>
+
+        <div class="row g-2 mt-1">
+          <div class="col-12">
+            <label class="form-label">Oznaczenie procedury
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Procedury" data-bs-content="<div class='small'>Dodatkowe oznaczenia procedur na pozycji faktury wymagane w&nbsp;KSeF/JPK.</div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </label>
+            <?= $this->Form->control('procedure_marking', [
+              'label' => false,
+              'type' => 'select',
+              'options' => [
+                '' => '— brak —',
+                'WSTO_EE' => 'WSTO_EE – sprzedaż na odległość do konsumenta w UE',
+                'IED' => 'IED – dostawa ułatwiana przez interfejs elektroniczny',
+                'TT_D' => 'TT_D – dostawa w transakcji trójstronnej uproszczonej',
+                'I_42' => 'I_42 – WDT po imporcie w procedurze celnej 42',
+                'I_63' => 'I_63 – WDT po imporcie w procedurze celnej 63',
+                'B_SPV' => 'B_SPV – transfer bonu jednego przeznaczenia',
+                'B_SPV_DOSTAWA' => 'B_SPV_DOSTAWA – dostawa dot. bonu jednego przeznaczenia',
+                'B_MPV_PROWIZJA' => 'B_MPV_PROWIZJA – prowizja dot. bonu różnego przeznaczenia',
+              ],
+              'class' => 'form-select',
+              'empty' => false
+            ]) ?>
+          </div>
+        </div>
         
         <?= $this->Form->hidden('unit_id', ['value' => 1]) ?>
         <?= $this->Form->hidden('currency', ['value' => 'PLN']) ?>
