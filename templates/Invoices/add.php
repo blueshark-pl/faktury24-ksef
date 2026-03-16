@@ -442,18 +442,7 @@ $gtuSelectHtml .= '</select>';
               </button>
             </div>
 
-            <!-- Procedura marży -->
-            <div class="d-flex align-items-start gap-2">
-              <div class="form-check form-switch m-0">
-                <input class="form-check-input" type="checkbox" id="ann-margin" name="annotations[margin_procedure]" value="1">
-                <label class="form-check-label" for="ann-margin">Procedura marży</label>
-              </div>
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Procedura marży"
-                data-bs-content="<div class='small text-start'>VAT liczy się tylko od marży sprzedawcy, nie od całej wartości sprzedaży. Dotyczy towarów używanych, dzieł sztuki, przedmiotów kolekcjonerskich i&nbsp;antyków, a&nbsp;osobno także usług turystyki.</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </div>
+            <!-- Procedura marży — ma własny formularz (add_margin), nie checkbox -->
 
             <!-- Procedura OSS -->
             <div class="d-flex align-items-start gap-2">
