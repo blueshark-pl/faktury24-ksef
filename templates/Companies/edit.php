@@ -141,7 +141,7 @@ $this->assign('title', 'Edycja firmy');
                   <div class="form-text">Dla najmu prywatnego NIP i REGON są opcjonalne.</div>
                 </div>
 
-                <div class="col-xl-8">
+                <div class="col-xl-12">
                     <?= $this->Form->control('name', [
                       'label' => ['text' => 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>', 'escape' => false],
                         'required' => true,
@@ -151,13 +151,6 @@ $this->assign('title', 'Edycja firmy');
                   ]) ?>
                   <div class="form-text" id="company-name-help">Pełna nazwa zgodna z dokumentami rejestrowymi.</div>
                   <div class="invalid-feedback">Podaj nazwę firmy.</div>
-                </div>
-                <div class="col-xl-4">
-                    <?= $this->Form->control('altname', [
-                      'label' => ['text' => 'Nazwa skrócona'],
-                        'class' => 'form-control',
-                        'placeholder' => 'np. ACME',
-                  ]) ?>
                 </div>
               </div>
             </div>
