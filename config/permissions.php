@@ -253,6 +253,51 @@ return [
             ],
         ],
 
+        // rachunki bankowe firmy (select na fakturze)
+        [
+            'role' => 'user',
+            'controller' => 'CompanyBankAccounts',
+            'action' => [
+                'index',
+                'search',
+                'add',
+                'edit',
+                'delete',
+            ],
+        ],
+
+        // serie numeracji faktur
+        [
+            'role' => 'user',
+            'controller' => 'InvoiceSeries',
+            'action' => [
+                'index',
+                'search',
+                'add',
+                'edit',
+                'delete',
+                'nextNumber',
+            ],
+        ],
+        [
+            'role' => 'user',
+            'controller' => 'InvoiceSeriesTypes',
+            'action' => [
+                'index',
+                'search',
+                'add',
+            ],
+        ],
+        [
+            'role' => 'user',
+            'controller' => 'InvoiceSeriesPeriods',
+            'action' => [
+                'index',
+                'search',
+                'add',
+            ],
+        ],
+
         // podstawowy landing po zalogowaniu
         [
             'role' => 'user',
