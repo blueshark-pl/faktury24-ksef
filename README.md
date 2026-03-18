@@ -136,6 +136,18 @@ custom styles.
 - Czas: 0.1h
 - Do sprawdzenia manualnie: zaloguj się kilka razy i potwierdź, że warning nie pojawia się w `logs/error.log`.
 
+### 2026-03-18
+
+- Audyt pól formularzy i DB pod FA(3) KSeF. Migracja 20260318100000 — dodanie 19 brakujących kolumn do tabel invoices, invoice_contents, invoice_contractors. Aktualizacja encji i logiki zapisu w kontrolerze.
+- Commit: 3c077f4
+- Czas: 1–2h
+- Do sprawdzenia manualnie: w phpMyAdmin zweryfikować, że kolumny istnieją; wystawić fakturę i sprawdzić czy gtu_code, gtin, cn_code, pkob, excise_amount, procedure_marking, receipt_number, receipt_date, is_receipt_invoice, is_split_payment, sold_date, paid_at, partial_paid_at, lang, auto_send, buyer_is_jst, buyer_in_vat_group, annotations, annotations_tax_free_field, seller/buyer vat_prefix/vat_eu/eori/buyer_tax_id_other/buyer_tax_id_other_country i company_bank_account_id trafiają do bazy.
+
+- Analiza broszury FA(3) KSeF vs schemat DB i XML builder. Migracja 20260318120000 — kolumny FA(3): gtu_code BUG FIX, uu_id, vat_amount, line_date, pkwiu, gross_unit_price (invoice_contents); period_from/to, wz_number, correction_reason, place_of_issue, footer_text, payment_link (invoices); rola, rola_opis, identyfikatory VAT (invoice_recipients); email, phone, krs, regon, bdo, bank_name, bank_desc, country_code (invoice_company_details). Pełna aktualizacja XML buildera (seller DaneKontaktowe, buildSingleLineXml z UU_ID/P_6A/P_9B/P_11A/P_11Vat/PKWiU, buildStopkaXml, LinkDoPlatnosci, place_of_issue), encji i logiki zapisu. TODO FA(3) w copilot-instructions.md.
+- Commit: ec3cc05
+- Czas: 2–3h
+- Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe kolumny; wystawić fakturę i sprawdzić XML FA(3) (zwłaszcza GTU, UU_ID, Stopka, DaneKontaktowe). Sprawdzić czy edycja faktury zachowuje period_from/to, place_of_issue, footer_text, payment_link.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
