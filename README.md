@@ -129,7 +129,7 @@ custom styles.
 ### 2026-02-14
 
 - FA(3) KSeF: naprawa buildAnnotationsXml (JSON decode zamiast nieistniejących kolumn p_16/p_17/p_18), naprawione relacje w view()/edit(), wyodrębnione wspólne zakładki Adnotacje + Identyfikatory międznarodowe (elementy tab_annotations.php, tab_identifiers.php) i dodane do wszystkich 11 szablonów (add_*.php + edit.php).
-- Commit: (poniżej)
+- Commit: cd61c8c
 - Czas: 1–2h
 - Do sprawdzenia manualnie: otworzyć każdą formę faktury (add, add_advance, add_currency, add_margin, etc.) i sprawdzić, że zakładki Adnotacje i Identyfikatory międz. są widoczne i działają; sprawdzić w podglądzie XML KSeF, że adnotacje (metoda kasowa, split payment itp.) przenoszą się prawidłowo.
 
