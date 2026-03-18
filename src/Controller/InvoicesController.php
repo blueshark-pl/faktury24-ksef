@@ -4901,18 +4901,18 @@ private function makeClient(string $environment): KsefClient
             $xml[] = '    </AdresKoresp>';
         }
 
+        // NrKlienta — numer klienta nabywcy (opcjonalne, XSD: before JST/GV)
+        $nrKlienta = trim((string)($buyer->nr_klienta ?? ''));
+        if ($nrKlienta !== '') {
+            $xml[] = '    <NrKlienta>' . $this->esc($nrKlienta) . '</NrKlienta>';
+        }
+
         // JST – jednostka samorządu terytorialnego (1 – JST, 2 – nie JST)
         $jstVal = ((int)($inv->buyer_is_jst ?? 0) === 1) ? '1' : '2';
         // GV – grupa VAT (1 – tak, 2 – nie)
         $gvVal  = ((int)($inv->buyer_in_vat_group ?? 0) === 1) ? '1' : '2';
         $xml[] = '    <JST>' . $jstVal . '</JST>';
         $xml[] = '    <GV>' . $gvVal . '</GV>';
-
-        // NrKlienta — numer klienta nabywcy (opcjonalne)
-        $nrKlienta = trim((string)($buyer->nr_klienta ?? ''));
-        if ($nrKlienta !== '') {
-            $xml[] = '    <NrKlienta>' . $this->esc($nrKlienta) . '</NrKlienta>';
-        }
 
         $xml[] = '  </Podmiot2>';
 
@@ -5095,13 +5095,11 @@ private function buildFaXml(
         $xml[] = '    <WZ>' . $this->esc((string)$inv->wz_number) . '</WZ>';
     }
 
-    // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
-    if ($soldDate !== null && $soldDate !== $issueDate) {
-        $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
-    }
+    // P_6 / OkresFa – XSD choice: only one of them can appear
+    $hasPeriod = !empty($inv->period_from) && !empty($inv->period_to);
 
-    // OkresFa – okres rozliczeniowy (np. usługi ciągłe, media) – P_6_Od / P_6_Do
-    if (!empty($inv->period_from) && !empty($inv->period_to)) {
+    if ($hasPeriod) {
+        // OkresFa – okres rozliczeniowy (np. usługi ciągłe, media) – P_6_Od / P_6_Do
         $from = $inv->period_from instanceof \DateTimeInterface
             ? $inv->period_from->format('Y-m-d')
             : (string)$inv->period_from;
@@ -5115,6 +5113,9 @@ private function buildFaXml(
         // P_6_Do – data końcowa okresu
         $xml[] = '      <P_6_Do>' . $this->esc($to) . '</P_6_Do>';
         $xml[] = '    </OkresFa>';
+    } elseif ($soldDate !== null && $soldDate !== $issueDate) {
+        // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
+        $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
     }
 
     // VAT summary: P_13_1..P_13_3 & P_14_1..P_14_3 liczone z pozycji
@@ -5210,7 +5211,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         }
 
         $xml[] = '    <DaneFaKorygowanej>';
-        $xml[] = '      <DataWystFaKorygowanej>' . $origDate->format('Y-m-d') . '</DataWystFaKorygowanej>';
+        $xml[] = '      <DataWystFaKorygowanej>' . $this->esc($dateStr) . '</DataWystFaKorygowanej>';
         $xml[] = '      <NrFaKorygowanej>' . $this->esc($origNumber) . '</NrFaKorygowanej>';
 
         if ($origKsef !== '') {
@@ -5795,8 +5796,39 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     $vatTotal   = $grossTotal - $netTotal;
 
     $xml[] = '    <FaWiersz>';
+    // XSD order: NrWierszaFa, UU_ID, P_6A, P_7, Indeks, GTIN, PKWiU, CN, PKOB,
+    //            P_8A, P_8B, P_9A, P_9B, P_10, P_11, P_11A, P_11Vat, P_12,
+    //            P_12_XII, P_12_Zal_15, KwotaAkcyzy, GTU, Procedura, KursWaluty, StanPrzed
     $xml[] = '      <NrWierszaFa>' . $rowNo . '</NrWierszaFa>';
+
+    // UU_ID — identyfikator UUID wiersza (dla korekt)
+    if (!empty($it->uu_id)) {
+        $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
+    }
+
+    // P_6A — data dostawy/usługi per-wiersz
+    if (!empty($it->line_date)) {
+        $lineDate = ($it->line_date instanceof \DateTimeInterface)
+            ? $it->line_date->format('Y-m-d')
+            : (string)$it->line_date;
+        $xml[] = '      <P_6A>' . $this->esc($lineDate) . '</P_6A>';
+    }
+
     $xml[] = '      <P_7>' . $this->esc($name) . '</P_7>';
+
+    // GTIN
+    if (!empty($it->gtin)) {
+        $xml[] = '      <GTIN>' . $this->esc((string)$it->gtin) . '</GTIN>';
+    }
+    // PKWiU
+    if (!empty($it->pkwiu)) {
+        $xml[] = '      <PKWiU>' . $this->esc((string)$it->pkwiu) . '</PKWiU>';
+    }
+    // CN
+    if (!empty($it->cn_code)) {
+        $xml[] = '      <CN>' . $this->esc((string)$it->cn_code) . '</CN>';
+    }
+
     $xml[] = '      <P_8A>' . $this->esc($unit) . '</P_8A>';
     $xml[] = '      <P_8B>' . $this->fmtQty($qty) . '</P_8B>';
     $xml[] = '      <P_9A>' . $this->fmtAmount($unitNet) . '</P_9A>';
@@ -5829,22 +5861,9 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <P_12>' . (int)$rate . '</P_12>';
     }
 
-    // P_6A — data dostawy/usługi per-wiersz
-    if (!empty($it->line_date)) {
-        $lineDate = ($it->line_date instanceof \DateTimeInterface)
-            ? $it->line_date->format('Y-m-d')
-            : (string)$it->line_date;
-        $xml[] = '      <P_6A>' . $this->esc($lineDate) . '</P_6A>';
-    }
-
-    // UU_ID — identyfikator UUID wiersza (dla korekt)
-    if (!empty($it->uu_id)) {
-        $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
-    }
-
-    // PKWiU
-    if (!empty($it->pkwiu)) {
-        $xml[] = '      <PKWiU>' . $this->esc((string)$it->pkwiu) . '</PKWiU>';
+    // KwotaAkcyzy
+    if (!empty($it->excise_amount)) {
+        $xml[] = '      <KwotaAkcyzy>' . $this->fmtAmount((float)$it->excise_amount) . '</KwotaAkcyzy>';
     }
 
     // GTU
@@ -5854,18 +5873,6 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     // Procedura
     if (!empty($it->procedure_marking)) {
         $xml[] = '      <Procedura>' . $this->esc((string)$it->procedure_marking) . '</Procedura>';
-    }
-    // CN
-    if (!empty($it->cn_code)) {
-        $xml[] = '      <CN>' . $this->esc((string)$it->cn_code) . '</CN>';
-    }
-    // GTIN
-    if (!empty($it->gtin)) {
-        $xml[] = '      <GTIN>' . $this->esc((string)$it->gtin) . '</GTIN>';
-    }
-    // KwotaAkcyzy
-    if (!empty($it->excise_amount)) {
-        $xml[] = '      <KwotaAkcyzy>' . $this->fmtAmount((float)$it->excise_amount) . '</KwotaAkcyzy>';
     }
 
     // KursWaluty — kurs waluty per-wiersz (dział VI ustawy, FA(3))
@@ -6420,6 +6427,11 @@ private function mapPaymentMethod(?string $method): string
     }
 
     private function buildFa3XmlFinal(\App\Model\Entity\Invoice $inv): string
+    {
+        return $this->buildFa3XmlBase($inv);
+    }
+
+    private function buildFa3XmlMargin(\App\Model\Entity\Invoice $inv): string
     {
         return $this->buildFa3XmlBase($inv);
     }
