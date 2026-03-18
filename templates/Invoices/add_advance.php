@@ -30,8 +30,16 @@ $this->assign('title', $__pageTitle);
 <div class="row">
   <div class="col-xxl-8">
     <div class="card custom-card">
-      <div class="card-header"><div class="card-title">Powiązanie z proformą / ofertą</div></div>
-      <div class="card-body vstack gap-3">
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
+          <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
+        </ul>
+      </div>
+      <div class="card-body tab-content">
+        <div class="tab-pane fade show active" id="pane-basic" role="tabpanel" aria-labelledby="tab-basic">
+        <div class="vstack gap-3">
         <div class="mb-2">
           <div class="invoice-pills d-flex flex-wrap gap-2">
             <div class="pill">
@@ -145,7 +153,16 @@ $this->assign('title', $__pageTitle);
 
         <?= $this->Form->control('description', ['label' => 'Uwagi (opcjonalnie)', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control']) ?>
   </div><!-- /#adv-locked -->
-      </div>
+        </div><!-- /.vstack -->
+        </div><!-- /#pane-basic -->
+
+        <!-- ADNOTACJE -->
+        <?= $this->element('Invoices/tab_annotations') ?>
+
+        <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
+        <?= $this->element('Invoices/tab_identifiers') ?>
+
+      </div><!-- /.card-body.tab-content -->
     </div>
   </div>
   <div class="col-xxl-4">

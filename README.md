@@ -126,6 +126,13 @@ custom styles.
 - Czas: 0.1h
 - Do sprawdzenia manualnie: rejestracja działa bez błędu, a w bazie `users.username` = e-mail.
 
+### 2026-02-14
+
+- FA(3) KSeF: naprawa buildAnnotationsXml (JSON decode zamiast nieistniejących kolumn p_16/p_17/p_18), naprawione relacje w view()/edit(), wyodrębnione wspólne zakładki Adnotacje + Identyfikatory międznarodowe (elementy tab_annotations.php, tab_identifiers.php) i dodane do wszystkich 11 szablonów (add_*.php + edit.php).
+- Commit: (poniżej)
+- Czas: 1–2h
+- Do sprawdzenia manualnie: otworzyć każdą formę faktury (add, add_advance, add_currency, add_margin, etc.) i sprawdzić, że zakładki Adnotacje i Identyfikatory międz. są widoczne i działają; sprawdzić w podglądzie XML KSeF, że adnotacje (metoda kasowa, split payment itp.) przenoszą się prawidłowo.
+
 - Logowanie/onboarding: dopisanie uprawnień dla roli `user` do `Companies::onboarding/saveOnboarding` (oraz podstawowych akcji `Dashboard` i `TwoFactor`), żeby nie było pętli redirectów (`ERR_TOO_MANY_REDIRECTS`) po rejestracji.
 - Commit: 3a1ee5a
 - Czas: 0.1h

@@ -845,7 +845,15 @@ $stats = [
             'InvoiceContractors', 
             'InvoiceContents' => ['Vats'],
             'InvoiceVatContents', 
-            'ChildInvoices'
+            'ChildInvoices',
+            'InvoicePayments',
+            'InvoiceAdditionalDescriptions',
+            'InvoiceRecipients',
+            'InvoiceNewTransports',
+            'InvoiceCharges',
+            'InvoiceFactorBanks',
+            'InvoiceAuthorizedEntities',
+            'InvoiceOrderLines',
         ]);
         $this->set(compact('invoice'));
     }
@@ -2288,7 +2296,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $invoice = $this->Invoices->get($id, contain: [
             'InvoiceSeries',
             'InvoiceContractors',
-            'InvoiceContents' => ['Vats']
+            'InvoiceContents' => ['Vats'],
+            'InvoicePayments',
+            'InvoiceAdditionalDescriptions',
+            'InvoiceRecipients',
+            'InvoiceNewTransports',
+            'InvoiceCharges',
+            'InvoiceFactorBanks',
+            'InvoiceAuthorizedEntities',
+            'InvoiceOrderLines',
         ]);
 
         $workflowStatus = strtolower(trim((string)($invoice->workflow_status ?? '')));
@@ -5379,34 +5395,40 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     {
         $xml = [];
 
+        // Dekoduj JSON z kolumny `annotations`
+        $ann = [];
+        if (!empty($inv->annotations)) {
+            $decoded = is_array($inv->annotations) ? $inv->annotations : json_decode((string)$inv->annotations, true);
+            if (is_array($decoded)) {
+                $ann = $decoded;
+            }
+        }
+
         $xml[] = '    <Adnotacje>';
 
         // P_16 – metoda kasowa (1 – TAK, 2 – NIE)
-        $p16 = $inv->p_16 ?? 2; // np. 1/2; jeśli nie ustawisz – brak tagu
-        if ($p16 !== null) {
-            $xml[] = '      <P_16>' . $this->esc((string)$p16) . '</P_16>';
-        }
+        $p16 = !empty($ann['cash_method']) ? 1 : 2;
+        $xml[] = '      <P_16>' . $this->esc((string)$p16) . '</P_16>';
 
-        // P_17 – samofakturowanie (1 – TAK, 2 – NIE)
-        $p17 = $inv->p_17 ?? 2;
-        $xml[] = '      <P_17>' . $this->esc((string)$p17) . '</P_17>';
+        // P_17 – samofakturowanie (1 – TAK, 2 – NIE); brak formularza, zawsze 2
+        $xml[] = '      <P_17>2</P_17>';
 
         // P_18 – odwrotne obciążenie (reverse charge) (1 – TAK, 2 – NIE)
-        $p18 = $inv->p_18 ?? 2;
+        $p18 = !empty($ann['reverse_charge']) ? 1 : 2;
         $xml[] = '      <P_18>' . $this->esc((string)$p18) . '</P_18>';
 
         // P_18A – MPP (mechanizm podzielonej płatności) (1 – TAK, 2 – NIE)
-        $p18a = $inv->p_18a ?? 2;
+        $p18a = !empty($inv->is_split_payment) ? 1 : 2;
         $xml[] = '      <P_18A>' . $this->esc((string)$p18a) . '</P_18A>';
 
         // Zwolnienie – sprzedaż zwolniona (P_19, P_19A/B/C, P_19N)
-        $xml = array_merge($xml, $this->buildZwolnienieXml($inv));
+        $xml = array_merge($xml, $this->buildZwolnienieXml($inv, $ann));
 
         // NoweSrodkiTransportu – WDT nowych środków transportu
         $xml = array_merge($xml, $this->buildNoweSrodkiTransportuXml($inv));
 
         // P_23 – procedura uproszczona WE (1 – TAK, 2 – NIE)
-        $p23 = $inv->p_23 ?? 2;
+        $p23 = !empty($ann['triangular']) ? 1 : 2;
         $xml[] = '      <P_23>' . $this->esc((string)$p23) . '</P_23>';
 
         // PMarzy – procedury marży
@@ -5418,37 +5440,35 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     }
 
 
-    private function buildZwolnienieXml(Invoice $inv): array
+    private function buildZwolnienieXml(Invoice $inv, array $ann = []): array
     {
         $xml = [];
 
         // Flaga biznesowa: czy faktura dokumentuje sprzedaż zwolnioną
-        $hasExempt = (bool)($inv->has_exempt_sales ?? false);
+        // Pochodzi z checkboxa annotations[supply_goods] (zapisanego w JSON annotations)
+        $hasExempt = !empty($ann['supply_goods']);
 
-        // Dodatkowe szczegóły, jeśli jest zwolnienie
-        $p19  = $inv->p_19  ?? null; // 1 – zwolnienie na podstawie ustawy, 2 – dyrektywa, 3 – inna
-        $p19a = $inv->p_19a ?? null; // przepis ustawy
-        $p19b = $inv->p_19b ?? null; // przepis dyrektywy
-        $p19c = $inv->p_19c ?? null; // inna podstawa
+        // Dodatkowe szczegóły z osobnych kolumn DB
+        $taxFreeType  = $inv->annotations_tax_free       ?? null; // 'ustawa' / 'dyrektywa' / 'inna'
+        $taxFreeField = $inv->annotations_tax_free_field  ?? null; // treść przepisu
 
         $xml[] = '      <Zwolnienie>';
 
         if ($hasExempt) {
             // 🔹 WYSTĘPUJE SPRZEDAŻ ZWOLNIONA – NIE WYSYŁAMY P_19N
 
-            // P_19 – rodzaj podstawy (1/2/3). Jak nic nie ustawisz, domyślnie "1" (ustawa)
-            $p19Value = (string)($p19 ?? '1');
+            // Mapowanie: annotations_tax_free → P_19
+            // 'ustawa' → 1, 'dyrektywa' → 2, 'inna' → 3 (domyślnie 1)
+            $typeMap = ['ustawa' => '1', 'dyrektywa' => '2', 'inna' => '3'];
+            $p19Value = $typeMap[$taxFreeType] ?? '1';
             $xml[] = '        <P_19>' . $this->esc($p19Value) . '</P_19>';
 
-            // P_19A/B/C – uzupełniasz wg tego, co masz
-            if ($p19a !== null && $p19a !== '') {
-                $xml[] = '        <P_19A>' . $this->esc((string)$p19a) . '</P_19A>';
-            }
-            if ($p19b !== null && $p19b !== '') {
-                $xml[] = '        <P_19B>' . $this->esc((string)$p19b) . '</P_19B>';
-            }
-            if ($p19c !== null && $p19c !== '') {
-                $xml[] = '        <P_19C>' . $this->esc((string)$p19c) . '</P_19C>';
+            // Mapowanie: annotations_tax_free_field → P_19A/B/C
+            // A = ustawa, B = dyrektywa, C = inna
+            if (!empty($taxFreeField)) {
+                $tagMap = ['ustawa' => 'P_19A', 'dyrektywa' => 'P_19B', 'inna' => 'P_19C'];
+                $tag = $tagMap[$taxFreeType] ?? 'P_19A';
+                $xml[] = '        <' . $tag . '>' . $this->esc((string)$taxFreeField) . '</' . $tag . '>';
             }
         } else {
             // 🔹 BRAK SPRZEDAŻY ZWOLNIONEJ – ZAWSZE P_19N = 1

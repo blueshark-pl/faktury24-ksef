@@ -193,7 +193,9 @@ $gtuSelectHtml .= '</select>';
         <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
       </div>
 
@@ -502,6 +504,12 @@ $gtuSelectHtml .= '</select>';
             </div>
           </div>
         </div>
+
+        <!-- ADNOTACJE -->
+        <?= $this->element('Invoices/tab_annotations') ?>
+
+        <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
+        <?= $this->element('Invoices/tab_identifiers') ?>
 
       </div>
     </div>
