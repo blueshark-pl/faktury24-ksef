@@ -1430,7 +1430,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 if (!empty($nums)) {
                     $append = 'Rozlicza zaliczki: ' . implode(', ', $nums) . '.';
                     $existing = trim((string)($data['description'] ?? ''));
-                    $data['description'] = $existing !== '' ? ($existing . "\n" . $append) : $append;
+                    // Deduplikacja: nie dopisuj jeśli identyczny fragment już istnieje
+                    if (str_contains($existing, $append) === false) {
+                        $data['description'] = $existing !== '' ? ($existing . "\n" . $append) : $append;
+                    }
                 }
             }
         } else {
@@ -1900,6 +1903,18 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'footer_text'      => !empty($data['footer_text']) ? (string)$data['footer_text'] : null,
             // FA(3) — link do płatności
             'payment_link'     => !empty($data['payment_link']) ? (string)$data['payment_link'] : null,
+            // FA(3) LOW — skonto
+            'skonto_conditions'  => !empty($data['skonto_conditions']) ? (string)$data['skonto_conditions'] : null,
+            'skonto_amount'      => !empty($data['skonto_amount']) ? (string)$data['skonto_amount'] : null,
+            // FA(3) LOW — status podatnika
+            'status_info_podatnika' => !empty($data['status_info_podatnika']) ? (int)$data['status_info_podatnika'] : null,
+            // FA(3) LOW — nowe środki transportu WDT
+            'is_new_transport_wdt' => !empty($data['is_new_transport_wdt']) ? 1 : 0,
+            'p_42_5'               => !empty($data['p_42_5']) ? 1 : 0,
+            // FA(3) LOW — warunki transakcji (JSON)
+            'transaction_conditions_json' => null,
+            // FA(3) LOW — wartość zamówienia (advance/final)
+            'order_total_gross' => !empty($data['order_total_gross']) ? (string)$data['order_total_gross'] : null,
             // Nowe pola dla składników daty i numeru
             'number' => $resolvedNumber,
             'day' => (int) $dateObject->format('d'),
@@ -1907,6 +1922,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'year' => (int) $dateObject->format('Y'),
             'day_year' => (int) $dateObject->format('z') + 1, // format 'z' zwraca 0-364, więc dodajemy 1
         ];
+
+        // FA(3) LOW — warunki transakcji z POST (tc_umowy[], tc_zamowienia[])
+        $tcUmowy = array_values(array_filter(array_map('trim', (array)($data['tc_umowy'] ?? []))));
+        $tcZamowienia = array_values(array_filter(array_map('trim', (array)($data['tc_zamowienia'] ?? []))));
+        if (!empty($tcUmowy) || !empty($tcZamowienia)) {
+            $invoiceData['transaction_conditions_json'] = json_encode(
+                array_filter(['Umowy' => $tcUmowy, 'Zamowienia' => $tcZamowienia]),
+                JSON_UNESCAPED_UNICODE
+            );
+        }
 
         // Default issuer from company if not provided
         $issuerDefault = null;
@@ -2027,6 +2052,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'phone' => $contractor['phone'] ?? null,
                     'gln'        => (string)($contractor['gln'] ?? ''),
                     'nr_klienta' => (string)($contractor['nr_klienta'] ?? ''),
+                    // FA(3) LOW — adres korespondencyjny nabywcy
+                    'koresp_country_code' => !empty($contractor['koresp_country_code']) ? (string)$contractor['koresp_country_code'] : null,
+                    'koresp_address_l1'   => !empty($contractor['koresp_address_l1']) ? (string)$contractor['koresp_address_l1'] : null,
+                    'koresp_address_l2'   => !empty($contractor['koresp_address_l2']) ? (string)$contractor['koresp_address_l2'] : null,
+                    'koresp_gln'          => !empty($contractor['koresp_gln']) ? (string)$contractor['koresp_gln'] : null,
                 ];
                 
                 $contractorEntity = $InvoiceContractorsTable->patchEntity($contractorEntity, $contractorData);
@@ -2122,6 +2152,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     throw new \RuntimeException('Błąd zapisu pozycji faktury');
                 }
             }
+
+            // FA(3) LOW — zapis tabel relacyjnych: charges, factor_banks, authorized_entities, order_lines
+            $this->saveInvoiceRelationalFa3($invoiceId, $data);
 
             $conn->commit();
 
@@ -2744,6 +2777,21 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // FA(3) — opcjonalne pola edycji
             foreach (['period_from','period_to','wz_number','correction_reason','place_of_issue','footer_text','payment_link'] as $k) {
                 if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
+            }
+            // FA(3) LOW — pola rozszerzone
+            foreach (['skonto_conditions','skonto_amount','status_info_podatnika','is_new_transport_wdt','p_42_5','order_total_gross'] as $k) {
+                if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
+            }
+            // FA(3) LOW — warunki transakcji z POST (tc_umowy[], tc_zamowienia[])
+            $tcUmowy = array_values(array_filter(array_map('trim', (array)($data['tc_umowy'] ?? []))));
+            $tcZamowienia = array_values(array_filter(array_map('trim', (array)($data['tc_zamowienia'] ?? []))));
+            if (!empty($tcUmowy) || !empty($tcZamowienia)) {
+                $invoicePatch['transaction_conditions_json'] = json_encode(
+                    array_filter(['Umowy' => $tcUmowy, 'Zamowienia' => $tcZamowienia]),
+                    JSON_UNESCAPED_UNICODE
+                );
+            } elseif (array_key_exists('tc_umowy', $data) || array_key_exists('tc_zamowienia', $data)) {
+                $invoicePatch['transaction_conditions_json'] = null;
             }
             // Optional: allow updating receipt details if provided
             foreach (['receipt_number','receipt_date'] as $k) {
@@ -4870,6 +4918,90 @@ private function makeClient(string $environment): KsefClient
 
         return $xml;
     }
+
+    /**
+     * Zapisuje relacyjne tabele FA(3) LOW: charges, factor_banks, authorized_entities, order_lines.
+     * Strategia: delete-all + insert (replace-all, jak invoice_contents).
+     */
+    private function saveInvoiceRelationalFa3(string $invoiceId, array $data): void
+    {
+        // ── InvoiceCharges ──
+        $ChargesTable = $this->fetchTable('InvoiceCharges');
+        $ChargesTable->deleteAll(['invoice_id' => $invoiceId]);
+        $chargesInput = (array)($data['charges'] ?? []);
+        foreach ($chargesInput as $ch) {
+            if (empty($ch['kwota']) && empty($ch['powod'])) continue;
+            $ent = $ChargesTable->newEmptyEntity();
+            $ent = $ChargesTable->patchEntity($ent, [
+                'invoice_id' => $invoiceId,
+                'type'  => in_array($ch['type'] ?? '', ['obciazenie', 'odliczenie'], true) ? $ch['type'] : 'obciazenie',
+                'kwota' => (string)($ch['kwota'] ?? '0'),
+                'powod' => (string)($ch['powod'] ?? ''),
+            ]);
+            $ChargesTable->save($ent);
+        }
+
+        // ── InvoiceFactorBanks ──
+        $FbTable = $this->fetchTable('InvoiceFactorBanks');
+        $FbTable->deleteAll(['invoice_id' => $invoiceId]);
+        $fbInput = (array)($data['factor_banks'] ?? []);
+        foreach ($fbInput as $fb) {
+            if (empty(trim((string)($fb['nr_rb'] ?? '')))) continue;
+            $ent = $FbTable->newEmptyEntity();
+            $ent = $FbTable->patchEntity($ent, [
+                'invoice_id' => $invoiceId,
+                'nr_rb'              => (string)($fb['nr_rb'] ?? ''),
+                'swift'              => (string)($fb['swift'] ?? ''),
+                'nazwa_banku'        => (string)($fb['nazwa_banku'] ?? ''),
+                'opis_rachunku'      => (string)($fb['opis_rachunku'] ?? ''),
+                'rachunek_wlasny_banku' => !empty($fb['rachunek_wlasny_banku']) ? 1 : 0,
+            ]);
+            $FbTable->save($ent);
+        }
+
+        // ── InvoiceAuthorizedEntities ──
+        $AeTable = $this->fetchTable('InvoiceAuthorizedEntities');
+        $AeTable->deleteAll(['invoice_id' => $invoiceId]);
+        $aeInput = (array)($data['auth_entities'] ?? []);
+        foreach ($aeInput as $ae) {
+            if (empty($ae['rola']) && empty(trim((string)($ae['name'] ?? '')))) continue;
+            $ent = $AeTable->newEmptyEntity();
+            $ent = $AeTable->patchEntity($ent, [
+                'invoice_id'   => $invoiceId,
+                'rola'         => !empty($ae['rola']) ? (int)$ae['rola'] : null,
+                'name'         => (string)($ae['name'] ?? ''),
+                'nip'          => (string)($ae['nip'] ?? ''),
+                'nr_eori'      => (string)($ae['nr_eori'] ?? ''),
+                'country_code' => (string)($ae['country_code'] ?? ''),
+                'address_l1'   => (string)($ae['address_l1'] ?? ''),
+                'address_l2'   => (string)($ae['address_l2'] ?? ''),
+                'email'        => (string)($ae['email'] ?? ''),
+                'phone'        => (string)($ae['phone'] ?? ''),
+            ]);
+            $AeTable->save($ent);
+        }
+
+        // ── InvoiceOrderLines ──
+        $OlTable = $this->fetchTable('InvoiceOrderLines');
+        $OlTable->deleteAll(['invoice_id' => $invoiceId]);
+        $olInput = (array)($data['order_lines'] ?? []);
+        foreach ($olInput as $ol) {
+            if (empty($ol['nr_wiersza']) && empty(trim((string)($ol['name'] ?? '')))) continue;
+            $ent = $OlTable->newEmptyEntity();
+            $ent = $OlTable->patchEntity($ent, [
+                'invoice_id' => $invoiceId,
+                'nr_wiersza' => !empty($ol['nr_wiersza']) ? (int)$ol['nr_wiersza'] : 1,
+                'name'       => (string)($ol['name'] ?? ''),
+                'unit'       => (string)($ol['unit'] ?? ''),
+                'quantity'   => !empty($ol['quantity']) ? (float)$ol['quantity'] : null,
+                'price'      => !empty($ol['price']) ? (float)$ol['price'] : null,
+                'netto'      => !empty($ol['netto']) ? (float)$ol['netto'] : null,
+                'vat_rate'   => !empty($ol['vat_rate']) ? (float)$ol['vat_rate'] : null,
+            ]);
+            $OlTable->save($ent);
+        }
+    }
+
 private function enrichInvoiceFromParent(Invoice $inv): Invoice
 {
     if (empty($inv->parent_id)) {

@@ -127,6 +127,7 @@ $gtuSelectHtml .= '</select>';
           <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
         </ul>
       </div>
 
@@ -441,6 +442,9 @@ $gtuSelectHtml .= '</select>';
 
         <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
         <?= $this->element('Invoices/tab_identifiers') ?>
+
+        <!-- KSeF FA(3) ROZSZERZONY -->
+        <?= $this->element('Invoices/tab_fa3_extended') ?>
 
       </div>
     </div>

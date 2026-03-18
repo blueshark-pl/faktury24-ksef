@@ -132,35 +132,34 @@ Wynik audytu: które pola FA(3) mają formularze w templatech, czy są zapisywan
 
 - [x] **NAPRAWIONE** (commit cd61c8c). `view()` i `edit()` teraz ładują: `InvoicePayments`, `InvoiceAdditionalDescriptions`, `InvoiceRecipients`, `InvoiceNewTransports`, `InvoiceCharges`, `InvoiceFactorBanks`, `InvoiceAuthorizedEntities`, `InvoiceOrderLines`.
 
-### 🟡 ŚREDNI: Nowe pola FA(3) LOW bez form fields
+### ~~🟡 ŚREDNI: Nowe pola FA(3) LOW bez form fields~~ ✅ DONE
 
-Pola dodane w migracji `20260318160000` istnieją w DB i XML builderach, ale **żaden formularz** ich nie zawiera:
+Pola dodane w migracji `20260318160000` — formularze i zapis dodane w nowej zakładce **KSeF FA(3)** (`tab_fa3_extended.php`, element współdzielony przez wszystkie 11 templatek):
 
-- [ ] `skonto_conditions` / `skonto_amount` — brak inputów we wszystkich templatech
-- [ ] `status_info_podatnika` — brak selecta/inputu
-- [ ] `is_new_transport_wdt` — brak checkboxa
-- [ ] `koresp_country_code` / `koresp_address_l1` / `koresp_address_l2` / `koresp_gln` — brak pól korespondencyjnych na kontrahentach
-- [ ] `transaction_conditions_json` — brak formularza (JSON, wymaga dedykowanego UI)
-- [ ] `order_total_gross` / `invoice_order_lines` — brak formularza zamówienia (tylko advance)
-- [ ] `invoice_charges` (obciążenia/odliczenia) — brak formularza
-- [ ] `invoice_factor_banks` — brak formularza rachunku faktora
-- [ ] `invoice_authorized_entities` — brak formularza podmiotu upoważnionego
+- [x] `skonto_conditions` / `skonto_amount` — textarea + input
+- [x] `status_info_podatnika` — select (1/2/3)
+- [x] `is_new_transport_wdt` — checkbox
+- [x] `koresp_country_code` / `koresp_address_l1` / `koresp_address_l2` / `koresp_gln` — pola korespondencyjne
+- [x] `transaction_conditions_json` — dynamiczne wiersze Umowy/Zamówienia z JS
+- [x] `order_total_gross` / `invoice_order_lines` — formularz zamówienia (advance/final only)
+- [x] `invoice_charges` (obciążenia/odliczenia) — dynamiczne wiersze
+- [x] `invoice_factor_banks` — dynamiczne wiersze rachunku faktora
+- [x] `invoice_authorized_entities` — dynamiczne karty podmiotu upoważnionego
 
-### 🟡 ŚREDNI: Nowe pola LOW brak w `handleAdd()` save logic
+### ~~🟡 ŚREDNI: Nowe pola LOW brak w `handleAdd()` save logic~~ ✅ DONE
 
-- [ ] `handleAdd()` (linia ~1830-1920) **nie zapisuje** nowych pól FA(3) LOW z POST:
+- [x] `handleAdd()` i `edit()` zapisują nowe pola FA(3) LOW z POST:
   - `skonto_conditions`, `skonto_amount`, `status_info_podatnika`
   - `is_new_transport_wdt`, `p_42_5`, `transaction_conditions_json`, `order_total_gross`
-  - `koresp_*` na invoiceContractor / invoiceCompanyDetail snapshot
+  - `koresp_*` na invoiceContractor snapshot
+- [x] Dodano `saveInvoiceRelationalFa3()` — zapis 4 tabel relacyjnych (charges, factor_banks, authorized_entities, order_lines) strategią delete+insert
 
-### 🟢 NISKI: Pola obecne tylko w `add.php`
+### ~~🟢 NISKI: Pola obecne tylko w `add.php`~~ ✅ CZĘŚCIOWO
 
-Te pola mają inputy w `add.php`, ale brakuje ich w innych formularzach. Mogą być potrzebne:
-
-- `buyer_is_jst`, `buyer_in_vat_group` — tylko `add.php`
-- `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — tylko `add.php`
-- `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — tylko `add.php`
-- `buyer_tax_id_other`, `buyer_tax_id_other_country` — tylko `add.php`
+- [x] `buyer_is_jst`, `buyer_in_vat_group` — przeniesione do `tab_fa3_extended.php` (dostępne we wszystkich 11 templatekach)
+- [ ] `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — nadal tylko `add.php` (do oceny czy potrzebne w korektach/walutowych)
+- [ ] `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — nadal tylko `add.php`
+- [ ] `buyer_tax_id_other`, `buyer_tax_id_other_country` — nadal tylko `add.php`
 
 ## TODO — Analiza przepływu faktur proforma → zaliczkowa → końcowa (2026-03)
 
@@ -174,7 +173,7 @@ Te pola mają inputy w `add.php`, ale brakuje ich w innych formularzach. Mogą b
 
 - [ ] **Auto-klasyfikacja jako końcowa** — gdy kwota zaliczki ≈ pozostała kwota proformy (±0.01), faktura jest automatycznie oznaczana jako `final`. Użytkownik może tego nie zauważyć. Rozważyć: wyraźniejsze powiadomienie lub potwierdzenie.
 - [ ] **Snapshot kontrahenta z proformy** — dane kontrahenta kopiowane z proformy mogą być nieaktualne, jeśli kontrahent zmienił dane po wystawieniu proformy. Rozważyć: porównanie z aktualnym kontrahentem i ostrzeżenie.
-- [ ] **Opis duplikowany przy re-submit** — opis „Rozlicza zaliczki: ..." jest dopisywany do `description` przy każdym POST bez sprawdzenia, czy już istnieje. Wielokrotne odrzucenie + ponowne wysłanie formularza skutkuje zduplikowanymi fragmentami opisu.
+- [x] **Opis duplikowany przy re-submit** — **NAPRAWIONE**: dodano `str_contains()` guard przed dopisywaniem „Rozlicza zaliczki: ..." do `description`.
 
 ### ✅ Pozytywna weryfikacja (działa poprawnie)
 
