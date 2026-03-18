@@ -170,6 +170,11 @@ custom styles.
 - Czas: 1–2h
 - Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe tabele (invoice_new_transports, invoice_order_lines, invoice_charges, invoice_factor_banks, invoice_authorized_entities) i kolumny; wstawić testowe dane i sprawdzić emisję XML dla każdej nowej sekcji.
 
+- FA(3) LOW — formularze i zapis: nowa zakładka „KSeF FA(3)" (`tab_fa3_extended.php`) dodana do wszystkich 11 templatek. Pola: skonto, status_info_podatnika, is_new_transport_wdt/p_42_5, transaction_conditions (dynamiczne wiersze umów/zamówień), order_total_gross, koresp_* adres, buyer_is_jst/buyer_in_vat_group. Dynamiczne formularze relacyjne: invoice_charges, invoice_factor_banks, invoice_authorized_entities, invoice_order_lines (advance/final). Save logic w handleAdd()/edit() + saveInvoiceRelationalFa3() (delete+insert). Fix: str_contains guard na duplikację opisu zaliczkowego. Wersja: 1.2.23 (12).
+- Commit: 445ba79
+- Czas: 1–2h
+- Do sprawdzenia manualnie: wystawić fakturę z dowolnej templateki (np. add, add_advance, add_currency, edit) i sprawdzić zakładkę „KSeF FA(3)" — czy pola się wyświetlają i zapisują. Przetestować dynamiczne dodawanie/usuwanie wierszy w charges, factor_banks, authorized_entities, order_lines. Sprawdzić czy re-submit advance nie duplikuje opisu.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
