@@ -19,6 +19,8 @@ use Cake\ORM\Entity;
  * @property string|null $account_number
  * @property string|null $email
  * @property string|null $phone
+ * @property string|null $gln
+ * @property string|null $nr_klienta
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -46,6 +48,8 @@ class InvoiceContractor extends Entity
         'account_number' => true,
         'email' => true,
         'phone' => true,
+        'gln' => true,
+        'nr_klienta' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,

@@ -24,6 +24,8 @@ use Cake\ORM\Entity;
  * @property string|null $bdo
  * @property string|null $bank_name
  * @property string|null $bank_desc
+ * @property string|null $swift
+ * @property string|null $gln
  * @property string|null $country_code
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
@@ -57,6 +59,8 @@ class InvoiceCompanyDetail extends Entity
         'bdo' => true,
         'bank_name' => true,
         'bank_desc' => true,
+        'swift' => true,
+        'gln' => true,
         'country_code' => true,
         'created' => true,
         'modified' => true,

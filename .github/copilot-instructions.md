@@ -95,13 +95,13 @@ Legenda: 🔴 wysoki / 🟡 średni / 🟢 niski priorytet.
 
 ### 🟡 ŚREDNI PRIORYTET
 
-- [ ] **DodatkowyOpis** (klucz/wartość) — potrzebna nowa tabela `invoice_additional_descriptions`. Opcjonalne pole FA(3) ale częste w praktyce.
-- [ ] **Płatności częściowe** — `<ZaplataCzesciowa>` (kwota+data) powtarzalne. Nowa tabela `invoice_partial_payments` lub rozszerzenie `invoice_payments`.
-- [ ] **Bank SWIFT / NazwaBanku** — `company_bank_accounts` potrzebuje `swift`, `bank_name`, `bank_own_account`, `description`.
-- [ ] **Rozliczenie faktur zaliczkowych** — `<FakturaZaliczkowa>` (NrFaZaliczkowej, data, kwota). Nowa tabela lub JSON.
-- [ ] **GLN sprzedawcy/nabywcy/odbiorcy** — `<GLN>` opcjonalne ale coraz częstsze w dużych sieciach.
-- [ ] **NrKlienta nabywcy** — `<NrKlienta>` w Podmiot2, brak w `invoice_contractors`.
-- [ ] **Kwota rabatu** (`invoice_contents.discount_amount`) — `<P_10>` brak (mamy tylko `discount_percent`).
+- [x] **DodatkowyOpis** (klucz/wartość) — nowa tabela `invoice_additional_descriptions` + builder `buildDodatkowyOpisXml`. Commit: 1.2.23 (8).
+- [x] **Płatności częściowe** — `<ZaplataCzesciowa>` z `invoice_payments` (loop) + fallback na skalar `alreadypaid`. Commit: 1.2.23 (8).
+- [x] **Bank SWIFT** — kolumna `swift` w `company_bank_accounts` + `invoice_company_details`, emitowane jako `<SWIFT>` po `<NrRB>`. Commit: 1.2.23 (8).
+- [x] **Rozliczenie faktur zaliczkowych** — `<FakturaZaliczkowa>` emitowane dla ROZ: szukamy advance siblings przez parent_id. Commit: 1.2.23 (8).
+- [x] **GLN sprzedawcy/nabywcy** — kolumna `gln` w `companies`, `contractors`, `invoice_company_details`, `invoice_contractors`; emitowane w `<Adres>`. Commit: 1.2.23 (8).
+- [x] **NrKlienta nabywcy** — kolumna `nr_klienta` w `invoice_contractors`; emitowane w `<Podmiot2>`. Commit: 1.2.23 (8).
+- [x] **Kwota rabatu** (`invoice_contents.discount_amount`) — `<P_10>` emitowane między P_9B a P_11; automatycznie obliczane przy zapisie. Commit: 1.2.23 (8).
 
 ### 🟢 NISKI PRIORYTET
 

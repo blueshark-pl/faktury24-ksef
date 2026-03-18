@@ -1461,6 +1461,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'unit'             => (string)($row['unit'] ?? 'szt.'),
                     'price'            => $price,
                     'discount_percent' => $disc,
+                    'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                     'netto'            => $netto,
                     'brutto'           => $brutto,
                     'gtu_code'         => (string)($row['gtu_code'] ?? ''),
@@ -1980,6 +1981,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'bdo'          => (string)($company->bdo ?? ''),
                     'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
                     'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
+                    'swift'        => (string)($data['invoice_company_detail']['swift'] ?? ''),
+                    'gln'          => (string)($company->gln ?? ''),
                     'country_code' => (string)($company->country_code ?? 'PL'),
                 ];
                 
@@ -2005,6 +2008,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'account_number' => $contractor['account_number'] ?? '',
                     'email' => $contractor['email'] ?? null,
                     'phone' => $contractor['phone'] ?? null,
+                    'gln'        => (string)($contractor['gln'] ?? ''),
+                    'nr_klienta' => (string)($contractor['nr_klienta'] ?? ''),
                 ];
                 
                 $contractorEntity = $InvoiceContractorsTable->patchEntity($contractorEntity, $contractorData);
@@ -2609,6 +2614,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'unit'             => (string)($row['unit'] ?? 'szt.'),
                         'price'            => $price,
                         'discount_percent' => $disc,
+                        'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                         'netto'            => $netto,
                         'brutto'           => $brutto,
                         'gtu_code'         => (string)($row['gtu_code'] ?? ''),
@@ -4564,6 +4570,17 @@ private function makeClient(string $environment): KsefClient
     {
         // 🔹 TU: dociągamy dane z faktury pierwotnej, jeśli jest parent_id
         $inv = $this->enrichInvoiceFromParent($inv);
+
+        // Lazy-load relacji potrzebnych do XML (jeśli nie załadowane w contain)
+        if (!$inv->has('invoice_payments')) {
+            $inv->invoice_payments = $this->fetchTable('InvoicePayments')
+                ->find()->where(['invoice_id' => $inv->id])->orderAsc('payment_date')->all()->toArray();
+        }
+        if (!$inv->has('invoice_additional_descriptions')) {
+            $inv->invoice_additional_descriptions = $this->fetchTable('InvoiceAdditionalDescriptions')
+                ->find()->where(['invoice_id' => $inv->id])->orderAsc('nr_wiersza')->all()->toArray();
+        }
+
         $seller = $inv->invoice_company_detail ?? null;
         $buyer  = $inv->invoice_contractor ?? null;
         $items  = (array)($inv->invoice_contents ?? []);
@@ -4680,6 +4697,11 @@ private function makeClient(string $environment): KsefClient
         if ($sellerL2 !== '') {
             $xml[] = '      <AdresL2>' . $this->esc($sellerL2) . '</AdresL2>';
         }
+        // GLN sprzedawcy (opcjonalne)
+        $sellerGln = trim((string)($seller->gln ?? ''));
+        if ($sellerGln !== '') {
+            $xml[] = '      <GLN>' . $this->esc($sellerGln) . '</GLN>';
+        }
         $xml[] = '    </Adres>';
 
         // DaneKontaktowe — email / telefon sprzedawcy (opcjonalne w FA(3))
@@ -4729,6 +4751,11 @@ private function makeClient(string $environment): KsefClient
         if ($buyerL2 !== '') {
             $xml[] = '      <AdresL2>' . $this->esc($buyerL2) . '</AdresL2>';
         }
+        // GLN nabywcy (opcjonalne)
+        $buyerGln = trim((string)($buyer->gln ?? ''));
+        if ($buyerGln !== '') {
+            $xml[] = '      <GLN>' . $this->esc($buyerGln) . '</GLN>';
+        }
         $xml[] = '    </Adres>';
 
         // JST – jednostka samorządu terytorialnego (1 – JST, 2 – nie JST)
@@ -4737,6 +4764,12 @@ private function makeClient(string $environment): KsefClient
         $gvVal  = ((int)($inv->buyer_in_vat_group ?? 0) === 1) ? '1' : '2';
         $xml[] = '    <JST>' . $jstVal . '</JST>';
         $xml[] = '    <GV>' . $gvVal . '</GV>';
+
+        // NrKlienta — numer klienta nabywcy (opcjonalne)
+        $nrKlienta = trim((string)($buyer->nr_klienta ?? ''));
+        if ($nrKlienta !== '') {
+            $xml[] = '    <NrKlienta>' . $this->esc($nrKlienta) . '</NrKlienta>';
+        }
 
         $xml[] = '  </Podmiot2>';
 
@@ -4881,6 +4914,12 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     $xml = array_merge($xml, $this->buildCorrectionHeaderXml($inv, $rodzaj));
 }
 
+    // DodatkowyOpis — opcjonalne pary klucz-wartość (per XSD: po korekcie, przed FakturaZaliczkowa)
+    $xml = array_merge($xml, $this->buildDodatkowyOpisXml($inv));
+
+    // FakturaZaliczkowa — rozliczenie zaliczek w fakturze końcowej (ROZ)
+    $xml = array_merge($xml, $this->buildFakturaZaliczkowaXml($inv, $rodzaj));
+
     // Wiersze
     $xml   = array_merge($xml, $this->buildLinesXml($inv, $items));
 
@@ -4978,6 +5017,86 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     return $xml;
 }
+
+
+    // ======================== DODATKOWY OPIS ========================
+
+    /**
+     * Emituje elementy <DodatkowyOpis> wewnątrz <Fa>.
+     * Każdy wpis to para Klucz + Wartość (opcjonalnie NrWiersza).
+     */
+    private function buildDodatkowyOpisXml(Invoice $inv): array
+    {
+        $xml = [];
+        $descriptions = (array)($inv->invoice_additional_descriptions ?? []);
+        foreach ($descriptions as $desc) {
+            $klucz  = trim((string)($desc->klucz ?? $desc['klucz'] ?? ''));
+            $wartosc = trim((string)($desc->wartosc ?? $desc['wartosc'] ?? ''));
+            if ($klucz === '' || $wartosc === '') {
+                continue;
+            }
+            $xml[] = '    <DodatkowyOpis>';
+            $nrWiersza = $desc->nr_wiersza ?? $desc['nr_wiersza'] ?? null;
+            if ($nrWiersza !== null && (int)$nrWiersza > 0) {
+                $xml[] = '      <NrWiersza>' . (int)$nrWiersza . '</NrWiersza>';
+            }
+            $xml[] = '      <Klucz>' . $this->esc($klucz) . '</Klucz>';
+            $xml[] = '      <Wartosc>' . $this->esc($wartosc) . '</Wartosc>';
+            $xml[] = '    </DodatkowyOpis>';
+        }
+        return $xml;
+    }
+
+
+    // ======================== FAKTURA ZALICZKOWA ========================
+
+    /**
+     * Emituje elementy <FakturaZaliczkowa> dla faktur końcowych (ROZ).
+     * Wylicza powiązane faktury zaliczkowe (ZAL) przez wspólne parent_id.
+     */
+    private function buildFakturaZaliczkowaXml(Invoice $inv, string $rodzajFaktury): array
+    {
+        $xml = [];
+        if ($rodzajFaktury !== 'ROZ') {
+            return $xml;
+        }
+
+        // Szukamy powiązanych faktur zaliczkowych — albo przez parent_id, albo inv jest parentem
+        $parentId = $inv->parent_id ?: $inv->id;
+        $advances = $this->fetchTable('Invoices')->find()
+            ->where([
+                'Invoices.parent_id' => $parentId,
+                'Invoices.id !=' => $inv->id,
+                'Invoices.type IN' => ['advance', 'ZAL'],
+            ])
+            ->orderAsc('Invoices.issuedate')
+            ->all()
+            ->toArray();
+
+        foreach ($advances as $adv) {
+            $advKsef = trim((string)($adv->ksef_number ?? ''));
+
+            // XSD choice: albo NrKSeFFaZaliczkowej (KSeF), albo NrKSeFZN + NrFaZaliczkowej (poza KSeF)
+            if ($advKsef !== '') {
+                // Faktura zaliczkowa wystawiona w KSeF
+                $xml[] = '    <FakturaZaliczkowa>';
+                $xml[] = '      <NrKSeFFaZaliczkowej>' . $this->esc($advKsef) . '</NrKSeFFaZaliczkowej>';
+                $xml[] = '    </FakturaZaliczkowa>';
+            } else {
+                // Faktura zaliczkowa wystawiona poza KSeF
+                $advNumber = trim((string)($adv->number ?? ''));
+                if ($advNumber === '') {
+                    continue;
+                }
+                $xml[] = '    <FakturaZaliczkowa>';
+                $xml[] = '      <NrKSeFZN>1</NrKSeFZN>';
+                $xml[] = '      <NrFaZaliczkowej>' . $this->esc($advNumber) . '</NrFaZaliczkowej>';
+                $xml[] = '    </FakturaZaliczkowa>';
+            }
+        }
+
+        return $xml;
+    }
 
 
     // ======================== VAT SUMMARY (P_13_x / P_14_x) ========================
@@ -5439,6 +5558,11 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <P_9B>' . $this->fmtAmount((float)$it->gross_unit_price) . '</P_9B>';
     }
 
+    // P_10 — kwota opustu/obniżki (opcjonalne)
+    if (!empty($it->discount_amount) && (float)$it->discount_amount > 0) {
+        $xml[] = '      <P_10>' . $this->fmtAmount((float)$it->discount_amount) . '</P_10>';
+    }
+
     $xml[] = '      <P_11>' . $this->fmtAmount($netTotal) . '</P_11>';
 
     // P_11A — wartość brutto wiersza (opcjonalne)
@@ -5516,18 +5640,34 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
 
         $xml[] = '    <Platnosc>';
 
-        $alreadyPaid = (float)($inv->alreadypaid ?? 0.0);
-        if ($alreadyPaid > 0.0) {
+        // ZaplataCzesciowa — preferencja: wielokrotne wpłaty z invoice_payments, fallback na skalary
+        $payments = (array)($inv->invoice_payments ?? []);
+        if (!empty($payments)) {
             $xml[] = '      <ZnacznikZaplatyCzesciowej>1</ZnacznikZaplatyCzesciowej>';
-            $xml[] = '      <ZaplataCzesciowa>';
-            $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($alreadyPaid) . '</KwotaZaplatyCzesciowej>';
-
-            $ppDate = $inv->partial_paid_at ? $inv->partial_paid_at->format('Y-m-d') : $issueDate;
-            $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($ppDate) . '</DataZaplatyCzesciowej>';
-            $paymentMethod = $this->mapPaymentMethod($inv->paymentmethod ?? null);
-
-            $xml[] = '        <FormaPlatnosci>' . $this->esc($paymentMethod) . '</FormaPlatnosci>';
-            $xml[] = '      </ZaplataCzesciowa>';
+            foreach ($payments as $pay) {
+                $pAmt  = (float)($pay->amount ?? $pay['amount'] ?? 0);
+                $pDate = isset($pay->payment_date)
+                    ? ($pay->payment_date instanceof \DateTimeInterface ? $pay->payment_date->format('Y-m-d') : (string)$pay->payment_date)
+                    : $issueDate;
+                $pMethod = $this->mapPaymentMethod($pay->payment_method ?? $pay['payment_method'] ?? null);
+                $xml[] = '      <ZaplataCzesciowa>';
+                $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($pAmt) . '</KwotaZaplatyCzesciowej>';
+                $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($pDate) . '</DataZaplatyCzesciowej>';
+                $xml[] = '        <FormaPlatnosci>' . $this->esc($pMethod) . '</FormaPlatnosci>';
+                $xml[] = '      </ZaplataCzesciowa>';
+            }
+        } else {
+            // Fallback: skalarny alreadypaid
+            $alreadyPaid = (float)($inv->alreadypaid ?? 0.0);
+            if ($alreadyPaid > 0.0) {
+                $xml[] = '      <ZnacznikZaplatyCzesciowej>1</ZnacznikZaplatyCzesciowej>';
+                $xml[] = '      <ZaplataCzesciowa>';
+                $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($alreadyPaid) . '</KwotaZaplatyCzesciowej>';
+                $ppDate = $inv->partial_paid_at ? $inv->partial_paid_at->format('Y-m-d') : $issueDate;
+                $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($ppDate) . '</DataZaplatyCzesciowej>';
+                $xml[] = '        <FormaPlatnosci>' . $this->esc($this->mapPaymentMethod($inv->paymentmethod ?? null)) . '</FormaPlatnosci>';
+                $xml[] = '      </ZaplataCzesciowa>';
+            }
         }
 
         $due = $inv->paymentdate
@@ -5545,10 +5685,16 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $bankName = trim((string)($seller->bank_name ?? ''));
         $bankDesc = trim((string)($seller->bank_desc ?? ''));
 
-        if ($rb !== '' || $bankName !== '' || $bankDesc !== '') {
+        $swift    = trim((string)($seller->swift ?? ''));
+
+        if ($rb !== '' || $bankName !== '' || $bankDesc !== '' || $swift !== '') {
             $xml[] = '      <RachunekBankowy>';
             if ($rb !== '') {
                 $xml[] = '        <NrRB>' . $this->esc($rb) . '</NrRB>';
+            }
+            // SWIFT — po NrRB, przed NazwaBanku (per XSD order)
+            if ($swift !== '') {
+                $xml[] = '        <SWIFT>' . $this->esc($swift) . '</SWIFT>';
             }
             if ($bankName !== '') {
                 $xml[] = '        <NazwaBanku>' . $this->esc($bankName) . '</NazwaBanku>';

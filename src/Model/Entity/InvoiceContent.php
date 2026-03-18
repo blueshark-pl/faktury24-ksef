@@ -18,6 +18,7 @@ use Cake\ORM\Entity;
  * @property string $price
  * @property string|null $purchase_price
  * @property string $discount_percent
+ * @property string|null $discount_amount
  * @property string $netto
  * @property string $brutto
  * @property string|null $gtin
@@ -59,6 +60,7 @@ class InvoiceContent extends Entity
         'price' => true,
         'purchase_price' => true,
         'discount_percent' => true,
+        'discount_amount' => true,
         'netto' => true,
         'brutto' => true,
         'gtin' => true,

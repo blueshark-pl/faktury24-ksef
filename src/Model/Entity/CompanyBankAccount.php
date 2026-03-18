@@ -15,6 +15,7 @@ use Cake\ORM\Entity;
  * @property string $currency
  * @property bool $is_default
  * @property string|null $label
+ * @property string|null $swift
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -38,6 +39,7 @@ class CompanyBankAccount extends Entity
         'currency' => true,
         'is_default' => true,
         'label' => true,
+        'swift' => true,
         'created' => true,
         'modified' => true,
         'company' => true,
