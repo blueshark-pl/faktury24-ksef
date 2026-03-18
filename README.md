@@ -175,6 +175,11 @@ custom styles.
 - Czas: 1–2h
 - Do sprawdzenia manualnie: wystawić fakturę z dowolnej templateki (np. add, add_advance, add_currency, edit) i sprawdzić zakładkę „KSeF FA(3)" — czy pola się wyświetlają i zapisują. Przetestować dynamiczne dodawanie/usuwanie wierszy w charges, factor_banks, authorized_entities, order_lines. Sprawdzić czy re-submit advance nie duplikuje opisu.
 
+- Fix: `$__isEdit` undefined warning w tab_fa3_extended.php — dodano fallback na początku elementu. Usunięcie duplikatów `buyer_is_jst`/`buyer_in_vat_group` z add.php i add_correct.php (pola przeniesione do zakładki KSeF FA(3)). Wersja: 1.2.23 (13).
+- Commit: 8148173
+- Czas: 0.5h
+- Do sprawdzenia manualnie: otworzyć formularz add.php i add_correct.php — brak sekcji „Status nabywcy" (checkbox JST i grupa VAT). Te pola są teraz w zakładce „KSeF FA(3)". Brak Warning w logach.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
