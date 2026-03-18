@@ -153,6 +153,11 @@ custom styles.
 - Czas: 1–2h
 - Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe kolumny (swift, gln, nr_klienta, discount_amount, tabela invoice_additional_descriptions); wystawić fakturę z rabatem kwotowym i sprawdzić <P_10> w XML; dodać wpis DodatkowyOpis i sprawdzić emisję.
 
+- FA(3) LOW priority — research 10 elementów XSD: NoweSrodkiTransportu, WarunkiTransakcji, Zamówienie (ZAL), Obciazenia/Odliczenia, Skonto, KursWaluty per-wiersz, RachunekBankowyFaktora, AdresKoresp, StatusInfoPodatnika, PodmiotUpowazniony. Raport w `docs/FA3_LOW_PRIORITY_RESEARCH.md`. Wynik: 9 nowych tabel, ~25 nowych kolumn, 9 metod buildera do napisania (tylko NoweSrodkiTransportu ma istniejący builder bez DB).
+- Commit: 314b489
+- Czas: 0.5h
+- Do sprawdzenia manualnie: przeczytać raport w `docs/FA3_LOW_PRIORITY_RESEARCH.md`, zweryfikować struktury XSD vs faktyczne potrzeby biznesowe.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
