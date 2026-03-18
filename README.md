@@ -158,6 +158,11 @@ custom styles.
 - Czas: 0.5h
 - Do sprawdzenia manualnie: przeczytać raport w `docs/FA3_LOW_PRIORITY_RESEARCH.md`, zweryfikować struktury XSD vs faktyczne potrzeby biznesowe.
 
+- FA(3) LOW priority — 10 elementów wdrożonych: NoweSrodkiTransportu (refactor buildera na DB), WarunkiTransakcji (JSON), Zamówienie/ZAL (tabela+builder), Rozliczenie Obciążeń/Odliczeń (tabela+builder), Skonto, KursWaluty per-wiersz, RachunekBankowyFaktora, AdresKoresp (sprzedawca+nabywca), StatusInfoPodatnika, PodmiotUpowazniony. Migracja 20260318160000 — 5 nowych tabel, ~15 nowych kolumn. Wersja: 1.2.23 (9).
+- Commit: f9a3b02
+- Czas: 1–2h
+- Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe tabele (invoice_new_transports, invoice_order_lines, invoice_charges, invoice_factor_banks, invoice_authorized_entities) i kolumny; wstawić testowe dane i sprawdzić emisję XML dla każdej nowej sekcji.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
