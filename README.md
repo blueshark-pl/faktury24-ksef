@@ -148,6 +148,11 @@ custom styles.
 - Czas: 2–3h
 - Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe kolumny; wystawić fakturę i sprawdzić XML FA(3) (zwłaszcza GTU, UU_ID, Stopka, DaneKontaktowe). Sprawdzić czy edycja faktury zachowuje period_from/to, place_of_issue, footer_text, payment_link.
 
+- FA(3) MEDIUM priority — 7 elementów: DodatkowyOpis (nowa tabela + builder), płatności częściowe (loop po invoice_payments + fallback), SWIFT w RachunekBankowy, FakturaZaliczkowa (rozliczenie zaliczek ROZ), GLN sprzedawcy/nabywcy, NrKlienta nabywcy, P_10 kwota rabatu. Migracja 20260318140000 (6 tabel zmienionych, 1 nowa). Nowe metody buildera: buildDodatkowyOpisXml, buildFakturaZaliczkowaXml. Lazy-load relacji w buildFa3XmlBase.
+- Commit: 5796586
+- Czas: 1–2h
+- Do sprawdzenia manualnie: w phpMyAdmin zweryfikować nowe kolumny (swift, gln, nr_klienta, discount_amount, tabela invoice_additional_descriptions); wystawić fakturę z rabatem kwotowym i sprawdzić <P_10> w XML; dodać wpis DodatkowyOpis i sprawdzić emisję.
+
 ## TODO (Invoices)
 
 - Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
