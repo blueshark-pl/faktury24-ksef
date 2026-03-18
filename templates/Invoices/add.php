@@ -335,24 +335,7 @@ $gtuSelectHtml .= '</select>';
               <small id="mpp-auto-note" class="text-muted ms-1"></small>
             </div>
 
-            <!-- Status nabywcy -->
-            <div class="row g-3 mt-1">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Status nabywcy</label>
-              </div>
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="buyer-is-jst" name="buyer_is_jst" value="1">
-                  <label class="form-check-label" for="buyer-is-jst">Czy faktura dotyczy jednostki samorządu terytorialnego?</label>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="buyer-in-vat-group" name="buyer_in_vat_group" value="1">
-                  <label class="form-check-label" for="buyer-in-vat-group">Czy faktura dotyczy członka grupy VAT?</label>
-                </div>
-              </div>
-            </div>
+            <!-- Status nabywcy — przeniesiony do tab_fa3_extended.php (zakładka KSeF FA(3)) -->
 
             <!-- Faktura do paragonu: pola paragonu (pokazywane przy zaznaczonym FP) -->
             <div id="receipt-extra" class="row g-2 ms-1" style="display:none;">

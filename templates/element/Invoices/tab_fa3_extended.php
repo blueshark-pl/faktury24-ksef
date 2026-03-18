@@ -11,6 +11,7 @@
  *       transaction_conditions_json, order_total_gross.
  */
 $kind = $kind ?? 'vat';
+$__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
 ?>
 <div class="tab-pane fade" id="pane-fa3ext" role="tabpanel" aria-labelledby="tab-fa3ext">
   <div class="row g-3">
