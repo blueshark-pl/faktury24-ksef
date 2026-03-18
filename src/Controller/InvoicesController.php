@@ -1460,6 +1460,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'netto'            => $netto,
                     'brutto'           => $brutto,
                     'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                    // Dodatkowe pola pozycji
+                    'gtin'             => (string)($row['gtin'] ?? ''),
+                    'cn_code'          => (string)($row['cn_code'] ?? ''),
+                    'pkob'             => (string)($row['pkob'] ?? ''),
+                    'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
+                    'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
+                    'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                 ];
                 
                 // Grupowanie VAT
@@ -1826,6 +1833,32 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // Optional: paragon fields (if columns exist)
             'receipt_number'     => $data['receipt_number'] ?? null,
             'receipt_date'       => !empty($data['receipt_date']) ? $data['receipt_date'] : null,
+            // Data sprzedaży i daty płatności
+            'sold_date'          => !empty($data['sold_date']) ? $data['sold_date'] : null,
+            'paid_at'            => !empty($data['paid_at']) ? $data['paid_at'] : null,
+            'partial_paid_at'    => !empty($data['partial_paid_at']) ? $data['partial_paid_at'] : null,
+            // Język, auto-wysyłka, flagi nabywcy
+            'lang'               => !empty($data['lang']) ? (string)$data['lang'] : 'pl',
+            'auto_send'          => !empty($data['auto_send']) ? 1 : 0,
+            'buyer_is_jst'       => !empty($data['buyer_is_jst']) ? 1 : 0,
+            'buyer_in_vat_group' => !empty($data['buyer_in_vat_group']) ? 1 : 0,
+            // KSeF Adnotacje (JSON)
+            'annotations'        => !empty($data['annotations']) ? json_encode($data['annotations'], JSON_UNESCAPED_UNICODE) : null,
+            // Zwolnienie z VAT
+            'annotations_tax_free'       => !empty($data['annotations_tax_free']) ? (string)$data['annotations_tax_free'] : null,
+            'annotations_tax_free_field' => !empty($data['annotations_tax_free_field']) ? (string)$data['annotations_tax_free_field'] : null,
+            // Identyfikatory międzynarodowe — sprzedawca
+            'seller_vat_prefix'  => !empty($data['seller_vat_prefix']) ? (string)$data['seller_vat_prefix'] : null,
+            'seller_vat_eu'      => !empty($data['seller_vat_eu']) ? (string)$data['seller_vat_eu'] : null,
+            'seller_eori'        => !empty($data['seller_eori']) ? (string)$data['seller_eori'] : null,
+            // Identyfikatory międzynarodowe — nabywca
+            'buyer_vat_prefix'   => !empty($data['buyer_vat_prefix']) ? (string)$data['buyer_vat_prefix'] : null,
+            'buyer_vat_eu'       => !empty($data['buyer_vat_eu']) ? (string)$data['buyer_vat_eu'] : null,
+            'buyer_eori'         => !empty($data['buyer_eori']) ? (string)$data['buyer_eori'] : null,
+            'buyer_tax_id_other' => !empty($data['buyer_tax_id_other']) ? (string)$data['buyer_tax_id_other'] : null,
+            'buyer_tax_id_other_country' => !empty($data['buyer_tax_id_other_country']) ? (string)$data['buyer_tax_id_other_country'] : null,
+            // Rachunek bankowy
+            'company_bank_account_id' => !empty($data['company_bank_account_id']) ? (string)$data['company_bank_account_id'] : null,
             // Nowe pola dla składników daty i numeru
             'number' => $resolvedNumber,
             'day' => (int) $dateObject->format('d'),
@@ -1938,6 +1971,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'zip' => $contractor['zip'] ?? '',
                     'country' => $contractor['country'] ?? 'Polska',
                     'account_number' => $contractor['account_number'] ?? '',
+                    'email' => $contractor['email'] ?? null,
+                    'phone' => $contractor['phone'] ?? null,
                 ];
                 
                 $contractorEntity = $InvoiceContractorsTable->patchEntity($contractorEntity, $contractorData);
@@ -1984,6 +2019,33 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                 } catch (\Throwable $e) {
                     // Ignoruj problemy katalogu; faktura i snapshot zapisane
+                }
+            }
+
+            // Zapisz dane odbiorcy (invoice_recipients) — opcjonalnie
+            if (!empty($data['invoice_recipient'])) {
+                $recipient = $data['invoice_recipient'];
+                $hasRecipientData = !empty(trim((string)($recipient['name'] ?? '')))
+                    || !empty(trim((string)($recipient['nip'] ?? '')));
+
+                if ($hasRecipientData) {
+                    $InvoiceRecipientsTable = $this->fetchTable('InvoiceRecipients');
+                    $recipientEntity = $InvoiceRecipientsTable->newEmptyEntity();
+                    $recipientData = [
+                        'invoice_id' => $invoiceId,
+                        'name'    => $recipient['name'] ?? '',
+                        'nip'     => $recipient['nip'] ?? '',
+                        'street'  => $recipient['street'] ?? '',
+                        'city'    => $recipient['city'] ?? '',
+                        'zip'     => $recipient['zip'] ?? '',
+                        'country' => $recipient['country'] ?? 'Polska',
+                        'email'   => $recipient['email'] ?? null,
+                        'phone'   => $recipient['phone'] ?? null,
+                    ];
+                    $recipientEntity = $InvoiceRecipientsTable->patchEntity($recipientEntity, $recipientData);
+                    if (!$InvoiceRecipientsTable->save($recipientEntity)) {
+                        throw new \RuntimeException('Błąd zapisu danych odbiorcy');
+                    }
                 }
             }
 
@@ -2457,6 +2519,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'netto'            => $lineGross,
                         'brutto'           => $lineGross,
                         'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                        'gtin'             => (string)($row['gtin'] ?? ''),
+                        'cn_code'          => (string)($row['cn_code'] ?? ''),
+                        'pkob'             => (string)($row['pkob'] ?? ''),
+                        'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
+                        'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
+                        'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                     ];
                 }
 
@@ -2500,6 +2568,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'netto'            => $netto,
                         'brutto'           => $brutto,
                         'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                        'gtin'             => (string)($row['gtin'] ?? ''),
+                        'cn_code'          => (string)($row['cn_code'] ?? ''),
+                        'pkob'             => (string)($row['pkob'] ?? ''),
+                        'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
+                        'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
+                        'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                     ];
                 }
             }

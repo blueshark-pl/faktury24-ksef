@@ -20,6 +20,12 @@ use Cake\ORM\Entity;
  * @property string $discount_percent
  * @property string $netto
  * @property string $brutto
+ * @property string|null $gtin
+ * @property string|null $cn_code
+ * @property string|null $pkob
+ * @property bool $is_attachment15
+ * @property string|null $excise_amount
+ * @property string|null $procedure_marking
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -49,6 +55,12 @@ class InvoiceContent extends Entity
         'discount_percent' => true,
         'netto' => true,
         'brutto' => true,
+        'gtin' => true,
+        'cn_code' => true,
+        'pkob' => true,
+        'is_attachment15' => true,
+        'excise_amount' => true,
+        'procedure_marking' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,

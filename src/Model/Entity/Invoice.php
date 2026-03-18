@@ -41,6 +41,25 @@ use Cake\ORM\Entity;
  * @property bool $is_split_payment
  * @property string|null $receipt_number
  * @property \Cake\I18n\Date|null $receipt_date
+ * @property \Cake\I18n\Date|null $sold_date
+ * @property \Cake\I18n\Date|null $paid_at
+ * @property \Cake\I18n\Date|null $partial_paid_at
+ * @property string|null $lang
+ * @property bool $auto_send
+ * @property bool $buyer_is_jst
+ * @property bool $buyer_in_vat_group
+ * @property array|null $annotations
+ * @property string|null $annotations_tax_free
+ * @property string|null $annotations_tax_free_field
+ * @property string|null $seller_vat_prefix
+ * @property string|null $seller_vat_eu
+ * @property string|null $seller_eori
+ * @property string|null $buyer_vat_prefix
+ * @property string|null $buyer_vat_eu
+ * @property string|null $buyer_eori
+ * @property string|null $buyer_tax_id_other
+ * @property string|null $buyer_tax_id_other_country
+ * @property string|null $company_bank_account_id
  * @property bool $is_print
  * @property string|null $issuer
  * @property bool $is_sent
@@ -57,6 +76,7 @@ use Cake\ORM\Entity;
  * @property \App\Model\Entity\InvoiceCompanyDetail $invoice_company_detail
  * @property \App\Model\Entity\InvoiceContractor $invoice_contractor
  * @property \App\Model\Entity\InvoiceContent[] $invoice_contents
+ * @property \App\Model\Entity\InvoiceRecipient|null $invoice_recipient
  * @property \App\Model\Entity\InvoiceVatContent[] $invoice_vat_contents
  * @property \App\Model\Entity\ChildInvoice[] $child_invoices
  * @property \App\Model\Entity\InvoicePayment[] $invoice_payments
@@ -105,6 +125,25 @@ class Invoice extends Entity
     'is_split_payment' => true,
     'receipt_number' => true,
     'receipt_date' => true,
+        'sold_date' => true,
+        'paid_at' => true,
+        'partial_paid_at' => true,
+        'lang' => true,
+        'auto_send' => true,
+        'buyer_is_jst' => true,
+        'buyer_in_vat_group' => true,
+        'annotations' => true,
+        'annotations_tax_free' => true,
+        'annotations_tax_free_field' => true,
+        'seller_vat_prefix' => true,
+        'seller_vat_eu' => true,
+        'seller_eori' => true,
+        'buyer_vat_prefix' => true,
+        'buyer_vat_eu' => true,
+        'buyer_eori' => true,
+        'buyer_tax_id_other' => true,
+        'buyer_tax_id_other_country' => true,
+        'company_bank_account_id' => true,
         'is_print' => true,
         'issuer' => true,
         'is_sent' => true,
@@ -125,6 +164,7 @@ class Invoice extends Entity
         'invoice_company_detail' => true,
         'invoice_contractor' => true,
         'invoice_contents' => true,
+        'invoice_recipient' => true,
         'invoice_vat_contents' => true,
         'child_invoices' => true,
         'invoice_payments' => true,

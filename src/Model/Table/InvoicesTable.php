@@ -70,6 +70,9 @@ class InvoicesTable extends Table
         $this->hasOne('InvoiceContractors', [
             'foreignKey' => 'invoice_id',
         ]);
+        $this->hasOne('InvoiceRecipients', [
+            'foreignKey' => 'invoice_id',
+        ]);
         $this->hasMany('InvoiceContents', [
             'foreignKey' => 'invoice_id',
         ]);
