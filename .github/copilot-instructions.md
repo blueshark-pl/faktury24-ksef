@@ -116,3 +116,72 @@ Legenda: 🔴 wysoki / 🟡 średni / 🟢 niski priorytet.
 - [x] **StatusInfoPodatnika** — kolumna `status_info_podatnika` na `invoices` + emisja w `buildSellerXml`. Commit: 1.2.23 (9).
 - [x] **Podmiot Upoważniony** — tabela `invoice_authorized_entities` + builder `buildPodmiotUpowaznionyXml`. Commit: 1.2.23 (9).
 
+## TODO — Audyt widoków / formularzy / XML (2026-03-18)
+
+Wynik audytu: które pola FA(3) mają formularze w templatech, czy są zapisywane w `handleAdd()`, i czy trafiają do XML.
+
+### 🔴 KRYTYCZNY BUG: Annotations JSON → XML
+
+- [ ] **`buildAnnotationsXml()` czyta `$inv->p_16`, `$inv->p_17`, `$inv->p_18`, `$inv->p_18a`, `$inv->p_23` — kolumny, które NIE ISTNIEJĄ w DB.**
+  - Zawsze domyślnie `?? 2` → XML zawsze zawiera `<P_16>2</P_16>` (NIE) niezależnie od checkboxów.
+  - Formularz wysyła `annotations[cash_method]`, `annotations[reverse_charge]`, `annotations[triangular]`, `annotations[oss]`, `annotations[tp]`, `annotations[excise_return]` → zapis jako JSON w kolumnie `annotations`.
+  - **Naprawić**: `buildAnnotationsXml()` musi dekodować JSON `$inv->annotations` i mapować:
+    - `cash_method` → `P_16` (1=TAK, 2=NIE)
+    - (brak w formularzu, domyślnie NIE) → `P_17` samofakturowanie
+    - `reverse_charge` → `P_18`
+    - `is_split_payment` (osobna kolumna bool) → `P_18A`
+    - `triangular` → `P_23`
+  - Podobnie `has_exempt_sales` / `annotations[supply_goods]` → sekcja `Zwolnienie` (P_19/P_19A/B/C)
+
+### 🔴 WYSOKI: Brakujące taby w formularzach
+
+Tylko `add.php` ma taby **Adnotacje** i **Identyfikatory międzynarodowe**. Pozostałe 9 formularzy ich nie mają:
+
+- [ ] **add_currency.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_margin.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_no_vat.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_advance.php** — brak tab Adnotacje, brak tab Identyfikatory (+ brak tabów w ogóle, osobny layout)
+- [ ] **add_proforma.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_correct.php** — brak tab Adnotacje (ma partial: supply_goods + tax_free + MPP w tab Księgowe), brak tab Identyfikatory
+- [ ] **add_correct_currency.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_correct_margin.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **add_correct_no_vat.php** — brak tab Adnotacje, brak tab Identyfikatory
+- [ ] **edit.php** — brak tab Adnotacje, brak tab Identyfikatory (ma tylko tab Zaawansowane)
+
+### 🔴 WYSOKI: `view()` nie ładuje relacji FA(3)
+
+- [ ] **`view()` action (linia 839)** — `contain` ładuje tylko:
+  `Companies, ParentInvoices, InvoiceCompanyDetails, InvoiceContractors, InvoiceContents→Vats, InvoiceVatContents, ChildInvoices`
+  - **Brakuje**: `InvoicePayments`, `InvoiceAdditionalDescriptions`, `InvoiceRecipients`, `InvoiceNewTransports`, `InvoiceCharges`, `InvoiceFactorBanks`, `InvoiceAuthorizedEntities`, `InvoiceOrderLines`
+  - Relacje są lazy-loadowane w `buildFa3XmlBase()`, więc XML generowany z downloadFa3Xml/sendToKsef działa, ale widok view.php nie wyświetla tych danych.
+
+### 🟡 ŚREDNI: Nowe pola FA(3) LOW bez form fields
+
+Pola dodane w migracji `20260318160000` istnieją w DB i XML builderach, ale **żaden formularz** ich nie zawiera:
+
+- [ ] `skonto_conditions` / `skonto_amount` — brak inputów we wszystkich templatech
+- [ ] `status_info_podatnika` — brak selecta/inputu
+- [ ] `is_new_transport_wdt` — brak checkboxa
+- [ ] `koresp_country_code` / `koresp_address_l1` / `koresp_address_l2` / `koresp_gln` — brak pól korespondencyjnych na kontrahentach
+- [ ] `transaction_conditions_json` — brak formularza (JSON, wymaga dedykowanego UI)
+- [ ] `order_total_gross` / `invoice_order_lines` — brak formularza zamówienia (tylko advance)
+- [ ] `invoice_charges` (obciążenia/odliczenia) — brak formularza
+- [ ] `invoice_factor_banks` — brak formularza rachunku faktora
+- [ ] `invoice_authorized_entities` — brak formularza podmiotu upoważnionego
+
+### 🟡 ŚREDNI: Nowe pola LOW brak w `handleAdd()` save logic
+
+- [ ] `handleAdd()` (linia ~1830-1920) **nie zapisuje** nowych pól FA(3) LOW z POST:
+  - `skonto_conditions`, `skonto_amount`, `status_info_podatnika`
+  - `is_new_transport_wdt`, `p_42_5`, `transaction_conditions_json`, `order_total_gross`
+  - `koresp_*` na invoiceContractor / invoiceCompanyDetail snapshot
+
+### 🟢 NISKI: Pola obecne tylko w `add.php`
+
+Te pola mają inputy w `add.php`, ale brakuje ich w innych formularzach. Mogą być potrzebne:
+
+- `buyer_is_jst`, `buyer_in_vat_group` — tylko `add.php`
+- `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — tylko `add.php`
+- `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — tylko `add.php`
+- `buyer_tax_id_other`, `buyer_tax_id_other_country` — tylko `add.php`
+
