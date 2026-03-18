@@ -18,6 +18,13 @@ use Cake\ORM\Entity;
  * @property string $country
  * @property string|null $email
  * @property string|null $phone
+ * @property int|null $rola
+ * @property string|null $rola_opis
+ * @property string|null $vat_prefix
+ * @property string|null $vat_eu
+ * @property string|null $tax_id_other
+ * @property string|null $tax_id_other_country
+ * @property string|null $gln
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -35,6 +42,13 @@ class InvoiceRecipient extends Entity
         'country' => true,
         'email' => true,
         'phone' => true,
+        'rola' => true,
+        'rola_opis' => true,
+        'vat_prefix' => true,
+        'vat_eu' => true,
+        'tax_id_other' => true,
+        'tax_id_other_country' => true,
+        'gln' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,

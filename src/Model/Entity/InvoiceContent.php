@@ -26,6 +26,12 @@ use Cake\ORM\Entity;
  * @property bool $is_attachment15
  * @property string|null $excise_amount
  * @property string|null $procedure_marking
+ * @property string|null $gtu_code
+ * @property string|null $uu_id
+ * @property string|null $vat_amount
+ * @property \Cake\I18n\Date|null $line_date
+ * @property string|null $pkwiu
+ * @property string|null $gross_unit_price
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -61,6 +67,11 @@ class InvoiceContent extends Entity
         'is_attachment15' => true,
         'excise_amount' => true,
         'procedure_marking' => true,
+        'uu_id' => true,
+        'vat_amount' => true,
+        'line_date' => true,
+        'pkwiu' => true,
+        'gross_unit_price' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,

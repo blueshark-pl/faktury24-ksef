@@ -1241,6 +1241,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'discount_percent' => 0,
                     'netto'            => $lineGross,
                     'brutto'           => $lineGross,
+                    // FA(3)
+                    'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
+                    'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
+                    'pkwiu'            => (string)($row['pkwiu'] ?? ''),
                 ];
             }
 
@@ -1467,6 +1471,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
                     'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
                     'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
+                    // FA(3) — pola pozycji
+                    'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
+                    'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
+                    'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
+                    'pkwiu'            => (string)($row['pkwiu'] ?? ''),
+                    'gross_unit_price' => round($price * (1 + ($rate / 100)), 2),
                 ];
                 
                 // Grupowanie VAT
@@ -1859,6 +1869,19 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'buyer_tax_id_other_country' => !empty($data['buyer_tax_id_other_country']) ? (string)$data['buyer_tax_id_other_country'] : null,
             // Rachunek bankowy
             'company_bank_account_id' => !empty($data['company_bank_account_id']) ? (string)$data['company_bank_account_id'] : null,
+            // FA(3) — okres faktury (usługi ciągłe / media)
+            'period_from'      => !empty($data['period_from']) ? $data['period_from'] : null,
+            'period_to'        => !empty($data['period_to']) ? $data['period_to'] : null,
+            // FA(3) — numer WZ
+            'wz_number'        => !empty($data['wz_number']) ? (string)$data['wz_number'] : null,
+            // FA(3) — przyczyna korekty
+            'correction_reason' => !empty($data['correction_reason']) ? (string)$data['correction_reason'] : null,
+            // FA(3) — miejsce wystawienia
+            'place_of_issue'   => !empty($data['place_of_issue']) ? (string)$data['place_of_issue'] : null,
+            // FA(3) — tekst stopki
+            'footer_text'      => !empty($data['footer_text']) ? (string)$data['footer_text'] : null,
+            // FA(3) — link do płatności
+            'payment_link'     => !empty($data['payment_link']) ? (string)$data['payment_link'] : null,
             // Nowe pola dla składników daty i numeru
             'number' => $resolvedNumber,
             'day' => (int) $dateObject->format('d'),
@@ -1949,6 +1972,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'zip' => $company->postal_code ?? '',
                     'country' => $company->country ?? 'Polska',
                     'bank_account' => $snapshotBank,
+                    // FA(3) — dane kontaktowe i rejestrowe sprzedawcy
+                    'email'        => (string)($company->email ?? ''),
+                    'phone'        => (string)($company->phone ?? ''),
+                    'krs'          => (string)($company->krs ?? ''),
+                    'regon'        => (string)($company->regon ?? ''),
+                    'bdo'          => (string)($company->bdo ?? ''),
+                    'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
+                    'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
+                    'country_code' => (string)($company->country_code ?? 'PL'),
                 ];
                 
                 $companyDetailEntity = $InvoiceCompanyDetailsTable->patchEntity($companyDetailEntity, $companyDetailData);
@@ -2041,6 +2073,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'country' => $recipient['country'] ?? 'Polska',
                         'email'   => $recipient['email'] ?? null,
                         'phone'   => $recipient['phone'] ?? null,
+                        // FA(3) — dodatkowe pola odbiorcy
+                        'rola'               => !empty($recipient['rola']) ? (int)$recipient['rola'] : null,
+                        'rola_opis'          => (string)($recipient['rola_opis'] ?? ''),
+                        'vat_prefix'         => (string)($recipient['vat_prefix'] ?? ''),
+                        'vat_eu'             => (string)($recipient['vat_eu'] ?? ''),
+                        'tax_id_other'       => (string)($recipient['tax_id_other'] ?? ''),
+                        'tax_id_other_country' => (string)($recipient['tax_id_other_country'] ?? ''),
+                        'gln'                => (string)($recipient['gln'] ?? ''),
                     ];
                     $recipientEntity = $InvoiceRecipientsTable->patchEntity($recipientEntity, $recipientData);
                     if (!$InvoiceRecipientsTable->save($recipientEntity)) {
@@ -2525,6 +2565,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
                         'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
                         'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
+                        // FA(3)
+                        'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
+                        'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
+                        'pkwiu'            => (string)($row['pkwiu'] ?? ''),
                     ];
                 }
 
@@ -2574,6 +2618,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
                         'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
                         'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
+                        // FA(3)
+                        'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
+                        'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
+                        'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
+                        'pkwiu'            => (string)($row['pkwiu'] ?? ''),
+                        'gross_unit_price' => round($price * (1 + ($rate / 100)), 2),
                     ];
                 }
             }
@@ -2660,6 +2710,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ? 1 : ($invoice->is_receipt_invoice ?? 0),
                 'is_split_payment'   => isset($data['is_split_payment']) ? (int)!empty($data['is_split_payment'])     : ($invoice->is_split_payment ?? 0),
             ];
+            // FA(3) — opcjonalne pola edycji
+            foreach (['period_from','period_to','wz_number','correction_reason','place_of_issue','footer_text','payment_link'] as $k) {
+                if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
+            }
             // Optional: allow updating receipt details if provided
             foreach (['receipt_number','receipt_date'] as $k) {
                 if (array_key_exists($k, $data)) {
@@ -4518,7 +4572,7 @@ private function makeClient(string $environment): KsefClient
         $soldDate    = $inv->sold_date ? $inv->sold_date->format('Y-m-d') : null;
         $number      = (string)($inv->fullnumber ?? $inv->id);
         $currency    = strtoupper((string)($inv->currency ?? 'PLN'));
-        $placeIssued = trim((string)($seller->city ?? ''));
+        $placeIssued = trim((string)($inv->place_of_issue ?? $seller->city ?? ''));
 
         $xml = [];
 
@@ -4536,6 +4590,9 @@ private function makeClient(string $environment): KsefClient
             $xml,
             $this->buildFaXml($inv, $items, $currency, $issueDate, $soldDate, $placeIssued, $number)
         );
+
+        // Stopka (footer)
+        $xml = array_merge($xml, $this->buildStopkaXml($inv, $seller));
 
         $xml[] = '</Faktura>';
 
@@ -4624,6 +4681,21 @@ private function makeClient(string $environment): KsefClient
             $xml[] = '      <AdresL2>' . $this->esc($sellerL2) . '</AdresL2>';
         }
         $xml[] = '    </Adres>';
+
+        // DaneKontaktowe — email / telefon sprzedawcy (opcjonalne w FA(3))
+        $sellerEmail = trim((string)($seller->email ?? ''));
+        $sellerPhone = trim((string)($seller->phone ?? ''));
+        if ($sellerEmail !== '' || $sellerPhone !== '') {
+            $xml[] = '    <DaneKontaktowe>';
+            if ($sellerEmail !== '') {
+                $xml[] = '      <Email>' . $this->esc($sellerEmail) . '</Email>';
+            }
+            if ($sellerPhone !== '') {
+                $xml[] = '      <Telefon>' . $this->esc($sellerPhone) . '</Telefon>';
+            }
+            $xml[] = '    </DaneKontaktowe>';
+        }
+
         $xml[] = '  </Podmiot1>';
 
         return $xml;
@@ -5361,14 +5433,69 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     $xml[] = '      <P_8A>' . $this->esc($unit) . '</P_8A>';
     $xml[] = '      <P_8B>' . $this->fmtQty($qty) . '</P_8B>';
     $xml[] = '      <P_9A>' . $this->fmtAmount($unitNet) . '</P_9A>';
+
+    // P_9B — cena jednostkowa brutto (opcjonalne w FA(3))
+    if (!empty($it->gross_unit_price)) {
+        $xml[] = '      <P_9B>' . $this->fmtAmount((float)$it->gross_unit_price) . '</P_9B>';
+    }
+
     $xml[] = '      <P_11>' . $this->fmtAmount($netTotal) . '</P_11>';
+
+    // P_11A — wartość brutto wiersza (opcjonalne)
+    if ($grossTotal > 0) {
+        $xml[] = '      <P_11A>' . $this->fmtAmount($grossTotal) . '</P_11A>';
+    }
+
+    // P_11Vat — kwota podatku VAT wiersza
+    if (!empty($it->vat_amount)) {
+        $xml[] = '      <P_11Vat>' . $this->fmtAmount((float)$it->vat_amount) . '</P_11Vat>';
+    } elseif ($vatTotal > 0) {
+        $xml[] = '      <P_11Vat>' . $this->fmtAmount($vatTotal) . '</P_11Vat>';
+    }
 
     if ($rate > 0) {
         $xml[] = '      <P_12>' . (int)$rate . '</P_12>';
     }
+
+    // P_6A — data dostawy/usługi per-wiersz
+    if (!empty($it->line_date)) {
+        $lineDate = ($it->line_date instanceof \DateTimeInterface)
+            ? $it->line_date->format('Y-m-d')
+            : (string)$it->line_date;
+        $xml[] = '      <P_6A>' . $this->esc($lineDate) . '</P_6A>';
+    }
+
+    // UU_ID — identyfikator UUID wiersza (dla korekt)
+    if (!empty($it->uu_id)) {
+        $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
+    }
+
+    // PKWiU
+    if (!empty($it->pkwiu)) {
+        $xml[] = '      <PKWiU>' . $this->esc((string)$it->pkwiu) . '</PKWiU>';
+    }
+
+    // GTU
     if (!empty($it->gtu_code)) {
         $xml[] = '      <GTU>' . $this->esc($it->gtu_code) . '</GTU>';
     }
+    // Procedura
+    if (!empty($it->procedure_marking)) {
+        $xml[] = '      <Procedura>' . $this->esc((string)$it->procedure_marking) . '</Procedura>';
+    }
+    // CN
+    if (!empty($it->cn_code)) {
+        $xml[] = '      <CN>' . $this->esc((string)$it->cn_code) . '</CN>';
+    }
+    // GTIN
+    if (!empty($it->gtin)) {
+        $xml[] = '      <GTIN>' . $this->esc((string)$it->gtin) . '</GTIN>';
+    }
+    // KwotaAkcyzy
+    if (!empty($it->excise_amount)) {
+        $xml[] = '      <KwotaAkcyzy>' . $this->fmtAmount((float)$it->excise_amount) . '</KwotaAkcyzy>';
+    }
+
     if ($isBeforeCorrection) {
         $xml[] = '      <StanPrzed>1</StanPrzed>';
     }
@@ -5432,6 +5559,12 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
             $xml[] = '      </RachunekBankowy>';
         }
 
+        // LinkDoPlatnosci — FA(3) opcjonalny link do płatności online
+        $payLink = trim((string)($inv->payment_link ?? ''));
+        if ($payLink !== '') {
+            $xml[] = '      <LinkDoPlatnosci>' . $this->esc($payLink) . '</LinkDoPlatnosci>';
+        }
+
         $xml[] = '    </Platnosc>';
 
         return $xml;
@@ -5454,6 +5587,41 @@ private function mapPaymentMethod(?string $method): string
     };
 }
 
+
+    // ======================== STOPKA (Footer) ========================
+
+    private function buildStopkaXml(Invoice $inv, ?object $seller): array
+    {
+        $xml = [];
+
+        $footerText = trim((string)($inv->footer_text ?? ''));
+        $krs   = trim((string)($seller->krs ?? ''));
+        $regon = trim((string)($seller->regon ?? ''));
+        $bdo   = trim((string)($seller->bdo ?? ''));
+
+        if ($footerText === '' && $krs === '' && $regon === '' && $bdo === '') {
+            return $xml;
+        }
+
+        $xml[] = '  <Stopka>';
+        if ($footerText !== '') {
+            $xml[] = '    <Informacje>';
+            $xml[] = '      <StopkaFaktury>' . $this->esc($footerText) . '</StopkaFaktury>';
+            $xml[] = '    </Informacje>';
+        }
+        if ($krs !== '') {
+            $xml[] = '    <KRS>' . $this->esc($krs) . '</KRS>';
+        }
+        if ($regon !== '') {
+            $xml[] = '    <REGON>' . $this->esc($regon) . '</REGON>';
+        }
+        if ($bdo !== '') {
+            $xml[] = '    <BDO>' . $this->esc($bdo) . '</BDO>';
+        }
+        $xml[] = '  </Stopka>';
+
+        return $xml;
+    }
 
     private function resolveRodzajFaktury(Invoice $inv): string
     {

@@ -60,6 +60,13 @@ use Cake\ORM\Entity;
  * @property string|null $buyer_tax_id_other
  * @property string|null $buyer_tax_id_other_country
  * @property string|null $company_bank_account_id
+ * @property \Cake\I18n\Date|null $period_from
+ * @property \Cake\I18n\Date|null $period_to
+ * @property string|null $wz_number
+ * @property string|null $correction_reason
+ * @property string|null $place_of_issue
+ * @property string|null $footer_text
+ * @property string|null $payment_link
  * @property bool $is_print
  * @property string|null $issuer
  * @property bool $is_sent
@@ -144,6 +151,13 @@ class Invoice extends Entity
         'buyer_tax_id_other' => true,
         'buyer_tax_id_other_country' => true,
         'company_bank_account_id' => true,
+        'period_from' => true,
+        'period_to' => true,
+        'wz_number' => true,
+        'correction_reason' => true,
+        'place_of_issue' => true,
+        'footer_text' => true,
+        'payment_link' => true,
         'is_print' => true,
         'issuer' => true,
         'is_sent' => true,

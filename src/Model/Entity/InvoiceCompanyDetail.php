@@ -17,6 +17,14 @@ use Cake\ORM\Entity;
  * @property string|null $zip
  * @property string $country
  * @property string|null $bank_account
+ * @property string|null $email
+ * @property string|null $phone
+ * @property string|null $krs
+ * @property string|null $regon
+ * @property string|null $bdo
+ * @property string|null $bank_name
+ * @property string|null $bank_desc
+ * @property string|null $country_code
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -42,6 +50,14 @@ class InvoiceCompanyDetail extends Entity
         'zip' => true,
         'country' => true,
         'bank_account' => true,
+        'email' => true,
+        'phone' => true,
+        'krs' => true,
+        'regon' => true,
+        'bdo' => true,
+        'bank_name' => true,
+        'bank_desc' => true,
+        'country_code' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,
