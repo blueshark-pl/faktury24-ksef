@@ -89,6 +89,21 @@ class InvoicesTable extends Table
         $this->hasMany('InvoiceAdditionalDescriptions', [
             'foreignKey' => 'invoice_id',
         ]);
+        $this->hasMany('InvoiceNewTransports', [
+            'foreignKey' => 'invoice_id',
+        ]);
+        $this->hasMany('InvoiceOrderLines', [
+            'foreignKey' => 'invoice_id',
+        ]);
+        $this->hasMany('InvoiceCharges', [
+            'foreignKey' => 'invoice_id',
+        ]);
+        $this->hasMany('InvoiceFactorBanks', [
+            'foreignKey' => 'invoice_id',
+        ]);
+        $this->hasMany('InvoiceAuthorizedEntities', [
+            'foreignKey' => 'invoice_id',
+        ]);
     }
 
     /**

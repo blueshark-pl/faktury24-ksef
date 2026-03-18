@@ -4580,6 +4580,27 @@ private function makeClient(string $environment): KsefClient
             $inv->invoice_additional_descriptions = $this->fetchTable('InvoiceAdditionalDescriptions')
                 ->find()->where(['invoice_id' => $inv->id])->orderAsc('nr_wiersza')->all()->toArray();
         }
+        // FA(3) LOW — lazy-load nowych relacji
+        if (!$inv->has('invoice_new_transports')) {
+            $inv->invoice_new_transports = $this->fetchTable('InvoiceNewTransports')
+                ->find()->where(['invoice_id' => $inv->id])->all()->toArray();
+        }
+        if (!$inv->has('invoice_charges')) {
+            $inv->invoice_charges = $this->fetchTable('InvoiceCharges')
+                ->find()->where(['invoice_id' => $inv->id])->all()->toArray();
+        }
+        if (!$inv->has('invoice_factor_banks')) {
+            $inv->invoice_factor_banks = $this->fetchTable('InvoiceFactorBanks')
+                ->find()->where(['invoice_id' => $inv->id])->all()->toArray();
+        }
+        if (!$inv->has('invoice_authorized_entities')) {
+            $inv->invoice_authorized_entities = $this->fetchTable('InvoiceAuthorizedEntities')
+                ->find()->where(['invoice_id' => $inv->id])->all()->toArray();
+        }
+        if (!$inv->has('invoice_order_lines')) {
+            $inv->invoice_order_lines = $this->fetchTable('InvoiceOrderLines')
+                ->find()->where(['invoice_id' => $inv->id])->orderAsc('nr_wiersza')->all()->toArray();
+        }
 
         $seller = $inv->invoice_company_detail ?? null;
         $buyer  = $inv->invoice_contractor ?? null;
@@ -4601,8 +4622,12 @@ private function makeClient(string $environment): KsefClient
         );
 
         $xml = array_merge($xml, $this->buildHeaderXml());
-        $xml = array_merge($xml, $this->buildSellerXml($seller));
+        $xml = array_merge($xml, $this->buildSellerXml($seller, $inv));
         $xml = array_merge($xml, $this->buildBuyerXml($buyer, $inv));
+
+        // PodmiotUpowazniony — optional, after Podmiot2
+        $xml = array_merge($xml, $this->buildPodmiotUpowaznionyXml($inv));
+
         $xml = array_merge(
             $xml,
             $this->buildFaXml($inv, $items, $currency, $issueDate, $soldDate, $placeIssued, $number)
@@ -4666,7 +4691,7 @@ private function makeClient(string $environment): KsefClient
 
     // ======================== PODMIOT1 ========================
 
-    private function buildSellerXml(?object $seller): array
+    private function buildSellerXml(?object $seller, Invoice $inv): array
     {
         $xml = [];
 
@@ -4704,6 +4729,26 @@ private function makeClient(string $environment): KsefClient
         }
         $xml[] = '    </Adres>';
 
+        // AdresKoresp — adres korespondencyjny sprzedawcy (opcjonalny, XSD: TAdres)
+        $korespL1 = trim((string)($seller->koresp_address_l1 ?? ''));
+        $korespL2 = trim((string)($seller->koresp_address_l2 ?? ''));
+        if ($korespL1 !== '' || $korespL2 !== '') {
+            $korespCC = strtoupper(trim((string)($seller->koresp_country_code ?? 'PL')));
+            $xml[] = '    <AdresKoresp>';
+            $xml[] = '      <KodKraju>' . $this->esc($korespCC) . '</KodKraju>';
+            if ($korespL1 !== '') {
+                $xml[] = '      <AdresL1>' . $this->esc($korespL1) . '</AdresL1>';
+            }
+            if ($korespL2 !== '') {
+                $xml[] = '      <AdresL2>' . $this->esc($korespL2) . '</AdresL2>';
+            }
+            $sellerKorespGln = trim((string)($seller->koresp_gln ?? ''));
+            if ($sellerKorespGln !== '') {
+                $xml[] = '      <GLN>' . $this->esc($sellerKorespGln) . '</GLN>';
+            }
+            $xml[] = '    </AdresKoresp>';
+        }
+
         // DaneKontaktowe — email / telefon sprzedawcy (opcjonalne w FA(3))
         $sellerEmail = trim((string)($seller->email ?? ''));
         $sellerPhone = trim((string)($seller->phone ?? ''));
@@ -4716,6 +4761,11 @@ private function makeClient(string $environment): KsefClient
                 $xml[] = '      <Telefon>' . $this->esc($sellerPhone) . '</Telefon>';
             }
             $xml[] = '    </DaneKontaktowe>';
+        }
+
+        // StatusInfoPodatnika — status informacyjny podatnika (opcjonalny)
+        if (!empty($inv->status_info_podatnika)) {
+            $xml[] = '    <StatusInfoPodatnika>' . (int)$inv->status_info_podatnika . '</StatusInfoPodatnika>';
         }
 
         $xml[] = '  </Podmiot1>';
@@ -4757,6 +4807,26 @@ private function makeClient(string $environment): KsefClient
             $xml[] = '      <GLN>' . $this->esc($buyerGln) . '</GLN>';
         }
         $xml[] = '    </Adres>';
+
+        // AdresKoresp — adres korespondencyjny nabywcy (opcjonalny, XSD: TAdres)
+        $buyerKorespL1 = trim((string)($buyer->koresp_address_l1 ?? ''));
+        $buyerKorespL2 = trim((string)($buyer->koresp_address_l2 ?? ''));
+        if ($buyerKorespL1 !== '' || $buyerKorespL2 !== '') {
+            $buyerKorespCC = strtoupper(trim((string)($buyer->koresp_country_code ?? 'PL')));
+            $xml[] = '    <AdresKoresp>';
+            $xml[] = '      <KodKraju>' . $this->esc($buyerKorespCC) . '</KodKraju>';
+            if ($buyerKorespL1 !== '') {
+                $xml[] = '      <AdresL1>' . $this->esc($buyerKorespL1) . '</AdresL1>';
+            }
+            if ($buyerKorespL2 !== '') {
+                $xml[] = '      <AdresL2>' . $this->esc($buyerKorespL2) . '</AdresL2>';
+            }
+            $buyerKorespGln = trim((string)($buyer->koresp_gln ?? ''));
+            if ($buyerKorespGln !== '') {
+                $xml[] = '      <GLN>' . $this->esc($buyerKorespGln) . '</GLN>';
+            }
+            $xml[] = '    </AdresKoresp>';
+        }
 
         // JST – jednostka samorządu terytorialnego (1 – JST, 2 – nie JST)
         $jstVal = ((int)($inv->buyer_is_jst ?? 0) === 1) ? '1' : '2';
@@ -4923,8 +4993,17 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     // Wiersze
     $xml   = array_merge($xml, $this->buildLinesXml($inv, $items));
 
+    // Rozliczenie — Obciążenia / Odliczenia (opcjonalne, FA(3))
+    $xml   = array_merge($xml, $this->buildRozliczenieXml($inv));
+
     // Płatność
     $xml   = array_merge($xml, $this->buildPaymentXml($inv, $issueDate, $soldDate));
+
+    // WarunkiTransakcji — umowy, zamówienia, transport, Incoterms (opcjonalne, FA(3))
+    $xml   = array_merge($xml, $this->buildWarunkiTransakcjiXml($inv));
+
+    // Zamówienie — linie zamówienia dla faktur zaliczkowych (opcjonalne, FA(3))
+    $xml   = array_merge($xml, $this->buildZamowienieXml($inv));
 
     $xml[] = '  </Fa>';
 
@@ -5385,15 +5464,13 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     {
         $xml = [];
 
-        // Zakładam, że w Invoice masz coś w stylu:
-        // - is_new_transport_wdt (bool)
-        // - new_transport_rows (array obiektów z danymi P_22A, P_NrWierszaNST itd.)
+        // Dane z DB (invoice_new_transports) — backing dla NoweSrodkiTransportu
         $isNewTransportWdt = (bool)($inv->is_new_transport_wdt ?? false);
-        $rows              = (array)($inv->new_transport_rows ?? []);
+        $rows              = (array)($inv->invoice_new_transports ?? []);
 
         $xml[] = '      <NoweSrodkiTransportu>';
 
-        if ($isNewTransportWdt) {
+        if ($isNewTransportWdt && !empty($rows)) {
             // P_22 – 1 gdy jest WDT nowych środków transportu
             $xml[] = '        <P_22>1</P_22>';
             // P_42_5 – obowiązek z art. 42 ust. 5 (1 – tak, 2 – nie)
@@ -5405,47 +5482,57 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             foreach ($rows as $row) {
                 $xml[] = '        <NowySrodekTransportu>';
                 // P_22A – data dopuszczenia do użytku
-                if (!empty($row->p_22a)) {
-                    $xml[] = '          <P_22A>' . $this->esc((string)$row->p_22a) . '</P_22A>';
+                $p22a = $row->p_22a ?? $row['p_22a'] ?? null;
+                if (!empty($p22a)) {
+                    $xml[] = '          <P_22A>' . $this->esc((string)$p22a) . '</P_22A>';
                 }
-                // P_NrWierszaNST – nr wiersza faktury z dostawą środka
-                if (!empty($row->p_nrwierszanst)) {
-                    $xml[] = '          <P_NrWierszaNST>' . $this->esc((string)$row->p_nrwierszanst) . '</P_NrWierszaNST>';
+                // P_NrWierszaNST – nr wiersza faktury
+                $nrWiersza = $row->p_nrwierszanst ?? $row['p_nrwierszanst'] ?? null;
+                if (!empty($nrWiersza)) {
+                    $xml[] = '          <P_NrWierszaNST>' . $this->esc((string)$nrWiersza) . '</P_NrWierszaNST>';
                 }
                 // P_22BMK / P_22BMD / P_22BK / P_22BNR / P_22BRP – marka/model/kolor/NR rej./rok prod.
-                foreach (['P_22BMK', 'P_22BMD', 'P_22BK', 'P_22BNR', 'P_22BRP'] as $tag) {
-                    if (!empty($row->{$tag})) {
-                        $xml[] = '          <' . $tag . '>' . $this->esc((string)$row->{$tag}) . '</' . $tag . '>';
+                foreach (['p_22bmk' => 'P_22BMK', 'p_22bmd' => 'P_22BMD', 'p_22bk' => 'P_22BK', 'p_22bnr' => 'P_22BNR', 'p_22brp' => 'P_22BRP'] as $dbCol => $tag) {
+                    $val = $row->{$dbCol} ?? $row[$dbCol] ?? null;
+                    if (!empty($val)) {
+                        $xml[] = '          <' . $tag . '>' . $this->esc((string)$val) . '</' . $tag . '>';
                     }
                 }
-                // P_22B – przebieg pojazdu lądowego (obowiązkowe przy pojazdach lądowych)
-                if (!empty($row->P_22B)) {
-                    $xml[] = '          <P_22B>' . $this->esc((string)$row->P_22B) . '</P_22B>';
+                // P_22B – przebieg pojazdu lądowego
+                $p22b = $row->p_22b ?? $row['p_22b'] ?? null;
+                if (!empty($p22b)) {
+                    $xml[] = '          <P_22B>' . $this->esc((string)$p22b) . '</P_22B>';
                 }
                 // Numer VIN / nadwozia / podwozia / ramy – P_22B1..P_22B4 (wybór – tylko jedno)
-                foreach (['P_22B1', 'P_22B2', 'P_22B3', 'P_22B4'] as $tag) {
-                    if (!empty($row->{$tag})) {
-                        $xml[] = '          <' . $tag . '>' . $this->esc((string)$row->{$tag}) . '</' . $tag . '>';
+                foreach (['p_22b1' => 'P_22B1', 'p_22b2' => 'P_22B2', 'p_22b3' => 'P_22B3', 'p_22b4' => 'P_22B4'] as $dbCol => $tag) {
+                    $val = $row->{$dbCol} ?? $row[$dbCol] ?? null;
+                    if (!empty($val)) {
+                        $xml[] = '          <' . $tag . '>' . $this->esc((string)$val) . '</' . $tag . '>';
                         break;
                     }
                 }
-                // P_22BT – typ nowego środka transportu (opcjonalne)
-                if (!empty($row->P_22BT)) {
-                    $xml[] = '          <P_22BT>' . $this->esc((string)$row->P_22BT) . '</P_22BT>';
+                // P_22BT – typ nowego środka transportu
+                $p22bt = $row->p_22bt ?? $row['p_22bt'] ?? null;
+                if (!empty($p22bt)) {
+                    $xml[] = '          <P_22BT>' . $this->esc((string)$p22bt) . '</P_22BT>';
                 }
-                // P_22C / P_22C1 – jednostki pływające (godziny, numer kadłuba)
-                if (!empty($row->P_22C)) {
-                    $xml[] = '          <P_22C>' . $this->esc((string)$row->P_22C) . '</P_22C>';
+                // P_22C / P_22C1 – jednostki pływające
+                $p22c = $row->p_22c ?? $row['p_22c'] ?? null;
+                if (!empty($p22c)) {
+                    $xml[] = '          <P_22C>' . $this->esc((string)$p22c) . '</P_22C>';
                 }
-                if (!empty($row->P_22C1)) {
-                    $xml[] = '          <P_22C1>' . $this->esc((string)$row->P_22C1) . '</P_22C1>';
+                $p22c1 = $row->p_22c1 ?? $row['p_22c1'] ?? null;
+                if (!empty($p22c1)) {
+                    $xml[] = '          <P_22C1>' . $this->esc((string)$p22c1) . '</P_22C1>';
                 }
-                // P_22D / P_22D1 – statki powietrzne (godziny, numer fabryczny)
-                if (!empty($row->P_22D)) {
-                    $xml[] = '          <P_22D>' . $this->esc((string)$row->P_22D) . '</P_22D>';
+                // P_22D / P_22D1 – statki powietrzne
+                $p22d = $row->p_22d ?? $row['p_22d'] ?? null;
+                if (!empty($p22d)) {
+                    $xml[] = '          <P_22D>' . $this->esc((string)$p22d) . '</P_22D>';
                 }
-                if (!empty($row->P_22D1)) {
-                    $xml[] = '          <P_22D1>' . $this->esc((string)$row->P_22D1) . '</P_22D1>';
+                $p22d1 = $row->p_22d1 ?? $row['p_22d1'] ?? null;
+                if (!empty($p22d1)) {
+                    $xml[] = '          <P_22D1>' . $this->esc((string)$p22d1) . '</P_22D1>';
                 }
 
                 $xml[] = '        </NowySrodekTransportu>';
@@ -5620,6 +5707,11 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <KwotaAkcyzy>' . $this->fmtAmount((float)$it->excise_amount) . '</KwotaAkcyzy>';
     }
 
+    // KursWaluty — kurs waluty per-wiersz (dział VI ustawy, FA(3))
+    if (!empty($it->kurs_waluty)) {
+        $xml[] = '      <KursWaluty>' . $this->fmtAmount((float)$it->kurs_waluty, 6) . '</KursWaluty>';
+    }
+
     if ($isBeforeCorrection) {
         $xml[] = '      <StanPrzed>1</StanPrzed>';
     }
@@ -5705,6 +5797,44 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
             $xml[] = '      </RachunekBankowy>';
         }
 
+        // RachunekBankowyFaktora — rachunek bankowy faktora (max 20, opcjonalny)
+        $factorBanks = (array)($inv->invoice_factor_banks ?? []);
+        foreach ($factorBanks as $fb) {
+            $fbNr = trim((string)($fb->nr_rb ?? $fb['nr_rb'] ?? ''));
+            if ($fbNr === '') {
+                continue;
+            }
+            $xml[] = '      <RachunekBankowyFaktora>';
+            $xml[] = '        <NrRB>' . $this->esc($fbNr) . '</NrRB>';
+            $fbSwift = trim((string)($fb->swift ?? $fb['swift'] ?? ''));
+            if ($fbSwift !== '') {
+                $xml[] = '        <SWIFT>' . $this->esc($fbSwift) . '</SWIFT>';
+            }
+            $fbOwn = trim((string)($fb->rachunek_wlasny_banku ?? $fb['rachunek_wlasny_banku'] ?? ''));
+            if ($fbOwn !== '') {
+                $xml[] = '        <RachunekWlasnyBanku>' . $this->esc($fbOwn) . '</RachunekWlasnyBanku>';
+            }
+            $fbBankName = trim((string)($fb->nazwa_banku ?? $fb['nazwa_banku'] ?? ''));
+            if ($fbBankName !== '') {
+                $xml[] = '        <NazwaBanku>' . $this->esc($fbBankName) . '</NazwaBanku>';
+            }
+            $fbDesc = trim((string)($fb->opis_rachunku ?? $fb['opis_rachunku'] ?? ''));
+            if ($fbDesc !== '') {
+                $xml[] = '        <OpisRachunku>' . $this->esc($fbDesc) . '</OpisRachunku>';
+            }
+            $xml[] = '      </RachunekBankowyFaktora>';
+        }
+
+        // Skonto — warunki + wysokość (opcjonalny)
+        $skontoW = trim((string)($inv->skonto_conditions ?? ''));
+        $skontoH = trim((string)($inv->skonto_amount ?? ''));
+        if ($skontoW !== '' && $skontoH !== '') {
+            $xml[] = '      <Skonto>';
+            $xml[] = '        <WarunkiSkonta>' . $this->esc($skontoW) . '</WarunkiSkonta>';
+            $xml[] = '        <WysokoscSkonta>' . $this->esc($skontoH) . '</WysokoscSkonta>';
+            $xml[] = '      </Skonto>';
+        }
+
         // LinkDoPlatnosci — FA(3) opcjonalny link do płatności online
         $payLink = trim((string)($inv->payment_link ?? ''));
         if ($payLink !== '') {
@@ -5732,6 +5862,333 @@ private function mapPaymentMethod(?string $method): string
         default     => '8', // fallback
     };
 }
+
+    // ======================== ROZLICZENIE (Obciążenia/Odliczenia) ========================
+
+    private function buildRozliczenieXml(Invoice $inv): array
+    {
+        $charges = (array)($inv->invoice_charges ?? []);
+        if (empty($charges)) {
+            return [];
+        }
+
+        $xml = [];
+        $xml[] = '    <Rozliczenie>';
+
+        // Obciążenia
+        $obciazenia = array_filter($charges, fn($c) => ($c->type ?? $c['type'] ?? '') === 'obciazenie');
+        $sumaObciazen = 0.0;
+        foreach ($obciazenia as $o) {
+            $kwota = (float)($o->kwota ?? $o['kwota'] ?? 0);
+            $powod = (string)($o->powod ?? $o['powod'] ?? '');
+            $sumaObciazen += $kwota;
+            $xml[] = '      <Obciazenia>';
+            $xml[] = '        <Kwota>' . $this->fmtAmount($kwota) . '</Kwota>';
+            $xml[] = '        <Powod>' . $this->esc($powod) . '</Powod>';
+            $xml[] = '      </Obciazenia>';
+        }
+        if ($sumaObciazen > 0) {
+            $xml[] = '      <SumaObciazen>' . $this->fmtAmount($sumaObciazen) . '</SumaObciazen>';
+        }
+
+        // Odliczenia
+        $odliczenia = array_filter($charges, fn($c) => ($c->type ?? $c['type'] ?? '') === 'odliczenie');
+        $sumaOdliczen = 0.0;
+        foreach ($odliczenia as $o) {
+            $kwota = (float)($o->kwota ?? $o['kwota'] ?? 0);
+            $powod = (string)($o->powod ?? $o['powod'] ?? '');
+            $sumaOdliczen += $kwota;
+            $xml[] = '      <Odliczenia>';
+            $xml[] = '        <Kwota>' . $this->fmtAmount($kwota) . '</Kwota>';
+            $xml[] = '        <Powod>' . $this->esc($powod) . '</Powod>';
+            $xml[] = '      </Odliczenia>';
+        }
+        if ($sumaOdliczen > 0) {
+            $xml[] = '      <SumaOdliczen>' . $this->fmtAmount($sumaOdliczen) . '</SumaOdliczen>';
+        }
+
+        // DoZaplaty lub DoRozliczenia — obliczamy na podstawie P_15 +/- obciążenia/odliczenia
+        $p15 = (float)($inv->total ?? 0);
+        $doZaplaty = $p15 + $sumaObciazen - $sumaOdliczen;
+        if ($doZaplaty >= 0) {
+            $xml[] = '      <DoZaplaty>' . $this->fmtAmount($doZaplaty) . '</DoZaplaty>';
+        } else {
+            $xml[] = '      <DoRozliczenia>' . $this->fmtAmount(abs($doZaplaty)) . '</DoRozliczenia>';
+        }
+
+        $xml[] = '    </Rozliczenie>';
+
+        return $xml;
+    }
+
+    // ======================== WARUNKI TRANSAKCJI ========================
+
+    private function buildWarunkiTransakcjiXml(Invoice $inv): array
+    {
+        $json = $inv->transaction_conditions_json ?? null;
+        if (empty($json)) {
+            return [];
+        }
+
+        $data = is_string($json) ? json_decode($json, true) : (array)$json;
+        if (empty($data)) {
+            return [];
+        }
+
+        $xml = [];
+        $xml[] = '    <WarunkiTransakcji>';
+
+        // Umowy (max 100)
+        foreach (($data['umowy'] ?? []) as $u) {
+            $xml[] = '      <Umowy>';
+            if (!empty($u['data'])) {
+                $xml[] = '        <DataUmowy>' . $this->esc((string)$u['data']) . '</DataUmowy>';
+            }
+            if (!empty($u['nr'])) {
+                $xml[] = '        <NrUmowy>' . $this->esc((string)$u['nr']) . '</NrUmowy>';
+            }
+            $xml[] = '      </Umowy>';
+        }
+
+        // Zamowienia (max 100) — referencje zamówień, nie mylić z sekcją Zamówienie
+        foreach (($data['zamowienia'] ?? []) as $z) {
+            $xml[] = '      <Zamowienia>';
+            if (!empty($z['data'])) {
+                $xml[] = '        <DataZamowienia>' . $this->esc((string)$z['data']) . '</DataZamowienia>';
+            }
+            if (!empty($z['nr'])) {
+                $xml[] = '        <NrZamowienia>' . $this->esc((string)$z['nr']) . '</NrZamowienia>';
+            }
+            $xml[] = '      </Zamowienia>';
+        }
+
+        // NrPartiiTowaru (max 1000)
+        foreach (($data['nr_partii'] ?? []) as $nr) {
+            $xml[] = '      <NrPartiiTowaru>' . $this->esc((string)$nr) . '</NrPartiiTowaru>';
+        }
+
+        // WarunkiDostawy (Incoterms)
+        if (!empty($data['warunki_dostawy'])) {
+            $xml[] = '      <WarunkiDostawy>' . $this->esc((string)$data['warunki_dostawy']) . '</WarunkiDostawy>';
+        }
+
+        // KursUmowny + WalutaUmowna
+        if (!empty($data['kurs_umowny'])) {
+            $xml[] = '      <KursUmowny>' . $this->fmtAmount((float)$data['kurs_umowny'], 6) . '</KursUmowny>';
+        }
+        if (!empty($data['waluta_umowna'])) {
+            $xml[] = '      <WalutaUmowna>' . $this->esc((string)$data['waluta_umowna']) . '</WalutaUmowna>';
+        }
+
+        // Transport (max 20)
+        foreach (($data['transport'] ?? []) as $t) {
+            $xml[] = '      <Transport>';
+            if (!empty($t['rodzaj_transportu'])) {
+                $xml[] = '        <RodzajTransportu>' . (int)$t['rodzaj_transportu'] . '</RodzajTransportu>';
+            } elseif (!empty($t['transport_inny'])) {
+                $xml[] = '        <TransportInny>1</TransportInny>';
+                $xml[] = '        <OpisInnegoTransportu>' . $this->esc((string)$t['opis_innego_transportu']) . '</OpisInnegoTransportu>';
+            }
+            if (!empty($t['nr_zlecenia'])) {
+                $xml[] = '        <NrZleceniaTransportu>' . $this->esc((string)$t['nr_zlecenia']) . '</NrZleceniaTransportu>';
+            }
+            $xml[] = '      </Transport>';
+        }
+
+        // PodmiotPosredniczacy
+        if (!empty($data['podmiot_posredniczacy'])) {
+            $xml[] = '      <PodmiotPosredniczacy>' . (int)$data['podmiot_posredniczacy'] . '</PodmiotPosredniczacy>';
+        }
+
+        $xml[] = '    </WarunkiTransakcji>';
+
+        return $xml;
+    }
+
+    // ======================== ZAMÓWIENIE (ZAL) ========================
+
+    private function buildZamowienieXml(Invoice $inv): array
+    {
+        $orderLines = (array)($inv->invoice_order_lines ?? []);
+        if (empty($orderLines) && empty($inv->order_total_gross)) {
+            return [];
+        }
+
+        $xml = [];
+        $xml[] = '    <Zamowienie>';
+
+        // WartoscZamowienia — łączna wartość zamówienia brutto
+        if (!empty($inv->order_total_gross)) {
+            $xml[] = '      <WartoscZamowienia>' . $this->fmtAmount((float)$inv->order_total_gross) . '</WartoscZamowienia>';
+        }
+
+        foreach ($orderLines as $line) {
+            $xml[] = '      <ZamowienieWiersz>';
+            $xml[] = '        <NrWierszaZam>' . (int)($line->nr_wiersza ?? $line['nr_wiersza'] ?? 0) . '</NrWierszaZam>';
+
+            $fields = [
+                'uu_id' => 'UU_IDZ',
+                'name' => 'P_7Z',
+                'indeks' => 'IndeksZ',
+                'gtin' => 'GTINZ',
+                'pkwiu' => 'PKWiUZ',
+                'cn_code' => 'CNZ',
+                'pkob' => 'PKOBZ',
+                'unit' => 'P_8AZ',
+            ];
+            foreach ($fields as $dbCol => $tag) {
+                $val = $line->{$dbCol} ?? $line[$dbCol] ?? null;
+                if (!empty($val)) {
+                    $xml[] = '        <' . $tag . '>' . $this->esc((string)$val) . '</' . $tag . '>';
+                }
+            }
+
+            // Pola numeryczne
+            $numFields = [
+                'quantity' => 'P_8BZ',
+                'price' => 'P_9AZ',
+                'netto' => 'P_11NettoZ',
+                'vat_amount' => 'P_11VatZ',
+            ];
+            foreach ($numFields as $dbCol => $tag) {
+                $val = $line->{$dbCol} ?? $line[$dbCol] ?? null;
+                if ($val !== null && $val !== '') {
+                    $xml[] = '        <' . $tag . '>' . $this->fmtAmount((float)$val) . '</' . $tag . '>';
+                }
+            }
+
+            // P_12Z stawka
+            $vatRate = $line->vat_rate ?? $line['vat_rate'] ?? null;
+            if (!empty($vatRate)) {
+                $xml[] = '        <P_12Z>' . $this->esc((string)$vatRate) . '</P_12Z>';
+            }
+
+            // GTU
+            $gtu = $line->gtu_code ?? $line['gtu_code'] ?? null;
+            if (!empty($gtu)) {
+                $xml[] = '        <GTUZ>' . $this->esc((string)$gtu) . '</GTUZ>';
+            }
+
+            // Procedura
+            $proc = $line->procedure_marking ?? $line['procedure_marking'] ?? null;
+            if (!empty($proc)) {
+                $xml[] = '        <ProceduraZ>' . $this->esc((string)$proc) . '</ProceduraZ>';
+            }
+
+            // KwotaAkcyzy
+            $excise = $line->excise_amount ?? $line['excise_amount'] ?? null;
+            if (!empty($excise)) {
+                $xml[] = '        <KwotaAkcyzyZ>' . $this->fmtAmount((float)$excise) . '</KwotaAkcyzyZ>';
+            }
+
+            // StanPrzed
+            $stanPrzed = $line->is_before_correction ?? $line['is_before_correction'] ?? false;
+            if ($stanPrzed) {
+                $xml[] = '        <StanPrzedZ>1</StanPrzedZ>';
+            }
+
+            $xml[] = '      </ZamowienieWiersz>';
+        }
+
+        $xml[] = '    </Zamowienie>';
+
+        return $xml;
+    }
+
+    // ======================== PODMIOT UPOWAŻNIONY ========================
+
+    private function buildPodmiotUpowaznionyXml(Invoice $inv): array
+    {
+        $entities = (array)($inv->invoice_authorized_entities ?? []);
+        if (empty($entities)) {
+            return [];
+        }
+
+        $xml = [];
+        foreach ($entities as $pu) {
+            $xml[] = '  <PodmiotUpowazniony>';
+
+            // NrEORI — opcjonalny
+            $eori = trim((string)($pu->nr_eori ?? $pu['nr_eori'] ?? ''));
+            if ($eori !== '') {
+                $xml[] = '    <NrEORI>' . $this->esc($eori) . '</NrEORI>';
+            }
+
+            // DaneIdentyfikacyjne
+            $nip  = trim((string)($pu->nip ?? $pu['nip'] ?? ''));
+            $name = trim((string)($pu->name ?? $pu['name'] ?? ''));
+            if ($nip !== '' || $name !== '') {
+                $xml[] = '    <DaneIdentyfikacyjne>';
+                if ($nip !== '') {
+                    $xml[] = '      <NIP>' . $this->esc($nip) . '</NIP>';
+                }
+                if ($name !== '') {
+                    $xml[] = '      <Nazwa>' . $this->esc($name) . '</Nazwa>';
+                }
+                $xml[] = '    </DaneIdentyfikacyjne>';
+            }
+
+            // Adres
+            $addrL1 = trim((string)($pu->address_l1 ?? $pu['address_l1'] ?? ''));
+            $addrL2 = trim((string)($pu->address_l2 ?? $pu['address_l2'] ?? ''));
+            $cc     = strtoupper(trim((string)($pu->country_code ?? $pu['country_code'] ?? 'PL')));
+            if ($addrL1 !== '' || $addrL2 !== '') {
+                $xml[] = '    <Adres>';
+                $xml[] = '      <KodKraju>' . $this->esc($cc) . '</KodKraju>';
+                if ($addrL1 !== '') {
+                    $xml[] = '      <AdresL1>' . $this->esc($addrL1) . '</AdresL1>';
+                }
+                if ($addrL2 !== '') {
+                    $xml[] = '      <AdresL2>' . $this->esc($addrL2) . '</AdresL2>';
+                }
+                $gln = trim((string)($pu->gln ?? $pu['gln'] ?? ''));
+                if ($gln !== '') {
+                    $xml[] = '      <GLN>' . $this->esc($gln) . '</GLN>';
+                }
+                $xml[] = '    </Adres>';
+            }
+
+            // AdresKoresp
+            $kL1 = trim((string)($pu->koresp_address_l1 ?? $pu['koresp_address_l1'] ?? ''));
+            $kL2 = trim((string)($pu->koresp_address_l2 ?? $pu['koresp_address_l2'] ?? ''));
+            if ($kL1 !== '' || $kL2 !== '') {
+                $kCC = strtoupper(trim((string)($pu->koresp_country_code ?? $pu['koresp_country_code'] ?? 'PL')));
+                $xml[] = '    <AdresKoresp>';
+                $xml[] = '      <KodKraju>' . $this->esc($kCC) . '</KodKraju>';
+                if ($kL1 !== '') {
+                    $xml[] = '      <AdresL1>' . $this->esc($kL1) . '</AdresL1>';
+                }
+                if ($kL2 !== '') {
+                    $xml[] = '      <AdresL2>' . $this->esc($kL2) . '</AdresL2>';
+                }
+                $xml[] = '    </AdresKoresp>';
+            }
+
+            // DaneKontaktowe
+            $email = trim((string)($pu->email ?? $pu['email'] ?? ''));
+            $phone = trim((string)($pu->phone ?? $pu['phone'] ?? ''));
+            if ($email !== '' || $phone !== '') {
+                $xml[] = '    <DaneKontaktowe>';
+                if ($email !== '') {
+                    $xml[] = '      <EmailPU>' . $this->esc($email) . '</EmailPU>';
+                }
+                if ($phone !== '') {
+                    $xml[] = '      <TelefonPU>' . $this->esc($phone) . '</TelefonPU>';
+                }
+                $xml[] = '    </DaneKontaktowe>';
+            }
+
+            // RolaPU
+            $rola = (int)($pu->rola ?? $pu['rola'] ?? 0);
+            if ($rola > 0) {
+                $xml[] = '    <RolaPU>' . $rola . '</RolaPU>';
+            }
+
+            $xml[] = '  </PodmiotUpowazniony>';
+        }
+
+        return $xml;
+    }
 
 
     // ======================== STOPKA (Footer) ========================

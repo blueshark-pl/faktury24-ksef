@@ -182,5 +182,17 @@ class Invoice extends Entity
         'invoice_vat_contents' => true,
         'child_invoices' => true,
         'invoice_payments' => true,
+        'is_new_transport_wdt' => true,
+        'p_42_5' => true,
+        'skonto_conditions' => true,
+        'skonto_amount' => true,
+        'status_info_podatnika' => true,
+        'transaction_conditions_json' => true,
+        'order_total_gross' => true,
+        'invoice_new_transports' => true,
+        'invoice_order_lines' => true,
+        'invoice_charges' => true,
+        'invoice_factor_banks' => true,
+        'invoice_authorized_entities' => true,
     ];
 }

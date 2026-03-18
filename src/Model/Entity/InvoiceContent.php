@@ -74,6 +74,7 @@ class InvoiceContent extends Entity
         'line_date' => true,
         'pkwiu' => true,
         'gross_unit_price' => true,
+        'kurs_waluty' => true,
         'created' => true,
         'modified' => true,
         'invoice' => true,

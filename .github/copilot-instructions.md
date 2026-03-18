@@ -105,14 +105,14 @@ Legenda: 🔴 wysoki / 🟡 średni / 🟢 niski priorytet.
 
 ### 🟢 NISKI PRIORYTET
 
-- [ ] **NoweSrodkiTransportu** — pola pojazdów/łodzi/samolotów. Builder ma pełną obsługę, ale dane czyta z dynamicznych właściwości (brak DB).
-- [ ] **WarunkiTransakcji** — Incoterms, umowy, transport. Opcjonalne w FA(3).
-- [ ] **Zamówienie** — linie zamówienia do faktur zaliczkowych (ZAL).
-- [ ] **Rozliczenie obciążeń/odliczeń** — `<Obciazenia>` / `<Odliczenia>`.
-- [ ] **Skonto** — warunki skonta do płatności.
-- [ ] **Kurs waluty per-wiersz** — `<KursWaluty>` w FaWiersz.
-- [ ] **RachunekBankowyFaktora** — rachunek bankowy faktora.
-- [ ] **Adres korespondencyjny** — sprzedawca/nabywca.
-- [ ] **StatusInfoPodatnika** — status informacyjny podatnika.
-- [ ] **Podmiot Upoważniony** — pełna sekcja `<PodmiotUpowazniony>`.
+- [x] **NoweSrodkiTransportu** — tabela `invoice_new_transports` + refactor buildera z dynamicznych właściwości na DB. Commit: 1.2.23 (9).
+- [x] **WarunkiTransakcji** — kolumna JSON `transaction_conditions_json` na `invoices` + builder `buildWarunkiTransakcjiXml`. Commit: 1.2.23 (9).
+- [x] **Zamówienie** — tabela `invoice_order_lines` + builder `buildZamowienieXml` (ZAL). Commit: 1.2.23 (9).
+- [x] **Rozliczenie obciążeń/odliczeń** — tabela `invoice_charges` + builder `buildRozliczenieXml`. Commit: 1.2.23 (9).
+- [x] **Skonto** — kolumny `skonto_conditions`, `skonto_amount` na `invoices` + emisja `<Skonto>` w `buildPaymentXml`. Commit: 1.2.23 (9).
+- [x] **Kurs waluty per-wiersz** — kolumna `kurs_waluty` na `invoice_contents` + emisja `<KursWaluty>` w `buildSingleLineXml`. Commit: 1.2.23 (9).
+- [x] **RachunekBankowyFaktora** — tabela `invoice_factor_banks` + emisja w `buildPaymentXml`. Commit: 1.2.23 (9).
+- [x] **Adres korespondencyjny** — kolumny `koresp_*` na `invoice_company_details` + `invoice_contractors` + emisja `<AdresKoresp>`. Commit: 1.2.23 (9).
+- [x] **StatusInfoPodatnika** — kolumna `status_info_podatnika` na `invoices` + emisja w `buildSellerXml`. Commit: 1.2.23 (9).
+- [x] **Podmiot Upoważniony** — tabela `invoice_authorized_entities` + builder `buildPodmiotUpowaznionyXml`. Commit: 1.2.23 (9).
 
