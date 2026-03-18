@@ -1508,7 +1508,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $this->Flash->error('Dodaj co najmniej jedną pozycję.');
             $this->set(compact('invoice','vats','vatRatesMap','kind'));
             // różne templaty per-typ:
-            $this->render($kind === 'novat' ? 'add_no_vat' : 'add');
+            $templateMap = [
+                'novat' => 'add_no_vat',
+                'advance' => 'add_advance',
+                'final' => 'add_advance',
+                'proforma' => 'add_proforma',
+                'margin' => 'add_margin',
+                'currency' => 'add_currency',
+                'correction' => 'add_correction',
+            ];
+            $this->render($templateMap[$kind] ?? 'add');
             return null;
         }
 
@@ -5164,7 +5173,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
                 'Invoices.id !=' => $inv->id,
                 'Invoices.type IN' => ['advance', 'ZAL'],
             ])
-            ->orderAsc('Invoices.issuedate')
+            ->orderAsc('Invoices.date')
             ->all()
             ->toArray();
 
@@ -5179,7 +5188,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
                 $xml[] = '    </FakturaZaliczkowa>';
             } else {
                 // Faktura zaliczkowa wystawiona poza KSeF
-                $advNumber = trim((string)($adv->number ?? ''));
+                $advNumber = trim((string)($adv->fullnumber ?? ''));
                 if ($advNumber === '') {
                     continue;
                 }

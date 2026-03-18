@@ -122,38 +122,15 @@ Wynik audytu: które pola FA(3) mają formularze w templatech, czy są zapisywan
 
 ### 🔴 KRYTYCZNY BUG: Annotations JSON → XML
 
-- [ ] **`buildAnnotationsXml()` czyta `$inv->p_16`, `$inv->p_17`, `$inv->p_18`, `$inv->p_18a`, `$inv->p_23` — kolumny, które NIE ISTNIEJĄ w DB.**
-  - Zawsze domyślnie `?? 2` → XML zawsze zawiera `<P_16>2</P_16>` (NIE) niezależnie od checkboxów.
-  - Formularz wysyła `annotations[cash_method]`, `annotations[reverse_charge]`, `annotations[triangular]`, `annotations[oss]`, `annotations[tp]`, `annotations[excise_return]` → zapis jako JSON w kolumnie `annotations`.
-  - **Naprawić**: `buildAnnotationsXml()` musi dekodować JSON `$inv->annotations` i mapować:
-    - `cash_method` → `P_16` (1=TAK, 2=NIE)
-    - (brak w formularzu, domyślnie NIE) → `P_17` samofakturowanie
-    - `reverse_charge` → `P_18`
-    - `is_split_payment` (osobna kolumna bool) → `P_18A`
-    - `triangular` → `P_23`
-  - Podobnie `has_exempt_sales` / `annotations[supply_goods]` → sekcja `Zwolnienie` (P_19/P_19A/B/C)
+- [x] **`buildAnnotationsXml()` — NAPRAWIONE** (commit cd61c8c). Dekoduje JSON `$inv->annotations` i mapuje cash_method→P_16, reverse_charge→P_18, is_split_payment→P_18A, triangular→P_23. Także `buildZwolnienieXml()` poprawione.
 
 ### 🔴 WYSOKI: Brakujące taby w formularzach
 
-Tylko `add.php` ma taby **Adnotacje** i **Identyfikatory międzynarodowe**. Pozostałe 9 formularzy ich nie mają:
-
-- [ ] **add_currency.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_margin.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_no_vat.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_advance.php** — brak tab Adnotacje, brak tab Identyfikatory (+ brak tabów w ogóle, osobny layout)
-- [ ] **add_proforma.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_correct.php** — brak tab Adnotacje (ma partial: supply_goods + tax_free + MPP w tab Księgowe), brak tab Identyfikatory
-- [ ] **add_correct_currency.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_correct_margin.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **add_correct_no_vat.php** — brak tab Adnotacje, brak tab Identyfikatory
-- [ ] **edit.php** — brak tab Adnotacje, brak tab Identyfikatory (ma tylko tab Zaawansowane)
+- [x] **NAPRAWIONE** (commit cd61c8c). Wyodrębniono wspólne elementy `tab_annotations.php` i `tab_identifiers.php` i dodano do wszystkich 11 szablonów (10× add_*.php + edit.php). `add_advance.php` przerobiony na strukturę tabów.
 
 ### 🔴 WYSOKI: `view()` nie ładuje relacji FA(3)
 
-- [ ] **`view()` action (linia 839)** — `contain` ładuje tylko:
-  `Companies, ParentInvoices, InvoiceCompanyDetails, InvoiceContractors, InvoiceContents→Vats, InvoiceVatContents, ChildInvoices`
-  - **Brakuje**: `InvoicePayments`, `InvoiceAdditionalDescriptions`, `InvoiceRecipients`, `InvoiceNewTransports`, `InvoiceCharges`, `InvoiceFactorBanks`, `InvoiceAuthorizedEntities`, `InvoiceOrderLines`
-  - Relacje są lazy-loadowane w `buildFa3XmlBase()`, więc XML generowany z downloadFa3Xml/sendToKsef działa, ale widok view.php nie wyświetla tych danych.
+- [x] **NAPRAWIONE** (commit cd61c8c). `view()` i `edit()` teraz ładują: `InvoicePayments`, `InvoiceAdditionalDescriptions`, `InvoiceRecipients`, `InvoiceNewTransports`, `InvoiceCharges`, `InvoiceFactorBanks`, `InvoiceAuthorizedEntities`, `InvoiceOrderLines`.
 
 ### 🟡 ŚREDNI: Nowe pola FA(3) LOW bez form fields
 
@@ -184,4 +161,26 @@ Te pola mają inputy w `add.php`, ale brakuje ich w innych formularzach. Mogą b
 - `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — tylko `add.php`
 - `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — tylko `add.php`
 - `buyer_tax_id_other`, `buyer_tax_id_other_country` — tylko `add.php`
+
+## TODO — Analiza przepływu faktur proforma → zaliczkowa → końcowa (2026-03)
+
+### 🔴 KRYTYCZNE BUGI (naprawione)
+
+- [x] **`buildFakturaZaliczkowaXml()` linia ~5168 — `issuedate` → `date`** — kolumna `issuedate` nie istnieje w tabeli `invoices`; poprawny sort to `Invoices.date`. Powodowało SQL error przy generowaniu XML faktury końcowej (ROZ).
+- [x] **`buildFakturaZaliczkowaXml()` linia ~5185 — `$adv->number` → `$adv->fullnumber`** — pole `number` to sekwencyjny int (1, 2, 3), a `<NrFaZaliczkowej>` wymaga pełnego numeru faktury (np. `FZ/1/2026`). Generowało nieprawidłowy XML.
+- [x] **Routing templatek przy pustym `$contents`** — `handleAdd()` renderował `'add'` dla wszystkich typów poza `novat`. Teraz routuje poprawnie: advance/final → `add_advance`, proforma → `add_proforma`, margin → `add_margin`, currency → `add_currency`, correction → `add_correction`.
+
+### 🟡 DESIGN ISSUES (do decyzji / przyszłe)
+
+- [ ] **Auto-klasyfikacja jako końcowa** — gdy kwota zaliczki ≈ pozostała kwota proformy (±0.01), faktura jest automatycznie oznaczana jako `final`. Użytkownik może tego nie zauważyć. Rozważyć: wyraźniejsze powiadomienie lub potwierdzenie.
+- [ ] **Snapshot kontrahenta z proformy** — dane kontrahenta kopiowane z proformy mogą być nieaktualne, jeśli kontrahent zmienił dane po wystawieniu proformy. Rozważyć: porównanie z aktualnym kontrahentem i ostrzeżenie.
+- [ ] **Opis duplikowany przy re-submit** — opis „Rozlicza zaliczki: ..." jest dopisywany do `description` przy każdym POST bez sprawdzenia, czy już istnieje. Wielokrotne odrzucenie + ponowne wysłanie formularza skutkuje zduplikowanymi fragmentami opisu.
+
+### ✅ Pozytywna weryfikacja (działa poprawnie)
+
+- `handleAdd()` — branch advance (linie ~1261-1409): prawidłowo waliduje proformę, oblicza remaining, waliduje kwotę ≤ remaining, tworzy pojedynczą pozycję, mapuje parent_id.
+- `edit()` — branch advance/final: prawidłowo wyklucza bieżącą fakturę z sumy zaliczek, preselektuje proformę, ustawia `is_final`.
+- `proformaSearch()` i `proformaDetails()` — AJAX endpointy działają poprawnie, zwracają historię zaliczek i remaining.
+- `resolveRodzajFaktury()` — mapowanie: advance→ZAL, final→ROZ, correction→KOR, reszta→VAT. Proforma słusznie nie mapowana (nie jest wysyłana do KSeF).
+- `add_advance.php` template — Select2 dla proformy, recompute netto/VAT, walidacja overpayment, auto-przełączanie serii zaliczkowa↔końcowa, finalize button z blokowaniem gdy końcowa istnieje.
 
