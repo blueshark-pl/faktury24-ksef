@@ -180,10 +180,20 @@ custom styles.
 - Czas: 0.5h
 - Do sprawdzenia manualnie: otworzyć formularz add.php i add_correct.php — brak sekcji „Status nabywcy" (checkbox JST i grupa VAT). Te pola są teraz w zakładce „KSeF FA(3)". Brak Warning w logach.
 
-## TODO (Invoices)
+- Audyt XML FA(3): dodano brakującą metodę `buildFa3XmlMargin()` (fatal error przy generowaniu PDF/KSeF dla faktur marżowych), poprawiono kolejność elementów w `<FaWiersz>` wg XSD (UU_ID, P_6A, GTIN, PKWiU, CN przed P_8A), naprawiono `<P_6>`/`<OkresFa>` jako XSD choice (nie mogą występować jednocześnie), naprawiono użycie `$dateStr` zamiast `$origDate->format()` w `buildCorrectionHeaderXml`, poprawiono kolejność NrKlienta/JST/GV w Podmiot2. Wersja: 1.2.23 (14).
+- Commit: c025004
+- Czas: 1–2h
+- Do sprawdzenia manualnie: wygenerować PDF/XML dla każdego typu faktury (zwykła, walutowa, zaliczkowa, końcowa, marżowa, korekta, novat). Zwalidować XML za pomocą XSD (`src/faktura.xsd`). Sprawdzić czy faktura marżowa nie powoduje fatal error.
 
-- Uporządkować duplikat kontrolera: w repo są dwie klasy `InvoicesController` ([src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) oraz [src/InvoicesController.php](src/InvoicesController.php)). Zostawić jedno źródło prawdy i usunąć/oznaczyć plik legacy.
-- Rozdzielić bardzo duże metody `handleAdd()` i `edit()` w [src/Controller/InvoicesController.php](src/Controller/InvoicesController.php) na serwisy domenowe (numeracja, walidacja pozycji, snapshot nabywcy, wysyłka KSeF), żeby ograniczyć regresje.
-- Ujednolicić model pola serii (nazwa vs UUID) między frontendem i backendem: dziś `series` bywa nazwą, a mapowanie kończy na `invoice_series_id`; warto przejść na stabilny identyfikator + jawny DTO mapowania.
-- Dodać testy integracyjne dla scenariuszy roboczych i KSeF: zapis draftu, zmiana serii przy edycji, wysyłka draftu z datą inną niż dziś, renumeracja po zmianie daty.
-- Naprawić migrację testową `20251002120002_AddUniqueNipToCompanies` pod SQLite (błąd `MODIFY`), bo obecnie blokuje `composer test` i utrudnia pełną weryfikację modułu.
+- Fix: propagacja pól JPK/FA (pkwiu, gtin, cn_code, excise_amount, procedure_marking) do invoice_contents we wszystkich szablonach faktur. Dodano brakujące hidden inputy, mapowania w callbackach Select2, modal tworzenia produktu, funkcje addRow/prefillRow/fillRow/duplikacji — łącznie 10 templatek (add, add_currency, add_margin, add_proforma, add_no_vat, add_correct, add_correct_currency, add_correct_margin, add_correct_no_vat, edit). Naprawiono też hydrateInvoiceDraftFromData() i handleAdd() w trybie marżowym w kontrolerze. Wersja: 1.2.23 (15).
+- Commit: 8332d43
+- Czas: 1–2h
+- Do sprawdzenia manualnie: wystawić fakturę (każdy typ) z produktem posiadającym pola PKWiU/GTIN/CN/akcyza/procedura i sprawdzić, czy te wartości zapisują się w invoice_contents i pojawiają się w XML KSeF.
+
+## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
+
+- [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
+- [x] Serwisy domenowe wyekstrahowane: `InvoiceNumberingService` (numeracja), `InvoiceDefaultSeriesResolver` (wybór serii). Prywatne metody w kontrolerze delegują do serwisów.
+- [x] Model serii ujednolicony: `InvoiceSeriesController::search()` zwraca UUID jako `id`; `handleAdd()` i `edit()` preferują `invoice_series_id` (UUID) z fallbackiem na nazwę; formularz `add.php` ma hidden `invoice_series_id`.
+- [x] Testy: `InvoiceNumberingServiceTest`, `InvoiceDefaultSeriesResolverTest` (unit), `InvoicesControllerTest` (scenariusze z `markTestIncomplete` dla testów wymagających KSeF + test `testSeriesSearchReturnsUuidAsId`).
+- [x] Migracja `20251002120002_AddUniqueNipToCompanies`: zastąpiono `ALTER TABLE MODIFY` (SQLite-incompatible) wywołaniem `changeColumn()` z Phinx API.
