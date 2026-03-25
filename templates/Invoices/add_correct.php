@@ -6,8 +6,50 @@
  * @var array $vatRatesMap id => rate
  * @var array|null $recentContractors [['id'=>..,'label'=>..,'name'=>..,'nip'=>..,'street'=>..,'zip'=>..,'city'=>..,'country'=>..,'email'=>..,'phone'=>..], ...]
  */
-$this->assign('title', 'Wystaw fakturę');
+$__isEdit = isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false;
+$this->assign('title', $__isEdit ? 'Edytuj korektę' : 'Wystaw fakturę');
 $__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
+
+// Prefill danych w trybie edycji — z zapisanej korekty
+$__prefillContractor = null;
+$__prefillItems = [];
+if ($__isEdit) {
+  try {
+    $__c = $invoice->invoice_contractor ?? null;
+    if (!empty($__c)) {
+      $__prefillContractor = [
+        'id'      => $invoice->contractor_id ?? null,
+        'name'    => (string)($__c->name ?? ''),
+        'label'   => (string)($__c->name ?? ''),
+        'nip'     => (string)($__c->nip ?? ''),
+        'street'  => (string)($__c->street ?? ''),
+        'zip'     => (string)($__c->zip ?? ''),
+        'city'    => (string)($__c->city ?? ''),
+        'country' => (string)($__c->country ?? ''),
+        'email'   => (string)($__c->email ?? ''),
+        'phone'   => (string)($__c->phone ?? ''),
+      ];
+    }
+  } catch (\Throwable) { $__prefillContractor = null; }
+
+  try {
+    if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
+      foreach ($invoice->invoice_contents as $__it) {
+        $__prefillItems[] = [
+          'name'             => (string)($__it->name ?? ''),
+          'quantity'         => $__it->quantity ?? 1,
+          'price'            => $__it->price ?? 0,
+          'price_mode'       => (string)($__it->price_mode ?? 'net'),
+          'vat_code_id'      => (string)($__it->vat_code_id ?? ''),
+          'discount_percent' => $__it->discount_percent ?? 0,
+          'gtu_code'         => (string)($__it->gtu_code ?? ''),
+          'netto'            => $__it->netto ?? 0,
+          'brutto'           => $__it->brutto ?? 0,
+        ];
+      }
+    }
+  } catch (\Throwable) { $__prefillItems = []; }
+}
 
 // pre-render VAT select do klonowania w wierszach
 $vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
@@ -160,6 +202,12 @@ $gtuSelectHtml .= '</select>';
             if (item.vat_code_id) { $tr.find('.item-vatcode').val(String(item.vat_code_id)); }
             $tr.find('[name$="[discount_percent]"]').val(item.discount_percent ?? 0);
             if (item.gtu_code !== undefined) { $tr.find('.gtu-cell select').val(item.gtu_code || ''); }
+            // JPK/FA fields
+            $tr.find('.item-pkwiu').val(item.pkwiu || '');
+            $tr.find('.item-gtin').val(item.gtin || '');
+            $tr.find('.item-cn_code').val(item.cn_code || '');
+            $tr.find('.item-excise').val(item.excise_amount || '');
+            $tr.find('.item-procedure').val(item.procedure_marking || '');
             // Ensure product select shows the name
             var $psel = $tr.find('.item-product-select');
             if ($psel.length) {
@@ -186,18 +234,68 @@ $gtuSelectHtml .= '</select>';
 </script>
 <?php endif; ?>
 
+<?php if ($__isEdit && !empty($__prefillContractor)): ?>
+<script>
+  $(function(){
+    var c = <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    if (!c || !c.name) return;
+    // Ustaw Select2 kontrahenta
+    var $sel = $('#contractor-select');
+    if ($sel.length && $.fn.select2) {
+      var label = c.label || c.name || 'Kontrahent';
+      var value = c.id || ('LS:' + (c.nip || (c.name||'').slice(0,30)));
+      $sel.find('option[value="'+value+'"]').remove();
+      var opt = new Option(label, value, true, true);
+      $sel.append(opt).trigger('change');
+      $('#contractor-id-input').val(c.id || '');
+    }
+  });
+</script>
+<?php endif; ?>
+
 <div class="row">
   <div class="col-xxl-12">
     <div class="card custom-card">
-      <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
+      <div class="card-header d-flex align-items-center justify-content-between pe-2">
+        <ul class="nav nav-tabs card-header-tabs flex-grow-1" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
         </ul>
+        <?php if ($this->Identity->hasRole('admin')): ?>
+        <div class="dropdown ms-2 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
+            <i class="ri-settings-3-line"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="inv-extra-tabs-btn">
+            <li><span class="dropdown-header text-muted small px-3 py-1">Dodatkowe zakładki</span></li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-annotations">
+                <i class="ri-file-text-line"></i> Adnotacje
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-fa3ext">
+                <i class="ri-government-line"></i> KSeF FA(3)
+              </button>
+            </li>
+          </ul>
+        </div>
+        <?php endif; ?>
+        <script>
+        $(function(){
+          var $gearBtn = $("#inv-extra-tabs-btn");
+          $(document).on("click", "[data-extra-tab]", function(){
+            var paneId = $(this).data("extra-tab");
+            $("#invTabs .nav-link").removeClass("active").attr("aria-selected", "false");
+            $("#invTabs .nav-link").each(function(){ $(this).attr("tabindex", "-1"); });
+            $(".tab-content > .tab-pane").removeClass("show active");
+            $("#" + paneId).addClass("show active");
+            $gearBtn.removeClass("btn-outline-secondary").addClass("btn-secondary");
+          });
+        });
+        </script>
       </div>
 
       <div class="card-body tab-content">
@@ -240,6 +338,7 @@ $gtuSelectHtml .= '</select>';
             // opcjonalnie: ustaw bieżącą wartość jeśli istnieje
             'value' => $invoice->series ?? null,
             ]) ?>
+            <?= $this->Form->hidden('invoice_series_id', ['id' => 'invoice-series-id-hidden', 'value' => $invoice->invoice_series_id ?? null]) ?>
             </div>
 
             <div class="col-lg-2">
@@ -279,7 +378,7 @@ $gtuSelectHtml .= '</select>';
             
               <div class="col-lg-2">
                 <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => 0
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
                 ]) ?>
               </div>
               <div class="col-lg-2">
@@ -334,7 +433,7 @@ $gtuSelectHtml .= '</select>';
         <div class="tab-pane fade" id="pane-accounting" role="tabpanel" aria-labelledby="tab-accounting">
           <div class="vstack gap-3">
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="flag-fp" name="flags[fp]" value="1">
+              <input class="form-check-input" type="checkbox" id="flag-fp" name="flags[fp]" value="1"<?= !empty($invoice->is_receipt_invoice) ? ' checked' : '' ?>>
               <label class="form-check-label" for="flag-fp">Faktura do paragonu (FP)</label>
               <button type="button" class="btn btn-link p-0 align-baseline" id="fp-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                 title="Faktura do paragonu (FP)"
@@ -366,17 +465,18 @@ $gtuSelectHtml .= '</select>';
             <div id="tax-free-extra" class="row g-2 ms-1" style="display:none;">
               <div class="col-lg-6 col-12">
                 <label class="form-label" for="annotations-tax-free">Podstawa zwolnienia od podatku</label>
+                <?php $__atf = $invoice->annotations_tax_free ?? ''; ?>
                 <select class="form-select" id="annotations-tax-free" name="annotations_tax_free">
-                  <option value="" selected>-- Wybierz podstawę --</option>
-                  <option value="ustawa">Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
-                  <option value="dyrektywa">Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
+                  <option value=""<?= $__atf === '' ? ' selected' : '' ?>>-- Wybierz podstawę --</option>
+                  <option value="ustawa"<?= $__atf === 'ustawa' ? ' selected' : '' ?>>Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
+                  <option value="dyrektywa"<?= $__atf === 'dyrektywa' ? ' selected' : '' ?>>Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
                   <option value="inna">Inna podstawa prawna wskazującą na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
                 </select>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
               <div class="col-lg-6 col-12">
                 <label class="form-label" for="annotations-tax-free-field">Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</label>
-                <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"></textarea>
+                <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"><?= h($invoice->annotations_tax_free_field ?? '') ?></textarea>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
             </div>
@@ -384,7 +484,7 @@ $gtuSelectHtml .= '</select>';
             <!-- Mechanizm podzielonej płatności (MPP) -->
             <div class="d-flex align-items-center flex-wrap gap-2">
               <div class="form-check form-switch m-0">
-                <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1">
+                <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1"<?= !empty($invoice->is_split_payment) ? ' checked' : '' ?>>
                 <label class="form-check-label" for="is-split-payment">Mechanizm podzielonej płatności (MPP)</label>
               </div>
               <button type="button" class="btn btn-link p-0 align-baseline" id="mpp-help"
@@ -474,7 +574,7 @@ $gtuSelectHtml .= '</select>';
             ]) ?>
 
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1">
+              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
               <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
               <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                 title="Automatyczna wysyłka"
@@ -571,8 +671,8 @@ $gtuSelectHtml .= '</select>';
                 </div>
                 </div>
 
-              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START -->
-              <div id="contractor-snapshot" class="mt-2" style="display:none;">
+              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, rozwinięty w edit -->
+              <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
@@ -687,6 +787,58 @@ $gtuSelectHtml .= '</select>';
                 </thead>
 
               <tbody id="items-body">
+<?php if ($__isEdit && !empty($__prefillItems)): ?>
+<?php foreach ($__prefillItems as $__i => $__it):
+  $__vatOpts = '';
+  foreach ($vats as $__vid => $__vlabel) {
+    $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
+    $__vatOpts .= '<option value="'.h($__vid).'"'.$__sel.'>'.h($__vlabel).'</option>';
+  }
+  $__gtuOpts = '';
+  foreach (($gtuOptions ?? []) as $__gval => $__glabel) {
+    $__sel = ((string)$__gval === (string)($__it['gtu_code'] ?? '')) ? ' selected' : '';
+    $__gtuOpts .= '<option value="'.h($__gval).'"'.$__sel.'>'.h($__glabel).'</option>';
+  }
+  $__itemName = (string)($__it['name'] ?? '');
+  $__newOpt = $__itemName !== '' ? '<option value="'.h('NEW:'.$__itemName).'" selected>'.h($__itemName).'</option>' : '';
+  $__pm = (string)($__it['price_mode'] ?? 'net');
+?>
+<tr class="item-row" draggable="true">
+  <td>
+    <div class="d-flex align-items-center gap-1">
+      <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
+      <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
+    </div>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn_code" value="<?= h($__it['cn_code'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
+  </td>
+  <td>
+    <div class="d-flex align-items-center gap-1">
+      <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
+      <select name="items[<?= (int)$__i ?>][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
+        <option value="net"<?= $__pm === 'net' ? ' selected' : '' ?>>Netto</option>
+        <option value="gross"<?= $__pm === 'gross' ? ' selected' : '' ?>>Brutto</option>
+      </select>
+    </div>
+  </td>
+  <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="<?= number_format((float)($__it['netto'] ?? 0), 2, '.', '') ?>" readonly></td>
+  <td><input class="form-control text-end item-gross" value="<?= number_format((float)($__it['brutto'] ?? 0), 2, '.', '') ?>" readonly></td>
+  <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
+  <td>
+    <div class="d-flex gap-1">
+      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
+      <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
+    </div>
+  </td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
                 <!-- pierwszy (wymagany) wiersz -->
                   <tr class="item-row" draggable="true">
   <td>
@@ -695,8 +847,12 @@ $gtuSelectHtml .= '</select>';
         <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
       </div>
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
+    <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
+    <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
+    <input type="hidden" name="items[0][cn_code]" class="item-cn_code" value="">
+    <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
+    <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
-  <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td>
     <div class="d-flex align-items-center gap-1">
       <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
@@ -718,6 +874,7 @@ $gtuSelectHtml .= '</select>';
     </div>
   </td>
 </tr>
+<?php endif; ?>
 
 
                 <!-- wiersz: Add Product -->
@@ -1230,78 +1387,7 @@ $gtuSelectHtml .= '</select>';
   </div>
 </div>
 
-<!-- Modal: Dodaj produkt -->
-<div class="modal fade" id="product-create-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title">Dodaj produkt/usługę</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <?= $this->Form->create(null, ['url' => ['controller' => 'Products','action' => 'add'], 'data-ajax' => '1', 'id' => 'product-create-form']) ?>
-      <div class="modal-body">
-        <?= $this->Form->control('name', ['label' => 'Nazwa*', 'required' => true, 'class' => 'form-control', 'id' => 'product-create-name']) ?>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('code', ['label' => 'Kod', 'class' => 'form-control', 'id' => 'product-create-code']) ?></div>
-          <div class="col-6">
-            <?= $this->Form->control('is_service', [
-              'label' => 'Typ',
-              'type' => 'select',
-              'options' => [0 => 'Produkt', 1 => 'Usługa'],
-              'class' => 'form-select',
-              'value' => 0
-            ]) ?>
-          </div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-4"><?= $this->Form->control('unit_name', ['label' => 'Jedn.', 'class' => 'form-control', 'value' => 'szt.', 'name' => 'unit_name']) ?></div>
-          <div class="col-4"><?= $this->Form->control('net_price', ['label' => 'Cena netto', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control']) ?></div>
-          <div class="col-4"><?= $this->Form->control('vat_id', ['label' => 'Stawka VAT', 'type' => 'select', 'options' => $vats, 'class' => 'form-select']) ?></div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('pkwiu', ['label' => 'PKWiU', 'class' => 'form-control', 'placeholder' => 'np. 62.01.10.0']) ?></div>
-          <div class="col-6"><?= $this->Form->control('gtu_code', [
-            'label' => 'GTU',
-            'type' => 'select',
-            'options' => [
-              '' => 'brak',
-              'GTU_01' => 'GTU_01 – napoje alkoholowe',
-              'GTU_02' => 'GTU_02 – paliwa',
-              'GTU_03' => 'GTU_03 – oleje opałowe',
-              'GTU_04' => 'GTU_04 – wyroby tytoniowe',
-              'GTU_05' => 'GTU_05 – odpady',
-              'GTU_06' => 'GTU_06 – urządzenia elektroniczne',
-              'GTU_07' => 'GTU_07 – pojazdy/części',
-              'GTU_08' => 'GTU_08 – metale szlachetne',
-              'GTU_09' => 'GTU_09 – leki/wyroby med.',
-              'GTU_10' => 'GTU_10 – budowlanka',
-              'GTU_11' => 'GTU_11 – drukowane nośniki',
-              'GTU_12' => 'GTU_12 – usługi niematerialne',
-              'GTU_13' => 'GTU_13 – transport i gospodarka magazynowa',
-            ],
-            'class' => 'form-select',
-            'empty' => false
-          ]) ?></div>
-        </div>
-        
-        <?= $this->Form->control('description', ['label' => 'Opis', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control']) ?>
-        <?= $this->Form->control('barcode', ['label' => 'Kod kreskowy', 'class' => 'form-control']) ?>
-        
-        <?= $this->Form->hidden('unit_id', ['value' => 1]) ?>
-        <?= $this->Form->hidden('currency', ['value' => 'PLN']) ?>
-        <?= $this->Form->hidden('is_active', ['value' => 1]) ?>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', ['class' => 'btn btn-primary', 'escapeTitle' => false]) ?>
-      </div>
-      <?= $this->Form->end() ?>
-    </div>
-  </div>
-</div>
+<?= $this->element('Invoices/product_create_modal') ?>
 
 <!-- Modal: Dodaj typ numeracji -->
 <div class="modal fade" id="series-type-create-modal" tabindex="-1" aria-hidden="true">
@@ -1841,7 +1927,7 @@ $(function () {
     });
   }
 
-  function toast(msg){ $('#app-toast-body').text(msg); new bootstrap.Toast('#app-toast').show(); }
+  function toast(msg, type){ var $body=$('#app-toast-body'); var safe=$('<div>').text(msg).html().replace(/\n/g,'<br>'); $body.html(safe); var $toast=$('#app-toast'); $toast.removeClass('text-bg-danger text-bg-success text-bg-warning'); if(type==='danger') $toast.addClass('text-bg-danger'); new bootstrap.Toast($toast[0]).show(); }
   function closeSelect2Then(fn){
     var $sel = $('#contractor-select');
     try { $sel.select2('close'); } catch(_){}
@@ -2621,6 +2707,13 @@ $('#gus-fetch-btn').on('click', function(){
         }
         // Save to recent products
         saveRecentProduct(d);
+        // JPK/FA fields
+        $tr.find('.item-pkwiu').val(d.pkwiu || '');
+        $tr.find('.item-gtin').val(d.gtin || '');
+        $tr.find('.item-cn_code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount || '');
+        $tr.find('.item-procedure').val(d.procedure_marking || '');
+        if ($tr.find('.item-gtu').length && d.gtu_code) $tr.find('.item-gtu').val(d.gtu_code);
         rowCalc($tr); allCalc();
       }
     });
@@ -2637,15 +2730,19 @@ $('#gus-fetch-btn').on('click', function(){
     });
   }
 
-  // ====== PIERWSZY WIERSZ ======
-  (function initFirstRow(){
-    var $tr = $itemsBody.find('tr').first();
-    initProductSelectForRow($tr);
-  $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
-    // apply stored default mode to first row
-    $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
-    $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
-    rowCalc($tr); allCalc(); guardMinRows();
+  // ====== INICJALIZACJA WIERSZY (pierwszy lub wszystkie w edit) ======
+  (function initExistingRows(){
+    var $rows = $itemsBody.find('tr.item-row');
+    $rows.each(function(){
+      var $tr = $(this);
+      initProductSelectForRow($tr);
+      $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
+      $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
+      $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+      rowCalc($tr);
+    });
+    idx = Math.max(1, $rows.length);
+    allCalc(); guardMinRows();
   })();
 
   // ====== DODAJ WIERSZ ======
@@ -2659,6 +2756,11 @@ $('#gus-fetch-btn').on('click', function(){
             '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
           '</div>'+
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
+          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn_code" value="">' +
+          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
+          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td>'+
@@ -2746,6 +2848,12 @@ $('#gus-fetch-btn').on('click', function(){
     $dst.find('.item-disc').val($src.find('.item-disc').val());
     $dst.find('.item-vatcode').val($src.find('.item-vatcode').val());
     $dst.find('.item-name-hidden').val($src.find('.item-name-hidden').val());
+    // JPK/FA fields
+    $dst.find('.item-pkwiu').val($src.find('.item-pkwiu').val() || '');
+    $dst.find('.item-gtin').val($src.find('.item-gtin').val() || '');
+    $dst.find('.item-cn_code').val($src.find('.item-cn_code').val() || '');
+    $dst.find('.item-excise').val($src.find('.item-excise').val() || '');
+    $dst.find('.item-procedure').val($src.find('.item-procedure').val() || '');
     // Select2 produktu: ustaw taką samą opcję
     var $srcSel = $src.find('.item-product-select');
     var pid = $srcSel.val();
@@ -2796,19 +2904,39 @@ $('#gus-fetch-btn').on('click', function(){
     }
   });
 
-  // ====== PRODUKT: MODAL AJAX ADD ======
+    // ====== PRODUKT: MODAL AJAX ADD ======
   $('#product-create-form').on('submit', function (e) {
     e.preventDefault();
-    var $f = $(this);
-    
-    // Generate a simple code if not provided
-    var name = $f.find('[name="name"]').val() || '';
+    var $f    = $(this);
+    var $btn  = $('#product-create-submit');
+    var $spin = $('#prod-submit-spinner');
+    var $icon = $('#prod-submit-icon');
+
+    // Walidacja po stronie JS
+    var name = $.trim($f.find('[name="name"]').val());
+    if (!name) {
+      $f.find('[name="name"]').addClass('is-invalid').trigger('focus');
+      return;
+    }
+    $f.find('[name="name"]').removeClass('is-invalid');
+
+    // Auto-code jesli puste
     var code = $f.find('[name="code"]').val();
     if (!code && name) {
-      code = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase();
-      $f.find('[name="code"]').val(code);
+      $f.find('[name="code"]').val(name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase());
     }
-    
+
+    // Loading state
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+    $icon.addClass('d-none');
+
+    var resetBtn = function () {
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      $icon.removeClass('d-none');
+    };
+
     $.ajax({
       url: $f.attr('action'),
       method: 'POST',
@@ -2816,55 +2944,103 @@ $('#gus-fetch-btn').on('click', function(){
       processData: false, contentType: false,
       headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
     }).done(function (data) {
+      resetBtn();
       if (data && data.success && currentProductRow && data.product) {
-  var product = data.product;
-  var name = product.name || name;
-  var netPrice = parseFloat(product.net_price || '0') || 0;
-        
-  // Update the current row with product data
-  currentProductRow.find('.item-name-hidden').val(name);
-        
-  // Set VAT if provided first, then compute displayed price based on mode
-  var $vat = currentProductRow.find('.item-vatcode'); 
-  var vatId = product.vat_id;
-  if ($vat.length && vatId) $vat.val(vatId);
-  var mode = (currentProductRow.find('.item-price-mode').val() || 'net');
-  var effectiveVatId = currentProductRow.find('.item-vatcode').val();
-  var rate = toNum(vatRates[effectiveVatId], 0);
-  var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
-  currentProductRow.find('.item-price').val(disp.toFixed(2));
-        
-        // Update Select2 with new product
-        if ($.fn && $.fn.select2) { 
-          var $sel = currentProductRow.find('.item-product-select'); 
-          var displayText = '';
-          if (product.code) {
-            displayText = product.code + ' - ' + name;
-          } else {
-            displayText = name;
-          }
-          if (product.is_service) {
-            displayText += ' (usługa)';
-          }
-          var opt = new Option(displayText, product.id, true, true); 
-          $sel.append(opt).trigger('change'); 
-        }
-        
-        // Save to recent products
-        saveRecentProduct({ id: product.id, text: name, price: netPrice, vat_id: product.vat_id });
+        var product  = data.product;
+        var prodName = product.name || name;
+        var netPrice = parseFloat(product.net_price || '0') || 0;
 
-        rowCalc(currentProductRow); 
-        allCalc(); 
-        $('#product-create-modal').modal('hide'); 
+        // Nazwa
+        currentProductRow.find('.item-name-hidden').val(prodName);
+
+        // VAT + cena
+        var $vat = currentProductRow.find('.item-vatcode');
+        if ($vat.length && product.vat_id) $vat.val(product.vat_id);
+        var mode           = (currentProductRow.find('.item-price-mode').val() || 'net');
+        var effectiveVatId = currentProductRow.find('.item-vatcode').val();
+        var rate           = toNum(vatRates[effectiveVatId], 0);
+        var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
+        currentProductRow.find('.item-price').val(disp.toFixed(2));
+
+        // GTU – przepisz z produktu do wiersza
+        if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
+          currentProductRow.find('.item-gtu').val(product.gtu_code);
+        }
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn_code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount || '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
+
+        // Select2 – pokaz nazwe produktu
+        if ($.fn && $.fn.select2) {
+          var $sel        = currentProductRow.find('.item-product-select');
+          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          if (product.is_service) displayText += ' (usluga)';
+          var opt = new Option(displayText, product.id, true, true);
+          $sel.append(opt).trigger('change');
+        }
+
+        // Zapamietaj w ostatnich
+        saveRecentProduct({ id: product.id, text: prodName, price: netPrice, vat_id: product.vat_id });
+
+        rowCalc(currentProductRow);
+        allCalc();
+        $('#product-create-modal').modal('hide');
         $f[0].reset();
-        toast(data.message || 'Produkt został dodany.');
-      } else { 
-        toast(data.message || 'Nie udało się dodać produktu.'); 
+        // Przywroc domyslna jednostke po resecie
+        $f.find('[name="unit_name"]').val('szt.');
+        toast(data.message || 'Produkt zostal dodany.');
+      } else {
+        var fieldLabels = {
+          name: 'Nazwa', net_price: 'Cena netto', vat_id: 'Stawka VAT',
+          unit_id: 'Jednostka', code: 'Kod produktu',
+          currency: 'Waluta', is_service: 'Typ', is_active: 'Status'
+        };
+        var errorLabels = {
+          _empty: 'pole wymagane', _required: 'pole wymagane',
+          maxLength: 'za dluga wartosc', uuid: 'nieprawidlowy format',
+          decimal: 'nieprawidlowa liczba', _isUnique: 'taka wartosc juz istnieje'
+        };
+        var lines = [data.message || 'Nie udalo sie dodac produktu.'];
+        if (data.errors && typeof data.errors === 'object') {
+          $.each(data.errors, function(field, errs) {
+            if (field === 'company_id' && errs && errs._isUnique) {
+              lines.push('Produkt z taka nazwa lub kodem juz istnieje.');
+              return;
+            }
+            var label = fieldLabels[field] || field;
+            var msgs = [];
+            if (typeof errs === 'object') {
+              $.each(errs, function(rule, msg) {
+                msgs.push(errorLabels[rule] || msg);
+              });
+            } else {
+              msgs.push(errs);
+            }
+            lines.push(label + ': ' + msgs.join(', '));
+          });
+        }
+        toast(lines.join('\n'), 'danger');
       }
-    }).fail(function (xhr) { 
-      console.error('product add fail', xhr.status, xhr.responseText); 
-      toast('Błąd komunikacji przy dodawaniu produktu.'); 
+    }).fail(function (xhr) {
+      resetBtn();
+      console.error('product add fail', xhr.status, xhr.responseText);
+      toast('Blad komunikacji przy dodawaniu produktu.', 'danger');
     });
+  });
+
+  // Czysc walidacje przy wpisywaniu
+  $('#product-create-form').on('input', '[name="name"]', function () {
+    $(this).removeClass('is-invalid');
+  });
+
+  // Reset jednostki po zamknieciu modalu
+  $('#product-create-modal').on('hidden.bs.modal', function () {
+    $('#product-create-form')[0].reset();
+    $('#product-create-form [name="unit_name"]').val('szt.');
+    $('#product-create-form [name="name"]').removeClass('is-invalid');
+    $('#prod-ksef-section').collapse('hide');
   });
   
   // ====== CONTRACTOR: MODAL AJAX ADD ======
@@ -3248,10 +3424,11 @@ if ($.fn && $.fn.select2) {
       processResults: function (data) {
         // oczekiwany format: [{id: '2025/10', text:'2025/10', pattern:'...', next_no:123}, ...]
         var items = $.map(data.results || data || [], function (s) {
-          return { 
-            id: s.id || s.name || s.text, 
-            text: s.text || s.name || s.id, 
-            pattern: s.template || s.pattern, 
+          return {
+            id: s.id,
+            text: s.text || s.name || s.id,
+            name: s.name || s.text,
+            pattern: s.template || s.pattern,
             next_no: s.start_no || s.next_no,
             is_default: s.is_default || false
           };
@@ -3281,41 +3458,49 @@ if ($.fn && $.fn.select2) {
       return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0];
     }
   })
-  .on('select2:open', function(){
-    injectSeriesToolbar();
-  });
+  .on('select2:open', function(){ injectSeriesToolbar(); })
+  .on('select2:select', function(e){
+    var d = (e.params && e.params.data) || {};
+    $('#invoice-series-id-hidden').val(d.id || '');
+  })
+  .on('select2:clear', function(){ $('#invoice-series-id-hidden').val(''); });
 
-  // jeśli mamy w entity bieżącą wartość „series” i nie ma jej na liście, dodać jako wybraną opcję:
+  // Preload: edycja — przywróć UUID; nowa faktura — auto-załaduj domyślną
   (function preloadSeries(){
-    var cur = $series.data('current') || $series.val() || '<?= h($invoice->series ?? '') ?>';
-    if (cur) {
-      var opt = new Option(cur, cur, true, true);
+    var curId   = '<?= h($invoice->invoice_series_id ?? '') ?>';
+    var curName = '<?= h($invoice->series ?? '') ?>';
+    if (curId) {
+      var opt = new Option(curName || curId, curId, true, true);
       $series.append(opt).trigger('change');
+      $('#invoice-series-id-hidden').val(curId);
     } else {
-      // Jeśli nie ma wcześniej wybranej serii, spróbuj załadować domyślną
       loadDefaultSeries();
     }
   })();
 
-  // Funkcja ładowania domyślnej serii
+  // Ładowanie domyślnej serii — typ zależny od rodzaju korekty, fallback do wszystkich
   function loadDefaultSeries() {
-    $.ajax({
-      url: seriesSearchUrl,
-      dataType: 'json',
-      data: (function(){
-        var d = { q: '', limit: 50 };
-        if (kind === 'currency') d.type = 'currency';
-        else if (kind === 'vat') d.type = 'vat';
-        return d;
-      })()
-    }).done(function(data) {
-      var items = data.results || data || [];
-      var defaultItem = items.find(function(item) { return item.is_default; });
-      if (defaultItem) {
-        var opt = new Option(defaultItem.text || defaultItem.name, defaultItem.id || defaultItem.name, true, true);
-        $series.append(opt).trigger('change');
-      }
-    });
+    var d = { q: '', limit: 50 };
+    if (kind === 'currency') d.type = 'currency';
+    else if (kind === 'vat') d.type = 'vat';
+    $.ajax({ url: seriesSearchUrl, dataType: 'json', data: d })
+      .done(function(data) {
+        var items = data.results || data || [];
+        if (!items.length) {
+          $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50 } })
+            .done(function(d2) { applyDefaultSeries(d2.results || d2 || []); });
+          return;
+        }
+        applyDefaultSeries(items);
+      });
+  }
+  function applyDefaultSeries(items) {
+    var pick = items.find(function(i){ return i.is_default; }) || items[0] || null;
+    if (pick) {
+      var opt = new Option(pick.text || pick.name, pick.id, true, true);
+      $series.append(opt).trigger('change');
+      $('#invoice-series-id-hidden').val(pick.id);
+    }
   }
 }
 

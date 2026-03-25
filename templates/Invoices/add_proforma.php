@@ -107,14 +107,45 @@ $gtuSelectHtml .= '</select>';
 <div class="row">
     <div class="col-xxl-12">
     <div class="card custom-card">
-      <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
+      <div class="card-header d-flex align-items-center justify-content-between pe-2">
+        <ul class="nav nav-tabs card-header-tabs flex-grow-1" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
         </ul>
+        <?php if ($this->Identity->hasRole('admin')): ?>
+        <div class="dropdown ms-2 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
+            <i class="ri-settings-3-line"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="inv-extra-tabs-btn">
+            <li><span class="dropdown-header text-muted small px-3 py-1">Dodatkowe zakładki</span></li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-annotations">
+                <i class="ri-file-text-line"></i> Adnotacje
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-fa3ext">
+                <i class="ri-government-line"></i> KSeF FA(3)
+              </button>
+            </li>
+          </ul>
+        </div>
+        <?php endif; ?>
+        <script>
+        $(function(){
+          var $gearBtn = $("#inv-extra-tabs-btn");
+          $(document).on("click", "[data-extra-tab]", function(){
+            var paneId = $(this).data("extra-tab");
+            $("#invTabs .nav-link").removeClass("active").attr("aria-selected", "false");
+            $("#invTabs .nav-link").each(function(){ $(this).attr("tabindex", "-1"); });
+            $(".tab-content > .tab-pane").removeClass("show active");
+            $("#" + paneId).addClass("show active");
+            $gearBtn.removeClass("btn-outline-secondary").addClass("btn-secondary");
+          });
+        });
+        </script>
       </div>
 
       <div class="card-body tab-content">
@@ -148,13 +179,16 @@ $gtuSelectHtml .= '</select>';
               </small>
             </div>
             <div class="col-lg-4">
+      <?= $this->Form->hidden('invoice_series_id', [
+        'id'    => 'invoice-series-id-hidden',
+        'value' => $invoice->invoice_series_id ?? null,
+      ]) ?>
       <?= $this->Form->control('series', [
         'label' => 'Schemat numeracji',
                 'type'  => 'select',
                 'empty' => true,
                 'class' => 'form-select',
                 'id'    => 'series-select',
-            // opcjonalnie: ustaw bieżącą wartość jeśli istnieje
             'value' => $invoice->series ?? null,
             ]) ?>
             </div>
@@ -185,7 +219,7 @@ $gtuSelectHtml .= '</select>';
             
               <div class="col-lg-2">
                 <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => !$__isEdit ? 0 : ($invoice->alreadypaid ?? 0)
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
                 ]) ?>
               </div>
               
@@ -254,7 +288,7 @@ $gtuSelectHtml .= '</select>';
             ]) ?>
 
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1">
+              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
               <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
               <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                 title="Automatyczna wysyłka"
@@ -449,10 +483,12 @@ $gtuSelectHtml .= '</select>';
   <td>
     <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
+    <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
+    <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
+    <input type="hidden" name="items[0][cn_code]" class="item-cn_code" value="">
+    <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
+    <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
-  <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
-  <td>
-    <div class="input-group">
       <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
       <select name="items[0][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
         <option value="net">netto</option>
@@ -907,78 +943,7 @@ $gtuSelectHtml .= '</select>';
   </div>
 </div>
 
-<!-- Modal: Dodaj produkt -->
-<div class="modal fade" id="product-create-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title">Dodaj produkt/usługę</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <?= $this->Form->create(null, ['url' => ['controller' => 'Products','action' => 'add'], 'data-ajax' => '1', 'id' => 'product-create-form']) ?>
-      <div class="modal-body">
-        <?= $this->Form->control('name', ['label' => 'Nazwa*', 'required' => true, 'class' => 'form-control', 'id' => 'product-create-name']) ?>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('code', ['label' => 'Kod', 'class' => 'form-control', 'id' => 'product-create-code']) ?></div>
-          <div class="col-6">
-            <?= $this->Form->control('is_service', [
-              'label' => 'Typ',
-              'type' => 'select',
-              'options' => [0 => 'Produkt', 1 => 'Usługa'],
-              'class' => 'form-select',
-              'value' => 0
-            ]) ?>
-          </div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-4"><?= $this->Form->control('unit_name', ['label' => 'Jedn.', 'class' => 'form-control', 'value' => 'szt.', 'name' => 'unit_name']) ?></div>
-          <div class="col-4"><?= $this->Form->control('net_price', ['label' => 'Cena netto', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control']) ?></div>
-          <div class="col-4"><?= $this->Form->control('vat_id', ['label' => 'Stawka VAT', 'type' => 'select', 'options' => $vats, 'class' => 'form-select']) ?></div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('pkwiu', ['label' => 'PKWiU', 'class' => 'form-control', 'placeholder' => 'np. 62.01.10.0']) ?></div>
-          <div class="col-6"><?= $this->Form->control('gtu_code', [
-            'label' => 'GTU',
-            'type' => 'select',
-            'options' => [
-              '' => 'brak',
-              'GTU_01' => 'GTU_01 – napoje alkoholowe',
-              'GTU_02' => 'GTU_02 – paliwa',
-              'GTU_03' => 'GTU_03 – oleje opałowe',
-              'GTU_04' => 'GTU_04 – wyroby tytoniowe',
-              'GTU_05' => 'GTU_05 – odpady',
-              'GTU_06' => 'GTU_06 – urządzenia elektroniczne',
-              'GTU_07' => 'GTU_07 – pojazdy/części',
-              'GTU_08' => 'GTU_08 – metale szlachetne',
-              'GTU_09' => 'GTU_09 – leki/wyroby med.',
-              'GTU_10' => 'GTU_10 – budowlanka',
-              'GTU_11' => 'GTU_11 – drukowane nośniki',
-              'GTU_12' => 'GTU_12 – usługi niematerialne',
-              'GTU_13' => 'GTU_13 – transport i gospodarka magazynowa',
-            ],
-            'class' => 'form-select',
-            'empty' => false
-          ]) ?></div>
-        </div>
-        
-        <?= $this->Form->control('description', ['label' => 'Opis', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control']) ?>
-        <?= $this->Form->control('barcode', ['label' => 'Kod kreskowy', 'class' => 'form-control']) ?>
-        
-        <?= $this->Form->hidden('unit_id', ['value' => 1]) ?>
-        <?= $this->Form->hidden('currency', ['value' => 'PLN']) ?>
-        <?= $this->Form->hidden('is_active', ['value' => 1]) ?>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', ['class' => 'btn btn-primary', 'escapeTitle' => false]) ?>
-      </div>
-      <?= $this->Form->end() ?>
-    </div>
-  </div>
-</div>
+<?= $this->element('Invoices/product_create_modal') ?>
 
 <!-- Modal: Dodaj typ numeracji -->
 <div class="modal fade" id="series-type-create-modal" tabindex="-1" aria-hidden="true">
@@ -1569,7 +1534,7 @@ $(function () {
     });
   }
 
-  function toast(msg){ $('#app-toast-body').text(msg); new bootstrap.Toast('#app-toast').show(); }
+  function toast(msg, type){ var $body=$('#app-toast-body'); var safe=$('<div>').text(msg).html().replace(/\n/g,'<br>'); $body.html(safe); var $toast=$('#app-toast'); $toast.removeClass('text-bg-danger text-bg-success text-bg-warning'); if(type==='danger') $toast.addClass('text-bg-danger'); new bootstrap.Toast($toast[0]).show(); }
   function closeSelect2Then(fn){
     var $sel = $('#contractor-select');
     try { $sel.select2('close'); } catch(_){}
@@ -2073,6 +2038,13 @@ $('#gus-fetch-btn').on('click', function(){
         // Use correct VAT field name - should be vat_id from the search response
         var $vat = $tr.find('.item-vatcode'); 
         if ($vat.length && d.vat_id) $vat.val(d.vat_id);
+        // JPK/FA fields
+        $tr.find('.item-pkwiu').val(d.pkwiu || '');
+        $tr.find('.item-gtin').val(d.gtin || '');
+        $tr.find('.item-cn_code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount || '');
+        $tr.find('.item-procedure').val(d.procedure_marking || '');
+        if ($tr.find('.item-gtu').length && d.gtu_code) $tr.find('.item-gtu').val(d.gtu_code);
         rowCalc($tr); allCalc();
       }
     });
@@ -2118,6 +2090,11 @@ $('#gus-fetch-btn').on('click', function(){
     if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
     if (vatId !== null && vatId !== '') { $tr.find('.item-vatcode').val(vatId); }
     if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
+    $tr.find('.item-pkwiu').val(item.pkwiu || '');
+    $tr.find('.item-gtin').val(item.gtin || '');
+    $tr.find('.item-cn_code').val(item.cn_code || '');
+    $tr.find('.item-excise').val(item.excise_amount || '');
+    $tr.find('.item-procedure').val(item.procedure_marking || '');
 
     $tr.find('.item-name-hidden').val(name);
     var $sel = $tr.find('.item-product-select');
@@ -2139,21 +2116,6 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   }
 
-  if (isEdit) {
-    try {
-      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
-        applyContractor(editPrefill.contractor);
-      } else {
-        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
-      }
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
-    } catch (e) {
-      console.warn('Edit prefill failed', e);
-    }
-  }
-
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
     var $addRow = $('#btn-add-item').closest('tr');
@@ -2162,6 +2124,11 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
+          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn_code" value="">' +
+          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
+          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td><div class="input-group">'+
@@ -2199,6 +2166,11 @@ $('#gus-fetch-btn').on('click', function(){
       '<td>'+
       '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>'+
       '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">'+
+      '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">'+
+      '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">'+
+      '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn_code" value="">'+
+      '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">'+
+      '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">'+
       '</td>'+
       '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>'+
       '<td><div class="input-group">'+
@@ -2230,6 +2202,12 @@ $('#gus-fetch-btn').on('click', function(){
     if (srcVat) $dst.find('.item-vatcode').val(srcVat);
     if (srcGtu !== undefined) $dst.find('.item-gtu').val(srcGtu);
     $dst.find('.item-price-mode').val(srcMode);
+    // JPK/FA fields
+    $dst.find('.item-pkwiu').val($src.find('.item-pkwiu').val() || '');
+    $dst.find('.item-gtin').val($src.find('.item-gtin').val() || '');
+    $dst.find('.item-cn_code').val($src.find('.item-cn_code').val() || '');
+    $dst.find('.item-excise').val($src.find('.item-excise').val() || '');
+    $dst.find('.item-procedure').val($src.find('.item-procedure').val() || '');
     // copy product select option
     var $srcSel = $src.find('.item-product-select');
     var prodId = $srcSel.val();
@@ -2247,6 +2225,22 @@ $('#gus-fetch-btn').on('click', function(){
     idx++;
   });
 
+  // ====== PREFILL: EDIT MODE (musi być po bindowaniu handlera #btn-add-item) ======
+  if (isEdit) {
+    try {
+      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
+        applyContractor(editPrefill.contractor);
+      } else {
+        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
+      }
+      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Edit prefill failed', e);
+    }
+  }
+
   // Auto-generate product code from name
   $(document).on('input', '#product-create-name', function() {
     var name = $(this).val();
@@ -2261,19 +2255,39 @@ $('#gus-fetch-btn').on('click', function(){
     }
   });
 
-  // ====== PRODUKT: MODAL AJAX ADD ======
+    // ====== PRODUKT: MODAL AJAX ADD ======
   $('#product-create-form').on('submit', function (e) {
     e.preventDefault();
-    var $f = $(this);
-    
-    // Generate a simple code if not provided
-    var name = $f.find('[name="name"]').val() || '';
+    var $f    = $(this);
+    var $btn  = $('#product-create-submit');
+    var $spin = $('#prod-submit-spinner');
+    var $icon = $('#prod-submit-icon');
+
+    // Walidacja po stronie JS
+    var name = $.trim($f.find('[name="name"]').val());
+    if (!name) {
+      $f.find('[name="name"]').addClass('is-invalid').trigger('focus');
+      return;
+    }
+    $f.find('[name="name"]').removeClass('is-invalid');
+
+    // Auto-code jesli puste
     var code = $f.find('[name="code"]').val();
     if (!code && name) {
-      code = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase();
-      $f.find('[name="code"]').val(code);
+      $f.find('[name="code"]').val(name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase());
     }
-    
+
+    // Loading state
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+    $icon.addClass('d-none');
+
+    var resetBtn = function () {
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      $icon.removeClass('d-none');
+    };
+
     $.ajax({
       url: $f.attr('action'),
       method: 'POST',
@@ -2281,53 +2295,103 @@ $('#gus-fetch-btn').on('click', function(){
       processData: false, contentType: false,
       headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
     }).done(function (data) {
+      resetBtn();
       if (data && data.success && currentProductRow && data.product) {
-        var product = data.product;
-        var name = product.name || name;
+        var product  = data.product;
+        var prodName = product.name || name;
         var netPrice = parseFloat(product.net_price || '0') || 0;
-        
-        // Update the current row with product data
-        currentProductRow.find('.item-name-hidden').val(name);
-        // Set displayed price based on current row mode
-        var mode = (currentProductRow.find('.item-price-mode').val()||'').trim() || getDefaultPriceMode();
-        var $vat = currentProductRow.find('.item-vatcode'); 
-        var vatId = product.vat_id;
-        if ($vat.length && vatId) $vat.val(vatId);
+
+        // Nazwa
+        currentProductRow.find('.item-name-hidden').val(prodName);
+
+        // VAT + cena
+        var $vat = currentProductRow.find('.item-vatcode');
+        if ($vat.length && product.vat_id) $vat.val(product.vat_id);
+        var mode           = (currentProductRow.find('.item-price-mode').val() || 'net');
         var effectiveVatId = currentProductRow.find('.item-vatcode').val();
-        var rate = toNum(vatRates[effectiveVatId], 0);
-        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+        var rate           = toNum(vatRates[effectiveVatId], 0);
+        var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
         currentProductRow.find('.item-price').val(disp.toFixed(2));
-        
-        // VAT already assigned above if present
-        
-        // Update Select2 with new product
-        if ($.fn && $.fn.select2) { 
-          var $sel = currentProductRow.find('.item-product-select'); 
-          var displayText = '';
-          if (product.code) {
-            displayText = product.code + ' - ' + name;
-          } else {
-            displayText = name;
-          }
-          if (product.is_service) {
-            displayText += ' (usługa)';
-          }
-          var opt = new Option(displayText, product.id, true, true); 
-          $sel.append(opt).trigger('change'); 
+
+        // GTU – przepisz z produktu do wiersza
+        if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
+          currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
-        
-  rowCalc(currentProductRow); 
-        allCalc(); 
-        $('#product-create-modal').modal('hide'); 
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn_code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount || '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
+
+        // Select2 – pokaz nazwe produktu
+        if ($.fn && $.fn.select2) {
+          var $sel        = currentProductRow.find('.item-product-select');
+          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          if (product.is_service) displayText += ' (usluga)';
+          var opt = new Option(displayText, product.id, true, true);
+          $sel.append(opt).trigger('change');
+        }
+
+        // Zapamietaj w ostatnich
+        if (typeof saveRecentProduct === 'function') saveRecentProduct({ id: product.id, text: prodName, price: netPrice, vat_id: product.vat_id });
+
+        rowCalc(currentProductRow);
+        allCalc();
+        $('#product-create-modal').modal('hide');
         $f[0].reset();
-        toast(data.message || 'Produkt został dodany.');
-      } else { 
-        toast(data.message || 'Nie udało się dodać produktu.'); 
+        // Przywroc domyslna jednostke po resecie
+        $f.find('[name="unit_name"]').val('szt.');
+        toast(data.message || 'Produkt zostal dodany.');
+      } else {
+        var fieldLabels = {
+          name: 'Nazwa', net_price: 'Cena netto', vat_id: 'Stawka VAT',
+          unit_id: 'Jednostka', code: 'Kod produktu',
+          currency: 'Waluta', is_service: 'Typ', is_active: 'Status'
+        };
+        var errorLabels = {
+          _empty: 'pole wymagane', _required: 'pole wymagane',
+          maxLength: 'za dluga wartosc', uuid: 'nieprawidlowy format',
+          decimal: 'nieprawidlowa liczba', _isUnique: 'taka wartosc juz istnieje'
+        };
+        var lines = [data.message || 'Nie udalo sie dodac produktu.'];
+        if (data.errors && typeof data.errors === 'object') {
+          $.each(data.errors, function(field, errs) {
+            if (field === 'company_id' && errs && errs._isUnique) {
+              lines.push('Produkt z taka nazwa lub kodem juz istnieje.');
+              return;
+            }
+            var label = fieldLabels[field] || field;
+            var msgs = [];
+            if (typeof errs === 'object') {
+              $.each(errs, function(rule, msg) {
+                msgs.push(errorLabels[rule] || msg);
+              });
+            } else {
+              msgs.push(errs);
+            }
+            lines.push(label + ': ' + msgs.join(', '));
+          });
+        }
+        toast(lines.join('\n'), 'danger');
       }
-    }).fail(function (xhr) { 
-      console.error('product add fail', xhr.status, xhr.responseText); 
-      toast('Błąd komunikacji przy dodawaniu produktu.'); 
+    }).fail(function (xhr) {
+      resetBtn();
+      console.error('product add fail', xhr.status, xhr.responseText);
+      toast('Blad komunikacji przy dodawaniu produktu.', 'danger');
     });
+  });
+
+  // Czysc walidacje przy wpisywaniu
+  $('#product-create-form').on('input', '[name="name"]', function () {
+    $(this).removeClass('is-invalid');
+  });
+
+  // Reset jednostki po zamknieciu modalu
+  $('#product-create-modal').on('hidden.bs.modal', function () {
+    $('#product-create-form')[0].reset();
+    $('#product-create-form [name="unit_name"]').val('szt.');
+    $('#product-create-form [name="name"]').removeClass('is-invalid');
+    $('#prod-ksef-section').collapse('hide');
   });
   
   // ====== CONTRACTOR: MODAL AJAX ADD ======
@@ -2818,6 +2882,21 @@ if ($.fn && $.fn.select2) {
   })
   .on('select2:open', function(){
     injectSeriesToolbar();
+  })
+  .on('select2:select', function(e){
+    var d = (e.params && e.params.data) || {};
+    $('#invoice-series-id-hidden').val(d.id || '');
+  })
+  .on('select2:clear', function(){
+    $('#invoice-series-id-hidden').val('');
+  });
+
+  // Synchronizuj hidden invoice_series_id przy każdej zmianie selecta
+  // (obsługuje również trigger('change') z loadDefaultSeries)
+  $series.on('change', function(){
+    var val = $(this).val();
+    // Wartość to UUID (id z Select2) — przepisz do hidden field
+    $('#invoice-series-id-hidden').val(val || '');
   });
 
   // jeśli mamy w entity bieżącą wartość „series” i nie ma jej na liście, dodać jako wybraną opcję:
@@ -2830,47 +2909,66 @@ if ($.fn && $.fn.select2) {
 
   // Funkcja ładowania domyślnej serii
   function loadDefaultSeries() {
+    // Najpierw szukamy serii z type=proforma, fallback: wszystkie serie firmy
     $.ajax({
       url: seriesSearchUrl,
       dataType: 'json',
       data: { q: '', limit: 50, type: 'proforma' }
     }).done(function(data) {
       var items = data.results || data || [];
-      var current = $series.val();
-      var controllerCur = '<?= h($invoice->series ?? '') ?>';
-      var currentIsProforma = false;
-      if (current) {
-        currentIsProforma = items.some(function(it){
-          var id = it.id || it.name || it.text; return String(id) === String(current);
+
+      // Jeśli brak wyników proforma — załaduj wszystkie serie (type=NULL lub dowolny)
+      if (!items.length) {
+        $.ajax({
+          url: seriesSearchUrl,
+          dataType: 'json',
+          data: { q: '', limit: 50 }
+        }).done(function(data2) {
+          applySeriesList(data2.results || data2 || []);
+        }).fail(function(){
+          try { $series.prop('disabled', false); } catch(_) {}
         });
+        return;
       }
-      if (currentIsProforma) {
-        // Już jest proforma – nic nie zmieniaj
+
+      applySeriesList(items);
+    }).fail(function(){
+      try { $series.prop('disabled', false); } catch(_) {}
+    });
+  }
+
+  function applySeriesList(items) {
+    var current = $series.val();
+    var controllerCur = '<?= h($invoice->series ?? '') ?>';
+
+    // Jeśli aktualnie wybrana seria jest na liście — zostaw ją, tylko odblokuj
+    if (current) {
+      var found = items.some(function(it){
+        return String(it.id || it.name || it.text) === String(current);
+      });
+      if (found) {
         try { $series.prop('disabled', false); } catch(_) {}
         return;
       }
-      var pick = items.find(function(item){ return item.is_default; });
-      if (!pick) {
-        // Fallback: spróbuj znaleźć po nazwie/tekście zawierającej 'proforma'
-        pick = items.find(function(item){
-          var t = (item.text || item.name || '').toString().toLowerCase();
-          return t.indexOf('proforma') > -1;
-        }) || items[0];
-      }
-      if (pick) {
-        var opt = new Option(pick.text || pick.name, pick.id || pick.name, true, true);
-        // Wyczyść poprzedni wybór i ustaw proforma
-        $series.find('option').remove();
-        $series.append(opt).trigger('change');
-        try { $series.prop('disabled', false); } catch(_) {}
-      } else if (controllerCur) {
-        // Brak listy proforma – spadamy do wartości z kontrolera (awaryjnie)
-        var opt2 = new Option(controllerCur, controllerCur, true, true);
-        $series.find('option').remove();
-        $series.append(opt2).trigger('change');
-        try { $series.prop('disabled', false); } catch(_) {}
-      }
-    });
+    }
+
+    // Wybierz domyślną (is_default) lub pierwszą z listy
+    var pick = items.find(function(item){ return item.is_default; }) || items[0];
+
+    if (pick) {
+      var opt = new Option(pick.text || pick.name, pick.id || pick.name, true, true);
+      $series.find('option').remove();
+      $series.append(opt).trigger('change');
+      try { $series.prop('disabled', false); } catch(_) {}
+    } else if (controllerCur) {
+      var opt2 = new Option(controllerCur, controllerCur, true, true);
+      $series.find('option').remove();
+      $series.append(opt2).trigger('change');
+      try { $series.prop('disabled', false); } catch(_) {}
+    } else {
+      // Brak serii — odblokuj ale zostaw pusty (użytkownik musi wybrać lub stworzyć)
+      try { $series.prop('disabled', false); } catch(_) {}
+    }
   }
 }
 

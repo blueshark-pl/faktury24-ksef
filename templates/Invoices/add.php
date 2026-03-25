@@ -36,12 +36,17 @@ try {
   if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
     foreach ($invoice->invoice_contents as $it) {
       $__prefillItems[] = [
-        'name' => (string)($it->name ?? ''),
-        'quantity' => $it->quantity ?? 1,
-        'price' => $it->price ?? 0,
-        'discount_percent' => $it->discount_percent ?? 0,
-        'vat_code_id' => $it->vat_code_id ?? null,
-        'gtu_code' => (string)($it->gtu_code ?? ''),
+        'name'              => (string)($it->name ?? ''),
+        'quantity'          => $it->quantity ?? 1,
+        'price'             => $it->price ?? 0,
+        'discount_percent'  => $it->discount_percent ?? 0,
+        'vat_code_id'       => $it->vat_code_id ?? null,
+        'gtu_code'          => (string)($it->gtu_code ?? ''),
+        'pkwiu'             => (string)($it->pkwiu ?? ''),
+        'gtin'              => (string)($it->gtin ?? ''),
+        'cn_code'           => (string)($it->cn_code ?? ''),
+        'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
+        'procedure_marking' => (string)($it->procedure_marking ?? ''),
         // price_mode is not stored; default to net to match backend calculations
         'price_mode' => 'net',
       ];
@@ -89,6 +94,20 @@ $gtuSelectHtml .= '</select>';
 <?php if (!empty($original?->id)): ?>
   <?= $this->Form->hidden('parent_id', ['value' => $original->id]) ?>
 <?php endif; ?>
+<?php
+$__kindBanners = [
+  'internal'         => ['label' => 'Dokument wewnętrzny',  'color' => 'secondary', 'icon' => 'ri-file-paper-line',   'note' => 'Dokument ewidencjonowany wewnętrznie — nie podlega wysyłce do KSeF.'],
+  'internalEvidence' => ['label' => 'Ewidencja wewnętrzna', 'color' => 'secondary', 'icon' => 'ri-file-list-3-line',  'note' => 'Dowód wewnętrzny — nie podlega wysyłce do KSeF.'],
+  'oss'              => ['label' => 'OSS – One Stop Shop',  'color' => 'info',      'icon' => 'ri-global-line',        'note' => 'Faktura OSS rozliczana w procedurze unijnej — nie podlega krajowemu KSeF.'],
+];
+$__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
+?>
+<?php if ($__kindBannerInfo): ?>
+<div class="alert alert-<?= $__kindBannerInfo['color'] ?> d-flex align-items-center gap-2 mb-0 mt-3" role="alert">
+  <i class="<?= $__kindBannerInfo['icon'] ?> fs-5 flex-shrink-0"></i>
+  <div><strong><?= $__kindBannerInfo['label'] ?></strong> — <?= $__kindBannerInfo['note'] ?></div>
+</div>
+<?php endif; ?>
 
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -120,15 +139,49 @@ $gtuSelectHtml .= '</select>';
 <div class="row">
   <div class="col-xxl-12">
     <div class="card custom-card">
-      <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
+      <div class="card-header d-flex align-items-center justify-content-between pe-2">
+        <ul class="nav nav-tabs card-header-tabs flex-grow-1" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
         </ul>
+        <div class="dropdown ms-2 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
+            <i class="ri-settings-3-line"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="inv-extra-tabs-btn">
+            <li><span class="dropdown-header text-muted small px-3 py-1">Dodatkowe zakładki</span></li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-annotations">
+                <i class="ri-file-text-line"></i> Adnotacje
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-fa3ext">
+                <i class="ri-government-line"></i> KSeF FA(3)
+              </button>
+            </li>
+          </ul>
+        </div>
+        <script>
+        $(function(){
+          var $gearBtn = $('#inv-extra-tabs-btn');
+
+          $(document).on('click', '[data-extra-tab]', function(){
+            var paneId = $(this).data('extra-tab');
+            $('#invTabs .nav-link').removeClass('active').attr('aria-selected', 'false');
+            $('#invTabs .nav-link').each(function(){ $(this).attr('tabindex', '-1'); });
+            $('.tab-content > .tab-pane').removeClass('show active');
+            $('#' + paneId).addClass('show active');
+            $gearBtn.removeClass('btn-outline-secondary').addClass('btn-secondary');
+          });
+
+          $('#invTabs').on('click', '.nav-link', function(){
+            $gearBtn.removeClass('btn-secondary').addClass('btn-outline-secondary');
+          });
+        });
+        </script>
       </div>
 
       <div class="card-body tab-content">
@@ -162,13 +215,16 @@ $gtuSelectHtml .= '</select>';
               </small>
             </div>
             <div class="col-lg-4">
+      <?= $this->Form->hidden('invoice_series_id', [
+        'id'    => 'invoice-series-id-hidden',
+        'value' => $invoice->invoice_series_id ?? null,
+      ]) ?>
       <?= $this->Form->control('series', [
         'label' => 'Schemat numeracji',
                 'type'  => 'select',
                 'empty' => true,
                 'class' => 'form-select',
                 'id'    => 'series-select',
-            // opcjonalnie: ustaw bieżącą wartość jeśli istnieje
             'value' => $invoice->series ?? null,
             ]) ?>
             </div>
@@ -210,7 +266,7 @@ $gtuSelectHtml .= '</select>';
             
               <div class="col-lg-2">
                 <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => !$__isEdit ? 0 : ($invoice->alreadypaid ?? 0)
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
                 ]) ?>
               </div>
               <div class="col-lg-2">
@@ -265,7 +321,7 @@ $gtuSelectHtml .= '</select>';
         <div class="tab-pane fade" id="pane-accounting" role="tabpanel" aria-labelledby="tab-accounting">
           <div class="vstack gap-3">
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="flag-fp" name="flags[fp]" value="1">
+              <input class="form-check-input" type="checkbox" id="flag-fp" name="flags[fp]" value="1"<?= !empty($invoice->is_receipt_invoice) ? ' checked' : '' ?>>
               <label class="form-check-label" for="flag-fp">Faktura do paragonu (FP)</label>
               <button type="button" class="btn btn-link p-0 align-baseline" id="fp-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                 title="Faktura do paragonu (FP)"
@@ -297,17 +353,18 @@ $gtuSelectHtml .= '</select>';
             <div id="tax-free-extra" class="row g-2 ms-1" style="display:none;">
               <div class="col-lg-6 col-12">
                 <label class="form-label" for="annotations-tax-free">Podstawa zwolnienia od podatku</label>
+                <?php $__atf = $invoice->annotations_tax_free ?? ''; ?>
                 <select class="form-select" id="annotations-tax-free" name="annotations_tax_free">
-                  <option value="" selected>-- Wybierz podstawę --</option>
-                  <option value="ustawa">Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
-                  <option value="dyrektywa">Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
-                  <option value="inna">Inna podstawa prawna wskazującą na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
+                  <option value=""<?= $__atf === '' ? ' selected' : '' ?>>-- Wybierz podstawę --</option>
+                  <option value="ustawa"<?= $__atf === 'ustawa' ? ' selected' : '' ?>>Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
+                  <option value="dyrektywa"<?= $__atf === 'dyrektywa' ? ' selected' : '' ?>>Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
+                  <option value="inna"<?= $__atf === 'inna' ? ' selected' : '' ?>>Inna podstawa prawna wskazującą na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
                 </select>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
               <div class="col-lg-6 col-12">
                 <label class="form-label" for="annotations-tax-free-field">Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</label>
-                <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"></textarea>
+                <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"><?= h($invoice->annotations_tax_free_field ?? '') ?></textarea>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
             </div>
@@ -315,7 +372,7 @@ $gtuSelectHtml .= '</select>';
             <!-- Mechanizm podzielonej płatności (MPP) -->
             <div class="d-flex align-items-center flex-wrap gap-2">
               <div class="form-check form-switch m-0">
-                <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1">
+                <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1"<?= !empty($invoice->is_split_payment) ? ' checked' : '' ?>>
                 <label class="form-check-label" for="is-split-payment">Mechanizm podzielonej płatności (MPP)</label>
               </div>
               <button type="button" class="btn btn-link p-0 align-baseline" id="mpp-help"
@@ -345,6 +402,26 @@ $gtuSelectHtml .= '</select>';
               <div class="col-4">
                 <?= $this->Form->control('receipt_date', ['label' => 'Data paragonu', 'type' => 'date', 'class' => 'form-control']) ?>
               </div>
+            </div>
+
+            <!-- Oznaczenie TP (powiązania) -->
+            <?php
+            $__ann = [];
+            if (!empty($invoice->annotations)) {
+                $__dec = is_array($invoice->annotations) ? $invoice->annotations : json_decode((string)$invoice->annotations, true);
+                if (is_array($__dec)) $__ann = $__dec;
+            }
+            ?>
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ann-tp" name="annotations[tp]" value="1"<?= !empty($__ann['tp']) ? ' checked' : '' ?>>
+                <label class="form-check-label" for="ann-tp">Oznaczenie TP (powiązania)</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Oznaczenie TP"
+                data-bs-content="<div class='small text-start'>Informacja, że między sprzedawcą a&nbsp;nabywcą istnieją powiązania. To przede wszystkim oznaczenie ewidencyjne/JPK; w&nbsp;KSeF może pojawić się na fakturze jako dodatkowa informacja.</div>">
+                <i class="ri-question-line"></i>
+              </button>
             </div>
 
             <script>
@@ -408,7 +485,7 @@ $gtuSelectHtml .= '</select>';
             ]) ?>
 
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1">
+              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
               <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
               <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                 title="Automatyczna wysyłka"
@@ -492,8 +569,8 @@ $gtuSelectHtml .= '</select>';
                 </div>
                 </div>
 
-              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START -->
-              <div id="contractor-snapshot" class="mt-2" style="display:none;">
+              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, rozwinięty w edit -->
+              <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
@@ -612,6 +689,61 @@ $gtuSelectHtml .= '</select>';
                 </thead>
 
               <tbody id="items-body">
+<?php if ($__isEdit && !empty($__prefillItems)): ?>
+<?php foreach ($__prefillItems as $__i => $__it):
+  $__vatOpts = '';
+  foreach ($vats as $__vid => $__vlabel) {
+    $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
+    $__vatOpts .= '<option value="'.h($__vid).'"'.$__sel.'>'.h($__vlabel).'</option>';
+  }
+  $__gtuOpts = '';
+  foreach (($gtuOptions ?? []) as $__gval => $__glabel) {
+    $__sel = ((string)$__gval === (string)($__it['gtu_code'] ?? '')) ? ' selected' : '';
+    $__gtuOpts .= '<option value="'.h($__gval).'"'.$__sel.'>'.h($__glabel).'</option>';
+  }
+  $__itemName = (string)($__it['name'] ?? '');
+  $__newOpt = $__itemName !== '' ? '<option value="'.h('NEW:'.$__itemName).'" selected>'.h($__itemName).'</option>' : '';
+  $__pm = (string)($__it['price_mode'] ?? 'net');
+  $__netto = number_format((float)($__it['netto'] ?? 0), 2, '.', '');
+  $__brutto = number_format((float)($__it['brutto'] ?? 0), 2, '.', '');
+?>
+<tr class="item-row" draggable="true">
+  <td>
+    <div class="d-flex align-items-center gap-1">
+      <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
+      <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
+    </div>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
+  </td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td>
+    <div class="d-flex align-items-center gap-1">
+      <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
+      <select name="items[<?= (int)$__i ?>][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
+        <option value="net"<?= $__pm === 'net' ? ' selected' : '' ?>>Netto</option>
+        <option value="gross"<?= $__pm === 'gross' ? ' selected' : '' ?>>Brutto</option>
+      </select>
+    </div>
+  </td>
+  <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="<?= $__netto ?>" readonly></td>
+  <td><input class="form-control text-end item-gross" value="<?= $__brutto ?>" readonly></td>
+  <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
+  <td>
+    <div class="d-flex gap-1">
+      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
+      <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
+    </div>
+  </td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
                 <!-- pierwszy (wymagany) wiersz -->
                   <tr class="item-row" draggable="true">
   <td>
@@ -620,6 +752,11 @@ $gtuSelectHtml .= '</select>';
         <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
       </div>
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
+    <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
+    <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
+    <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
+    <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
+    <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
   <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td>
@@ -643,6 +780,7 @@ $gtuSelectHtml .= '</select>';
     </div>
   </td>
 </tr>
+<?php endif; ?>
 
 
                 <!-- wiersz: Add Product -->
@@ -1123,156 +1261,235 @@ $gtuSelectHtml .= '</select>';
 </div>
 
 <!-- Modal: Dodaj produkt -->
+<datalist id="prod-units-list">
+  <option value="szt.">szt. – sztuki</option>
+  <option value="kg">kg – kilogram</option>
+  <option value="g">g – gram</option>
+  <option value="l">l – litr</option>
+  <option value="ml">ml – mililitr</option>
+  <option value="m">m – metr</option>
+  <option value="m2">m² – metr kwadratowy</option>
+  <option value="m3">m³ – metr sześcienny</option>
+  <option value="km">km – kilometr</option>
+  <option value="cm">cm – centymetr</option>
+  <option value="t">t – tona</option>
+  <option value="h">h – godzina</option>
+  <option value="godz.">godz. – godzina</option>
+  <option value="min.">min. – minuta</option>
+  <option value="dn.">dn. – dzień</option>
+  <option value="mies.">mies. – miesiąc</option>
+  <option value="rok">rok</option>
+  <option value="kpl.">kpl. – komplet</option>
+  <option value="op.">op. – opakowanie</option>
+  <option value="par">par – para</option>
+  <option value="zest.">zest. – zestaw</option>
+  <option value="usł.">usł. – usługa</option>
+  <option value="MB">MB – megabajt</option>
+  <option value="GB">GB – gigabajt</option>
+  <option value="TB">TB – terabajt</option>
+</datalist>
+
 <div class="modal fade" id="product-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj produkt/usługę</h6>
+        <h6 class="modal-title"><i class="ri-price-tag-3-line me-1"></i> Dodaj produkt / usługę</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <?= $this->Form->create(null, ['url' => ['controller' => 'Products','action' => 'add'], 'data-ajax' => '1', 'id' => 'product-create-form']) ?>
+      <?= $this->Form->create(null, ['url' => ['controller' => 'Products','action' => 'add'], 'id' => 'product-create-form']) ?>
       <div class="modal-body">
-        <?= $this->Form->control('name', ['label' => 'Nazwa*', 'required' => true, 'class' => 'form-control', 'id' => 'product-create-name']) ?>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('code', ['label' => 'Kod', 'class' => 'form-control', 'id' => 'product-create-code']) ?></div>
+
+        <!-- Podstawowe informacje -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nazwa <span class="text-danger">*</span></label>
+          <input type="text" name="name" id="product-create-name" class="form-control" required placeholder="Nazwa produktu lub usługi">
+          <div class="invalid-feedback">Podaj nazwę.</div>
+        </div>
+
+        <div class="row g-2 mb-3">
           <div class="col-6">
-            <?= $this->Form->control('is_service', [
-              'label' => 'Typ',
-              'type' => 'select',
-              'options' => [0 => 'Produkt', 1 => 'Usługa'],
-              'class' => 'form-select',
-              'value' => 0
-            ]) ?>
+            <label class="form-label fw-semibold">Kod / SKU</label>
+            <input type="text" name="code" id="product-create-code" class="form-control" placeholder="np. PRD-001 (auto)">
           </div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-4"><?= $this->Form->control('unit_name', ['label' => 'Jedn.', 'class' => 'form-control', 'value' => 'szt.', 'name' => 'unit_name']) ?></div>
-          <div class="col-4"><?= $this->Form->control('net_price', ['label' => 'Cena netto', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control']) ?></div>
-          <div class="col-4"><?= $this->Form->control('vat_id', ['label' => 'Stawka VAT', 'type' => 'select', 'options' => $vats, 'class' => 'form-select']) ?></div>
-        </div>
-        
-        <div class="row g-2">
-          <div class="col-6"><?= $this->Form->control('pkwiu', ['label' => 'PKWiU', 'class' => 'form-control', 'placeholder' => 'np. 62.01.10.0']) ?></div>
-          <div class="col-6"><?= $this->Form->control('gtu_code', [
-            'label' => 'GTU',
-            'type' => 'select',
-            'options' => [
-              '' => 'brak',
-              'GTU_01' => 'GTU_01 – napoje alkoholowe',
-              'GTU_02' => 'GTU_02 – paliwa',
-              'GTU_03' => 'GTU_03 – oleje opałowe',
-              'GTU_04' => 'GTU_04 – wyroby tytoniowe',
-              'GTU_05' => 'GTU_05 – odpady',
-              'GTU_06' => 'GTU_06 – urządzenia elektroniczne',
-              'GTU_07' => 'GTU_07 – pojazdy/części',
-              'GTU_08' => 'GTU_08 – metale szlachetne',
-              'GTU_09' => 'GTU_09 – leki/wyroby med.',
-              'GTU_10' => 'GTU_10 – budowlanka',
-              'GTU_11' => 'GTU_11 – drukowane nośniki',
-              'GTU_12' => 'GTU_12 – usługi niematerialne',
-              'GTU_13' => 'GTU_13 – transport i gospodarka magazynowa',
-            ],
-            'class' => 'form-select',
-            'empty' => false
-          ]) ?></div>
-        </div>
-        
-        <?= $this->Form->control('description', ['label' => 'Opis', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control']) ?>
-        <?= $this->Form->control('barcode', ['label' => 'Kod kreskowy', 'class' => 'form-control']) ?>
-
-        <!-- Dodatkowe pola KSeF -->
-        <hr class="my-2">
-        <p class="text-muted small mb-2"><i class="ri-information-line me-1"></i> Pola opcjonalne (KSeF / klasyfikacje)</p>
-
-        <div class="row g-2">
-          <div class="col-4">
-            <label class="form-label">GTIN
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="GTIN" data-bs-content="<div class='small'>Unikatowy kod handlowy produktu (EAN/UPC). Np.&nbsp;5901234123457.</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </label>
-            <?= $this->Form->control('gtin', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 5901234123457']) ?>
-          </div>
-          <div class="col-4">
-            <label class="form-label">CN
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Kod CN" data-bs-content="<div class='small'>Kod towaru wg Nomenklatury Scalonej (CN) &mdash; klasyfikacja dla VAT i&nbsp;obrotu międzynarodowego.</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </label>
-            <?= $this->Form->control('cn_code', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 8471 30 00']) ?>
-          </div>
-          <div class="col-4">
-            <label class="form-label">PKOB
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="PKOB" data-bs-content="<div class='small'>Kod wg Polskiej Klasyfikacji Obiektów Budowlanych &mdash; stosowany przy obiektach budowlanych.</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </label>
-            <?= $this->Form->control('pkob', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. 1110']) ?>
-          </div>
-        </div>
-
-        <div class="row g-2 mt-1">
           <div class="col-6">
-            <div class="form-check mt-2">
-              <input class="form-check-input" type="checkbox" id="prod-attachment15" name="is_attachment15" value="1">
-              <label class="form-check-label" for="prod-attachment15">Towar/usługa z zał. 15</label>
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Załącznik 15" data-bs-content="<div class='small'>Pozycja z&nbsp;załącznika nr&nbsp;15 ustawy o&nbsp;VAT &mdash; podlega obowiązkowemu mechanizmowi podzielonej płatności (MPP).</div>">
-                <i class="ri-question-line"></i>
-              </button>
+            <label class="form-label fw-semibold">Typ</label>
+            <select name="is_service" class="form-select" id="product-create-type">
+              <option value="0">📦 Produkt / towar</option>
+              <option value="1">🔧 Usługa</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Cena i jednostka -->
+        <div class="row g-2 mb-3">
+          <div class="col-4">
+            <label class="form-label fw-semibold">Jednostka miary</label>
+            <input type="text" name="unit_name" id="product-create-unit" class="form-control"
+              value="szt." list="prod-units-list" autocomplete="off"
+              placeholder="np. szt., kg, h…">
+            <div class="form-text">Wpisz lub wybierz z listy</div>
+          </div>
+          <div class="col-4">
+            <label class="form-label fw-semibold">Cena netto</label>
+            <div class="input-group">
+              <input type="number" name="net_price" step="0.01" min="0" class="form-control text-end" placeholder="0.00" id="product-create-price">
+              <span class="input-group-text" id="prod-currency-label">PLN</span>
             </div>
           </div>
-          <div class="col-6">
-            <label class="form-label">Kwota podatku akcyzowego
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Akcyza" data-bs-content="<div class='small'>Kwota akcyzy zawarta w&nbsp;cenie towaru (dotyczy np.&nbsp;paliw, alkoholu, wyrobów tytoniowych).</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </label>
-            <?= $this->Form->control('excise_amount', ['label' => false, 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'placeholder' => '0.00']) ?>
+          <div class="col-4">
+            <label class="form-label fw-semibold">Stawka VAT</label>
+            <?= $this->Form->control('vat_id', ['label' => false, 'type' => 'select', 'options' => $vats, 'class' => 'form-select', 'id' => 'product-create-vat']) ?>
           </div>
         </div>
 
-        <div class="row g-2 mt-1">
-          <div class="col-12">
-            <label class="form-label">Oznaczenie procedury
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Procedury" data-bs-content="<div class='small'>Dodatkowe oznaczenia procedur na pozycji faktury wymagane w&nbsp;KSeF/JPK.</div>">
-                <i class="ri-question-line"></i>
-              </button>
-            </label>
-            <?= $this->Form->control('procedure_marking', [
-              'label' => false,
-              'type' => 'select',
-              'options' => [
-                '' => '— brak —',
-                'WSTO_EE' => 'WSTO_EE – sprzedaż na odległość do konsumenta w UE',
-                'IED' => 'IED – dostawa ułatwiana przez interfejs elektroniczny',
-                'TT_D' => 'TT_D – dostawa w transakcji trójstronnej uproszczonej',
-                'I_42' => 'I_42 – WDT po imporcie w procedurze celnej 42',
-                'I_63' => 'I_63 – WDT po imporcie w procedurze celnej 63',
-                'B_SPV' => 'B_SPV – transfer bonu jednego przeznaczenia',
-                'B_SPV_DOSTAWA' => 'B_SPV_DOSTAWA – dostawa dot. bonu jednego przeznaczenia',
-                'B_MPV_PROWIZJA' => 'B_MPV_PROWIZJA – prowizja dot. bonu różnego przeznaczenia',
-              ],
-              'class' => 'form-select',
-              'empty' => false
-            ]) ?>
+        <!-- Klasyfikacja -->
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold">PKWiU</label>
+            <input type="text" name="pkwiu" class="form-control" placeholder="np. 62.01.10.0" id="product-create-pkwiu">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold">Kod GTU</label>
+            <select name="gtu_code" class="form-select" id="product-create-gtu">
+              <option value="">— brak GTU —</option>
+              <option value="GTU_01">GTU_01 – napoje alkoholowe</option>
+              <option value="GTU_02">GTU_02 – paliwa silnikowe</option>
+              <option value="GTU_03">GTU_03 – oleje opałowe / smarowe</option>
+              <option value="GTU_04">GTU_04 – wyroby tytoniowe</option>
+              <option value="GTU_05">GTU_05 – odpady</option>
+              <option value="GTU_06">GTU_06 – urządzenia elektroniczne</option>
+              <option value="GTU_07">GTU_07 – pojazdy i części</option>
+              <option value="GTU_08">GTU_08 – metale szlachetne</option>
+              <option value="GTU_09">GTU_09 – leki i wyroby medyczne</option>
+              <option value="GTU_10">GTU_10 – budynki, budowle i grunty</option>
+              <option value="GTU_11">GTU_11 – usługi w zakresie przenoszenia uprawnień do emisji</option>
+              <option value="GTU_12">GTU_12 – usługi niematerialne (IT, doradcze, reklamowe…)</option>
+              <option value="GTU_13">GTU_13 – transport i gospodarka magazynowa</option>
+            </select>
           </div>
         </div>
-        
+
+        <div class="row g-2 mb-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Opis</label>
+            <textarea name="description" rows="2" class="form-control" placeholder="Opcjonalny opis produktu / usługi"></textarea>
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Kod kreskowy / EAN</label>
+            <input type="text" name="barcode" class="form-control" placeholder="np. 5901234123457">
+          </div>
+        </div>
+
+        <!-- Sekcja KSeF – zwijana -->
+        <div class="border rounded p-0 mt-3">
+          <button type="button" class="btn btn-link text-decoration-none d-flex align-items-center w-100 px-3 py-2 text-start gap-1"
+            data-bs-toggle="collapse" data-bs-target="#prod-ksef-section" aria-expanded="false" aria-controls="prod-ksef-section"
+            id="prod-ksef-toggle">
+            <i class="ri-arrow-right-s-line" id="prod-ksef-chevron" style="transition: transform .2s"></i>
+            <span class="small fw-semibold text-muted">Pola klasyfikacyjne KSeF / JPK</span>
+            <span class="badge bg-secondary-subtle text-secondary ms-1 small">opcjonalne</span>
+          </button>
+          <div class="collapse" id="prod-ksef-section">
+            <div class="px-3 pb-3 pt-1">
+
+              <div class="row g-2 mb-2">
+                <div class="col-4">
+                  <label class="form-label small">GTIN / EAN
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                      data-bs-toggle="tooltip" title="Unikatowy kod handlowy produktu (EAN-8, EAN-13, UPC). Np. 5901234123457.">
+                      <i class="ri-question-line text-muted"></i>
+                    </button>
+                  </label>
+                  <input type="text" name="gtin" class="form-control form-control-sm" placeholder="5901234123457">
+                </div>
+                <div class="col-4">
+                  <label class="form-label small">Kod CN
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                      data-bs-toggle="tooltip" title="Kod towaru wg Nomenklatury Scalonej (CN) – dla obrotu międzynarodowego.">
+                      <i class="ri-question-line text-muted"></i>
+                    </button>
+                  </label>
+                  <input type="text" name="cn_code" class="form-control form-control-sm" placeholder="8471 30 00">
+                </div>
+                <div class="col-4">
+                  <label class="form-label small">PKOB
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                      data-bs-toggle="tooltip" title="Polska Klasyfikacja Obiektów Budowlanych – dla budynków i budowli.">
+                      <i class="ri-question-line text-muted"></i>
+                    </button>
+                  </label>
+                  <input type="text" name="pkob" class="form-control form-control-sm" placeholder="1110">
+                </div>
+              </div>
+
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label small">Kwota akcyzy
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                      data-bs-toggle="tooltip" title="Kwota podatku akcyzowego zawarta w cenie (paliwa, alkohol, tytoń).">
+                      <i class="ri-question-line text-muted"></i>
+                    </button>
+                  </label>
+                  <input type="number" name="excise_amount" step="0.01" min="0" class="form-control form-control-sm" placeholder="0.00">
+                </div>
+                <div class="col-6 d-flex align-items-end pb-1">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="prod-attachment15" name="is_attachment15" value="1">
+                    <label class="form-check-label small" for="prod-attachment15">
+                      Towar/usługa z zał.&nbsp;15 (MPP)
+                      <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                        data-bs-toggle="tooltip" title="Pozycja z załącznika nr 15 ustawy o VAT – obowiązkowy mechanizm podzielonej płatności.">
+                        <i class="ri-question-line text-muted"></i>
+                      </button>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row g-2">
+                <div class="col-12">
+                  <label class="form-label small">Oznaczenie procedury (FA(3))
+                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
+                      data-bs-toggle="tooltip" title="Dodatkowe oznaczenia procedur wymagane w KSeF / JPK_VAT (np. metoda kasowa, powiązane podmioty).">
+                      <i class="ri-question-line text-muted"></i>
+                    </button>
+                  </label>
+                  <select name="procedure_marking" class="form-select form-select-sm">
+                    <option value="">— brak —</option>
+                    <option value="MR_T">MR_T – metoda kasowa (dostawa towarów)</option>
+                    <option value="MR_UZ">MR_UZ – metoda kasowa (świadczenie usług)</option>
+                    <option value="EE">EE – energia elektryczna, gaz, usługi dystrybucji</option>
+                    <option value="TP">TP – podmioty powiązane (art. 32 ustawy VAT)</option>
+                    <option value="TT_WNT">TT_WNT – WNT w transakcji trójstronnej uproszczonej</option>
+                    <option value="TT_D">TT_D – dostawa w transakcji trójstronnej uproszczonej</option>
+                    <option value="I_42">I_42 – WDT po imporcie w procedurze celnej 42</option>
+                    <option value="I_63">I_63 – WDT po imporcie w procedurze celnej 63</option>
+                    <option value="B_SPV">B_SPV – transfer bonu jednego przeznaczenia</option>
+                    <option value="B_SPV_DOSTAWA">B_SPV_DOSTAWA – dostawa towarów dot. bonu jednego przeznaczenia</option>
+                    <option value="B_MPV_PROWIZJA">B_MPV_PROWIZJA – prowizja dot. bonu różnego przeznaczenia</option>
+                    <option value="MPP">MPP – mechanizm podzielonej płatności</option>
+                  </select>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
         <?= $this->Form->hidden('unit_id', ['value' => 1]) ?>
         <?= $this->Form->hidden('currency', ['value' => 'PLN']) ?>
         <?= $this->Form->hidden('is_active', ['value' => 1]) ?>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', ['class' => 'btn btn-primary', 'escapeTitle' => false]) ?>
+        <button type="submit" id="product-create-submit" class="btn btn-primary">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="prod-submit-spinner" role="status" aria-hidden="true"></span>
+          <i class="ri-save-line me-1" id="prod-submit-icon"></i>
+          <span>Zapisz produkt</span>
+        </button>
       </div>
       <?= $this->Form->end() ?>
     </div>
@@ -1754,6 +1971,11 @@ $(function () {
     gusUrl: gusUrl
   });
 
+  // ===== Tooltips (m.in. modal produktu) =====
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el, { container: 'body', trigger: 'hover focus' });
+  });
+
   // ===== GTU Popover =====
   var gtuHelpHtml = '\
   <div class="small text-start">\
@@ -1833,7 +2055,15 @@ $(function () {
     });
   }
 
-  function toast(msg){ $('#app-toast-body').text(msg); new bootstrap.Toast('#app-toast').show(); }
+  function toast(msg, type){
+    var $body = $('#app-toast-body');
+    var safe = $('<div>').text(msg).html().replace(/\n/g, '<br>');
+    $body.html(safe);
+    var $toast = $('#app-toast');
+    $toast.removeClass('text-bg-danger text-bg-success text-bg-warning');
+    if (type === 'danger') $toast.addClass('text-bg-danger');
+    new bootstrap.Toast($toast[0]).show();
+  }
   function closeSelect2Then(fn){
     var $sel = $('#contractor-select');
     try { $sel.select2('close'); } catch(_){}
@@ -2611,6 +2841,13 @@ $('#gus-fetch-btn').on('click', function(){
           var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
           $tr.find('.item-price').val(disp.toFixed(2));
         }
+        // Fill classification fields from product
+        if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
+        $tr.find('.item-pkwiu').val(d.pkwiu || '');
+        $tr.find('.item-gtin').val(d.gtin || '');
+        $tr.find('.item-cn-code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount || '');
+        $tr.find('.item-procedure').val(d.procedure_marking || '');
         // Save to recent products
         saveRecentProduct(d);
         rowCalc($tr); allCalc();
@@ -2629,15 +2866,19 @@ $('#gus-fetch-btn').on('click', function(){
     });
   }
 
-  // ====== PIERWSZY WIERSZ ======
-  (function initFirstRow(){
-    var $tr = $itemsBody.find('tr').first();
-    initProductSelectForRow($tr);
-  $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
-    // apply stored default mode to first row
-    $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
-    $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
-    rowCalc($tr); allCalc(); guardMinRows();
+  // ====== INICJALIZACJA ISTNIEJĄCYCH WIERSZY ======
+  (function initExistingRows(){
+    var $rows = $itemsBody.find('tr.item-row');
+    $rows.each(function(){
+      var $tr = $(this);
+      initProductSelectForRow($tr);
+      $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
+      $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
+      $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+      rowCalc($tr);
+    });
+    idx = Math.max(1, $rows.length);
+    allCalc(); guardMinRows();
   })();
 
   // ====== PREFILL: EDIT MODE (normal invoices) ======
@@ -2657,6 +2898,11 @@ $('#gus-fetch-btn').on('click', function(){
     if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
     if (vatId !== null && vatId !== '') { $tr.find('.item-vatcode').val(vatId); }
     if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
+    $tr.find('.item-pkwiu').val(item.pkwiu || '');
+    $tr.find('.item-gtin').val(item.gtin || '');
+    $tr.find('.item-cn-code').val(item.cn_code || '');
+    $tr.find('.item-excise').val(item.excise_amount || '');
+    $tr.find('.item-procedure').val(item.procedure_marking || '');
 
     // Show name in Select2 (tag mode)
     $tr.find('.item-name-hidden').val(name);
@@ -2718,6 +2964,11 @@ $('#gus-fetch-btn').on('click', function(){
             '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
           '</div>'+
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
+          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
+          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
+          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td>'+
@@ -2855,19 +3106,46 @@ $('#gus-fetch-btn').on('click', function(){
     }
   });
 
+  // ====== PRODUKT: obrót strzałki w sekcji KSeF ======
+  $('#prod-ksef-section').on('show.bs.collapse', function () {
+    $('#prod-ksef-chevron').css('transform', 'rotate(90deg)');
+  }).on('hide.bs.collapse', function () {
+    $('#prod-ksef-chevron').css('transform', 'rotate(0deg)');
+  });
+
   // ====== PRODUKT: MODAL AJAX ADD ======
   $('#product-create-form').on('submit', function (e) {
     e.preventDefault();
-    var $f = $(this);
-    
-    // Generate a simple code if not provided
-    var name = $f.find('[name="name"]').val() || '';
+    var $f    = $(this);
+    var $btn  = $('#product-create-submit');
+    var $spin = $('#prod-submit-spinner');
+    var $icon = $('#prod-submit-icon');
+
+    // Walidacja po stronie JS
+    var name = $.trim($f.find('[name="name"]').val());
+    if (!name) {
+      $f.find('[name="name"]').addClass('is-invalid').trigger('focus');
+      return;
+    }
+    $f.find('[name="name"]').removeClass('is-invalid');
+
+    // Auto-code jeśli puste
     var code = $f.find('[name="code"]').val();
     if (!code && name) {
-      code = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase();
-      $f.find('[name="code"]').val(code);
+      $f.find('[name="code"]').val(name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase());
     }
-    
+
+    // Loading state
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+    $icon.addClass('d-none');
+
+    var resetBtn = function () {
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      $icon.removeClass('d-none');
+    };
+
     $.ajax({
       url: $f.attr('action'),
       method: 'POST',
@@ -2875,55 +3153,105 @@ $('#gus-fetch-btn').on('click', function(){
       processData: false, contentType: false,
       headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
     }).done(function (data) {
+      resetBtn();
       if (data && data.success && currentProductRow && data.product) {
-  var product = data.product;
-  var name = product.name || name;
-  var netPrice = parseFloat(product.net_price || '0') || 0;
-        
-  // Update the current row with product data
-  currentProductRow.find('.item-name-hidden').val(name);
-        
-  // Set VAT if provided first, then compute displayed price based on mode
-  var $vat = currentProductRow.find('.item-vatcode'); 
-  var vatId = product.vat_id;
-  if ($vat.length && vatId) $vat.val(vatId);
-  var mode = (currentProductRow.find('.item-price-mode').val() || 'net');
-  var effectiveVatId = currentProductRow.find('.item-vatcode').val();
-  var rate = toNum(vatRates[effectiveVatId], 0);
-  var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
-  currentProductRow.find('.item-price').val(disp.toFixed(2));
-        
-        // Update Select2 with new product
-        if ($.fn && $.fn.select2) { 
-          var $sel = currentProductRow.find('.item-product-select'); 
-          var displayText = '';
-          if (product.code) {
-            displayText = product.code + ' - ' + name;
-          } else {
-            displayText = name;
-          }
-          if (product.is_service) {
-            displayText += ' (usługa)';
-          }
-          var opt = new Option(displayText, product.id, true, true); 
-          $sel.append(opt).trigger('change'); 
-        }
-        
-        // Save to recent products
-        saveRecentProduct({ id: product.id, text: name, price: netPrice, vat_id: product.vat_id });
+        var product  = data.product;
+        var prodName = product.name || name;
+        var netPrice = parseFloat(product.net_price || '0') || 0;
 
-        rowCalc(currentProductRow); 
-        allCalc(); 
-        $('#product-create-modal').modal('hide'); 
+        // Nazwa
+        currentProductRow.find('.item-name-hidden').val(prodName);
+
+        // VAT + cena
+        var $vat = currentProductRow.find('.item-vatcode');
+        if ($vat.length && product.vat_id) $vat.val(product.vat_id);
+        var mode           = (currentProductRow.find('.item-price-mode').val() || 'net');
+        var effectiveVatId = currentProductRow.find('.item-vatcode').val();
+        var rate           = toNum(vatRates[effectiveVatId], 0);
+        var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
+        currentProductRow.find('.item-price').val(disp.toFixed(2));
+
+        // GTU – przepisz z produktu do wiersza
+        if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
+          currentProductRow.find('.item-gtu').val(product.gtu_code);
+        }
+
+        // Pola klasyfikacyjne KSeF/JPK – przepisz z produktu do hidden inputs wiersza
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount || '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
+
+        // Select2 – pokaż nazwę produktu
+        if ($.fn && $.fn.select2) {
+          var $sel        = currentProductRow.find('.item-product-select');
+          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          if (product.is_service) displayText += ' (usługa)';
+          var opt = new Option(displayText, product.id, true, true);
+          $sel.append(opt).trigger('change');
+        }
+
+        // Zapamiętaj w ostatnich
+        saveRecentProduct({ id: product.id, text: prodName, price: netPrice, vat_id: product.vat_id });
+
+        rowCalc(currentProductRow);
+        allCalc();
+        $('#product-create-modal').modal('hide');
         $f[0].reset();
+        // Przywróć domyślną jednostkę po resecie
+        $f.find('[name="unit_name"]').val('szt.');
         toast(data.message || 'Produkt został dodany.');
-      } else { 
-        toast(data.message || 'Nie udało się dodać produktu.'); 
+      } else {
+        var fieldLabels = {
+          name: 'Nazwa', net_price: 'Cena netto', vat_id: 'Stawka VAT',
+          unit_id: 'Jednostka', code: 'Kod produktu',
+          currency: 'Waluta', is_service: 'Typ', is_active: 'Status'
+        };
+        var errorLabels = {
+          _empty: 'pole wymagane', _required: 'pole wymagane',
+          maxLength: 'za długa wartość', uuid: 'nieprawidłowy format',
+          decimal: 'nieprawidłowa liczba', _isUnique: 'taka wartość już istnieje'
+        };
+        var lines = [data.message || 'Nie udało się dodać produktu.'];
+        if (data.errors && typeof data.errors === 'object') {
+          $.each(data.errors, function(field, errs) {
+            if (field === 'company_id' && errs && errs._isUnique) {
+              lines.push('Produkt z taką nazwą lub kodem już istnieje.');
+              return;
+            }
+            var label = fieldLabels[field] || field;
+            var msgs = [];
+            if (typeof errs === 'object') {
+              $.each(errs, function(rule, msg) {
+                msgs.push(errorLabels[rule] || msg);
+              });
+            } else {
+              msgs.push(errs);
+            }
+            lines.push(label + ': ' + msgs.join(', '));
+          });
+        }
+        toast(lines.join('\n'), 'danger');
       }
-    }).fail(function (xhr) { 
-      console.error('product add fail', xhr.status, xhr.responseText); 
-      toast('Błąd komunikacji przy dodawaniu produktu.'); 
+    }).fail(function (xhr) {
+      resetBtn();
+      console.error('product add fail', xhr.status, xhr.responseText);
+      toast('Błąd komunikacji przy dodawaniu produktu.', 'danger');
     });
+  });
+
+  // Czyść walidację przy wpisywaniu
+  $('#product-create-form').on('input', '[name="name"]', function () {
+    $(this).removeClass('is-invalid');
+  });
+
+  // Reset jednostki po zamknięciu modalu
+  $('#product-create-modal').on('hidden.bs.modal', function () {
+    $('#product-create-form')[0].reset();
+    $('#product-create-form [name="unit_name"]').val('szt.');
+    $('#product-create-form [name="name"]').removeClass('is-invalid');
+    $('#prod-ksef-section').collapse('hide');
   });
   
   // ====== CONTRACTOR: MODAL AJAX ADD ======
@@ -2946,7 +3274,8 @@ $('#gus-fetch-btn').on('click', function(){
         // Close modal and reset form
         $('#contractor-create-modal').modal('hide');
         $f[0].reset();
-        
+        catalogData = [];
+
         toast(data.message || 'Kontrahent został dodany i przypisany.');
       } else {
         toast(data.message || 'Nie udało się dodać kontrahenta.');
@@ -2957,39 +3286,6 @@ $('#gus-fetch-btn').on('click', function(){
     });
   });
 
-  // ====== KONTRAHENT: MODAL AJAX ADD ======
-  $('#contractor-create-form').on('submit', function (e) {
-    e.preventDefault();
-    var $f = $(this);
-    $.ajax({
-      url: $f.attr('action'),
-      method: 'POST',
-      data: new FormData(this),
-      processData: false, contentType: false,
-      headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
-    }).done(function (data) {
-      if (data && data.success && data.contractor) {
-        var contractor = data.contractor;
-        
-        // Apply contractor to invoice form
-        applyContractor(contractor);
-        
-        // Close modal and reset form
-        $('#contractor-create-modal').modal('hide');
-        $f[0].reset();
-        
-        // Refresh catalog data if modal is open
-        catalogData = [];
-        
-        toast(data.message || 'Kontrahent został dodany.');
-      } else {
-        toast(data.message || 'Nie udało się dodać kontrahenta.');
-      }
-    }).fail(function (xhr) {
-      console.error('contractor add fail', xhr.status, xhr.responseText);
-      toast('Błąd komunikacji przy dodawaniu kontrahenta.');
-    });
-  });
 
   // ====== WALIDACJA: min 1 wiersz ======
   function syncItemNamesBeforeSubmit(){
@@ -3342,14 +3638,27 @@ if ($.fn && $.fn.select2) {
   })
   .on('select2:open', function(){
     injectSeriesToolbar();
+  })
+  .on('select2:select', function(e) {
+    // Gdy użytkownik wybiera serię — zapisz UUID w hidden field
+    var selectedData = e.params.data;
+    var uuid = selectedData.id || '';
+    $('#invoice-series-id-hidden').val(uuid);
+  })
+  .on('select2:clear', function() {
+    $('#invoice-series-id-hidden').val('');
   });
 
-  // jeśli mamy w entity bieżącą wartość „series” i nie ma jej na liście, dodać jako wybraną opcję:
+  // jeśli mamy w entity bieżącą wartość — preloaduj po UUID lub nazwie
   (function preloadSeries(){
-    var cur = $series.data('current') || $series.val() || '<?= h($invoice->series ?? '') ?>';
+    var curUuid  = '<?= h($invoice->invoice_series_id ?? '') ?>';
+    var curName  = '<?= h($invoice->series ?? '') ?>';
+    var cur      = curUuid || curName;
     if (cur) {
-      var opt = new Option(cur, cur, true, true);
+      var label = curName || curUuid;
+      var opt = new Option(label, curUuid || curName, true, true);
       $series.append(opt).trigger('change');
+      $('#invoice-series-id-hidden').val(curUuid);
     } else {
       // Jeśli nie ma wcześniej wybranej serii, spróbuj załadować domyślną
       loadDefaultSeries();

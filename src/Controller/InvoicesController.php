@@ -18,7 +18,9 @@ use App\Service\Ksef\N1KsefService;
 use App\Service\Ksef\CertificateStorage;
 use Psr\Http\Message\UploadedFileInterface;
 use Cake\Http\Exception\BadRequestException;
-use App\Model\Entity\Invoice; // <-- DODAĆ TO
+use App\Model\Entity\Invoice;
+use App\Service\Invoice\InvoiceNumberingService;
+use App\Service\Invoice\InvoiceDefaultSeriesResolver;
 
 /**
  * Invoices Controller
@@ -27,6 +29,16 @@ use App\Model\Entity\Invoice; // <-- DODAĆ TO
  */
 class InvoicesController extends AppController
 {
+    private InvoiceNumberingService $numberingService;
+    private InvoiceDefaultSeriesResolver $defaultSeriesResolver;
+
+    public function initialize(): void
+    {
+        parent::initialize();
+        $this->numberingService      = new InvoiceNumberingService();
+        $this->defaultSeriesResolver = new InvoiceDefaultSeriesResolver();
+    }
+
     private const NS_FA3            = 'http://crd.gov.pl/wzor/2025/06/25/13775/';
     private const FORM_CODE         = 'FA';
     private const FORM_CODE_SYSTEM  = 'FA (3)';
@@ -118,9 +130,20 @@ class InvoicesController extends AppController
                     'product_desc'     => (string)($r['product_desc'] ?? ''),
                     'purchase_price'   => $r['purchase_price'] ?? 0,
                     'price_mode'       => (string)($r['price_mode'] ?? 'net'),
+                    'pkwiu'            => (string)($r['pkwiu'] ?? ''),
+                    'gtin'             => (string)($r['gtin'] ?? ''),
+                    'cn_code'          => (string)($r['cn_code'] ?? ''),
+                    'excise_amount'    => $r['excise_amount'] ?? '',
+                    'procedure_marking' => (string)($r['procedure_marking'] ?? ''),
                 ];
             }
             $invoice->set('invoice_contents', $prefill);
+        }
+
+        // Pola, które w formularzu mają nazwy niezgodne z kolumnami encji —
+        // ustawiamy ręcznie, aby działało uzupełnianie formularza przy błędzie.
+        if (!empty($data['flags']['fp'])) {
+            $invoice->set('is_receipt_invoice', 1);
         }
     }
 
@@ -920,6 +943,11 @@ public function addNoVat(): ?\Cake\Http\Response
     // własny formularz + wymuszenie zerowych stawek VAT
     return $this->handleAdd('novat', true);
 }
+/**
+ * @param string $kind    Typ dokumentu: vat|currency|novat|advance|final|correction|margin|proforma|internal|internalEvidence|oss
+ * @param bool   $noVat   Wymuś zerową stawkę VAT — przekazywane TYLKO przez addNoVat(). Dla pozostałych typów zawsze false.
+ *                        Nie należy mylić z typem 'novat': parametr $noVat to flaga przetwarzania, $kind to typ zapisany w bazie.
+ */
 private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Response
 {
     $isDemo = (bool)(Configure::read('App.demo') ?? false);
@@ -968,204 +996,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } catch (\Throwable $e) { /* ignore */ }
         }
 
-        // Default series for proforma: prefer default series whose name contains 'proforma'
-        if ($kind === 'proforma') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'is_default' => 1])
-                    ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%proforma%'); })
-                    ->first();
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()->where(['company_id' => $companyId, 'is_default' => 1])->first();
-                }
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%proforma%'); })
-                        ->first();
-                }
-                if ($ser && empty($invoice->series)) {
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
-        // Default series for currency invoices: prefer type='currency' and is_default
-        if ($kind === 'currency') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                // 1) Prefer default currency series
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'type' => 'currency', 'is_default' => 1])
-                    ->first();
-                // 2) Any currency series
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'type' => 'currency'])
-                        ->orderAsc('name')
-                        ->first();
-                }
-                // 3) Fallback to global default
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'is_default' => 1])
-                        ->first();
-                }
-                // 4) Last-resort: name hint contains "walut"
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%walut%'); })
-                        ->first();
-                }
-                if ($ser && empty($invoice->series)) {
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
-        // Default series for CORRECTION: prefer type='kor' and is_default, otherwise name hints
-        if ($kind === 'correction') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                // 1) Prefer default KOR by type
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'type' => 'kor', 'is_default' => 1])
-                    ->first();
-                // 2) Any KOR by type
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'type' => 'kor'])
-                        ->orderAsc('name')
-                        ->first();
-                }
-                // 3) Name hints: 'korekt', 'koryg', 'kor'
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){
-                            return $exp->or_([
-                                $exp->like('LOWER(name)', '%korekt%'),
-                                $exp->like('LOWER(name)', '%koryg%'),
-                                $exp->like('LOWER(name)', '%kor%')
-                            ]);
-                        })
-                        ->first();
-                }
-                // 4) Fallback to global default
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()->where(['company_id' => $companyId, 'is_default' => 1])->first();
-                }
-                if ($ser) {
-                    // For corrections, explicitly set series to KOR-preferred
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
-
-        // Default series for VAT invoices: prefer type='vat' and is_default
-        if ($kind === 'vat') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                // 1) Prefer default VAT series
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'type' => 'vat', 'is_default' => 1])
-                    ->first();
-                // 2) Any VAT series
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'type' => 'vat'])
-                        ->orderAsc('name')
-                        ->first();
-                }
-                // 3) Fallback to global default
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'is_default' => 1])
-                        ->first();
-                }
-                // 4) Last-resort: name hint contains 'vat' (case-insensitive)
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%vat%'); })
-                        ->first();
-                }
-                if ($ser && empty($invoice->series)) {
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
-        // Default series for no-VAT invoices: prefer type='novat' and is_default
-        if ($kind === 'novat') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                // 1) Prefer default no-VAT series
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'type' => 'novat', 'is_default' => 1])
-                    ->first();
-                // 2) Any no-VAT series
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'type' => 'novat'])
-                        ->orderAsc('name')
-                        ->first();
-                }
-                // 3) Fallback to global default
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'is_default' => 1])
-                        ->first();
-                }
-                // 4) Last-resort: try to guess by name
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){
-                            return $exp->or_([
-                                $exp->like('LOWER(name)', '%no vat%'),
-                                $exp->like('LOWER(name)', '%bez vat%'),
-                                $exp->like('LOWER(name)', '%bezvat%'),
-                                $exp->like('LOWER(name)', '%novat%'),
-                            ]);
-                        })
-                        ->first();
-                }
-                if ($ser && empty($invoice->series)) {
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
-        // Default series for advance: prefer default series whose name contains 'zaliczka' or 'advance'
-        if ($kind === 'advance') {
-            try {
-                $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-                $ser = $InvoiceSeries->find()
-                    ->where(['company_id' => $companyId, 'is_default' => 1])
-                    ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%zaliczka%'); })
-                    ->first();
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId, 'is_default' => 1])
-                        ->andWhere(function($exp){ return $exp->like('LOWER(name)', '%advance%'); })
-                        ->first();
-                }
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()->where(['company_id' => $companyId, 'is_default' => 1])->first();
-                }
-                if (!$ser) {
-                    $ser = $InvoiceSeries->find()
-                        ->where(['company_id' => $companyId])
-                        ->andWhere(function($exp){ return $exp->or_([
-                            $exp->like('LOWER(name)', '%zaliczka%'),
-                            $exp->like('LOWER(name)', '%advance%'),
-                        ]); })
-                        ->first();
-                }
-                if ($ser && empty($invoice->series)) {
-                    $invoice->set('series', (string)$ser->name);
-                }
-            } catch (\Throwable $e) { /* ignore */ }
-        }
+        // Wybór domyślnej serii dla nowej faktury (delegowane do InvoiceDefaultSeriesResolver)
+        try {
+            $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+            $ser = $this->defaultSeriesResolver->resolve($InvoiceSeries, (string)$companyId, $kind);
+            if ($ser && empty($invoice->series)) {
+                $invoice->set('series', (string)$ser->name);
+            }
+        } catch (\Throwable $e) { /* ignore — nie blokujemy formularza */ }
     }
 
     // słowniki VAT – dla noVat nie musimy ładować stawek, ale jeśli chcesz mieć np. "ZW/NP", możesz załadować i ukryć w UI
@@ -1178,8 +1016,26 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $data = $this->request->getData();
         $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
         $doSend = $ksefModeEnabled ? $this->shouldSendToKsefNow((array)$data) : false;
-        $isDraftWorkflow = $ksefModeEnabled && !$doSend;
+        // Proforma i faktura bez VAT nie trafiają do KSeF — zawsze wydawane od razu jako issued
+        $isDraftWorkflow = !in_array($kind, ['proforma', 'novat'], true) && $ksefModeEnabled && !$doSend;
         $this->hydrateInvoiceDraftFromData($invoice, (array)$data);
+
+        // Wstępny patch tylko pól skalarnych (bez asocjacji) — zapewnia, że przy błędzie
+        // walidacji i ponownym renderowaniu formularza wszystkie pola są uzupełnione danymi
+        // użytkownika. Asocjacje (invoice_contractor, invoice_contents) pozostają nienaruszone
+        // bo ustawia je hydrateInvoiceDraftFromData powyżej.
+        $invoice = $Invoices->patchEntity($invoice, $data, [
+            'validate'   => false,
+            'associated' => [],
+        ]);
+        // Przywróć contractor/items (patchEntity z associated:[] ich nie tyka,
+        // ale wywołujemy ponownie dla pewności)
+        $this->hydrateInvoiceDraftFromData($invoice, (array)$data);
+
+        // Mapuj proforma_id → parent_id na encji (pole POST vs kolumna DB)
+        if ($kind === 'advance' && !empty($data['proforma_id'])) {
+            $invoice->set('parent_id', $data['proforma_id']);
+        }
 
         // Ensure parent binding for corrections
         if ($kind === 'correction') {
@@ -1249,6 +1105,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'discount_percent' => 0,
                     'netto'            => $lineGross,
                     'brutto'           => $lineGross,
+                    'gtu_code'         => (string)($row['gtu_code'] ?? ''),
+                    'gtin'             => (string)($row['gtin'] ?? ''),
+                    'cn_code'          => (string)($row['cn_code'] ?? ''),
+                    'pkob'             => (string)($row['pkob'] ?? ''),
+                    'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
+                    'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
+                    'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                     // FA(3)
                     'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
                     'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
@@ -1256,8 +1119,19 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 ];
             }
 
+            // Walidacja procedury marży
+            if ($totalPurchase <= 0.0) {
+                $this->Flash->error('Faktura marżowa wymaga podania ceny nabycia (pola „Cena nabycia") dla co najmniej jednej pozycji.');
+                $this->set(compact('invoice','vats','vatRatesMap','kind'));
+                $this->render('add_margin');
+                return null;
+            }
+
             // Stawka VAT z zakładki Księgowe (ukryta) – 23% domyślnie; dla sztuki 8%
             $rate = (float)($data['margin_vat_rate'] ?? 23);
+            if ($rate < 0.0 || $rate > 100.0) {
+                $rate = 23.0; // fallback do bezpiecznej wartości
+            }
             $marginGross = max(0.0, $totalSales - $totalPurchase);
             $sumTax   = $rate > 0 ? round($marginGross * ($rate / (100.0 + $rate)), 2) : 0.0; // VAT tylko od marży
             $sumGross = round($totalSales, 2);
@@ -1289,7 +1163,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             }
             $advanceGross = $num($data['advance_gross'] ?? 0);
             if ($advanceGross <= 0) {
-                $this->Flash->error('Kwota zaliczki musi być większa od zera.');
+                $this->Flash->error($advanceGross < 0
+                    ? 'Kwota zaliczki nie może być ujemna (podano: ' . number_format($advanceGross, 2, ',', ' ') . ').'
+                    : 'Kwota zaliczki musi być większa od zera.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
@@ -1325,17 +1201,40 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 ])->limit(1)->count();
             // ensure currency, contractor snapshot
             $data['currency'] = (string)($proforma->currency ?? ($data['currency'] ?? 'PLN'));
-            // Avoid undefined key notice: only set snapshot if missing or not an array
-            if (empty($data['invoice_contractor']) || !is_array($data['invoice_contractor'])) {
+            // Fill contractor snapshot if not sent from form (or sent empty)
+            if (empty($data['invoice_contractor']['name'])) {
                 $data['invoice_contractor'] = [
-                    'name' => (string)($proforma->invoice_contractor->name ?? ''),
-                    'nip' => (string)($proforma->invoice_contractor->nip ?? ''),
-                    'street' => (string)($proforma->invoice_contractor->street ?? ''),
-                    'zip' => (string)($proforma->invoice_contractor->zip ?? ''),
-                    'city' => (string)($proforma->invoice_contractor->city ?? ''),
-                    'country' => (string)($proforma->invoice_contractor->country ?? 'PL'),
-                    'account_number' => (string)($proforma->invoice_contractor->account_number ?? ''),
+                    'name'           => (string)($proforma->invoice_contractor?->name ?? ''),
+                    'nip'            => (string)($proforma->invoice_contractor?->nip ?? ''),
+                    'street'         => (string)($proforma->invoice_contractor?->street ?? ''),
+                    'zip'            => (string)($proforma->invoice_contractor?->zip ?? ''),
+                    'city'           => (string)($proforma->invoice_contractor?->city ?? ''),
+                    'country'        => (string)($proforma->invoice_contractor?->country ?? 'PL'),
+                    'account_number' => (string)($proforma->invoice_contractor?->account_number ?? ''),
+                    'email'          => (string)($proforma->invoice_contractor?->email ?? '') ?: null,
+                    'phone'          => (string)($proforma->invoice_contractor?->phone ?? '') ?: null,
                 ];
+                // Fallback: proforma has no snapshot → load from live Contractors table
+                if (empty($data['invoice_contractor']['name']) && !empty($proforma->contractor_id)) {
+                    $LiveContractors = $this->fetchTable('Contractors');
+                    $liveCtr = $LiveContractors->find()
+                        ->select(['name','nip','street','city','postal_code','country','email','phone','account_number'])
+                        ->where(['id' => $proforma->contractor_id, 'company_id' => $companyId])
+                        ->first();
+                    if ($liveCtr) {
+                        $data['invoice_contractor'] = [
+                            'name'           => (string)($liveCtr->name ?? ''),
+                            'nip'            => (string)($liveCtr->nip ?? ''),
+                            'street'         => (string)($liveCtr->street ?? ''),
+                            'zip'            => (string)($liveCtr->postal_code ?? ''),
+                            'city'           => (string)($liveCtr->city ?? ''),
+                            'country'        => (string)($liveCtr->country ?? 'PL'),
+                            'account_number' => (string)($liveCtr->account_number ?? ''),
+                            'email'          => $liveCtr->email ?: null,
+                            'phone'          => $liveCtr->phone ?: null,
+                        ];
+                    }
+                }
             }
             $vatCodeId    = $data['advance_vat_code_id'] ?? null;
             if (!$noVat && !$vatCodeId) {
@@ -1349,6 +1248,18 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $netto        = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
             $tax          = round($advanceGross - $netto, 2);
             $brutto       = round($advanceGross, 2);
+
+            // Opcjonalna aktualizacja kwoty proformy gdy zaliczka/końcowa ją przekracza
+            if (!empty($data['update_proforma_total']) && (int)$data['update_proforma_total'] === 1) {
+                $newProformaTotal = round((float)($data['new_proforma_total'] ?? 0), 2);
+                if ($newProformaTotal > (float)$proforma->total && $newProformaTotal >= $brutto) {
+                    $proforma->set('total', $newProformaTotal);
+                    $proforma->set('remaining', $newProformaTotal - $sumAdvances);
+                    $Proformas->save($proforma, ['checkRules' => false, 'validate' => false]);
+                    // Przelicz remaining na nowo
+                    $remainingToSettle = round(max(0.0, $newProformaTotal - $sumAdvances), 2);
+                }
+            }
 
             // Validate against remaining (prevent overpayment)
             $isFinalExplicit = !empty($data['is_final']) && (int)$data['is_final'] === 1;
@@ -1369,7 +1280,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 return null;
             }
             if ($brutto - $remainingToSettle > 0.01) {
-                $this->Flash->error('Kwota zaliczki przekracza pozostałą do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
+                $this->Flash->error('Kwota zaliczki przekracza pozostałą do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . '). Zaznacz opcję aktualizacji wartości oferty.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
@@ -1471,6 +1382,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'quantity'         => $qty,
                     'unit'             => (string)($row['unit'] ?? 'szt.'),
                     'price'            => $price,
+                    'purchase_price'   => !empty($row['purchase_price']) ? $num($row['purchase_price']) : null,
                     'discount_percent' => $disc,
                     'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                     'netto'            => $netto,
@@ -1510,17 +1422,23 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         if (empty($contents)) {
             $this->Flash->error('Dodaj co najmniej jedną pozycję.');
             $this->set(compact('invoice','vats','vatRatesMap','kind'));
-            // różne templaty per-typ:
-            $templateMap = [
-                'novat' => 'add_no_vat',
-                'advance' => 'add_advance',
-                'final' => 'add_advance',
-                'proforma' => 'add_proforma',
-                'margin' => 'add_margin',
-                'currency' => 'add_currency',
-                'correction' => 'add_correction',
-            ];
-            $this->render($templateMap[$kind] ?? 'add');
+            if ($kind === 'correction') {
+                $origType = isset($original) ? (string)($original->type ?? '') : '';
+                if ($origType === 'novat')    { $this->render('add_correct_no_vat'); }
+                elseif ($origType === 'margin')   { $this->render('add_correct_margin'); }
+                elseif ($origType === 'currency') { $this->render('add_correct_currency'); }
+                else                              { $this->render('add_correct'); }
+            } else {
+                $templateMap = [
+                    'novat'    => 'add_no_vat',
+                    'advance'  => 'add_advance',
+                    'final'    => 'add_advance',
+                    'proforma' => 'add_proforma',
+                    'margin'   => 'add_margin',
+                    'currency' => 'add_currency',
+                ];
+                $this->render($templateMap[$kind] ?? 'add');
+            }
             return null;
         }
 
@@ -1558,23 +1476,47 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         }
 
         // Walidacja danych
-        if (empty($data['series'])) {
-            $this->Flash->error('Seria faktury jest wymagana.');
-            $this->set(compact('invoice','vats','vatRatesMap','kind'));
-            $this->render($kind === 'novat' ? 'add_no_vat' : 'add');
-            return null;
+        // Znajdź serię — preferuj UUID (invoice_series_id), fallback na nazwę (series)
+        $InvoiceSeriesTable = $this->fetchTable('InvoiceSeries');
+        $series = null;
+
+        $seriesUuid = trim((string)($data['invoice_series_id'] ?? ''));
+        $seriesName = trim((string)($data['series'] ?? ''));
+
+        if ($seriesUuid !== '') {
+            // Nowy path: UUID z Select2
+            $series = $InvoiceSeriesTable->find()
+                ->where(['InvoiceSeries.id' => $seriesUuid, 'InvoiceSeries.company_id' => $companyId])
+                ->first();
         }
 
-        // Znajdź serię faktury
-        $InvoiceSeriesTable = $this->fetchTable('InvoiceSeries');
-        $series = $InvoiceSeriesTable->find()
-            ->where(['InvoiceSeries.company_id' => $companyId, 'InvoiceSeries.name' => $data['series']])
-            ->first();
-            
+        if (!$series && $seriesName !== '') {
+            // Legacy path: lookup po nazwie (backward compat)
+            $series = $InvoiceSeriesTable->find()
+                ->where(['InvoiceSeries.company_id' => $companyId, 'InvoiceSeries.name' => $seriesName])
+                ->first();
+        }
+
         if (!$series) {
-            $this->Flash->error('Nieprawidłowa seria faktury.');
+            $this->Flash->error('Seria faktury jest wymagana lub nieprawidłowa.');
             $this->set(compact('invoice','vats','vatRatesMap','kind'));
-            $this->render($kind === 'novat' ? 'add_no_vat' : 'add');
+            if ($kind === 'correction') {
+                $origType = isset($original) ? (string)($original->type ?? '') : '';
+                if ($origType === 'novat')        { $this->render('add_correct_no_vat'); }
+                elseif ($origType === 'margin')   { $this->render('add_correct_margin'); }
+                elseif ($origType === 'currency') { $this->render('add_correct_currency'); }
+                else                              { $this->render('add_correct'); }
+            } else {
+                $renderView = match($kind) {
+                    'novat'    => 'add_no_vat',
+                    'margin'   => 'add_margin',
+                    'currency' => 'add_currency',
+                    'proforma' => 'add_proforma',
+                    'advance', 'final' => 'add_advance',
+                    default    => 'add',
+                };
+                $this->render($renderView);
+            }
             return null;
         }
 
@@ -1864,8 +1806,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // Optional: paragon fields (if columns exist)
             'receipt_number'     => $data['receipt_number'] ?? null,
             'receipt_date'       => !empty($data['receipt_date']) ? $data['receipt_date'] : null,
-            // Data sprzedaży i daty płatności
-            'sold_date'          => !empty($data['sold_date']) ? $data['sold_date'] : null,
+            // Data sprzedaży i daty płatności — fallback na datę wystawienia gdy pole puste
+            'sold_date'          => !empty($data['sold_date']) ? $data['sold_date'] : (!empty($data['date']) ? $data['date'] : date('Y-m-d')),
             'paid_at'            => !empty($data['paid_at']) ? $data['paid_at'] : null,
             'partial_paid_at'    => !empty($data['partial_paid_at']) ? $data['partial_paid_at'] : null,
             // Język, auto-wysyłka, flagi nabywcy
@@ -1971,6 +1913,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $CompaniesTable = $this->fetchTable('Companies');
             $company = $CompaniesTable->find()
                 ->where(['id' => $companyId])
+                ->contain(['CompanyRegisters'])
                 ->first();
                 
             if ($company) {
@@ -2018,9 +1961,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     // FA(3) — dane kontaktowe i rejestrowe sprzedawcy
                     'email'        => (string)($company->email ?? ''),
                     'phone'        => (string)($company->phone ?? ''),
-                    'krs'          => (string)($company->krs ?? ''),
-                    'regon'        => (string)($company->regon ?? ''),
-                    'bdo'          => (string)($company->bdo ?? ''),
+                    'krs'          => (string)($this->resolveCompanyRegisterField($company, 'krs')),
+                    'regon'        => (string)($this->resolveCompanyRegisterField($company, 'regon')),
+                    'bdo'          => (string)($this->resolveCompanyRegisterField($company, 'bdo')),
                     'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
                     'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
                     'swift'        => (string)($data['invoice_company_detail']['swift'] ?? ''),
@@ -2035,7 +1978,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             }
 
             // Zapisz dane nabywcy (invoice_contractors)
-            if (!empty($data['invoice_contractor'])) {
+            if (!empty($data['invoice_contractor']) && !empty($data['invoice_contractor']['name'])) {
                 $contractor = $data['invoice_contractor'];
                 $InvoiceContractorsTable = $this->fetchTable('InvoiceContractors');
                 $contractorEntity = $InvoiceContractorsTable->newEmptyEntity();
@@ -2170,8 +2113,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     return $this->redirect(['action' => 'view', $invoice->id]);
                 }
 
-                $invoice->set('workflow_status', 'sending');
-                $Invoices->save($invoice);
+                // Uwaga: NIE ustawiamy tutaj workflow_status='sending' — robi to sendInvoiceToKsefCore()
+                // atomowo przed wysyłką, co eliminuje race condition gdy żądanie zostanie przerwane.
 
                 $envRaw = (string)($data['ksef_env'] ?? 'test');
                 $environment = ($envRaw === 'prod') ? 'prod' : 'test';
@@ -2263,7 +2206,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } else {
                 $this->Flash->success($isDraftWorkflow
                     ? 'Dokument roboczy został zapisany.'
-                    : ($kind === 'novat' ? 'Faktura bez VAT została utworzona.' : 'Dokument został utworzony.'));
+                    : ($kind === 'proforma' ? 'Faktura proforma została utworzona.' : ($kind === 'novat' ? 'Rachunek został utworzony.' : 'Dokument został utworzony.')));
             }
 
             return $this->redirect(['action' => 'view', $invoice->id]);
@@ -2289,6 +2232,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $this->render('add');
     } else if ($kind === 'currency') {
         $this->render('add_currency');
+    } else if ($kind === 'internal') {
+        $this->render('add');
+    } else if ($kind === 'internalEvidence') {
+        $this->render('add');
+    } else if ($kind === 'oss') {
+        $this->render('add');
     } else if ($kind === 'correction') {
         // Ensure original invoice is fully loaded with contractor and items for correction views
         if (!isset($original) || empty($original->invoice_contractor) || empty($original->invoice_contents)) {
@@ -2357,12 +2306,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         // Ujednolić property dla szablonów (część widoków używa invoice_contractor)
         try {
-            if (empty($invoice->invoice_contractor) && !empty($invoice->invoice_contractors) && is_iterable($invoice->invoice_contractors)) {
-                $first = null;
-                foreach ($invoice->invoice_contractors as $x) { $first = $x; break; }
-                if ($first) {
-                    $invoice->set('invoice_contractor', $first);
-                }
+            if (empty($invoice->invoice_contractor) && !empty($invoice->invoice_contractors)) {
+                // hasOne returns a single entity, not a collection — assign directly
+                $invoice->set('invoice_contractor', $invoice->invoice_contractors);
             }
             // Prefill selecta serii (templates/add*.php używają pola `series`)
             if (empty($invoice->series) && !empty($invoice->invoice_series) && !empty($invoice->invoice_series->name)) {
@@ -2375,14 +2321,23 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $this->set('isEdit', true);
 
         // Render the same templates as the corresponding add_* forms (where safe)
+        // Mapa typ → szablon edycji. Typy reużywają szablonów add_* bo form postuje do bieżącego URL.
+        // 'correction' celowo NIE jest w tej mapie — wymaga oddzielnego bloku if poniżej,
+        // bo musi wcześniej załadować fakturę pierwotną ($original) do określenia szablonu korekty.
         $templateMap = [
-            'vat'      => 'add',
-            'currency' => 'add_currency',
-            'novat'    => 'add_no_vat',
-            'proforma' => 'add_proforma',
-            'margin'   => 'add_margin',
-            'advance'  => 'add_advance',
-            'final'    => 'add_advance',
+            'vat'              => 'add',
+            'currency'         => 'add_currency',
+            'novat'            => 'add_no_vat',
+            'proforma'         => 'add_proforma',
+            'margin'           => 'add_margin',
+            'advance'          => 'add_advance',
+            'final'            => 'add_advance',
+            // Dokumenty wewnętrzne i OSS — reużywają szablonu add.php (tak jak handleAdd)
+            'internal'         => 'add',
+            'internalevidence' => 'add',
+            'oss'              => 'add',
+            // fallback dla nieznanych typów
+            ''                 => 'add',
         ];
         if ($kind === 'correction') {
             $original = null;
@@ -2398,15 +2353,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $original = null;
             }
 
+            if (empty($original)) {
+                $this->Flash->warning('Nie znaleziono faktury pierwotnej powiązanej z tą korektą. Edycja może być niekompletna.');
+            }
+
             if (!empty($original)) {
                 // normalizacja invoice_contractor dla szablonów korekt
                 try {
-                    if (empty($original->invoice_contractor) && !empty($original->invoice_contractors) && is_iterable($original->invoice_contractors)) {
-                        $first = null;
-                        foreach ($original->invoice_contractors as $x) { $first = $x; break; }
-                        if ($first) {
-                            $original->set('invoice_contractor', $first);
-                        }
+                    if (empty($original->invoice_contractor) && !empty($original->invoice_contractors)) {
+                        $original->set('invoice_contractor', $original->invoice_contractors);
                     }
                 } catch (\Throwable) { /* ignore */ }
                 $this->set('original', $original);
@@ -2426,8 +2381,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             if (is_file($tplPath)) {
                 $this->viewBuilder()->setTemplate($tpl);
             }
-        } elseif (isset($templateMap[$kind])) {
-            $tpl = $templateMap[$kind];
+        } else {
+            $tpl = $templateMap[$kind] ?? 'add';
             $tplPath = ROOT . DS . 'templates' . DS . 'Invoices' . DS . $tpl . '.php';
             if (is_file($tplPath)) {
                 $this->viewBuilder()->setTemplate($tpl);
@@ -2519,7 +2474,23 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ->count();
 
                 $remainingToSettle = round(max(0.0, ((float)$proforma->total) - $sumAdvances), 2);
-                $isFinal = ($kind === 'final');
+
+                // Opcjonalna aktualizacja kwoty proformy
+                if (!empty($data['update_proforma_total']) && (int)$data['update_proforma_total'] === 1) {
+                    $newProformaTotal = round((float)($data['new_proforma_total'] ?? 0), 2);
+                    if ($newProformaTotal > (float)$proforma->total && $newProformaTotal >= round((float)($data['advance_gross'] ?? 0), 2)) {
+                        $proforma->set('total', $newProformaTotal);
+                        $proforma->set('remaining', $newProformaTotal - $sumAdvances);
+                        $Proformas->save($proforma, ['checkRules' => false, 'validate' => false]);
+                        $remainingToSettle = round(max(0.0, $newProformaTotal - $sumAdvances), 2);
+                    }
+                }
+
+                // $isFinal: bazujemy na zapisanym typie, ale respektujemy jawne pole is_final z formularza
+                // oraz auto-detekcję gdy kwota = remainingToSettle (tak jak w handleAdd)
+                $isFinalExplicit = !empty($data['is_final']) && (int)$data['is_final'] === 1;
+                $shouldBeFinalByAmount = $remainingToSettle > 0 && abs($advanceGross - $remainingToSettle) < 0.01;
+                $isFinal = $isFinalExplicit || ($kind === 'final') || $shouldBeFinalByAmount;
 
                 if ($hasFinal && !$isFinal) {
                     $this->Flash->error('Faktura końcowa została już wystawiona dla tej oferty.');
@@ -2533,13 +2504,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
 
                 $vatCodeId = $data['advance_vat_code_id'] ?? null;
-                if (!$vatCodeId) {
+                if (!$noVat && !$vatCodeId) {
                     $this->Flash->error('Wybierz stawkę VAT dla zaliczki.');
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
                 }
 
-                $rate   = (float)($vatRatesMap[$vatCodeId] ?? 0);
+                $rate   = $noVat ? 0.0 : (float)($vatRatesMap[$vatCodeId] ?? 0);
                 $nettoA = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
                 $taxA   = round($advanceGross - $nettoA, 2);
                 $bruttoA = round($advanceGross, 2);
@@ -2577,16 +2548,38 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $data['parent_id'] = $proforma->id;
                 $data['currency'] = (string)($proforma->currency ?? ($data['currency'] ?? $invoice->currency ?? 'PLN'));
                 // Snapshot nabywcy: jeśli brak w formularzu, uzupełnij z proformy
-                if (empty($data['invoice_contractor']) || !is_array($data['invoice_contractor'])) {
+                if (empty($data['invoice_contractor']['name'])) {
                     $data['invoice_contractor'] = [
-                        'name' => (string)($proforma->invoice_contractor->name ?? ''),
-                        'nip' => (string)($proforma->invoice_contractor->nip ?? ''),
-                        'street' => (string)($proforma->invoice_contractor->street ?? ''),
-                        'zip' => (string)($proforma->invoice_contractor->zip ?? ''),
-                        'city' => (string)($proforma->invoice_contractor->city ?? ''),
-                        'country' => (string)($proforma->invoice_contractor->country ?? 'PL'),
-                        'account_number' => (string)($proforma->invoice_contractor->account_number ?? ''),
+                        'name'           => (string)($proforma->invoice_contractor?->name ?? ''),
+                        'nip'            => (string)($proforma->invoice_contractor?->nip ?? ''),
+                        'street'         => (string)($proforma->invoice_contractor?->street ?? ''),
+                        'zip'            => (string)($proforma->invoice_contractor?->zip ?? ''),
+                        'city'           => (string)($proforma->invoice_contractor?->city ?? ''),
+                        'country'        => (string)($proforma->invoice_contractor?->country ?? 'PL'),
+                        'account_number' => (string)($proforma->invoice_contractor?->account_number ?? ''),
+                        'email'          => (string)($proforma->invoice_contractor?->email ?? '') ?: null,
+                        'phone'          => (string)($proforma->invoice_contractor?->phone ?? '') ?: null,
                     ];
+                    if (empty($data['invoice_contractor']['name']) && !empty($proforma->contractor_id)) {
+                        $LiveContractors = $this->fetchTable('Contractors');
+                        $liveCtr = $LiveContractors->find()
+                            ->select(['name','nip','street','city','postal_code','country','email','phone','account_number'])
+                            ->where(['id' => $proforma->contractor_id, 'company_id' => $companyId])
+                            ->first();
+                        if ($liveCtr) {
+                            $data['invoice_contractor'] = [
+                                'name'           => (string)($liveCtr->name ?? ''),
+                                'nip'            => (string)($liveCtr->nip ?? ''),
+                                'street'         => (string)($liveCtr->street ?? ''),
+                                'zip'            => (string)($liveCtr->postal_code ?? ''),
+                                'city'           => (string)($liveCtr->city ?? ''),
+                                'country'        => (string)($liveCtr->country ?? 'PL'),
+                                'account_number' => (string)($liveCtr->account_number ?? ''),
+                                'email'          => $liveCtr->email ?: null,
+                                'phone'          => $liveCtr->phone ?: null,
+                            ];
+                        }
+                    }
                 }
             } elseif (($invoice->type ?? null) === 'margin') {
                 // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
@@ -2635,7 +2628,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ];
                 }
 
+                // Walidacja procedury marży
+                if ($totalPurchase <= 0.0) {
+                    $this->Flash->error('Faktura marżowa wymaga podania ceny nabycia (pola „Cena nabycia") dla co najmniej jednej pozycji.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+
                 $rate = (float)($data['margin_vat_rate'] ?? 23);
+                if ($rate < 0.0 || $rate > 100.0) {
+                    $rate = 23.0;
+                }
                 $marginGross = max(0.0, $totalSales - $totalPurchase);
                 $sumTax   = $rate > 0 ? round($marginGross * ($rate / (100.0 + $rate)), 2) : 0.0;
                 $sumGross = round($totalSales, 2);
@@ -2671,6 +2674,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'quantity'         => $qty,
                         'unit'             => (string)($row['unit'] ?? 'szt.'),
                         'price'            => $price,
+                        'purchase_price'   => !empty($row['purchase_price']) ? $num($row['purchase_price']) : null,
                         'discount_percent' => $disc,
                         'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                         'netto'            => $netto,
@@ -2720,22 +2724,28 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 } catch (\Throwable) { /* ignore */ }
             }
 
-            // Seria -> invoice_series_id (bez automatycznego nadawania numeru)
-            if (!empty($data['series'])) {
+            // Seria → invoice_series_id: preferuj UUID, fallback na nazwę
+            $editSeriesUuid = trim((string)($data['invoice_series_id'] ?? ''));
+            $editSeriesName = trim((string)($data['series'] ?? ''));
+            if ($editSeriesUuid !== '' || $editSeriesName !== '') {
                 $InvoiceSeriesTable = $this->fetchTable('InvoiceSeries');
-                $seriesValue = (string)$data['series'];
                 $seriesQuery = $InvoiceSeriesTable->find()
                     ->where(['InvoiceSeries.company_id' => $invoice->company_id]);
 
-                if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $seriesValue)) {
-                    $seriesQuery->where(['InvoiceSeries.id' => $seriesValue]);
+                if ($editSeriesUuid !== '') {
+                    $seriesQuery->where(['InvoiceSeries.id' => $editSeriesUuid]);
                 } else {
-                    $seriesQuery->where(['InvoiceSeries.name' => $seriesValue]);
+                    // Legacy: lookup po nazwie (backward compat ze starymi formularzami)
+                    $seriesQuery->where(['InvoiceSeries.name' => $editSeriesName]);
                 }
 
-                $series = $seriesQuery->first();
-                if ($series) {
-                    $data['invoice_series_id'] = $series->id;
+                $ser = $seriesQuery->first();
+                if ($ser) {
+                    $data['invoice_series_id'] = $ser->id;
+                    // Zachowaj nazwę serii w encji dla wyświetlenia
+                    if (isset($data['series'])) {
+                        $data['series'] = (string)$ser->name;
+                    }
                 }
             }
 
@@ -2762,7 +2772,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 'tax'           => $tax,
                 'alreadypaid'   => $alreadypaid,
                 'remaining'     => $remaining,
-                'fullnumber'    => $data['fullnumber'] ?? $invoice->fullnumber,
+                'fullnumber'    => ($kind === 'proforma') ? ($invoice->fullnumber ?? null) : null,
                 'currency'      => $data['currency'] ?? $invoice->currency,
                 'currency_date' => $data['currency_date'] ?? $invoice->currency_date,
                 'currency_exchange' => $data['currency_exchange'] ?? $invoice->currency_exchange,
@@ -2806,6 +2816,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // Powiązanie z proformą przy zaliczce/końcowej
             if (in_array($kind, ['advance','final'], true) && array_key_exists('parent_id', $data)) {
                 $invoicePatch['parent_id'] = $data['parent_id'];
+            }
+            // Dla zaliczki/końcowej: zaktualizuj typ jeśli $isFinal zmienił się względem zapisanego
+            if (in_array($kind, ['advance','final'], true) && isset($isFinal)) {
+                $invoicePatch['type']     = $isFinal ? 'final' : 'advance';
+                $invoicePatch['is_final'] = $isFinal ? 1 : 0;
             }
 
             $conn = $this->Invoices->getConnection();
@@ -3499,77 +3514,166 @@ private function makeClient(string $environment): KsefClient
     /**
      * Wyciąga numer z pełnego numeru faktury (np. "FV/2025/01/0001" -> 1)
      */
+    /** @deprecated Użyj $this->numberingService->extractNumberFromFullnumber() */
     private function extractNumberFromFullnumber(string $fullnumber): int
     {
-        // Debug
-        \Cake\Log\Log::debug('Extracting number from: ' . $fullnumber);
-        
-        // Dla wzorców typu EPIC/01/10/2025 - wyciągaj pierwszy numer po pierwszym słowie/prefiksie
-        // Wzorzec: prefix/NUMER/miesiąc/rok
-        
-        // Najpierw spróbuj znaleźć wzorzec z separatorami
-        if (preg_match('/^[A-Za-z]+\/0*(\d+)\//', $fullnumber, $matches)) {
-            // Wzorzec typu EPIC/01/10/2025 - bierz pierwszy numer po prefiksie
-            $extracted = (int) $matches[1];
-            \Cake\Log\Log::debug('Extracted number (prefix/number/...): ' . $extracted);
-            return $extracted;
-        }
-        
-        // Fallback - szukaj pierwszego numeru
-        if (preg_match('/\b0*(\d+)\b/', $fullnumber, $matches)) {
-            $extracted = (int) $matches[1];
-            \Cake\Log\Log::debug('Extracted number (first found): ' . $extracted);
-            return $extracted;
-        }
-        
-        \Cake\Log\Log::debug('No number found, returning 0');
-        return 0;
+        return $this->numberingService->extractNumberFromFullnumber($fullnumber);
+    }
+
+    /** @deprecated Użyj $this->numberingService->formatPattern() */
+    private function formatInvoicePattern(string $template, int $number, string $issueDate): string
+    {
+        return $this->numberingService->formatPattern($template, $number, $issueDate);
     }
 
     /**
-     * Formatuje wzorzec numeru faktury z zaawansowanymi placeholderami
+     * Lookup contractor email by invoice_id (via NIP match in contractors table)
      */
-    private function formatInvoicePattern(string $template, int $number, string $issueDate): string
+    public function contractorEmailLookup(string $id)
     {
-        $date = new \DateTime($issueDate);
-        
-        // Podstawowe placeholdery
-        $replacements = [
-            '[numer]' => (string) $number,
-            '[rok]' => $date->format('Y'),
-            '[miesiac]' => $date->format('m'),
-            '[miesiąc]' => $date->format('m'), // Polskie znaki
-            '[dzien]' => $date->format('d'),
-            '[dzień]' => $date->format('d'), // Polskie znaki
-        ];
-        
-        $result = str_replace(array_keys($replacements), array_values($replacements), $template);
-        
-        // Zaawansowane placeholdery z parametrami
-        $result = preg_replace_callback('/\[numer:zera_wiodące=(\d+)\]/', function($matches) use ($number) {
-            return str_pad((string) $number, (int) $matches[1], '0', STR_PAD_LEFT);
-        }, $result);
-        
-        // Miesiąc z zerami wiodącymi (polskie znaki)
-        $result = preg_replace_callback('/\[miesiąc:zera_wiodące=(\d+)\]/', function($matches) use ($date) {
-            return str_pad($date->format('m'), (int) $matches[1], '0', STR_PAD_LEFT);
-        }, $result);
-        
-        // Dzień z zerami wiodącymi (polskie znaki)
-        $result = preg_replace_callback('/\[dzień:zera_wiodące=(\d+)\]/', function($matches) use ($date) {
-            return str_pad($date->format('d'), (int) $matches[1], '0', STR_PAD_LEFT);
-        }, $result);
-        
-        $result = preg_replace_callback('/\[rok:format_dwucyfrowy\]/', function() use ($date) {
-            return $date->format('y');
-        }, $result);
-        
-        // Kwartał
-        $result = preg_replace_callback('/\[kwartał\]/', function() use ($date) {
-            return (string) ceil((int) $date->format('n') / 3);
-        }, $result);
-        
-        return $result;
+        $this->request->allowMethod(['get']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $invoice = $this->Invoices->get($id, [
+            'contain' => ['InvoiceContractors'],
+            'conditions' => ['Invoices.company_id' => $companyId],
+        ]);
+
+        $ct     = $invoice->invoice_contractor ?? null;
+        $emails = [];
+
+        // 1) e-mail ze snapshotu faktury
+        $snapshotEmail = trim((string)($ct->email ?? ''));
+        if ($snapshotEmail !== '') {
+            $emails[] = $snapshotEmail;
+        }
+
+        // 2) lookup w tabeli contractors po NIP + company_id
+        $vatid = trim((string)($ct->vatid ?? $ct->nip ?? ''));
+        $nip   = preg_replace('/\D+/', '', $vatid);
+        if ($nip !== '') {
+            try {
+                $Contractors = $this->fetchTable('Contractors');
+                $contractor  = $Contractors->find()
+                    ->select(['email'])
+                    ->where(['company_id' => $companyId, 'nip' => $nip])
+                    ->first();
+                $contractorEmail = trim((string)($contractor->email ?? ''));
+                if ($contractorEmail !== '' && !in_array($contractorEmail, $emails, true)) {
+                    $emails[] = $contractorEmail;
+                }
+            } catch (\Throwable) {}
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['emails' => $emails]));
+    }
+
+    /**
+     * Email invoice PDF to client
+     */
+    public function emailInvoice(string $id)
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $invoice = $this->Invoices->get($id, [
+            'contain' => [
+                'InvoiceContractors',
+                'InvoiceContents' => ['Vats'],
+                'Companies',
+                'InvoiceCompanyDetails',
+            ],
+            'conditions' => ['Invoices.company_id' => $companyId],
+        ]);
+
+        // Zbierz i waliduj adresy e-mail
+        $rawEmails = (array)($this->request->getData('emails') ?? []);
+        $emails = [];
+        foreach ($rawEmails as $e) {
+            $e = trim((string)$e);
+            if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) {
+                $emails[] = $e;
+            }
+        }
+        if (empty($emails)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Brak poprawnego adresu e-mail.']));
+        }
+
+        // Wygeneruj PDF
+        $pdfContent = '';
+        try {
+            $xml = $this->buildFa3Xml($invoice);
+            if (is_string($xml) && trim($xml) !== '') {
+                $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
+                $apiUrl = $isDraft
+                    ? (getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice')
+                    : (getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice');
+                $seller   = $invoice->invoice_company_detail ?? null;
+                $nip      = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
+                $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
+                $invRef   = (string)($invoice->ksef_invoice_reference ?? '');
+                $qrCode   = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+                    ? ('https://ksef-test.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+                    : '';
+                $http = new \Cake\Http\Client(['timeout' => 60]);
+                $resp = $http->post($apiUrl, [
+                    'xml' => $xml,
+                    'additionalData' => [
+                        'nrKSeF'    => (string)($invoice->ksef_number ?? ''),
+                        'qrCode'    => $qrCode,
+                        'isPreview' => $isDraft,
+                    ],
+                ], ['type' => 'json']);
+                if ($resp->getStatusCode() === 200) {
+                    $pdfContent = (string)$resp->getBody();
+                }
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('[emailInvoice] PDF generation failed for invoice ' . $id . ': ' . $e->getMessage());
+        }
+
+        if ($pdfContent === '') {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Nie udało się wygenerować PDF faktury.']));
+        }
+
+        $fullnumber = (string)($invoice->fullnumber ?: $invoice->id);
+        $filename   = 'faktura_' . preg_replace('/[\/\\\\:*?"<>|]/', '_', $fullnumber) . '.pdf';
+        $sellerName = trim((string)($invoice->invoice_company_detail?->name ?? $invoice->company?->name ?? ''));
+        $buyerName  = trim((string)($invoice->invoice_contractor?->name ?? ''));
+        $subject    = 'Faktura ' . $fullnumber . ($sellerName !== '' ? ' od ' . $sellerName : '');
+
+        // Wyślij e-mail do każdego odbiorcy
+        try {
+            $mailer = new \Cake\Mailer\Mailer('default');
+            $mailer->setTo($emails[0]);
+            if (count($emails) > 1) {
+                $mailer->addCc(array_slice($emails, 1));
+            }
+            $mailer->setSubject($subject);
+            $mailer->setEmailFormat('html');
+            $mailer->setAttachments([
+                $filename => ['data' => $pdfContent, 'mimetype' => 'application/pdf'],
+            ]);
+            $mailer->viewBuilder()->setLayout('default')->setTemplate('invoice_email');
+            $mailer->setViewVars([
+                'invoice'    => $invoice,
+                'fullnumber' => $fullnumber,
+                'sellerName' => $sellerName,
+            ]);
+            $mailer->deliver();
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('[emailInvoice] Sending failed for invoice ' . $id . ': ' . $e->getMessage());
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd wysyłki: ' . $e->getMessage()]));
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'sent_to' => $emails]));
     }
 
     /**
@@ -3599,17 +3703,21 @@ private function makeClient(string $environment): KsefClient
         try {
             $xml = $this->buildFa3Xml($invoice);
         } catch (\Throwable $e) {
+            \Cake\Log\Log::error('[print] buildFa3Xml failed for invoice ' . $id . ': ' . $e->getMessage(), ['print_pdf']);
             $xml = '';
         }
 
         // 2) Wyślij do lokalnego API, aby wygenerować PDF
         if (is_string($xml) && trim($xml) !== '') {
             try {
-                $apiUrl = getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice';
+                $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
+                $apiUrl = $isDraft
+                    ? (getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice')
+                    : (getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice');
                 $http = new \Cake\Http\Client(['timeout' => 60]);
                 // Build QR code URL for KSeF client app (TEST host by default)
                 $seller = $invoice->invoice_company_detail ?? null;
-                $nip = preg_replace('/\D+/', '', (string)($seller->nip ?? ''));
+                $nip = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
                 $invRef = (string)($invoice->ksef_invoice_reference ?? '');
                 $qrHost = 'https://ksef-test.mf.gov.pl';
@@ -3622,6 +3730,7 @@ private function makeClient(string $environment): KsefClient
                     'additionalData' => [
                         'nrKSeF' => (string)($invoice->ksef_number ?? ''),
                         'qrCode' => $qrCode,
+                        'isPreview' => $isDraft,
                     ],
                 ];
                 $resp = $http->post($apiUrl, $payload, ['type' => 'json']);
@@ -3639,6 +3748,7 @@ private function makeClient(string $environment): KsefClient
                     }
                 }
             } catch (\Throwable $e) {
+                \Cake\Log\Log::error('[print] API call failed for invoice ' . $id . ' url=' . ($apiUrl ?? '?') . ': ' . $e->getMessage(), ['print_pdf']);
                 // Fallback to legacy rendering below
             }
         }
@@ -4038,6 +4148,93 @@ private function makeClient(string $environment): KsefClient
             ];
         }
 
+        // Porównaj snapshot kontrahenta z bieżącymi danymi (po NIP)
+        $snapshotNip = (string)($p->invoice_contractor?->nip ?? '');
+        $contractorChanged = false;
+        $contractorCurrent = null;
+        if ($snapshotNip !== '') {
+            $Contractors = $this->fetchTable('Contractors');
+            $currentCtr = $Contractors->find()
+                ->select(['name', 'nip', 'street', 'city', 'postal_code', 'country'])
+                ->where(['Contractors.company_id' => $companyId, 'Contractors.nip' => $snapshotNip])
+                ->first();
+            if ($currentCtr !== null) {
+                // snapshot uses 'zip', live contractors table uses 'postal_code'
+                $diffFields = ['name', 'street', 'city', 'country'];
+                foreach ($diffFields as $f) {
+                    $snap = trim((string)($p->invoice_contractor?->$f ?? ''));
+                    $curr = trim((string)($currentCtr->$f ?? ''));
+                    if ($snap !== $curr) {
+                        $contractorChanged = true;
+                        break;
+                    }
+                }
+                // compare zip (snapshot) vs postal_code (live)
+                if (!$contractorChanged) {
+                    $snapZip = trim((string)($p->invoice_contractor?->zip ?? ''));
+                    $currZip = trim((string)($currentCtr->postal_code ?? ''));
+                    if ($snapZip !== $currZip) {
+                        $contractorChanged = true;
+                    }
+                }
+                if ($contractorChanged) {
+                    $contractorCurrent = [
+                        'name'    => (string)($currentCtr->name ?? ''),
+                        'nip'     => (string)($currentCtr->nip ?? ''),
+                        'street'  => (string)($currentCtr->street ?? ''),
+                        'zip'     => (string)($currentCtr->postal_code ?? ''),
+                        'city'    => (string)($currentCtr->city ?? ''),
+                        'country' => (string)($currentCtr->country ?? 'PL'),
+                    ];
+                }
+            }
+        }
+
+        // Build contractor payload — snapshot first, supplement empty fields from live table
+        $contractorPayload = [
+            'name'           => (string)($p->invoice_contractor?->name ?? ''),
+            'nip'            => (string)($p->invoice_contractor?->nip ?? ''),
+            'street'         => (string)($p->invoice_contractor?->street ?? ''),
+            'zip'            => (string)($p->invoice_contractor?->zip ?? ''),
+            'city'           => (string)($p->invoice_contractor?->city ?? ''),
+            'country'        => (string)($p->invoice_contractor?->country ?? 'PL'),
+            'email'          => (string)($p->invoice_contractor?->email ?? ''),
+            'phone'          => (string)($p->invoice_contractor?->phone ?? ''),
+            'account_number' => (string)($p->invoice_contractor?->account_number ?? ''),
+        ];
+        // Supplement any empty fields from the live Contractors record.
+        // $currentCtr is already loaded above (for diff-check) when NIP is known;
+        // if NIP was empty, fall back via contractor_id.
+        $liveForSupplement = $currentCtr ?? null;
+        if ($liveForSupplement === null && !empty($p->contractor_id)) {
+            $SuppCtr = $this->fetchTable('Contractors');
+            $liveForSupplement = $SuppCtr->find()
+                ->select(['name','nip','street','city','postal_code','country','email','phone','account_number'])
+                ->where(['id' => $p->contractor_id, 'company_id' => $companyId])
+                ->first();
+        }
+        if ($liveForSupplement !== null) {
+            $supplementMap = [
+                'name'           => 'name',
+                'nip'            => 'nip',
+                'street'         => 'street',
+                'zip'            => 'postal_code',   // snapshot col → live col
+                'city'           => 'city',
+                'country'        => 'country',
+                'email'          => 'email',
+                'phone'          => 'phone',
+                'account_number' => 'account_number',
+            ];
+            foreach ($supplementMap as $payloadKey => $liveCol) {
+                if ($contractorPayload[$payloadKey] === '') {
+                    $contractorPayload[$payloadKey] = (string)($liveForSupplement->$liveCol ?? '');
+                }
+            }
+            if ($contractorPayload['country'] === '') {
+                $contractorPayload['country'] = 'PL';
+            }
+        }
+
         $payload = [
             'id' => (string)$p->id,
             'fullnumber' => (string)($p->fullnumber ?? ''),
@@ -4047,14 +4244,9 @@ private function makeClient(string $environment): KsefClient
             'advances_total' => (float)$sumAdvances,
             'remaining' => (float)$remaining,
             'final_exists' => $hasFinal,
-            'contractor' => [
-                'name' => (string)($p->invoice_contractor->name ?? ''),
-                'nip' => (string)($p->invoice_contractor->nip ?? ''),
-                'street' => (string)($p->invoice_contractor->street ?? ''),
-                'zip' => (string)($p->invoice_contractor->zip ?? ''),
-                'city' => (string)($p->invoice_contractor->city ?? ''),
-                'country' => (string)($p->invoice_contractor->country ?? 'PL'),
-            ],
+            'contractor_changed' => $contractorChanged,
+            'contractor_current' => $contractorCurrent,
+            'contractor' => $contractorPayload,
             'items' => array_map(function($c){
                 return [
                     'name' => (string)$c->name,
@@ -4220,8 +4412,27 @@ private function makeClient(string $environment): KsefClient
             ->withStringBody(json_encode(['success' => true, 'results' => $results]));
     }
 
+    /**
+     * Typy faktur które NIE mogą być wysyłane do KSeF.
+     * - proforma: nie jest fakturą VAT, brak podstawy prawnej
+     * - internal/internalEvidence: dokument wewnętrzny
+     * - oss: rozliczenie OSS poza krajowym KSeF
+     */
+    private const KSEF_BLOCKED_TYPES = ['proforma', 'internal', 'internalEvidence', 'oss'];
+
     private function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'test', ?string $xml = null, string $source = 'sendToKsef'): array
     {
+        if (in_array($invoice->type, self::KSEF_BLOCKED_TYPES, true)) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
+                'source' => $source,
+                'message' => 'Typ dokumentu "' . $invoice->type . '" nie może być wysłany do KSeF.',
+            ]);
+            return [
+                'success' => false,
+                'error'   => 'Dokument typu „' . $invoice->type . '" nie podlega wysyłce do KSeF.',
+            ];
+        }
+
         if (!$this->isKsefModeEnabled($companyId)) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
                 'source' => $source,
@@ -4276,6 +4487,41 @@ private function makeClient(string $environment): KsefClient
                 'source' => $source,
                 'env' => $environment,
             ]);
+
+            // Walidacja XSD przed wysyłką
+            $xsdPath = ROOT . DS . 'src' . DS . 'faktura.xsd';
+            if (file_exists($xsdPath)) {
+                $dom = new \DOMDocument();
+                if (!@$dom->loadXML($xml)) {
+                    $this->logKsefSendEvent($companyId, (string)$invoice->id, 'xml_invalid', [
+                        'source' => $source,
+                        'message' => 'XML nie jest poprawnym dokumentem XML.',
+                    ]);
+                    $invoice->set('workflow_status', 'error');
+                    $this->Invoices->save($invoice);
+                    return ['success' => false, 'error' => 'XML faktury jest niepoprawny (błąd parsowania).'];
+                }
+                $xsdErrors = [];
+                libxml_use_internal_errors(true);
+                $valid = $dom->schemaValidate($xsdPath);
+                if (!$valid) {
+                    foreach (libxml_get_errors() as $err) {
+                        $xsdErrors[] = trim($err->message) . ' (linia ' . $err->line . ')';
+                    }
+                    libxml_clear_errors();
+                }
+                libxml_use_internal_errors(false);
+                if (!$valid) {
+                    $errMsg = implode('; ', array_slice($xsdErrors, 0, 3));
+                    $this->logKsefSendEvent($companyId, (string)$invoice->id, 'xsd_invalid', [
+                        'source'  => $source,
+                        'message' => $errMsg,
+                    ]);
+                    $invoice->set('workflow_status', 'error');
+                    $this->Invoices->save($invoice);
+                    return ['success' => false, 'error' => 'XML faktury nie przeszedł walidacji XSD FA(3): ' . $errMsg];
+                }
+            }
 
             $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
             $res = $service->sendInvoiceXml($companyId, $environment, $xml);
@@ -4368,6 +4614,12 @@ private function makeClient(string $environment): KsefClient
 
             if ($jsonMode) {
                 $ok = true;
+                // Re-fetch fullnumber — may have been assigned during send
+                $freshFullnumber = '';
+                try {
+                    $fresh = $this->Invoices->find()->select(['id', 'fullnumber'])->where(['id' => $id])->first();
+                    $freshFullnumber = (string)($fresh->fullnumber ?? '');
+                } catch (\Throwable) {}
                 $payload = [
                     'success' => $ok,
                     'statusCode' => (int)($res['statusCode'] ?? 0),
@@ -4375,6 +4627,7 @@ private function makeClient(string $environment): KsefClient
                     'ksefNumber' => (string)($res['ksefNumber'] ?? ''),
                     'sessionReference' => (string)($res['sessionReference'] ?? ''),
                     'invoiceReference' => (string)($res['invoiceReference'] ?? ''),
+                    'fullnumber' => $freshFullnumber,
                     'links' => [],
                     'messages' => $res['messages'] ?? []
                 ];
@@ -4676,14 +4929,26 @@ private function makeClient(string $environment): KsefClient
         }
 
         $seller = $inv->invoice_company_detail ?? null;
+        if ($seller === null) {
+            try {
+                $seller = $this->fetchTable('InvoiceCompanyDetails')
+                    ->find()->where(['invoice_id' => $inv->id])->first() ?: null;
+                if ($seller !== null) {
+                    $inv->set('invoice_company_detail', $seller);
+                }
+            } catch (\Throwable) { /* ignore */ }
+        }
         $buyer  = $inv->invoice_contractor ?? null;
         $items  = (array)($inv->invoice_contents ?? []);
 
         $issueDate   = $inv->date ? $inv->date->format('Y-m-d') : date('Y-m-d');
         $soldDate    = $inv->sold_date ? $inv->sold_date->format('Y-m-d') : null;
-        $number      = (string)($inv->fullnumber ?? $inv->id);
+        $isDraftInv  = ((string)($inv->workflow_status ?? '')) === 'draft';
+        $number      = $isDraftInv
+            ? ((string)$inv->id) . ' - robocza'
+            : (string)($inv->fullnumber ?? $inv->id);
         $currency    = strtoupper((string)($inv->currency ?? 'PLN'));
-        $placeIssued = trim((string)($inv->place_of_issue ?? $seller->city ?? ''));
+        $placeIssued = trim((string)($inv->place_of_issue ?? $seller?->city ?? ''));
 
         $xml = [];
 
@@ -4768,9 +5033,9 @@ private function makeClient(string $environment): KsefClient
     {
         $xml = [];
 
-        $sellerName   = trim((string)($seller->name ?? ''));
-        $sellerNip    = preg_replace('/\D+/', '', (string)($seller->nip ?? ''));
-        $countryCode  = strtoupper((string)($seller->country_code ?? 'PL'));
+        $sellerName   = trim((string)($seller?->name ?? ''));
+        $sellerNip    = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
+        $countryCode  = strtoupper((string)($seller?->country_code ?? 'PL'));
 
         $xml[] = '  <Podmiot1>';
         $xml[] = '    <DaneIdentyfikacyjne>';
@@ -4786,27 +5051,31 @@ private function makeClient(string $environment): KsefClient
         $xml[] = '    <Adres>';
         // KodKraju – kod kraju sprzedawcy (ISO)
         $xml[] = '      <KodKraju>' . $this->esc($countryCode) . '</KodKraju>';
-        // AdresL1 – ulica, nr domu
-        if (!empty($seller?->street)) {
-            $xml[] = '      <AdresL1>' . $this->esc((string)$seller->street) . '</AdresL1>';
+        // AdresL1 – ulica, nr domu (wymagane w XSD)
+        $sellerStreet = trim((string)($seller?->street ?? ''));
+        if ($sellerStreet !== '') {
+            $xml[] = '      <AdresL1>' . $this->esc($sellerStreet) . '</AdresL1>';
+        } else {
+            $sellerAdresL1Fallback = trim((string)($seller?->city ?? $sellerName));
+            $xml[] = '      <AdresL1>' . $this->esc($sellerAdresL1Fallback !== '' ? $sellerAdresL1Fallback : '-') . '</AdresL1>';
         }
         // AdresL2 – kod + miejscowość
-        $sellerL2 = trim(((string)($seller->zip ?? '')) . ' ' . ((string)($seller->city ?? '')));
+        $sellerL2 = trim(((string)($seller?->zip ?? '')) . ' ' . ((string)($seller?->city ?? '')));
         if ($sellerL2 !== '') {
             $xml[] = '      <AdresL2>' . $this->esc($sellerL2) . '</AdresL2>';
         }
         // GLN sprzedawcy (opcjonalne)
-        $sellerGln = trim((string)($seller->gln ?? ''));
+        $sellerGln = trim((string)($seller?->gln ?? ''));
         if ($sellerGln !== '') {
             $xml[] = '      <GLN>' . $this->esc($sellerGln) . '</GLN>';
         }
         $xml[] = '    </Adres>';
 
         // AdresKoresp — adres korespondencyjny sprzedawcy (opcjonalny, XSD: TAdres)
-        $korespL1 = trim((string)($seller->koresp_address_l1 ?? ''));
-        $korespL2 = trim((string)($seller->koresp_address_l2 ?? ''));
+        $korespL1 = trim((string)($seller?->koresp_address_l1 ?? ''));
+        $korespL2 = trim((string)($seller?->koresp_address_l2 ?? ''));
         if ($korespL1 !== '' || $korespL2 !== '') {
-            $korespCC = strtoupper(trim((string)($seller->koresp_country_code ?? 'PL')));
+            $korespCC = strtoupper(trim((string)($seller?->koresp_country_code ?? 'PL')));
             $xml[] = '    <AdresKoresp>';
             $xml[] = '      <KodKraju>' . $this->esc($korespCC) . '</KodKraju>';
             if ($korespL1 !== '') {
@@ -4815,7 +5084,7 @@ private function makeClient(string $environment): KsefClient
             if ($korespL2 !== '') {
                 $xml[] = '      <AdresL2>' . $this->esc($korespL2) . '</AdresL2>';
             }
-            $sellerKorespGln = trim((string)($seller->koresp_gln ?? ''));
+            $sellerKorespGln = trim((string)($seller?->koresp_gln ?? ''));
             if ($sellerKorespGln !== '') {
                 $xml[] = '      <GLN>' . $this->esc($sellerKorespGln) . '</GLN>';
             }
@@ -4823,8 +5092,8 @@ private function makeClient(string $environment): KsefClient
         }
 
         // DaneKontaktowe — email / telefon sprzedawcy (opcjonalne w FA(3))
-        $sellerEmail = trim((string)($seller->email ?? ''));
-        $sellerPhone = trim((string)($seller->phone ?? ''));
+        $sellerEmail = trim((string)($seller?->email ?? ''));
+        $sellerPhone = trim((string)($seller?->phone ?? ''));
         if ($sellerEmail !== '' || $sellerPhone !== '') {
             $xml[] = '    <DaneKontaktowe>';
             if ($sellerEmail !== '') {
@@ -4854,12 +5123,17 @@ private function makeClient(string $environment): KsefClient
 
         $buyerName   = trim((string)($buyer->name ?? ''));
         $buyerNip    = preg_replace('/\D+/', '', (string)($buyer->nip ?? ''));
-        $countryCode = strtoupper((string)($buyer->country_code ?? 'PL'));
+        // Snapshot stores 'country', company details store 'country_code'
+        $countryCode = strtoupper(trim((string)($buyer->country_code ?? $buyer->country ?? 'PL')));
+        if ($countryCode === '') $countryCode = 'PL';
 
         $xml[] = '  <Podmiot2>';
         $xml[] = '    <DaneIdentyfikacyjne>';
         if ($buyerNip !== '') {
             $xml[] = '      <NIP>' . $this->esc($buyerNip) . '</NIP>';
+        } else {
+            // XSD wymaga jednego identyfikatora; gdy brak NIP emitujemy BrakID=1
+            $xml[] = '      <BrakID>1</BrakID>';
         }
         if ($buyerName !== '') {
             $xml[] = '      <Nazwa>' . $this->esc($buyerName) . '</Nazwa>';
@@ -4867,8 +5141,13 @@ private function makeClient(string $environment): KsefClient
         $xml[] = '    </DaneIdentyfikacyjne>';
         $xml[] = '    <Adres>';
         $xml[] = '      <KodKraju>' . $this->esc($countryCode) . '</KodKraju>';
-        if (!empty($buyer?->street)) {
-            $xml[] = '      <AdresL1>' . $this->esc((string)$buyer->street) . '</AdresL1>';
+        $buyerStreet = trim((string)($buyer->street ?? ''));
+        if ($buyerStreet !== '') {
+            $xml[] = '      <AdresL1>' . $this->esc($buyerStreet) . '</AdresL1>';
+        } else {
+            // AdresL1 jest wymagane w XSD; fallback: miasto lub nazwa kontrahenta
+            $adresL1Fallback = trim((string)($buyer->city ?? $buyerName));
+            $xml[] = '      <AdresL1>' . $this->esc($adresL1Fallback !== '' ? $adresL1Fallback : '-') . '</AdresL1>';
         }
         $buyerL2 = trim(((string)($buyer->zip ?? '')) . ' ' . ((string)($buyer->city ?? '')));
         if ($buyerL2 !== '') {
@@ -5191,23 +5470,46 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         $xml[] = '    <PrzyczynaKorekty>' . $this->esc($reason) . '</PrzyczynaKorekty>';
     }
 
-    // 2) TypKorekty – 1/2/3 (skutek w ewidencji VAT)
-    if (!empty($inv->correction_type)) {
-        // debug('correction_type: ' . $inv->correction_type);
-        $xml[] = '    <TypKorekty>' . 1 . '</TypKorekty>';
+    // 2) TypKorekty – 1/2/3 (skutek w ewidencji VAT); XSD: enumeration 1|2|3
+    $typKorektyRaw = (int)($inv->correction_type ?? 0);
+    if ($typKorektyRaw >= 1 && $typKorektyRaw <= 3) {
+        $xml[] = '    <TypKorekty>' . $typKorektyRaw . '</TypKorekty>';
+    } elseif (!empty($inv->correction_type)) {
+        // wartość spoza zakresu — emit domyślnego 1 (korekta in plus, bieżący okres)
+        $xml[] = '    <TypKorekty>1</TypKorekty>';
     }
 
     // 3) DaneFaKorygowanej – powiązanie z fakturą pierwotną (w KSeF lub poza)
+    // XSD: element WYMAGANY dla RodzajFaktury KOR/KOR_ZAL/KOR_ROZ — brak danych = błąd
     $origDate   = $inv->original_issue_date ?? null;
     $origNumber = trim((string)($inv->original_number ?? ''));
     $origKsef   = trim((string)($inv->original_ksef_number ?? ''));
 
+    if ($origNumber === '' || $origDate === null) {
+        throw new \RuntimeException(
+            'Faktura korygująca wymaga numeru i daty faktury pierwotnej (DaneFaKorygowanej). ' .
+            'Uzupełnij pola „Numer faktury korygowanej" i „Data wystawienia faktury korygowanej".'
+        );
+    }
+
     if ($origNumber !== '' && $origDate !== null) {
-        // obsłuż zarówno DateTime, jak i string
+        // obsłuż zarówno DateTime, jak i string; XSD TDataT wymaga formatu YYYY-MM-DD
         if ($origDate instanceof \DateTimeInterface) {
             $dateStr = $origDate->format('Y-m-d');
         } else {
-            $dateStr = (string)$origDate;
+            $raw = trim((string)$origDate);
+            // konwersja z formatu DD.MM.YYYY → YYYY-MM-DD
+            if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $raw, $m)) {
+                $dateStr = $m[3] . '-' . $m[2] . '-' . $m[1];
+            } elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $raw)) {
+                $dateStr = $raw; // już ISO
+            } else {
+                try {
+                    $dateStr = (new \DateTime($raw))->format('Y-m-d');
+                } catch (\Throwable) {
+                    $dateStr = $raw;
+                }
+            }
         }
 
         $xml[] = '    <DaneFaKorygowanej>';
@@ -5941,11 +6243,10 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <FormaPlatnosci>' . $this->esc($paymentMethod) . '</FormaPlatnosci>';
 
         $seller   = $inv->invoice_company_detail ?? null;
-        $rb       = trim((string)($seller->bank_account ?? ''));
-        $bankName = trim((string)($seller->bank_name ?? ''));
-        $bankDesc = trim((string)($seller->bank_desc ?? ''));
-
-        $swift    = trim((string)($seller->swift ?? ''));
+        $rb       = trim((string)($seller?->bank_account ?? ''));
+        $bankName = trim((string)($seller?->bank_name ?? ''));
+        $bankDesc = trim((string)($seller?->bank_desc ?? ''));
+        $swift    = trim((string)($seller?->swift ?? ''));
 
         if ($rb !== '' || $bankName !== '' || $bankDesc !== '' || $swift !== '') {
             $xml[] = '      <RachunekBankowy>';
@@ -6366,9 +6667,9 @@ private function mapPaymentMethod(?string $method): string
         $xml = [];
 
         $footerText = trim((string)($inv->footer_text ?? ''));
-        $krs   = trim((string)($seller->krs ?? ''));
-        $regon = trim((string)($seller->regon ?? ''));
-        $bdo   = trim((string)($seller->bdo ?? ''));
+        $krs   = trim((string)($seller?->krs ?? ''));
+        $regon = trim((string)($seller?->regon ?? ''));
+        $bdo   = trim((string)($seller?->bdo ?? ''));
 
         if ($footerText === '' && $krs === '' && $regon === '' && $bdo === '') {
             return $xml;
@@ -6380,14 +6681,27 @@ private function mapPaymentMethod(?string $method): string
             $xml[] = '      <StopkaFaktury>' . $this->esc($footerText) . '</StopkaFaktury>';
             $xml[] = '    </Informacje>';
         }
-        if ($krs !== '') {
-            $xml[] = '    <KRS>' . $this->esc($krs) . '</KRS>';
-        }
-        if ($regon !== '') {
-            $xml[] = '    <REGON>' . $this->esc($regon) . '</REGON>';
-        }
-        if ($bdo !== '') {
-            $xml[] = '    <BDO>' . $this->esc($bdo) . '</BDO>';
+        // XSD: KRS/REGON/BDO muszą być wewnątrz <Rejestry>, nie bezpośrednio w <Stopka>
+        // Walidacja wg schematu zewnętrznego MF (StrukturyDanych_v10-0E.xsd):
+        //   TNrKRS  = 10 cyfr
+        //   TNrREGON = 9 lub 14 cyfr
+        //   BDO     = max 9 znaków (XSD lokalny)
+        $krsValid   = $krs   !== '' && preg_match('/^\d{10}$/', $krs);
+        $regonValid = $regon !== '' && preg_match('/^\d{9}(\d{5})?$/', $regon);
+        $bdoValid   = $bdo   !== '' && strlen($bdo) <= 9;
+
+        if ($krsValid || $regonValid || $bdoValid) {
+            $xml[] = '    <Rejestry>';
+            if ($krsValid) {
+                $xml[] = '      <KRS>' . $this->esc($krs) . '</KRS>';
+            }
+            if ($regonValid) {
+                $xml[] = '      <REGON>' . $this->esc($regon) . '</REGON>';
+            }
+            if ($bdoValid) {
+                $xml[] = '      <BDO>' . $this->esc($bdo) . '</BDO>';
+            }
+            $xml[] = '    </Rejestry>';
         }
         $xml[] = '  </Stopka>';
 
@@ -6396,19 +6710,25 @@ private function mapPaymentMethod(?string $method): string
 
     private function resolveRodzajFaktury(Invoice $inv): string
     {
-        $type = $inv->type ?? 'VAT';
+        $type = $inv->type ?? 'vat';
 
         return match ($type) {
-            'advance'        => 'ZAL',
-            'novat'          => 'VAT',
-            'margin'         => 'VAT',
-            'currency'       => 'VAT',
-            'final'          => 'ROZ',
-            'correction'     => 'KOR',
-            'zal_korekta'    => 'KOR_ZAL',
-            'roz_korekta'    => 'KOR_ROZ',
-            'upr'            => 'UPR',
-            default          => 'VAT',
+            'advance'           => 'ZAL',
+            'novat'             => 'VAT',
+            'margin'            => 'VAT',
+            'currency'          => 'VAT',
+            'final'             => 'ROZ',
+            'correction'        => 'KOR',
+            'zal_korekta'       => 'KOR_ZAL',
+            'roz_korekta'       => 'KOR_ROZ',
+            'upr'               => 'UPR',
+            // Typy blokowane przez KSEF_BLOCKED_TYPES — nie powinny tu dotrzeć,
+            // ale jako zabezpieczenie zwracamy VAT (buildFa3Xml nie jest wywoływany dla tych typów)
+            'proforma'          => 'VAT',
+            'internal'          => 'VAT',
+            'internalEvidence'  => 'VAT',
+            'oss'               => 'VAT',
+            default             => 'VAT',
         };
     }
     private function buildFa3XmlCurrency(\App\Model\Entity\Invoice $inv): string
@@ -6434,5 +6754,28 @@ private function mapPaymentMethod(?string $method): string
     private function buildFa3XmlMargin(\App\Model\Entity\Invoice $inv): string
     {
         return $this->buildFa3XmlBase($inv);
+    }
+
+    /**
+     * Zwraca wartość pola rejestrowego firmy (krs/regon/bdo).
+     * Priorytet: kolumna bezpośrednia na $company → pierwsze niepuste z company_registers.
+     */
+    private function resolveCompanyRegisterField(mixed $company, string $field): string
+    {
+        if ($company === null) {
+            return '';
+        }
+        $direct = trim((string)($company->{$field} ?? ''));
+        if ($direct !== '') {
+            return $direct;
+        }
+        $registers = $company->company_registers ?? [];
+        foreach ($registers as $reg) {
+            $val = trim((string)($reg->{$field} ?? ''));
+            if ($val !== '') {
+                return $val;
+            }
+        }
+        return '';
     }
 }
