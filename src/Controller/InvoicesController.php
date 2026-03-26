@@ -2256,6 +2256,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     $this->set(compact('invoice','vats','vatRatesMap','kind'));
     if($kind === 'novat') {
         $this->render('add_no_vat');
+    } else if ($kind === 'rental') {
+        $this->render('add_rental');
     } else if ($kind === 'margin') {
         $this->render('add_margin');
     } else if ($kind === 'proforma') {
