@@ -127,21 +127,6 @@ $this->assign('title', 'Edycja firmy');
             <div class="card-body">
               <div class="row gy-3">
                 <div class="col-xl-12">
-                  <label class="form-label">Typ podmiotu</label>
-                  <div class="d-flex flex-wrap gap-3">
-                    <div class="form-check">
-                      <input class="form-check-input" type="radio" name="profile_mode" id="profile-mode-business" value="business" <?= (string)($company->profile_mode ?? 'business') === 'business' ? 'checked' : '' ?>>
-                      <label class="form-check-label" for="profile-mode-business">Firma / JDG</label>
-                    </div>
-                    <div class="form-check">
-                      <input class="form-check-input" type="radio" name="profile_mode" id="profile-mode-private-rental" value="private_rental" <?= (string)($company->profile_mode ?? 'business') === 'private_rental' ? 'checked' : '' ?>>
-                      <label class="form-check-label" for="profile-mode-private-rental">Najem prywatny (osoba fizyczna)</label>
-                    </div>
-                  </div>
-                  <div class="form-text">Dla najmu prywatnego NIP i REGON są opcjonalne.</div>
-                </div>
-
-                <div class="col-xl-12">
                     <?= $this->Form->control('name', [
                       'label' => ['text' => 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>', 'escape' => false],
                         'required' => true,
@@ -312,6 +297,61 @@ $this->assign('title', 'Edycja firmy');
                         'placeholder' => 'np. Jan Kowalski',
                   ]) ?>
                   <div class="form-text">Imię i nazwisko osoby widocznej na fakturze.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sekcja: Najem prywatny -->
+          <div class="card custom-card mb-3">
+            <div class="card-header justify-content-between">
+              <div class="card-title">Najem prywatny</div>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" role="switch" id="rental-enabled-toggle"
+                    name="rental_enabled" value="1"
+                    <?= !empty($company->rental_enabled) ? 'checked' : '' ?>>
+                  <label class="form-check-label fw-medium" for="rental-enabled-toggle">
+                    Prowadzę najem prywatny i będę wystawiał faktury z tego tytułu
+                  </label>
+                </div>
+                <div class="form-text">Jeśli tak, uzupełnij poniżej dane osoby fizycznej, które będą używane na fakturach najmu prywatnego.</div>
+              </div>
+              <div id="rental-fields" class="<?= !empty($company->rental_enabled) ? '' : 'd-none' ?>">
+                <div class="row gy-3">
+                  <div class="col-xl-6">
+                    <label class="form-label" for="rental-first-name">Imię</label>
+                    <input type="text" class="form-control" id="rental-first-name" name="rental_first_name"
+                      value="<?= h($company->rental_first_name ?? '') ?>" placeholder="np. Jan" maxlength="120">
+                  </div>
+                  <div class="col-xl-6">
+                    <label class="form-label" for="rental-last-name">Nazwisko</label>
+                    <input type="text" class="form-control" id="rental-last-name" name="rental_last_name"
+                      value="<?= h($company->rental_last_name ?? '') ?>" placeholder="np. Kowalski" maxlength="120">
+                  </div>
+                  <div class="col-xl-4">
+                    <label class="form-label" for="rental-nip">NIP (opcjonalnie)</label>
+                    <input type="text" class="form-control" id="rental-nip" name="rental_nip"
+                      value="<?= h($company->rental_nip ?? '') ?>" placeholder="np. 1234567890" maxlength="10" pattern="\d{0,10}">
+                    <div class="form-text">10 cyfr, bez myślników. Dla osób fizycznych opcjonalne.</div>
+                  </div>
+                  <div class="col-xl-8">
+                    <label class="form-label" for="rental-street">Ulica i numer</label>
+                    <input type="text" class="form-control" id="rental-street" name="rental_street"
+                      value="<?= h($company->rental_street ?? '') ?>" placeholder="np. ul. Lipowa 5/3" maxlength="160">
+                  </div>
+                  <div class="col-xl-4">
+                    <label class="form-label" for="rental-postal-code">Kod pocztowy</label>
+                    <input type="text" class="form-control" id="rental-postal-code" name="rental_postal_code"
+                      value="<?= h($company->rental_postal_code ?? '') ?>" placeholder="00-000" maxlength="6">
+                  </div>
+                  <div class="col-xl-8">
+                    <label class="form-label" for="rental-city">Miejscowość</label>
+                    <input type="text" class="form-control" id="rental-city" name="rental_city"
+                      value="<?= h($company->rental_city ?? '') ?>" placeholder="np. Warszawa" maxlength="120">
+                  </div>
                 </div>
               </div>
             </div>
@@ -945,55 +985,9 @@ $this->assign('title', 'Edycja firmy');
 
   // NIP numeric only (10 digits)
   const nipInput = document.getElementById('company-nip');
-  const profileBusiness = document.getElementById('profile-mode-business');
-  const profilePrivateRental = document.getElementById('profile-mode-private-rental');
-  const regonWrap = document.getElementById('company-regon-wrap');
-  const nipLabel = document.getElementById('company-nip-label');
-  const nipHelp = document.getElementById('company-nip-help');
-  const nameLabel = document.querySelector('label[for="company-name"]');
-  const nameHelp = document.getElementById('company-name-help');
   const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
   const btnGus = document.getElementById('company-gus-fetch');
   const spin   = document.getElementById('company-gus-spin');
-
-  function isPrivateRentalProfile() {
-    return !!profilePrivateRental?.checked;
-  }
-
-  function toggleProfileModeUi() {
-    const isPrivateRental = isPrivateRentalProfile();
-
-    if (regonWrap) {
-      regonWrap.style.display = isPrivateRental ? 'none' : '';
-      regonWrap.querySelectorAll('input,select,textarea').forEach((el) => {
-        el.disabled = isPrivateRental;
-      });
-    }
-
-    if (nipLabel) {
-      nipLabel.textContent = isPrivateRental ? 'NIP (opcjonalnie)' : 'NIP';
-    }
-    if (nipHelp) {
-      nipHelp.textContent = isPrivateRental
-        ? 'Opcjonalnie: 10 cyfr (bez myślników). Dla najmu prywatnego możesz zostawić puste.'
-        : '10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.';
-    }
-    if (nameLabel) {
-      nameLabel.innerHTML = isPrivateRental
-        ? 'Imię i nazwisko <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>'
-        : 'Nazwa firmy <span class="text-danger" data-bs-toggle="tooltip" title="Pole wymagane">*</span>';
-    }
-    if (nameHelp) {
-      nameHelp.textContent = isPrivateRental
-        ? 'Podaj dane osoby fizycznej prowadzącej najem prywatny.'
-        : 'Pełna nazwa zgodna z dokumentami rejestrowymi.';
-    }
-    if (btnGus) {
-      btnGus.disabled = isPrivateRental;
-      btnGus.classList.toggle('disabled', isPrivateRental);
-      btnGus.title = isPrivateRental ? 'Dla najmu prywatnego pobieranie z GUS jest wyłączone.' : '';
-    }
-  }
 
   if (nipInput) {
     nipInput.addEventListener('input', (e) => {
@@ -1007,10 +1001,14 @@ $this->assign('title', 'Edycja firmy');
     });
   }
 
-  [profileBusiness, profilePrivateRental].forEach((el) => {
-    el?.addEventListener('change', toggleProfileModeUi);
-  });
-  toggleProfileModeUi();
+  // Najem prywatny — toggle pól
+  const rentalToggle = document.getElementById('rental-enabled-toggle');
+  const rentalFields = document.getElementById('rental-fields');
+  if (rentalToggle && rentalFields) {
+    rentalToggle.addEventListener('change', function() {
+      rentalFields.classList.toggle('d-none', !this.checked);
+    });
+  }
 
   // GUS fetch for company
   btnGus?.addEventListener('click', async () => {

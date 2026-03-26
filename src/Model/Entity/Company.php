@@ -30,6 +30,13 @@ use Cake\ORM\Entity;
  * @property bool $is_active
  * @property string|null $invoice_template
  * @property string $profile_mode
+ * @property bool $rental_enabled
+ * @property string|null $rental_first_name
+ * @property string|null $rental_last_name
+ * @property string|null $rental_nip
+ * @property string|null $rental_street
+ * @property string|null $rental_postal_code
+ * @property string|null $rental_city
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -73,6 +80,13 @@ class Company extends Entity
         'is_active' => true,
         'invoice_template' => true,
         'profile_mode' => true,
+        'rental_enabled' => true,
+        'rental_first_name' => true,
+        'rental_last_name' => true,
+        'rental_nip' => true,
+        'rental_street' => true,
+        'rental_postal_code' => true,
+        'rental_city' => true,
         'created' => true,
         'modified' => true,
         'company_bank_accounts' => true,

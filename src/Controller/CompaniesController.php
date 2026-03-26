@@ -674,6 +674,8 @@ class CompaniesController extends AppController
                         if ($sec === 'dane_firmy') {
                             $dataCompany = (array)$this->request->getData();
                             if (empty($dataCompany['profile_mode'])) $dataCompany['profile_mode'] = 'business';
+                            // checkbox — gdy odznaczony, przeglądarka nie wysyła wartości
+                            if (!isset($dataCompany['rental_enabled'])) $dataCompany['rental_enabled'] = 0;
                             $dataCompany['id'] = $ctxCompanyId;
                             $ent = $Companies->patchEntity($company, $dataCompany);
                             if (!$Companies->save($ent)) {
@@ -832,6 +834,7 @@ class CompaniesController extends AppController
             if (empty($dataCompany['profile_mode'])) {
                 $dataCompany['profile_mode'] = 'business';
             }
+            if (!isset($dataCompany['rental_enabled'])) $dataCompany['rental_enabled'] = 0;
             $dataCompany['id'] = $ctxCompanyId; // wymuś właściwe ID
             $company = $this->Companies->patchEntity($company, $dataCompany);
 
