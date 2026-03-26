@@ -154,12 +154,12 @@ Pola dodane w migracji `20260318160000` — formularze i zapis dodane w nowej za
   - `koresp_*` na invoiceContractor snapshot
 - [x] Dodano `saveInvoiceRelationalFa3()` — zapis 4 tabel relacyjnych (charges, factor_banks, authorized_entities, order_lines) strategią delete+insert
 
-### ~~🟢 NISKI: Pola obecne tylko w `add.php`~~ ✅ CZĘŚCIOWO
+### ~~🟢 NISKI: Pola obecne tylko w `add.php`~~ ✅ DONE
 
 - [x] `buyer_is_jst`, `buyer_in_vat_group` — przeniesione do `tab_fa3_extended.php` (dostępne we wszystkich 11 templatekach)
-- [ ] `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — nadal tylko `add.php` (do oceny czy potrzebne w korektach/walutowych)
-- [ ] `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — nadal tylko `add.php`
-- [ ] `buyer_tax_id_other`, `buyer_tax_id_other_country` — nadal tylko `add.php`
+- [x] `seller_vat_prefix`, `seller_vat_eu`, `seller_eori` — przeniesione do `tab_identifiers.php`, który jest w 11 szablonach (zweryfikowane 2026-03-18)
+- [x] `buyer_vat_prefix`, `buyer_vat_eu`, `buyer_eori` — j.w.
+- [x] `buyer_tax_id_other`, `buyer_tax_id_other_country` — j.w.
 
 ## TODO — Analiza przepływu faktur proforma → zaliczkowa → końcowa (2026-03)
 
@@ -169,10 +169,10 @@ Pola dodane w migracji `20260318160000` — formularze i zapis dodane w nowej za
 - [x] **`buildFakturaZaliczkowaXml()` linia ~5185 — `$adv->number` → `$adv->fullnumber`** — pole `number` to sekwencyjny int (1, 2, 3), a `<NrFaZaliczkowej>` wymaga pełnego numeru faktury (np. `FZ/1/2026`). Generowało nieprawidłowy XML.
 - [x] **Routing templatek przy pustym `$contents`** — `handleAdd()` renderował `'add'` dla wszystkich typów poza `novat`. Teraz routuje poprawnie: advance/final → `add_advance`, proforma → `add_proforma`, margin → `add_margin`, currency → `add_currency`, correction → `add_correction`.
 
-### 🟡 DESIGN ISSUES (do decyzji / przyszłe)
+### ~~🟡 DESIGN ISSUES~~ ✅ DONE (2026-03-18)
 
-- [ ] **Auto-klasyfikacja jako końcowa** — gdy kwota zaliczki ≈ pozostała kwota proformy (±0.01), faktura jest automatycznie oznaczana jako `final`. Użytkownik może tego nie zauważyć. Rozważyć: wyraźniejsze powiadomienie lub potwierdzenie.
-- [ ] **Snapshot kontrahenta z proformy** — dane kontrahenta kopiowane z proformy mogą być nieaktualne, jeśli kontrahent zmienił dane po wystawieniu proformy. Rozważyć: porównanie z aktualnym kontrahentem i ostrzeżenie.
+- [x] **Auto-klasyfikacja jako końcowa** — dodano alert `#auto-final-notice` w `add_advance.php`. Wyświetla się gdy kwota = remaining i zmienia stan z zaliczkowej na końcową.
+- [x] **Snapshot kontrahenta z proformy** — `proformaDetails()` porównuje dane po NIP z `contractors`, zwraca `contractor_changed` + `contractor_current`. Frontend pokazuje `#contractor-changed-notice` z diffem.
 - [x] **Opis duplikowany przy re-submit** — **NAPRAWIONE**: dodano `str_contains()` guard przed dopisywaniem „Rozlicza zaliczki: ..." do `description`.
 
 ### ✅ Pozytywna weryfikacja (działa poprawnie)
@@ -183,3 +183,103 @@ Pola dodane w migracji `20260318160000` — formularze i zapis dodane w nowej za
 - `resolveRodzajFaktury()` — mapowanie: advance→ZAL, final→ROZ, correction→KOR, reszta→VAT. Proforma słusznie nie mapowana (nie jest wysyłana do KSeF).
 - `add_advance.php` template — Select2 dla proformy, recompute netto/VAT, walidacja overpayment, auto-przełączanie serii zaliczkowa↔końcowa, finalize button z blokowaniem gdy końcowa istnieje.
 
+## Typy faktur — XML FA(3) i reguły wysyłki do KSeF (2026-03-18)
+
+### Mapowanie typów → FA(3) RodzajFaktury (`resolveRodzajFaktury()`)
+
+| PHP `type`        | FA(3) `RodzajFaktury` | Wysyłka do KSeF | Uwagi                              |
+|-------------------|-----------------------|-----------------|-------------------------------------|
+| `vat`             | `VAT`                 | TAK             | Podstawowa faktura krajowa PLN      |
+| `currency`        | `VAT`                 | TAK             | Faktura walutowa, przeliczenie PLN  |
+| `novat`           | `VAT`                 | TAK             | ZW/NP, brak stawki VAT             |
+| `advance`         | `ZAL`                 | TAK             | Faktura zaliczkowa                  |
+| `final`           | `ROZ`                 | TAK             | Faktura końcowa (rozliczeniowa)     |
+| `correction`      | `KOR`                 | TAK             | Korekta faktury                     |
+| `zal_korekta`     | `KOR_ZAL`             | TAK             | Korekta zaliczkowej                 |
+| `roz_korekta`     | `KOR_ROZ`             | TAK             | Korekta rozliczeniowej              |
+| `upr`             | `UPR`                 | TAK             | Uproszczona (bez nabywcy > 450 PLN) |
+| `margin`          | `VAT`                 | TAK             | Faktura marżowa (§ 119 uVAT)        |
+| `proforma`        | —                     | **NIE**         | Nie jest fakturą VAT, brak KSeF     |
+| `internal`        | —                     | **NIE**         | Dokument wewnętrzny                 |
+| `internalEvidence`| —                     | **NIE**         | Ewidencja wewnętrzna                |
+| `oss`             | —                     | **NIE**         | Rozliczenie OSS (poza PL KSeF)      |
+
+### Blokada wysyłki do KSeF (`KSEF_BLOCKED_TYPES`)
+
+Stała `InvoicesController::KSEF_BLOCKED_TYPES = ['proforma', 'internal', 'internalEvidence', 'oss']`.
+
+`sendInvoiceToKsefCore()` zwraca błąd natychmiast dla tych typów, zanim jakikolwiek XML jest generowany lub sesja KSeF otwierana. Log zdarzenia: `blocked`.
+
+### Generator XML FA(3) (`buildFa3Xml()`)
+
+Router switch/case:
+- `correction`/`korekta` → `buildFa3XmlCorrection()` → `buildFa3XmlBase()`
+- `advance`/`zaliczkowa` → `buildFa3XmlAdvance()` → `buildFa3XmlBase()`
+- `final`/`rozliczeniowa` → `buildFa3XmlFinal()` → `buildFa3XmlBase()`
+- `margin`/`marza` → `buildFa3XmlMargin()` → `buildFa3XmlBase()`
+- walutowe (currency != PLN) → `buildFa3XmlCurrency()` → `buildFa3XmlBase()`
+- pozostałe → `buildFa3XmlBase()` bezpośrednio
+
+Wszystkie delegaty aktualnie wywołują `buildFa3XmlBase()` bez specjalizacji — to wystarczy, bo `RodzajFaktury` i specyficzne sekcje (`<ZAL>`, `<ROZ>`, `<FakturaZaliczkowa>`) są generowane wewnątrz base na podstawie pola `type`.
+
+### Walidacja XSD przed wysyłką
+
+W `sendInvoiceToKsefCore()`, przed wywołaniem `N1KsefService::sendInvoiceXml()`:
+1. Ładuje `src/faktura.xsd`
+2. Parsuje XML przez `DOMDocument::loadXML()`
+3. Waliduje przez `DOMDocument::schemaValidate()`
+4. Przy błędach: `workflow_status = error`, log `xsd_invalid`, zwraca pierwsze 3 błędy w komunikacie
+5. Jeśli `src/faktura.xsd` nie istnieje — walidacja jest pomijana (nie blokuje wysyłki)
+
+### Generowanie PDF
+
+PDF jest generowany przez **zewnętrzne API** (`INVOICE_API_URL` w config), nie przez XSL-T.
+XSL-T (`transformXmlWithXsl()`) jest używane **wyłącznie** do transformacji UPO (Urzędowe Poświadczenie Odbioru).
+
+Dla proformy, internal, oss — PDF może być generowany normalnie (brak blokady), tylko wysyłka do KSeF jest zablokowana.
+
+## Audyt wystawiania i edycji faktur — znalezione problemy (2026-03-19)
+
+Pełna analiza `handleAdd()`, `edit()` i szablonów templatek dla wszystkich typów.
+Legenda: 🔴 krytyczny / 🟡 średni / 🟢 niski priorytet.
+
+### 🔴 KRYTYCZNE
+
+- [x] **Brak szablonów dla `internal`, `internalEvidence`, `oss`** — NAPRAWIONE (2026-03-19): `handleAdd()` routuje te typy do `add.php` przez `render('add')`. Baner z informacją o typie wyświetlany przez `$__kindBanners` w szablonie. `templateMap` w `edit()` uzupełniony o te trzy typy.
+
+- [x] **Brak sprawdzenia `$noVat` przy walidacji VAT w `edit()` dla advance/final** — NAPRAWIONE (2026-03-19): walidacja zmieniona z `if (!$vatCodeId)` na `if (!$noVat && !$vatCodeId)`. Stawka dla no-VAT: `$rate = $noVat ? 0.0 : (float)(...)`.
+
+- [x] **Niespójna logika `$isFinal` między add i edit** — NAPRAWIONE (2026-03-19): `edit()` teraz oblicza `$isFinal` tak samo jak `handleAdd()` — sprawdza `$data['is_final']` i auto-detekcję przez kwotę vs remaining. Dodano aktualizację `type` i `is_final` w `invoicePatch` gdy typ zmienia się z advance na final.
+
+### 🟡 ŚREDNI PRIORYTET
+
+- [x] **Brakująca walidacja przy fakturze marżowej** — NAPRAWIONE (2026-03-19): dodano sprawdzenie `if ($totalPurchase <= 0.0)` przed obliczeniem marży w `handleAdd()` i `edit()`. Wyświetlany błąd Flash z instrukcją.
+
+- [x] **`purchase_price` zignorowany w fakturach zwykłych (VAT, walutowa, novat)** — NAPRAWIONE (2026-03-19): dodano `'purchase_price' => !empty($row['purchase_price']) ? $num(...) : null` do tablicy `$contents[]` w obu miejscach (`handleAdd()` else-branch i `edit()` else-branch).
+
+- [x] **`margin_vat_rate` bez walidacji zakresu** — NAPRAWIONE (2026-03-19): dodano fallback `if ($rate < 0.0 || $rate > 100.0) { $rate = 23.0; }` w obu miejscach (handleAdd i edit).
+
+- [x] **Brak komunikatu błędu gdy `$original` (parent) nie istnieje dla korekty w `edit()`** — NAPRAWIONE (2026-03-19): dodano `$this->Flash->warning(...)` gdy `empty($original)` dla korekty.
+
+- [x] **Niespójny komunikat przy kwocie zaliczkowej ≤ 0** — NAPRAWIONE (2026-03-19): komunikat rozróżnia teraz ujemną od zera — przy < 0 podaje wartość: `'Kwota zaliczki nie może być ujemna (podano: X).'`
+
+### 🟢 NISKI PRIORYTET
+
+- [x] **`$noVat` parametr w `handleAdd()` semantycznie niejasny** — NAPRAWIONE (2026-03-19): dodano PHPDoc wyjaśniający że parametr przekazuje wyłącznie `addNoVat()` i co odróżnia `$noVat` od `$kind='novat'`.
+
+- [x] **Potencjalny race condition: `workflow_status` ustawiany po save** — NAPRAWIONE (2026-03-19): usunięto zbędne `$invoice->set('workflow_status', 'sending')` + `save()` po commicie w `handleAdd()`. Status 'sending' jest teraz ustawiany wyłącznie przez `sendInvoiceToKsefCore()` przed wywołaniem API.
+
+- [x] **`templateMap` w `edit()` nie zawiera `correction`** — NAPRAWIONE (2026-03-19): dodano komentarz wyjaśniający że `correction` celowo nie jest w mapie (wymaga wcześniejszego załadowania `$original`).
+
+- [x] **Seria domyślna dla `advance`/`final`/`internal`/`oss` opiera się wyłącznie na hint-match** — NAPRAWIONE (2026-03-19): `InvoiceDefaultSeriesResolver::TYPE_CONFIG` uzupełniony o `series_type` dla wszystkich typów: `advance→'advance'`, `final→'final'`, `proforma→'proforma'`, `margin→'margin'`, `internal→'internal'`, `internalEvidence→'internalevidence'`, `oss→'oss'`. Resolver teraz preferuje serię o pasującym typie przed hint-matchem.
+
+### ✅ Zweryfikowane — działa poprawnie
+
+- Obliczenia VAT (netto × stawka) i agregacja do wiader VAT — spójne dla wszystkich typów
+- Usługa numeracji (`InvoiceNumberingService`) — poprawna ekstrakcja, formatowanie, obliczanie kolejnego numeru, rozliczenia per-okres
+- Resolver serii domyślnej — 5-krokowa strategia fallback działa
+- Snapshot kontrahenta (sprzedawca + nabywca) — poprawnie zapisywany przy add i edit
+- Logika advance/final: obliczanie remaining, walidacja przepłacenia, blokada drugiej faktury końcowej, auto-detekcja końcowej
+- Kurs waluty: NBP API z graceful fallback, przechowywanie kursu i daty
+- Zapis transakcyjny (`begin`/`rollback`) i FA(3) relacje (`saveInvoiceRelationalFa3`)
+- Integracja KSeF: flagi, draft workflow, data window, upload XML vs generowanie, logi zdarzeń

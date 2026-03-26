@@ -147,6 +147,12 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
               </div>
               <div class="form-text" id="company-nip-help">10 cyfr (bez myślników). Dla zagranicznych pozostaw puste. Możesz też pobrać dane z GUS.</div>
               <div class="alert alert-warning small py-2 px-3 mt-2 d-none" id="company-nip-exists-alert"></div>
+              <div id="vat-status-wrap" class="mt-2 d-none">
+                <span id="vat-status-badge" class="badge fs-12 me-1"></span>
+                <button type="button" id="btn-import-accounts" class="btn btn-xs btn-outline-primary d-none py-0 px-2">
+                  <i class="ri-bank-line me-1"></i> Zaimportuj rachunki z MF (<span id="import-accounts-count">0</span>)
+                </button>
+              </div>
               <div class="invalid-feedback">NIP powinien mieć 10 cyfr.</div>
             </div>
             <div class="col-xl-4" id="company-regon-wrap">
@@ -545,7 +551,39 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
         setVal('input[name="company[postal_code]"]', c.zip);
         setVal('input[name="company[country]"]',     c.country || 'PL');
         setVal('input[name="company[street]"]',      c.street);
-        try { window.toastr?.success('Pobrano dane z GUS.'); } catch(e) {}
+
+        // Pokaż status VAT (biała lista MF)
+        const vat = data.vat || {};
+        const vatStatusWrap = document.getElementById('vat-status-wrap');
+        const vatStatusBadge = document.getElementById('vat-status-badge');
+        const btnImport = document.getElementById('btn-import-accounts');
+        const importCount = document.getElementById('import-accounts-count');
+        const vatLabel = (vat.statusVat || '').trim();
+        if (vatStatusWrap && vatStatusBadge) {
+          vatStatusWrap.classList.remove('d-none');
+          let badgeClass = 'bg-secondary';
+          if (vatLabel === 'Czynny')        badgeClass = 'bg-success';
+          else if (vatLabel === 'Zwolniony') badgeClass = 'bg-warning text-dark';
+          else if (vatLabel)                badgeClass = 'bg-danger';
+          vatStatusBadge.className = 'badge fs-12 me-1 ' + badgeClass;
+          vatStatusBadge.textContent = vatLabel ? ('Status VAT: ' + vatLabel) : 'Brak statusu VAT w MF';
+        }
+
+        // Możliwość importu rachunków bankowych z białej listy
+        const accounts = Array.isArray(vat.accountNumbers) ? vat.accountNumbers : [];
+        if (btnImport && importCount) {
+          if (accounts.length > 0) {
+            importCount.textContent = accounts.length;
+            btnImport.classList.remove('d-none');
+            // Przechowaj konta do importu jako atrybut
+            btnImport.dataset.accounts = JSON.stringify(accounts);
+          } else {
+            btnImport.classList.add('d-none');
+          }
+        }
+
+        const msg = 'Pobrano dane z GUS.' + (vatLabel ? (' Status VAT: ' + vatLabel + '.') : '') + (accounts.length > 0 ? (' Znaleziono ' + accounts.length + ' rachunek/i w MF.') : '');
+        try { window.toastr?.success(msg); } catch(e) {}
       } else {
         try { window.toastr?.warning(data.message || 'Brak danych w GUS.'); } catch(e) {}
       }
@@ -554,6 +592,38 @@ $profileMode = (string)($this->request->getData('company.profile_mode') ?? $comp
     } finally {
       btnGus.disabled = false; spin.classList.add('d-none');
     }
+  });
+
+  // Import rachunków bankowych z białej listy MF
+  document.getElementById('btn-import-accounts')?.addEventListener('click', function () {
+    let accounts = [];
+    try { accounts = JSON.parse(this.dataset.accounts || '[]'); } catch(e) {}
+    if (!accounts.length) return;
+
+    const list = document.getElementById('banks-list');
+    const addBtn = document.getElementById('bank-add');
+    if (!list || !addBtn) return;
+
+    // Wyczyść istniejące puste wiersze i dodaj nowe (lub nadpisz pierwszy)
+    const existingInputs = list.querySelectorAll('.iban-input');
+    const hasData = [...existingInputs].some(inp => inp.value.trim() !== '');
+
+    accounts.forEach((iban, i) => {
+      const normalizedIban = (iban || '').replace(/\s+/g, '').toUpperCase();
+      if (!normalizedIban) return;
+      if (i === 0 && !hasData && existingInputs[0]) {
+        // Nadpisz pusty pierwszy wiersz
+        existingInputs[0].value = normalizedIban;
+      } else {
+        // Kliknij "Dodaj" i uzupełnij nowy wiersz
+        addBtn.click();
+        const last = list.querySelector('.bank-item:last-child .iban-input');
+        if (last) last.value = normalizedIban;
+      }
+    });
+
+    this.classList.add('d-none');
+    try { window.toastr?.success('Zaimportowano ' + accounts.length + ' rachunek/i bankowy/ch z Białej Listy MF.'); } catch(e) {}
   });
 
   // postal code 99-999

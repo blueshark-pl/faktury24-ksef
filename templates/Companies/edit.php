@@ -95,7 +95,7 @@ $this->assign('title', 'Edycja firmy');
         </div>
         <div class="card-body small text-muted">
           <div class="mb-2"><i class="ri-information-line me-1"></i> Wymagane: <strong>Nazwa</strong> (oraz <strong>NIP</strong> jeżeli VAT).</div>
-          <div><i class="ri-time-line me-1"></i> Rachunek bankowy możesz dodać później w „Konta bankowe”.</div>
+          <div><i class="ri-time-line me-1"></i> Rachunek bankowy możesz dodać później w „Konta bankowe".</div>
         </div>
       </div>
     </div>
@@ -206,18 +206,31 @@ $this->assign('title', 'Edycja firmy');
                 </div>
                 <div class="col-xl-12">
                   <div class="form-check form-switch vat-switch mt-1">
-                    <?= $this->Form->control('ksef_mode_enabled', [
-                      'type' => 'checkbox',
-                      'label' => ['text' => 'Wysyłam dokumenty do KSeF', 'class' => 'form-check-label'],
-                      'class' => 'form-check-input',
-                      'templates' => [
-                        'inputContainer' => '<div class="form-check form-switch vat-switch">{{content}}</div>',
-                        'input' => '<input type="{{type}}" name="{{name}}"{{attrs}}/>',
-                        'label' => '<label{{attrs}}>{{text}}</label>',
-                      ],
-                    ]) ?>
+                    <?php if (!empty($hasKsefSentInvoice)): ?>
+                      <!-- Zablokowany — firma wysłała faktury do KSeF, nie można wyłączyć -->
+                      <input type="checkbox" class="form-check-input" checked disabled>
+                      <label class="form-check-label">Wysyłam dokumenty do KSeF</label>
+                      <input type="hidden" name="ksef_mode_enabled" value="1">
+                    <?php else: ?>
+                      <?= $this->Form->control('ksef_mode_enabled', [
+                        'type' => 'checkbox',
+                        'label' => ['text' => 'Wysyłam dokumenty do KSeF', 'class' => 'form-check-label'],
+                        'class' => 'form-check-input',
+                        'templates' => [
+                          'inputContainer' => '<div class="form-check form-switch vat-switch">{{content}}</div>',
+                          'input' => '<input type="{{type}}" name="{{name}}"{{attrs}}/>',
+                          'label' => '<label{{attrs}}>{{text}}</label>',
+                        ],
+                      ]) ?>
+                    <?php endif; ?>
                   </div>
-                  <div class="form-text">Wyłącz tylko jeśli firma ma pracować poza KSeF (bez wysyłki dokumentów do KSeF).</div>
+                  <?php if (!empty($hasKsefSentInvoice)): ?>
+                    <div class="form-text text-warning">
+                      <i class="ri-lock-line me-1"></i>Nie można wyłączyć — firma wysłała już co najmniej jedną fakturę do KSeF.
+                    </div>
+                  <?php else: ?>
+                    <div class="form-text">Wyłącz tylko jeśli firma ma pracować poza KSeF (bez wysyłki dokumentów do KSeF).</div>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>
@@ -302,6 +315,13 @@ $this->assign('title', 'Edycja firmy');
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="mt-3 text-end">
+            <button type="button" class="btn btn-sm btn-success tab-save-btn" data-section="dane_firmy">
+              <i class="ri-save-line me-1"></i> Zapisz dane firmy
+              <span class="spinner-border spinner-border-sm ms-1 d-none"></span>
+            </button>
           </div>
         </div>
 
@@ -447,6 +467,13 @@ $this->assign('title', 'Edycja firmy');
             </script>
 
         </div>
+
+        <div class="mt-3 text-end">
+          <button type="button" class="btn btn-sm btn-success tab-save-btn" data-section="banki">
+            <i class="ri-save-line me-1"></i> Zapisz rachunki
+            <span class="spinner-border spinner-border-sm ms-1 d-none"></span>
+          </button>
+        </div>
         </div>
 
         <div class="tab-pane overflow-hidden p-0 border-0" id="series-tab-pane" role="tabpanel" aria-labelledby="series-tab" tabindex="0">
@@ -455,61 +482,63 @@ $this->assign('title', 'Edycja firmy');
             <span class="badge bg-light text-muted">krok 3/4</span>
           </div>
 
-          <div class="alert alert-secondary shadow-sm small mb-3" role="alert">
-            Zarządzaj seriami numeracji faktur dla firmy. Domyślna seria jest ustawiana per typ dokumentu.
-            <?php if (!empty($copiedSeriesCount)): ?>
-              <div class="mt-1">Widoczne serie przekopiowane systemowo: <strong><?= (int)$copiedSeriesCount ?></strong> (oznaczone badge „Systemowa”).</div>
-            <?php endif; ?>
-          </div>
+          <?php
+            $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0;
+            $systemSeries = [];
+            $userSeries   = [];
+            foreach ($invoiceSeriesRows as $idx => $series) {
+                if (!empty($series->parent_id) || !empty($series->is_blocked)) {
+                    $systemSeries[$idx] = $series;
+                } else {
+                    $userSeries[$idx] = $series;
+                }
+            }
 
-          <?php $initialSeriesCount = is_countable($invoiceSeriesRows) ? count($invoiceSeriesRows) : 0; ?>
-          <div id="series-list" class="d-flex flex-column gap-3" data-next-index="<?= (int)$initialSeriesCount ?>">
-            <?php foreach ($invoiceSeriesRows as $idx => $series): ?>
-              <?php $isSystemCopiedSeries = !empty($series->parent_id) || !empty($series->is_blocked); ?>
-              <div class="series-item card border-0 shadow-xs" data-index="<?= (int)$idx ?>">
+            $renderSeriesRow = function(int $idx, $series, bool $isSystem) use ($invoiceTypeOptions, $invoiceSeriesPeriodOptions, $invoiceCountsByType): void {
+                $seriesType = (string)($series->type ?? 'vat');
+                $invoiceCountForType = (int)(($invoiceCountsByType ?? [])[$seriesType] ?? 0);
+          ?>
+              <div class="series-item card border-0 shadow-xs" data-index="<?= $idx ?>"
+                   data-system="<?= $isSystem ? '1' : '0' ?>"
+                   data-series-type="<?= h($seriesType) ?>"
+                   data-invoice-count="<?= $invoiceCountForType ?>">
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-center mb-2">
                     <div class="d-flex align-items-center gap-2">
-                      <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="<?= (int)$idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?> <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
+                      <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key[<?= h($seriesType) ?>]" value="<?= $idx ?>" <?= !empty($series->is_default) ? 'checked' : '' ?>>
                       <span class="badge <?= !empty($series->is_default) ? 'bg-primary-soft text-primary' : 'bg-light text-muted' ?>"><?= !empty($series->is_default) ? 'Domyślna' : '—' ?></span>
-                      <?php if ($isSystemCopiedSeries): ?>
-                        <span class="badge bg-warning-transparent">Systemowa</span>
-                        <span class="badge bg-light text-muted">Tylko podgląd</span>
-                      <?php endif; ?>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= $isSystemCopiedSeries ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
-                      <i class="ri-delete-bin-line"></i> Usuń
-                    </button>
+                    <div class="d-flex gap-2">
+                      <button type="button" class="btn btn-sm btn-success series-item-save" title="Zapisz tę serię">
+                        <i class="ri-save-line"></i> Zapisz
+                        <span class="spinner-border spinner-border-sm ms-1 d-none"></span>
+                      </button>
+                      <button type="button" class="btn btn-sm btn-outline-danger series-remove" <?= $isSystem ? 'disabled title="Serii systemowej nie można usunąć"' : 'title="Usuń serię"' ?>>
+                        <i class="ri-delete-bin-line"></i> Usuń
+                      </button>
+                    </div>
                   </div>
 
-                  <input type="hidden" name="invoice_series_rows[<?= (int)$idx ?>][id]" value="<?= h((string)$series->id) ?>">
-                  <input type="hidden" class="series-delete-flag" name="invoice_series_rows[<?= (int)$idx ?>][_delete]" value="0">
+                  <input type="hidden" name="invoice_series_rows[<?= $idx ?>][id]" value="<?= h((string)$series->id) ?>">
+                  <input type="hidden" class="series-delete-flag" name="invoice_series_rows[<?= $idx ?>][_delete]" value="0">
 
                   <div class="row gy-3">
-                    <div class="col-xl-3">
+                    <div class="col-xl-4">
                       <label class="form-label">Nazwa serii</label>
-                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][name]" class="form-control" value="<?= h((string)$series->name) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : 'required' ?>>
+                      <input type="text" name="invoice_series_rows[<?= $idx ?>][name]" class="form-control" value="<?= h((string)$series->name) ?>" <?= $isSystem ? 'readonly tabindex="-1"' : 'required' ?>>
                     </div>
-                    <div class="col-xl-3">
+                    <div class="col-xl-4">
                       <label class="form-label">Typ dokumentu</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][type]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
+                      <select name="invoice_series_rows[<?= $idx ?>][type]" class="form-control" <?= $isSystem ? 'disabled' : '' ?>>
                         <?php foreach ((array)$invoiceTypeOptions as $typeCode => $typeLabel): ?>
                           <option value="<?= h((string)$typeCode) ?>" <?= ((string)($series->type ?? 'vat') === (string)$typeCode) ? 'selected' : '' ?>><?= h((string)$typeLabel) ?></option>
                         <?php endforeach; ?>
                       </select>
+                      <input type="hidden" name="invoice_series_rows[<?= $idx ?>][invoice_series_type_id]" value="<?= h((string)($series->invoice_series_type_id ?? '')) ?>">
                     </div>
-                    <div class="col-xl-3">
-                      <label class="form-label">Typ serii</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_type_id]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
-                        <option value="">—</option>
-                        <?php foreach ((array)$invoiceSeriesTypeOptions as $typeId => $typeName): ?>
-                          <option value="<?= h((string)$typeId) ?>" <?= ((string)($series->invoice_series_type_id ?? '') === (string)$typeId) ? 'selected' : '' ?>><?= h((string)$typeName) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                    </div>
-                    <div class="col-xl-3">
+                    <div class="col-xl-4">
                       <label class="form-label">Okres numeracji</label>
-                      <select name="invoice_series_rows[<?= (int)$idx ?>][invoice_series_period_id]" class="form-control" <?= $isSystemCopiedSeries ? 'disabled' : '' ?>>
+                      <select name="invoice_series_rows[<?= $idx ?>][invoice_series_period_id]" class="form-control" <?= $isSystem ? 'disabled' : '' ?>>
                         <option value="">—</option>
                         <?php foreach ((array)$invoiceSeriesPeriodOptions as $periodId => $periodName): ?>
                           <option value="<?= h((string)$periodId) ?>" <?= ((string)($series->invoice_series_period_id ?? '') === (string)$periodId) ? 'selected' : '' ?>><?= h((string)$periodName) ?></option>
@@ -518,20 +547,109 @@ $this->assign('title', 'Edycja firmy');
                     </div>
                     <div class="col-xl-9">
                       <label class="form-label">Wzorzec numeracji</label>
-                      <input type="text" name="invoice_series_rows[<?= (int)$idx ?>][series_template]" class="form-control" value="<?= h((string)$series->series_template) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : 'required' ?>>
+                      <input type="text" name="invoice_series_rows[<?= $idx ?>][series_template]" class="form-control series-template-input" value="<?= h((string)$series->series_template) ?>" <?= $isSystem ? 'readonly tabindex="-1"' : 'required' ?>>
+                      <?php if (!$isSystem): ?>
+                      <div class="mt-1 series-template-chips d-flex flex-wrap gap-1">
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer]" title="Kolejny numer faktury">[numer]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok]" title="Rok 4-cyfrowy (np. 2025)">[rok]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok:format_dwucyfrowy]" title="Rok 2-cyfrowy (np. 25)">[rok 2-cyfr.]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiac]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiac]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[dzien]" title="Dzień 2-cyfrowy (np. 07)">[dzien]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[kwartał]" title="Kwartał (1-4)">[kwartał]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer:zera_wiodące=4]" title="Numer z zerami wiodącymi (np. 0001)">[numer 0001]</span>
+                      </div>
+                      <div class="form-text text-muted series-template-preview"></div>
+                      <?php endif; ?>
                     </div>
                     <div class="col-xl-3">
-                      <label class="form-label">Numer początkowy</label>
-                      <input type="number" min="1" step="1" name="invoice_series_rows[<?= (int)$idx ?>][starting_number]" class="form-control" value="<?= h((string)$series->starting_number) ?>" <?= $isSystemCopiedSeries ? 'readonly tabindex="-1"' : '' ?>>
+                      <label class="form-label d-flex align-items-center gap-1">
+                        Numer początkowy
+                        <?php if ($isSystem): ?>
+                          <i class="ri-edit-line text-success fs-12" title="Możesz zmienić numer początkowy"></i>
+                        <?php endif; ?>
+                      </label>
+                      <input type="number" min="1" step="1"
+                             name="invoice_series_rows[<?= $idx ?>][starting_number]"
+                             class="form-control<?= $isSystem ? ' series-starting-number' : '' ?>"
+                             value="<?= h((string)$series->starting_number) ?>"
+                             data-original="<?= h((string)$series->starting_number) ?>"
+                             data-series-id="<?= h((string)$series->id) ?>"
+                             data-series-type="<?= h($seriesType) ?>">
+                      <div class="form-text text-muted">
+                        Używany tylko gdy w danym okresie nie ma jeszcze żadnej faktury. Jeśli faktury już istnieją, kolejny numer = ostatni wystawiony + 1.
+                      </div>
+                    </div>
+                    <div class="col-xl-3">
+                      <label class="form-label d-flex align-items-center gap-1">
+                        Jednorazowy następny numer
+                        <i class="ri-information-line text-muted fs-12" title="Zostanie użyty jako numer następnej faktury (tylko raz), po czym automatycznie wyczyszczony."></i>
+                      </label>
+                      <input type="number" min="1" step="1"
+                             name="invoice_series_rows[<?= $idx ?>][override_next_number]"
+                             class="form-control"
+                             value="<?= h((string)($series->override_next_number ?? '')) ?>"
+                             placeholder="(puste = brak)">
+                      <div class="form-text text-warning">
+                        Użyj jednorazowo przy migracji z innego systemu. Po wystawieniu faktury pole zostanie automatycznie wyczyszczone.
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            <?php endforeach; ?>
-          </div>
+          <?php }; ?>
 
-          <div id="series-empty-state" class="alert alert-light border small <?= $initialSeriesCount > 0 ? 'd-none' : '' ?>">
-            Brak serii. Dodaj pierwszą serię numeracji.
+          <!-- Wewnętrzne taby: Systemowe / Użytkownika -->
+          <ul class="nav nav-tabs mb-3" id="series-inner-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="series-system-tab" data-bs-toggle="tab" data-bs-target="#series-system-pane" type="button" role="tab">
+                <i class="ri-shield-check-line me-1 text-success"></i> Systemowe
+                <span class="badge bg-success-subtle text-success ms-1"><?= count($systemSeries) ?></span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="series-user-tab" data-bs-toggle="tab" data-bs-target="#series-user-pane" type="button" role="tab">
+                <i class="ri-user-line me-1 text-primary"></i> Własne
+                <span class="badge bg-primary-subtle text-primary ms-1" id="user-series-count"><?= count($userSeries) ?></span>
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content" id="series-inner-content">
+
+            <!-- Tab: systemowe -->
+            <div class="tab-pane fade show active" id="series-system-pane" role="tabpanel">
+              <p class="text-muted small mb-3">
+                <i class="ri-information-line me-1 text-primary"></i>
+                Serie przygotowane przez system. Możesz edytować tylko <strong>numer początkowy</strong>.
+              </p>
+              <div class="d-flex flex-column gap-3">
+                <?php if (!empty($systemSeries)): ?>
+                  <?php foreach ($systemSeries as $idx => $series): ?>
+                    <?= $renderSeriesRow($idx, $series, true) ?>
+                  <?php endforeach; ?>
+                <?php else: ?>
+                  <div class="alert alert-light border small">Brak serii systemowych.</div>
+                <?php endif; ?>
+              </div>
+            </div>
+
+            <!-- Tab: własne -->
+            <div class="tab-pane fade" id="series-user-pane" role="tabpanel">
+              <div id="series-list" class="d-flex flex-column gap-3" data-next-index="<?= (int)$initialSeriesCount ?>">
+                <?php foreach ($userSeries as $idx => $series): ?>
+                  <?= $renderSeriesRow($idx, $series, false) ?>
+                <?php endforeach; ?>
+              </div>
+              <div id="series-empty-state" class="alert alert-light border small <?= !empty($userSeries) ? 'd-none' : '' ?>">
+                Brak własnych serii. Kliknij „Dodaj serię" aby dodać pierwszą.
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="series-add">
+                  <i class="ri-add-line"></i> Dodaj serię
+                </button>
+              </div>
+            </div>
+
           </div>
 
           <template id="series-row-template">
@@ -539,40 +657,38 @@ $this->assign('title', 'Edycja firmy');
               <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <div class="d-flex align-items-center gap-2">
-                    <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key" value="__INDEX__">
+                    <input class="form-check-input me-1 series-default" type="radio" name="invoice_series_default_key[vat]" value="__INDEX__" data-type-radio="1">
                     <span class="badge bg-light text-muted">—</span>
                   </div>
-                  <button type="button" class="btn btn-sm btn-outline-danger series-remove" title="Usuń serię">
-                    <i class="ri-delete-bin-line"></i> Usuń
-                  </button>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-success series-item-save" title="Zapisz tę serię">
+                      <i class="ri-save-line"></i> Zapisz
+                      <span class="spinner-border spinner-border-sm ms-1 d-none"></span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger series-remove" title="Usuń serię">
+                      <i class="ri-delete-bin-line"></i> Usuń
+                    </button>
+                  </div>
                 </div>
 
                 <input type="hidden" name="invoice_series_rows[__INDEX__][id]" value="">
                 <input type="hidden" class="series-delete-flag" name="invoice_series_rows[__INDEX__][_delete]" value="0">
 
                 <div class="row gy-3">
-                  <div class="col-xl-3">
+                  <div class="col-xl-4">
                     <label class="form-label">Nazwa serii</label>
                     <input type="text" name="invoice_series_rows[__INDEX__][name]" class="form-control" value="" required>
                   </div>
-                  <div class="col-xl-3">
+                  <div class="col-xl-4">
                     <label class="form-label">Typ dokumentu</label>
                     <select name="invoice_series_rows[__INDEX__][type]" class="form-control">
                       <?php foreach ((array)$invoiceTypeOptions as $typeCode => $typeLabel): ?>
                         <option value="<?= h((string)$typeCode) ?>" <?= (string)$typeCode === 'vat' ? 'selected' : '' ?>><?= h((string)$typeLabel) ?></option>
                       <?php endforeach; ?>
                     </select>
+                    <input type="hidden" name="invoice_series_rows[__INDEX__][invoice_series_type_id]" value="">
                   </div>
-                  <div class="col-xl-3">
-                    <label class="form-label">Typ serii</label>
-                    <select name="invoice_series_rows[__INDEX__][invoice_series_type_id]" class="form-control">
-                      <option value="">—</option>
-                      <?php foreach ((array)$invoiceSeriesTypeOptions as $typeId => $typeName): ?>
-                        <option value="<?= h((string)$typeId) ?>"><?= h((string)$typeName) ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                  </div>
-                  <div class="col-xl-3">
+                  <div class="col-xl-4">
                     <label class="form-label">Okres numeracji</label>
                     <select name="invoice_series_rows[__INDEX__][invoice_series_period_id]" class="form-control">
                       <option value="">—</option>
@@ -583,27 +699,44 @@ $this->assign('title', 'Edycja firmy');
                   </div>
                   <div class="col-xl-9">
                     <label class="form-label">Wzorzec numeracji</label>
-                    <input type="text" name="invoice_series_rows[__INDEX__][series_template]" class="form-control" value="NR/[M]/[Y]" required>
+                    <input type="text" name="invoice_series_rows[__INDEX__][series_template]" class="form-control series-template-input" value="NR/[numer]/[rok]">
+                    <div class="mt-1 series-template-chips d-flex flex-wrap gap-1">
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer]" title="Kolejny numer faktury">[numer]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok]" title="Rok 4-cyfrowy (np. 2025)">[rok]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok:format_dwucyfrowy]" title="Rok 2-cyfrowy (np. 25)">[rok 2-cyfr.]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiac]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiac]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[dzien]" title="Dzień 2-cyfrowy (np. 07)">[dzien]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[kwartał]" title="Kwartał (1-4)">[kwartał]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer:zera_wiodące=4]" title="Numer z zerami wiodącymi (np. 0001)">[numer 0001]</span>
+                    </div>
+                    <div class="form-text text-muted series-template-preview"></div>
                   </div>
                   <div class="col-xl-3">
                     <label class="form-label">Numer początkowy</label>
                     <input type="number" min="1" step="1" name="invoice_series_rows[__INDEX__][starting_number]" class="form-control" value="1">
+                    <div class="form-text text-muted">
+                      Używany tylko gdy w danym okresie nie ma jeszcze żadnej faktury. Jeśli faktury już istnieją, kolejny numer = ostatni wystawiony + 1.
+                    </div>
+                  </div>
+                  <div class="col-xl-3">
+                    <label class="form-label d-flex align-items-center gap-1">
+                      Jednorazowy następny numer
+                      <i class="ri-information-line text-muted fs-12" title="Zostanie użyty jako numer następnej faktury (tylko raz), po czym automatycznie wyczyszczony."></i>
+                    </label>
+                    <input type="number" min="1" step="1" name="invoice_series_rows[__INDEX__][override_next_number]" class="form-control" value="" placeholder="(puste = brak)">
+                    <div class="form-text text-warning">
+                      Użyj jednorazowo przy migracji z innego systemu. Po wystawieniu faktury pole zostanie automatycznie wyczyszczone.
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </template>
 
-          <div class="mt-3 d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-primary btn-sm" id="series-add">
-              <i class="ri-add-line"></i> Dodaj serię
-            </button>
-          </div>
         </div>
-      </div>
 
-      <!-- Rejestry -->
-      <div class="tab-pane overflow-hidden p-0 border-0" id="registers-tab-pane" role="tabpanel" aria-labelledby="registers-tab" tabindex="0">
+        <!-- Rejestry -->
+        <div class="tab-pane overflow-hidden p-0 border-0" id="registers-tab-pane" role="tabpanel" aria-labelledby="registers-tab" tabindex="0">
        <div class="px-3 pt-3 pb-2">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
           <div class="fw-semibold d-block fs-15">Rejestry firmy</div>
@@ -684,20 +817,48 @@ $this->assign('title', 'Edycja firmy');
             <i class="ri-add-line"></i> Dodaj rejestr
           </button>
         </div>
-       </div>
-      </div>
 
-      <div class="card-footer border-top-0 d-flex justify-content-between align-items-center">
-  <div class="small text-success">
-    <i class="ri-shield-check-line me-1"></i> Twoje dane są bezpieczne.
-  </div>        <div class="btn-list">
-          <a href="<?= $this->Url->build('/') ?>" class="btn btn-secondary btn-wave">Anuluj</a>
-          <button id="onboarding-submit" class="btn btn-primary btn-wave">
-            <span class="submit-text">Zapisz i przejdź dalej</span>
-            <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+        <div class="mt-3 text-end">
+          <button type="button" class="btn btn-sm btn-success tab-save-btn" data-section="rejestry">
+            <i class="ri-save-line me-1"></i> Zapisz rejestry
+            <span class="spinner-border spinner-border-sm ms-1 d-none"></span>
           </button>
         </div>
+        </div>
       </div>
+
+      <div class="card-footer border-top-0">
+        <div class="small text-success">
+          <i class="ri-shield-check-line me-1"></i> Twoje dane są bezpieczne.
+        </div>
+      </div>
+        <!-- Modal: ostrzeżenie przed zmianą numeru początkowego -->
+        <div class="modal fade" id="series-start-warning-modal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header border-bottom-0 pb-0">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="avatar avatar-sm bg-warning-transparent rounded-circle">
+                    <i class="ri-alert-line fs-16 text-warning"></i>
+                  </span>
+                  <h6 class="modal-title mb-0">Zmiana numeru początkowego</h6>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body" id="series-start-warning-body">
+              </div>
+              <div class="modal-footer border-top-0 pt-0">
+                <button type="button" class="btn btn-secondary btn-sm" id="series-start-revert">
+                  <i class="ri-arrow-go-back-line me-1"></i>Przywróć poprzednią wartość
+                </button>
+                <button type="button" class="btn btn-warning btn-sm" data-bs-dismiss="modal">
+                  <i class="ri-check-line me-1"></i>Rozumiem, zmieniam
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <?php
             $this->Form->unlockField('banks');
             $this->Form->unlockField('banks_default');
@@ -901,18 +1062,11 @@ $this->assign('title', 'Edycja firmy');
 
   // bootstrap client-side validation & submit lock
   const form = document.querySelector('.needs-validation');
-  const submitBtn = document.getElementById('onboarding-submit');
+  const submitBtn = document.getElementById('save-all-btn');
   form.addEventListener('submit', function (event) {
-    if (!form.checkValidity()) {
-      event.preventDefault();
-      event.stopPropagation();
-      form.classList.add('was-validated');
-      return;
-    }
-    // lock button
-    submitBtn.disabled = true;
-    submitBtn.querySelector('.spinner-border').classList.remove('d-none');
-    submitBtn.querySelector('.submit-text').textContent = 'Zapisywanie...';
+    // Formularz nie jest wysyłany tradycyjnie – zapobiegaj domyślnej akcji
+    event.preventDefault();
+    event.stopPropagation();
   }, false);
 })();
 // --- BANKS DYNAMIC (self-init)
@@ -984,7 +1138,7 @@ $this->assign('title', 'Edycja firmy');
   const list = document.getElementById('banks-list');
   const addBtn = document.getElementById('bank-add');
   const defaultHidden = document.getElementById('banks_default');
-  const submitBtn = document.getElementById('onboarding-submit');
+  const submitBtn = document.getElementById('save-all-btn');
   const form = document.querySelector('.needs-validation');
 
   if (!list || !addBtn || !defaultHidden) return;
@@ -1135,7 +1289,7 @@ $this->assign('title', 'Edycja firmy');
     toggleRemoveButtons();
   });
 
-  // --- 3) Zmiana „Domyślny” → aktualizacja hidden + badge
+  // --- 3) Zmiana „Domyślny" → aktualizacja hidden + badge
   list.addEventListener('change', (e)=>{
     if (e.target.classList.contains('bank-default')) {
       defaultHidden.value = e.target.value;
@@ -1231,7 +1385,7 @@ $this->assign('title', 'Edycja firmy');
     });
   });
 
-  // --- 7) Drobny „quality-of-life”: przy zmianie waluty sugeruj etykietę jeśli puste
+  // --- 7) Drobny „quality-of-life": przy zmianie waluty sugeruj etykietę jeśli puste
   list.addEventListener('change', (e)=>{
     const sel = e.target.closest('select[name^="banks["][name$="[currency]"]');
     if (!sel) return;
@@ -1264,31 +1418,19 @@ $this->assign('title', 'Edycja firmy');
 
   function updateEmptyState() {
     if (!emptyState) return;
-    emptyState.classList.toggle('d-none', visibleItems().length > 0);
+    const visible = visibleItems();
+    emptyState.classList.toggle('d-none', visible.length > 0);
+    const badge = document.getElementById('user-series-count');
+    if (badge) badge.textContent = visible.length;
   }
 
   function syncDefault() {
-    const activeItems = visibleItems();
-    const radios = activeItems.map((item) => item.querySelector('.series-default')).filter(Boolean);
-    if (radios.length === 0) {
-      list.querySelectorAll('.series-item .series-default').forEach((radio) => { radio.checked = false; });
-      list.querySelectorAll('.series-item .badge').forEach((badge) => {
-        if (!badge.classList.contains('bg-warning-transparent')) {
-          badge.className = 'badge bg-light text-muted';
-          badge.textContent = '—';
-        }
-      });
-      return;
-    }
-
-    let target = radios.find((r) => r.checked);
-    if (!target) target = radios[0];
-    radios.forEach((r) => { r.checked = (r === target); });
-
-    list.querySelectorAll('.series-item').forEach((item) => {
+    // Per-type: each doc type has independent default — sync badges for all series (user + system)
+    const allPane = document.getElementById('series-tab-pane') || document;
+    allPane.querySelectorAll('.series-item').forEach((item) => {
       const del = item.querySelector('.series-delete-flag');
       const isDeleted = del && del.value === '1';
-      const badge = item.querySelector('.badge');
+      const badge = item.querySelector('.series-default + .badge, .series-default ~ .badge');
       const radio = item.querySelector('.series-default');
       if (!badge || !radio) return;
       if (isDeleted) {
@@ -1305,6 +1447,21 @@ $this->assign('title', 'Edycja firmy');
       }
     });
   }
+
+  // When document type changes on a user series, update the radio name to match the new type
+  list.addEventListener('change', (e) => {
+    const sel = e.target.closest('select[name*="][type]"]');
+    if (sel) {
+      const item = sel.closest('.series-item');
+      if (!item) return;
+      const newType = sel.value;
+      item.dataset.seriesType = newType;
+      const radio = item.querySelector('.series-default');
+      if (radio) {
+        radio.name = 'invoice_series_default_key[' + newType + ']';
+      }
+    }
+  });
 
   function nextIndex() {
     const current = parseInt(list.dataset.nextIndex || '0', 10) || 0;
@@ -1340,6 +1497,16 @@ $this->assign('title', 'Edycja firmy');
       syncDefault();
     }
   });
+
+  // Also handle radio change in system series pane
+  const systemPane = document.getElementById('series-system-pane');
+  if (systemPane) {
+    systemPane.addEventListener('change', (e) => {
+      if (e.target.classList.contains('series-default')) {
+        syncDefault();
+      }
+    });
+  }
 
   list.addEventListener('click', (e) => {
     const btn = e.target.closest('.series-remove');
@@ -1482,6 +1649,8 @@ $this->assign('title', 'Edycja firmy');
   .vat-switch { padding-left: 0; display: flex; align-items: center; gap: 0; }
   .vat-switch .form-check-input { margin-left: 0; margin-right: 10px; transform: scale(1.15); transform-origin: left center; }
   .vat-switch .form-check-label { margin: 0; }
+  .series-param-chip { cursor: pointer; user-select: none; }
+  .series-param-chip:hover { background-color: #e9ecef !important; color: #0d6efd !important; border-color: #0d6efd !important; }
 </style>
 <!-- intl-tel-input CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17.0.19/build/css/intlTelInput.css">
@@ -1559,5 +1728,324 @@ $this->assign('title', 'Edycja firmy');
       });
     } catch {}
   }
+})();
+</script>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100">
+  <div id="app-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="app-toast-body">...</div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var sectionLabels = {
+    dane_firmy: 'Dane firmy',
+    banki: 'Rachunki bankowe',
+    serie: 'Serie numeracji',
+    rejestry: 'Rejestry'
+  };
+
+  function getCsrf(){
+    var el = document.querySelector('[name="_csrfToken"]');
+    return el ? el.value : '';
+  }
+
+  function getFormData(section){
+    var form = document.querySelector('.needs-validation');
+    var fd = new FormData(form);
+    fd.set('_section', section);
+    return fd;
+  }
+
+  function showToast(msg, type){
+    var $toast = $('#app-toast');
+    var $body  = $('#app-toast-body');
+    $toast.removeClass('text-bg-success text-bg-danger text-bg-warning bg-success bg-danger');
+    if(type === 'success') $toast.addClass('text-bg-success');
+    else if(type === 'danger') $toast.addClass('text-bg-danger');
+    $body.html(msg);
+    new bootstrap.Toast($toast[0], {delay: 6000}).show();
+  }
+
+  function doSave(section, $btn){
+    var $spin = $btn.find('.spinner-border');
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+
+    $.ajax({
+      url: window.location.href,
+      method: 'POST',
+      data: getFormData(section),
+      processData: false,
+      contentType: false,
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+    }).done(function(data){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      if(data && data.success){
+        showToast('<i class="ri-check-line me-1"></i> Zapisano: ' + (sectionLabels[section] || section), 'success');
+      } else {
+        var msg = '<strong>Błąd zapisu</strong>';
+        if(data && data.sections){
+          var lines = [];
+          $.each(data.sections, function(sec, res){
+            if(!res.success) lines.push('<br>• ' + (sectionLabels[sec] || sec) + ': ' + (res.message || 'błąd'));
+          });
+          msg += lines.join('');
+        } else if(data && data.message){
+          msg += '<br>' + data.message;
+        }
+        showToast(msg, 'danger');
+      }
+    }).fail(function(xhr){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      showToast('Błąd komunikacji (' + xhr.status + ')', 'danger');
+    });
+  }
+
+  // Per-tab save buttons
+  $(document).on('click', '.tab-save-btn', function(){
+    var section = $(this).data('section');
+    doSave(section, $(this));
+  });
+
+  // Per-series save button
+  $(document).on('click', '.series-item-save', function(){
+    var $btn  = $(this);
+    var $item = $btn.closest('.series-item');
+    var $spin = $btn.find('.spinner-border');
+    var idx   = $item.data('index');
+
+    // Zbierz pola tylko tej serii
+    var fd = new FormData();
+    fd.set('_section', 'serie');
+    fd.set('_csrfToken', getCsrf());
+    $item.find('input, select, textarea').each(function(){
+      var name = this.name;
+      if (!name) return;
+      if (this.type === 'checkbox' || this.type === 'radio') {
+        if (this.checked) fd.set(name, this.value);
+      } else if (!this.disabled) {
+        fd.set(name, this.value);
+      }
+    });
+    // Zachowaj disabled selecty (readonly przez disabled — wartość z hidden)
+    $item.find('select[disabled]').each(function(){
+      // wartość jest już w hidden input obok — pomijamy
+    });
+
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+
+    $.ajax({
+      url: window.location.href,
+      method: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+    }).done(function(data){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      if (data && data.success) {
+        showToast('<i class="ri-check-line me-1"></i> Seria zapisana.', 'success');
+        // Zaktualizuj data-original dla numeru początkowego
+        $item.find('.series-starting-number').each(function(){
+          $(this).data('original', $(this).val()).data('prev-val', $(this).val());
+        });
+      } else {
+        var msg = (data && data.message) ? data.message : 'Błąd zapisu serii.';
+        showToast('<strong>Błąd:</strong> ' + msg, 'danger');
+      }
+    }).fail(function(xhr){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      showToast('Błąd komunikacji (' + xhr.status + ')', 'danger');
+    });
+  });
+
+  // --- Series template chips & live preview ---
+  function previewSeriesTemplate(tpl) {
+    var now = new Date();
+    var y4  = now.getFullYear();
+    var y2  = String(y4).slice(-2);
+    var m   = String(now.getMonth() + 1).padStart(2, '0');
+    var d   = String(now.getDate()).padStart(2, '0');
+    var q   = Math.ceil((now.getMonth() + 1) / 3);
+    var nr  = 1;
+    var res = tpl
+      .replace(/\[numer:zera_wiodące=(\d+)\]/g, function(_,n){ return String(nr).padStart(parseInt(n,10),'0'); })
+      .replace(/\[miesiąc:zera_wiodące=(\d+)\]/g, function(_,n){ return m.padStart(parseInt(n,10),'0'); })
+      .replace(/\[dzień:zera_wiodące=(\d+)\]/g, function(_,n){ return d.padStart(parseInt(n,10),'0'); })
+      .replace(/\[rok:format_dwucyfrowy\]/g, y2)
+      .replace(/\[kwartał\]/g, q)
+      .replace(/\[numer\]/g, nr)
+      .replace(/\[rok\]/g, y4)
+      .replace(/\[miesiac\]/g, m)
+      .replace(/\[miesiąc\]/g, m)
+      .replace(/\[dzien\]/g, d)
+      .replace(/\[dzień\]/g, d);
+    return res;
+  }
+
+  function updateTemplatePreview($input) {
+    var $preview = $input.closest('.col-xl-9').find('.series-template-preview');
+    if (!$preview.length) return;
+    var tpl = $input.val().trim();
+    if (!tpl) { $preview.text(''); return; }
+    $preview.html('<i class="ri-eye-line me-1"></i>Podgląd: <strong>' + $('<span>').text(previewSeriesTemplate(tpl)).html() + '</strong>');
+  }
+
+  function insertParamAtCursor($input, param) {
+    var el = $input[0];
+    var start = el.selectionStart != null ? el.selectionStart : el.value.length;
+    var end   = el.selectionEnd   != null ? el.selectionEnd   : el.value.length;
+    el.value = el.value.substring(0, start) + param + el.value.substring(end);
+    el.selectionStart = el.selectionEnd = start + param.length;
+    $input.trigger('input').trigger('change');
+    el.focus();
+  }
+
+  // init previews for existing inputs
+  $('.series-template-input').each(function(){ updateTemplatePreview($(this)); });
+
+  $(document).on('input change', '.series-template-input', function(){
+    updateTemplatePreview($(this));
+  });
+
+  $(document).on('click', '.series-param-chip', function(e){
+    e.preventDefault();
+    var $chip = $(this);
+    var param = $chip.data('param');
+    var $input = $chip.closest('.col-xl-9').find('.series-template-input');
+    if ($input.length) insertParamAtCursor($input, param);
+  });
+  // --- end series template chips ---
+
+  // --- Warning modal for starting_number change (AJAX check) ---
+  var $startWarningModal = $('#series-start-warning-modal');
+  var $startWarningBody  = $('#series-start-warning-body');
+  var $startRevertBtn    = $('#series-start-revert');
+  var $activeStartInput  = null;
+
+  $(document).on('focus', '.series-starting-number', function(){
+    $(this).data('prev-val', $(this).val());
+  });
+
+  $(document).on('change', '.series-starting-number', function(){
+    var $input    = $(this);
+    var seriesId  = $input.data('series-id') || '';
+    var newVal    = parseInt($input.val(), 10);
+    var prevVal   = parseInt($input.data('prev-val') || $input.data('original'), 10);
+
+    if(!seriesId || isNaN(newVal) || newVal === prevVal) return;
+
+    // Zapytaj serwer o stan numeracji tej serii
+    $.get('/firma/serie/sprawdz', { series_id: seriesId }, function(res){
+      if(res.error) return; // cicho ignoruj błąd
+      if(res.count <= 0) return; // brak faktur — wszystko OK
+
+      var suggested = res.suggested;
+      var maxNumber = res.max_number;
+      var count     = res.count;
+      var period    = res.period || '';
+      var name      = res.series_name || '';
+
+      // Czy wybrany numer jest problematyczny?
+      var isDuplicate = (newVal <= maxNumber);
+      var isGap       = (!isDuplicate && newVal > suggested + 1);
+
+      if(!isDuplicate && !isGap) return; // newVal === suggested — wszystko OK
+
+      $activeStartInput = $input;
+      var bodyHtml = '';
+
+      if(isDuplicate){
+        bodyHtml =
+          '<div class="d-flex align-items-center gap-2 mb-2 text-danger">' +
+            '<i class="ri-error-warning-line fs-18"></i>' +
+            '<strong>Ryzyko duplikatu numeru!</strong>' +
+          '</div>' +
+          'Seria <strong>' + $('<span>').text(name).html() + '</strong> ' +
+          'ma już <strong>' + count + '</strong> ' + (count === 1 ? 'fakturę' : count < 5 ? 'faktury' : 'faktur') +
+          ' w okresie <strong>' + period + '</strong>. ' +
+          'Ostatni użyty numer: <strong>' + maxNumber + '</strong>.' +
+          '<br><br>' +
+          'Wpisany numer <strong>' + newVal + '</strong> jest <strong class="text-danger">niższy lub równy</strong> ostatniemu użytemu numerowi. ' +
+          'Spowoduje to konflikt z istniejącą numeracją.<br>' +
+          '<span class="text-success fw-semibold">Zalecany numer początkowy: ' + suggested + '</span>';
+      } else {
+        bodyHtml =
+          '<div class="d-flex align-items-center gap-2 mb-2 text-warning">' +
+            '<i class="ri-alert-line fs-18"></i>' +
+            '<strong>Luka w numeracji</strong>' +
+          '</div>' +
+          'Seria <strong>' + $('<span>').text(name).html() + '</strong> ' +
+          'ma już <strong>' + count + '</strong> ' + (count === 1 ? 'fakturę' : count < 5 ? 'faktury' : 'faktur') +
+          ' w okresie <strong>' + period + '</strong>. ' +
+          'Ostatni użyty numer: <strong>' + maxNumber + '</strong>.' +
+          '<br><br>' +
+          'Wpisany numer <strong>' + newVal + '</strong> spowoduje lukę w numeracji ' +
+          '(pominięte numery: ' + suggested + '–' + (newVal - 1) + ').<br>' +
+          '<span class="text-muted">Zalecany numer następny: <strong>' + suggested + '</strong></span>';
+      }
+
+      $startWarningBody.html(bodyHtml);
+      var modal = new bootstrap.Modal($startWarningModal[0]);
+      modal.show();
+    }, 'json');
+  });
+
+  $startRevertBtn.on('click', function(){
+    if($activeStartInput){
+      $activeStartInput.val($activeStartInput.data('original'));
+      $activeStartInput = null;
+    }
+    var inst = bootstrap.Modal.getInstance($startWarningModal[0]);
+    if(inst) inst.hide();
+  });
+  // --- end warning modal ---
+
+  // Zapisz wszystko
+  $('#save-all-btn').on('click', function(){
+    var $btn = $(this);
+    var $spin = $('#save-all-spin');
+    $btn.prop('disabled', true);
+    $spin.removeClass('d-none');
+
+    $.ajax({
+      url: window.location.href,
+      method: 'POST',
+      data: getFormData('all'),
+      processData: false,
+      contentType: false,
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+    }).done(function(data){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      if(data && data.success){
+        showToast('<i class="ri-check-line me-1"></i> Wszystkie sekcje zapisane pomyślnie.', 'success');
+      } else {
+        var msg = '<strong>Nie wszystko się zapisało:</strong>';
+        if(data && data.sections){
+          $.each(data.sections, function(sec, res){
+            var icon = res.success ? '✓' : '✗';
+            msg += '<br>' + icon + ' ' + (sectionLabels[sec] || sec);
+            if(!res.success && res.message) msg += ': <em>' + res.message + '</em>';
+          });
+        }
+        showToast(msg, 'danger');
+      }
+    }).fail(function(xhr){
+      $btn.prop('disabled', false);
+      $spin.addClass('d-none');
+      showToast('Błąd komunikacji (' + xhr.status + ')', 'danger');
+    });
+  });
 })();
 </script>

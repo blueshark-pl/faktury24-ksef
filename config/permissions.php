@@ -316,6 +316,27 @@ return [
             'controller' => 'TwoFactor',
             'action' => ['index', 'enable', 'verify', 'disable'],
         ],
+
+        // rozliczenia/płatności do faktur (modal w liście faktur)
+        [
+            'role' => 'user',
+            'controller' => 'InvoicePayments',
+            'action' => ['index', 'add', 'delete'],
+        ],
+
+        // odbiorcy e-mail faktur (panel kontrahenta)
+        [
+            'role' => 'user',
+            'controller' => 'Recipients',
+            'action' => ['byContractor', 'view', 'add', 'edit', 'delete'],
+        ],
+
+        // ustawienia kontrahenta (panel kontrahenta)
+        [
+            'role' => 'user',
+            'controller' => 'ContractorsSettings',
+            'action' => ['view', 'save'],
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',

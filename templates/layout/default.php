@@ -88,6 +88,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     echo $this->fetch('scriptBlocks'); // jeśli ktoś dodał skrypty w head przez $this->Html->script(..., ['block'=>true])
     ?>
     <?= $this->Html->css('https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css') ?>
+    <?= $this->Html->css('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css') ?>
+    <?= $this->Html->script('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js') ?>
 
 </head>
 
@@ -443,7 +445,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         </li>
                                         <li class="slide">
                                             <?= $this->Html->link(
-                                                'Faktura bez VAT',
+                                                'Rachunek',
                                                 ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'novat']],
                                                 ['class' => 'side-menu__item']
                                             ) ?>
@@ -496,6 +498,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <?= $this->Html->link(
                                             'Słownik Walutowy NBP',
                                             ['plugin' => false, 'controller' => 'Nbp', 'action' => 'dictionary'],
+                                            ['class' => 'side-menu__item']
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Archiwum (faktury24)',
+                                            ['plugin' => false, 'controller' => 'LegacyInvoices', 'action' => 'index'],
                                             ['class' => 'side-menu__item']
                                     ) ?>
                                 </li>
@@ -614,12 +623,11 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 }
                                             }
                                         ?>
-                                        <div class="alert alert-<?= $ksefModeEnabled ? 'primary' : 'secondary' ?> d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+                                        <?php if ($ksefModeEnabled): ?>
+                                        <div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                                 <span class="fw-semibold">Tryb KSeF:</span>
-                                                <span class="badge bg-<?= $ksefModeEnabled ? 'success' : 'secondary' ?>">
-                                                    <?= $ksefModeEnabled ? 'WŁ.' : 'WYŁ.' ?>
-                                                </span>
+                                                <span class="badge bg-success">WŁ.</span>
                                                 <span class="fw-semibold ms-2">Uprawnienia KSeF:</span>
                                                 <span class="badge bg-<?= h($permClass) ?>"><?= h($permLabel) ?></span>
                                             </div>
@@ -633,7 +641,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                                 <a class="btn btn-sm btn-outline-warning" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Invoices', 'action' => 'drafts']) ?>">Przejdź do roboczych</a>
                                             </div>
-                                        <?php endif; ?>
+                                        <?php endif; // draftInvoicesCount ?>
+                                        <?php endif; // ksefModeEnabled ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
                                                 <div class="flex-grow-1">

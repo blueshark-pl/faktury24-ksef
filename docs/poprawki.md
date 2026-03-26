@@ -101,10 +101,10 @@ Jeśli priorytetem jest szybki efekt dla klientów, najlepiej zacząć od **Etap
   - brak blokad KSeF dla tego typu podmiotu.
 - [x] Kolejność danych w rejestracji: rozważyć podanie NIP jako pierwszego kroku.
 - [x] Autouzupełnianie danych po NIP w pierwszym kroku po logowaniu / onboardingu.
-- [ ] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + rozważyć import rachunków bankowych.
+- [x] Weryfikacja statusu VAT po NIP (wykaz MF / biała lista) + import rachunków bankowych — zrealizowane w `onboarding.php`: po GUS lookup pokazuje `#vat-status-badge` + przycisk „Zaimportuj rachunki z MF" (2026-03-18).
 - [x] E-mail jako pole wymagane w procesie rejestracji konta.
 - [x] Poprawić autouzupełnianie adresu: uwzględnić numer lokalu, jeśli występuje.
 
-### TODO (kolejna iteracja)
+### ~~TODO (kolejna iteracja)~~ ✅ DONE
 
-- [ ] Towary/usługi: dodać sekcję „Zaawansowane” na szczegóły wymagane dla JPK/KSeF.
+- [x] Towary/usługi: przebudowano `Products/add.php` i `Products/edit.php` — Bootstrap 5, sekcja „Zaawansowane (JPK / KSeF)” z accordion (auto-rozwijana gdy pola wypełnione). (2026-03-18)

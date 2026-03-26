@@ -130,11 +130,6 @@ class InvoicesController extends AppController
                     'product_desc'     => (string)($r['product_desc'] ?? ''),
                     'purchase_price'   => $r['purchase_price'] ?? 0,
                     'price_mode'       => (string)($r['price_mode'] ?? 'net'),
-                    'pkwiu'            => (string)($r['pkwiu'] ?? ''),
-                    'gtin'             => (string)($r['gtin'] ?? ''),
-                    'cn_code'          => (string)($r['cn_code'] ?? ''),
-                    'excise_amount'    => $r['excise_amount'] ?? '',
-                    'procedure_marking' => (string)($r['procedure_marking'] ?? ''),
                 ];
             }
             $invoice->set('invoice_contents', $prefill);
@@ -1002,6 +997,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $ser = $this->defaultSeriesResolver->resolve($InvoiceSeries, (string)$companyId, $kind);
             if ($ser && empty($invoice->series)) {
                 $invoice->set('series', (string)$ser->name);
+                $invoice->set('invoice_series_id', (string)$ser->id);
             }
         } catch (\Throwable $e) { /* ignore — nie blokujemy formularza */ }
     }
@@ -1105,13 +1101,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'discount_percent' => 0,
                     'netto'            => $lineGross,
                     'brutto'           => $lineGross,
-                    'gtu_code'         => (string)($row['gtu_code'] ?? ''),
-                    'gtin'             => (string)($row['gtin'] ?? ''),
-                    'cn_code'          => (string)($row['cn_code'] ?? ''),
-                    'pkob'             => (string)($row['pkob'] ?? ''),
-                    'is_attachment15'  => !empty($row['is_attachment15']) ? 1 : 0,
-                    'excise_amount'    => !empty($row['excise_amount']) ? (float)$row['excise_amount'] : null,
-                    'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                     // FA(3)
                     'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
                     'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
@@ -5180,18 +5169,18 @@ private function makeClient(string $environment): KsefClient
             $xml[] = '    </AdresKoresp>';
         }
 
-        // NrKlienta — numer klienta nabywcy (opcjonalne, XSD: before JST/GV)
-        $nrKlienta = trim((string)($buyer->nr_klienta ?? ''));
-        if ($nrKlienta !== '') {
-            $xml[] = '    <NrKlienta>' . $this->esc($nrKlienta) . '</NrKlienta>';
-        }
-
         // JST – jednostka samorządu terytorialnego (1 – JST, 2 – nie JST)
         $jstVal = ((int)($inv->buyer_is_jst ?? 0) === 1) ? '1' : '2';
         // GV – grupa VAT (1 – tak, 2 – nie)
         $gvVal  = ((int)($inv->buyer_in_vat_group ?? 0) === 1) ? '1' : '2';
         $xml[] = '    <JST>' . $jstVal . '</JST>';
         $xml[] = '    <GV>' . $gvVal . '</GV>';
+
+        // NrKlienta — numer klienta nabywcy (opcjonalne)
+        $nrKlienta = trim((string)($buyer->nr_klienta ?? ''));
+        if ($nrKlienta !== '') {
+            $xml[] = '    <NrKlienta>' . $this->esc($nrKlienta) . '</NrKlienta>';
+        }
 
         $xml[] = '  </Podmiot2>';
 
@@ -5374,11 +5363,13 @@ private function buildFaXml(
         $xml[] = '    <WZ>' . $this->esc((string)$inv->wz_number) . '</WZ>';
     }
 
-    // P_6 / OkresFa – XSD choice: only one of them can appear
-    $hasPeriod = !empty($inv->period_from) && !empty($inv->period_to);
+    // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
+    if ($soldDate !== null && $soldDate !== $issueDate) {
+        $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
+    }
 
-    if ($hasPeriod) {
-        // OkresFa – okres rozliczeniowy (np. usługi ciągłe, media) – P_6_Od / P_6_Do
+    // OkresFa – okres rozliczeniowy (np. usługi ciągłe, media) – P_6_Od / P_6_Do
+    if (!empty($inv->period_from) && !empty($inv->period_to)) {
         $from = $inv->period_from instanceof \DateTimeInterface
             ? $inv->period_from->format('Y-m-d')
             : (string)$inv->period_from;
@@ -5392,9 +5383,6 @@ private function buildFaXml(
         // P_6_Do – data końcowa okresu
         $xml[] = '      <P_6_Do>' . $this->esc($to) . '</P_6_Do>';
         $xml[] = '    </OkresFa>';
-    } elseif ($soldDate !== null && $soldDate !== $issueDate) {
-        // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
-        $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
     }
 
     // VAT summary: P_13_1..P_13_3 & P_14_1..P_14_3 liczone z pozycji
@@ -5513,7 +5501,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         }
 
         $xml[] = '    <DaneFaKorygowanej>';
-        $xml[] = '      <DataWystFaKorygowanej>' . $this->esc($dateStr) . '</DataWystFaKorygowanej>';
+        $xml[] = '      <DataWystFaKorygowanej>' . $origDate->format('Y-m-d') . '</DataWystFaKorygowanej>';
         $xml[] = '      <NrFaKorygowanej>' . $this->esc($origNumber) . '</NrFaKorygowanej>';
 
         if ($origKsef !== '') {
@@ -6098,17 +6086,15 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     $vatTotal   = $grossTotal - $netTotal;
 
     $xml[] = '    <FaWiersz>';
-    // XSD order: NrWierszaFa, UU_ID, P_6A, P_7, Indeks, GTIN, PKWiU, CN, PKOB,
-    //            P_8A, P_8B, P_9A, P_9B, P_10, P_11, P_11A, P_11Vat, P_12,
-    //            P_12_XII, P_12_Zal_15, KwotaAkcyzy, GTU, Procedura, KursWaluty, StanPrzed
+    // Kolejność elementów zgodna z XSD FA(3) §FaWiersz sequence:
     $xml[] = '      <NrWierszaFa>' . $rowNo . '</NrWierszaFa>';
 
-    // UU_ID — identyfikator UUID wiersza (dla korekt)
+    // UU_ID — identyfikator UUID wiersza (dla korekt) [pozycja 2 w XSD]
     if (!empty($it->uu_id)) {
         $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
     }
 
-    // P_6A — data dostawy/usługi per-wiersz
+    // P_6A — data dostawy/usługi per-wiersz [pozycja 3 w XSD]
     if (!empty($it->line_date)) {
         $lineDate = ($it->line_date instanceof \DateTimeInterface)
             ? $it->line_date->format('Y-m-d')
@@ -6118,15 +6104,17 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
 
     $xml[] = '      <P_7>' . $this->esc($name) . '</P_7>';
 
-    // GTIN
+    // GTIN [pozycja 6 w XSD — przed PKWiU]
     if (!empty($it->gtin)) {
         $xml[] = '      <GTIN>' . $this->esc((string)$it->gtin) . '</GTIN>';
     }
-    // PKWiU
+
+    // PKWiU [pozycja 7 w XSD]
     if (!empty($it->pkwiu)) {
         $xml[] = '      <PKWiU>' . $this->esc((string)$it->pkwiu) . '</PKWiU>';
     }
-    // CN
+
+    // CN [pozycja 8 w XSD]
     if (!empty($it->cn_code)) {
         $xml[] = '      <CN>' . $this->esc((string)$it->cn_code) . '</CN>';
     }
@@ -6135,7 +6123,7 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     $xml[] = '      <P_8B>' . $this->fmtQty($qty) . '</P_8B>';
     $xml[] = '      <P_9A>' . $this->fmtAmount($unitNet) . '</P_9A>';
 
-    // P_9B — cena jednostkowa brutto (opcjonalne w FA(3))
+    // P_9B — cena jednostkowa brutto (opcjonalne)
     if (!empty($it->gross_unit_price)) {
         $xml[] = '      <P_9B>' . $this->fmtAmount((float)$it->gross_unit_price) . '</P_9B>';
     }
@@ -6163,21 +6151,22 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <P_12>' . (int)$rate . '</P_12>';
     }
 
-    // KwotaAkcyzy
+    // KwotaAkcyzy [pozycja 21 w XSD — po P_12_Zal_15]
     if (!empty($it->excise_amount)) {
         $xml[] = '      <KwotaAkcyzy>' . $this->fmtAmount((float)$it->excise_amount) . '</KwotaAkcyzy>';
     }
 
-    // GTU
+    // GTU [pozycja 22 w XSD]
     if (!empty($it->gtu_code)) {
         $xml[] = '      <GTU>' . $this->esc($it->gtu_code) . '</GTU>';
     }
-    // Procedura
+
+    // Procedura [pozycja 23 w XSD]
     if (!empty($it->procedure_marking)) {
         $xml[] = '      <Procedura>' . $this->esc((string)$it->procedure_marking) . '</Procedura>';
     }
 
-    // KursWaluty — kurs waluty per-wiersz (dział VI ustawy, FA(3))
+    // KursWaluty — kurs waluty per-wiersz [pozycja 24 w XSD]
     if (!empty($it->kurs_waluty)) {
         $xml[] = '      <KursWaluty>' . $this->fmtAmount((float)$it->kurs_waluty, 6) . '</KursWaluty>';
     }
@@ -6747,11 +6736,6 @@ private function mapPaymentMethod(?string $method): string
     }
 
     private function buildFa3XmlFinal(\App\Model\Entity\Invoice $inv): string
-    {
-        return $this->buildFa3XmlBase($inv);
-    }
-
-    private function buildFa3XmlMargin(\App\Model\Entity\Invoice $inv): string
     {
         return $this->buildFa3XmlBase($inv);
     }

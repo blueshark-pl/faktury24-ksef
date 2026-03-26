@@ -177,12 +177,8 @@ $sumTax = round($sumGross - $sumNet, 2);
                                         <td>
                                             <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
                                             <input type="hidden" name="items[0][name]" class="item-name-hidden">
-                                            <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
-                                            <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
-                                            <input type="hidden" name="items[0][cn_code]" class="item-cn_code" value="">
-                                            <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
-                                            <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
                                         </td>
+                                        <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
                                         <td><input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
                                         <td class="vat-cell"><?= $vatSelectHtml ?></td>
                                         <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
@@ -214,12 +210,8 @@ $sumTax = round($sumGross - $sumNet, 2);
                                                 <?= $newOpt ?>
                                             </select>
                                             <input type="hidden" name="items[<?= (int)$i ?>][name]" class="item-name-hidden" value="<?= h($name) ?>">
-                                            <input type="hidden" name="items[<?= (int)$i ?>][pkwiu]" class="item-pkwiu" value="<?= h($c->pkwiu ?? '') ?>">
-                                            <input type="hidden" name="items[<?= (int)$i ?>][gtin]" class="item-gtin" value="<?= h($c->gtin ?? '') ?>">
-                                            <input type="hidden" name="items[<?= (int)$i ?>][cn_code]" class="item-cn_code" value="<?= h($c->cn_code ?? '') ?>">
-                                            <input type="hidden" name="items[<?= (int)$i ?>][excise_amount]" class="item-excise" value="<?= h($c->excise_amount ?? '') ?>">
-                                            <input type="hidden" name="items[<?= (int)$i ?>][procedure_marking]" class="item-procedure" value="<?= h($c->procedure_marking ?? '') ?>">
                                         </td>
+                                        <td><input name="items[<?= (int)$i ?>][quantity]" type="number" step="0.001" value="<?= h((float)$c->quantity) ?>" class="form-control text-end item-qty" required></td>
                                         <td><input name="items[<?= (int)$i ?>][price]" type="number" step="0.01" value="<?= h((float)$c->price) ?>" class="form-control text-end item-price" required></td>
                                         <td class="vat-cell">
                                             <select class="form-select item-vatcode" name="items[<?= (int)$i ?>][vat_code_id]" required>
@@ -246,12 +238,8 @@ $sumTax = round($sumGross - $sumNet, 2);
                                     <td>
                                         <select class="form-select item-product-select" data-index="__INDEX__" data-placeholder="Wybierz lub wpisz produkt"></select>
                                         <input type="hidden" name="items[__INDEX__][name]" class="item-name-hidden">
-                                        <input type="hidden" name="items[__INDEX__][pkwiu]" class="item-pkwiu" value="">
-                                        <input type="hidden" name="items[__INDEX__][gtin]" class="item-gtin" value="">
-                                        <input type="hidden" name="items[__INDEX__][cn_code]" class="item-cn_code" value="">
-                                        <input type="hidden" name="items[__INDEX__][excise_amount]" class="item-excise" value="">
-                                        <input type="hidden" name="items[__INDEX__][procedure_marking]" class="item-procedure" value="">
                                     </td>
+                                    <td><input name="items[__INDEX__][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
                                     <td><input name="items[__INDEX__][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
                                     <td class="vat-cell"><?= str_replace('[0]', '[__INDEX__]', $vatSelectHtml) ?></td>
                                     <td><input name="items[__INDEX__][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
@@ -1014,7 +1002,7 @@ $(function(){
         // Generate simple code if missing
         var name = $f.find('[name="name"]').val()||''; var code=$f.find('[name="code"]').val(); if (!code && name){ code = name.replace(/[^a-zA-Z0-9]/g,'').substring(0,10).toUpperCase(); $f.find('[name="code"]').val(code); }
         $.ajax({ url: $f.attr('action'), method: 'POST', data: new FormData(this), processData:false, contentType:false, headers: { 'X-CSRF-Token': csrf, 'Accept':'application/json' } })
-        .done(function(data){ if (data && data.success && data.product){ var product=data.product; var displayName=product.name||name; var price=parseFloat(product.net_price||'0')||0; var $row = $('#items-body tr.item-row').not('#row-template').last(); if ($row.length){ $row.find('.item-name-hidden').val(displayName); $row.find('.item-price').val(price.toFixed(2)); var $vat=$row.find('.item-vatcode'); var vatId=product.vat_id; if ($vat.length && vatId) $vat.val(vatId); $row.find('.item-pkwiu').val(product.pkwiu||''); $row.find('.item-gtin').val(product.gtin||''); $row.find('.item-cn_code').val(product.cn_code||''); $row.find('.item-excise').val(product.excise_amount||''); $row.find('.item-procedure').val(product.procedure_marking||''); if (product.gtu_code && $row.find('.item-gtu').length) $row.find('.item-gtu').val(product.gtu_code); var $sel=$row.find('.item-product-select'); var displayText = product.code ? (product.code + ' - ' + displayName) : displayName; if (product.is_service) displayText += ' (usługa)'; var opt = new Option(displayText, product.id, true, true); $sel.append(opt).trigger('change'); $row.find('.item-price,.item-qty,.item-disc,.item-vatcode').trigger('change'); }
+        .done(function(data){ if (data && data.success && data.product){ var product=data.product; var displayName=product.name||name; var price=parseFloat(product.net_price||'0')||0; var $row = $('#items-body tr.item-row').not('#row-template').last(); if ($row.length){ $row.find('.item-name-hidden').val(displayName); $row.find('.item-price').val(price.toFixed(2)); var $vat=$row.find('.item-vatcode'); var vatId=product.vat_id; if ($vat.length && vatId) $vat.val(vatId); var $sel=$row.find('.item-product-select'); var displayText = product.code ? (product.code + ' - ' + displayName) : displayName; if (product.is_service) displayText += ' (usługa)'; var opt = new Option(displayText, product.id, true, true); $sel.append(opt).trigger('change'); $row.find('.item-price,.item-qty,.item-disc,.item-vatcode').trigger('change'); }
             $('#product-create-modal').modal('hide'); $f[0].reset(); toast(data.message || 'Produkt został dodany.'); } else { toast(data.message || 'Nie udało się dodać produktu.'); } })
         .fail(function(xhr){ console.error('product add fail', xhr.status, xhr.responseText); toast('Błąd komunikacji przy dodawaniu produktu.'); });
     });

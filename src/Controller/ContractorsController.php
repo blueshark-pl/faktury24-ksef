@@ -704,6 +704,165 @@ public function export()
         ->withStringBody($csv);
 }
 
+    /**
+     * Pobiera listę kontrahentów ze starego systemu faktury24.com dla NIP bieżącej firmy.
+     * Działa jako PHP proxy (unikamy CORS w przeglądarce).
+     */
+    public function importFetch()
+    {
+        $this->request->allowMethod(['get', 'post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        // Pobierz NIP bieżącej firmy
+        $Companies = $this->fetchTable('Companies');
+        $company = $Companies->find()
+            ->select(['id', 'nip'])
+            ->where(['id' => $companyId])
+            ->first();
+
+        $nip = preg_replace('/\D+/', '', (string)($company->nip ?? ''));
+        if ($nip === '') {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error'   => 'Brak NIP-u firmy. Uzupełnij dane firmy przed importem.',
+                ]));
+        }
+
+        try {
+            $client = new Client();
+            $resp = $client->get(
+                'https://faktury24.com/ajax/get_contractors_by_nip',
+                ['nip' => $nip],
+                ['timeout' => 15]
+            );
+            $body = $resp->getStringBody();
+            $json = json_decode($body, true);
+            if (!is_array($json) || ($json['status'] ?? 0) !== 200) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success' => false,
+                        'error'   => 'Serwer faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+                    ]));
+            }
+
+            $payload = $json['payload'] ?? [];
+
+            // Oznacz które NIP-y już istnieją lokalnie
+            $existingNips = [];
+            if (!empty($payload)) {
+                $remoteNips = array_map(
+                    fn($r) => preg_replace('/\D+/', '', (string)($r['bd_tin'] ?? '')),
+                    $payload
+                );
+                $remoteNips = array_filter($remoteNips);
+                if (!empty($remoteNips)) {
+                    $found = $this->Contractors->find()
+                        ->select(['nip'])
+                        ->where(['company_id' => $companyId, 'nip IN' => array_values($remoteNips)])
+                        ->all();
+                    foreach ($found as $c) {
+                        $existingNips[$c->nip] = true;
+                    }
+                }
+            }
+
+            $rows = [];
+            foreach ($payload as $r) {
+                $nipClean = preg_replace('/\D+/', '', (string)($r['bd_tin'] ?? ''));
+                $rows[] = [
+                    'bu_uuid'      => (string)($r['bu_uuid'] ?? ''),
+                    'nip'          => (string)($r['bd_tin'] ?? ''),
+                    'nip_clean'    => $nipClean,
+                    'name'         => strtok((string)($r['bd_fna'] ?? ''), "\n"),
+                    'street'       => (string)($r['bd_street'] ?? ''),
+                    'postal_code'  => (string)($r['bd_postal_code'] ?? ''),
+                    'city'         => (string)($r['bd_city'] ?? ''),
+                    'email'        => (string)($r['bd_email'] ?? ''),
+                    'already_imported' => isset($existingNips[$nipClean]),
+                ];
+            }
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => true,
+                    'count'   => count($rows),
+                    'rows'    => $rows,
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error'   => 'Błąd połączenia z faktury24.com: ' . $e->getMessage(),
+                ]));
+        }
+    }
+
+    /**
+     * Importuje wskazane (przez bu_uuid) rekordy z danych przekazanych w POST.
+     * Oczekuje: { "rows": [ { bu_uuid, nip_clean, name, street, postal_code, city, email }, … ] }
+     */
+    public function importBatch()
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $rows = (array)($this->request->getData('rows') ?? []);
+        if (empty($rows)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Brak danych do importu.']));
+        }
+
+        $imported = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        foreach ($rows as $r) {
+            $nipClean = preg_replace('/\D+/', '', (string)($r['nip_clean'] ?? $r['nip'] ?? ''));
+            $name = trim((string)($r['name'] ?? ''));
+            if ($name === '') {
+                $errors[] = 'Pominięto rekord bez nazwy (NIP: ' . ($r['nip'] ?? '?') . ')';
+                $skipped++;
+                continue;
+            }
+
+            // Sprawdź duplikat po NIP
+            if ($nipClean !== '' && $this->Contractors->exists(['company_id' => $companyId, 'nip' => $nipClean])) {
+                $skipped++;
+                continue;
+            }
+
+            $entity = $this->Contractors->newEntity([
+                'company_id'  => $companyId,
+                'name'        => $name,
+                'nip'         => $nipClean !== '' ? $nipClean : null,
+                'street'      => (string)($r['street'] ?? ''),
+                'postal_code' => (string)($r['postal_code'] ?? ''),
+                'city'        => (string)($r['city'] ?? ''),
+                'email'       => (string)($r['email'] ?? ''),
+                'country'     => 'PL',
+                'is_active'   => true,
+            ]);
+
+            if ($this->Contractors->save($entity)) {
+                $imported++;
+            } else {
+                $errors[] = 'Nie udało się zapisać: ' . $name;
+                $skipped++;
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success'  => true,
+                'imported' => $imported,
+                'skipped'  => $skipped,
+                'errors'   => $errors,
+            ]));
+    }
+
 public function invoices($contractorId)
 {
     $this->request->allowMethod(['get']);

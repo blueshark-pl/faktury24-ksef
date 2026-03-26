@@ -72,19 +72,6 @@ if (!empty($invoice->annotations)) {
       </button>
     </div>
 
-    <!-- Oznaczenie TP -->
-    <div class="d-flex align-items-start gap-2">
-      <div class="form-check form-switch m-0">
-        <input class="form-check-input" type="checkbox" id="ann-tp" name="annotations[tp]" value="1"<?= !empty($ann['tp']) ? ' checked' : '' ?>>
-        <label class="form-check-label" for="ann-tp">Oznaczenie TP (powiązania)</label>
-      </div>
-      <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-        title="Oznaczenie TP"
-        data-bs-content="<div class='small text-start'>Informacja, że między sprzedawcą a&nbsp;nabywcą istnieją powiązania. To przede wszystkim oznaczenie ewidencyjne/JPK; w&nbsp;KSeF może pojawić się na fakturze jako dodatkowa informacja.</div>">
-        <i class="ri-question-line"></i>
-      </button>
-    </div>
-
     <!-- Zwrot akcyzy -->
     <div class="d-flex align-items-start gap-2">
       <div class="form-check form-switch m-0">

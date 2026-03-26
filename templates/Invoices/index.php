@@ -236,7 +236,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
     </li>
     <?php if (!$isDemo): ?>
       <li>
-        <?= $this->Html->link('<i class="ri-file-2-line me-2"></i> Faktura bez VAT',
+        <?= $this->Html->link('<i class="ri-file-2-line me-2"></i> Rachunek',
           ['controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'novat']],
           ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'vatInvoice']) ?>
       </li>
@@ -272,13 +272,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
         ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'ossInvoice']) ?>
     </li> -->
 
-    <li><hr class="dropdown-divider my-2"></li>
-
-    <li>
-      <?= $this->Html->link('<i class="ri-calendar-schedule-line me-2"></i> Zaplanuj fakturę VAT',
-        ['controller' => 'ScheduledInvoices', 'action' => 'add', '?' => ['type' => 'vat']],
-        ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'scheduledInvoice']) ?>
-    </li>
     <?php if ($isDemo): ?>
       <li><hr class="dropdown-divider my-2"></li>
       <li>
@@ -462,7 +455,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               <?php
               $typeLabels = [
                 'vat' => '<span class="badge bg-primary">VAT</span>',
-                'novat' => '<span class="badge bg-secondary">Bez VAT</span>',
+                'novat' => '<span class="badge bg-secondary">Rachunek</span>',
                 'proforma' => '<span class="badge bg-info">Proforma</span>',
                 'advance' => '<span class="badge bg-warning">Zaliczka</span>',
                 'correction' => '<span class="badge bg-danger">Korekta</span>',
@@ -780,6 +773,14 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                     <?= $this->Html->link('<i class="ri-printer-line me-2"></i> Drukuj PDF', ['action' => 'print', $inv->id], [
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF', 'target' => '_blank'
                     ]) ?>
+                  </li>
+                  <li>
+                    <a href="#" class="dropdown-item inv-email-btn"
+                       data-id="<?= h($inv->id) ?>"
+                       data-number="<?= h($inv->fullnumber ?: $inv->id) ?>"
+                       title="Wyślij do klienta">
+                      <i class="ri-mail-send-line me-2"></i> Wyślij do klienta
+                    </a>
                   </li>
                   <li>
                     <a href="#" class="dropdown-item" title="Rozliczenia" onclick="openPaymentModal('<?= $inv->id ?>', '<?= h($inv->fullnumber ?: $inv->id) ?>', <?= $inv->total ?>, <?= $inv->alreadypaid ?>, <?= $inv->remaining ?>, '<?= $inv->currency ?>'); return false;">
@@ -1589,6 +1590,120 @@ function addPayment() {
         submitBtn.innerHTML = originalText;
     });
 }
+
+/* ===== Wyślij do klienta ===== */
+(function(){
+  var CSRF = (document.querySelector('meta[name="csrfToken"]') || {}).content || '';
+
+  document.body.addEventListener('click', function(e){
+    var btn = e.target.closest('.inv-email-btn');
+    if (!btn) return;
+    e.preventDefault();
+
+    var invId     = btn.dataset.id;
+    var invNumber = btn.dataset.number;
+
+    // Najpierw pobierz e-maile z serwera (snapshot + contractors lookup)
+    Swal.fire({ title: 'Ładowanie...', allowOutsideClick: false, didOpen: function(){ Swal.showLoading(); } });
+    fetch('/invoices/contractor-email-lookup/' + invId, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(r){ return r.json(); })
+      .catch(function(){ return { emails: [] }; })
+      .then(function(lookup){
+        var foundEmails = (lookup.emails && lookup.emails.length) ? lookup.emails : [''];
+        openEmailSwal(invId, invNumber, foundEmails);
+      });
+  });
+
+  function openEmailSwal(invId, invNumber, initialEmails){
+    Swal.fire({
+      title: 'Wyślij fakturę do klienta',
+      html:
+        '<div style="text-align:left">' +
+        '<p class="mb-2" style="font-size:13px;color:#666;">Faktura: <strong>' + invNumber + '</strong></p>' +
+        '<label class="form-label fw-semibold mb-1">Adresy e-mail odbiorców</label>' +
+        '<div id="swal-email-list"></div>' +
+        '<button type="button" id="swal-add-email" class="btn btn-sm btn-outline-secondary mt-2">' +
+          '<i class="ri-add-line me-1"></i>Dodaj kolejny adres' +
+        '</button>' +
+        '</div>',
+      showCancelButton: true,
+      confirmButtonText: '<i class="ri-mail-send-line me-1"></i>Wyślij',
+      cancelButtonText: 'Anuluj',
+      confirmButtonColor: '#0d6efd',
+      focusConfirm: false,
+      didOpen: function(){
+        initialEmails.forEach(function(e){ addEmailRow(e); });
+        document.getElementById('swal-add-email').addEventListener('click', function(){
+          addEmailRow('');
+        });
+      },
+      preConfirm: function(){
+        var inputs = document.querySelectorAll('#swal-email-list .swal-email-input');
+        var emails = [];
+        var invalid = false;
+        inputs.forEach(function(inp){
+          var v = inp.value.trim();
+          if (v === '') return;
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+            inp.classList.add('is-invalid');
+            invalid = true;
+          } else {
+            inp.classList.remove('is-invalid');
+            emails.push(v);
+          }
+        });
+        if (invalid) { Swal.showValidationMessage('Popraw nieprawidłowe adresy e-mail.'); return false; }
+        if (emails.length === 0) { Swal.showValidationMessage('Wpisz co najmniej jeden adres e-mail.'); return false; }
+        return emails;
+      }
+    }).then(function(result){
+      if (!result.isConfirmed) return;
+      var emails = result.value;
+
+      Swal.fire({ title: 'Wysyłanie...', allowOutsideClick: false, didOpen: function(){ Swal.showLoading(); } });
+
+      var body = new URLSearchParams();
+      emails.forEach(function(e){ body.append('emails[]', e); });
+
+      fetch('/invoices/email-invoice/' + invId, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        body: body
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.success) {
+          Swal.fire({ icon: 'success', title: 'Wysłano!', text: 'Faktura została wysłana na: ' + data.sent_to.join(', '), timer: 3000, showConfirmButton: false });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Błąd', text: data.error || 'Nie udało się wysłać faktury.' });
+        }
+      })
+      .catch(function(){
+        Swal.fire({ icon: 'error', title: 'Błąd', text: 'Błąd połączenia z serwerem.' });
+      });
+    });
+  }
+
+  function addEmailRow(value){
+    var list = document.getElementById('swal-email-list');
+    if (!list) return;
+    var row = document.createElement('div');
+    row.className = 'd-flex gap-2 mb-2 align-items-center';
+    row.innerHTML =
+      '<input type="email" class="form-control form-control-sm swal-email-input" placeholder="adres@firma.pl" value="' + escHtml(value) + '" style="flex:1">' +
+      '<button type="button" class="btn btn-sm btn-outline-danger swal-remove-email" title="Usuń" style="flex-shrink:0"><i class="ri-close-line"></i></button>';
+    row.querySelector('.swal-remove-email').addEventListener('click', function(){
+      if (document.querySelectorAll('#swal-email-list .swal-email-input').length > 1) {
+        row.remove();
+      }
+    });
+    list.appendChild(row);
+    row.querySelector('input').focus();
+  }
+
+  function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
 
 function deletePayment(paymentId) {
     if (!confirm('Na pewno usunąć tę płatność?')) {

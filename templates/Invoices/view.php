@@ -31,13 +31,17 @@ try {
 
 // Helper flag: proforma documents are not sent to KSeF and use inline preview element
 $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
+$isNovat    = (strtolower((string)($invoice->type ?? '')) === 'novat');
+$__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
+// Typy dokumentów które nigdy nie trafiają do KSeF
+$canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
 ?>
 
 <!-- Actions Bar -->
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
   <h4 class="fw-medium mb-0 d-flex align-items-center">
     <i class="ri-file-text-line me-2 fs-20"></i>
-    Podgląd Faktury: <?= h($invoice->fullnumber ?: $invoice->id) ?>
+    Podgląd Faktury: <span id="invoice-fullnumber-display"><?= h($invoice->fullnumber ?: $invoice->id) ?></span>
   </h4>
   <div class="d-flex gap-2">
     
@@ -47,31 +51,29 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
             </button>
         <?php endif; ?>
     <?php if (!$isProforma): ?>
-        <?= $this->Html->link('<i class="ri-printer-line me-1"></i>Drukuj PDF', 
-        ['action' => 'print', $invoice->id], 
-        ['class' => 'btn btn-primary', 'escape' => false, 'target' => '_blank', 'title' => 'Generuj i pobierz PDF']) ?>
-        <button id="btn-send-ksef-test"
-                        class="btn btn-outline-primary"
-                        data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'test', '_ext' => 'json']])) ?>"
-                        title="Wyślij do KSeF w środowisku testowym"
-                        <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?> >
+        <?= $this->Html->link('<i class="ri-printer-line me-1"></i>Drukuj PDF',
+            ['action' => 'print', $invoice->id],
+            ['class' => 'btn btn-primary', 'escape' => false, 'target' => '_blank', 'title' => 'Generuj i pobierz PDF']) ?>
+        <?php if ($canSendToKsef): ?>
+          <button id="btn-send-ksef-test"
+                  class="btn btn-outline-primary"
+                  data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'test', '_ext' => 'json']])) ?>"
+                  title="Wyślij do KSeF w środowisku testowym"
+                  <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?>>
             <i class="ri-send-plane-line me-1"></i>Wyślij do KSeF
-        </button>
-        <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
-            ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'test']],
-            ['class' => 'btn btn-outline-secondary', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
-        <?= $this->Html->link('<i class="ri-download-line me-1"></i>Pobierz FA(3) XML',
-            ['action' => 'downloadFa3Xml', $invoice->id],
-            ['class' => 'btn btn-outline-success', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
-        <?php if (!empty($invoice->ksef_number)): ?>
-          <?= $this->Html->link('<i class="ri-file-pdf-line me-1"></i>Pobierz UPO',
-              ['action' => 'downloadUpo', '?' => ['env' => 'test', 'ksef_number' => $invoice->ksef_number] + ($sessionRef ? ['session_reference' => $sessionRef] : [])],
-              ['class' => 'btn btn-outline-danger upo-link-needs-session', 'data-session-ref' => $sessionRef, 'escape' => false, 'title' => 'Pobierz UPO jako PDF']) ?>
+          </button>
+          <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
+              ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'test']],
+              ['class' => 'btn btn-outline-secondary', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
+          <?= $this->Html->link('<i class="ri-download-line me-1"></i>Pobierz FA(3) XML',
+              ['action' => 'downloadFa3Xml', $invoice->id],
+              ['class' => 'btn btn-outline-success', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
+          <?php if (!empty($invoice->ksef_number)): ?>
+            <?= $this->Html->link('<i class="ri-file-pdf-line me-1"></i>Pobierz UPO',
+                ['action' => 'downloadUpo', '?' => ['env' => 'test', 'ksef_number' => $invoice->ksef_number] + ($sessionRef ? ['session_reference' => $sessionRef] : [])],
+                ['class' => 'btn btn-outline-danger upo-link-needs-session', 'data-session-ref' => $sessionRef, 'escape' => false, 'title' => 'Pobierz UPO jako PDF']) ?>
+          <?php endif; ?>
         <?php endif; ?>
-    <?php else: ?>
-        <button class="btn btn-outline-secondary" disabled title="Proforma nie podlega wysyłce do KSeF">
-            <i class="ri-send-plane-line me-1"></i>Wyślij do KSeF
-        </button>
     <?php endif; ?>
   </div>
   
@@ -160,6 +162,8 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
         }
     }
 
+    window.reloadInvoicePreview = loadPreview;
+
     // Opóźnij ładowanie PDF dopiero po pełnym załadowaniu strony + małe opóźnienie
     function deferredLoad() {
         setTimeout(loadPreview, 300); // 300ms po DOMContentLoaded
@@ -208,6 +212,7 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
     <input type="hidden" id="ksef-invoice-id" value="<?= h((string)$invoice->id) ?>" />
     <input type="hidden" id="ksef-view-url" value="<?= h($this->Url->build(['action' => 'view', $invoice->id])) ?>" />
     <input type="hidden" id="ksef-session-ref" value="<?= h($sessionRef) ?>" />
+    <input type="hidden" id="ksef-issue-date" value="<?= h($invoice->date ? $invoice->date->format('Y-m-d') : '') ?>" />
 </div>
 
 <script>
@@ -233,12 +238,24 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
     if (window.bootstrap && confirmEl) {
         bsConfirm = new bootstrap.Modal(confirmEl, { backdrop: 'static', keyboard: true });
     }
-    const mProgress = document.getElementById('ksef-modal-progress');
-    const mResult   = document.getElementById('ksef-modal-result');
-    const mLinks    = document.getElementById('ksef-modal-links');
-    const mTimeline = document.getElementById('ksef-modal-timeline');
-    const envInput  = document.getElementById('ksef-env');
-    const envLabel  = document.getElementById('ksef-env-label');
+    const mProgress       = document.getElementById('ksef-modal-progress');
+    const mResult         = document.getElementById('ksef-modal-result');
+    const mLinks          = document.getElementById('ksef-modal-links');
+    const mTimeline       = document.getElementById('ksef-modal-timeline');
+    const mDetailsWrap    = document.getElementById('ksef-details-toggle-wrap');
+    const mDetailsBtn     = document.getElementById('ksef-details-toggle');
+    const mDetailsChevron = document.getElementById('ksef-details-chevron');
+    const envInput        = document.getElementById('ksef-env');
+    const envLabel        = document.getElementById('ksef-env-label');
+
+    if (mDetailsBtn) {
+      mDetailsBtn.addEventListener('click', function(){
+        const visible = mTimeline.style.display !== 'none';
+        mTimeline.style.display = visible ? 'none' : '';
+        mDetailsBtn.childNodes[1] && (mDetailsBtn.childNodes[1].nodeValue = visible ? 'Pokaż szczegóły' : 'Ukryj szczegóły');
+        if (mDetailsChevron) mDetailsChevron.className = visible ? 'ri-arrow-down-s-line me-1' : 'ri-arrow-up-s-line me-1';
+      });
+    }
 
     // If already sent (status 200), disable send right away
     const initialStatus = (statusCode && statusCode.textContent ? statusCode.textContent.trim() : '');
@@ -258,7 +275,10 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
             mProgress.classList.remove('d-none');
             mResult.innerHTML = '';
             mLinks.innerHTML = '';
-            if (mTimeline) mTimeline.innerHTML = '';
+            if (mTimeline) { mTimeline.innerHTML = ''; mTimeline.style.display = 'none'; }
+            if (mDetailsWrap) mDetailsWrap.style.display = 'none';
+            if (mDetailsBtn) { mDetailsBtn.childNodes[1] && (mDetailsBtn.childNodes[1].nodeValue = 'Pokaż szczegóły'); }
+            if (mDetailsChevron) mDetailsChevron.className = 'ri-arrow-down-s-line me-1';
             bsModal.show();
         }
         try {
@@ -334,6 +354,14 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
                     mTimeline.appendChild(li);
                 });
             }
+            if (data.fullnumber) {
+                const titleSpan = document.getElementById('invoice-fullnumber-display');
+                if (titleSpan) titleSpan.textContent = data.fullnumber;
+                document.title = document.title.replace(/:\s*[^\s].*$/, ': ' + data.fullnumber);
+            }
+            if (data.ksefNumber && typeof window.reloadInvoicePreview === 'function') {
+                setTimeout(window.reloadInvoicePreview, 800);
+            }
             if (data.ksefNumber) {
                 numberSpan.textContent = data.ksefNumber;
                 // Build limited links: only download from KSeF and UPO PDF
@@ -400,6 +428,9 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
                     (data.ksefNumber ? ('<div class="mt-2"><strong>Numer KSeF:</strong> ' + data.ksefNumber + '</div>') : '') +
                     maintenanceHtml +
                     '</div>';
+                if (mDetailsWrap && mTimeline && mTimeline.children.length > 0) {
+                    mDetailsWrap.style.display = '';
+                }
             }
         } catch (e) {
             statusCode.textContent = 'ERR';
@@ -416,12 +447,35 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
 
     // Confirmation flow
     const confirmSendBtn = document.getElementById('ksef-confirm-send');
+    const dateWarningEl  = document.getElementById('ksef-date-warning');
+    const issueDateInput = document.getElementById('ksef-issue-date');
+
     btn.addEventListener('click', function(){
         if (bsConfirm) {
             // Ustaw etykietę środowiska w potwierdzeniu
             const env = (envInput && envInput.value) ? envInput.value : 'test';
             if (envLabel) {
                 envLabel.textContent = (env === 'prod' ? 'PROD' : 'TEST');
+            }
+            // Sprawdź datę wystawienia — KSeF wymaga dokumentów z datą wystawienia = dzisiaj
+            if (dateWarningEl) {
+                const issueDate = issueDateInput ? issueDateInput.value : '';
+                const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+                if (issueDate && issueDate !== todayStr) {
+                    const [y, m, d] = issueDate.split('-');
+                    const issueFmt = d + '.' + m + '.' + y;
+                    const [ty, tm, td] = todayStr.split('-');
+                    const todayFmt = td + '.' + tm + '.' + ty;
+                    dateWarningEl.innerHTML = '<div class="alert alert-warning mt-3 mb-0" role="alert">'
+                        + '<i class="ri-error-warning-line me-1"></i>'
+                        + '<strong>Uwaga:</strong> Data wystawienia faktury to <strong>' + issueFmt + '</strong>, '
+                        + 'a dzisiaj jest <strong>' + todayFmt + '</strong>. '
+                        + 'KSeF wymaga, aby data wystawienia faktury była zgodna z datą jej wysyłki. '
+                        + 'Wysyłka może zostać odrzucona.'
+                        + '</div>';
+                } else {
+                    dateWarningEl.innerHTML = '';
+                }
             }
             bsConfirm.show();
         } else {
@@ -477,7 +531,7 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
 <?php endif; ?>
 
 <!-- Modal: KSeF send progress -->
-<?php if (!$isProforma): ?>
+<?php if ($canSendToKsef): ?>
 <div class="modal fade" id="ksefModal" tabindex="-1" aria-labelledby="ksefModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -490,8 +544,13 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <span>Trwa wysyłanie i sprawdzanie statusu…</span>
                 </div>
-                        <ol id="ksef-modal-timeline" class="list-group list-group-numbered mt-3"></ol>
                 <div id="ksef-modal-result" class="mt-3"></div>
+                <div class="mt-2" id="ksef-details-toggle-wrap" style="display:none">
+                    <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="ksef-details-toggle">
+                        <i class="ri-arrow-down-s-line me-1" id="ksef-details-chevron"></i>Pokaż szczegóły
+                    </button>
+                </div>
+                <ol id="ksef-modal-timeline" class="list-group list-group-numbered mt-2" style="display:none"></ol>
             </div>
             <div class="modal-footer d-flex align-items-center justify-content-between">
                 <div id="ksef-modal-links" class="d-flex gap-2"></div>
@@ -518,6 +577,7 @@ $isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
                     <li>Wyślemy dokładnie oryginalny XML FA(3) bez modyfikacji.</li>
                     <li>Po zakończeniu zobaczysz status, numer KSeF oraz linki do pobrania dokumentu i UPO.</li>
                 </ul>
+                <div id="ksef-date-warning"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>

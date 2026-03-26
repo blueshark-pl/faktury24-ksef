@@ -8,7 +8,7 @@
  */
 $__isEdit = !empty($isEdit) || !empty($invoice?->id);
 $this->assign('title', $__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę');
-$__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
+$__ksefModeEnabled = false;
 
 $__prefillContractor = null;
 try {
@@ -38,6 +38,7 @@ try {
       $__prefillItems[] = [
         'name'              => (string)($it->name ?? ''),
         'quantity'          => $it->quantity ?? 1,
+        'unit'              => (string)($it->unit ?? 'szt.'),
         'price'             => $it->price ?? 0,
         'discount_percent'  => $it->discount_percent ?? 0,
         'vat_code_id'       => $it->vat_code_id ?? null,
@@ -179,6 +180,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
           $('#invTabs').on('click', '.nav-link', function(){
             $gearBtn.removeClass('btn-secondary').addClass('btn-outline-secondary');
+            $('.tab-content > .tab-pane[id^="pane-"]:not(#pane-basic):not(#pane-accounting):not(#pane-adv):not(#pane-intl)').removeClass('show active');
           });
         });
         </script>
@@ -207,7 +209,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           <div class="row g-3">
             <div class="col-lg-4">
               <?= $this->Form->control('fullnumber', [
-                'label' => 'Invoice No', 'class' => 'form-control', 'placeholder' => 'auto',
+                'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
                 'id' => 'invoice-number'
               ]) ?>
               <small class="text-muted" id="invoice-number-hint" style="display: none;">
@@ -658,6 +660,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 <tr>
                     <th style="min-width:260px;">PRODUKT</th>
                     <th style="width:120px;">ILOŚĆ</th>
+                    <th style="width:80px;">JM</th>
                     <th style="width:180px;">CENA</th>
                     <th style="width:170px;">STAWKA VAT
                     <button type="button"
@@ -721,6 +724,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
     <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
   </td>
   <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td>
     <div class="d-flex align-items-center gap-1">
       <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
@@ -759,6 +763,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
     <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
   <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
+  <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td>
     <div class="d-flex align-items-center gap-1">
       <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
@@ -785,7 +790,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                 <!-- wiersz: Add Product -->
                <tr>
-  <td colspan="8" class="border-bottom-0">
+  <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
   </td>
 </tr>
@@ -793,20 +798,20 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                 <!-- wiersz: Sumy -->
                <tr>
-  <td colspan="5"></td>
+  <td colspan="6"></td>
   <td colspan="4">
     <table class="table table-sm text-nowrap mb-0 table-borderless">
       <tbody>
         <tr>
-          <th scope="row"><div class="fw-medium">Razem netto :</div></th>
+          <th scope="row"><div class="fw-medium">Razem netto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-net" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
-          <th scope="row"><div class="fw-medium">Razem VAT :</div></th>
+          <th scope="row"><div class="fw-medium">Razem VAT <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-tax" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
-          <th scope="row"><div class="fs-14 fw-medium">Razem brutto :</div></th>
+          <th scope="row"><div class="fs-14 fw-medium">Razem brutto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-gross" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
       </tbody>
@@ -2478,6 +2483,7 @@ $('#gus-fetch-btn').on('click', function(){
     $('#sum-net').val(sn.toFixed(2));
     $('#sum-tax').val(st.toFixed(2));
     $('#sum-gross').val(sg.toFixed(2));
+    var _cur = getInvoiceCurrency(); $('.sum-currency-label').text(_cur ? _cur : '');
     // odśwież termin (np. po zmianie daty wystawienia)
     if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
     if (typeof mirrorSums === 'function') mirrorSums();
@@ -2692,7 +2698,14 @@ $('#gus-fetch-btn').on('click', function(){
       id: d.id,
       text: d.text || d.name || '',
       price: (typeof d.price !== 'undefined') ? Number(d.price) : (typeof d.net_price !== 'undefined' ? Number(d.net_price) : null),
-      vat_id: d.vat_id || d.vat_code_id || null
+      vat_id: d.vat_id || d.vat_code_id || null,
+      unit: d.unit || '',
+      gtu_code: d.gtu_code || '',
+      pkwiu: d.pkwiu || '',
+      gtin: d.gtin || '',
+      cn_code: d.cn_code || '',
+      excise_amount: (d.excise_amount !== null && d.excise_amount !== undefined) ? d.excise_amount : '',
+      procedure_marking: d.procedure_marking || ''
     };
     list.unshift(entry);
     if (list.length > 8) list = list.slice(0,8);
@@ -2713,16 +2726,23 @@ $('#gus-fetch-btn').on('click', function(){
         ev.preventDefault(); ev.stopPropagation();
         try { $sel.select2('close'); } catch(_){}
         // Apply selection: set Select2 value and row fields
-        // Update hidden name
         $tr.find('.item-name-hidden').val(p.text || '');
         // VAT first
         if (p.vat_id) { $tr.find('.item-vatcode').val(p.vat_id); }
+        if (p.unit) { $tr.find('.item-unit').val(p.unit); }
         // Price according to current mode
         var mode = ($tr.find('.item-price-mode').val() || 'net');
         var rate = toNum(vatRates[p.vat_id], 0);
         var netPrice = toNum(p.price, 0);
         var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
         $tr.find('.item-price').val(disp.toFixed(2));
+        // Classification fields
+        if (p.gtu_code) { $tr.find('.item-gtu').val(p.gtu_code); }
+        $tr.find('.item-pkwiu').val(p.pkwiu || '');
+        $tr.find('.item-gtin').val(p.gtin || '');
+        $tr.find('.item-cn-code').val(p.cn_code || '');
+        $tr.find('.item-excise').val(p.excise_amount || '');
+        $tr.find('.item-procedure').val(p.procedure_marking || '');
         // Ensure the select shows chosen product
         var opt = new Option(p.text || '', p.id, true, true);
         $sel.find('option[value="'+p.id+'"]').remove();
@@ -2832,6 +2852,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Set VAT first (if provided)
         var $vat = $tr.find('.item-vatcode');
         if ($vat.length && d.vat_id) { $vat.val(d.vat_id); }
+        if (d.unit) { $tr.find('.item-unit').val(d.unit); }
         // Adjust displayed price based on selected mode (net/gross)
         if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
           var netPrice = Number(d.price) || 0;
@@ -2893,6 +2914,7 @@ $('#gus-fetch-btn').on('click', function(){
     var mode = (item.price_mode || 'net').toString();
 
     $tr.find('.item-qty').val(qty);
+    if (item.unit) { $tr.find('.item-unit').val(item.unit); }
     $tr.find('.item-price').val(Number(price || 0).toFixed(2));
     $tr.find('.item-disc').val(Number(disc || 0));
     if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
@@ -2971,6 +2993,7 @@ $('#gus-fetch-btn').on('click', function(){
           '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
+        '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
         '<td>'+
           '<div class="d-flex align-items-center gap-1">'+
             '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+
@@ -3175,13 +3198,6 @@ $('#gus-fetch-btn').on('click', function(){
         if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
           currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
-
-        // Pola klasyfikacyjne KSeF/JPK – przepisz z produktu do hidden inputs wiersza
-        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
-        currentProductRow.find('.item-gtin').val(product.gtin || '');
-        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
-        currentProductRow.find('.item-excise').val(product.excise_amount || '');
-        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
 
         // Select2 – pokaż nazwę produktu
         if ($.fn && $.fn.select2) {
@@ -3596,8 +3612,13 @@ if ($.fn && $.fn.select2) {
       delay: 200,
       data: function (params) {
         var payload = { q: (params.term || ''), limit: 20 };
-        if (kind === 'currency') payload.type = 'currency';
-        else if (kind === 'vat') payload.type = 'vat';
+        var kindTypeMap = {
+          'vat': 'vat', 'currency': 'currency', 'novat': 'novat',
+          'proforma': 'proforma', 'advance': 'advance', 'margin': 'margin',
+          'correction': 'kor', 'internal': 'internal',
+          'internalEvidence': 'internalevidence', 'oss': 'oss'
+        };
+        if (kindTypeMap[kind]) payload.type = kindTypeMap[kind];
         return payload;
       },
       processResults: function (data) {
@@ -3667,13 +3688,18 @@ if ($.fn && $.fn.select2) {
 
   // Funkcja ładowania domyślnej serii
   function loadDefaultSeries() {
+    var kindTypeMap = {
+      'vat': 'vat', 'currency': 'currency', 'novat': 'novat',
+      'proforma': 'proforma', 'advance': 'advance', 'margin': 'margin',
+      'correction': 'kor', 'internal': 'internal',
+      'internalEvidence': 'internalevidence', 'oss': 'oss'
+    };
     $.ajax({
       url: seriesSearchUrl,
       dataType: 'json',
       data: (function(){
         var d = { q: '', limit: 50 };
-        if (kind === 'currency') d.type = 'currency';
-        else if (kind === 'vat') d.type = 'vat';
+        if (kindTypeMap[kind]) d.type = kindTypeMap[kind];
         return d;
       })()
     }).done(function(data) {

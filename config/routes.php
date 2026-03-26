@@ -26,10 +26,18 @@ return function (RouteBuilder $routes): void {
         // GUS lookup (POST): /contractors/gus-lookup oraz /contractors/gus-lookup.json
         $builder->post('/contractors/gus-lookup', 'Contractors::gusLookup');
         $builder->post('/contractors/search', 'Contractors::search');
+        $builder->get('/contractors/import-fetch', 'Contractors::importFetch');
+        $builder->post('/contractors/import-batch', 'Contractors::importBatch');
+        $builder->get('/products/import-fetch', 'Products::importFetch');
+        $builder->post('/products/import-batch', 'Products::importBatch');
+        $builder->get('/archiwum-faktur', ['controller' => 'LegacyInvoices', 'action' => 'index']);
+        $builder->get('/archiwum-faktur/pobierz', ['controller' => 'LegacyInvoices', 'action' => 'fetch']);
+        $builder->get('/archiwum-faktur/pdf', ['controller' => 'LegacyInvoices', 'action' => 'downloadPdf']);
         $builder->post('/invoice-series/search', 'InvoiceSeries::search');
 
         // config/routes.php
         $builder->connect('/firma/edycja', ['controller' => 'Companies', 'action' => 'edit']);
+        $builder->get('/firma/serie/sprawdz', ['controller' => 'Companies', 'action' => 'checkSeriesStart']);
         $builder->connect('/uzytkownik/profil', ['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']);
         $builder->get('/konto/2fa', ['controller' => 'TwoFactor', 'action' => 'index']);
         $builder->post('/konto/2fa/wlacz', ['controller' => 'TwoFactor', 'action' => 'enable']);

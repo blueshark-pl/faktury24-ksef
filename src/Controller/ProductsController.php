@@ -68,7 +68,7 @@ class ProductsController extends AppController
 }
 
 
-    public function view(string $id = null): ?Response
+    public function view(?string $id = null): ?Response
     {
         $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = $identity?->get('company_id');
@@ -102,7 +102,18 @@ class ProductsController extends AppController
                 ->where(['Products.id' => $id, 'Products.company_id' => $companyId, 'Products.deleted' => 0])
                 ->firstOrFail();
 
-            return $this->response->withStringBody(json_encode(['success' => true, 'product' => $p]));
+            $unitName = $this->fetchTable('Units')->find()
+                ->select(['name'])->where(['id' => $p->unit_id])->first()?->name ?? '';
+            $vat = $this->fetchTable('Vats')->find()
+                ->select(['name', 'rate'])->where(['id' => $p->vat_id])->first();
+            $vatLabel = $vat ? sprintf('%s (%.2f%%)', $vat->name, (float)$vat->rate) : '';
+
+            return $this->response->withStringBody(json_encode([
+                'success'   => true,
+                'product'   => $p,
+                'unit_name' => $unitName,
+                'vat_label' => $vatLabel,
+            ]));
         } catch (RecordNotFoundException) {
             return $this->response->withStringBody(json_encode([
                 'success' => false,
@@ -181,9 +192,9 @@ class ProductsController extends AppController
                     $data['unit_id'] = 1; // Default to first unit
                 }
                 
-                // Ensure we have a code
-                if (empty($data['code']) && !empty($data['name'])) {
-                    $data['code'] = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($data['name'], 0, 10)));
+                // Jeśli użytkownik nie podał kodu — zostaw null (allowMultipleNulls w regule unikalności)
+                if (empty($data['code'])) {
+                    $data['code'] = null;
                 }
             }
 
@@ -206,17 +217,23 @@ class ProductsController extends AppController
                         ->withStringBody(json_encode([
                             'success' => true,
                             'product' => [
-                                'id'        => $product->id,
-                                'name'      => $product->name,
-                                'code'      => $product->code,
-                                'net_price' => (float)$product->net_price,
-                                'unit'      => $unitName,
-                                'vat_id'    => $product->vat_id,
-                                'pkwiu'     => $product->pkwiu,
-                                'gtu_code'  => $product->gtu_code,
-                                'is_service'=> (bool)$product->is_service,
-                                'barcode'   => $product->barcode,
-                                'description' => $product->description,
+                                'id'               => $product->id,
+                                'name'             => $product->name,
+                                'code'             => $product->code,
+                                'net_price'        => (float)$product->net_price,
+                                'unit'             => $unitName,
+                                'vat_id'           => $product->vat_id,
+                                'pkwiu'            => $product->pkwiu,
+                                'gtu_code'         => $product->gtu_code,
+                                'is_service'       => (bool)$product->is_service,
+                                'barcode'          => $product->barcode,
+                                'description'      => $product->description,
+                                'gtin'             => $product->gtin,
+                                'cn_code'          => $product->cn_code,
+                                'pkob'             => $product->pkob,
+                                'excise_amount'    => $product->excise_amount !== null ? (float)$product->excise_amount : null,
+                                'procedure_marking'=> $product->procedure_marking,
+                                'is_attachment15'  => (bool)$product->is_attachment15,
                             ],
                             'message' => ($product->is_service ? 'Usługa została dodana.' : 'Produkt został dodany.')
                         ]));
@@ -474,9 +491,15 @@ class ProductsController extends AppController
                 'unit'      => $units[$p->unit_id] ?? 'szt.',
                 'vat_id'    => $p->vat_id,
                 'vat_rate'  => (float)($vats[$p->vat_id] ?? 23.0),
-                'pkwiu'     => $p->pkwiu ?? '',
-                'gtu_code'  => $p->gtu_code ?? '',
-                'is_service'=> (bool)$p->is_service,
+                'pkwiu'             => $p->pkwiu ?? '',
+                'gtu_code'          => $p->gtu_code ?? '',
+                'gtin'              => $p->gtin ?? '',
+                'cn_code'           => $p->cn_code ?? '',
+                'pkob'              => $p->pkob ?? '',
+                'excise_amount'     => $p->excise_amount !== null ? (float)$p->excise_amount : null,
+                'procedure_marking' => $p->procedure_marking ?? '',
+                'is_attachment15'   => (bool)$p->is_attachment15,
+                'is_service'        => (bool)$p->is_service,
             ];
         }
 
@@ -485,6 +508,193 @@ class ProductsController extends AppController
             'results' => $results,
             'count'   => count($results)
         ]));
+    }
+
+    /**
+     * Pobiera listę towarów/usług ze starego systemu faktury24.com dla NIP bieżącej firmy.
+     */
+    public function importFetch(): Response
+    {
+        $this->request->allowMethod(['get', 'post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $Companies = $this->fetchTable('Companies');
+        $company = $Companies->find()
+            ->select(['id', 'nip'])
+            ->where(['id' => $companyId])
+            ->first();
+
+        $nip = preg_replace('/\D+/', '', (string)($company->nip ?? ''));
+        if ($nip === '') {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error'   => 'Brak NIP-u firmy. Uzupełnij dane firmy przed importem.',
+                ]));
+        }
+
+        try {
+            $client = new \Cake\Http\Client();
+            $resp = $client->get(
+                'https://faktury24.com/ajax/get_gns_by_nip',
+                ['nip' => $nip],
+                ['timeout' => 15]
+            );
+            $json = json_decode($resp->getStringBody(), true);
+            if (!is_array($json) || ($json['status'] ?? 0) !== 200) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success' => false,
+                        'error'   => 'Serwer faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+                    ]));
+            }
+
+            $payload = $json['payload'] ?? [];
+
+            // Pobierz już istniejące nazwy lokalnie (do oznaczenia duplikatów)
+            $existingNames = [];
+            if (!empty($payload)) {
+                $remoteNames = array_filter(array_map(
+                    fn($r) => trim((string)($r['gs_name'] ?? '')),
+                    $payload
+                ));
+                if (!empty($remoteNames)) {
+                    $found = $this->fetchTable('Products')->find()
+                        ->select(['name'])
+                        ->where(['company_id' => $companyId, 'deleted' => 0, 'name IN' => array_values($remoteNames)])
+                        ->all();
+                    foreach ($found as $p) {
+                        $existingNames[mb_strtolower((string)$p->name)] = true;
+                    }
+                }
+            }
+
+            $rows = [];
+            foreach ($payload as $r) {
+                $name = trim((string)($r['gs_name'] ?? ''));
+                if ($name === '') continue;
+                // vat_vvat = "0.23" → mnożymy przez 100 → "23"
+                $vatRaw = (float)($r['vat_vvat'] ?? 0.23);
+                $vatRate = (string)round($vatRaw * 100);
+                $rows[] = [
+                    'gs_uuid'          => (string)($r['gs_uuid'] ?? ''),
+                    'name'             => $name,
+                    'net_price'        => (string)($r['gs_net_price'] ?? '0'),
+                    'vat_rate'         => $vatRate,
+                    'vat_label'        => (string)($r['vat_svat'] ?? $vatRate . '%'),
+                    'unit_name'        => (string)($r['gs_unit'] ?? 'szt.'),
+                    'already_imported' => isset($existingNames[mb_strtolower($name)]),
+                ];
+            }
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => true,
+                    'count'   => count($rows),
+                    'rows'    => $rows,
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'error'   => 'Błąd połączenia z faktury24.com: ' . $e->getMessage(),
+                ]));
+        }
+    }
+
+    /**
+     * Importuje wskazane towary/usługi z danych przekazanych w POST (JSON body).
+     */
+    public function importBatch(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $rows = (array)($this->request->getData('rows') ?? []);
+        if (empty($rows)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Brak danych do importu.']));
+        }
+
+        $Products = $this->fetchTable('Products');
+        $Units    = $this->fetchTable('Units');
+        $Vats     = $this->fetchTable('Vats');
+
+        // Zbuduj mapę stawka VAT (float) → vat_id
+        $vatMap = [];
+        foreach ($Vats->find()->all() as $v) {
+            $vatMap[(string)(float)$v->rate] = (string)$v->id;
+        }
+
+        // Domyślna stawka 23%
+        $defaultVatId = $vatMap['23'] ?? $vatMap['23.0'] ?? array_values($vatMap)[0] ?? null;
+
+        // Jednostki – cache nazwa → id
+        $unitCache = [];
+        $getOrCreateUnit = function(string $name) use ($Units, &$unitCache): int {
+            $name = trim($name) ?: 'szt.';
+            if (isset($unitCache[$name])) return $unitCache[$name];
+            $unit = $Units->find()->where(['name' => $name, 'deleted' => 0])->first();
+            if (!$unit) {
+                $unit = $Units->newEntity(['name' => $name, 'deleted' => 0]);
+                $Units->save($unit);
+            }
+            $unitCache[$name] = (int)$unit->id;
+            return (int)$unit->id;
+        };
+
+        $imported = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        foreach ($rows as $r) {
+            $name = trim((string)($r['name'] ?? ''));
+            if ($name === '') { $skipped++; continue; }
+
+            // Duplikat po nazwie w tej samej firmie
+            if ($Products->exists(['company_id' => $companyId, 'name' => $name, 'deleted' => 0])) {
+                $skipped++;
+                continue;
+            }
+
+            $vatRateKey = (string)(float)($r['vat_rate'] ?? 23);
+            $vatId = $vatMap[$vatRateKey] ?? $defaultVatId;
+
+            $unitId = $getOrCreateUnit((string)($r['unit_name'] ?? 'szt.'));
+
+            $entity = $Products->newEntity([
+                'company_id'  => $companyId,
+                'name'        => $name,
+                'code'        => (string)($r['code'] ?? '') ?: null,
+                'description' => (string)($r['description'] ?? '') ?: null,
+                'is_service'  => (bool)($r['is_service'] ?? false),
+                'net_price'   => (float)($r['net_price'] ?? 0),
+                'unit_id'     => $unitId,
+                'vat_id'      => $vatId,
+                'pkwiu'       => (string)($r['pkwiu'] ?? '') ?: null,
+                'gtu_code'    => (string)($r['gtu_code'] ?? '') ?: null,
+                'currency'    => (string)($r['currency'] ?? 'PLN') ?: 'PLN',
+                'is_active'   => true,
+                'deleted'     => false,
+            ]);
+
+            if ($Products->save($entity)) {
+                $imported++;
+            } else {
+                $errors[] = 'Nie udało się zapisać: ' . $name;
+                $skipped++;
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success'  => true,
+                'imported' => $imported,
+                'skipped'  => $skipped,
+                'errors'   => $errors,
+            ]));
     }
 
     public function beforeFilter(EventInterface $event)

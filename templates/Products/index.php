@@ -80,6 +80,9 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
       ]
     ) ?>
 
+    <button class="btn btn-outline-info btn-wave" id="btn-import-f24-products">
+      <i class="ri-download-cloud-2-line align-middle me-1"></i> Importuj z faktury24
+    </button>
     <button class="btn btn-primary btn-wave" data-bs-toggle="modal" data-bs-target="#product-create">
       <i class="ri-add-line me-1"></i> Dodaj produkt/usługę
     </button>
@@ -221,9 +224,11 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
                 <td><span class="text-muted"><?= $p->created?->format('Y-m-d') ?></span></td>
                 <td class="text-end">
                   <div class="btn-list">
-                    <?= $this->Html->link('<i class="ri-eye-line"></i>', ['action' => 'view', $p->id], [
-                      'class' => 'btn btn-sm btn-primary-light btn-icon', 'escape' => false, 'title' => 'Podgląd'
-                    ]) ?>
+                    <button class="btn btn-sm btn-primary-light btn-icon js-product-view"
+                            data-id="<?= h($p->id) ?>"
+                            title="Podgląd">
+                      <i class="ri-eye-line"></i>
+                    </button>
                     <button class="btn btn-sm btn-success-light btn-icon js-edit"
                             data-id="<?= h($p->id) ?>"
                             data-name="<?= h($p->name) ?>"
@@ -332,208 +337,331 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
   </div>
 </div>
 
-<!-- Modal: Add/Edit produkt/usługa (boosted & fixed) -->
+<!-- Modal: Add/Edit produkt/usługa -->
 <div class="modal fade" id="product-create" tabindex="-1" aria-hidden="true" data-mode="add">
-  <div class="modal-dialog modal-dialog-centered modal-xl">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title" id="product-modal-title">Dodaj produkt/usługę</h6>
-        <div class="d-flex align-items-center gap-2">
-          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#product-help">
-            <i class="ri-information-line me-1"></i> Instrukcja
+
+      <div class="modal-header border-bottom-0 pb-0">
+        <div>
+          <h6 class="modal-title mb-0" id="product-modal-title">
+            <i class="ri-price-tag-3-line me-1 text-primary"></i> Dodaj produkt / usługę
+          </h6>
+          <p class="text-muted small mb-0 mt-1" id="product-modal-subtitle">Wypełnij pola i kliknij Zapisz.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2 ms-3">
+          <button class="btn btn-sm btn-light" type="button"
+            data-bs-toggle="collapse" data-bs-target="#product-help"
+            title="Wskazówki" aria-label="Wskazówki">
+            <i class="ri-information-line"></i>
           </button>
-          <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#gtu-legend-modal">
-            <i class="ri-book-open-line me-1"></i> Legenda GTU
+          <button class="btn btn-sm btn-light" type="button"
+            data-bs-toggle="modal" data-bs-target="#gtu-legend-modal"
+            title="Legenda GTU" aria-label="Legenda GTU">
+            <i class="ri-book-open-line"></i>
           </button>
-          <button type="button" class="btn-close ms-1" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
         </div>
       </div>
 
       <?= $this->Form->create(null, [
-            'url' => ['controller' => 'Products', 'action' => 'add'],
-            'class' => 'needs-validation', 'novalidate' => true, 'id' => 'product-form'
+        'url'       => ['controller' => 'Products', 'action' => 'add'],
+        'class'     => 'needs-validation',
+        'novalidate'=> true,
+        'id'        => 'product-form',
       ]) ?>
-      <?= $this->Form->hidden('id', ['id' => 'product-id']) ?>
+      <?= $this->Form->hidden('id',      ['id' => 'product-id']) ?>
       <?= $this->Form->hidden('_method', ['value' => 'POST', 'id' => 'product-method']) ?>
+      <?= $this->Form->hidden('company_id', ['value' => $companyId]) ?>
 
-      <div class="modal-body">
-        <?= $this->Form->hidden('company_id', ['value' => $companyId]) ?>
+      <div class="modal-body pt-2">
 
-        <!-- Instrukcja -->
+        <!-- Wskazówki (collapse) -->
         <div id="product-help" class="collapse mb-3">
-          <div class="alert alert-info d-flex gap-3 mb-0">
-            <i class="ri-lightbulb-flash-line fs-4"></i>
+          <div class="alert alert-info d-flex gap-3 mb-0 py-2">
+            <i class="ri-lightbulb-flash-line fs-5 mt-1 flex-shrink-0"></i>
             <div class="small">
               <strong>Wskazówki:</strong>
-              <ul class="mb-2 ps-3">
-                <li><kbd>Tab</kbd> – przechodzenie po polach, <kbd>Enter</kbd> – zapis.</li>
-                <li><strong>GTU</strong> ustaw tylko, gdy wymagane (JPK_V7/KSeF). Skorzystaj z <em>Legendą GTU</em>.</li>
-                <li>Podgląd <em>brutto</em> liczy się z wybranej stawki VAT.</li>
-                <li>Kod (SKU) możesz wygenerować klikając różdżkę.</li>
+              <ul class="mb-1 ps-3">
+                <li><kbd>Tab</kbd> – przejście między polami, <kbd>Enter</kbd> – zapis formularza.</li>
+                <li><strong>GTU</strong> ustaw wyłącznie gdy wymagane przez JPK_V7 / KSeF.</li>
+                <li>Podgląd brutto liczy się automatycznie z wybranej stawki VAT.</li>
+                <li>Przycisk <i class="ri-magic-line"></i> generuje kod SKU z nazwy produktu.</li>
               </ul>
-              <span class="text-muted">Legenda GTU powinna być zgodna z aktualnymi przepisami.</span>
             </div>
           </div>
         </div>
 
-        <div class="row g-3 align-items-start">
+        <?php
+        $extractVatRate = function (string $label): float {
+          if (preg_match('/(\d+[.,]?\d*)\s*%?/', $label, $m)) {
+            return (float)str_replace(',', '.', $m[1]);
+          }
+          return 0.0;
+        };
+        $gtuOptions = [
+          ''       => '— brak GTU —',
+          'GTU_01' => 'GTU_01 – Napoje alkoholowe',
+          'GTU_02' => 'GTU_02 – Paliwa silnikowe',
+          'GTU_03' => 'GTU_03 – Oleje opałowe / smarowe',
+          'GTU_04' => 'GTU_04 – Wyroby tytoniowe',
+          'GTU_05' => 'GTU_05 – Odpady',
+          'GTU_06' => 'GTU_06 – Urządzenia elektroniczne',
+          'GTU_07' => 'GTU_07 – Pojazdy oraz części',
+          'GTU_08' => 'GTU_08 – Metale szlachetne i nieszlachetne',
+          'GTU_09' => 'GTU_09 – Leki i wyroby medyczne',
+          'GTU_10' => 'GTU_10 – Budynki, budowle i grunty',
+          'GTU_11' => 'GTU_11 – Prawa do emisji CO₂',
+          'GTU_12' => 'GTU_12 – Usługi niematerialne (IT, prawne, doradcze…)',
+          'GTU_13' => 'GTU_13 – Transport i gospodarka magazynowa',
+        ];
+        ?>
+
+        <!-- ── Sekcja 1: Identyfikacja ─────────────────────── -->
+        <p class="text-uppercase text-muted fw-semibold small mb-2" style="letter-spacing:.06em">
+          <i class="ri-barcode-box-line me-1"></i>Identyfikacja
+        </p>
+        <div class="row g-3 mb-3">
           <div class="col-lg-8">
-            <?= $this->Form->control('name', [
-              'label' => 'Nazwa*', 'required' => true, 'class' => 'form-control',
-              'placeholder' => 'np. Konsultacja IT / Papier A4'
-            ]) ?>
+            <label class="form-label fw-semibold">Nazwa <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required
+              placeholder="np. Konsultacja IT / Papier A4 80g">
+            <div class="invalid-feedback">Podaj nazwę produktu lub usługi.</div>
           </div>
           <div class="col-lg-4">
-            <label for="code" class="form-label">Kod (SKU)</label>
+            <label class="form-label fw-semibold">Kod / SKU</label>
             <div class="input-group">
-              <?= $this->Form->control('code', [
-                'label' => false, 'id' => 'code', 'class' => 'form-control', 'maxlength' => 64,
-                'placeholder' => 'SKU/ID wewnętrzne', 'templates' => ['inputContainer' => '{{content}}']
-              ]) ?>
-              <button class="btn btn-outline-secondary" type="button" id="code-gen" title="Generuj">
+              <input type="text" name="code" id="code" class="form-control" maxlength="64"
+                placeholder="SKU-001 (lub wygeneruj)">
+              <button class="btn btn-outline-secondary" type="button" id="code-gen"
+                data-bs-toggle="tooltip" title="Generuj kod z nazwy">
                 <i class="ri-magic-line"></i>
               </button>
             </div>
           </div>
-
-          <div class="col-md-4">
-            <?= $this->Form->control('unit_id', [
-              'type' => 'select','label' => 'Jednostka*','options' => $unitsMap,
-              'empty' => false,'class' => 'form-select', 'required' => true
-            ]) ?>
-          </div>
-
-          <?php
-          // Funkcja: wyciągnięcie liczby procentowej z etykiety (fallback 0 dla ZW/NP/OO)
-          $extractVatRate = function (string $label): float {
-            if (preg_match('/(\d+[.,]?\d*)\s*%?/', $label, $m)) {
-              return (float)str_replace(',', '.', $m[1]);
-            }
-            if (preg_match('/\b(ZW|NP|OO)\b/i', $label)) {
-              return 0.0;
-            }
-            return 0.0;
-          };
-          ?>
-          <!-- VAT w MODALU -->
-<div class="col-md-4">
-  <label for="prod-vat-id" class="form-label">Stawka VAT*</label>
-  <select name="vat_id" id="prod-vat-id" class="form-select" required>
-    <?php foreach ($vatsMap as $vid => $vlabel): ?>
-      <?php $rate = $extractVatRate((string)$vlabel); ?>
-      <option value="<?= h($vid) ?>" data-rate="<?= h(number_format($rate, 2, '.', '')) ?>">
-        <?= h($vlabel) ?>
-      </option>
-    <?php endforeach; ?>
-  </select>
-</div>
-
-<!-- NETTO + WALUTA w MODALU -->
-<div class="col-md-4">
-  <div class="input-group input-group-sm">
-    <?= $this->Form->control('net_price', [
-      'label' => 'Cena netto*','type' => 'number','step' => '0.01','min' => '0',
-      'required' => true,'class' => 'form-control text-end', 'id' => 'prod-net-price',
-      'templates' => ['inputContainer' => '<div class="w-100">{{content}}</div>']
-    ]) ?>
-    <?= $this->Form->control('currency', [
-      'label' => false, 'type' => 'select','options' => $currencies,
-      'default' => 'PLN', 'class' => 'form-select flex-grow-0 w-auto', 'id' => 'prod-currency',
-      'templates' => ['inputContainer' => '{{content}}']
-    ]) ?>
-  </div>
-  <div class="form-text mt-1">
-    <span class="me-2">Podgląd:</span>
-    <span class="badge bg-secondary" id="preview-vat">VAT: 0.00%</span>
-    <span class="badge bg-primary" id="preview-gross">Brutto: —</span>
-  </div>
-</div>
-
-
-          <div class="col-md-4">
-            <div class="form-check mb-0">
-              <?= $this->Form->control('is_service', [
-                'type' => 'checkbox', 'label' => 'To jest usługa', 'checked' => false,
-                'class' => 'form-check-input me-2',
-                'templates' => ['inputContainer' => '<div class="form-check">{{content}}</div>']
-              ]) ?>
+          <div class="col-lg-4">
+            <label class="form-label fw-semibold">Typ</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="is_service" value="0"
+                  id="type-product" checked>
+                <label class="form-check-label" for="type-product">
+                  <i class="ri-box-3-line me-1"></i>Produkt
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="is_service" value="1"
+                  id="type-service">
+                <label class="form-check-label" for="type-service">
+                  <i class="ri-tools-line me-1"></i>Usługa
+                </label>
+              </div>
             </div>
           </div>
-
-          <div class="col-md-4">
-            <label for="gtu_code" class="form-label d-flex align-items-center gap-2">
-              GTU
-              <i class="ri-question-line text-muted" data-bs-toggle="tooltip" title="Wybierz grupę towarowo-usługową (jeśli dotyczy)"></i>
-            </label>
-            <?php
-              $gtuOptions = [
-                '' => '— brak —',
-                'GTU_01' => 'GTU_01 – Napoje alkoholowe',
-                'GTU_02' => 'GTU_02 – Paliwa',
-                'GTU_03' => 'GTU_03 – Oleje smarowe',
-                'GTU_04' => 'GTU_04 – Wyroby tytoniowe',
-                'GTU_05' => 'GTU_05 – Odpady',
-                'GTU_06' => 'GTU_06 – Urządzenia elektroniczne',
-                'GTU_07' => 'GTU_07 – Pojazdy oraz części',
-                'GTU_08' => 'GTU_08 – Metale szlachetne i nieszlachetne',
-                'GTU_09' => 'GTU_09 – Leki i wyroby medyczne',
-                'GTU_10' => 'GTU_10 – Budynki, budowle i grunty',
-                'GTU_11' => 'GTU_11 – Środki transportu i części',
-                'GTU_12' => 'GTU_12 – Usługi niematerialne (doradcze, prawne, marketingowe, badawcze)',
-                'GTU_13' => 'GTU_13 – Transport i gospodarka magazynowa',
-              ];
-            ?>
-            <?= $this->Form->control('gtu_code', [
-              'type' => 'select','label' => false,'options' => $gtuOptions,
-              'class' => 'form-select','id' => 'gtu-code'
-            ]) ?>
-            <div class="form-text">
-              <span class="text-muted">Opis: </span><span id="gtu-desc" class="text-body-secondary">—</span>
+          <div class="col-lg-4">
+            <label class="form-label fw-semibold">Kod kreskowy</label>
+            <input type="text" name="barcode" class="form-control" placeholder="EAN-13 / UPC">
+          </div>
+          <div class="col-lg-4 d-flex align-items-end">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" role="switch"
+                name="is_active" value="1" id="prod-is-active" checked>
+              <label class="form-check-label" for="prod-is-active">Produkt aktywny</label>
             </div>
           </div>
+        </div>
 
-          <div class="col-md-4">
-            <div class="form-check mb-0">
-              <?= $this->Form->control('is_active', [
-                'type' => 'checkbox', 'label' => 'Aktywne', 'checked' => true,
-                'class' => 'form-check-input me-2',
-                'templates' => ['inputContainer' => '<div class="form-check">{{content}}</div>']
-              ]) ?>
-            </div>
+        <hr class="my-3">
+
+        <!-- ── Sekcja 2: Cena ──────────────────────────────── -->
+        <p class="text-uppercase text-muted fw-semibold small mb-2" style="letter-spacing:.06em">
+          <i class="ri-money-dollar-circle-line me-1"></i>Cena i jednostka
+        </p>
+        <div class="row g-3 mb-3">
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Jednostka miary <span class="text-danger">*</span></label>
+            <select name="unit_id" class="form-select" required id="prod-unit-id">
+              <?php foreach ($unitsMap as $uid => $uname): ?>
+                <option value="<?= h($uid) ?>"><?= h($uname) ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
-
-          <div class="col-md-4">
-            <?= $this->Form->control('barcode', [
-              'label' => 'Kod kreskowy', 'class' => 'form-control',
-              'placeholder' => 'EAN/UPC'
-            ]) ?>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Waluta</label>
+            <select name="currency" class="form-select" id="prod-currency">
+              <?php foreach ($currencies as $cur => $curlabel): ?>
+                <option value="<?= h($cur) ?>"><?= h($curlabel) ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
-
-          <div class="col-md-4">
-            <?= $this->Form->control('pkwiu', [
-              'label' => 'PKWiU', 'class' => 'form-control',
-              'placeholder' => 'np. 62.02.30.0'
-            ]) ?>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Cena netto <span class="text-danger">*</span></label>
+            <input type="number" name="net_price" id="prod-net-price" step="0.01" min="0"
+              class="form-control text-end" required placeholder="0.00">
+            <div class="invalid-feedback">Podaj cenę netto.</div>
           </div>
-
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Stawka VAT <span class="text-danger">*</span></label>
+            <select name="vat_id" id="prod-vat-id" class="form-select" required>
+              <?php foreach ($vatsMap as $vid => $vlabel): ?>
+                <option value="<?= h($vid) ?>"
+                  data-rate="<?= h(number_format($extractVatRate((string)$vlabel), 2, '.', '')) ?>">
+                  <?= h($vlabel) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
           <div class="col-12">
-            <?= $this->Form->control('description', [
-              'label' => 'Opis', 'type' => 'textarea', 'rows' => 3, 'class' => 'form-control',
-              'placeholder' => 'Krótki opis dla wewnętrznego użytku'
-            ]) ?>
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-muted small">Podgląd:</span>
+              <span class="badge bg-secondary-subtle text-secondary border" id="preview-vat">VAT: —</span>
+              <span class="badge bg-primary-subtle text-primary border" id="preview-gross">Brutto: —</span>
+            </div>
           </div>
         </div>
+
+        <hr class="my-3">
+
+        <!-- ── Sekcja 3: Klasyfikacja ─────────────────────── -->
+        <p class="text-uppercase text-muted fw-semibold small mb-2" style="letter-spacing:.06em">
+          <i class="ri-list-check-3 me-1"></i>Klasyfikacja
+        </p>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">PKWiU
+              <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                title="Polska Klasyfikacja Wyrobów i Usług – wymagana w JPK_VAT."></i>
+            </label>
+            <input type="text" name="pkwiu" class="form-control" placeholder="np. 62.01.10.0">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold d-flex align-items-center gap-1">
+              Kod GTU
+              <i class="ri-question-line text-muted" data-bs-toggle="tooltip"
+                title="Grupa Towarowo-Usługowa – wymagana w JPK_V7/KSeF gdy dotyczy."></i>
+            </label>
+            <select name="gtu_code" class="form-select" id="gtu-code">
+              <?php foreach ($gtuOptions as $gval => $glabel): ?>
+                <option value="<?= h($gval) ?>"><?= h($glabel) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <div class="form-text"><span class="text-muted">Opis: </span><span id="gtu-desc">—</span></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Opis</label>
+            <textarea name="description" rows="2" class="form-control"
+              placeholder="Krótki opis dla celów wewnętrznych lub fakturowych"></textarea>
+          </div>
+        </div>
+
+        <!-- ── Sekcja 4: KSeF / JPK (zwijana) ───────────── -->
+        <div class="border rounded-2 overflow-hidden">
+          <button type="button"
+            class="btn btn-light d-flex align-items-center gap-2 w-100 rounded-0 border-0 px-3 py-2 text-start"
+            data-bs-toggle="collapse" data-bs-target="#prod-ksef-collapse"
+            aria-expanded="false" id="prod-ksef-toggle">
+            <i class="ri-arrow-right-s-line text-muted" id="prod-ksef-arrow" style="transition:transform .2s; flex-shrink:0"></i>
+            <span class="fw-semibold small">Pola KSeF / JPK</span>
+            <span class="badge bg-secondary-subtle text-secondary ms-1">opcjonalne</span>
+            <span class="ms-auto text-muted small d-none d-md-inline">GTIN, CN, PKOB, akcyza, procedura</span>
+          </button>
+          <div class="collapse" id="prod-ksef-collapse">
+            <div class="p-3 bg-body-tertiary border-top">
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">GTIN / EAN
+                    <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                      title="Unikatowy kod handlowy produktu (EAN-8, EAN-13, UPC-A). Np. 5901234123457."></i>
+                  </label>
+                  <input type="text" name="gtin" class="form-control form-control-sm"
+                    placeholder="5901234123457">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">Kod CN
+                    <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                      title="Nomenklatura Scalona – dla obrotu międzynarodowego (VAT-7, Intrastat)."></i>
+                  </label>
+                  <input type="text" name="cn_code" class="form-control form-control-sm"
+                    placeholder="8471 30 00">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">PKOB
+                    <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                      title="Polska Klasyfikacja Obiektów Budowlanych – dla budynków i budowli."></i>
+                  </label>
+                  <input type="text" name="pkob" class="form-control form-control-sm"
+                    placeholder="1110">
+                </div>
+              </div>
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">Kwota akcyzy
+                    <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                      title="Kwota podatku akcyzowego zawarta w cenie jednostkowej (paliwa, alkohol, tytoń)."></i>
+                  </label>
+                  <div class="input-group input-group-sm">
+                    <input type="number" name="excise_amount" step="0.01" min="0"
+                      class="form-control text-end" placeholder="0.00">
+                    <span class="input-group-text">PLN</span>
+                  </div>
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label small fw-semibold">Oznaczenie procedury FA(3)
+                    <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                      title="Oznaczenia wymagane w KSeF / JPK_VAT dla określonych typów transakcji."></i>
+                  </label>
+                  <select name="procedure_marking" class="form-select form-select-sm">
+                    <option value="">— brak —</option>
+                    <option value="MR_T">MR_T – metoda kasowa (dostawa towarów)</option>
+                    <option value="MR_UZ">MR_UZ – metoda kasowa (świadczenie usług)</option>
+                    <option value="EE">EE – energia elektryczna, gaz, usługi dystrybucji</option>
+                    <option value="TP">TP – podmioty powiązane (art. 32 ustawy VAT)</option>
+                    <option value="TT_WNT">TT_WNT – WNT w transakcji trójstronnej uproszczonej</option>
+                    <option value="TT_D">TT_D – dostawa w transakcji trójstronnej uproszczonej</option>
+                    <option value="I_42">I_42 – WDT po imporcie w procedurze celnej 42</option>
+                    <option value="I_63">I_63 – WDT po imporcie w procedurze celnej 63</option>
+                    <option value="B_SPV">B_SPV – transfer bonu jednego przeznaczenia</option>
+                    <option value="B_SPV_DOSTAWA">B_SPV_DOSTAWA – dostawa dot. bonu jednego przeznaczenia</option>
+                    <option value="B_MPV_PROWIZJA">B_MPV_PROWIZJA – prowizja dot. bonu różnego przeznaczenia</option>
+                    <option value="MPP">MPP – mechanizm podzielonej płatności</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                      name="is_attachment15" value="1" id="is-attachment15">
+                    <label class="form-check-label small" for="is-attachment15">
+                      Towar / usługa z <strong>załącznika nr 15</strong> ustawy o VAT
+                      <span class="badge bg-warning-subtle text-warning border ms-1">MPP</span>
+                      <i class="ri-question-line text-muted ms-1" data-bs-toggle="tooltip"
+                        title="Zaznacz, gdy produkt/usługa figuruje w załączniku nr 15 – podlega obowiązkowemu mechanizmowi podzielonej płatności."></i>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer border-top-0 pt-0">
+        <div class="me-auto small text-muted d-none d-md-block">
+          <i class="ri-shield-keyhole-line me-1"></i>
+          Cena i VAT są kopiowane do faktury w momencie wystawienia.
+        </div>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+          <i class="ri-close-line me-1"></i>Anuluj
+        </button>
+        <button type="submit" class="btn btn-primary" id="product-submit-btn">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="prod-form-spinner" role="status"></span>
+          <i class="ri-save-line me-1" id="prod-form-icon"></i>
+          <span id="prod-form-label">Zapisz</span>
+        </button>
       </div>
 
-      <div class="modal-footer">
-        <div class="me-auto small text-muted">
-          <i class="ri-shield-keyhole-line me-1"></i>Dane pozycji faktury kopiują cenę i VAT z produktu w momencie wystawienia.
-        </div>
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', [
-          'class' => 'btn btn-primary', 'escapeTitle' => false
-        ]) ?>
-      </div>
       <?= $this->Form->end() ?>
     </div>
   </div>
@@ -568,99 +696,100 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
 </div>
 
 <style>
-  #product-create .form-group { display:block; }
-  #product-create #currency { max-width: 92px; min-width: 72px; }
-  #product-create #net-price { text-align: right; }
+  /* Tabela */
   .pagination .page-link { min-width: 2rem; text-align: center; }
   .pagination .page-item.active .page-link { box-shadow: 0 0 0 .2rem rgba(13,110,253,.15); }
-  .table-compact .table td, .table-compact .table th { padding-top:.4rem; padding-bottom:.4rem; }
-  #product-create .form-text .badge { vertical-align: middle; }
+  .table-compact .table td,
+  .table-compact .table th { padding-top: .35rem; padding-bottom: .35rem; }
+
+  /* Modal produktu */
+  #product-create #prod-currency { max-width: 90px; }
+  #product-create #prod-net-price { text-align: right; }
+  #product-create .modal-body { padding-top: .75rem; }
+  #product-create hr { border-color: var(--bs-border-color-translucent); }
+  #product-create #prod-ksef-collapse .bg-body-tertiary { background-color: var(--bs-tertiary-bg) !important; }
+  #product-create .badge { vertical-align: middle; }
+
+  /* Sekcje w modalu */
+  #product-create p[style*="letter-spacing"] {
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    padding-bottom: .25rem;
+  }
 </style>
 
 <script>
-// === Wzbogacenia modala produktów: GTU + brutto z data-rate ===
+// === Podgląd brutto + GTU opis (uruchamia się przed głównym skryptem) ===
 document.addEventListener('DOMContentLoaded', () => {
-  // Tooltips
-  document.querySelectorAll('#product-create [data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
-document.getElementById('product-create')?.addEventListener('shown.bs.modal', refreshGrossPreview);
-
-  const modalEl   = document.getElementById('product-create');
-  const form      = document.getElementById('product-form');
-
-const netInput  = document.getElementById('prod-net-price');
-const vatSelect = document.getElementById('prod-vat-id');
-const currency  = document.getElementById('prod-currency');
+  const netInput  = document.getElementById('prod-net-price');
+  const vatSelect = document.getElementById('prod-vat-id');
+  const curSelect = document.getElementById('prod-currency');
   const badgeVat  = document.getElementById('preview-vat');
   const badgeGross= document.getElementById('preview-gross');
-
-  // GTU legenda / opis
   const gtuSelect = document.getElementById('gtu-code');
   const gtuDescEl = document.getElementById('gtu-desc');
+
   const GTU_LEGEND = {
-    'GTU_01': {name:'Napoje alkoholowe', desc:'Dostawa napojów alkoholowych.'},
-    'GTU_02': {name:'Paliwa', desc:'Paliwa silnikowe, gaz, wybrane wyroby energetyczne.'},
-    'GTU_03': {name:'Oleje smarowe', desc:'Wybrane oleje/środki smarowe.'},
-    'GTU_04': {name:'Wyroby tytoniowe', desc:'Papierosy, tytoń, wyroby tytoniowe.'},
-    'GTU_05': {name:'Odpady', desc:'Wybrane odpady (w tym złom).'},
-    'GTU_06': {name:'Elektronika', desc:'Telefony, konsole, laptopy, dyski i podobne.'},
-    'GTU_07': {name:'Pojazdy i części', desc:'Wybrane pojazdy oraz części samochodowe.'},
-    'GTU_08': {name:'Metale', desc:'Metale szlachetne/nieszlachetne w wybranych postaciach.'},
-    'GTU_09': {name:'Leki/wyroby med.', desc:'Wybrane produkty lecznicze/medyczne.'},
-    'GTU_10': {name:'Nieruchomości', desc:'Dostawa budynków, budowli i gruntów.'},
-    'GTU_11': {name:'Środki transportu', desc:'Wybrane środki transportu i części.'},
-    'GTU_12': {name:'Usługi niematerialne', desc:'Doradcze, prawne, księgowe, reklamowe, badawcze itd.'},
-    'GTU_13': {name:'Transport/magazyn', desc:'Usługi transportowe i magazynowe.'}
+    GTU_01: {name:'Napoje alkoholowe',    desc:'Dostawa napojów alkoholowych o określonej zawartości alkoholu.'},
+    GTU_02: {name:'Paliwa silnikowe',     desc:'Paliwa, gaz i inne wyroby energetyczne z art. 103 ust. 5aa uVAT.'},
+    GTU_03: {name:'Oleje opałowe/smarowe',desc:'Wybrane oleje i środki smarowe (wg zał. 13 uVAT).'},
+    GTU_04: {name:'Wyroby tytoniowe',     desc:'Tytoń, papierosy, susz tytoniowy (art. 99a uVAT).'},
+    GTU_05: {name:'Odpady',               desc:'Towary z poz. 79–91 zał. 15 uVAT (m.in. złom, makulatura).'},
+    GTU_06: {name:'Urządzenia elektroniczne', desc:'Konsole, laptopy, tablety, telefony (poz. 7–9, 59–63 zał. 15).'},
+    GTU_07: {name:'Pojazdy i części',     desc:'Pojazdy CN 8701–8708 oraz wybrane części samochodowe.'},
+    GTU_08: {name:'Metale szlachetne',    desc:'Złoto, srebro, platyna i stopy (wg zał. 12 i 15 uVAT).'},
+    GTU_09: {name:'Leki i wyroby med.',   desc:'Produkty lecznicze, leki, wyroby medyczne (ustawa refundacyjna).'},
+    GTU_10: {name:'Budynki i grunty',     desc:'Budynki, budowle i grunty – dostawa i najem.'},
+    GTU_11: {name:'Uprawnienia CO₂',      desc:'Przenoszenie uprawnień do emisji gazów cieplarnianych.'},
+    GTU_12: {name:'Usługi niematerialne', desc:'Doradcze, zarządcze, prawne, reklamowe, IT, szkoleniowe, B+R.'},
+    GTU_13: {name:'Transport i magazyn',  desc:'Usługi transportowe i gospodarka magazynowa.'},
   };
+
+  // Wypełnij legendę GTU
   const legendTbody = document.getElementById('gtu-legend-tbody');
   if (legendTbody) {
-    legendTbody.innerHTML = Object.keys(GTU_LEGEND).sort().map(k => {
-      const it = GTU_LEGEND[k];
-      return `<tr><td><code>${k}</code></td><td>${it.name}</td><td class="text-muted">${it.desc}</td></tr>`;
-    }).join('');
+    legendTbody.innerHTML = Object.entries(GTU_LEGEND).map(([k, it]) =>
+      `<tr><td><code>${k}</code></td><td class="fw-semibold">${it.name}</td><td class="text-muted small">${it.desc}</td></tr>`
+    ).join('');
   }
+
+  // Opis GTU pod selectem
   function refreshGtuDesc() {
+    if (!gtuDescEl) return;
     const code = gtuSelect?.value || '';
-    if (!code || !GTU_LEGEND[code]) { gtuDescEl.textContent = '—'; return; }
-    gtuDescEl.textContent = `${GTU_LEGEND[code].name} – ${GTU_LEGEND[code].desc}`;
+    gtuDescEl.textContent = code && GTU_LEGEND[code]
+      ? `${GTU_LEGEND[code].name} – ${GTU_LEGEND[code].desc}`
+      : '—';
   }
   gtuSelect?.addEventListener('change', refreshGtuDesc);
   refreshGtuDesc();
 
-  // Kasa
-  function round2(n){ return Math.round((n + Number.EPSILON) * 100)/100; }
-  function money(n){ return Number.isNaN(n) ? '—' : n.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function getVatPercent(){
+  // Podgląd brutto
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+  function money(n)  { return Number.isNaN(n) ? '—' : n.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function getVatRate() {
     const opt = vatSelect?.selectedOptions?.[0];
-    if (!opt) return 0;
-    const rate = parseFloat(opt.getAttribute('data-rate') || '0');
+    const rate = parseFloat(opt?.getAttribute('data-rate') || '0');
     return Number.isFinite(rate) ? rate : 0;
   }
-  function refreshGrossPreview(){
-    const net = parseFloat((netInput?.value || '0').replace(',', '.')) || 0;
-    const vat = getVatPercent();
-    const gross = round2(net * (1 + vat/100));
-    const cur = currency?.value || '';
+  function refreshGross() {
+    const net   = parseFloat((netInput?.value || '0').replace(',', '.')) || 0;
+    const vat   = getVatRate();
+    const gross = round2(net * (1 + vat / 100));
+    const cur   = curSelect?.value || '';
     if (badgeVat)   badgeVat.textContent   = `VAT: ${vat.toFixed(2)}%`;
     if (badgeGross) badgeGross.textContent = `Brutto: ${money(gross)} ${cur}`;
   }
-['input','change','blur'].forEach(ev => {
-  document.getElementById('prod-net-price')?.addEventListener(ev, refreshGrossPreview);
-});
-document.getElementById('prod-vat-id')?.addEventListener('change', refreshGrossPreview);
-document.getElementById('prod-currency')?.addEventListener('change', refreshGrossPreview);
 
-  refreshGrossPreview();
+  ['input', 'change', 'blur'].forEach(ev => netInput?.addEventListener(ev, refreshGross));
+  vatSelect?.addEventListener('change', refreshGross);
+  curSelect?.addEventListener('change', refreshGross);
+  refreshGross();
 
-  // Fokus + przeliczenie po otwarciu
-  modalEl?.addEventListener('shown.bs.modal', () => {
-    modalEl.querySelector('input[name="name"]')?.focus();
-    refreshGrossPreview();
-  });
-
-  // Prosta walidacja
-  form?.addEventListener('submit', (e) => {
-    if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); }
-    form.classList.add('was-validated');
+  // Po otwarciu modalu: fokus + przelicz
+  document.getElementById('product-create')?.addEventListener('shown.bs.modal', () => {
+    document.getElementById('product-form')?.querySelector('input[name="name"]')?.focus();
+    refreshGross();
+    refreshGtuDesc();
   });
 });
 </script>
@@ -709,8 +838,10 @@ document.getElementById('prod-currency')?.addEventListener('change', refreshGros
 <?php // scripts – tabela, filtry, edycja, eksport ?>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // tooltips
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+  // tooltips – container:body żeby nie uciekały wewnątrz modalu
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    new bootstrap.Tooltip(el, { container: 'body', trigger: 'hover focus' })
+  );
   // CSRF
   const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
 
@@ -780,29 +911,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // modal + formularz
-  const modalEl   = document.getElementById('product-create');
-  const modal     = new bootstrap.Modal(modalEl);
-  const form      = document.getElementById('product-form');
-  const titleEl   = document.getElementById('product-modal-title');
-  const idField   = document.getElementById('product-id');
-  const methodFld = document.getElementById('product-method');
-  const codeGen   = document.getElementById('code-gen');
+  const modalEl    = document.getElementById('product-create');
+  const modal      = new bootstrap.Modal(modalEl);
+  const form       = document.getElementById('product-form');
+  const titleEl    = document.getElementById('product-modal-title');
+  const subtitleEl = document.getElementById('product-modal-subtitle');
+  const idField    = document.getElementById('product-id');
+  const methodFld  = document.getElementById('product-method');
+  const codeGen    = document.getElementById('code-gen');
+  const submitBtn  = document.getElementById('product-submit-btn');
+  const submitSpinner = document.getElementById('prod-form-spinner');
+  const submitIcon    = document.getElementById('prod-form-icon');
+  const submitLabel   = document.getElementById('prod-form-label');
 
-  // generator prostego SKU
+  // Generator SKU
   codeGen?.addEventListener('click', () => {
     const name = (form.querySelector('input[name="name"]')?.value || '').trim();
-    const base = (name || 'ITEM').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g,'').slice(0,16);
+    const base = (name || 'ITEM').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g,'').slice(0, 16);
     const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-    const code = [base, rand].filter(Boolean).join('-');
-    const codeInput = document.getElementById('code');
-    if (codeInput) codeInput.value = code;
+    form.querySelector('#code').value = [base, rand].filter(Boolean).join('-');
   });
 
-  form?.addEventListener('submit', (e) => {
-    if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); }
-    form.classList.add('was-validated');
-  });
-
+  // Pomocnicze
   function setVal(selector, value) {
     const el = form?.querySelector(selector);
     if (el) el.value = value ?? '';
@@ -811,61 +941,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = form?.querySelector(selector);
     if (el) el.checked = !!Number(on);
   }
+  function setRadio(name, value) {
+    form?.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+      r.checked = (r.value === String(value ?? '0'));
+    });
+  }
+  function setBtnLoading(loading) {
+    if (!submitBtn) return;
+    submitBtn.disabled = loading;
+    submitSpinner?.classList.toggle('d-none', !loading);
+    submitIcon?.classList.toggle('d-none', loading);
+    if (submitLabel) submitLabel.textContent = loading ? 'Zapisuję…' : 'Zapisz';
+  }
 
-  // reset -> ADD
+  // Obrót chevron sekcji KSeF
+  document.getElementById('prod-ksef-collapse')?.addEventListener('show.bs.collapse', () => {
+    document.getElementById('prod-ksef-arrow')?.style.setProperty('transform', 'rotate(90deg)');
+  });
+  document.getElementById('prod-ksef-collapse')?.addEventListener('hide.bs.collapse', () => {
+    document.getElementById('prod-ksef-arrow')?.style.setProperty('transform', 'rotate(0deg)');
+  });
+
+  // Reset → tryb ADD
   function resetFormToAdd() {
     form.reset();
-    idField.value = '';
+    idField.value   = '';
     methodFld.value = 'POST';
     form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Products', 'action' => 'add']) ?>');
-    modalEl.dataset.mode = 'add';
-    titleEl.textContent = 'Dodaj produkt/usługę';
+    modalEl.dataset.mode    = 'add';
+    titleEl.innerHTML       = '<i class="ri-price-tag-3-line me-1 text-primary"></i> Dodaj produkt / usługę';
+    if (subtitleEl) subtitleEl.textContent = 'Wypełnij pola i kliknij Zapisz.';
     form.querySelectorAll('.is-invalid').forEach(i => i.classList.remove('is-invalid'));
     form.querySelectorAll('.invalid-feedback').forEach(i => i.remove());
+    form.classList.remove('was-validated');
+    setBtnLoading(false);
+    // radio na "Produkt" domyślnie
+    setRadio('is_service', '0');
+    // zwiń sekcję KSeF
+    const ksefEl = document.getElementById('prod-ksef-collapse');
+    if (ksefEl) bootstrap.Collapse.getOrCreateInstance(ksefEl, { toggle: false }).hide();
   }
   document.querySelectorAll('[data-bs-target="#product-create"]').forEach(btn => {
     btn.addEventListener('click', resetFormToAdd);
   });
 
-  // klik edycji
+  // Klik edycji (ładowanie danych)
   document.querySelectorAll('.js-edit').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id; if (!id) return;
       resetFormToAdd();
-      titleEl.textContent = 'Edytuj: ' + (btn.dataset.name || ('#' + id));
+      titleEl.innerHTML = '<i class="ri-pencil-line me-1 text-warning"></i> Edytuj produkt / usługę';
+      if (subtitleEl) subtitleEl.textContent = btn.dataset.name || ('ID: ' + id);
       modalEl.dataset.mode = 'edit';
-      idField.value = id;
+      idField.value   = id;
       methodFld.value = 'PUT';
       form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Products', 'action' => 'edit']) ?>/' + id);
 
+      // Pokaż modal od razu (skeleton)
+      modal.show();
+
       try {
-        const res = await fetch('<?= $this->Url->build(['controller' => 'Products', 'action' => 'viewJson']) ?>/' + id, {
+        const res  = await fetch('<?= $this->Url->build(['controller' => 'Products', 'action' => 'viewJson']) ?>/' + id, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         const data = await res.json();
         if (!data.success) throw new Error('Brak danych');
         const p = data.product || {};
 
-        setVal('input[name="name"]', p.name);
-        setVal('input[name="code"]', p.code);
-        setVal('input[name="net_price"]', p.net_price);
-        setVal('select[name="currency"]', p.currency || 'PLN');
-        setVal('select[name="unit_id"]', p.unit_id);
-        setVal('select[name="vat_id"]', p.vat_id);
+        // Podstawowe
+        setVal('input[name="name"]',    p.name);
+        setVal('input[name="code"]',    p.code);
         setVal('input[name="barcode"]', p.barcode);
-        setVal('input[name="pkwiu"]', p.pkwiu);
+        setVal('input[name="pkwiu"]',   p.pkwiu);
+        const desc = form.querySelector('textarea[name="description"]');
+        if (desc) desc.value = p.description ?? '';
+
+        // Cena
+        setVal('input[name="net_price"]',  p.net_price);
+        setVal('select[name="currency"]',  p.currency || 'PLN');
+        setVal('select[name="unit_id"]',   p.unit_id);
+        setVal('select[name="vat_id"]',    p.vat_id);
+
+        // Klasyfikacja
         setVal('select[name="gtu_code"]', p.gtu_code);
-        const desc = form.querySelector('textarea[name="description"]'); if (desc) desc.value = p.description ?? '';
-        setChecked('input[name="is_service"]', p.is_service);
+
+        // Typ (radio) + aktywność (switch)
+        setRadio('is_service', p.is_service ? '1' : '0');
         setChecked('input[name="is_active"]', p.is_active);
 
-        modal.show();
+        // Pola KSeF
+        setVal('input[name="gtin"]',              p.gtin);
+        setVal('input[name="cn_code"]',           p.cn_code);
+        setVal('input[name="pkob"]',              p.pkob);
+        setVal('input[name="excise_amount"]',     p.excise_amount != null ? p.excise_amount : '');
+        setVal('select[name="procedure_marking"]', p.procedure_marking);
+        setChecked('input[name="is_attachment15"]', p.is_attachment15);
 
-        // po podstawieniu danych odśwież podgląd brutto i opis GTU
-        const ev = new Event('change');
-        document.getElementById('vat-id')?.dispatchEvent(ev);
-        document.getElementById('net-price')?.dispatchEvent(new Event('input'));
-        document.getElementById('gtu-code')?.dispatchEvent(ev);
+        // Odśwież podgląd brutto i opis GTU
+        document.getElementById('prod-vat-id')?.dispatchEvent(new Event('change'));
+        document.getElementById('prod-net-price')?.dispatchEvent(new Event('input'));
+        document.getElementById('gtu-code')?.dispatchEvent(new Event('change'));
+
+        // Jeśli któreś pole KSeF jest wypełnione – rozwiń sekcję
+        if (p.gtin || p.cn_code || p.pkob || p.excise_amount || p.procedure_marking || p.is_attachment15) {
+          const ksefEl = document.getElementById('prod-ksef-collapse');
+          if (ksefEl) bootstrap.Collapse.getOrCreateInstance(ksefEl, { toggle: false }).show();
+        }
 
       } catch {
         toastBody.textContent = 'Nie udało się wczytać danych produktu.'; toast.show();
@@ -873,27 +1054,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // submit (AJAX)
+  // Submit (AJAX)
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!form.checkValidity()) { e.stopPropagation(); form.classList.add('was-validated'); return; }
 
-    const mode = modalEl.dataset.mode || 'add';
+    const mode   = modalEl.dataset.mode || 'add';
     const action = form.getAttribute('action');
-    const fd = new FormData(form);
+    const fd     = new FormData(form);
+
+    setBtnLoading(true);
 
     try {
-      const res = await fetch(action, {
-        method: 'POST', // _method=PUT dla edycji
+      const res  = await fetch(action, {
+        method: 'POST',
         credentials: 'same-origin',
         headers: { 'X-CSRF-Token': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' },
         body: fd
       });
       const data = await res.json();
 
-      // wyczyść błędy
       form.querySelectorAll('.is-invalid').forEach(i => i.classList.remove('is-invalid'));
-      form.querySelectorAll('.invalid-feedback').forEach(i => i.remove());
+      form.querySelectorAll('.server-invalid-feedback').forEach(i => i.remove());
 
       if (data.success) {
         toastBody.textContent = mode === 'add' ? 'Dodano produkt/usługę.' : 'Zapisano zmiany.'; toast.show();
@@ -907,17 +1089,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const input = form.querySelector(`[name="${field}"]`);
             if (input) {
               input.classList.add('is-invalid');
-              let fb = input.nextElementSibling;
-              if (!fb || !fb.classList.contains('invalid-feedback')) {
-                fb = document.createElement('div'); fb.className = 'invalid-feedback';
-                input.insertAdjacentElement('afterend', fb);
-              }
+              const fb = document.createElement('div');
+              fb.className = 'invalid-feedback server-invalid-feedback';
               fb.textContent = Object.values(msgs).flat().join(', ');
+              input.insertAdjacentElement('afterend', fb);
             }
           }
         }
+        setBtnLoading(false);
       }
     } catch {
+      setBtnLoading(false);
       toastBody.textContent = 'Błąd połączenia z serwerem.'; toast.show();
     }
   });
@@ -1026,5 +1208,515 @@ document.addEventListener('DOMContentLoaded', () => {
   exportCancel?.addEventListener('click', () => {
     if (exportAbortCtrl) { exportCancel.disabled = true; exportAbortCtrl.abort(); }
   });
+
+  // === Modal: Podgląd produktu/usługi ===
+  (function(){
+    const modalEl = document.getElementById('productViewModal');
+    if (!modalEl) return;
+    const bsModal = new bootstrap.Modal(modalEl);
+
+    const elName        = document.getElementById('pv-name');
+    const elType        = document.getElementById('pv-type');
+    const elStatus      = document.getElementById('pv-status');
+    const elCode        = document.getElementById('pv-code');
+    const elBarcode     = document.getElementById('pv-barcode');
+    const elUnit        = document.getElementById('pv-unit');
+    const elVat         = document.getElementById('pv-vat');
+    const elPrice       = document.getElementById('pv-price');
+    const elCurrency    = document.getElementById('pv-currency');
+    const elPkwiu       = document.getElementById('pv-pkwiu');
+    const elGtu         = document.getElementById('pv-gtu');
+    const elGtin        = document.getElementById('pv-gtin');
+    const elCn          = document.getElementById('pv-cn');
+    const elPkob        = document.getElementById('pv-pkob');
+    const elExcise      = document.getElementById('pv-excise');
+    const elProcedure   = document.getElementById('pv-procedure');
+    const elAttach15    = document.getElementById('pv-attach15');
+    const elDesc        = document.getElementById('pv-desc');
+    const elDescRow     = document.getElementById('pv-desc-row');
+    const elCreated     = document.getElementById('pv-created');
+    const elEditBtn     = document.getElementById('pv-edit-btn');
+    const elLoader      = document.getElementById('pv-loader');
+    const elBody        = document.getElementById('pv-body');
+
+    const VIEWJSON_URL = '<?= $this->Url->build(['controller' => 'Products', 'action' => 'viewJson']) ?>/';
+
+    function dash(v) { return (v !== null && v !== undefined && v !== '') ? v : '—'; }
+    function money(v, cur) {
+      const n = parseFloat(v);
+      if (isNaN(n)) return '—';
+      return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (cur || 'PLN');
+    }
+
+    document.querySelectorAll('.js-product-view').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+
+        // Reset i pokaż skeleton
+        if (elLoader) elLoader.classList.remove('d-none');
+        if (elBody)   elBody.classList.add('d-none');
+        bsModal.show();
+
+        try {
+          const res  = await fetch(VIEWJSON_URL + encodeURIComponent(id), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message || 'Błąd');
+          const p = data.product;
+
+          if (elName)   elName.textContent  = p.name || '—';
+          if (elType)   elType.innerHTML    = p.is_service
+            ? '<span class="badge bg-info-transparent"><i class="ri-tools-line me-1"></i>Usługa</span>'
+            : '<span class="badge bg-secondary-transparent"><i class="ri-box-3-line me-1"></i>Produkt</span>';
+          if (elStatus) elStatus.innerHTML  = p.is_active
+            ? '<span class="badge bg-success-transparent"><i class="ri-check-line me-1"></i>Aktywny</span>'
+            : '<span class="badge bg-danger-transparent"><i class="ri-close-line me-1"></i>Nieaktywny</span>';
+          if (elCode)     elCode.textContent     = dash(p.code);
+          if (elBarcode)  elBarcode.textContent  = dash(p.barcode);
+          if (elUnit)     elUnit.textContent     = dash(data.unit_name);
+          if (elVat)      elVat.textContent      = dash(data.vat_label);
+          if (elPrice)    elPrice.textContent    = money(p.net_price, p.currency);
+          if (elCurrency) elCurrency.textContent = dash(p.currency);
+          if (elPkwiu)    elPkwiu.textContent    = dash(p.pkwiu);
+          if (elGtu)      elGtu.textContent      = dash(p.gtu_code);
+          if (elGtin)     elGtin.textContent     = dash(p.gtin);
+          if (elCn)       elCn.textContent       = dash(p.cn_code);
+          if (elPkob)     elPkob.textContent     = dash(p.pkob);
+          if (elExcise)   elExcise.textContent   = p.excise_amount !== null && p.excise_amount !== undefined ? p.excise_amount : '—';
+          if (elProcedure)elProcedure.textContent= dash(p.procedure_marking);
+          if (elAttach15) elAttach15.textContent = p.is_attachment15 ? 'Tak' : 'Nie';
+          if (elDesc) {
+            if (p.description) {
+              elDesc.textContent = p.description;
+              elDescRow?.classList.remove('d-none');
+            } else {
+              elDescRow?.classList.add('d-none');
+            }
+          }
+          if (elCreated) elCreated.textContent = p.created ? p.created.substring(0, 10) : '—';
+          if (elEditBtn) {
+            elEditBtn.dataset.id   = id;
+            elEditBtn.dataset.name = p.name || '';
+          }
+
+          if (elLoader) elLoader.classList.add('d-none');
+          if (elBody)   elBody.classList.remove('d-none');
+        } catch (e) {
+          if (elLoader) elLoader.innerHTML = '<div class="alert alert-danger m-3">Nie udało się wczytać danych produktu.</div>';
+        }
+      });
+    });
+
+    // Przycisk "Edytuj" w modalu — otwiera modal edycji
+    elEditBtn?.addEventListener('click', () => {
+      bsModal.hide();
+      setTimeout(() => {
+        document.querySelector(`.js-edit[data-id="${elEditBtn.dataset.id}"]`)?.click();
+      }, 300);
+    });
+  })();
+
+  // === Import z faktury24.com ===
+  (function(){
+    const btnOpen    = document.getElementById('btn-import-f24-products');
+    const modalEl    = document.getElementById('importF24ProductsModal');
+    if (!btnOpen || !modalEl) return;
+    const bsModal    = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+
+    const elLoading  = document.getElementById('pf24-loading');
+    const elError    = document.getElementById('pf24-error');
+    const elErrorMsg = document.getElementById('pf24-error-msg');
+    const elResults  = document.getElementById('pf24-results');
+    const tbody      = document.getElementById('pf24-tbody');
+    const checkAll   = document.getElementById('pf24-check-all');
+    const selBadge   = document.getElementById('pf24-selected-badge');
+    const countLabel = document.getElementById('pf24-count-label');
+    const alreadyLbl = document.getElementById('pf24-already-label');
+    const btnImport  = document.getElementById('pf24-btn-import');
+    const btnImpLbl  = document.getElementById('pf24-btn-import-label');
+    const progWrap   = document.getElementById('pf24-import-progress');
+    const progBar    = document.getElementById('pf24-progress-bar');
+    const progLabel  = document.getElementById('pf24-progress-label');
+    const progPct    = document.getElementById('pf24-progress-pct');
+    const resultDiv  = document.getElementById('pf24-import-result');
+
+    const FETCH_URL  = '<?= $this->Url->build(['controller' => 'Products', 'action' => 'importFetch']) ?>';
+    const IMPORT_URL = '<?= $this->Url->build(['controller' => 'Products', 'action' => 'importBatch']) ?>';
+
+    let allRows = [];
+
+    function showPanel(el) {
+      ['pf24-loading','pf24-error','pf24-results'].forEach(id => document.getElementById(id)?.classList.add('d-none'));
+      el?.classList.remove('d-none');
+    }
+
+    function escHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function updateSelected() {
+      const checked = tbody.querySelectorAll('input[type="checkbox"]:checked').length;
+      selBadge.textContent = checked + ' zaznaczonych';
+      if (btnImport) {
+        btnImport.disabled = checked === 0;
+        if (btnImpLbl) btnImpLbl.textContent = checked > 0 ? 'Importuj zaznaczone (' + checked + ')' : 'Importuj zaznaczone';
+      }
+      const total = tbody.querySelectorAll('input[type="checkbox"]:not(:disabled)').length;
+      checkAll.indeterminate = checked > 0 && checked < total;
+      checkAll.checked = total > 0 && checked === total;
+    }
+
+    function formatPrice(p) {
+      const n = parseFloat(p);
+      if (isNaN(n)) return '—';
+      return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł';
+    }
+
+    function renderRows(rows) {
+      allRows = rows;
+      const alreadyCount = rows.filter(r => r.already_imported).length;
+      countLabel.textContent = rows.length + ' pozycji';
+      alreadyLbl.textContent = alreadyCount > 0 ? '(' + alreadyCount + ' już zaimportowanych)' : '';
+
+      tbody.innerHTML = rows.map((r, i) => {
+        const typeIcon = r.is_service
+          ? '<span class="badge bg-info-transparent text-info"><i class="ri-tools-line me-1"></i>Usługa</span>'
+          : '<span class="badge bg-primary-transparent text-primary"><i class="ri-box-3-line me-1"></i>Towar</span>';
+        const vatBadge = r.vat_label
+          ? '<span class="badge bg-light text-dark">' + escHtml(r.vat_label) + '</span>'
+          : (r.vat_rate !== '' && r.vat_rate !== null ? '<span class="badge bg-light text-dark">' + escHtml(r.vat_rate) + '%</span>' : '');
+        const statusBadge = r.already_imported
+          ? '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>'
+          : '<span class="badge bg-success-transparent text-success">Nowy</span>';
+        const meta = [
+          r.unit_name ? escHtml(r.unit_name) : '',
+        ].filter(Boolean).join(' · ');
+
+        return `<tr class="${r.already_imported ? 'already-imported' : ''}" data-idx="${i}">
+          <td class="text-center">
+            <input type="checkbox" class="form-check-input pf24-row-check" data-idx="${i}"
+              ${r.already_imported ? 'disabled title="Już istnieje w bazie"' : ''}>
+          </td>
+          <td>
+            <div class="fw-semibold">${escHtml(r.name)}</div>
+            ${meta ? '<div class="small text-muted">' + meta + '</div>' : ''}
+            ${r.description ? '<div class="small text-muted fst-italic">' + escHtml(r.description.substring(0,80)) + (r.description.length > 80 ? '…' : '') + '</div>' : ''}
+          </td>
+          <td>${typeIcon}</td>
+          <td class="text-end">${formatPrice(r.net_price)}</td>
+          <td class="text-center">${vatBadge}</td>
+          <td class="text-center">${statusBadge}</td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.pf24-row-check').forEach(cb => cb.addEventListener('change', updateSelected));
+      updateSelected();
+    }
+
+    checkAll?.addEventListener('change', () => {
+      tbody.querySelectorAll('.pf24-row-check:not(:disabled)').forEach(cb => cb.checked = checkAll.checked);
+      updateSelected();
+    });
+
+    async function fetchProducts() {
+      showPanel(elLoading);
+      btnImport?.classList.add('d-none');
+      if (resultDiv) { resultDiv.innerHTML = ''; resultDiv.classList.add('d-none'); }
+      if (progWrap) progWrap.classList.add('d-none');
+      try {
+        const resp = await fetch(FETCH_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await resp.json();
+        if (!data.success) {
+          elErrorMsg.textContent = data.error || 'Nieznany błąd.';
+          showPanel(elError);
+          return;
+        }
+        if (!data.rows || data.rows.length === 0) {
+          elErrorMsg.textContent = 'Stary system nie zwrócił żadnych towarów/usług dla NIP tej firmy.';
+          showPanel(elError);
+          return;
+        }
+        renderRows(data.rows);
+        showPanel(elResults);
+        btnImport?.classList.remove('d-none');
+      } catch (e) {
+        elErrorMsg.textContent = 'Błąd połączenia: ' + (e?.message || e);
+        showPanel(elError);
+      }
+    }
+
+    btnOpen.addEventListener('click', () => {
+      bsModal.show();
+      fetchProducts();
+    });
+
+    btnImport?.addEventListener('click', async () => {
+      const selected = [];
+      tbody.querySelectorAll('.pf24-row-check:checked').forEach(cb => {
+        const idx = parseInt(cb.dataset.idx, 10);
+        if (!isNaN(idx) && allRows[idx]) selected.push(allRows[idx]);
+      });
+      if (!selected.length) return;
+
+      btnImport.disabled = true;
+      checkAll.disabled = true;
+      if (progWrap) {
+        progWrap.classList.remove('d-none');
+        progBar.style.width = '0%';
+        progPct.textContent = '0%';
+        progLabel.textContent = 'Importowanie ' + selected.length + ' pozycji…';
+      }
+
+      let fake = 0;
+      const t = setInterval(() => {
+        if (fake < 88) { fake += 3; progBar.style.width = fake + '%'; progPct.textContent = fake + '%'; }
+      }, 120);
+
+      try {
+        const resp = await fetch(IMPORT_URL, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': CSRF_TOKEN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rows: selected }),
+        });
+        const data = await resp.json();
+
+        clearInterval(t);
+        progBar.style.width = '100%';
+        progPct.textContent = '100%';
+        progBar.classList.remove('progress-bar-animated');
+
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          if (data.success) {
+            const errHtml = data.errors?.length
+              ? '<ul class="mb-0 mt-2 small">' + data.errors.map(e => '<li>' + escHtml(e) + '</li>').join('') + '</ul>'
+              : '';
+            resultDiv.innerHTML = `<div class="alert alert-success mb-0">
+              <i class="ri-check-circle-line me-1"></i>
+              <strong>Zaimportowano: ${data.imported}</strong>${data.skipped > 0 ? ', pominięto (duplikaty): ' + data.skipped : ''}
+              ${errHtml}
+            </div>`;
+          } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="ri-error-warning-line me-1"></i>${escHtml(data.error || 'Błąd importu.')}</div>`;
+          }
+        }
+
+        if (data.success && data.imported > 0) {
+          tbody.querySelectorAll('.pf24-row-check:checked').forEach(cb => {
+            cb.closest('tr')?.classList.add('already-imported');
+            cb.checked = false;
+            cb.disabled = true;
+          });
+          tbody.querySelectorAll('tr.already-imported td:last-child').forEach(td => {
+            if (td.innerHTML.includes('Nowy')) td.innerHTML = '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>';
+          });
+          updateSelected();
+        }
+      } catch (e) {
+        clearInterval(t);
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          resultDiv.innerHTML = `<div class="alert alert-danger mb-0">Błąd: ${escHtml(e?.message || e)}</div>`;
+        }
+      } finally {
+        btnImport.disabled = false;
+        checkAll.disabled = false;
+      }
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      allRows = [];
+      if (tbody) tbody.innerHTML = '';
+    });
+  })();
 });
 </script>
+
+<!-- Modal: Import z faktury24.com (produkty/usługi) -->
+<div class="modal fade" id="importF24ProductsModal" tabindex="-1" aria-labelledby="importF24ProductsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar bg-info-transparent rounded" style="width:2.5rem;height:2.5rem;display:flex;align-items:center;justify-content:center;">
+            <i class="ri-download-cloud-2-line fs-18 text-info"></i>
+          </div>
+          <div>
+            <h5 class="modal-title mb-0" id="importF24ProductsModalLabel">Import towarów/usług z faktury24.com</h5>
+            <small class="text-muted">Pozycje przypisane do NIP Twojej firmy w starym systemie</small>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        <div id="pf24-loading" class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
+          <div class="spinner-border text-info" role="status" style="width:2.5rem;height:2.5rem;"></div>
+          <div class="text-muted">Pobieranie towarów/usług z faktury24.com…</div>
+        </div>
+
+        <div id="pf24-error" class="d-none p-4">
+          <div class="alert alert-danger mb-0" id="pf24-error-msg"></div>
+        </div>
+
+        <div id="pf24-results" class="d-none">
+          <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <span class="fw-semibold" id="pf24-count-label">0 pozycji</span>
+              <span class="text-muted ms-2 small" id="pf24-already-label"></span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="pf24-check-all">
+                <label class="form-check-label small" for="pf24-check-all">Zaznacz wszystkich nieimportowanych</label>
+              </div>
+              <span class="badge bg-primary-transparent text-primary" id="pf24-selected-badge">0 zaznaczonych</span>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+            <table class="table table-hover table-sm align-middle mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="width:2.5rem;"></th>
+                  <th>Nazwa</th>
+                  <th style="width:7rem;">Typ</th>
+                  <th style="width:9rem;" class="text-end">Cena netto</th>
+                  <th style="width:5rem;" class="text-center">VAT</th>
+                  <th style="width:8rem;" class="text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody id="pf24-tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="pf24-import-progress" class="d-none px-4 py-3 border-top">
+            <div class="d-flex justify-content-between mb-1">
+              <small class="text-muted" id="pf24-progress-label">Importowanie…</small>
+              <small class="text-muted" id="pf24-progress-pct">0%</small>
+            </div>
+            <div class="progress" style="height:.5rem;">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" id="pf24-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div id="pf24-import-result" class="d-none px-4 py-3 border-top"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-info d-none" id="pf24-btn-import" disabled>
+          <i class="ri-download-cloud-2-line me-1"></i>
+          <span id="pf24-btn-import-label">Importuj zaznaczone</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #importF24ProductsModal .sticky-top { top: 0; z-index: 1; }
+  #importF24ProductsModal tbody tr.already-imported td { opacity: .5; }
+</style>
+
+<!-- Modal: Podgląd produktu/usługi -->
+<div class="modal fade" id="productViewModal" tabindex="-1" aria-labelledby="productViewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-0" id="productViewModalLabel">
+            <span id="pv-name">…</span>
+          </h5>
+          <div class="d-flex align-items-center gap-2 mt-1" id="pv-badges">
+            <span id="pv-type"></span>
+            <span id="pv-status"></span>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Skeleton loader -->
+        <div id="pv-loader" class="d-flex align-items-center gap-2 py-4 justify-content-center">
+          <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+          <span class="text-muted">Wczytywanie…</span>
+        </div>
+        <!-- Treść -->
+        <div id="pv-body" class="d-none">
+          <div class="row g-3">
+            <!-- Kolumna 1: cena i jednostka -->
+            <div class="col-md-6">
+              <div class="card border-0 bg-body-secondary h-100">
+                <div class="card-body">
+                  <h6 class="text-muted fw-normal mb-3"><i class="ri-price-tag-3-line me-1"></i>Cena i sprzedaż</h6>
+                  <dl class="row mb-0 small">
+                    <dt class="col-6 text-muted fw-normal">Cena netto</dt>
+                    <dd class="col-6 fw-semibold mb-2" id="pv-price">—</dd>
+                    <dt class="col-6 text-muted fw-normal">Waluta</dt>
+                    <dd class="col-6 mb-2" id="pv-currency">—</dd>
+                    <dt class="col-6 text-muted fw-normal">Stawka VAT</dt>
+                    <dd class="col-6 mb-2" id="pv-vat">—</dd>
+                    <dt class="col-6 text-muted fw-normal">Jednostka miary</dt>
+                    <dd class="col-6 mb-2" id="pv-unit">—</dd>
+                    <dt class="col-6 text-muted fw-normal">Kod</dt>
+                    <dd class="col-6 mb-2" id="pv-code">—</dd>
+                    <dt class="col-6 text-muted fw-normal">Barcode</dt>
+                    <dd class="col-6 mb-0" id="pv-barcode">—</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+            <!-- Kolumna 2: klasyfikacja KSeF/JPK -->
+            <div class="col-md-6">
+              <div class="card border-0 bg-body-secondary h-100">
+                <div class="card-body">
+                  <h6 class="text-muted fw-normal mb-3"><i class="ri-file-list-3-line me-1"></i>Klasyfikacja KSeF/JPK</h6>
+                  <dl class="row mb-0 small">
+                    <dt class="col-5 text-muted fw-normal">PKWiU</dt>
+                    <dd class="col-7 mb-2" id="pv-pkwiu">—</dd>
+                    <dt class="col-5 text-muted fw-normal">Kod GTU</dt>
+                    <dd class="col-7 mb-2" id="pv-gtu">—</dd>
+                    <dt class="col-5 text-muted fw-normal">GTIN</dt>
+                    <dd class="col-7 mb-2" id="pv-gtin">—</dd>
+                    <dt class="col-5 text-muted fw-normal">CN</dt>
+                    <dd class="col-7 mb-2" id="pv-cn">—</dd>
+                    <dt class="col-5 text-muted fw-normal">PKOB</dt>
+                    <dd class="col-7 mb-2" id="pv-pkob">—</dd>
+                    <dt class="col-5 text-muted fw-normal">Kwota akcyzy</dt>
+                    <dd class="col-7 mb-2" id="pv-excise">—</dd>
+                    <dt class="col-5 text-muted fw-normal">Procedura</dt>
+                    <dd class="col-7 mb-2" id="pv-procedure">—</dd>
+                    <dt class="col-5 text-muted fw-normal">Zał. 15</dt>
+                    <dd class="col-7 mb-0" id="pv-attach15">—</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+            <!-- Opis (pełna szerokość, ukryty jeśli pusty) -->
+            <div class="col-12 d-none" id="pv-desc-row">
+              <div class="card border-0 bg-body-secondary">
+                <div class="card-body">
+                  <h6 class="text-muted fw-normal mb-2"><i class="ri-align-left me-1"></i>Opis</h6>
+                  <p class="mb-0 small" id="pv-desc" style="white-space:pre-wrap;"></p>
+                </div>
+              </div>
+            </div>
+            <!-- Stopka -->
+            <div class="col-12">
+              <small class="text-muted">Dodano: <span id="pv-created">—</span></small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-success-light" id="pv-edit-btn" data-id="" data-name="">
+          <i class="ri-pencil-line me-1"></i>Edytuj
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

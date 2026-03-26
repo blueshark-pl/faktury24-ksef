@@ -1,4 +1,17 @@
 <?php
+/**
+ * @deprecated LEGACY — ten plik NIE jest używany przez aplikację.
+ *
+ * Aktywna wersja kontrolera: src/Controller/InvoicesController.php
+ *
+ * Ten plik to starszy snapshot (brakuje wielu metod: drafts, scheduleDraft,
+ * sendDraftNow, editVat/editCurrency/..., runPlannedDrafts itp.).
+ * CakePHP autoloader nie ładuje tego pliku bo ścieżka nie odpowiada
+ * konwencji PSR-4 (App\Controller → src/Controller/).
+ *
+ * Można bezpiecznie usunąć po przeglądzie historii git.
+ * Commit: duplikat wykryty 2026-03-18, README TODO "Invoices".
+ */
 declare(strict_types=1);
 
 namespace App\Controller;

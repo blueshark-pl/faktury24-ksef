@@ -66,6 +66,9 @@ $companyId = $identity?->get('company_id');
         ]
       ) ?>
 
+    <button class="btn btn-outline-info btn-wave" id="btn-import-f24">
+      <i class="ri-download-cloud-2-line align-middle me-1"></i> Importuj z faktury24
+    </button>
     <button class="btn btn-primary btn-wave" data-bs-toggle="modal" data-bs-target="#contractor-create">
       <i class="ri-add-line me-1"></i> Dodaj kontrahenta
     </button>
@@ -503,10 +506,18 @@ $companyId = $identity?->get('company_id');
 
 <!-- Modal: Add/Edit kontrahent (z GUS lookup) -->
 <div class="modal fade" id="contractor-create" tabindex="-1" aria-hidden="true" data-mode="add">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title" id="contractor-modal-title">Dodaj kontrahenta</h6>
+      <div class="modal-header border-bottom-0 pb-0">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar avatar-sm bg-primary-transparent rounded" id="contractor-modal-icon-wrap">
+            <i class="ri-contacts-book-line fs-16 text-primary" id="contractor-modal-icon"></i>
+          </div>
+          <div>
+            <h6 class="modal-title mb-0" id="contractor-modal-title">Dodaj kontrahenta</h6>
+            <small class="text-muted" id="contractor-modal-subtitle">Wypełnij dane i zapisz kontrahenta</small>
+          </div>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
 
@@ -525,7 +536,7 @@ $companyId = $identity?->get('company_id');
           <!-- Przełącznik typu kontrahenta (firma / osoba) -->
           <div class="border rounded p-3 mb-3" id="type-switch-section">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-              <strong class="small">Typ kontrahenta</strong>
+              <strong class="small"><i class="ri-building-line me-1 text-primary"></i>Typ kontrahenta</strong>
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" id="use-pesel">
                 <label class="form-check-label" for="use-pesel">
@@ -539,7 +550,7 @@ $companyId = $identity?->get('company_id');
           <!-- Sekcja: Dane podstawowe -->
           <div class="border rounded p-3">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Dane podstawowe</strong>
+              <strong class="small"><i class="ri-id-card-line me-1 text-primary"></i>Dane podstawowe</strong>
               <!-- Aktywność przeniesiona tutaj po prawej -->
               <div class="form-check form-switch mb-0 ms-auto">
                 <?= $this->Form->control('is_active', [
@@ -649,7 +660,7 @@ $companyId = $identity?->get('company_id');
           <!-- Sekcja: Dane kontaktowe -->
           <div class="border rounded p-3">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Dane kontaktowe</strong>
+              <strong class="small"><i class="ri-phone-line me-1 text-primary"></i>Dane kontaktowe</strong>
             </div>
             <div class="row g-3">
               <div class="col-md-6">
@@ -662,11 +673,10 @@ $companyId = $identity?->get('company_id');
                   <div class="help-slot"></div>
                 </div>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-6">
                 <div class="form-group">
                   <?= $this->Form->control('phone', [
                     'label' => 'Telefon', 'class' => 'form-control', 'id' => 'phone',
-                    // 'placeholder' => '+48 600 000 000',
                     'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
                   ]) ?>
                   <div class="help-slot"></div>
@@ -677,7 +687,7 @@ $companyId = $identity?->get('company_id');
 
           <div class="border rounded p-3" id="contractor-email-settings-section">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Ustawienia e-mailowe</strong>
+              <strong class="small"><i class="ri-mail-settings-line me-1 text-primary"></i>Ustawienia e-mailowe</strong>
             </div>
             <div class="row g-3">
               <div class="col-12">
@@ -710,10 +720,10 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
           <!-- Sekcja: Dane adresowe -->
           <div class="border rounded p-3">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Dane adresowe</strong>
+              <strong class="small"><i class="ri-map-pin-line me-1 text-primary"></i>Dane adresowe</strong>
             </div>
             <div class="row g-3">
-              <div class="col-md-4">
+              <div class="col-md-5">
                 <div class="form-group">
                   <?= $this->Form->control('city', [
                     'label' => 'Miejscowość', 'class' => 'form-control',
@@ -722,7 +732,7 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
                   <div class="help-slot"></div>
                 </div>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-5">
                 <div class="form-group">
                   <?= $this->Form->control('street', [
                     'label' => 'Ulica i nr', 'class' => 'form-control',
@@ -732,17 +742,17 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
                   <div class="help-slot"></div>
                 </div>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-2">
                 <div class="form-group">
                   <?= $this->Form->control('postal_code', [
-                    'label' => 'Kod pocztowy', 'class' => 'form-control',
+                    'label' => 'Kod', 'class' => 'form-control',
                     'placeholder' => '00-000',
                     'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
                   ]) ?>
                   <div class="help-slot"></div>
                 </div>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-4">
                 <div class="form-group">
                   <?= $this->Form->hidden('country', [ 'value' => 'PL', 'id' => 'country-hidden' ]) ?>
                   <label for="country-ui" class="form-label mb-0">Kraj</label>
@@ -754,7 +764,7 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
 
           <div class="border rounded p-3">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Adres korespondencyjny (opcjonalnie)</strong>
+              <strong class="small"><i class="ri-mail-line me-1 text-primary"></i>Adres korespondencyjny (opcjonalnie)</strong>
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="use-correspondence-address">
                 <label class="form-check-label" for="use-correspondence-address">Dodać adres korespondencyjny?</label>
@@ -783,7 +793,7 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
           <!-- Sekcja: Odbiorca (powyżej notatek) -->
           <div class="border rounded p-3" id="recipient-section">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <strong class="small">Odbiorca</strong>
+              <strong class="small"><i class="ri-user-received-line me-1 text-primary"></i>Odbiorca</strong>
             </div>
             <div class="row g-3">
               <div class="col-12" id="recipient-toggle-row">
@@ -792,7 +802,8 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
                   <label class="form-check-label" for="add-recipient">Dodaj odbiorcę (tylko dla firm)</label>
                 </div>
               </div>
-              <div class="row g-3 d-none" id="recipient-fields">
+              <div class="col-12 p-0 d-none" id="recipient-fields">
+              <div class="row g-3">
                 <div class="col-md-8">
                   <label for="recipient-name" class="form-label">Nazwa odbiorcy</label>
                   <input type="text" id="recipient-name" name="recipient_name" class="form-control" placeholder="np. Dział Zakupów">
@@ -827,17 +838,23 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
                   <label for="recipient-postal" class="form-label">Kod pocztowy</label>
                   <input type="text" id="recipient-postal" name="recipient_postal_code" class="form-control" placeholder="00-000">
                 </div>
-              </div>
+              </div><!-- end inner row -->
+              </div><!-- end recipient-fields -->
             </div>
           </div>
 
           <!-- Notatki -->
-          <div class="form-group">
-            <?= $this->Form->control('notes', [
-              'label' => 'Notatki', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control',
-              'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
-            ]) ?>
-            <div class="help-slot"></div>
+          <div class="border rounded p-3">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <strong class="small"><i class="ri-sticky-note-line me-1 text-primary"></i>Notatki</strong>
+            </div>
+            <div class="form-group">
+              <?= $this->Form->control('notes', [
+                'label' => false, 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control',
+                'placeholder' => 'Opcjonalne notatki wewnętrzne...',
+                'templates' => ['inputContainer' => '<div class="">{{content}}</div>']
+              ]) ?>
+            </div>
           </div>
 
           
@@ -846,9 +863,11 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
 
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', [
-          'class' => 'btn btn-primary', 'escapeTitle' => false
-        ]) ?>
+        <button type="submit" class="btn btn-primary" id="contractor-submit-btn">
+          <span class="spinner-border spinner-border-sm me-1 d-none" id="contractor-form-spinner" role="status" aria-hidden="true"></span>
+          <i class="ri-save-line me-1" id="contractor-submit-icon"></i>
+          <span id="contractor-submit-label">Zapisz</span>
+        </button>
       </div>
       <?= $this->Form->end() ?>
     </div>
@@ -862,6 +881,11 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
   #contractor-create .form-text { margin-top: .25rem; }
   #contractor-create .input-group > .form-control { min-width: 0; }
   #contractor-create .modal-body .row > [class*="col-"] { align-self: start; }
+  /* modal header icon */
+  #contractor-create .modal-header { align-items: flex-start; }
+  #contractor-create .avatar { width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #contractor-create .modal-header .modal-title { font-size: .95rem; font-weight: 600; }
+  #contractor-create .modal-header small { font-size: .78rem; }
 
   /* premium paginacja */
   .pagination .page-link { min-width: 2rem; text-align: center; }
@@ -898,6 +922,98 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
     </div>
   </div>
 </div>
+<!-- Modal: Import z faktury24.com -->
+<div class="modal fade" id="importF24Modal" tabindex="-1" aria-labelledby="importF24ModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar bg-info-transparent rounded" style="width:2.5rem;height:2.5rem;display:flex;align-items:center;justify-content:center;">
+            <i class="ri-download-cloud-2-line fs-18 text-info"></i>
+          </div>
+          <div>
+            <h5 class="modal-title mb-0" id="importF24ModalLabel">Import z faktury24.com</h5>
+            <small class="text-muted">Kontrahenci przypisani do NIP Twojej firmy w starym systemie</small>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        <!-- Stan: ładowanie -->
+        <div id="f24-loading" class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
+          <div class="spinner-border text-info" role="status" style="width:2.5rem;height:2.5rem;"></div>
+          <div class="text-muted">Pobieranie kontrahentów z faktury24.com…</div>
+        </div>
+
+        <!-- Stan: błąd -->
+        <div id="f24-error" class="d-none p-4">
+          <div class="alert alert-danger mb-0" id="f24-error-msg"></div>
+        </div>
+
+        <!-- Stan: wyniki -->
+        <div id="f24-results" class="d-none">
+          <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <span class="fw-semibold" id="f24-count-label">0 kontrahentów</span>
+              <span class="text-muted ms-2 small" id="f24-already-label"></span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="f24-check-all">
+                <label class="form-check-label small" for="f24-check-all">Zaznacz wszystkich nieimportowanych</label>
+              </div>
+              <span class="badge bg-primary-transparent text-primary" id="f24-selected-badge">0 zaznaczonych</span>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+            <table class="table table-hover table-sm align-middle mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="width:2.5rem;"></th>
+                  <th>Nazwa</th>
+                  <th>NIP</th>
+                  <th>Adres</th>
+                  <th>E-mail</th>
+                  <th style="width:8rem;text-align:center;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="f24-tbody"></tbody>
+            </table>
+          </div>
+
+          <!-- Pasek postępu importu -->
+          <div id="f24-import-progress" class="d-none px-4 py-3 border-top">
+            <div class="d-flex justify-content-between mb-1">
+              <small class="text-muted" id="f24-progress-label">Importowanie…</small>
+              <small class="text-muted" id="f24-progress-pct">0%</small>
+            </div>
+            <div class="progress" style="height:.5rem;">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" id="f24-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <!-- Wynik importu -->
+          <div id="f24-import-result" class="d-none px-4 py-3 border-top"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-info d-none" id="f24-btn-import" disabled>
+          <i class="ri-download-cloud-2-line me-1"></i>
+          <span id="f24-btn-import-label">Importuj zaznaczone</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #importF24Modal .sticky-top { top: 0; z-index: 1; }
+  #importF24Modal tbody tr.already-imported td { opacity: .5; }
+</style>
+
 <!-- Modal: Postęp eksportu -->
 <div class="modal fade" id="exportProgressModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -939,8 +1055,10 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // tooltips
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+  // tooltips (container:body prevents clipping inside modals)
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
+    new bootstrap.Tooltip(el, { container: 'body', trigger: 'hover focus' })
+  );
   // CSRF z <meta name="csrfToken" ...> w layout
   const CSRF_TOKEN = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
 
@@ -1011,8 +1129,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const modal     = new bootstrap.Modal(modalEl);
   const form      = document.getElementById('contractor-form');
   const titleEl   = document.getElementById('contractor-modal-title');
+  const subtitleEl= document.getElementById('contractor-modal-subtitle');
+  const iconEl    = document.getElementById('contractor-modal-icon');
   const idField   = document.getElementById('contractor-id');
   const methodFld = document.getElementById('contractor-method');
+  const submitBtn    = document.getElementById('contractor-submit-btn');
+  const submitSpinner= document.getElementById('contractor-form-spinner');
+  const submitIcon   = document.getElementById('contractor-submit-icon');
+  const submitLabel  = document.getElementById('contractor-submit-label');
+
+  function setBtnLoading(loading) {
+    if (!submitBtn) return;
+    submitBtn.disabled = loading;
+    submitSpinner?.classList.toggle('d-none', !loading);
+    submitIcon?.classList.toggle('d-none', loading);
+    if (submitLabel) submitLabel.textContent = loading ? 'Zapisywanie…' : 'Zapisz';
+  }
 
   modalEl?.addEventListener('shown.bs.modal', () => {
     modalEl.querySelector('input[name="name"]')?.focus();
@@ -1021,8 +1153,17 @@ document.addEventListener('DOMContentLoaded', () => {
   form?.addEventListener('submit', (e) => {
     if (!form.checkValidity()) {
       e.preventDefault(); e.stopPropagation();
+      form.classList.add('was-validated');
+      return;
     }
     form.classList.add('was-validated');
+    setBtnLoading(true);
+  });
+
+  // re-enable button if modal closes (e.g. server error redirect)
+  modalEl?.addEventListener('hidden.bs.modal', () => {
+    setBtnLoading(false);
+    form?.classList.remove('was-validated');
   });
 
   // --- Walidacja NIP/PESEL + przełącznik trybu ---
@@ -1503,6 +1644,9 @@ document.addEventListener('DOMContentLoaded', () => {
     form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'add']) ?>');
     modalEl.dataset.mode = 'add';
     titleEl.textContent = 'Dodaj kontrahenta';
+    if (subtitleEl) subtitleEl.textContent = 'Wypełnij dane i zapisz kontrahenta';
+    if (iconEl) { iconEl.className = 'ri-contacts-book-line fs-16 text-primary'; }
+    setBtnLoading(false);
     // wyczyść invalid-feedback
     form.querySelectorAll('.is-invalid').forEach(i => i.classList.remove('is-invalid'));
     form.querySelectorAll('.invalid-feedback').forEach(i => i.remove());
@@ -1554,12 +1698,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!id) return;
 
       resetFormToAdd();
-      titleEl.textContent = 'Edytuj: ' + (btn.dataset.name || ('#' + id));
+      const editName = btn.dataset.name || ('#' + id);
+      titleEl.textContent = 'Edytuj: ' + editName;
+      if (subtitleEl) subtitleEl.textContent = editName;
+      if (iconEl) iconEl.className = 'ri-edit-2-line fs-16 text-warning';
       modalEl.dataset.mode = 'edit';
       idField.value = id;
       methodFld.value = 'PUT';
       form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'edit']) ?>/' + id);
       contractorEmailSettingsSection?.classList.add('d-none');
+      modal.show();
 
           // Hide recipient section entirely during edit
           const recipientSection = document.getElementById('recipient-section');
@@ -1648,7 +1796,7 @@ document.addEventListener('DOMContentLoaded', () => {
           applyCountryRequirements();
         } catch {}
 
-        modal.show();
+        // modal already shown (skeleton UX) — no second show needed
       } catch (e) {
         toastBody.textContent = 'Nie udało się wczytać danych kontrahenta.';
         toast.show();
@@ -2644,6 +2792,211 @@ csSave?.addEventListener('click', async () => {
     toastBody.textContent = 'Błąd zapisu ustawień.'; toast.show();
   }
 });
+
+  // === Import z faktury24.com ===
+  (function(){
+    const btnOpen    = document.getElementById('btn-import-f24');
+    const modalEl    = document.getElementById('importF24Modal');
+    if (!btnOpen || !modalEl) return;
+    const bsModal    = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+
+    const elLoading  = document.getElementById('f24-loading');
+    const elError    = document.getElementById('f24-error');
+    const elErrorMsg = document.getElementById('f24-error-msg');
+    const elResults  = document.getElementById('f24-results');
+    const tbody      = document.getElementById('f24-tbody');
+    const checkAll   = document.getElementById('f24-check-all');
+    const selBadge   = document.getElementById('f24-selected-badge');
+    const countLabel = document.getElementById('f24-count-label');
+    const alreadyLbl = document.getElementById('f24-already-label');
+    const btnImport  = document.getElementById('f24-btn-import');
+    const btnImpLbl  = document.getElementById('f24-btn-import-label');
+    const progWrap   = document.getElementById('f24-import-progress');
+    const progBar    = document.getElementById('f24-progress-bar');
+    const progLabel  = document.getElementById('f24-progress-label');
+    const progPct    = document.getElementById('f24-progress-pct');
+    const resultDiv  = document.getElementById('f24-import-result');
+
+    const FETCH_URL  = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'importFetch']) ?>';
+    const IMPORT_URL = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'importBatch']) ?>';
+
+    let allRows = [];
+
+    function show(el) { ['f24-loading','f24-error','f24-results'].forEach(id => document.getElementById(id)?.classList.add('d-none')); el?.classList.remove('d-none'); }
+
+    function updateSelected() {
+      const checked = tbody.querySelectorAll('input[type="checkbox"]:checked').length;
+      selBadge.textContent = checked + ' zaznaczonych';
+      if (btnImport) {
+        btnImport.disabled = checked === 0;
+        if (btnImpLbl) btnImpLbl.textContent = checked > 0 ? 'Importuj zaznaczonych (' + checked + ')' : 'Importuj zaznaczone';
+      }
+      // indeterminate on "check all"
+      const total = tbody.querySelectorAll('input[type="checkbox"]:not(:disabled)').length;
+      checkAll.indeterminate = checked > 0 && checked < total;
+      checkAll.checked = total > 0 && checked === total;
+    }
+
+    function renderRows(rows) {
+      allRows = rows;
+      const alreadyCount = rows.filter(r => r.already_imported).length;
+      countLabel.textContent = rows.length + ' kontrahentów';
+      alreadyLbl.textContent = alreadyCount > 0 ? '(' + alreadyCount + ' już zaimportowanych)' : '';
+
+      tbody.innerHTML = rows.map((r, i) => {
+        const addr = [r.street, r.postal_code + ' ' + r.city].filter(Boolean).join(', ');
+        const badgeHtml = r.already_imported
+          ? '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>'
+          : '<span class="badge bg-success-transparent text-success">Nowy</span>';
+        return `<tr class="${r.already_imported ? 'already-imported' : ''}" data-idx="${i}">
+          <td class="text-center">
+            <input type="checkbox" class="form-check-input f24-row-check" data-idx="${i}"
+              ${r.already_imported ? 'disabled title="Już istnieje w bazie"' : ''}>
+          </td>
+          <td><strong>${escHtml(r.name)}</strong></td>
+          <td><code>${escHtml(r.nip)}</code></td>
+          <td class="small text-muted">${escHtml(addr)}</td>
+          <td class="small">${escHtml(r.email)}</td>
+          <td class="text-center">${badgeHtml}</td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.f24-row-check').forEach(cb => cb.addEventListener('change', updateSelected));
+      updateSelected();
+    }
+
+    function escHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    checkAll?.addEventListener('change', () => {
+      tbody.querySelectorAll('.f24-row-check:not(:disabled)').forEach(cb => cb.checked = checkAll.checked);
+      updateSelected();
+    });
+
+    async function fetchContractors() {
+      show(elLoading);
+      btnImport?.classList.add('d-none');
+      if (resultDiv) { resultDiv.innerHTML = ''; resultDiv.classList.add('d-none'); }
+      if (progWrap) progWrap.classList.add('d-none');
+      try {
+        const resp = await fetch(FETCH_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await resp.json();
+        if (!data.success) {
+          elErrorMsg.textContent = data.error || 'Nieznany błąd.';
+          show(elError);
+          return;
+        }
+        if (!data.rows || data.rows.length === 0) {
+          elErrorMsg.textContent = 'Brak kontrahentów do zaimportowania (stary system nie zwrócił wyników dla NIP tej firmy).';
+          show(elError);
+          return;
+        }
+        renderRows(data.rows);
+        show(elResults);
+        btnImport?.classList.remove('d-none');
+      } catch (e) {
+        elErrorMsg.textContent = 'Błąd połączenia: ' + (e?.message || e);
+        show(elError);
+      }
+    }
+
+    btnOpen.addEventListener('click', () => {
+      bsModal.show();
+      fetchContractors();
+    });
+
+    btnImport?.addEventListener('click', async () => {
+      const selected = [];
+      tbody.querySelectorAll('.f24-row-check:checked').forEach(cb => {
+        const idx = parseInt(cb.dataset.idx, 10);
+        if (!isNaN(idx) && allRows[idx]) selected.push(allRows[idx]);
+      });
+      if (!selected.length) return;
+
+      btnImport.disabled = true;
+      checkAll.disabled = true;
+      if (progWrap) {
+        progWrap.classList.remove('d-none');
+        progBar.style.width = '0%';
+        progPct.textContent = '0%';
+        progLabel.textContent = 'Importowanie ' + selected.length + ' kontrahentów…';
+      }
+
+      // Animacja postępu (nie znamy kroków, fake progress do 90%)
+      let fake = 0;
+      const t = setInterval(() => {
+        if (fake < 88) { fake += 3; progBar.style.width = fake + '%'; progPct.textContent = fake + '%'; }
+      }, 120);
+
+      try {
+        const fd = new FormData();
+        fd.append('rows', JSON.stringify(selected));
+        // CakePHP wymaga danych jako JSON w body lub jako FormData — wysyłamy JSON
+        const resp = await fetch(IMPORT_URL, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': CSRF_TOKEN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rows: selected }),
+        });
+        const data = await resp.json();
+
+        clearInterval(t);
+        progBar.style.width = '100%';
+        progPct.textContent = '100%';
+        progBar.classList.remove('progress-bar-animated');
+
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          if (data.success) {
+            const errHtml = data.errors?.length
+              ? '<ul class="mb-0 mt-2 small">' + data.errors.map(e => '<li>' + escHtml(e) + '</li>').join('') + '</ul>'
+              : '';
+            resultDiv.innerHTML = `<div class="alert alert-success mb-0">
+              <i class="ri-check-circle-line me-1"></i>
+              <strong>Zaimportowano: ${data.imported}</strong>${data.skipped > 0 ? ', pominięto (duplikaty): ' + data.skipped : ''}
+              ${errHtml}
+            </div>`;
+          } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="ri-error-warning-line me-1"></i>${escHtml(data.error || 'Błąd importu.')}</div>`;
+          }
+        }
+
+        // Odśwież zaznaczone checkboxy — oznacz jako zaimportowane
+        if (data.success && data.imported > 0) {
+          tbody.querySelectorAll('.f24-row-check:checked').forEach(cb => {
+            const tr = cb.closest('tr');
+            if (tr) tr.classList.add('already-imported');
+            cb.checked = false;
+            cb.disabled = true;
+          });
+          updateSelected();
+          // badge przy rzędach "nowy" → "już w bazie"
+          tbody.querySelectorAll('tr.already-imported td:last-child').forEach(td => {
+            if (td.innerHTML.includes('Nowy')) td.innerHTML = '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>';
+          });
+        }
+      } catch (e) {
+        clearInterval(t);
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          resultDiv.innerHTML = `<div class="alert alert-danger mb-0">Błąd: ${escHtml(e?.message || e)}</div>`;
+        }
+      } finally {
+        btnImport.disabled = false;
+        checkAll.disabled = false;
+      }
+    });
+
+    // Przeładuj przy ponownym otwarciu
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      allRows = [];
+      if (tbody) tbody.innerHTML = '';
+    });
+  })();
 
   // SweetAlert2 delete contractor
   document.querySelectorAll('.js-delete-contractor').forEach(btn => {

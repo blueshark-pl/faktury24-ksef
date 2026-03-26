@@ -47,25 +47,25 @@ public function search()
         $like = "%{$q}%";
         $query->where(function (QueryExpression $exp) use ($like) {
             return $exp->or([
-                'InvoiceSeries.type LIKE'            => $like,
+                'InvoiceSeries.name LIKE'            => $like,
                 'InvoiceSeries.series_template LIKE' => $like,
+                'InvoiceSeries.type LIKE'            => $like,
             ]);
         });
     }
 
-    // Format pod Select2 (value = nazwa serii, ale zwracamy też row_id itd.)
-    $out = $query->all()->map(function($s){
+    // Format pod Select2 — id = UUID serii (stabilny identyfikator), text = nazwa
+    $out = $query->all()->map(function ($s) {
         return [
-            'id'        => $s->name,             // wartość do select2 (wpisze się w pole "series")
-            'text'      => $s->name,             // label wyświetlany w Select2
-            'row_id'    => $s->id,               // ID rekordu (jeśli chcesz użyć)
-            'name'      => $s->name,
-            'template'  => $s->series_template,  // zamiast "pattern"
-            'start_no'  => $s->starting_number,  // zamiast "next_no"
+            'id'        => $s->id,               // UUID — wartość w polu invoice_series_id
+            'text'      => $s->name,             // etykieta wyświetlana w Select2
+            'name'      => $s->name,             // nazwa serii (zachowana dla kompatybilności)
+            'template'  => $s->series_template,
+            'start_no'  => $s->starting_number,
             'type_id'   => $s->invoice_series_type_id,
-            'type'   => $s->type,
+            'type'      => $s->type,
             'period_id' => $s->invoice_series_period_id,
-            'is_default'=> (bool)$s->is_default,
+            'is_default' => (bool)$s->is_default,
         ];
     })->toList();
 

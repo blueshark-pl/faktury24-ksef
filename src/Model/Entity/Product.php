@@ -21,6 +21,12 @@ use Cake\ORM\Entity;
  * @property string|null $pkwiu
  * @property string|null $gtu_code
  * @property string|null $barcode
+ * @property string|null $gtin
+ * @property string|null $cn_code
+ * @property string|null $pkob
+ * @property string|null $excise_amount
+ * @property string|null $procedure_marking
+ * @property bool $is_attachment15
  * @property bool $is_active
  * @property bool $deleted
  * @property \Cake\I18n\DateTime|null $created
@@ -54,6 +60,12 @@ class Product extends Entity
         'pkwiu' => true,
         'gtu_code' => true,
         'barcode' => true,
+        'gtin' => true,
+        'cn_code' => true,
+        'pkob' => true,
+        'excise_amount' => true,
+        'procedure_marking' => true,
+        'is_attachment15' => true,
         'is_active' => true,
         'deleted' => true,
         'created' => true,

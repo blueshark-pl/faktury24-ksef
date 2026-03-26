@@ -35,7 +35,6 @@ $this->assign('title', $__pageTitle);
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
         </ul>
       </div>
       <div class="card-body tab-content">
@@ -61,12 +60,20 @@ $this->assign('title', $__pageTitle);
         <div>
           <label class="form-label">Wybierz proformę / ofertę</label>
           <select id="proforma-select" class="form-select" data-placeholder="Szukaj po numerze lub ID"></select>
-          <?= $this->Form->hidden('proforma_id', ['id' => 'proforma-id']) ?>
+          <?= $this->Form->hidden('proforma_id', ['id' => 'proforma-id', 'value' => $invoice->parent_id ?? '']) ?>
           <small class="text-muted d-block mt-1">Proforma musi być wystawiona wcześniej. Faktura zaliczkowa zostanie z nią powiązana.</small>
         </div>
 
   <div id="proforma-summary" class="border rounded p-2" style="display:none;"></div>
   <div id="final-lockout" class="alert alert-warning mt-2" style="display:none;"></div>
+  <div id="contractor-changed-notice" class="alert alert-warning d-flex align-items-start gap-2 mt-2 mb-0 py-2" role="alert" style="display:none!important;">
+    <i class="ri-alert-line fs-5 flex-shrink-0 mt-1"></i>
+    <div>
+      <strong>Dane kontrahenta mogą być nieaktualne.</strong>
+      Kontrahent zmienił dane po wystawieniu proformy. Faktura zaliczkowa zostanie wystawiona z danymi z proformy (snapshot).
+      <div id="contractor-diff-detail" class="mt-1 small font-monospace"></div>
+    </div>
+  </div>
 
   <div id="adv-locked" class="locked-region">
 
@@ -79,9 +86,24 @@ $this->assign('title', $__pageTitle);
               'class' => 'form-control',
               'value' => $invoice->isNew() ? 0 : ($invoice->advance_gross ?? ($invoice->total ?? 0))
             ]) ?>
-            <div id="overpay-warning" class="text-danger small mt-1" style="display:none;">
-              Kwota przekracza pozostałą do rozliczenia.
+            <div id="overpay-warning" class="alert alert-warning mt-2 p-2 mb-0" style="display:none; font-size:13px;">
+              <div class="d-flex align-items-start gap-2">
+                <i class="ri-error-warning-line fs-16 mt-1 flex-shrink-0"></i>
+                <div>
+                  <strong>Kwota przekracza wartość oferty</strong>
+                  <div class="mt-1">Aktualna wartość oferty: <strong id="overpay-proforma-total">—</strong>.
+                    Możesz zaktualizować wartość oferty do wpisanej kwoty i wystawić dokument.</div>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="update-proforma-total-chk">
+                    <label class="form-check-label" for="update-proforma-total-chk">
+                      Zaktualizuj wartość oferty do <strong id="overpay-new-total">—</strong>
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
+            <input type="hidden" name="update_proforma_total" id="update-proforma-total" value="0">
+            <input type="hidden" name="new_proforma_total" id="new-proforma-total" value="0">
           </div>
           <div class="col-md-4">
             <label class="form-label">Stawka VAT zaliczki</label>
@@ -109,6 +131,14 @@ $this->assign('title', $__pageTitle);
             <small class="text-muted"><?= $__isEdit ? 'W trybie edycji nie przełączamy typu dokumentu; możesz ręcznie skorygować kwotę.' : 'Ustawi kwotę zaliczki na pozostałą do rozliczenia i oznaczy dokument jako końcowy.' ?></small>
             <span id="final-badge" class="badge bg-success" style="<?= $__isFinal ? '' : 'display:none;' ?>">Faktura końcowa</span>
           </div>
+          <div id="auto-final-notice" class="alert alert-info alert-dismissible d-flex align-items-center gap-2 mt-2 mb-0 py-2" role="alert" style="display:none!important;">
+            <i class="ri-information-line fs-5 flex-shrink-0"></i>
+            <div>
+              <strong>Automatycznie oznaczono jako faktura końcowa</strong> — wpisana kwota pokrywa całą pozostałą do rozliczenia kwotę proformy.
+              Jeśli to zaliczka cząstkowa, zmień kwotę lub kliknij "Zapłacono całość" ponownie.
+            </div>
+            <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Zamknij"></button>
+          </div>
         </div>
 
         <div class="row g-2">
@@ -129,6 +159,10 @@ $this->assign('title', $__pageTitle);
         <div class="row g-3 mt-2 align-items-end">
           <div class="col-md-4">
             <label class="form-label">Seria</label>
+            <?= $this->Form->hidden('invoice_series_id', [
+              'id'    => 'invoice-series-id-hidden',
+              'value' => $invoice->invoice_series_id ?? null,
+            ]) ?>
             <div class="input-group">
               <select id="series-select" name="series" class="form-select" data-placeholder="Wybierz serię"></select>
             </div>
@@ -136,8 +170,15 @@ $this->assign('title', $__pageTitle);
               <i class="ri-information-line"></i> Proponowany numer: <span id="invoice-number-suggestion"></span>
             </small>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-2">
             <?= $this->Form->control('date', ['type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'value' => $invoice->isNew() ? date('Y-m-d') : ($invoice->date ? $invoice->date->format('Y-m-d') : date('Y-m-d'))]) ?>
+            <small class="text-muted">&nbsp;</small>
+          </div>
+          <div class="col-md-2">
+            <?= $this->Form->control('sold_date', [
+              'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
+              'value' => $invoice->isNew() ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : date('Y-m-d')),
+            ]) ?>
             <small class="text-muted">&nbsp;</small>
           </div>
           <div class="col-md-4">
@@ -163,17 +204,56 @@ $this->assign('title', $__pageTitle);
         <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
         <?= $this->element('Invoices/tab_identifiers') ?>
 
-        <!-- KSeF FA(3) ROZSZERZONY -->
-        <?= $this->element('Invoices/tab_fa3_extended') ?>
 
       </div><!-- /.card-body.tab-content -->
     </div>
   </div>
   <div class="col-xxl-4">
     <div class="card custom-card">
-      <div class="card-header"><div class="card-title">Nabywca (z proformy)</div></div>
+      <div class="card-header"><div class="card-title">Nabywca</div></div>
       <div class="card-body">
-        <div id="ctr-box" class="small text-muted">Wybierz proformę, aby podglądnąć dane nabywcy.</div>
+        <?php $__ic = $invoice->invoice_contractor ?? null; ?>
+        <div id="ctr-empty-hint" class="small text-muted mb-2<?= $__ic ? ' d-none' : '' ?>">Wybierz proformę, aby wczytać dane nabywcy.</div>
+        <div class="vstack gap-2">
+          <div>
+            <label class="form-label mb-1">Nazwa <span class="text-danger">*</span></label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[name]" id="ctr-hidden-name" value="<?= h($__ic?->name ?? '') ?>" required>
+          </div>
+          <div>
+            <label class="form-label mb-1">NIP</label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[nip]" id="ctr-hidden-nip" value="<?= h($__ic?->nip ?? '') ?>">
+          </div>
+          <div>
+            <label class="form-label mb-1">Ulica</label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[street]" id="ctr-hidden-street" value="<?= h($__ic?->street ?? '') ?>">
+          </div>
+          <div class="row g-2">
+            <div class="col-5">
+              <label class="form-label mb-1">Kod pocztowy</label>
+              <input type="text" class="form-control form-control-sm" name="invoice_contractor[zip]" id="ctr-hidden-zip" value="<?= h($__ic?->zip ?? '') ?>">
+            </div>
+            <div class="col-7">
+              <label class="form-label mb-1">Miasto</label>
+              <input type="text" class="form-control form-control-sm" name="invoice_contractor[city]" id="ctr-hidden-city" value="<?= h($__ic?->city ?? '') ?>">
+            </div>
+          </div>
+          <div>
+            <label class="form-label mb-1">Kraj</label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[country]" id="ctr-hidden-country" value="<?= h($__ic?->country ?? 'PL') ?>">
+          </div>
+          <div>
+            <label class="form-label mb-1">E-mail</label>
+            <input type="email" class="form-control form-control-sm" name="invoice_contractor[email]" id="ctr-hidden-email" value="<?= h($__ic?->email ?? '') ?>">
+          </div>
+          <div>
+            <label class="form-label mb-1">Telefon</label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[phone]" id="ctr-hidden-phone" value="<?= h($__ic?->phone ?? '') ?>">
+          </div>
+          <div>
+            <label class="form-label mb-1">Nr konta</label>
+            <input type="text" class="form-control form-control-sm" name="invoice_contractor[account_number]" id="ctr-hidden-account-number" value="<?= h($__ic?->account_number ?? '') ?>">
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -305,7 +385,15 @@ $this->assign('title', $__pageTitle);
       var id = e.params && e.params.data && e.params.data.id;
       $('#proforma-id').val(id);
       if (id) { loadDetails(id); }
-    }).on('select2:clear', function(){ $('#proforma-id').val(''); $('#proforma-summary').hide().empty(); $('#ctr-box').text('Wybierz proformę, aby podglądnąć dane nabywcy.'); });
+    }).on('select2:clear', function(){
+      $('#proforma-id').val('');
+      $('#proforma-summary').hide().empty();
+      $('#contractor-changed-notice').css('display','none');
+      $('#contractor-diff-detail').empty();
+      $('#ctr-hidden-name,#ctr-hidden-nip,#ctr-hidden-street,#ctr-hidden-zip,#ctr-hidden-city,#ctr-hidden-email,#ctr-hidden-phone,#ctr-hidden-account-number').val('');
+      $('#ctr-hidden-country').val('PL');
+      $('#ctr-empty-hint').removeClass('d-none');
+    });
     // Series select
     $('#series-select').select2({
       placeholder: $('#series-select').data('placeholder') || 'Wybierz serię',
@@ -367,9 +455,30 @@ $this->assign('title', $__pageTitle);
           '<div>Waluta: '+ (p.currency||'PLN') +', suma brutto: '+ (p.total||0).toFixed ? (p.total).toFixed(2) : p.total +'</div>'+
           '<div>Pozostało do rozliczenia: <strong>'+ (remainingTotal.toFixed ? remainingTotal.toFixed(2) : remainingTotal) +'</strong></div>';
         $('#proforma-summary').html(html).show();
-        // contractor box
+        // wypełnij pola nabywcy z danych proformy
         var c = p.contractor||{};
-        $('#ctr-box').html('<div><strong>'+ (c.name||'') +'</strong></div><div>'+ (c.street||'') +'</div><div>'+(c.zip||'')+' '+(c.city||'')+'</div><div>'+ (c.nip?('NIP: '+c.nip):'') +'</div>');
+        $('#ctr-hidden-name').val(c.name||'');
+        $('#ctr-hidden-nip').val(c.nip||'');
+        $('#ctr-hidden-street').val(c.street||'');
+        $('#ctr-hidden-zip').val(c.zip||'');
+        $('#ctr-hidden-city').val(c.city||'');
+        $('#ctr-hidden-country').val(c.country||'PL');
+        $('#ctr-hidden-email').val(c.email||'');
+        $('#ctr-hidden-phone').val(c.phone||'');
+        $('#ctr-hidden-account-number').val(c.account_number||'');
+        if (c.name) { $('#ctr-empty-hint').addClass('d-none'); }
+
+        // Ostrzeżenie o nieaktualnym snapshotu kontrahenta
+        if (p.contractor_changed && p.contractor_current) {
+          var cc = p.contractor_current;
+          var diffHtml = '<strong>Aktualne dane:</strong> ' + (cc.name||'') + ', ' + (cc.street||'') + ', ' + (cc.zip||'') + ' ' + (cc.city||'');
+          var diffHtml2 = '<br><strong>Dane z proformy:</strong> ' + (c.name||'') + ', ' + (c.street||'') + ', ' + (c.zip||'') + ' ' + (c.city||'');
+          $('#contractor-diff-detail').html(diffHtml + diffHtml2);
+          $('#contractor-changed-notice').css('display', 'flex');
+        } else {
+          $('#contractor-changed-notice').css('display', 'none');
+          $('#contractor-diff-detail').empty();
+        }
         updateNumberHint();
 
         // already issued for this offer (children)
@@ -456,13 +565,24 @@ $this->assign('title', $__pageTitle);
     var $amount = $('[name="advance_gross"]');
     var $warn = $('#overpay-warning');
     var $save = $('#save-btn');
+    var nf2 = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (overpay) {
       $amount.addClass('is-invalid');
+      // Wypełnij dane w panelu
+      var newProformaRequired = advancesTotal + gross;
+      $('#overpay-proforma-total').text(nf2.format(proformaTotal) + ' ' + ($('[name="currency"]').val() || 'PLN'));
+      $('#overpay-new-total').text(nf2.format(newProformaRequired) + ' ' + ($('[name="currency"]').val() || 'PLN'));
+      $('#new-proforma-total').val(newProformaRequired.toFixed(2));
       $warn.show();
-      $save.prop('disabled', true);
+      // Zezwalaj na zapis tylko jeśli user zaakceptował aktualizację
+      var accepted = $('#update-proforma-total-chk').is(':checked');
+      $('#update-proforma-total').val(accepted ? '1' : '0');
+      $save.prop('disabled', !accepted);
     } else {
       $amount.removeClass('is-invalid');
       $warn.hide();
+      $('#update-proforma-total-chk').prop('checked', false);
+      $('#update-proforma-total').val('0');
       $save.prop('disabled', false);
     }
 
@@ -471,20 +591,35 @@ $this->assign('title', $__pageTitle);
       if (!overpay && remainingTotal > 0) {
         var equalRemaining = (Math.abs(gross - remainingTotal) <= 0.005 && gross > 0);
         if (equalRemaining && !finalExists) {
+          var wasAlreadyFinal = ($('#is-final').val() === '1');
           $('#is-final').val(1);
           $('#final-badge').show();
           ensureFinalSeries();
+          // Powiadom użytkownika o auto-klasyfikacji (tylko gdy zmiana stanu)
+          if (!wasAlreadyFinal) {
+            var $notice = $('#auto-final-notice');
+            $notice.css('display', 'flex');
+            // Bootstrap 5: usuń klasę dodaną przez poprzednie zamknięcie
+            $notice.removeClass('d-none');
+          }
         } else {
           // Jeżeli kwota nie jest równa pozostałej — traktuj jako zaliczkową
           $('#is-final').val(0);
           $('#final-badge').hide();
+          $('#auto-final-notice').css('display', 'none');
           // Jeśli końcowa już istnieje — nie pozwalaj oznaczyć jako końcową (utrzymujemy 0)
           ensureAdvanceSeries();
         }
+      } else {
+        $('#auto-final-notice').css('display', 'none');
       }
     }
   }
   $(document).on('input change', '[name="advance_gross"], #advance-vat', recompute);
+  $(document).on('change', '#update-proforma-total-chk', function(){
+    $('#update-proforma-total').val(this.checked ? '1' : '0');
+    $('#save-btn').prop('disabled', !this.checked);
+  });
   recompute();
 
   // Next number hint for selected series and date
@@ -571,22 +706,15 @@ $this->assign('title', $__pageTitle);
         processResults: function (data) {
           var items = $.map((data.results||data||[]), function (s) {
             return {
-              // Używamy nazwy jako wartości, bo backend oczekuje pola 'series' = nazwa serii
-              id: s.name || s.text || s.id,
+              id: s.id,   // UUID — wysyłamy jako invoice_series_id
               text: s.text || s.name || s.id,
+              name: s.name || s.text,
               pattern: s.template || s.pattern,
               next_no: s.start_no || s.next_no,
               is_default: !!s.is_default,
               type: s.type || ''
             };
           });
-          // Auto-pick default series if none selected
-          setTimeout(function(){
-            if (!$series.val() && items.length){
-              var def = items.find(function(i){ return i.is_default; });
-              if (def){ var opt = new Option(def.text, def.id, true, true); $series.append(opt).trigger('change'); }
-            }
-          }, 0);
           return { results: items };
         }
       },
@@ -600,19 +728,80 @@ $this->assign('title', $__pageTitle);
         return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0];
       }
     }).on('select2:open', function(){ injectSeriesToolbar(); })
-      .on('select2:select', function(){ rememberAdvanceCandidate(); updateNumberHint(); })
-      .on('select2:clear', function(){ updateNumberHint(); });
+      .on('select2:select', function(e){
+        var d = (e.params && e.params.data) || {};
+        $('#invoice-series-id-hidden').val(d.id || '');
+        // also fill series name field for display/hint purposes
+        var $nameInput = $('[name="series"]').not('#series-select');
+        if ($nameInput.length) { $nameInput.val(d.name || d.text || ''); }
+        rememberAdvanceCandidate(); updateNumberHint();
+      })
+      .on('select2:clear', function(){
+        $('#invoice-series-id-hidden').val('');
+        updateNumberHint();
+      });
+    $series.on('change', function(){
+      if (!$(this).val()) { $('#invoice-series-id-hidden').val(''); }
+    });
 
-    // preload current or default series
-    (function preloadSeries(){
-      var cur = $series.data('current') || $series.val() || '<?= h($invoice->series ?? '') ?>';
-      if (cur) {
-        var opt = new Option(cur, cur, true, true);
+    // Auto-load default series on page load — preferuje serię typu 'advance'
+    function loadDefaultSeriesAdv() {
+      $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50, type: 'advance' } })
+        .done(function(data) {
+          var items = data.results || data || [];
+          if (!items.length) {
+            // Fallback: pobierz wszystkie serie i szukaj zaliczkowej po nazwie
+            $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50 } })
+              .done(function(d2) { applyDefaultSeriesAdv(d2.results || d2 || []); })
+              .fail(function(){ $series.prop('disabled', false); });
+            return;
+          }
+          applyDefaultSeriesAdv(items);
+        })
+        .fail(function(){ $series.prop('disabled', false); });
+    }
+    function applyDefaultSeriesAdv(items) {
+      if (!items.length) { $series.prop('disabled', false); return; }
+      var mapped = $.map(items, function(s) {
+        return { id: s.id, text: s.text || s.name, name: s.name || s.text, pattern: s.template||s.pattern, next_no: s.start_no||s.next_no, is_default: !!s.is_default, type: s.type||'' };
+      });
+      var existingId = '<?= h($invoice->invoice_series_id ?? '') ?>';
+      var existingName = '<?= h($invoice->series ?? '') ?>';
+      var pick = null;
+      if (existingId) {
+        pick = mapped.find(function(i){ return i.id === existingId; });
+      }
+      if (!pick && existingName) {
+        pick = mapped.find(function(i){ return i.name === existingName || i.text === existingName; });
+      }
+      // Preferuj serię zaliczkową z flagą default, potem zaliczkową, potem default, potem pierwszą
+      if (!pick) { pick = mapped.find(function(i){ return looksAdvanceObj(i) && i.is_default; }); }
+      if (!pick) { pick = mapped.find(function(i){ return looksAdvanceObj(i); }); }
+      if (!pick) { pick = mapped.find(function(i){ return i.is_default; }); }
+      if (!pick) { pick = mapped[0]; }
+      if (pick) {
+        var opt = new Option(pick.text, pick.id, true, true);
+        $(opt).data('data', pick);
         $series.append(opt).trigger('change');
-        // Spróbuj zapamiętać jako zaliczkową, jeśli pasuje
+        $('#invoice-series-id-hidden').val(pick.id);
+        rememberAdvanceCandidate();
+        updateNumberHint();
+      }
+    }
+    // Only auto-load on new invoice; on edit the series is pre-set
+    if (!isEdit) {
+      loadDefaultSeriesAdv();
+    } else {
+      // Edit mode: restore existing series as Select2 option
+      var curId   = '<?= h($invoice->invoice_series_id ?? '') ?>';
+      var curName = '<?= h($invoice->series ?? '') ?>';
+      if (curId && curName) {
+        var opt = new Option(curName, curId, true, true);
+        $series.append(opt).trigger('change');
+        $('#invoice-series-id-hidden').val(curId);
         rememberAdvanceCandidate();
       }
-    })();
+    }
 
     // Helpery detekcji typu serii po nazwie/etykiecie
     function isFinalText(txt){ return /(końcowa|koncowa|final)/i.test(txt||''); }
@@ -678,7 +867,7 @@ $this->assign('title', $__pageTitle);
     var pick = items.find(function(s){ return s.is_default && looksFinalObj(s); })
       || items.find(function(s){ return looksFinalObj(s); });
           if (pick) {
-            var id = pick.id || pick.name || pick.text; // id = name
+            var id = pick.id || pick.name || pick.text;
             var text = pick.text || pick.name || id;
             var before = $series.val();
             if (before != id) {
@@ -687,6 +876,7 @@ $this->assign('title', $__pageTitle);
               $series.append(opt).trigger('change');
               showToast('Seria przełączona na końcową.', 'success');
             }
+            $('#invoice-series-id-hidden').val(pick.id || '');
             updateNumberHint();
           }
         });
@@ -705,6 +895,7 @@ $this->assign('title', $__pageTitle);
           $series.append(opt1).trigger('change');
           showToast('Seria przywrócona na zaliczkową.', 'info');
         }
+        $('#invoice-series-id-hidden').val(id1 || '');
         updateNumberHint();
         return;
       }
@@ -715,7 +906,7 @@ $this->assign('title', $__pageTitle);
           if (!items.length) return;
           var pick = items.find(function(s){ return looksAdvanceObj(s); });
           if (pick) {
-            var id = pick.name || pick.text || pick.id; // id = name
+            var id = pick.id || pick.name || pick.text;
             var text = pick.text || pick.name || id;
             var before = $series.val();
             if (before != id) {
@@ -724,9 +915,9 @@ $this->assign('title', $__pageTitle);
               $series.append(opt).trigger('change');
               showToast('Seria przełączona na zaliczkową.', 'info');
             }
+            $('#invoice-series-id-hidden').val(pick.id || '');
             updateNumberHint();
           } else {
-            // Brak serii zaliczkowej — nie zmieniamy serii i pokazujemy neutralny komunikat
             showToast('Brak serii zaliczkowej na liście — pozostawiono bieżącą.', 'secondary');
           }
         });
@@ -752,7 +943,8 @@ $this->assign('title', $__pageTitle);
     if (!$proforma.val()) { markInvalid($('#proforma-select')); }
     var gross = parseFloat($amount.val()||'0')||0;
     if (gross <= 0) { markInvalid($amount); }
-    if (remainingTotal > 0 && gross - remainingTotal > 0.005) { markInvalid($amount); }
+    var overpayAllowed = $('#update-proforma-total-chk').is(':checked');
+    if (remainingTotal > 0 && gross - remainingTotal > 0.005 && !overpayAllowed) { markInvalid($amount); }
     if (!$vat.val()) { markInvalidSelect2($vat); }
     if (!$series.val()) { markInvalidSelect2($series); }
     if (!$date.val()) { markInvalid($date); }

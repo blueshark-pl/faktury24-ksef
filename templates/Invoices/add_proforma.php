@@ -38,10 +38,16 @@ try {
       $__prefillItems[] = [
         'name' => (string)($it->name ?? ''),
         'quantity' => $it->quantity ?? 1,
+        'unit'              => (string)($it->unit ?? 'szt.'),
         'price' => $it->price ?? 0,
         'discount_percent' => $it->discount_percent ?? 0,
         'vat_code_id' => $it->vat_code_id ?? null,
-        'gtu_code' => (string)($it->gtu_code ?? ''),
+        'gtu_code'          => (string)($it->gtu_code ?? ''),
+        'pkwiu'             => (string)($it->pkwiu ?? ''),
+        'gtin'              => (string)($it->gtin ?? ''),
+        'cn_code'           => (string)($it->cn_code ?? ''),
+        'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
+        'procedure_marking' => (string)($it->procedure_marking ?? ''),
         'price_mode' => 'net',
       ];
     }
@@ -107,45 +113,11 @@ $gtuSelectHtml .= '</select>';
 <div class="row">
     <div class="col-xxl-12">
     <div class="card custom-card">
-      <div class="card-header d-flex align-items-center justify-content-between pe-2">
-        <ul class="nav nav-tabs card-header-tabs flex-grow-1" id="invTabs" role="tablist">
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
-        <?php if ($this->Identity->hasRole('admin')): ?>
-        <div class="dropdown ms-2 flex-shrink-0">
-          <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
-            <i class="ri-settings-3-line"></i>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="inv-extra-tabs-btn">
-            <li><span class="dropdown-header text-muted small px-3 py-1">Dodatkowe zakładki</span></li>
-            <li>
-              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-annotations">
-                <i class="ri-file-text-line"></i> Adnotacje
-              </button>
-            </li>
-            <li>
-              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-fa3ext">
-                <i class="ri-government-line"></i> KSeF FA(3)
-              </button>
-            </li>
-          </ul>
-        </div>
-        <?php endif; ?>
-        <script>
-        $(function(){
-          var $gearBtn = $("#inv-extra-tabs-btn");
-          $(document).on("click", "[data-extra-tab]", function(){
-            var paneId = $(this).data("extra-tab");
-            $("#invTabs .nav-link").removeClass("active").attr("aria-selected", "false");
-            $("#invTabs .nav-link").each(function(){ $(this).attr("tabindex", "-1"); });
-            $(".tab-content > .tab-pane").removeClass("show active");
-            $("#" + paneId).addClass("show active");
-            $gearBtn.removeClass("btn-outline-secondary").addClass("btn-secondary");
-          });
-        });
-        </script>
       </div>
 
       <div class="card-body tab-content">
@@ -171,7 +143,7 @@ $gtuSelectHtml .= '</select>';
           <div class="row g-3">
             <div class="col-lg-4">
               <?= $this->Form->control('fullnumber', [
-                'label' => 'Invoice No', 'class' => 'form-control', 'placeholder' => 'auto',
+                'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
                 'id' => 'invoice-number'
               ]) ?>
               <small class="text-muted" id="invoice-number-hint" style="display: none;">
@@ -302,15 +274,6 @@ $gtuSelectHtml .= '</select>';
             </div>
           </div>
         </div>
-
-        <!-- ADNOTACJE -->
-        <?= $this->element('Invoices/tab_annotations') ?>
-
-        <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
-        <?= $this->element('Invoices/tab_identifiers') ?>
-
-        <!-- KSeF FA(3) ROZSZERZONY -->
-        <?= $this->element('Invoices/tab_fa3_extended') ?>
 
       </div>
     </div>
@@ -447,6 +410,7 @@ $gtuSelectHtml .= '</select>';
                 <tr>
                     <th style="min-width:260px;">PRODUKT</th>
                     <th style="width:120px;">ILOŚĆ</th>
+                    <th style="width:80px;">JM</th>
                     <th style="width:180px;">CENA</th>
                     <th style="width:170px;">STAWKA VAT
                     <button type="button"
@@ -485,10 +449,14 @@ $gtuSelectHtml .= '</select>';
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
     <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
-    <input type="hidden" name="items[0][cn_code]" class="item-cn_code" value="">
+    <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
     <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
     <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
+  <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
+  <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
+  <td>
+    <div class="input-group">
       <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
       <select name="items[0][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
         <option value="net">netto</option>
@@ -512,7 +480,7 @@ $gtuSelectHtml .= '</select>';
 
                 <!-- wiersz: Add Product -->
                <tr>
-  <td colspan="8" class="border-bottom-0">
+  <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
   </td>
 </tr>
@@ -520,20 +488,20 @@ $gtuSelectHtml .= '</select>';
 
                 <!-- wiersz: Sumy -->
                <tr>
-  <td colspan="5"></td>
+  <td colspan="6"></td>
   <td colspan="4">
     <table class="table table-sm text-nowrap mb-0 table-borderless">
       <tbody>
         <tr>
-          <th scope="row"><div class="fw-medium">Razem netto :</div></th>
+          <th scope="row"><div class="fw-medium">Razem netto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-net" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
-          <th scope="row"><div class="fw-medium">Razem VAT :</div></th>
+          <th scope="row"><div class="fw-medium">Razem VAT <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-tax" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
-          <th scope="row"><div class="fs-14 fw-medium">Razem brutto :</div></th>
+          <th scope="row"><div class="fs-14 fw-medium">Razem brutto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-gross" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
       </tbody>
@@ -1949,6 +1917,7 @@ $('#gus-fetch-btn').on('click', function(){
     $('#sum-net').val(sn.toFixed(2));
     $('#sum-tax').val(st.toFixed(2));
     $('#sum-gross').val(sg.toFixed(2));
+    $('.sum-currency-label').text('PLN');
     // odśwież termin (np. po zmianie daty wystawienia)
     if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
     if (typeof mirrorSums === 'function') mirrorSums();
@@ -1956,6 +1925,72 @@ $('#gus-fetch-btn').on('click', function(){
   function guardMinRows(){
     var rows = $itemsBody.find('tr').length - 2; // - add + sum
     $itemsBody.find('.btn-remove').prop('disabled', rows <= 1).attr('title', rows <= 1 ? 'Musi pozostać co najmniej 1 pozycja' : 'Usuń');
+  }
+
+  // ====== OSTATNIO UŻYWANE PRODUKTY ======
+  function getRecentProducts(){
+    try { return JSON.parse(localStorage.getItem('recentProducts')||'[]'); } catch(e){ return []; }
+  }
+  function saveRecentProduct(d){
+    if (!d || !d.id) return;
+    if (String(d.id).indexOf('NEW:') === 0) return;
+    var list = getRecentProducts().filter(function(x){ return x.id !== d.id; });
+    var entry = {
+      id: d.id,
+      text: d.text || d.name || '',
+      price: (typeof d.price !== 'undefined') ? Number(d.price) : (typeof d.net_price !== 'undefined' ? Number(d.net_price) : null),
+      vat_id: d.vat_id || d.vat_code_id || null,
+      unit: d.unit || '',
+      gtu_code: d.gtu_code || '',
+      pkwiu: d.pkwiu || '',
+      gtin: d.gtin || '',
+      cn_code: d.cn_code || '',
+      excise_amount: (d.excise_amount !== null && d.excise_amount !== undefined) ? d.excise_amount : '',
+      procedure_marking: d.procedure_marking || ''
+    };
+    list.unshift(entry);
+    if (list.length > 8) list = list.slice(0,8);
+    try { localStorage.setItem('recentProducts', JSON.stringify(list)); } catch(e){}
+  }
+  function injectProductRecentToolbar($dd, $tr, $sel){
+    if (!$dd.length || $dd.find('.prod-recent').length) return;
+    var rec = getRecentProducts();
+    if (!rec.length) return;
+    var $search = $dd.find('.select2-search--dropdown');
+    var $wrap = $('<div class="prod-recent p-2 border-bottom bg-white small"></div>');
+    $wrap.append('<div class="text-muted mb-1">Ostatnio używane</div>');
+    var $row = $('<div class="d-flex flex-wrap gap-1"></div>');
+    rec.forEach(function(p){
+      var label = $('<div>').text(p.text || '').html();
+      var $btn = $('<button type="button" class="btn btn-light btn-sm"></button>').html(label);
+      $btn.on('mousedown', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        try { $sel.select2('close'); } catch(_){}
+        $tr.find('.item-name-hidden').val(p.text || '');
+        if (p.vat_id) { $tr.find('.item-vatcode').val(p.vat_id); }
+        if (p.unit) { $tr.find('.item-unit').val(p.unit); }
+        var mode = ($tr.find('.item-price-mode').val() || 'net');
+        var rate = toNum(vatRates[p.vat_id], 0);
+        var netPrice = toNum(p.price, 0);
+        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+        $tr.find('.item-price').val(disp.toFixed(2));
+        // Classification fields
+        if (p.gtu_code) { $tr.find('.item-gtu').val(p.gtu_code); }
+        $tr.find('.item-pkwiu').val(p.pkwiu || '');
+        $tr.find('.item-gtin').val(p.gtin || '');
+        $tr.find('.item-cn-code').val(p.cn_code || '');
+        $tr.find('.item-excise').val(p.excise_amount || '');
+        $tr.find('.item-procedure').val(p.procedure_marking || '');
+        // Ensure the select shows chosen product
+        var opt = new Option(p.text || '', p.id, true, true);
+        $sel.find('option[value="'+p.id+'"]').remove();
+        $sel.append(opt).trigger('change');
+        rowCalc($tr); allCalc();
+      });
+      $row.append($btn);
+    });
+    $wrap.append($row);
+    $search.after($wrap);
   }
 
   // ====== PRODUKT: INIT SELECT2 DLA WIERSZA ======
@@ -2019,6 +2054,8 @@ $('#gus-fetch-btn').on('click', function(){
           $sel.select2('close');
         });
       }
+      // Inject recent products bar
+      injectProductRecentToolbar($dd, $tr, $sel);
     })
     .on('select2:select', function (e) {
       var d = (e.params && e.params.data) || {};
@@ -2036,15 +2073,15 @@ $('#gus-fetch-btn').on('click', function(){
           $tr.find('.item-price').val(disp.toFixed(2));
         }
         // Use correct VAT field name - should be vat_id from the search response
-        var $vat = $tr.find('.item-vatcode'); 
+        var $vat = $tr.find('.item-vatcode');
         if ($vat.length && d.vat_id) $vat.val(d.vat_id);
-        // JPK/FA fields
+        if (d.unit) { $tr.find('.item-unit').val(d.unit); }
+        if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
         $tr.find('.item-pkwiu').val(d.pkwiu || '');
         $tr.find('.item-gtin').val(d.gtin || '');
-        $tr.find('.item-cn_code').val(d.cn_code || '');
-        $tr.find('.item-excise').val(d.excise_amount || '');
+        $tr.find('.item-cn-code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount !== null && d.excise_amount !== undefined ? d.excise_amount : '');
         $tr.find('.item-procedure').val(d.procedure_marking || '');
-        if ($tr.find('.item-gtu').length && d.gtu_code) $tr.find('.item-gtu').val(d.gtu_code);
         rowCalc($tr); allCalc();
       }
     });
@@ -2085,6 +2122,7 @@ $('#gus-fetch-btn').on('click', function(){
     var mode = (item.price_mode || 'net').toString();
 
     $tr.find('.item-qty').val(qty);
+    if (item.unit) { $tr.find('.item-unit').val(item.unit); }
     $tr.find('.item-price').val(Number(price || 0).toFixed(2));
     $tr.find('.item-disc').val(Number(disc || 0));
     if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
@@ -2092,7 +2130,7 @@ $('#gus-fetch-btn').on('click', function(){
     if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
     $tr.find('.item-pkwiu').val(item.pkwiu || '');
     $tr.find('.item-gtin').val(item.gtin || '');
-    $tr.find('.item-cn_code').val(item.cn_code || '');
+    $tr.find('.item-cn-code').val(item.cn_code || '');
     $tr.find('.item-excise').val(item.excise_amount || '');
     $tr.find('.item-procedure').val(item.procedure_marking || '');
 
@@ -2126,11 +2164,12 @@ $('#gus-fetch-btn').on('click', function(){
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
           '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
-          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn_code" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
           '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
           '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
+        '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
         '<td><div class="input-group">'+
           '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+ 
           '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px"><option value="net">netto</option><option value="gross">brutto</option></select>'+
@@ -2166,13 +2205,9 @@ $('#gus-fetch-btn').on('click', function(){
       '<td>'+
       '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>'+
       '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">'+
-      '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">'+
-      '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">'+
-      '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn_code" value="">'+
-      '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">'+
-      '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">'+
       '</td>'+
       '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>'+
+      '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>'+
       '<td><div class="input-group">'+
       '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+ 
       '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px"><option value="net">netto</option><option value="gross">brutto</option></select>'+
@@ -2202,12 +2237,6 @@ $('#gus-fetch-btn').on('click', function(){
     if (srcVat) $dst.find('.item-vatcode').val(srcVat);
     if (srcGtu !== undefined) $dst.find('.item-gtu').val(srcGtu);
     $dst.find('.item-price-mode').val(srcMode);
-    // JPK/FA fields
-    $dst.find('.item-pkwiu').val($src.find('.item-pkwiu').val() || '');
-    $dst.find('.item-gtin').val($src.find('.item-gtin').val() || '');
-    $dst.find('.item-cn_code').val($src.find('.item-cn_code').val() || '');
-    $dst.find('.item-excise').val($src.find('.item-excise').val() || '');
-    $dst.find('.item-procedure').val($src.find('.item-procedure').val() || '');
     // copy product select option
     var $srcSel = $src.find('.item-product-select');
     var prodId = $srcSel.val();
@@ -2317,11 +2346,6 @@ $('#gus-fetch-btn').on('click', function(){
         if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
           currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
-        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
-        currentProductRow.find('.item-gtin').val(product.gtin || '');
-        currentProductRow.find('.item-cn_code').val(product.cn_code || '');
-        currentProductRow.find('.item-excise').val(product.excise_amount || '');
-        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
 
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {

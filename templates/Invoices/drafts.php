@@ -65,7 +65,6 @@ $editActionByType = [
             <th>Typ</th>
             <th>Kontrahent</th>
             <th>Data</th>
-            <th>Planowana wysyłka</th>
             <th class="text-end">Kwota</th>
             <th class="text-end">Akcje</th>
           </tr>
@@ -76,18 +75,11 @@ $editActionByType = [
               $typeKey = strtolower((string)($inv->type ?? ''));
               $editAction = $editActionByType[$typeKey] ?? 'edit';
               $contractor = $inv->invoice_contractor ?? null;
-              $planned = $inv->planned_ksef_send_at;
-                $issueDateValue = $inv->date ? $inv->date->format('Y-m-d') : '';
+              $issueDateValue = $inv->date ? $inv->date->format('Y-m-d') : '';
                 $sendConfirmText = 'Wysłać tę fakturę roboczą do KSeF teraz?';
                 if ($issueDateValue !== '' && $issueDateValue !== $todayDate) {
                   $sendConfirmText .= "\n\nUwaga: data faktury ($issueDateValue) jest inna niż dzisiaj ($todayDate). Przed wysyłką zostanie zmieniona na dzisiejszą.";
                 }
-              $plannedValue = '';
-              if ($planned) {
-                  $plannedValue = is_object($planned) && method_exists($planned, 'format')
-                      ? $planned->format('Y-m-d')
-                      : (string)$planned;
-              }
             ?>
             <tr>
               <td><span class="badge bg-warning">Robocza</span></td>
@@ -101,12 +93,6 @@ $editActionByType = [
                 <?= h($contractor->name ?? '—') ?>
               </td>
               <td><?= $inv->date?->format('d.m.Y') ?></td>
-              <td>
-                <?= $this->Form->create(null, ['url' => ['action' => 'scheduleDraft', $inv->id], 'class' => 'd-flex gap-2 align-items-center']) ?>
-                  <input type="date" name="planned_ksef_send_at" class="form-control form-control-sm" value="<?= h($plannedValue) ?>" style="max-width: 170px;">
-                  <button type="submit" class="btn btn-sm btn-outline-primary">Zaplanuj</button>
-                <?= $this->Form->end() ?>
-              </td>
               <td class="text-end"><strong><?= h($money($inv->total ?? 0, (string)($inv->currency ?? 'PLN'))) ?></strong></td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">

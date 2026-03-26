@@ -16,6 +16,7 @@ use Cake\ORM\Entity;
  * @property string $name
  * @property string $series_template
  * @property int $starting_number
+ * @property int|null $override_next_number
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -46,6 +47,7 @@ class InvoiceSeries extends Entity
         'type' => true,
         'series_template' => true,
         'starting_number' => true,
+        'override_next_number' => true,
         'created' => true,
         'modified' => true,
         'company' => true,

@@ -10,7 +10,7 @@ class AddUniqueNipToCompanies extends AbstractMigration
 
         // NIP jako VARCHAR(10) NULL, jeśli kolumna istnieje – dostosuj
         if ($table->hasColumn('nip')) {
-            $this->execute("ALTER TABLE `companies` MODIFY `nip` VARCHAR(10) NULL");
+            $table->changeColumn('nip', 'string', ['limit' => 10, 'null' => true])->update();
         } else {
             $table->addColumn('nip', 'string', ['limit' => 10, 'null' => true])->update();
         }
