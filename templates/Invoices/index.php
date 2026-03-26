@@ -272,6 +272,14 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
         ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'ossInvoice']) ?>
     </li> -->
 
+    <?php if (!empty($rentalEnabled) && !$isDemo): ?>
+      <li><hr class="dropdown-divider my-2"></li>
+      <li>
+        <?= $this->Html->link('<i class="ri-home-2-line me-2"></i> Faktura najmu prywatnego',
+          ['controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'rental']],
+          ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'rentalInvoice']) ?>
+      </li>
+    <?php endif; ?>
     <?php if ($isDemo): ?>
       <li><hr class="dropdown-divider my-2"></li>
       <li>

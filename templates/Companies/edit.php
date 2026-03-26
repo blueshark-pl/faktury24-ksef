@@ -332,10 +332,10 @@ $this->assign('title', 'Edycja firmy');
                       value="<?= h($company->rental_last_name ?? '') ?>" placeholder="np. Kowalski" maxlength="120">
                   </div>
                   <div class="col-xl-4">
-                    <label class="form-label" for="rental-nip">NIP (opcjonalnie)</label>
-                    <input type="text" class="form-control" id="rental-nip" name="rental_nip"
-                      value="<?= h($company->rental_nip ?? '') ?>" placeholder="np. 1234567890" maxlength="10" pattern="\d{0,10}">
-                    <div class="form-text">10 cyfr, bez myślników. Dla osób fizycznych opcjonalne.</div>
+                    <label class="form-label" for="rental-nip">NIP</label>
+                    <input type="text" class="form-control bg-light" id="rental-nip" name="rental_nip"
+                      value="<?= h($company->nip ?? '') ?>" maxlength="10" readonly tabindex="-1">
+                    <div class="form-text">Automatycznie pobierany z głównego NIP-u firmy.</div>
                   </div>
                   <div class="col-xl-8">
                     <label class="form-label" for="rental-street">Ulica i numer</label>
@@ -1001,14 +1001,21 @@ $this->assign('title', 'Edycja firmy');
     });
   }
 
-  // Najem prywatny — toggle pól
+  // Najem prywatny — toggle pól + synchronizacja NIP
   const rentalToggle = document.getElementById('rental-enabled-toggle');
   const rentalFields = document.getElementById('rental-fields');
+  const rentalNip = document.getElementById('rental-nip');
   if (rentalToggle && rentalFields) {
     rentalToggle.addEventListener('change', function() {
       rentalFields.classList.toggle('d-none', !this.checked);
     });
   }
+  // Synchronizuj rental_nip z głównym NIP-em zawsze
+  function syncRentalNip() {
+    if (rentalNip && nipInput) rentalNip.value = nipInput.value;
+  }
+  nipInput?.addEventListener('input', syncRentalNip);
+  syncRentalNip();
 
   // GUS fetch for company
   btnGus?.addEventListener('click', async () => {

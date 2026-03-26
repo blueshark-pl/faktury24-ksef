@@ -907,6 +907,7 @@ public function add(): Response
         'internal'         => 'addInternal',
         'internalevidence' => 'addInternalEvidence',
         'oss'              => 'addOss',
+        'rental'           => 'addRental',
         'scheduled'        => 'addScheduled', // jeżeli planujesz w tym kontrolerze
     ];
     // debug($type);
@@ -937,6 +938,23 @@ public function addNoVat(): ?\Cake\Http\Response
 {
     // własny formularz + wymuszenie zerowych stawek VAT
     return $this->handleAdd('novat', true);
+}
+public function addRental(): ?\Cake\Http\Response
+{
+    // Faktura najmu prywatnego — tylko dla firm z włączonym najmem i uzupełnionymi danymi
+    $identity  = $this->request->getAttribute('identity');
+    $companyId = $identity?->get('company_id');
+    if (!empty($companyId)) {
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $co = $Companies->find()->select(['rental_enabled','rental_first_name','rental_last_name'])->where(['id' => $companyId])->first();
+            if (!$co || empty($co->rental_enabled) || empty(trim((string)($co->rental_first_name ?? ''))) || empty(trim((string)($co->rental_last_name ?? '')))) {
+                $this->Flash->warning('Uzupełnij dane najmu prywatnego w ustawieniach firmy, aby wystawiać faktury najmu.');
+                return $this->redirect(['action' => 'index']);
+            }
+        } catch (\Throwable) {}
+    }
+    return $this->handleAdd('rental', true);
 }
 /**
  * @param string $kind    Typ dokumentu: vat|currency|novat|advance|final|correction|margin|proforma|internal|internalEvidence|oss
@@ -1420,6 +1438,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } else {
                 $templateMap = [
                     'novat'    => 'add_no_vat',
+                    'rental'   => 'add_rental',
                     'advance'  => 'add_advance',
                     'final'    => 'add_advance',
                     'proforma' => 'add_proforma',
@@ -1498,6 +1517,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } else {
                 $renderView = match($kind) {
                     'novat'    => 'add_no_vat',
+                    'rental'   => 'add_rental',
                     'margin'   => 'add_margin',
                     'currency' => 'add_currency',
                     'proforma' => 'add_proforma',
@@ -1938,6 +1958,30 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $streetLine = rtrim($streetLine) . $joiner . $localNo;
                 }
 
+                // Dla faktury najmu prywatnego — użyj danych osoby fizycznej zamiast firmy
+                if ($kind === 'rental') {
+                    $rentalName = trim(trim((string)($company->rental_first_name ?? '')) . ' ' . trim((string)($company->rental_last_name ?? '')));
+                    $companyDetailData = [
+                        'invoice_id'   => $invoiceId,
+                        'name'         => $rentalName,
+                        'nip'          => (string)($company->rental_nip ?? $company->nip ?? ''),
+                        'street'       => (string)($company->rental_street ?? ''),
+                        'city'         => (string)($company->rental_city ?? ''),
+                        'zip'          => (string)($company->rental_postal_code ?? ''),
+                        'country'      => 'Polska',
+                        'bank_account' => $snapshotBank,
+                        'email'        => (string)($company->email ?? ''),
+                        'phone'        => (string)($company->phone ?? ''),
+                        'krs'          => '',
+                        'regon'        => '',
+                        'bdo'          => '',
+                        'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
+                        'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
+                        'swift'        => (string)($data['invoice_company_detail']['swift'] ?? ''),
+                        'gln'          => '',
+                        'country_code' => 'PL',
+                    ];
+                } else {
                 $companyDetailData = [
                     'invoice_id' => $invoiceId,
                     'name' => $company->name ?? '',
@@ -1959,7 +2003,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'gln'          => (string)($company->gln ?? ''),
                     'country_code' => (string)($company->country_code ?? 'PL'),
                 ];
-                
+                } // end else (not rental)
+
                 $companyDetailEntity = $InvoiceCompanyDetailsTable->patchEntity($companyDetailEntity, $companyDetailData);
                 if (!$InvoiceCompanyDetailsTable->save($companyDetailEntity)) {
                     throw new \RuntimeException('Błąd zapisu danych sprzedawcy');

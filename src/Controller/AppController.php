@@ -169,6 +169,28 @@ class AppController extends Controller
         $this->set('ksefModeEnabled', $enabled);
     }
 
+    private function setRentalViewVars(?string $companyId): void
+    {
+        $rentalEnabled = false;
+        if (!empty($companyId)) {
+            try {
+                $Companies = $this->fetchTable('Companies');
+                $company = $Companies->find()
+                    ->select(['id', 'rental_enabled', 'rental_first_name', 'rental_last_name', 'rental_nip', 'rental_street', 'rental_postal_code', 'rental_city'])
+                    ->where(['id' => $companyId])
+                    ->first();
+                if ($company !== null) {
+                    $rentalEnabled = !empty($company->rental_enabled)
+                        && !empty(trim((string)($company->rental_first_name ?? '')))
+                        && !empty(trim((string)($company->rental_last_name ?? '')));
+                }
+            } catch (\Throwable) {
+                $rentalEnabled = false;
+            }
+        }
+        $this->set('rentalEnabled', $rentalEnabled);
+    }
+
     private function setDraftsViewVars(?string $companyId): void
     {
         $draftCount = 0;
@@ -217,6 +239,7 @@ class AppController extends Controller
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
             $this->set('ksefModeEnabled', true);
+            $this->set('rentalEnabled', false);
             $this->set('draftInvoicesCount', 0);
             return; // nie zalogowany → nic nie rób
         }
@@ -237,6 +260,7 @@ class AppController extends Controller
                 if (!empty($dbUser->company_id)) {
                     $this->currentCompanyId = $dbUser->company_id;
                     $this->setKsefModeViewVars((string)$dbUser->company_id);
+                    $this->setRentalViewVars((string)$dbUser->company_id);
                     $this->setDraftsViewVars((string)$dbUser->company_id);
                     try {
                         /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
@@ -268,6 +292,7 @@ class AppController extends Controller
             try {
                 $this->currentCompanyId = $identity->get('company_id');
                 $this->setKsefModeViewVars((string)$this->currentCompanyId);
+                $this->setRentalViewVars((string)$this->currentCompanyId);
                 $this->setDraftsViewVars((string)$this->currentCompanyId);
                 /** @var \App\Model\Table\InvoiceSeriesTable $InvoiceSeries */
                 $InvoiceSeries = $this->fetchTable('InvoiceSeries');
@@ -282,6 +307,7 @@ class AppController extends Controller
         }
 
         $this->set('ksefModeEnabled', true);
+        $this->set('rentalEnabled', false);
         $this->set('draftInvoicesCount', 0);
 
         // whitelist akcji (żeby nie robić pętli)

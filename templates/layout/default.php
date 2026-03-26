@@ -485,6 +485,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 ['class' => 'side-menu__item']
                                             ) ?>
                                         </li>
+                                        <?php if (!empty($rentalEnabled)): ?>
+                                        <li class="slide">
+                                            <?= $this->Html->link(
+                                                'Najem prywatny',
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'rental']],
+                                                ['class' => 'side-menu__item']
+                                            ) ?>
+                                        </li>
+                                        <?php endif; ?>
                                         <!-- <li class="slide">
                                             <?= $this->Html->link(
                                                 'Faktura OSS',
