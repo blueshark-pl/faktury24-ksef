@@ -876,6 +876,9 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
 
 <style>
   /* stabilny layout modala */
+  #contractor-create form {
+    display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
+  }
   #contractor-create .form-group { display: block; }
   #contractor-create .help-slot { min-height: 1rem; line-height: 1rem; }
   #contractor-create .form-text { margin-top: .25rem; }
