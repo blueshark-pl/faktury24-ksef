@@ -602,9 +602,21 @@ public function index()
     if ($from) { $query->where(['Invoices.date >=' => $from]); }
     if ($to)   { $query->where(['Invoices.date <=' => $to]); }
 
-    $query->order(['Invoices.created' => 'DESC']);
-
-        $invoices = $this->paginate($query, ['limit' => 20]);
+    $invoices = $this->paginate($query, [
+        'limit' => 20,
+        'order' => ['Invoices.created' => 'DESC'],
+        'sortableFields' => [
+            'fullnumber',
+            'type',
+            'date',
+            'sold_date',
+            'total',
+            'paymentstate',
+            'paymentdate',
+            'created',
+            'InvoiceContractors.name',
+        ],
+    ]);
 
         // Linkage information for proformas (child advances/final)
         $advanceCounts = [];
