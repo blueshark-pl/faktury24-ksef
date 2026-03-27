@@ -202,6 +202,11 @@ custom styles.
 - Czas: 0.2h
 - Do sprawdzenia manualnie: lista faktur z >20 pozycjami powinna wyświetlać przyciski paginacji pod tabelą + informację „Strona X z Y".
 
+- Fix: modal dodawania kontrahenta (/contractors) nie dał się przewijać w pionie — przycisk „Zapisz" był niedostępny. Przyczyną był element `<form>` owijający `modal-body` i `modal-footer`, który łamał flex layout Bootstrap `modal-dialog-scrollable`. Dodano CSS `display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden` na `#contractor-create form`. Wersja: 1.2.23 (28).
+- Commit: 780561b
+- Czas: 0.3h
+- Do sprawdzenia manualnie: otworzyć modal „Dodaj kontrahenta" na /contractors — modal powinien się przewijać, a przycisk „Zapisz" widoczny na dole.
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
