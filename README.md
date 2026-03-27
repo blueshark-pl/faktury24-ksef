@@ -190,6 +190,13 @@ custom styles.
 - Czas: 1–2h
 - Do sprawdzenia manualnie: wystawić fakturę (każdy typ) z produktem posiadającym pola PKWiU/GTIN/CN/akcyza/procedura i sprawdzić, czy te wartości zapisują się w invoice_contents i pojawiają się w XML KSeF.
 
+### 2026-03-27
+
+- Fix: sortowanie i paginacja listy faktur. Dodano `sortableFields` do opcji paginacji (fullnumber, type, date, sold_date, total, paymentstate, paymentdate, created, InvoiceContractors.name). Usunięto hardcoded `$query->order()` na rzecz `order` w opcjach Paginatora (domyślnie `created DESC`). Dodano kolumnę „Data sprzedaży" (`sold_date`) do tabeli + konfiguracja widoczności kolumn. Wersja: 1.2.23 (16).
+- Commit: 33e090a
+- Czas: 0.5h
+- Do sprawdzenia manualnie: na liście faktur kliknąć nagłówki kolumn (Kontrahent, Numer, Data wystawienia, Data sprzedaży, Kwota, Status płatności, Termin płatności) — strzałka sortowania powinna się pojawić. Sprawdzić paginację przy >20 fakturach.
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
