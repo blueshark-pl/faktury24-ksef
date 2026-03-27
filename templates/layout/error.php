@@ -76,5 +76,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             <?= $this->cell('KsefStatus') ?>
         </div>
     </div>
+    <?= $this->Html->script('/assets/libs/bootstrap/js/bootstrap.bundle.min.js') ?>
 </body>
 </html>
