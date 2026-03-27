@@ -207,6 +207,11 @@ custom styles.
 - Czas: 0.3h
 - Do sprawdzenia manualnie: otworzyć modal „Dodaj kontrahenta" na /contractors — modal powinien się przewijać, a przycisk „Zapisz" widoczny na dole.
 
+- Fix: faktura marża — błąd wysyłki do KSeF „Brak poprawnego XML FA (3). Operacja przerwana." Przyczyną był brak implementacji metody `buildFa3XmlMargin()` w `InvoicesController`. Metoda była wywoływana przez router `buildFa3Xml()` dla typów `margin`/`marza`, ale nigdy nie została zdefiniowana (PHP Fatal Error → null XML → błąd walidacji). Dodano brakującą metodę delegującą do `buildFa3XmlBase()`, analogicznie do `buildFa3XmlCurrency()`, `buildFa3XmlCorrection()` itd. Logika marży (`PMarzy`, `RodzajFaktury=VAT`) jest obsługiwana w `buildFa3XmlBase()`. Wersja: 1.2.23 (29).
+- Commit: 9024fbc
+- Czas: 0.3h
+- Do sprawdzenia manualnie: wystawić fakturę marża i wysłać do KSeF — powinno wygenrować poprawny XML i wysłać bez błędu.
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
