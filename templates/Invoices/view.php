@@ -51,9 +51,11 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
             </button>
         <?php endif; ?>
     <?php if (!$isProforma): ?>
-        <?= $this->Html->link('<i class="ri-printer-line me-1"></i>Drukuj PDF',
-            ['action' => 'print', $invoice->id],
-            ['class' => 'btn btn-primary', 'escape' => false, 'target' => '_blank', 'title' => 'Generuj i pobierz PDF']) ?>
+        <a href="#" class="btn btn-primary btn-pdf-lang"
+           data-url-pl="<?= $this->Url->build(['action' => 'print', $invoice->id]) ?>"
+           data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">
+          <i class="ri-printer-line me-1"></i>Pobierz PDF
+        </a>
         <?php if ($canSendToKsef): ?>
           <button id="btn-send-ksef-test"
                   class="btn btn-outline-primary"
@@ -589,3 +591,35 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     </div>
     </div>
 <?php endif; ?>
+
+<script>
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-pdf-lang');
+    if (!btn) return;
+    e.preventDefault();
+    Swal.fire({
+        title: 'Pobierz PDF',
+        html: '<p class="mb-3">Wybierz język faktury:</p>'
+            + '<div class="d-flex justify-content-center gap-3">'
+            + '  <button id="swal-pdf-pl" class="btn btn-outline-primary btn-lg px-4">'
+            + '    <i class="fi fi-pl me-2" style="font-size:1.2em"></i>Polski'
+            + '  </button>'
+            + '  <button id="swal-pdf-en" class="btn btn-outline-primary btn-lg px-4">'
+            + '    <i class="fi fi-gb me-2" style="font-size:1.2em"></i>English'
+            + '  </button>'
+            + '</div>',
+        showConfirmButton: false,
+        showCloseButton: true,
+        didOpen: function () {
+            document.getElementById('swal-pdf-pl').addEventListener('click', function () {
+                window.open(btn.dataset.urlPl, '_blank');
+                Swal.close();
+            });
+            document.getElementById('swal-pdf-en').addEventListener('click', function () {
+                window.open(btn.dataset.urlEn, '_blank');
+                Swal.close();
+            });
+        }
+    });
+});
+</script>

@@ -9,7 +9,6 @@ use Cake\Core\Configure;
 $this->assign('title', 'Faktury');
 ?>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons/css/flag-icons.min.css">
 <style>
 .table th {
     font-weight: 600;
