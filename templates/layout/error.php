@@ -73,6 +73,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <span class="mx-2">•</span>
                 <span>Wersja: <?= h($appVersion) ?></span>
             <?php endif; ?>
+            <?= $this->cell('KsefStatus') ?>
         </div>
     </div>
 </body>
