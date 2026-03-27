@@ -32,18 +32,21 @@ endif;
 ?>
 
 <?php if (!Configure::read('debug')): ?>
-<div class="error-icon danger">
-    <i class="ri-emotion-sad-line" style="color:#dc3545;"></i>
+<div class="text-center py-5">
+    <div class="mb-4">
+        <i class="bi bi-x-circle" style="font-size:4rem;color:#d9534f;"></i>
+    </div>
+    <h2 class="mb-3">Wystąpił błąd</h2>
+    <p class="text-muted mb-4">Przepraszamy, coś poszło nie tak po naszej stronie. Pracujemy nad rozwiązaniem problemu.</p>
+    <div class="alert alert-secondary d-inline-block">
+        <small>Kod błędu: <strong><?= h($errorCode ?? '—') ?></strong></small>
+    </div>
+    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z administratorem i podaj powyższy kod błędu.</small></p>
+    <div class="mt-4">
+        <a href="javascript:history.back()" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Wróć</a>
+        <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona główna</a>
+    </div>
 </div>
-<h2 class="error-title mb-2">500</h2>
-<p class="error-subtitle mb-4">Coś poszło nie tak po naszej stronie.<br>Pracujemy nad rozwiązaniem problemu.</p>
-<div class="mb-3">
-    <span class="error-code-badge"><?= h($errorCode ?? '—') ?></span>
-</div>
-<div class="error-actions mt-4 mb-3">
-    <a href="/" class="btn btn-primary"><i class="ri-home-4-line me-1"></i> Strona główna</a>
-</div>
-<p class="error-footer mt-3 mb-0">Podaj kod błędu kontaktując się z&nbsp;administratorem.</p>
 <?php else: ?>
 <h2><?= __d('cake', 'An Internal Error Has Occurred.') ?></h2>
 <p class="error">
