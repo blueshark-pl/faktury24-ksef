@@ -7447,6 +7447,11 @@ private function mapPaymentMethod(?string $method): string
         return $this->buildFa3XmlBase($inv);
     }
 
+    private function buildFa3XmlMargin(\App\Model\Entity\Invoice $inv): string
+    {
+        return $this->buildFa3XmlBase($inv);
+    }
+
     /**
      * Buduje JSON snapshot wszystkich rejestrów firmy (company_registers).
      * Format: [{"name":"...","krs":"...","regon":"...","bdo":"..."}]
