@@ -3997,10 +3997,16 @@ private function makeClient(string $environment): KsefClient
         // 2) Wyślij do lokalnego API, aby wygenerować PDF
         if (is_string($xml) && trim($xml) !== '') {
             try {
+                $lang = (string)$this->request->getQuery('lang');
                 $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
-                $apiUrl = $isDraft
-                    ? (getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice')
-                    : (getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice');
+
+                if ($lang === 'en') {
+                    $apiUrl = getenv('INVOICE_EN_API_URL') ?: 'https://faktury24-en.3ckstudio.pl/api/invoice';
+                } elseif ($isDraft) {
+                    $apiUrl = getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice';
+                } else {
+                    $apiUrl = getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice';
+                }
                 $http = new \Cake\Http\Client(['timeout' => 60]);
                 // Build QR code URL for KSeF client app (TEST host by default)
                 $seller = $invoice->invoice_company_detail ?? null;
@@ -4018,6 +4024,7 @@ private function makeClient(string $environment): KsefClient
                         'nrKSeF' => (string)($invoice->ksef_number ?? ''),
                         'qrCode' => $qrCode,
                         'isPreview' => $isDraft,
+                        'lang' => $lang === 'en' ? 'en' : 'pl',
                     ],
                 ];
                 $resp = $http->post($apiUrl, $payload, ['type' => 'json']);
@@ -4026,7 +4033,8 @@ private function makeClient(string $environment): KsefClient
                     if ($pdf !== '') {
                         $download = (bool)$this->request->getQuery('download');
                         $disposition = $download ? 'attachment' : 'inline';
-                        $filename = 'faktura_' . ((string)($invoice->fullnumber ?: $invoice->id)) . '.pdf';
+                        $prefix = $lang === 'en' ? 'invoice_' : 'faktura_';
+                        $filename = $prefix . ((string)($invoice->fullnumber ?: $invoice->id)) . '.pdf';
                         return $this->response
                             ->withType('application/pdf')
                             ->withHeader('Content-Disposition', $disposition . '; filename="' . $filename . '"')

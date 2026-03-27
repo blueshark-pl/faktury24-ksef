@@ -804,6 +804,11 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF', 'target' => '_blank'
                     ]) ?>
                   </li>
+                  <li>
+                    <?= $this->Html->link('<i class="ri-printer-line me-2"></i> Drukuj PDF (EN)', ['action' => 'print', $inv->id, '?' => ['lang' => 'en']], [
+                      'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF w języku angielskim', 'target' => '_blank'
+                    ]) ?>
+                  </li>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
                   <li>
                     <a href="#" class="dropdown-item inv-email-btn"
