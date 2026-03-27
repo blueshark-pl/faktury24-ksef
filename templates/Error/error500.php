@@ -41,7 +41,7 @@ endif;
     <div class="alert alert-secondary d-inline-block">
         <small>Kod błędu: <strong><?= h($errorCode ?? '—') ?></strong></small>
     </div>
-    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z administratorem i podaj powyższy kod błędu.</small></p>
+    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z nami: <a href="mailto:partnersc@partnersc.com">partnersc@partnersc.com</a> i podaj powyższy kod błędu.</small></p>
     <div class="mt-4">
         <a href="javascript:history.back()" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Wróć</a>
         <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona główna</a>
