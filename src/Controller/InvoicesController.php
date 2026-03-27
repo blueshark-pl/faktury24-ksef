@@ -604,7 +604,7 @@ public function index()
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
-        'order' => ['number' => 'DESC'],
+        'order' => ['number' => 'DESC', 'date' => 'DESC'],
         'sortableFields' => [
             'number',
             'fullnumber',
