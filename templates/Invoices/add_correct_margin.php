@@ -344,21 +344,6 @@ $gtuSelectHtml .= '</select>';
                 'placeholder' => 'np. Jan Kowalski'
               ]) ?>
             </div>
-            <div class="col-lg-12 mt-2">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-                <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-                <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                  title="Automatyczna wysyłka"
-                  data-bs-content="
-                    <div class='small text-start'>
-                      Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                    </div>
-                  ">
-                  <i class="ri-question-line"></i>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -507,6 +492,19 @@ $gtuSelectHtml .= '</select>';
                     <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
                   </small>
                 </div>
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                    title="Automatyczna wysyłka"
+                    data-bs-content="
+                      <div class='small text-start'>
+                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
+                      </div>
+                    ">
+                    <i class="ri-question-line"></i>
+                  </button>
+                </div>
               </div>
 
         				<?php if (isset($original) && empty($isEdit)): ?>
@@ -600,6 +598,11 @@ $gtuSelectHtml .= '</select>';
                     $tr.find('[name="items['+idx+'][quantity]"]').val(q);
                     $tr.find('[name="items['+idx+'][price]"]').val(unitSaleGross.toFixed(2));
                     $tr.find('[name="items['+idx+'][purchase_price]"]').val(unitPurchaseGross.toFixed(2));
+                    $tr.find('.item-pkwiu').val(it.pkwiu || '');
+                    $tr.find('.item-gtin').val(it.gtin || '');
+                    $tr.find('.item-cn-code').val(it.cn_code || '');
+                    $tr.find('.item-excise').val(it.excise_amount || '');
+                    $tr.find('.item-procedure').val(it.procedure_marking || '');
                     // Recalc sums
                     try { allCalc(); } catch(_) {}
                   }
@@ -653,6 +656,11 @@ $gtuSelectHtml .= '</select>';
   <td>
     <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
+    <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
+    <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
+    <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
+    <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
+    <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
   <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
@@ -2122,6 +2130,12 @@ $('#gus-fetch-btn').on('click', function(){
         var $vat = $tr.find('.item-vatcode');
         if ($vat.length && d.vat_id) $vat.val(d.vat_id);
         if (d.unit) { $tr.find('.item-unit').val(d.unit); }
+        if (d.gtu_code && $tr.find('.item-gtu').length) { $tr.find('.item-gtu').val(d.gtu_code); }
+        $tr.find('.item-pkwiu').val(d.pkwiu || '');
+        $tr.find('.item-gtin').val(d.gtin || '');
+        $tr.find('.item-cn-code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount !== null && d.excise_amount !== undefined ? d.excise_amount : '');
+        $tr.find('.item-procedure').val(d.procedure_marking || '');
         rowCalc($tr); allCalc();
       }
     });
@@ -2157,6 +2171,11 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
+          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
+          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
+          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +

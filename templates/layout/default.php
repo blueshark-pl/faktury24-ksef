@@ -394,6 +394,43 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 <div class="main-sidebar " id="sidebar-scroll">
 
                     <!-- Start::nav -->
+                    <?php
+                    // ── Sidebar active-state helpers ──────────────────────────────────────
+                    $_navCtrl   = strtolower((string)($this->request->getParam('controller') ?? ''));
+                    $_navAction = strtolower((string)($this->request->getParam('action') ?? ''));
+                    $_navPlugin = strtolower((string)($this->request->getParam('plugin') ?? ''));
+
+                    /**
+                     * Returns 'active' when current request matches controller+action+optional query params.
+                     * Pass $action='' to match any action within the controller.
+                     */
+                    $navActive = function(string $ctrl, string $action = '', array $query = []) use ($_navCtrl, $_navAction, $_navPlugin): string {
+                        if ($_navPlugin !== '') return '';
+                        if (strtolower($ctrl) !== $_navCtrl) return '';
+                        if ($action !== '' && strtolower($action) !== $_navAction) return '';
+                        foreach ($query as $k => $v) {
+                            if ((string)($this->request->getQuery($k) ?? '') !== (string)$v) return '';
+                        }
+                        return 'active';
+                    };
+
+                    /**
+                     * Returns class string for a has-sub <li>.
+                     * - open   : any child of the given controllers/actions is currently active
+                     * - active : same condition (motyw ZYNIX expects active on the <li> too, not just open)
+                     *
+                     * $match is either:
+                     *   - array of controller names (strings) — open when current ctrl is in the list
+                     *   - callable returning bool              — open when callable returns true
+                     */
+                    $liClass = function(array|callable $match) use ($_navCtrl, $_navPlugin): string {
+                        if ($_navPlugin !== '') return 'slide has-sub';
+                        $isOpen = is_callable($match)
+                            ? (bool)$match()
+                            : in_array($_navCtrl, $match, true);
+                        return $isOpen ? 'slide has-sub open active' : 'slide has-sub';
+                    };
+                    ?>
                     <nav class="main-menu-container nav nav-pills flex-column sub-open">
                         <div class="slide-left" id="slide-left">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="#7b8191" width="24" height="24" viewBox="0 0 24 24"> <path d="M13.293 6.293 7.586 12l5.707 5.707 1.414-1.414L10.414 12l4.293-4.293z"></path> </svg>
@@ -412,7 +449,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li> -->
                             <!-- Fakturowanie -->
-                            <li class="slide has-sub">
+                            <li class="<?= $liClass(['invoices', 'nbp', 'legacyinvoices']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
                                 <i class="ri-arrow-right-s-line side-menu__angle"></i>
                                 <!-- ikona dokumentu -->
@@ -424,13 +461,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 <?= $this->Html->link(
                                         'Lista faktur',
                                         ['plugin' => false, 'controller' => 'Invoices', 'action' => 'index'],
-                                        ['class' => 'side-menu__item']
+                                        ['class' => trim('side-menu__item ' . $navActive('invoices', 'index'))]
                                 ) ?>
                                 </li>
 
-                                
                                 <!-- Quick create submenu for specific invoice types -->
-                                <li class="slide has-sub">
+                                <?php
+                                $_addActions = ['addvat','addnovat','addproforma','addcurrency','addadvance','addmargin','addrental','addinternal','addinternalevidence','addoss'];
+                                ?>
+                                <li class="<?= $liClass(function() use ($_navCtrl, $_navAction, $_addActions) {
+                                    return $_navCtrl === 'invoices' && in_array($_navAction, $_addActions, true);
+                                }) ?>">
                                     <a href="javascript:void(0);" class="side-menu__item">
                                         Wystaw fakturę
                                         <i class="ri-arrow-right-s-line side-menu__angle"></i>
@@ -439,89 +480,75 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Faktura VAT',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'vat']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addVat'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addVat'))]
                                             ) ?>
                                         </li>
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Rachunek',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'novat']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addNoVat'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addNoVat'))]
                                             ) ?>
                                         </li>
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Proforma / Oferta',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'proforma']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addProforma'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addProforma'))]
                                             ) ?>
                                         </li>
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Faktura walutowa',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'currency']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addCurrency'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addCurrency'))]
                                             ) ?>
                                         </li>
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Faktura zaliczkowa',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'advance']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addAdvance'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addAdvance'))]
                                             ) ?>
                                         </li>
-                                        <!-- <li class="slide">
-                                            <?= $this->Html->link(
-                                                'Faktura korygująca',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'correction']],
-                                                ['class' => 'side-menu__item']
-                                            ) ?>
-                                        </li> -->
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Faktura marża',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'margin']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addMargin'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addMargin'))]
                                             ) ?>
                                         </li>
                                         <?php if (!empty($rentalEnabled)): ?>
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Najem prywatny',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'rental']],
-                                                ['class' => 'side-menu__item']
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addRental'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addRental'))]
                                             ) ?>
                                         </li>
                                         <?php endif; ?>
-                                        <!-- <li class="slide">
-                                            <?= $this->Html->link(
-                                                'Faktura OSS',
-                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'oss']],
-                                                ['class' => 'side-menu__item']
-                                            ) ?>
-                                        </li> -->
                                     </ul>
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
                                             'Słownik Walutowy NBP',
                                             ['plugin' => false, 'controller' => 'Nbp', 'action' => 'dictionary'],
-                                            ['class' => 'side-menu__item']
+                                            ['class' => 'side-menu__item ' . $navActive('nbp', 'dictionary')]
                                     ) ?>
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
                                             'Archiwum (faktury24)',
                                             ['plugin' => false, 'controller' => 'LegacyInvoices', 'action' => 'index'],
-                                            ['class' => 'side-menu__item']
+                                            ['class' => 'side-menu__item ' . $navActive('legacyinvoices', 'index')]
                                     ) ?>
                                 </li>
                             </ul>
                             </li>
 
                             <!-- Kontrahenci -->
-                            <li class="slide has-sub">
+                            <li class="<?= $liClass(['contractors']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
                                 <i class="ri-arrow-right-s-line side-menu__angle"></i>
                                 <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><circle cx="96" cy="96" r="40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><path d="M16,208a80,80,0,0,1,160,0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><circle cx="192" cy="72" r="24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>
@@ -532,14 +559,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <?= $this->Html->link(
                                             'Lista kontrahentów',
                                             ['plugin' => false, 'controller' => 'Contractors', 'action' => 'index'],
-                                            ['class' => 'side-menu__item']
+                                            ['class' => 'side-menu__item ' . $navActive('contractors', 'index')]
                                     ) ?>
                                 </li>
                             </ul>
                             </li>
 
                             <!-- Towary i usługi -->
-                            <li class="slide has-sub">
+                            <li class="<?= $liClass(['products']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
                                 <i class="ri-arrow-right-s-line side-menu__angle"></i>
                                 <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><rect x="32" y="56" width="80" height="80" rx="8" stroke="currentColor" fill="none" stroke-width="16"/><rect x="144" y="56" width="80" height="80" rx="8" stroke="currentColor" fill="none" stroke-width="16"/><rect x="32" y="160" width="192" height="40" rx="8" stroke="currentColor" fill="none" stroke-width="16"/></svg>
@@ -550,7 +577,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <?= $this->Html->link(
                                             'Lista towarów i usług',
                                             ['plugin' => false, 'controller' => 'Products', 'action' => 'index'],
-                                            ['class' => 'side-menu__item']
+                                            ['class' => 'side-menu__item ' . $navActive('products', 'index')]
                                     ) ?>
                                 </li>
                             </ul>

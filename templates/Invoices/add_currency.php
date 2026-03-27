@@ -398,19 +398,6 @@ $gtuSelectHtml .= '</select>';
               'placeholder' => 'np. Jan Kowalski'
             ]) ?>
 
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-              <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-              <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Automatyczna wysyłka"
-                data-bs-content="
-                  <div class='small text-start'>
-                    Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                  </div>
-                ">
-                <i class="ri-question-line"></i>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -550,6 +537,19 @@ $gtuSelectHtml .= '</select>';
                   <small id="save-to-catalog-hint" class="text-success d-none">
                     <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
                   </small>
+                </div>
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                    title="Automatyczna wysyłka"
+                    data-bs-content="
+                      <div class='small text-start'>
+                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
+                      </div>
+                    ">
+                    <i class="ri-question-line"></i>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2428,10 +2428,15 @@ $('#gus-fetch-btn').on('click', function(){
         var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
         currentProductRow.find('.item-price').val(disp.toFixed(2));
 
-        // GTU – przepisz z produktu do wiersza
+        // GTU + pola klasyfikacyjne KSeF/JPK
         if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
           currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount !== null && product.excise_amount !== undefined ? product.excise_amount : '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
 
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {

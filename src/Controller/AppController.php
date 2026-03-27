@@ -315,7 +315,7 @@ class AppController extends Controller
             'Companies' => ['onboarding', 'saveOnboarding'],
             'Users'     => ['login', 'logout', 'register'],
             'TwoFactor' => ['index', 'enable', 'verify', 'disable'],
-            'Invoices'  => ['runPlannedDrafts'],
+            'Invoices'  => ['runPlannedDrafts', 'generatePdfInternal', 'processEmailQueue'],
         ];
 
         $controller = $this->request->getParam('controller');

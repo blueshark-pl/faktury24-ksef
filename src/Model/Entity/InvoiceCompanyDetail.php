@@ -25,6 +25,8 @@ use Cake\ORM\Entity;
  * @property string|null $bank_name
  * @property string|null $bank_desc
  * @property string|null $swift
+ * @property string|null $bank_correspondent
+ * @property string|null $registers_json
  * @property string|null $gln
  * @property string|null $country_code
  * @property \Cake\I18n\DateTime $created
@@ -60,6 +62,8 @@ class InvoiceCompanyDetail extends Entity
         'bank_name' => true,
         'bank_desc' => true,
         'swift' => true,
+        'bank_correspondent' => true,
+        'registers_json' => true,
         'gln' => true,
         'country_code' => true,
         'koresp_country_code' => true,

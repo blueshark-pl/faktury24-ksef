@@ -340,19 +340,6 @@ $gtuSelectHtml .= '</select>';
               'placeholder' => 'np. Jan Kowalski'
             ]) ?>
 
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-              <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-              <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Automatyczna wysyłka"
-                data-bs-content="
-                  <div class='small text-start'>
-                    Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                  </div>
-                ">
-                <i class="ri-question-line"></i>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -483,6 +470,19 @@ $gtuSelectHtml .= '</select>';
                   <small id="save-to-catalog-hint" class="text-success d-none">
                     <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
                   </small>
+                </div>
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                    title="Automatyczna wysyłka"
+                    data-bs-content="
+                      <div class='small text-start'>
+                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
+                      </div>
+                    ">
+                    <i class="ri-question-line"></i>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2630,7 +2630,7 @@ if ($.fn && $.fn.select2) {
       url: seriesSearchUrl,
       dataType: 'json',
       delay: 200,
-      data: function (params) { return { q: (params.term || ''), limit: 20, type: 'novat' }; },
+      data: function (params) { return { q: (params.term || ''), limit: 20, type: 'rental' }; },
       processResults: function (data) {
         // oczekiwany format: [{id: '2025/10', text:'2025/10', pattern:'...', next_no:123}, ...]
         var items = $.map(data.results || data || [], function (s) {
@@ -2688,9 +2688,9 @@ if ($.fn && $.fn.select2) {
     }
   })();
 
-  // Ładowanie domyślnej serii — typ novat, fallback do wszystkich
+  // Ładowanie domyślnej serii — typ rental, fallback do wszystkich
   function loadDefaultSeries() {
-    $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50, type: 'novat' } })
+    $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50, type: 'rental' } })
       .done(function(data) {
         var items = data.results || data || [];
         if (!items.length) {

@@ -151,12 +151,13 @@ public function add()
                 ]));
         }
 
-        // Znajdź serię wraz z informacją o okresie
+        // Znajdź serię wraz z informacją o okresie (po UUID lub nazwie)
+        $isUuid = (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $series);
         $seriesEntity = $this->InvoiceSeries->find()
             ->contain(['InvoiceSeriesPeriods'])
             ->where([
                 'InvoiceSeries.company_id' => $companyId,
-                'InvoiceSeries.name' => $series
+                $isUuid ? 'InvoiceSeries.id' : 'InvoiceSeries.name' => $series
             ])
             ->first();
 

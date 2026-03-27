@@ -436,6 +436,18 @@ $this->assign('title', 'Edycja firmy');
                       <label class="form-label">Etykieta rachunku</label>
                       <input type="text" name="banks[<?= (int)$i ?>][label]" class="form-control" placeholder="Rachunek główny" value="<?= h((string)($acc->label ?? '')) ?>">
                     </div>
+                    <div class="col-xl-4">
+                      <label class="form-label">Kod SWIFT/BIC</label>
+                      <input type="text" name="banks[<?= (int)$i ?>][swift]" class="form-control" placeholder="np. BREXPLPWXXX" maxlength="11" value="<?= h((string)($acc->swift ?? '')) ?>">
+                    </div>
+                    <div class="col-xl-4">
+                      <label class="form-label">Rachunek własny banku</label>
+                      <input type="text" name="banks[<?= (int)$i ?>][bank_correspondent]" class="form-control" placeholder="Nr rachunku korespondencyjnego" value="<?= h((string)($acc->bank_correspondent ?? '')) ?>">
+                    </div>
+                    <div class="col-xl-4">
+                      <label class="form-label">Opis rachunku</label>
+                      <input type="text" name="banks[<?= (int)$i ?>][bank_desc]" class="form-control" placeholder="np. Rachunek walutowy EUR" value="<?= h((string)($acc->bank_desc ?? '')) ?>">
+                    </div>
                   </div>
                 </div>
               </div>
@@ -475,6 +487,18 @@ $this->assign('title', 'Edycja firmy');
                   <div class="col-xl-6">
                     <label class="form-label">Etykieta rachunku</label>
                     <input type="text" name="banks[0][label]" class="form-control" placeholder="Rachunek główny">
+                  </div>
+                  <div class="col-xl-4">
+                    <label class="form-label">Kod SWIFT/BIC</label>
+                    <input type="text" name="banks[0][swift]" class="form-control" placeholder="np. BREXPLPWXXX" maxlength="11">
+                  </div>
+                  <div class="col-xl-4">
+                    <label class="form-label">Rachunek własny banku</label>
+                    <input type="text" name="banks[0][bank_correspondent]" class="form-control" placeholder="Nr rachunku korespondencyjnego">
+                  </div>
+                  <div class="col-xl-4">
+                    <label class="form-label">Opis rachunku</label>
+                    <input type="text" name="banks[0][bank_desc]" class="form-control" placeholder="np. Rachunek walutowy EUR">
                   </div>
                 </div>
               </div>

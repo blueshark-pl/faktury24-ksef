@@ -66,6 +66,10 @@ class InvoiceDefaultSeriesResolver
             'series_type' => 'oss',
             'hints'       => ['%oss%'],
         ],
+        'rental' => [
+            'series_type' => 'rental',
+            'hints'       => ['%najem%', '%rent%', '%fnp%'],
+        ],
     ];
 
     /**

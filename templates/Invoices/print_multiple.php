@@ -73,9 +73,16 @@ $isFirst = true;
                         <?php if ($seller && ($seller->nip ?? null)): ?>
                             <strong>NIP:</strong> <?= h($seller->nip) ?><br>
                         <?php endif; ?>
-                        <?php if ($seller && property_exists($seller, 'regon') && $seller->regon): ?>
-                            <strong>REGON:</strong> <?= h($seller->regon) ?><br>
-                        <?php endif; ?>
+                        <?php
+                        $__regs = [];
+                        $__regsJson = trim((string)($seller->registers_json ?? ''));
+                        if ($__regsJson !== '') { $__regs = json_decode($__regsJson, true) ?: []; }
+                        foreach ($__regs as $__reg):
+                            if (!empty($__reg['name'])): ?><strong><?= h($__reg['name']) ?></strong><br><?php endif;
+                            if (!empty($__reg['krs'])): ?><strong>KRS:</strong> <?= h($__reg['krs']) ?><br><?php endif;
+                            if (!empty($__reg['regon'])): ?><strong>REGON:</strong> <?= h($__reg['regon']) ?><br><?php endif;
+                            if (!empty($__reg['bdo'])): ?><strong>BDO:</strong> <?= h($__reg['bdo']) ?><br><?php endif;
+                        endforeach; ?>
                         <?php if ($seller && property_exists($seller, 'phone') && $seller->phone): ?>
                             <strong>Tel:</strong> <?= h($seller->phone) ?><br>
                         <?php endif; ?>

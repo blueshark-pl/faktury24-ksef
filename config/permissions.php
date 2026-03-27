@@ -153,8 +153,7 @@ return [
         [
             'role' => 'user',
             'controller' => 'Companies',
-            'action' => ['onboarding', 'saveOnboarding', 'edit'],
-            
+            'action' => ['onboarding', 'saveOnboarding', 'edit', 'checkSeriesStart'],
         ],
         [
             'role' => 'user',
@@ -198,14 +197,24 @@ return [
                 'downloadKsef',
                 'downloadFa3Xml',
                 'downloadUpo',
+                'downloadUpoByInvoice',
                 'downloadUpoPdf',
                 'upoHtml',
                 'metadataKsef',
                 'drafts',
                 'sendDraftNow',
                 'scheduleDraft',
+                'ksefSendLogs',
+                'contractorEmailLookup',
+                'emailInvoice',
+                'ksefAuthActive',
+                'ksefAuthLogin',
+                'ksefSmoke',
+                'generatePdfInternal',
+                'processEmailQueue',
+                'debugKsefXml',
             ],
-            
+
         ],
         [
             'role' => 'user',
@@ -222,8 +231,10 @@ return [
                 'delete',
                 'export',
                 'invoices',
+                'importFetch',
+                'importBatch',
             ],
-            
+
         ],
 
         // towary i usługi
@@ -239,6 +250,8 @@ return [
                 'delete',
                 'export',
                 'search',
+                'importFetch',
+                'importBatch',
             ],
         ],
         [
@@ -272,6 +285,7 @@ return [
             'controller' => 'InvoiceSeries',
             'action' => [
                 'index',
+                'view',
                 'search',
                 'add',
                 'edit',
@@ -307,7 +321,24 @@ return [
         [
             'role' => 'user',
             'controller' => 'KsefAuthorizations',
-            'action' => ['received', 'issued', 'status', 'statusAjax'],
+            'action' => [
+                'received',
+                'issued',
+                'status',
+                'statusAjax',
+                'personalGrants',
+                'personalGrantsCheck',
+                'authorizationsGrants',
+                'bookingSummary',
+                'certDiagnostics',
+                'costCategories',
+                'download',
+                'lines',
+                'preview',
+                'uploadCertificate',
+                'view',
+                'saveBookingItems',
+            ],
         ],
 
         // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany
@@ -336,6 +367,27 @@ return [
             'role' => 'user',
             'controller' => 'ContractorsSettings',
             'action' => ['view', 'save'],
+        ],
+
+        // stawki VAT (widok tylko do odczytu; edycja dla admina)
+        [
+            'role' => 'user',
+            'controller' => 'Vats',
+            'action' => ['index', 'view'],
+        ],
+
+        // archiwum faktur (import z poprzedniego systemu)
+        [
+            'role' => 'user',
+            'controller' => 'LegacyInvoices',
+            'action' => ['index', 'fetch', 'downloadPdf'],
+        ],
+
+        // tokeny API (generowanie i unieważnianie własnych tokenów)
+        [
+            'role' => 'user',
+            'controller' => 'ApiTokens',
+            'action' => ['index', 'generate', 'revoke'],
         ],
         [
             'role' => '*',

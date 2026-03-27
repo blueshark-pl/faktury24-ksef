@@ -200,6 +200,16 @@ $showPreviewFooter = $showPreviewFooter ?? true;
                                 <div><?= h(($seller->city ?? '').' '.($seller->street ?? '').' '.($seller->building_number ?? '').(isset($seller->flat_number) && $seller->flat_number ? '/'.$seller->flat_number : '')) ?></div>
                                 <div><?= h(($seller->zip ?? ($seller->postal_code ?? '')) .' '. ($seller->post ?? ($seller->city ?? ''))) ?></div>
                                 <div><?= $seller && ($seller->nip ?? null) ? 'NIP: '.h($seller->nip) : '' ?></div>
+                                <?php
+                                $__regs = [];
+                                $__regsJson = trim((string)($seller->registers_json ?? ''));
+                                if ($__regsJson !== '') { $__regs = json_decode($__regsJson, true) ?: []; }
+                                foreach ($__regs as $__reg):
+                                    if (!empty($__reg['name'])): ?><div><?= h($__reg['name']) ?></div><?php endif;
+                                    if (!empty($__reg['krs'])): ?><div>KRS: <?= h($__reg['krs']) ?></div><?php endif;
+                                    if (!empty($__reg['regon'])): ?><div>REGON: <?= h($__reg['regon']) ?></div><?php endif;
+                                    if (!empty($__reg['bdo'])): ?><div>BDO: <?= h($__reg['bdo']) ?></div><?php endif;
+                                endforeach; ?>
                             </div>
                         </td>
                         <td></td>

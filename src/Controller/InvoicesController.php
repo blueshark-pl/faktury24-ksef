@@ -580,7 +580,7 @@ public function index()
     $currency = $this->request->getQuery('currency');
 
                 $query = $this->Invoices->find()
-            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip']); }])
+            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); }])
             ->where(['Invoices.company_id' => $companyId])
             ->where($this->nonDraftConditions());
 
@@ -765,7 +765,8 @@ $stats = [
     'overdue_max_days' => 0,
 ];
 
-    $this->set(compact('invoices','stats','advanceCounts','finalByProforma','advancesByProforma'));
+    $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
+    $this->set(compact('invoices','stats','advanceCounts','finalByProforma','advancesByProforma','ksefModeEnabled'));
 }
 
     public function drafts()
@@ -1928,26 +1929,55 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             if ($company) {
                 $InvoiceCompanyDetailsTable = $this->fetchTable('InvoiceCompanyDetails');
                 $companyDetailEntity = $InvoiceCompanyDetailsTable->newEmptyEntity();
-                // Determine bank account snapshot: prefer posted value; otherwise default company bank account (from CompanyBankAccounts.is_default), fallback to Companies.bank_account
-                $postedBank = trim((string)($data['invoice_company_detail']['bank_account'] ?? ''));
-                $snapshotBank = $postedBank;
-                if ($snapshotBank === '') {
-                    try {
-                        $Cba = $this->fetchTable('CompanyBankAccounts');
-                        $def = $Cba->find()
-                            ->select(['iban'])
+                // Determine bank account snapshot from CompanyBankAccounts:
+                // 1) by company_bank_account_id (selected in form), 2) default account, 3) fallback
+                $snapshotBank       = '';
+                $snapshotBankName   = '';
+                $snapshotBankDesc   = '';
+                $snapshotSwift      = '';
+                $snapshotBankCoresp = '';
+                try {
+                    $Cba = $this->fetchTable('CompanyBankAccounts');
+                    $selectedBankId = !empty($data['company_bank_account_id']) ? (string)$data['company_bank_account_id'] : null;
+                    $cbaRecord = null;
+                    if ($selectedBankId !== null) {
+                        $cbaRecord = $Cba->find()
+                            ->select(['iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent'])
+                            ->where(['id' => $selectedBankId, 'company_id' => $companyId])
+                            ->first();
+                    }
+                    if (!$cbaRecord) {
+                        $cbaRecord = $Cba->find()
+                            ->select(['iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent'])
                             ->where(['company_id' => $companyId, 'is_default' => 1])
                             ->order(['is_default' => 'DESC', 'created' => 'DESC'])
                             ->first();
-                        if ($def && !empty($def->iban)) {
-                            $snapshotBank = (string)$def->iban;
-                        }
-                    } catch (\Throwable $e) {
-                        // ignore, fallback below
                     }
+                    if ($cbaRecord) {
+                        $snapshotBank       = (string)($cbaRecord->iban ?? '');
+                        $snapshotBankName   = (string)($cbaRecord->bank_name ?? '');
+                        $snapshotBankDesc   = (string)($cbaRecord->bank_desc ?? '');
+                        $snapshotSwift      = (string)($cbaRecord->swift ?? '');
+                        $snapshotBankCoresp = (string)($cbaRecord->bank_correspondent ?? '');
+                    }
+                } catch (\Throwable $e) {
+                    // ignore, fallback below
+                }
+                if ($snapshotBank === '') {
+                    $snapshotBank = trim((string)($data['invoice_company_detail']['bank_account'] ?? ''));
                 }
                 if ($snapshotBank === '') {
                     $snapshotBank = (string)($company->bank_account ?? '');
+                }
+                // Allow form overrides for bank_name/bank_desc/swift if user typed them manually
+                if ($snapshotBankName === '') {
+                    $snapshotBankName = (string)($data['invoice_company_detail']['bank_name'] ?? '');
+                }
+                if ($snapshotBankDesc === '') {
+                    $snapshotBankDesc = (string)($data['invoice_company_detail']['bank_desc'] ?? '');
+                }
+                if ($snapshotSwift === '') {
+                    $snapshotSwift = (string)($data['invoice_company_detail']['swift'] ?? '');
                 }
                 // Street + local number (if provided) e.g. "Kwiatowa 10/5"
                 $streetLine = trim((string)($company->street ?? ''));
@@ -1975,9 +2005,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'krs'          => '',
                         'regon'        => '',
                         'bdo'          => '',
-                        'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
-                        'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
-                        'swift'        => (string)($data['invoice_company_detail']['swift'] ?? ''),
+                        'registers_json' => $this->buildRegistersJson($company),
+                        'bank_name'         => $snapshotBankName,
+                        'bank_desc'         => $snapshotBankDesc,
+                        'swift'             => $snapshotSwift,
+                        'bank_correspondent' => $snapshotBankCoresp,
                         'gln'          => '',
                         'country_code' => 'PL',
                     ];
@@ -1994,12 +2026,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     // FA(3) — dane kontaktowe i rejestrowe sprzedawcy
                     'email'        => (string)($company->email ?? ''),
                     'phone'        => (string)($company->phone ?? ''),
-                    'krs'          => (string)($this->resolveCompanyRegisterField($company, 'krs')),
-                    'regon'        => (string)($this->resolveCompanyRegisterField($company, 'regon')),
-                    'bdo'          => (string)($this->resolveCompanyRegisterField($company, 'bdo')),
-                    'bank_name'    => (string)($data['invoice_company_detail']['bank_name'] ?? ''),
-                    'bank_desc'    => (string)($data['invoice_company_detail']['bank_desc'] ?? ''),
-                    'swift'        => (string)($data['invoice_company_detail']['swift'] ?? ''),
+                    'krs'          => '',
+                    'regon'        => '',
+                    'bdo'          => '',
+                    'registers_json' => $this->buildRegistersJson($company),
+                    'bank_name'         => $snapshotBankName,
+                    'bank_desc'         => $snapshotBankDesc,
+                    'swift'             => $snapshotSwift,
+                    'bank_correspondent' => $snapshotBankCoresp,
                     'gln'          => (string)($company->gln ?? ''),
                     'country_code' => (string)($company->country_code ?? 'PL'),
                 ];
@@ -3607,6 +3641,211 @@ private function makeClient(string $environment): KsefClient
     }
 
     /**
+     * GET /invoices/ksef-send-logs/:id.json
+     * Returns KSeF send log entries for a single invoice (user-friendly format).
+     */
+    public function ksefSendLogs(string $id)
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        // verify invoice belongs to company
+        $invoice = $this->Invoices->find()
+            ->select(['id', 'fullnumber', 'ksef_status', 'ksef_number'])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            return $this->response->withStatus(404)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'message' => 'Nie znaleziono faktury.']));
+        }
+
+        $conn = ConnectionManager::get('default');
+        $rows = $conn->execute(
+            'SELECT event_type, status_code, message, payload, created
+             FROM ksef_send_logs
+             WHERE invoice_id = :id AND company_id = :cid
+             ORDER BY created ASC',
+            ['id' => $id, 'cid' => (string)$companyId],
+            ['id' => 'string', 'cid' => 'string']
+        )->fetchAll('assoc');
+
+        $eventLabels = [
+            'send_attempt'   => ['label' => 'Próba wysyłki',       'icon' => 'ri-send-plane-line',       'color' => 'info'],
+            'send_success'   => ['label' => 'Wysłano pomyślnie',   'icon' => 'ri-check-double-line',     'color' => 'success'],
+            'send_error'     => ['label' => 'Błąd wysyłki',        'icon' => 'ri-close-circle-line',     'color' => 'danger'],
+            'send_exception' => ['label' => 'Wyjątek wysyłki',     'icon' => 'ri-bug-line',              'color' => 'danger'],
+            'blocked'        => ['label' => 'Zablokowano',         'icon' => 'ri-forbid-line',           'color' => 'warning'],
+            'xml_missing'    => ['label' => 'Brak XML',            'icon' => 'ri-file-damage-line',      'color' => 'warning'],
+            'xml_invalid'    => ['label' => 'Niepoprawny XML',     'icon' => 'ri-file-warning-line',     'color' => 'warning'],
+            'xsd_invalid'    => ['label' => 'Błąd walidacji XSD',  'icon' => 'ri-file-warning-line',     'color' => 'danger'],
+            'upo_downloaded' => ['label' => 'Pobrano UPO',         'icon' => 'ri-download-2-line',       'color' => 'success'],
+        ];
+
+        $logs = [];
+        foreach ($rows as $row) {
+            $type  = (string)($row['event_type'] ?? '');
+            $meta  = $eventLabels[$type] ?? ['label' => $type, 'icon' => 'ri-history-line', 'color' => 'secondary'];
+            $payload = [];
+            if (!empty($row['payload'])) {
+                $payload = json_decode((string)$row['payload'], true) ?? [];
+            }
+            $created = (string)($row['created'] ?? '');
+            $createdFormatted = '';
+            if ($created !== '') {
+                try {
+                    $dt = new \DateTimeImmutable($created);
+                    $createdFormatted = $dt->format('d.m.Y H:i:s');
+                } catch (\Throwable) {
+                    $createdFormatted = $created;
+                }
+            }
+            $logs[] = [
+                'event_type'       => $type,
+                'label'            => $meta['label'],
+                'icon'             => $meta['icon'],
+                'color'            => $meta['color'],
+                'status_code'      => (string)($row['status_code'] ?? ''),
+                'message'          => (string)($row['message'] ?? ''),
+                'env'              => (string)($payload['env'] ?? ''),
+                'ksef_number'      => (string)($payload['ksefNumber'] ?? $payload['ksef_number'] ?? ''),
+                'created'          => $createdFormatted,
+            ];
+        }
+
+        return $this->response->withType('application/json')->withStringBody(json_encode([
+            'success'      => true,
+            'invoice_id'   => $id,
+            'fullnumber'   => (string)($invoice->fullnumber ?? ''),
+            'ksef_status'  => (string)($invoice->ksef_status ?? ''),
+            'ksef_number'  => (string)($invoice->ksef_number ?? ''),
+            'logs'         => $logs,
+        ]));
+    }
+
+    /**
+     * GET /invoices/download-upo-by-invoice/:id
+     * Downloads UPO for an invoice identified by its internal UUID.
+     * Looks up ksef_number, session_reference and environment from DB/logs.
+     */
+    public function downloadUpoByInvoice(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $invoice = $this->Invoices->find()
+            ->select(['id', 'ksef_number', 'ksef_session_reference', 'ksef_desc'])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            throw new \Cake\Http\Exception\NotFoundException('Faktura nie istnieje.');
+        }
+
+        $ksefNumber = trim((string)($invoice->ksef_number ?? ''));
+        if ($ksefNumber === '') {
+            throw new \Cake\Http\Exception\BadRequestException('Ta faktura nie ma nadanego numeru KSeF.');
+        }
+
+        // Resolve session_reference from invoice or ksef_desc
+        $sessionRef = trim((string)($invoice->ksef_session_reference ?? ''));
+        if ($sessionRef === '' && !empty($invoice->ksef_desc)) {
+            if (preg_match('/S=([A-Z0-9\-]+)/i', (string)$invoice->ksef_desc, $m)) {
+                $sessionRef = (string)$m[1];
+            }
+        }
+        // Try to resolve session_reference and env from last send_success log entry
+        $environment = 'test';
+        try {
+            $conn = ConnectionManager::get('default');
+            $logRow = $conn->execute(
+                "SELECT payload FROM ksef_send_logs
+                 WHERE invoice_id = :iid AND company_id = :cid AND event_type = 'send_success'
+                 ORDER BY created DESC LIMIT 1",
+                ['iid' => $id, 'cid' => $companyId],
+                ['iid' => 'string', 'cid' => 'string']
+            )->fetch('assoc');
+            if (!empty($logRow['payload'])) {
+                $p = json_decode((string)$logRow['payload'], true) ?? [];
+                if ($sessionRef === '' && !empty($p['session_reference'])) {
+                    $sessionRef = (string)$p['session_reference'];
+                }
+                if (($p['env'] ?? '') === 'prod') {
+                    $environment = 'prod';
+                }
+            }
+        } catch (\Throwable) {}
+
+        if ($sessionRef === '') {
+            throw new \Cake\Http\Exception\BadRequestException('Brak referencji sesji KSeF. UPO nie może zostać pobrane.');
+        }
+
+        // Build and execute UPO download (reuse same logic as downloadUpo)
+        $ksef   = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+        $client = $ksef->buildClient($companyId, $environment);
+        $req = new \N1ebieski\KSEFClient\Requests\Sessions\Invoices\KsefUpo\KsefUpoRequest(
+            referenceNumber: \N1ebieski\KSEFClient\ValueObjects\Requests\ReferenceNumber::from($sessionRef),
+            ksefNumber: \N1ebieski\KSEFClient\ValueObjects\Requests\KsefNumber::from($ksefNumber)
+        );
+        $body = (string)$client->sessions()->invoices()->ksefUpo($req)->body();
+
+        $bin = $body;
+        if (str_starts_with($bin, "\xEF\xBB\xBF")) { $bin = substr($bin, 3); }
+        $trim = ltrim($bin);
+        $head = substr($trim, 0, 200);
+        $isPdf = str_starts_with($trim, '%PDF');
+        $isXml = str_starts_with($trim, '<') || (bool)preg_match('/<\?xml|<[^>]+>/', $head);
+
+        $this->logKsefSendEvent($companyId, $id, 'upo_downloaded', [
+            'source'      => 'downloadUpoByInvoice',
+            'format'      => $isPdf ? 'pdf' : ($isXml ? 'xml' : 'bin'),
+            'ksef_number' => $ksefNumber,
+            'env'         => $environment,
+        ]);
+
+        if ($isPdf) {
+            return $this->response
+                ->withType('application/pdf')
+                ->withHeader('Content-Length', (string)strlen($bin))
+                ->withDownload('UPO_' . preg_replace('/[^a-z0-9_\-]/i', '_', $ksefNumber) . '.pdf')
+                ->withStringBody($bin);
+        }
+
+        if ($isXml) {
+            $this->storeUpoXmlForInvoice($companyId, $ksefNumber, $bin);
+            try {
+                $apiUrl = getenv('UPO_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/upo';
+                $http   = new \Cake\Http\Client(['timeout' => 60]);
+                $apiRes = $http->post($apiUrl, ['xml' => $bin], ['type' => 'json']);
+                if ($apiRes->getStatusCode() === 200) {
+                    $pdf = (string)$apiRes->getBody();
+                    if ($pdf !== '') {
+                        return $this->response
+                            ->withType('application/pdf')
+                            ->withHeader('Content-Length', (string)strlen($pdf))
+                            ->withDownload('UPO_' . preg_replace('/[^a-z0-9_\-]/i', '_', $ksefNumber) . '.pdf')
+                            ->withStringBody($pdf);
+                    }
+                }
+            } catch (\Throwable) {}
+
+            return $this->response
+                ->withType('application/xml')
+                ->withHeader('Content-Length', (string)strlen($bin))
+                ->withDownload('UPO_' . preg_replace('/[^a-z0-9_\-]/i', '_', $ksefNumber) . '.xml')
+                ->withStringBody($bin);
+        }
+
+        return $this->response
+            ->withType('application/octet-stream')
+            ->withHeader('Content-Length', (string)strlen($bin))
+            ->withDownload('UPO.bin')
+            ->withStringBody($bin);
+    }
+
+    /**
      * Email invoice PDF to client
      */
     public function emailInvoice(string $id)
@@ -3937,14 +4176,21 @@ private function makeClient(string $environment): KsefClient
     {
         $this->request->allowMethod(['post']);
 
-        $identity = $this->getRequest()->getAttribute('identity');
+        $isAjax    = $this->request->is('ajax');
+        $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = $identity?->get('company_id');
+
+        $jsonError = function(string $msg, int $status = 400) {
+            return $this->response->withStatus($status)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => $msg], JSON_UNESCAPED_UNICODE));
+        };
 
         // Accept both 'action' and 'bulk_action' (hidden fallback set by JS)
         $action = $this->request->getData('bulk_action') ?? $this->request->getData('action');
         $selectedIds = (array) $this->request->getData('selected');
 
         if (empty($selectedIds)) {
+            if ($isAjax) return $jsonError('Nie wybrano żadnych faktur.');
             $this->Flash->error('Nie wybrano żadnych faktur.');
             return $this->redirect(['action' => 'index']);
         }
@@ -3958,9 +4204,13 @@ private function makeClient(string $environment): KsefClient
             ->all();
 
         if ($invoices->count() !== count($selectedIds)) {
+            if ($isAjax) return $jsonError('Wybrane faktury nie należą do Twojej firmy.', 403);
             $this->Flash->error('Wybrane faktury nie należą do Twojej firmy.');
             return $this->redirect(['action' => 'index']);
         }
+
+        $flashType = 'success';
+        $flashMsg  = '';
 
         switch ($action) {
             case 'print_selected':
@@ -4008,16 +4258,107 @@ private function makeClient(string $environment): KsefClient
                 }
 
                 if ($created > 0) {
-                    $this->Flash->success("Utworzono płatności dla {$created} faktur. Pominięte: {$skipped}, błędy: {$errors}.");
+                    $flashType = 'success';
+                    $flashMsg  = "Oznaczono jako opłacone: {$created} faktur." . ($skipped > 0 ? " Pominięte (już opłacone): {$skipped}." : '') . ($errors > 0 ? " Błędy: {$errors}." : '');
                 } elseif ($skipped > 0 && $errors === 0) {
-                    $this->Flash->info('Wszystkie wybrane faktury były już opłacone. Nic nie zmieniono.');
+                    $flashType = 'info';
+                    $flashMsg  = 'Wszystkie wybrane faktury były już opłacone. Nic nie zmieniono.';
                 } else {
-                    $this->Flash->error("Nie udało się utworzyć płatności (błędy: {$errors}).");
+                    $flashType = 'error';
+                    $flashMsg  = "Nie udało się utworzyć płatności (błędy: {$errors}).";
+                }
+                break;
+
+            case 'send_email':
+                $ksefMode = $this->isKsefModeEnabled((string)$companyId);
+                /** @var \App\Model\Table\InvoiceEmailQueueTable $Queue */
+                $Queue = $this->fetchTable('InvoiceEmailQueue');
+
+                // Załaduj kontrahentów żeby sprawdzić e-mail
+                $invWithContractors = $this->Invoices->find()
+                    ->contain(['InvoiceContractors' => fn($q) => $q->select(['invoice_id','email'])])
+                    ->where([
+                        'Invoices.id IN'         => $selectedIds,
+                        'Invoices.company_id'    => $companyId,
+                    ])
+                    ->all();
+
+                $queued = 0; $skippedKsef = 0; $skippedEmail = 0;
+                $now = new \DateTimeImmutable();
+
+                foreach ($invWithContractors as $inv) {
+                    $type  = (string)($inv->type ?? 'vat');
+                    $email = trim((string)($inv->invoice_contractor?->email ?? ''));
+
+                    // Brak e-maila → pomiń
+                    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $skippedEmail++;
+                        continue;
+                    }
+
+                    // Reguła KSeF: jeśli tryb KSeF włączony, faktura musi mieć numer KSeF
+                    // (chyba że to proforma lub rachunek — te nie trafiają do KSeF)
+                    $ksefExemptTypes = ['proforma', 'novat', 'rental'];
+                    if ($ksefMode && !in_array($type, $ksefExemptTypes, true)) {
+                        $ksefNumber = trim((string)($inv->ksef_number ?? ''));
+                        if ($ksefNumber === '') {
+                            $skippedKsef++;
+                            continue;
+                        }
+                    }
+
+                    // Dodaj do kolejki (unikaj duplikatów pending/sending dla tej faktury+emaila)
+                    $exists = $Queue->find()
+                        ->where([
+                            'invoice_id' => $inv->id,
+                            'email'      => $email,
+                            'status IN'  => ['pending', 'sending'],
+                        ])
+                        ->count();
+
+                    if ($exists === 0) {
+                        $entry = $Queue->newEntity([
+                            'invoice_id'   => $inv->id,
+                            'company_id'   => $companyId,
+                            'email'        => $email,
+                            'status'       => 'pending',
+                            'attempts'     => 0,
+                            'scheduled_at' => $now->format('Y-m-d H:i:s'),
+                        ]);
+                        if ($Queue->save($entry)) {
+                            $queued++;
+                        }
+                    } else {
+                        $queued++; // liczymy też już istniejące w kolejce
+                    }
+                }
+
+                $parts = [];
+                if ($queued > 0) {
+                    $parts[] = "Dodano do kolejki wysyłki: {$queued} faktur.";
+                }
+                if ($skippedEmail > 0) {
+                    $parts[] = "Pominięto (brak e-maila kontrahenta): {$skippedEmail}.";
+                }
+                if ($skippedKsef > 0) {
+                    $parts[] = "Pominięto (brak numeru KSeF): {$skippedKsef}.";
+                }
+
+                if ($queued > 0) {
+                    $flashType = 'success';
+                    $flashMsg  = implode(' ', $parts);
+                } elseif (!empty($parts)) {
+                    $flashType = 'warning';
+                    $flashMsg  = implode(' ', $parts);
+                } else {
+                    $flashType = 'warning';
+                    $flashMsg  = 'Żadna faktura nie spełniła warunków wysyłki.';
                 }
                 break;
 
             case 'send_reminder':
-                $this->Flash->info('Funkcja wysyłania przypomnień zostanie wkrótce dodana.');
+                $flashType = 'info';
+                $flashMsg  = 'Funkcja wysyłania przypomnień zostanie wkrótce dodana.';
                 break;
 
             case 'delete_selected':
@@ -4025,13 +4366,25 @@ private function makeClient(string $environment): KsefClient
                     'Invoices.id IN' => $selectedIds,
                     'Invoices.company_id' => $companyId
                 ]);
-                $this->Flash->success("Usunięto {$count} faktur.");
+                $flashType = 'success';
+                $flashMsg  = "Usunięto {$count} faktur.";
                 break;
 
             default:
-                $this->Flash->error('Nieznana akcja.');
+                $flashType = 'error';
+                $flashMsg  = 'Nieznana akcja.';
         }
 
+        if ($isAjax) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => $flashType !== 'error',
+                    'type'    => $flashType,
+                    'message' => $flashMsg,
+                ], JSON_UNESCAPED_UNICODE));
+        }
+
+        $this->Flash->{$flashType}($flashMsg);
         return $this->redirect(['action' => 'index']);
     }
     
@@ -4717,6 +5070,232 @@ private function makeClient(string $environment): KsefClient
         }
 
         return $this->redirect(['action' => 'view', $id]);
+    }
+
+    /**
+     * GET /invoices/process-email-queue?key=SCHEDULER_KEY[&limit=20]
+     * Przetwarza kolejkę wysyłki faktur e-mailem. Można wywołać z crona jako URL.
+     * Zabezpieczony kluczem App.ksefSchedulerKey.
+     */
+    public function processEmailQueue(): Response
+    {
+        $this->request->allowMethod(['get', 'post']);
+
+        $identity     = $this->request->getAttribute('identity');
+        $schedulerKey = (string)(Configure::read('App.ksefSchedulerKey') ?? '');
+        $providedKey  = (string)$this->request->getQuery('key', '');
+
+        if (!$identity) {
+            if ($schedulerKey === '' || !hash_equals($schedulerKey, $providedKey)) {
+                return $this->response->withStatus(403)->withType('application/json')
+                    ->withStringBody(json_encode(['success' => false, 'error' => 'Brak autoryzacji.'], JSON_UNESCAPED_UNICODE));
+            }
+        }
+
+        $limit = max(1, min(100, (int)$this->request->getQuery('limit', 20)));
+
+        /** @var \App\Model\Table\InvoiceEmailQueueTable $Queue */
+        $Queue    = $this->fetchTable('InvoiceEmailQueue');
+        $appUrl   = rtrim((string)(getenv('APP_URL') ?: Configure::read('App.fullBaseUrl') ?: ''), '/');
+
+        $pending = $Queue->find()
+            ->where([
+                'status'          => 'pending',
+                'attempts <'      => 3,
+                'scheduled_at <=' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ])
+            ->orderAsc('scheduled_at')
+            ->limit($limit)
+            ->all();
+
+        $results = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'details' => []];
+
+        foreach ($pending as $entry) {
+            $entry->status   = 'sending';
+            $entry->attempts = $entry->attempts + 1;
+            $Queue->save($entry);
+
+            // Pobierz podstawowe dane faktury
+            try {
+                $invoice = $this->Invoices->get($entry->invoice_id, [
+                    'contain' => ['Companies', 'InvoiceCompanyDetails'],
+                ]);
+            } catch (\Throwable $e) {
+                $entry->status     = $entry->attempts >= 3 ? 'failed' : 'pending';
+                $entry->last_error = 'Faktura nie znaleziona: ' . mb_substr($e->getMessage(), 0, 200);
+                $Queue->save($entry);
+                $results['failed']++;
+                $results['details'][] = ['id' => $entry->invoice_id, 'error' => 'not_found'];
+                continue;
+            }
+
+            // Generuj PDF przez wewnętrzny endpoint
+            $pdfContent = '';
+            if ($schedulerKey !== '' && $appUrl !== '') {
+                $pdfUrl = $appUrl . '/invoices/generate-pdf-internal/' . $entry->invoice_id
+                    . '?key=' . urlencode($schedulerKey)
+                    . '&company_id=' . urlencode($entry->company_id);
+                try {
+                    $http = new \Cake\Http\Client(['timeout' => 60]);
+                    $resp = $http->get($pdfUrl);
+                    if ($resp->getStatusCode() === 200 && str_starts_with($resp->getHeaderLine('Content-Type'), 'application/pdf')) {
+                        $pdfContent = (string)$resp->getBody();
+                    } else {
+                        $errBody = mb_substr((string)$resp->getBody(), 0, 200);
+                        $entry->status     = $entry->attempts >= 3 ? 'failed' : 'pending';
+                        $entry->last_error = 'PDF error ' . $resp->getStatusCode() . ': ' . $errBody;
+                        $Queue->save($entry);
+                        $results['failed']++;
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    $entry->status     = $entry->attempts >= 3 ? 'failed' : 'pending';
+                    $entry->last_error = 'PDF HTTP: ' . mb_substr($e->getMessage(), 0, 200);
+                    $Queue->save($entry);
+                    $results['failed']++;
+                    continue;
+                }
+            } else {
+                $entry->status     = 'pending';
+                $entry->last_error = 'Brak APP_KSEF_SCHEDULER_KEY lub APP_URL.';
+                $Queue->save($entry);
+                $results['skipped']++;
+                continue;
+            }
+
+            // Wyślij e-mail
+            $fullnumber = (string)($invoice->fullnumber ?: $invoice->id);
+            $filename   = 'faktura_' . preg_replace('/[\/\\\\:*?"<>|]/', '_', $fullnumber) . '.pdf';
+            $sellerName = trim((string)($invoice->invoice_company_detail?->name ?? $invoice->company?->name ?? ''));
+            $subject    = 'Faktura ' . $fullnumber . ($sellerName !== '' ? ' od ' . $sellerName : '');
+
+            try {
+                $mailer = new \Cake\Mailer\Mailer('default');
+                $mailer->setTo($entry->email);
+                $mailer->setSubject($subject);
+                $mailer->setEmailFormat('html');
+                $mailer->setAttachments([
+                    $filename => ['data' => $pdfContent, 'mimetype' => 'application/pdf'],
+                ]);
+                $mailer->viewBuilder()->setLayout('default')->setTemplate('invoice_email');
+                $mailer->setViewVars([
+                    'invoice'    => $invoice,
+                    'fullnumber' => $fullnumber,
+                    'sellerName' => $sellerName,
+                ]);
+                $mailer->deliver();
+
+                $entry->status  = 'sent';
+                $entry->sent_at = new \DateTimeImmutable();
+                $Queue->save($entry);
+
+                $results['sent']++;
+                $results['details'][] = ['number' => $fullnumber, 'to' => $entry->email];
+                \Cake\Log\Log::info('[processEmailQueue] sent invoice=' . $entry->invoice_id . ' to=' . $entry->email);
+            } catch (\Throwable $e) {
+                $entry->status     = $entry->attempts >= 3 ? 'failed' : 'pending';
+                $entry->last_error = mb_substr($e->getMessage(), 0, 500);
+                $Queue->save($entry);
+                $results['failed']++;
+                \Cake\Log\Log::error('[processEmailQueue] mail error invoice=' . $entry->invoice_id . ': ' . $e->getMessage());
+            }
+        }
+
+        $results['queued_total'] = $pending->count();
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'results' => $results], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+
+    /**
+     * GET /invoices/generate-pdf-internal/{id}?key=SCHEDULER_KEY
+     * Wewnętrzny endpoint dla crona/komendy — generuje PDF faktury bez sesji.
+     * Zabezpieczony tym samym kluczem co runPlannedDrafts (App.ksefSchedulerKey).
+     */
+    public function generatePdfInternal(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $schedulerKey = (string)(Configure::read('App.ksefSchedulerKey') ?? '');
+        $providedKey  = (string)$this->request->getQuery('key', '');
+        if ($schedulerKey === '' || !hash_equals($schedulerKey, $providedKey)) {
+            return $this->response->withStatus(403)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Brak autoryzacji.']));
+        }
+
+        $companyId = (string)$this->request->getQuery('company_id', '');
+
+        try {
+            $conditions = ['Invoices.id' => $id];
+            if ($companyId !== '') {
+                $conditions['Invoices.company_id'] = $companyId;
+            }
+            $invoice = $this->Invoices->get($id, [
+                'contain' => [
+                    'InvoiceContractors',
+                    'InvoiceContents' => ['Vats'],
+                    'Companies',
+                    'InvoiceCompanyDetails',
+                ],
+                'conditions' => $conditions,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->withStatus(404)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Faktura nie znaleziona.']));
+        }
+
+        $xml = '';
+        try {
+            $xml = $this->buildFa3Xml($invoice);
+        } catch (\Throwable $e) {
+            return $this->response->withStatus(500)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd XML: ' . $e->getMessage()]));
+        }
+
+        if (trim($xml) === '') {
+            return $this->response->withStatus(500)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Pusty XML.']));
+        }
+
+        $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
+        $apiUrl  = $isDraft
+            ? (getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice')
+            : (getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice');
+
+        $seller    = $invoice->invoice_company_detail ?? null;
+        $nip       = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
+        $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
+        $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
+        $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+            ? ('https://ksef-test.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+            : '';
+
+        try {
+            $http = new \Cake\Http\Client(['timeout' => 60]);
+            $resp = $http->post($apiUrl, [
+                'xml'            => $xml,
+                'additionalData' => [
+                    'nrKSeF'    => (string)($invoice->ksef_number ?? ''),
+                    'qrCode'    => $qrCode,
+                    'isPreview' => $isDraft,
+                ],
+            ], ['type' => 'json']);
+
+            if ($resp->getStatusCode() !== 200) {
+                return $this->response->withStatus(502)->withType('application/json')
+                    ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd API PDF: ' . $resp->getStatusCode()]));
+            }
+
+            $fullnumber = (string)($invoice->fullnumber ?: $invoice->id);
+            $filename   = 'faktura_' . preg_replace('/[\/\\\\:*?"<>|]/', '_', $fullnumber) . '.pdf';
+
+            return $this->response
+                ->withType('application/pdf')
+                ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+                ->withStringBody((string)$resp->getBody());
+        } catch (\Throwable $e) {
+            return $this->response->withStatus(500)->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
     }
 
     /**
@@ -6210,7 +6789,10 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
 
     // Procedura [pozycja 23 w XSD]
     if (!empty($it->procedure_marking)) {
-        $xml[] = '      <Procedura>' . $this->esc((string)$it->procedure_marking) . '</Procedura>';
+        $proc = $this->normalizeProcedura((string)$it->procedure_marking);
+        if ($proc !== '') {
+            $xml[] = '      <Procedura>' . $this->esc($proc) . '</Procedura>';
+        }
     }
 
     // KursWaluty — kurs waluty per-wiersz [pozycja 24 w XSD]
@@ -6278,11 +6860,12 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $paymentMethod = $this->mapPaymentMethod($inv->paymentmethod ?? null);
         $xml[] = '      <FormaPlatnosci>' . $this->esc($paymentMethod) . '</FormaPlatnosci>';
 
-        $seller   = $inv->invoice_company_detail ?? null;
-        $rb       = trim((string)($seller?->bank_account ?? ''));
-        $bankName = trim((string)($seller?->bank_name ?? ''));
-        $bankDesc = trim((string)($seller?->bank_desc ?? ''));
-        $swift    = trim((string)($seller?->swift ?? ''));
+        $seller      = $inv->invoice_company_detail ?? null;
+        $rb          = trim((string)($seller?->bank_account ?? ''));
+        $bankName    = trim((string)($seller?->bank_name ?? ''));
+        $bankDesc    = trim((string)($seller?->bank_desc ?? ''));
+        $swift       = trim((string)($seller?->swift ?? ''));
+        $bankCoresp  = trim((string)($seller?->bank_correspondent ?? ''));
 
         if ($rb !== '' || $bankName !== '' || $bankDesc !== '' || $swift !== '') {
             $xml[] = '      <RachunekBankowy>';
@@ -6292,6 +6875,9 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
             // SWIFT — po NrRB, przed NazwaBanku (per XSD order)
             if ($swift !== '') {
                 $xml[] = '        <SWIFT>' . $this->esc($swift) . '</SWIFT>';
+            }
+            if ($bankCoresp !== '') {
+                $xml[] = '        <RachunekWlasnyBanku>' . $this->esc($bankCoresp) . '</RachunekWlasnyBanku>';
             }
             if ($bankName !== '') {
                 $xml[] = '        <NazwaBanku>' . $this->esc($bankName) . '</NazwaBanku>';
@@ -6577,7 +7163,10 @@ private function mapPaymentMethod(?string $method): string
             // Procedura
             $proc = $line->procedure_marking ?? $line['procedure_marking'] ?? null;
             if (!empty($proc)) {
-                $xml[] = '        <ProceduraZ>' . $this->esc((string)$proc) . '</ProceduraZ>';
+                $proc = $this->normalizeProcedura((string)$proc);
+            }
+            if (!empty($proc)) {
+                $xml[] = '        <ProceduraZ>' . $this->esc($proc) . '</ProceduraZ>';
             }
 
             // KwotaAkcyzy
@@ -6703,11 +7292,63 @@ private function mapPaymentMethod(?string $method): string
         $xml = [];
 
         $footerText = trim((string)($inv->footer_text ?? ''));
-        $krs   = trim((string)($seller?->krs ?? ''));
-        $regon = trim((string)($seller?->regon ?? ''));
-        $bdo   = trim((string)($seller?->bdo ?? ''));
 
-        if ($footerText === '' && $krs === '' && $regon === '' && $bdo === '') {
+        // Pobierz rejestry z registers_json — każdy wpis to osobny blok <Rejestry> (maxOccurs=100)
+        $rejestrzyXml = [];
+        $registersJson = trim((string)($seller?->registers_json ?? ''));
+        if ($registersJson !== '') {
+            $regs = json_decode($registersJson, true);
+            if (is_array($regs)) {
+                foreach ($regs as $r) {
+                    $krs   = trim((string)($r['krs']   ?? ''));
+                    $regon = trim((string)($r['regon'] ?? ''));
+                    $bdo   = trim((string)($r['bdo']   ?? ''));
+                    $name  = trim((string)($r['name']  ?? ''));
+
+                    // KRS: uzupełnij zerami z lewej do 10 cyfr; odrzuć jeśli > 10 lub nie-cyfry
+                    if ($krs !== '' && preg_match('/^\d+$/', $krs)) {
+                        $krs = strlen($krs) <= 10 ? str_pad($krs, 10, '0', STR_PAD_LEFT) : '';
+                    } elseif ($krs !== '') {
+                        $krs = '';
+                    }
+                    // REGON: pad do 9 cyfr (jeśli ≤ 9) lub 14 (jeśli 10-13); odrzuć jeśli > 14
+                    if ($regon !== '' && preg_match('/^\d+$/', $regon)) {
+                        $len = strlen($regon);
+                        if ($len <= 9) $regon = str_pad($regon, 9, '0', STR_PAD_LEFT);
+                        elseif ($len <= 14) $regon = str_pad($regon, 14, '0', STR_PAD_LEFT);
+                        else $regon = '';
+                    } elseif ($regon !== '') {
+                        $regon = '';
+                    }
+                    // BDO: pad do 7 cyfr (jeśli same cyfry i ≤ 9); odrzuć jeśli > 9 znaków
+                    if ($bdo !== '') {
+                        if (preg_match('/^\d+$/', $bdo)) {
+                            $bdo = strlen($bdo) <= 9 ? str_pad($bdo, 7, '0', STR_PAD_LEFT) : '';
+                        } elseif (strlen($bdo) > 9) {
+                            $bdo = '';
+                        }
+                    }
+
+                    $krsOk   = $krs !== '' && preg_match('/^\d{10}$/', $krs);
+                    $regonOk = $regon !== '' && (preg_match('/^\d{9}$/', $regon) || preg_match('/^\d{14}$/', $regon));
+                    $bdoOk   = $bdo !== '';
+
+                    if (!$krsOk && !$regonOk && !$bdoOk) continue;
+
+                    $block = ['    <Rejestry>'];
+                    if ($name !== '') {
+                        $block[] = '      <PelnaNazwa>' . $this->esc($name) . '</PelnaNazwa>';
+                    }
+                    if ($krsOk)   $block[] = '      <KRS>'   . $this->esc($krs)   . '</KRS>';
+                    if ($regonOk) $block[] = '      <REGON>' . $this->esc($regon) . '</REGON>';
+                    if ($bdoOk)   $block[] = '      <BDO>'   . $this->esc($bdo)   . '</BDO>';
+                    $block[] = '    </Rejestry>';
+                    $rejestrzyXml[] = $block;
+                }
+            }
+        }
+
+        if ($footerText === '' && empty($rejestrzyXml)) {
             return $xml;
         }
 
@@ -6717,31 +7358,38 @@ private function mapPaymentMethod(?string $method): string
             $xml[] = '      <StopkaFaktury>' . $this->esc($footerText) . '</StopkaFaktury>';
             $xml[] = '    </Informacje>';
         }
-        // XSD: KRS/REGON/BDO muszą być wewnątrz <Rejestry>, nie bezpośrednio w <Stopka>
-        // Walidacja wg schematu zewnętrznego MF (StrukturyDanych_v10-0E.xsd):
-        //   TNrKRS  = 10 cyfr
-        //   TNrREGON = 9 lub 14 cyfr
-        //   BDO     = max 9 znaków (XSD lokalny)
-        $krsValid   = $krs   !== '' && preg_match('/^\d{10}$/', $krs);
-        $regonValid = $regon !== '' && preg_match('/^\d{9}(\d{5})?$/', $regon);
-        $bdoValid   = $bdo   !== '' && strlen($bdo) <= 9;
-
-        if ($krsValid || $regonValid || $bdoValid) {
-            $xml[] = '    <Rejestry>';
-            if ($krsValid) {
-                $xml[] = '      <KRS>' . $this->esc($krs) . '</KRS>';
+        foreach ($rejestrzyXml as $block) {
+            foreach ($block as $line) {
+                $xml[] = $line;
             }
-            if ($regonValid) {
-                $xml[] = '      <REGON>' . $this->esc($regon) . '</REGON>';
-            }
-            if ($bdoValid) {
-                $xml[] = '      <BDO>' . $this->esc($bdo) . '</BDO>';
-            }
-            $xml[] = '    </Rejestry>';
         }
         $xml[] = '  </Stopka>';
 
         return $xml;
+    }
+
+    /**
+     * Normalizuje oznaczenie procedury do wartości dopuszczalnej przez XSD FA(3).
+     * Mapuje stare/skrócone wartości na aktualne i odrzuca nieznane.
+     *
+     * TOznaczenieProcedury (FaWiersz): WSTO_EE, IED, TT_D, I_42, I_63, B_SPV, B_SPV_DOSTAWA, B_MPV_PROWIZJA
+     * TOznaczenieProceduryZ (Zamowienie): WSTO_EE, IED, TT_D, B_SPV, B_SPV_DOSTAWA, B_MPV_PROWIZJA
+     */
+    private function normalizeProcedura(string $value): string
+    {
+        // Mapa starych/skróconych wartości na aktualne
+        $map = [
+            'B_SPV_DO'       => 'B_SPV_DOSTAWA',
+            'B_SPV_DOSTAWA'  => 'B_SPV_DOSTAWA',
+            'B_MPV_PROWIZJA' => 'B_MPV_PROWIZJA',
+            'B_SPV'          => 'B_SPV',
+            'WSTO_EE'        => 'WSTO_EE',
+            'IED'            => 'IED',
+            'TT_D'           => 'TT_D',
+            'I_42'           => 'I_42',
+            'I_63'           => 'I_63',
+        ];
+        return $map[strtoupper(trim($value))] ?? '';
     }
 
     private function resolveRodzajFaktury(Invoice $inv): string
@@ -6788,17 +7436,45 @@ private function mapPaymentMethod(?string $method): string
     }
 
     /**
-     * Zwraca wartość pola rejestrowego firmy (krs/regon/bdo).
-     * Priorytet: kolumna bezpośrednia na $company → pierwsze niepuste z company_registers.
+     * Buduje JSON snapshot wszystkich rejestrów firmy (company_registers).
+     * Format: [{"name":"...","krs":"...","regon":"...","bdo":"..."}]
+     */
+    private function buildRegistersJson(mixed $company): ?string
+    {
+        if ($company === null) {
+            return null;
+        }
+        $registers = $company->company_registers ?? [];
+        $rows = [];
+        foreach ($registers as $reg) {
+            $name  = trim((string)($reg->name ?? ''));
+            $krs   = trim((string)($reg->krs ?? ''));
+            $regon = trim((string)($reg->regon ?? ''));
+            $bdo   = trim((string)($reg->bdo ?? ''));
+            if ($name === '' && $krs === '' && $regon === '' && $bdo === '') {
+                continue;
+            }
+            $rows[] = array_filter([
+                'name'  => $name !== '' ? $name : null,
+                'krs'   => $krs !== '' ? $krs : null,
+                'regon' => $regon !== '' ? $regon : null,
+                'bdo'   => $bdo !== '' ? $bdo : null,
+            ], fn($v) => $v !== null);
+        }
+        if (empty($rows)) {
+            return null;
+        }
+        return json_encode($rows, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Zwraca wartość pola rejestrowego z registers_json lub (fallback) z company_registers.
+     * Używane przy budowaniu XML FA(3) — zwraca pierwsze niepuste.
      */
     private function resolveCompanyRegisterField(mixed $company, string $field): string
     {
         if ($company === null) {
             return '';
-        }
-        $direct = trim((string)($company->{$field} ?? ''));
-        if ($direct !== '') {
-            return $direct;
         }
         $registers = $company->company_registers ?? [];
         foreach ($registers as $reg) {

@@ -50,12 +50,39 @@ return function (RouteBuilder $routes): void {
 $builder->connect('/invoices/ksef/download', ['controller' => 'Invoices', 'action' => 'downloadKsef']);
 $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'action' => 'metadataKsef']);
 
+        // Tokeny API — zarządzanie przez użytkownika
+        $builder->get('/api-tokens', ['controller' => 'ApiTokens', 'action' => 'index']);
+        $builder->post('/api-tokens/generate', ['controller' => 'ApiTokens', 'action' => 'generate']);
+        $builder->post('/api-tokens/revoke/{id}', ['controller' => 'ApiTokens', 'action' => 'revoke'])
+            ->setPass(['id']);
+
+        // Wewnętrzny endpoint PDF dla crona kolejki e-mail
+        $builder->get('/invoices/generate-pdf-internal/{id}', ['controller' => 'Invoices', 'action' => 'generatePdfInternal'])
+            ->setPass(['id']);
+        // Endpoint HTTP do przetworzenia kolejki e-mail (cron URL)
+        $builder->connect('/invoices/process-email-queue', ['controller' => 'Invoices', 'action' => 'processEmailQueue']);
+
         // (opcjonalnie) wyszukiwarka kontrahentów i produktów pod Select2:
         // $builder->get('/contractors/search', 'Contractors::search');
         // $builder->get('/products/search', 'Products::search');
 
         // Fallbacks (na końcu)
         $builder->fallbacks();
+    });
+
+    // ── Zewnętrzne API v1 (uwierzytelnianie przez Bearer token) ──────────────
+    $routes->scope('/api/v1', function (RouteBuilder $builder): void {
+        $builder->setExtensions(['json']);
+        // GET  /api/v1/invoices       — lista faktur
+        $builder->get('/invoices', ['controller' => 'Api/Invoices', 'action' => 'index']);
+        // POST /api/v1/invoices       — wystaw fakturę VAT
+        $builder->post('/invoices', ['controller' => 'Api/Invoices', 'action' => 'create']);
+        // GET  /api/v1/invoices/{id}  — szczegóły faktury
+        $builder->get('/invoices/{id}', ['controller' => 'Api/Invoices', 'action' => 'get'])
+            ->setPass(['id']);
+        // POST /api/v1/invoices/{id}/payments — dodaj rozliczenie
+        $builder->post('/invoices/{id}/payments', ['controller' => 'Api/Invoices', 'action' => 'addPayment'])
+            ->setPass(['id']);
     });
 
     // (opcjonalnie) Możesz dorobić osobny scope dla API:

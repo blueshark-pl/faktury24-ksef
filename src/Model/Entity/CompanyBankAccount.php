@@ -16,6 +16,8 @@ use Cake\ORM\Entity;
  * @property bool $is_default
  * @property string|null $label
  * @property string|null $swift
+ * @property string|null $bank_desc
+ * @property string|null $bank_correspondent
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -40,6 +42,8 @@ class CompanyBankAccount extends Entity
         'is_default' => true,
         'label' => true,
         'swift' => true,
+        'bank_desc' => true,
+        'bank_correspondent' => true,
         'created' => true,
         'modified' => true,
         'company' => true,

@@ -643,6 +643,7 @@ class CompaniesController extends AppController
             'internal' => 'Dowód wewnętrzny',
             'internal_evidence' => 'Dowód wewnętrzny (ewidencja)',
             'oss' => 'Faktura OSS',
+            'rental' => 'Faktura najmu prywatnego',
         ];
 
         if ($this->request->is(['patch', 'post', 'put']) && $this->request->is('ajax')) {
@@ -701,10 +702,13 @@ class CompaniesController extends AppController
                                 $seenIbans[$iban] = true;
                                 $ent = $CompanyBankAccounts->newEmptyEntity();
                                 $ent = $CompanyBankAccounts->patchEntity($ent, [
-                                    'company_id' => $ctxCompanyId, 'iban' => $iban,
-                                    'bank_name'  => $row['bank_name'] ?? null,
-                                    'currency'   => strtoupper((string)($row['currency'] ?? 'PLN')),
-                                    'label'      => $row['label'] ?? null, 'is_default' => false,
+                                    'company_id'       => $ctxCompanyId, 'iban' => $iban,
+                                    'bank_name'        => $row['bank_name'] ?? null,
+                                    'currency'         => strtoupper((string)($row['currency'] ?? 'PLN')),
+                                    'label'            => $row['label'] ?? null, 'is_default' => false,
+                                    'swift'            => !empty($row['swift']) ? strtoupper(trim((string)$row['swift'])) : null,
+                                    'bank_desc'        => !empty($row['bank_desc']) ? trim((string)$row['bank_desc']) : null,
+                                    'bank_correspondent' => !empty($row['bank_correspondent']) ? trim((string)$row['bank_correspondent']) : null,
                                 ]);
                                 $toSave[$idx] = $ent;
                             }

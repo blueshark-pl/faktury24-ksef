@@ -13,7 +13,7 @@ return [
 
     // 2FA (Google Authenticator) – opt-in per user.
     // Global OTP processing must be enabled, while requirement is decided by checker.
-    'OneTimePasswordAuthenticator.login' => false,
+    'OneTimePasswordAuthenticator.login' => true,
     'OneTimePasswordAuthenticator.checker' => \App\Authentication\OptInOneTimePasswordAuthenticationChecker::class,
     'OneTimePasswordAuthenticator.issuer' => 'Faktury24',
     'Users.Email.mailerClass' => \App\Mailer\MyUsersMailer::class,

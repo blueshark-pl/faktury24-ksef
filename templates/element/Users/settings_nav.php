@@ -20,7 +20,8 @@ $isSecurity = ($plugin === 'CakeDC/Users' && $controller === 'Users' && in_array
     'resetPassword',
 ], true));
 
-$isTwoFactor = ($controller === 'TwoFactor');
+$isTwoFactor  = ($controller === 'TwoFactor');
+$isApiTokens  = ($controller === 'ApiTokens');
 
 $items = [
     [
@@ -37,6 +38,11 @@ $items = [
         'label' => 'Ustawienia 2FA',
         'url' => ['plugin' => false, 'controller' => 'TwoFactor', 'action' => 'index'],
         'active' => $isTwoFactor,
+    ],
+    [
+        'label' => 'Tokeny API',
+        'url' => ['plugin' => false, 'controller' => 'ApiTokens', 'action' => 'index'],
+        'active' => $isApiTokens,
     ],
 ];
 ?>

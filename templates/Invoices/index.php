@@ -179,9 +179,19 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             <button type="submit" name="action" value="mark_paid" class="btn btn-success">
               <i class="ri-check-line me-1"></i>Oznacz jako opłacone
             </button>
+            <button type="button" id="bulk-send-email-btn" class="btn btn-primary" onclick="bulkSendEmail()">
+              <i class="ri-mail-send-line me-1"></i>Wyślij e-mailem
+            </button>
             <!-- <button type="submit" name="action" value="send_reminder" class="btn btn-warning">
               <i class="ri-mail-send-line me-1"></i>Wyślij przypomnienie
             </button> -->
+          </div>
+          <div id="bulk-send-email-info" class="text-muted small mt-1 d-none">
+            <?php if (!empty($ksefModeEnabled)): ?>
+              <i class="ri-information-line"></i> Wysyłane będą tylko faktury z nadanym numerem KSeF (proformy i rachunki bez wymagań KSeF).
+            <?php else: ?>
+              <i class="ri-information-line"></i> Wysyłane będą wszystkie zaznaczone faktury (kontrahent musi mieć adres e-mail).
+            <?php endif; ?>
           </div>
         </div>
         <!-- Opcje płatności dla akcji 'Oznacz jako opłacone' -->
@@ -414,9 +424,21 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
         </thead>
         <tbody>
           <?php foreach ($invoices as $inv): ?>
+          <?php
+            $__invEmail      = trim((string)($inv->invoice_contractor->email ?? ''));
+            $__invKsefNumber = trim((string)($inv->ksef_number ?? ''));
+            $__invType       = (string)($inv->type ?? '');
+            $__ksefExempt    = in_array($__invType, ['proforma','novat','rental'], true);
+          ?>
           <tr class="invoice-list">
             <td class="col-select">
-              <input type="checkbox" class="form-check-input invoice-checkbox" name="selected[]" value="<?= $inv->id ?>">
+              <input type="checkbox" class="form-check-input invoice-checkbox"
+                name="selected[]"
+                value="<?= $inv->id ?>"
+                data-email="<?= h($__invEmail) ?>"
+                data-ksef-number="<?= h($__invKsefNumber) ?>"
+                data-ksef-exempt="<?= $__ksefExempt ? '1' : '0' ?>"
+                data-inv-type="<?= h($__invType) ?>">
             </td>
             <td class="col-contractor">
               <div>
@@ -782,6 +804,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF', 'target' => '_blank'
                     ]) ?>
                   </li>
+                  <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
                   <li>
                     <a href="#" class="dropdown-item inv-email-btn"
                        data-id="<?= h($inv->id) ?>"
@@ -790,15 +813,33 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       <i class="ri-mail-send-line me-2"></i> Wyślij do klienta
                     </a>
                   </li>
+                  <?php endif; ?>
+                  <?php if ($__invKsefNumber !== ''): ?>
+                  <li>
+                    <?= $this->Html->link(
+                      '<i class="ri-file-download-line me-2"></i> Pobierz UPO',
+                      ['action' => 'downloadUpoByInvoice', $inv->id],
+                      ['class' => 'dropdown-item', 'escape' => false, 'title' => 'Pobierz Urzędowe Poświadczenie Odbioru']
+                    ) ?>
+                  </li>
+                  <?php endif; ?>
+                  <li>
+                    <a href="#" class="dropdown-item inv-ksef-log-btn"
+                       data-id="<?= h($inv->id) ?>"
+                       data-number="<?= h($inv->fullnumber ?: $inv->id) ?>"
+                       title="Historia KSeF">
+                      <i class="ri-history-line me-2"></i> Historia KSeF
+                    </a>
+                  </li>
                   <li>
                     <a href="#" class="dropdown-item" title="Rozliczenia" onclick="openPaymentModal('<?= $inv->id ?>', '<?= h($inv->fullnumber ?: $inv->id) ?>', <?= $inv->total ?>, <?= $inv->alreadypaid ?>, <?= $inv->remaining ?>, '<?= $inv->currency ?>'); return false;">
                       <i class="ri-wallet-line me-2"></i> Rozliczenia
                     </a>
                   </li>
-                  <?php if (in_array(($inv->type ?? ''), ['vat','advance','final'])): ?>
+                  <?php if (in_array(($inv->type ?? ''), ['vat','advance','final','correction'])): ?>
                   <li><hr class="dropdown-divider"></li>
                   <li>
-                    <?= $this->Html->link('<i class="ri-scissors-line me-2"></i> Wystaw korektę VAT', ['action' => 'addCorrection', $inv->id], [
+                    <?= $this->Html->link('<i class="ri-scissors-line me-2"></i> Wystaw korektę' . (($inv->type ?? '') === 'correction' ? ' do korekty' : ' VAT'), ['action' => 'addCorrection', $inv->id], [
                       'class' => 'dropdown-item', 'escape' => false, 'title' => 'Wystaw korektę VAT'
                     ]) ?>
                   </li>
@@ -1362,117 +1403,215 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const selectAllCheckbox = document.getElementById('selectAll');
-    const invoiceCheckboxes = document.querySelectorAll('.invoice-checkbox');
-    const bulkActionsBar = document.getElementById('bulk-actions-bar');
-    const selectedCount = document.getElementById('selected-count');
-    
-    // Handle "Select All" checkbox
-    selectAllCheckbox.addEventListener('change', function() {
-        const isChecked = this.checked;
-        invoiceCheckboxes.forEach(checkbox => {
-            checkbox.checked = isChecked;
-        });
-        updateBulkActionsBar();
-    });
-    
-    // Handle individual checkboxes
-    invoiceCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            updateSelectAllState();
-            updateBulkActionsBar();
-        });
-    });
-    
-    function updateSelectAllState() {
-        const checkedCount = document.querySelectorAll('.invoice-checkbox:checked').length;
-        const totalCount = invoiceCheckboxes.length;
-        
-        selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < totalCount;
-        selectAllCheckbox.checked = checkedCount === totalCount && totalCount > 0;
-    }
-    
-    function updateBulkActionsBar() {
-        const checkedCount = document.querySelectorAll('.invoice-checkbox:checked').length;
-        
-        if (checkedCount > 0) {
-            bulkActionsBar.classList.remove('d-none');
-            selectedCount.textContent = checkedCount;
-        } else {
-            bulkActionsBar.classList.add('d-none');
-        }
-    }
-    
-    // Clear selection function
-    window.clearSelection = function() {
-        invoiceCheckboxes.forEach(checkbox => {
-            checkbox.checked = false;
-        });
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-        updateBulkActionsBar();
-    };
-    
-    // Handle bulk actions form submission
-    document.getElementById('bulk-actions-form').addEventListener('submit', function(e) {
-        const checkedBoxes = document.querySelectorAll('.invoice-checkbox:checked');
-        if (checkedBoxes.length === 0) {
-            e.preventDefault();
-            alert('Proszę wybrać co najmniej jedną fakturę.');
-            return false;
-        }
-        
-    // Determine action value reliably across browsers
-    const hiddenAction = document.getElementById('bulk-action-input');
-    const action = (e.submitter && e.submitter.value) ? e.submitter.value : (hiddenAction ? hiddenAction.value : '');
-      // Usuwanie faktur wyłączone — brak akcji delete_selected
-        
-        // Show loading state
-        e.submitter.disabled = true;
-        e.submitter.innerHTML = '<i class="ri-loader-4-line"></i> Przetwarzanie...';
-    });
+(function() {
+  'use strict';
 
-  // Keep hidden action in sync when clicking bulk buttons
-  document.querySelectorAll('#bulk-actions-bar button[type="submit"][name="action"]').forEach(btn => {
-    btn.addEventListener('click', function(){
-      const hidden = document.getElementById('bulk-action-input');
-      if (hidden) hidden.value = this.value;
-    });
-  });
+  const KSEF_MODE  = <?= !empty($ksefModeEnabled) ? 'true' : 'false' ?>;
+  const BULK_URL   = <?= json_encode($this->Url->build(['action' => 'bulkAction'])) ?>;
+  const CSRF_TOKEN_BULK = (document.querySelector('meta[name="csrfToken"]') || {}).getAttribute?.('content') || '';
 
-  // Toggle custom date input visibility
-  const dateModeSel = document.getElementById('bulk-date-mode');
-  const dateInput   = document.getElementById('bulk-payment-date');
-  if (dateModeSel && dateInput) {
-    const syncDateVisibility = () => {
-      if (dateModeSel.value === 'custom') {
-        dateInput.classList.remove('d-none');
-        dateInput.required = true;
-      } else {
-        dateInput.classList.add('d-none');
-        dateInput.required = false;
-        dateInput.value = '';
-      }
-    };
-    dateModeSel.addEventListener('change', syncDateVisibility);
-    syncDateVisibility();
+  /* ── helpers ── */
+  function getChecked() {
+    return Array.from(document.querySelectorAll('.invoice-checkbox:checked'));
+  }
+  function getEligibleForEmail(checked) {
+    return checked.filter(cb => {
+      if (!cb.dataset.email) return false;
+      if (KSEF_MODE && cb.dataset.ksefExempt !== '1' && !cb.dataset.ksefNumber) return false;
+      return true;
+    });
+  }
+  function swalToast(type, msg) {
+    Swal.fire({ toast: true, position: 'top-end', icon: type, title: msg,
+      showConfirmButton: false, timer: 4000, timerProgressBar: true });
+  }
+  function setBtnLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+      btn._origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Przetwarzanie…';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = btn._origHtml || btn.innerHTML;
+    }
   }
 
-  // Validate on submit for mark_paid + custom date
-  const bulkForm = document.getElementById('bulk-actions-form');
-  if (bulkForm) {
-    bulkForm.addEventListener('submit', function(e){
-      const hiddenAction = document.getElementById('bulk-action-input');
-      const actionVal = (e.submitter && e.submitter.value) ? e.submitter.value : (hiddenAction ? hiddenAction.value : '');
-      if (actionVal === 'mark_paid' && dateModeSel && dateModeSel.value === 'custom' && dateInput && !dateInput.value) {
+  /* ── AJAX bulk submit ── */
+  function bulkAjax(action, extraData, btn) {
+    const checked = getChecked();
+    if (!checked.length) {
+      Swal.fire({ icon: 'warning', title: 'Brak zaznaczonych', text: 'Zaznacz co najmniej jedną fakturę.' });
+      return;
+    }
+    setBtnLoading(btn, true);
+    const fd = new FormData();
+    fd.append('bulk_action', action);
+    fd.append('_csrfToken', CSRF_TOKEN_BULK);
+    checked.forEach(cb => fd.append('selected[]', cb.value));
+    if (extraData) Object.entries(extraData).forEach(([k,v]) => fd.append(k, v));
+
+    fetch(BULK_URL, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd })
+      .then(r => r.json())
+      .then(data => {
+        setBtnLoading(btn, false);
+        const icon = data.type === 'success' ? 'success' : (data.type === 'warning' ? 'warning' : (data.type === 'info' ? 'info' : 'error'));
+        swalToast(icon, data.message || (data.success ? 'Gotowe.' : 'Błąd.'));
+        if (data.success) {
+          window.clearSelection();
+        }
+      })
+      .catch(() => {
+        setBtnLoading(btn, false);
+        swalToast('error', 'Błąd połączenia. Spróbuj ponownie.');
+      });
+  }
+
+  /* ── Zaznaczanie ── */
+  document.addEventListener('DOMContentLoaded', function () {
+    const selectAll      = document.getElementById('selectAll');
+    const bar            = document.getElementById('bulk-actions-bar');
+    const countEl        = document.getElementById('selected-count');
+    const emailInfoEl    = document.getElementById('bulk-send-email-info');
+
+    function updateBar() {
+      const n = getChecked().length;
+      countEl.textContent = n;
+      bar.classList.toggle('d-none', n === 0);
+      if (emailInfoEl) emailInfoEl.classList.toggle('d-none', n === 0);
+    }
+    function updateSelectAll() {
+      const all = document.querySelectorAll('.invoice-checkbox');
+      const n   = getChecked().length;
+      selectAll.indeterminate = n > 0 && n < all.length;
+      selectAll.checked       = n > 0 && n === all.length;
+    }
+    selectAll.addEventListener('change', () => {
+      document.querySelectorAll('.invoice-checkbox').forEach(cb => cb.checked = selectAll.checked);
+      updateBar(); updateSelectAll();
+    });
+    document.querySelectorAll('.invoice-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => { updateSelectAll(); updateBar(); });
+    });
+    window.clearSelection = function () {
+      document.querySelectorAll('.invoice-checkbox').forEach(cb => cb.checked = false);
+      selectAll.checked = false; selectAll.indeterminate = false;
+      updateBar();
+    };
+
+    /* ── Oznacz jako opłacone ── */
+    const btnMarkPaid = document.querySelector('#bulk-actions-bar button[value="mark_paid"]');
+    if (btnMarkPaid) {
+      btnMarkPaid.addEventListener('click', function (e) {
         e.preventDefault();
-        alert('Wybierz datę płatności.');
-        return false;
+        const checked = getChecked();
+        if (!checked.length) return;
+        Swal.fire({
+          title: `Oznacz ${checked.length} faktur(y) jako opłacone`,
+          html: `
+            <div class="text-start">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Forma płatności</label>
+                <select id="swal-payment-method" class="form-select form-select-sm">
+                  <option value="transfer">Przelew bankowy</option>
+                  <option value="cash">Gotówka</option>
+                  <option value="card">Karta płatnicza</option>
+                  <option value="other">Inna</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label fw-semibold">Data płatności</label>
+                <select id="swal-date-mode" class="form-select form-select-sm">
+                  <option value="today">Dzisiaj</option>
+                  <option value="due">Termin z faktury</option>
+                  <option value="custom">Wybierz datę…</option>
+                </select>
+              </div>
+              <div id="swal-date-custom-wrap" class="d-none">
+                <input type="date" id="swal-date-custom" class="form-control form-control-sm" value="${new Date().toISOString().split('T')[0]}">
+              </div>
+            </div>`,
+          showCancelButton: true,
+          confirmButtonText: '<i class="ri-check-line me-1"></i> Oznacz jako opłacone',
+          cancelButtonText: 'Anuluj',
+          confirmButtonColor: '#198754',
+          didOpen: () => {
+            document.getElementById('swal-date-mode').addEventListener('change', function () {
+              document.getElementById('swal-date-custom-wrap').classList.toggle('d-none', this.value !== 'custom');
+            });
+          },
+          preConfirm: () => {
+            const dateMode = document.getElementById('swal-date-mode').value;
+            if (dateMode === 'custom' && !document.getElementById('swal-date-custom').value) {
+              Swal.showValidationMessage('Wybierz datę płatności.');
+              return false;
+            }
+            return {
+              payment_method:       document.getElementById('swal-payment-method').value,
+              date_mode:            dateMode,
+              payment_date_custom:  document.getElementById('swal-date-custom').value,
+            };
+          }
+        }).then(result => {
+          if (!result.isConfirmed) return;
+          bulkAjax('mark_paid', result.value, btnMarkPaid);
+        });
+      });
+    }
+
+    /* ── Wyślij e-mailem ── */
+    window.bulkSendEmail = function () {
+      const checked  = getChecked();
+      if (!checked.length) {
+        Swal.fire({ icon: 'warning', title: 'Brak zaznaczonych', text: 'Zaznacz co najmniej jedną fakturę.' });
+        return;
       }
-    });
-  }
-});
+      const eligible  = getEligibleForEmail(checked);
+      const noEmail   = checked.filter(cb => !cb.dataset.email).length;
+      const noKsef    = KSEF_MODE ? checked.filter(cb => cb.dataset.ksefExempt !== '1' && !cb.dataset.ksefNumber).length : 0;
+      const btnEmail  = document.getElementById('bulk-send-email-btn');
+
+      if (!eligible.length) {
+        let html = '<p>Żadna z wybranych faktur nie spełnia warunków wysyłki.</p><ul class="text-start">';
+        if (noEmail) html += `<li>${noEmail} faktur(y) — brak adresu e-mail kontrahenta</li>`;
+        if (noKsef)  html += `<li>${noKsef} faktur(y) — brak numeru KSeF (wymagany przy włączonym trybie KSeF)</li>`;
+        html += '</ul>';
+        Swal.fire({ icon: 'warning', title: 'Brak faktur do wysyłki', html });
+        return;
+      }
+
+      let html = `<p>Do kolejki wysyłki zostanie dodanych <strong>${eligible.length}</strong> faktur.</p>`;
+      if (noEmail || noKsef) {
+        html += '<ul class="text-start text-muted small">';
+        if (noEmail) html += `<li>${noEmail} pominiętych — brak e-mail kontrahenta</li>`;
+        if (noKsef)  html += `<li>${noKsef} pominiętych — brak numeru KSeF</li>`;
+        html += '</ul>';
+      }
+      <?php if (!empty($ksefModeEnabled)): ?>
+      html += '<p class="small text-muted mt-2"><i class="ri-information-line"></i> Tryb KSeF: wysyłane są faktury z nadanym numerem KSeF (proformy i rachunki bez tego wymogu).</p>';
+      <?php endif; ?>
+
+      Swal.fire({
+        title: 'Wysyłka e-mailem',
+        html,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="ri-mail-send-line me-1"></i> Dodaj do kolejki',
+        cancelButtonText: 'Anuluj',
+        confirmButtonColor: '#0d6efd',
+      }).then(result => {
+        if (!result.isConfirmed) return;
+        bulkAjax('send_email', null, btnEmail);
+      });
+    };
+
+    /* ── Ukryj stary formularz submit (teraz wszystko przez AJAX) ── */
+    const bulkForm = document.getElementById('bulk-actions-form');
+    if (bulkForm) {
+      bulkForm.addEventListener('submit', e => e.preventDefault());
+    }
+  });
+})();
 
 // Payment Modal Functions
 // Read CSRF token from meta tag for protected AJAX requests
@@ -1862,3 +2001,153 @@ function deletePayment(paymentId) {
     </div>
   </div>
 </div>
+
+<!-- KSeF Send Logs Modal -->
+<div class="modal fade" id="ksefLogsModal" tabindex="-1" aria-labelledby="ksefLogsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ksefLogsModalLabel">
+          <i class="ri-history-line me-2"></i>Historia KSeF
+          <span class="text-muted fw-normal small ms-2" id="ksef-log-invoice-number"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ksef-log-status-bar" class="alert alert-light py-2 px-3 mb-3 d-none">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div>
+              <span class="text-muted small">Status KSeF:</span>
+              <span id="ksef-log-status-badge" class="badge ms-1"></span>
+            </div>
+            <div id="ksef-log-number-wrap" class="d-none">
+              <span class="text-muted small">Numer KSeF:</span>
+              <code id="ksef-log-ksef-number" class="ms-1 small user-select-all"></code>
+            </div>
+          </div>
+        </div>
+        <div id="ksef-log-spinner" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="text-muted small mt-2">Ładowanie historii…</div>
+        </div>
+        <div id="ksef-log-empty" class="text-center text-muted py-4 d-none">
+          <i class="ri-inbox-line fs-1 d-block mb-2 opacity-50"></i>
+          Brak wpisów w historii KSeF dla tej faktury.
+        </div>
+        <div id="ksef-log-timeline" class="d-none">
+          <ul class="list-unstyled mb-0" id="ksef-log-list"></ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+#ksef-log-list li { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f0f0f0; }
+#ksef-log-list li:last-child { border-bottom:none; }
+#ksef-log-list .kl-icon { flex-shrink:0; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; }
+#ksef-log-list .kl-body { flex:1; min-width:0; }
+#ksef-log-list .kl-label { font-weight:600; font-size:.875rem; }
+#ksef-log-list .kl-time  { font-size:.75rem; color:#888; white-space:nowrap; }
+#ksef-log-list .kl-msg   { font-size:.8rem; color:#555; margin-top:2px; word-break:break-word; }
+#ksef-log-list .kl-meta  { font-size:.75rem; color:#999; margin-top:2px; }
+</style>
+
+<script>
+(function () {
+  var ksefLogModal = document.getElementById('ksefLogsModal');
+  var bsModal = null;
+
+  var colorMap = {
+    success:   { bg:'#d1fae5', color:'#065f46' },
+    danger:    { bg:'#fee2e2', color:'#991b1b' },
+    warning:   { bg:'#fef3c7', color:'#92400e' },
+    info:      { bg:'#dbeafe', color:'#1e40af' },
+    secondary: { bg:'#f1f5f9', color:'#475569' },
+  };
+  var statusLabels = {
+    sent:    { text:'Wysłano',     cls:'bg-success' },
+    error:   { text:'Błąd',        cls:'bg-danger' },
+    pending: { text:'Oczekuje',    cls:'bg-warning text-dark' },
+    blocked: { text:'Zablokowano', cls:'bg-secondary' },
+  };
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  document.body.addEventListener('click', function (e) {
+    var btn = e.target.closest('.inv-ksef-log-btn');
+    if (!btn) return;
+    e.preventDefault();
+
+    var id     = btn.dataset.id;
+    var number = btn.dataset.number;
+
+    document.getElementById('ksef-log-invoice-number').textContent = number ? ('— ' + number) : '';
+    document.getElementById('ksef-log-status-bar').classList.add('d-none');
+    document.getElementById('ksef-log-spinner').classList.remove('d-none');
+    document.getElementById('ksef-log-empty').classList.add('d-none');
+    document.getElementById('ksef-log-timeline').classList.add('d-none');
+    document.getElementById('ksef-log-list').innerHTML = '';
+    document.getElementById('ksef-log-number-wrap').classList.add('d-none');
+
+    if (!bsModal) bsModal = new bootstrap.Modal(ksefLogModal);
+    bsModal.show();
+
+    fetch('/invoices/ksef-send-logs/' + id + '.json', {
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      document.getElementById('ksef-log-spinner').classList.add('d-none');
+      if (!data.success) { document.getElementById('ksef-log-empty').classList.remove('d-none'); return; }
+
+      // status bar
+      var sm = statusLabels[data.ksef_status] || { text: data.ksef_status || 'Brak', cls: 'bg-light text-muted border' };
+      var badge = document.getElementById('ksef-log-status-badge');
+      badge.textContent = sm.text;
+      badge.className = 'badge ms-1 ' + sm.cls;
+      document.getElementById('ksef-log-status-bar').classList.remove('d-none');
+      if (data.ksef_number) {
+        document.getElementById('ksef-log-ksef-number').textContent = data.ksef_number;
+        document.getElementById('ksef-log-number-wrap').classList.remove('d-none');
+      }
+
+      if (!data.logs || !data.logs.length) { document.getElementById('ksef-log-empty').classList.remove('d-none'); return; }
+
+      var ul = document.getElementById('ksef-log-list');
+      data.logs.forEach(function (log) {
+        var p = colorMap[log.color] || colorMap.secondary;
+        var meta = [];
+        if (log.env)         meta.push('Środowisko: <strong>' + escHtml(log.env) + '</strong>');
+        if (log.status_code) meta.push('Kod: <strong>' + escHtml(log.status_code) + '</strong>');
+        if (log.ksef_number) meta.push('Nr KSeF: <strong>' + escHtml(log.ksef_number) + '</strong>');
+
+        var li = document.createElement('li');
+        li.innerHTML =
+          '<div class="kl-icon" style="background:' + p.bg + ';color:' + p.color + '">'
+            + '<i class="' + escHtml(log.icon) + '"></i></div>'
+          + '<div class="kl-body">'
+            + '<div class="d-flex align-items-baseline gap-2 flex-wrap">'
+              + '<span class="kl-label" style="color:' + p.color + '">' + escHtml(log.label) + '</span>'
+              + '<span class="kl-time">' + escHtml(log.created) + '</span>'
+            + '</div>'
+            + (log.message ? '<div class="kl-msg">' + escHtml(log.message) + '</div>' : '')
+            + (meta.length  ? '<div class="kl-meta">' + meta.join(' &nbsp;·&nbsp; ') + '</div>' : '')
+          + '</div>';
+        ul.appendChild(li);
+      });
+      document.getElementById('ksef-log-timeline').classList.remove('d-none');
+    })
+    .catch(function () {
+      document.getElementById('ksef-log-spinner').classList.add('d-none');
+      document.getElementById('ksef-log-empty').classList.remove('d-none');
+    });
+  });
+})();
+</script>

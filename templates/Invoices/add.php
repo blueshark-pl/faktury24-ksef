@@ -57,6 +57,32 @@ try {
   $__prefillItems = [];
 }
 
+// Wiersze faktury korygowanej (prefill przy tworzeniu korekty)
+$__originalItems = [];
+try {
+  if (!$__isEdit && !empty($original->invoice_contents) && is_iterable($original->invoice_contents)) {
+    foreach ($original->invoice_contents as $it) {
+      $__originalItems[] = [
+        'name'              => (string)($it->name ?? ''),
+        'quantity'          => $it->quantity ?? 1,
+        'unit'              => (string)($it->unit ?? 'szt.'),
+        'price'             => $it->price ?? 0,
+        'discount_percent'  => $it->discount_percent ?? 0,
+        'vat_code_id'       => $it->vat_code_id ?? null,
+        'gtu_code'          => (string)($it->gtu_code ?? ''),
+        'pkwiu'             => (string)($it->pkwiu ?? ''),
+        'gtin'              => (string)($it->gtin ?? ''),
+        'cn_code'           => (string)($it->cn_code ?? ''),
+        'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
+        'procedure_marking' => (string)($it->procedure_marking ?? ''),
+        'price_mode'        => 'net',
+      ];
+    }
+  }
+} catch (\Throwable) {
+  $__originalItems = [];
+}
+
 // pre-render VAT select do klonowania w wierszach
 $vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
 foreach ($vats as $id => $label) {
@@ -486,19 +512,6 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
               'placeholder' => 'np. Jan Kowalski'
             ]) ?>
 
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-              <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-              <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Automatyczna wysyłka"
-                data-bs-content="
-                  <div class='small text-start'>
-                    Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                  </div>
-                ">
-                <i class="ri-question-line"></i>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -631,6 +644,19 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
                   </small>
                 </div>
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                    title="Automatyczna wysyłka"
+                    data-bs-content="
+                      <div class='small text-start'>
+                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
+                      </div>
+                    ">
+                    <i class="ri-question-line"></i>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -692,8 +718,16 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </thead>
 
               <tbody id="items-body">
-<?php if ($__isEdit && !empty($__prefillItems)): ?>
-<?php foreach ($__prefillItems as $__i => $__it):
+<?php
+$__renderItems = [];
+if ($__isEdit && !empty($__prefillItems)) {
+    $__renderItems = $__prefillItems;
+} elseif (!$__isEdit && !empty($__originalItems)) {
+    $__renderItems = $__originalItems;
+}
+?>
+<?php if (!empty($__renderItems)): ?>
+<?php foreach ($__renderItems as $__i => $__it):
   $__vatOpts = '';
   foreach ($vats as $__vid => $__vlabel) {
     $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
@@ -748,7 +782,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 </tr>
 <?php endforeach; ?>
 <?php else: ?>
-                <!-- pierwszy (wymagany) wiersz -->
+                <!-- pierwszy pusty wiersz (nowa faktura bez prefill) -->
                   <tr class="item-row" draggable="true">
   <td>
       <div class="d-flex align-items-center gap-1">
@@ -1960,6 +1994,7 @@ $(function () {
     contractor: <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
     items: <?= json_encode($__prefillItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
   };
+  var originalItems = <?= json_encode($__originalItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
   var seriesPeriods = {
     '2b4003f9-06ec-4a97-b8ce-9a1b767d1f7a': 'roczny',
     '803fdc39-7c49-4921-a6ac-6c929fc0b6f5': 'ciągły', 
@@ -1967,7 +2002,7 @@ $(function () {
   };
   var $form = $('form.needs-validation').first();
   var $itemsBody = $('#items-body');
-  var idx = 1;
+  var idx = <?= max(1, count($__renderItems)) ?>;
   var currentProductRow = null;
 
   console.log('URLs initialized:', {
@@ -2202,7 +2237,7 @@ $(function () {
   }
 
   // ====== SPRAWDZANIE AKTUALNEGO NUMERU FAKTURY ======
-  function updateInvoiceNumberHint() {
+  window.updateInvoiceNumberHint = function updateInvoiceNumberHint() {
     var series = $('#series-select').val();
     var $hint = $('#invoice-number-hint');
     var $suggestion = $('#invoice-number-suggestion');
@@ -2940,43 +2975,7 @@ $('#gus-fetch-btn').on('click', function(){
     rowCalc($tr);
   }
 
-  function prefillItems(items){
-    if (!items || !items.length) return;
-
-    // Fill first row
-    var $first = $itemsBody.find('tr.item-row').first();
-    prefillRow($first, items[0]);
-
-    // Add missing rows
-    for (var i=1; i<items.length; i++){
-      $('#btn-add-item').trigger('click');
-      var $last = $itemsBody.find('tr.item-row').last();
-      prefillRow($last, items[i]);
-    }
-    allCalc();
-  }
-
-  if (isEdit) {
-    try {
-      // Contractor snapshot + select2 preselect
-      if (editPrefill && editPrefill.contractor) {
-        applyContractor(editPrefill.contractor);
-      } else {
-        // If no contractor data but entity has snapshot fields, show snapshot so user sees it
-        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '') { showContractorSnapshot(); }
-      }
-
-      // Items
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
-    } catch (e) {
-      console.warn('Edit prefill failed', e);
-    }
-  }
-
-  // ====== DODAJ WIERSZ ======
-  $('#btn-add-item').on('click', function () {
+  function addItemRow() {
     var $addRow = $('#btn-add-item').closest('tr');
     var html = '' +
       '<tr class="item-row" draggable="true">' +
@@ -3013,12 +3012,49 @@ $('#gus-fetch-btn').on('click', function(){
     $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
     var $tr = $addRow.prev();
     initProductSelectForRow($tr);
-  $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
-    // default mode for new row
+    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
     $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
-  $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
-    rowCalc($tr); allCalc(); guardMinRows();
+    $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+    rowCalc($tr); guardMinRows();
     idx++;
+    return $tr;
+  }
+
+  function prefillItems(items){
+    if (!items || !items.length) return;
+
+    // Fill first row
+    var $first = $itemsBody.find('tr.item-row').first();
+    prefillRow($first, items[0]);
+
+    // Add remaining rows
+    for (var i=1; i<items.length; i++){
+      var $tr = addItemRow();
+      prefillRow($tr, items[i]);
+    }
+    allCalc();
+  }
+
+  if (isEdit) {
+    try {
+      // Contractor snapshot + select2 preselect
+      if (editPrefill && editPrefill.contractor) {
+        applyContractor(editPrefill.contractor);
+      } else {
+        // If no contractor data but entity has snapshot fields, show snapshot so user sees it
+        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '') { showContractorSnapshot(); }
+      }
+
+      // Items are already rendered by PHP in edit mode — no JS prefill needed
+    } catch (e) {
+      console.warn('Edit prefill failed', e);
+    }
+  }
+
+  // ====== DODAJ WIERSZ ======
+  $('#btn-add-item').on('click', function () {
+    addItemRow();
+    allCalc();
   });
 
   // Toolbar handlers
@@ -3068,10 +3104,7 @@ $('#gus-fetch-btn').on('click', function(){
   // ====== Duplikuj wiersz ======
   $itemsBody.on('click', '.btn-duplicate', function(){
     var $src = $(this).closest('tr');
-    var $addRow = $('#btn-add-item').closest('tr');
-    // Dodaj nowy pusty wiersz (jak przy plusie)
-    $('#btn-add-item').trigger('click');
-    var $dst = $addRow.prev();
+    var $dst = addItemRow();
     // Skopiuj wartości z wiersza źródłowego
     $dst.find('.item-qty').val($src.find('.item-qty').val());
     $dst.find('.item-price').val($src.find('.item-price').val());
@@ -3194,10 +3227,15 @@ $('#gus-fetch-btn').on('click', function(){
         var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
         currentProductRow.find('.item-price').val(disp.toFixed(2));
 
-        // GTU – przepisz z produktu do wiersza
+        // GTU + pola klasyfikacyjne KSeF/JPK
         if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
           currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount !== null && product.excise_amount !== undefined ? product.excise_amount : '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
 
         // Select2 – pokaż nazwę produktu
         if ($.fn && $.fn.select2) {
@@ -3680,6 +3718,7 @@ if ($.fn && $.fn.select2) {
       var opt = new Option(label, curUuid || curName, true, true);
       $series.append(opt).trigger('change');
       $('#invoice-series-id-hidden').val(curUuid);
+      if (typeof window.updateInvoiceNumberHint === 'function') updateInvoiceNumberHint();
     } else {
       // Jeśli nie ma wcześniej wybranej serii, spróbuj załadować domyślną
       loadDefaultSeries();
@@ -3708,6 +3747,7 @@ if ($.fn && $.fn.select2) {
       if (defaultItem) {
         var opt = new Option(defaultItem.text || defaultItem.name, defaultItem.id || defaultItem.name, true, true);
         $series.append(opt).trigger('change');
+        if (typeof window.updateInvoiceNumberHint === 'function') updateInvoiceNumberHint();
       }
     });
   }
