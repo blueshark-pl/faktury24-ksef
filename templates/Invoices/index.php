@@ -9,6 +9,7 @@ use Cake\Core\Configure;
 $this->assign('title', 'Faktury');
 ?>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons/css/flag-icons.min.css">
 <style>
 .table th {
     font-weight: 600;
@@ -800,14 +801,11 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                   </li>
                   <?php endif; ?>
                   <li>
-                    <?= $this->Html->link('<i class="ri-printer-line me-2"></i> Drukuj PDF', ['action' => 'print', $inv->id], [
-                      'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF', 'target' => '_blank'
-                    ]) ?>
-                  </li>
-                  <li>
-                    <?= $this->Html->link('<i class="ri-printer-line me-2"></i> Drukuj PDF (EN)', ['action' => 'print', $inv->id, '?' => ['lang' => 'en']], [
-                      'class' => 'dropdown-item', 'escape' => false, 'title' => 'Drukuj PDF w języku angielskim', 'target' => '_blank'
-                    ]) ?>
+                    <a href="#" class="dropdown-item btn-pdf-lang"
+                       data-url-pl="<?= $this->Url->build(['action' => 'print', $inv->id]) ?>"
+                       data-url-en="<?= $this->Url->build(['action' => 'print', $inv->id, '?' => ['lang' => 'en']]) ?>">
+                      <i class="ri-printer-line me-2"></i> Pobierz PDF
+                    </a>
                   </li>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
                   <li>
@@ -1426,6 +1424,37 @@ document.addEventListener('DOMContentLoaded', function(){
     Swal.fire({ toast: true, position: 'top-end', icon: type, title: msg,
       showConfirmButton: false, timer: 4000, timerProgressBar: true });
   }
+
+  /* ---------- PDF language chooser ---------- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-pdf-lang');
+    if (!btn) return;
+    e.preventDefault();
+    Swal.fire({
+      title: 'Pobierz PDF',
+      html: '<p class="mb-3">Wybierz język faktury:</p>'
+          + '<div class="d-flex justify-content-center gap-3">'
+          + '  <button id="swal-pdf-pl" class="btn btn-outline-primary btn-lg px-4">'
+          + '    <i class="fi fi-pl me-2" style="font-size:1.2em"></i>Polski'
+          + '  </button>'
+          + '  <button id="swal-pdf-en" class="btn btn-outline-primary btn-lg px-4">'
+          + '    <i class="fi fi-gb me-2" style="font-size:1.2em"></i>English'
+          + '  </button>'
+          + '</div>',
+      showConfirmButton: false,
+      showCloseButton: true,
+      didOpen: function () {
+        document.getElementById('swal-pdf-pl').addEventListener('click', function () {
+          window.open(btn.dataset.urlPl, '_blank');
+          Swal.close();
+        });
+        document.getElementById('swal-pdf-en').addEventListener('click', function () {
+          window.open(btn.dataset.urlEn, '_blank');
+          Swal.close();
+        });
+      }
+    });
+  });
   function setBtnLoading(btn, loading) {
     if (!btn) return;
     if (loading) {
