@@ -604,13 +604,12 @@ public function index()
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
-        'order' => ['number' => 'DESC', 'date' => 'DESC'],
+        'order' => ['date' => 'DESC', 'number' => 'DESC'],
         'sortableFields' => [
             'number',
             'fullnumber',
             'type',
             'date',
-            'sold_date',
             'total',
             'paymentstate',
             'paymentdate',

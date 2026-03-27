@@ -316,7 +316,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               ['key' => 'col-number',      'label' => 'Numer',             'def' => true],
               ['key' => 'col-type',        'label' => 'Typ',               'def' => true],
               ['key' => 'col-date',        'label' => 'Data wystawienia',  'def' => true],
-              ['key' => 'col-sold-date',   'label' => 'Data sprzedaży',   'def' => true],
               ['key' => 'col-amount',      'label' => 'Kwota',             'def' => true],
               ['key' => 'col-paystate',    'label' => 'Status płatności',  'def' => true],
               ['key' => 'col-paydate',     'label' => 'Termin płatności',  'def' => true],
@@ -414,7 +413,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             <th class="col-number"><?= $this->Paginator->sort('fullnumber', 'Numer') ?></th>
             <th class="col-type"><?= $this->Paginator->sort('type', 'Typ') ?></th>
             <th class="col-date"><?= $this->Paginator->sort('date', 'Data wystawienia') ?></th>
-            <th class="col-sold-date"><?= $this->Paginator->sort('sold_date', 'Data sprzedaży') ?></th>
             <th class="text-end col-amount"><?= $this->Paginator->sort('total', 'Kwota') ?></th>
             <th class="col-paystate"><?= $this->Paginator->sort('paymentstate', 'Status płatności') ?></th>
             <th class="col-paydate"><?= $this->Paginator->sort('paymentdate', 'Termin płatności') ?></th>
@@ -650,9 +648,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             <td class="col-date">
               <?= $inv->date?->format('d.m.Y') ?>
               <br><small class="text-muted">Utworzona: <?= $inv->created?->format('d.m.Y H:i') ?></small>
-            </td>
-            <td class="col-sold-date">
-              <?= $inv->sold_date?->format('d.m.Y') ?? '—' ?>
             </td>
             <td class="text-end col-amount">
               <strong><?= $money($inv->total, $inv->currency) ?></strong>
