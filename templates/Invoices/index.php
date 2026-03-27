@@ -907,10 +907,9 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
   ]);
 ?>
 <?php
-// Determine total page count from request paging data (CakePHP helper-agnostic)
-$__paging = (array)$this->request->getAttribute('paging');
-$__model = $__paging ? array_keys($__paging)[0] : null;
-$__pageCount = $__model && !empty($__paging[$__model]['pageCount']) ? (int)$__paging[$__model]['pageCount'] : 1;
+// CakePHP 5: paging params from PaginatorHelper (PaginatedInterface)
+$__params = $this->Paginator->params();
+$__pageCount = (int)($__params['pageCount'] ?? 1);
 ?>
 <?php if ($__pageCount > 1): ?>
 <div class="mx-auto mt-3">
@@ -927,13 +926,10 @@ $__pageCount = $__model && !empty($__paging[$__model]['pageCount']) ? (int)$__pa
 <?php endif; ?>
 <div class="col-lg-12 text-center">
     <?php
-      $__paging2 = (array)$this->request->getAttribute('paging');
-      $__model2  = $__paging2 ? array_keys($__paging2)[0] : null;
-      $__info2   = $__model2 ? ($__paging2[$__model2] ?? []) : [];
-      $__pageN   = (int)($__info2['page'] ?? 1);
-      $__pagesN  = (int)($__info2['pageCount'] ?? 1);
-      $__currentN= (int)($__info2['current'] ?? (is_iterable($invoices) ? count($invoices) : 0));
-      $__countN  = (int)($__info2['count'] ?? $__currentN);
+      $__pageN   = (int)($__params['page'] ?? 1);
+      $__pagesN  = $__pageCount;
+      $__currentN= (int)($__params['current'] ?? (is_iterable($invoices) ? count($invoices) : 0));
+      $__countN  = (int)($__params['count'] ?? $__currentN);
       $__accWord = function($n){ $n = abs((int)$n); $n10 = $n % 10; $n100 = $n % 100; if ($n === 1) return 'fakturę'; if ($n10 >= 2 && $n10 <= 4 && ($n100 < 12 || $n100 > 14)) return 'faktury'; return 'faktur'; };
       $__genWord = function($n){ return ((int)$n === 1) ? 'faktury' : 'faktur'; };
     ?>
