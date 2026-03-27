@@ -22,21 +22,18 @@ endif;
 ?>
 
 <?php if (!Configure::read('debug')): ?>
-<div class="text-center py-5">
-    <div class="mb-4">
-        <i class="bi bi-exclamation-triangle" style="font-size:4rem;color:#f0ad4e;"></i>
-    </div>
-    <h2 class="mb-3">Strona nie została znaleziona</h2>
-    <p class="text-muted mb-4">Żądany adres nie istnieje lub nie masz do niego dostępu.</p>
-    <div class="alert alert-secondary d-inline-block">
-        <small>Kod błędu: <strong><?= h($errorCode ?? '—') ?></strong></small>
-    </div>
-    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z administratorem i podaj powyższy kod błędu.</small></p>
-    <div class="mt-4">
-        <a href="javascript:history.back()" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Wróć</a>
-        <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona główna</a>
-    </div>
+<div class="error-icon warn">
+    <i class="ri-file-search-line" style="color:#f0ad4e;"></i>
 </div>
+<h2 class="error-title mb-2">404</h2>
+<p class="error-subtitle mb-4">Strona, której szukasz, nie istnieje<br>lub nie masz do niej dostępu.</p>
+<div class="mb-3">
+    <span class="error-code-badge"><?= h($errorCode ?? '—') ?></span>
+</div>
+<div class="error-actions mt-4 mb-3">
+    <a href="/" class="btn btn-primary"><i class="ri-home-4-line me-1"></i> Strona główna</a>
+</div>
+<p class="error-footer mt-3 mb-0">Podaj kod błędu kontaktując się z&nbsp;administratorem.</p>
 <?php else: ?>
 <h2><?= h($message) ?></h2>
 <p class="error">
