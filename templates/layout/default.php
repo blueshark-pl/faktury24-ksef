@@ -679,6 +679,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 <a class="btn btn-sm btn-outline-warning" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Invoices', 'action' => 'drafts']) ?>">Przejdź do roboczych</a>
                                             </div>
                                         <?php endif; // draftInvoicesCount ?>
+                                        <?php else: ?>
+                                        <div class="alert alert-secondary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                <span class="fw-semibold">Tryb KSeF:</span>
+                                                <span class="badge bg-danger">WYŁ.</span>
+                                                <span class="small text-muted ms-2">Faktury nie są wysyłane do KSeF. Aby włączyć, przejdź do ustawień firmy.</span>
+                                            </div>
+                                            <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
+                                        </div>
                                         <?php endif; // ksefModeEnabled ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
