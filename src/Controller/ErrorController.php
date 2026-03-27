@@ -1,22 +1,10 @@
 <?php
 declare(strict_types=1);
 
-/**
- * CakePHP(tm) : Rapid Development Framework (https://cakephp.org)
- * Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- *
- * Licensed under The MIT License
- * For full copyright and license information, please see the LICENSE.txt
- * Redistributions of files must retain the above copyright notice.
- *
- * @copyright     Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- * @link          https://cakephp.org CakePHP(tm) Project
- * @since         3.3.4
- * @license       https://opensource.org/licenses/mit-license.php MIT License
- */
 namespace App\Controller;
 
 use Cake\Event\EventInterface;
+use Cake\Log\Log;
 
 /**
  * Error Handling Controller
@@ -25,45 +13,50 @@ use Cake\Event\EventInterface;
  */
 class ErrorController extends AppController
 {
-    /**
-     * Initialization hook method.
-     *
-     * @return void
-     */
     public function initialize(): void
     {
-        // Only add parent::initialize() if you are confident your `AppController` is safe.
     }
 
-    /**
-     * beforeFilter callback.
-     *
-     * @param \Cake\Event\EventInterface<\Cake\Controller\Controller> $event Event.
-     * @return void
-     */
     public function beforeFilter(EventInterface $event): void
     {
     }
 
-    /**
-     * beforeRender callback.
-     *
-     * @param \Cake\Event\EventInterface<\Cake\Controller\Controller> $event Event.
-     * @return void
-     */
     public function beforeRender(EventInterface $event): void
     {
         parent::beforeRender($event);
-
         $this->viewBuilder()->setTemplatePath('Error');
+
+        // Generate unique error code
+        $errorCode = 'ERR-' . strtoupper(bin2hex(random_bytes(4)));
+
+        // Gather error details for logging
+        $error = $this->viewBuilder()->getVar('error');
+        $message = $this->viewBuilder()->getVar('message') ?? 'Unknown error';
+        $url = $this->request->getRequestTarget();
+        $statusCode = $this->response->getStatusCode();
+
+        $logEntry = sprintf(
+            "[%s] HTTP %d | URL: %s | Message: %s",
+            $errorCode,
+            $statusCode,
+            $url,
+            $message
+        );
+        if ($error instanceof \Throwable) {
+            $logEntry .= sprintf(
+                " | Exception: %s in %s:%d\n%s",
+                get_class($error),
+                $error->getFile(),
+                $error->getLine(),
+                $error->getTraceAsString()
+            );
+        }
+
+        Log::error($logEntry);
+
+        $this->set('errorCode', $errorCode);
     }
 
-    /**
-     * afterFilter callback.
-     *
-     * @param \Cake\Event\EventInterface<\Cake\Controller\Controller> $event Event.
-     * @return void
-     */
     public function afterFilter(EventInterface $event): void
     {
     }

@@ -1,39 +1,35 @@
 <?php
 /**
- * CakePHP(tm) : Rapid Development Framework (https://cakephp.org)
- * Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- *
- * Licensed under The MIT License
- * For full copyright and license information, please see the LICENSE.txt
- * Redistributions of files must retain the above copyright notice.
- *
- * @copyright     Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
- * @link          https://cakephp.org CakePHP(tm) Project
- * @since         0.10.0
- * @license       https://opensource.org/licenses/mit-license.php MIT License
  * @var \App\View\AppView $this
  */
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="pl">
 <head>
     <?= $this->Html->charset() ?>
-    <title>
-        <?= $this->fetch('title') ?>
-    </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Błąd — Faktury24</title>
     <?= $this->Html->meta('icon') ?>
-
-    <?= $this->Html->css(['normalize.min', 'milligram.min', 'fonts', 'cake']) ?>
-
+    <?= $this->Html->css([
+        '/assets/libs/bootstrap/css/bootstrap.min.css',
+        '/assets/css/styles.css',
+        '/assets/css/icons.css',
+    ]) ?>
     <?= $this->fetch('meta') ?>
     <?= $this->fetch('css') ?>
-    <?= $this->fetch('script') ?>
 </head>
-<body>
-    <div class="error-container">
-        <?= $this->Flash->render() ?>
-        <?= $this->fetch('content') ?>
-        <?= $this->Html->link(__('Back'), 'javascript:history.back()') ?>
+<body class="bg-light">
+    <div class="container">
+        <div class="row justify-content-center" style="min-height:100vh;align-items:center;">
+            <div class="col-lg-6 col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <?= $this->Flash->render() ?>
+                        <?= $this->fetch('content') ?>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 </html>
