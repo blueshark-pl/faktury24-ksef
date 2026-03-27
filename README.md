@@ -197,6 +197,11 @@ custom styles.
 - Czas: 0.5h
 - Do sprawdzenia manualnie: na liście faktur kliknąć nagłówki kolumn (Kontrahent, Numer, Data wystawienia, Data sprzedaży, Kwota, Status płatności, Termin płatności) — strzałka sortowania powinna się pojawić. Sprawdzić paginację przy >20 fakturach.
 
+- Fix: paginacja listy faktur — przyciski stron (Pierwsza/Poprzednia/numery/Następna/Ostatnia) nie wyświetlały się, bo widok używał `$this->request->getAttribute('paging')` (CakePHP 4), które w CakePHP 5 jest puste. Zamieniono na `$this->Paginator->params()` (`PaginatedInterface`). Wersja: 1.2.23 (17).
+- Commit: d3c208d
+- Czas: 0.2h
+- Do sprawdzenia manualnie: lista faktur z >20 pozycjami powinna wyświetlać przyciski paginacji pod tabelą + informację „Strona X z Y".
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
