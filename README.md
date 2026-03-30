@@ -214,7 +214,7 @@ custom styles.
 
 ### 2026-07-10
 - Fix: `override_next_number` w seriach faktur nie był używany przy generowaniu numeru. Pole było zapisywane poprawnie w ustawieniach firmy, ale oba ścieżki numerowania w `InvoicesController` (`ensureInvoiceNumberForSend()` i `handleAdd()`) pomijały override i zawsze brały numer z ostatniej faktury lub `starting_number`. Dodano sprawdzanie `override_next_number` w obu ścieżkach — jeśli ustawiony, numer jest nadpisywany, a pole czyszczone (jednorazowe). Logika analogiczna do `InvoiceNumberingService::computeNextNumber()`.
-- Commit: (pending)
+- Commit: 8f6c797
 - Czas: 0.5h
 - Do sprawdzenia manualnie: w ustawieniach firmy ustawić `override_next_number` na np. 15 dla serii marża, wystawić fakturę marża — numer powinien zacząć od 15, a pole override powinno się wyczyścić.
 
