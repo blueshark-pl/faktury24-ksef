@@ -214,8 +214,12 @@ public function add()
             ->order(['number' => 'DESC', 'id' => 'DESC'])
             ->first();
 
-        // Wyciągnij numer z ostatniej faktury lub użyj startowego
-        if ($lastInvoice) {
+        // Jednorazowy override numeru (np. przy migracji z innego systemu)
+        $overrideNext = $seriesEntity->override_next_number ?? null;
+        if ($overrideNext !== null && (int)$overrideNext > 0) {
+            $nextNumber = (int)$overrideNext;
+            error_log("Using override_next_number=$nextNumber for series " . $seriesEntity->name);
+        } elseif ($lastInvoice) {
             // Znaleziono fakturę w bieżącym okresie - kontynuuj numerację
             if (isset($lastInvoice->number) && $lastInvoice->number > 0) {
                 $extractedNumber = $lastInvoice->number;
