@@ -418,5 +418,11 @@ return [
             'action' => ['receivedApi', 'issuedApi', 'linesApi', 'previewApi', 'personalGrantsCheckApi', 'statusApi'],
             'bypassAuth' => true,
         ],
+        [
+            'role' => '*',
+            'controller' => 'Sso',
+            'action' => ['login'],
+            'bypassAuth' => true,
+        ],
     ]
 ];

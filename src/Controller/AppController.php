@@ -317,6 +317,7 @@ class AppController extends Controller
             'TwoFactor' => ['index', 'enable', 'verify', 'disable'],
             'Invoices'  => ['runPlannedDrafts', 'generatePdfInternal', 'processEmailQueue'],
             'Import'    => ['importLegacyUsers'],
+            'Sso'       => ['login'],
         ];
 
         $controller = $this->request->getParam('controller');

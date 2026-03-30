@@ -65,6 +65,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Import użytkowników ze starego systemu (jednorazowy, wywoływany z przeglądarki)
         $builder->get('/import-legacy-users', ['controller' => 'Import', 'action' => 'importLegacyUsers']);
 
+        // SSO — logowanie z systemu księgowego (portal.partnersc.com)
+        $builder->get('/sso/login', ['controller' => 'Sso', 'action' => 'login']);
+
         // (opcjonalnie) wyszukiwarka kontrahentów i produktów pod Select2:
         // $builder->get('/contractors/search', 'Contractors::search');
         // $builder->get('/products/search', 'Products::search');
