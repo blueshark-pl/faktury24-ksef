@@ -666,7 +666,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 <span class="fw-semibold">Tryb KSeF:</span>
                                                 <span class="badge bg-success">WŁ.</span>
                                                 <span class="fw-semibold ms-2">Uprawnienia KSeF:</span>
-                                                <span class="badge bg-<?= h($permClass) ?>"><?= h($permLabel) ?></span>
+                                                <span id="ksef-perm-badge" class="badge bg-<?= h($permClass) ?>"><?= h($permLabel) ?></span>
                                             </div>
                                             <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
                                         </div>
@@ -1066,6 +1066,29 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         });
                     })();
                 </script>
-    
+    <?php if ($ksefModeEnabled): ?>
+    <script>
+    (function(){
+        var badge = document.getElementById('ksef-perm-badge');
+        if (!badge) return;
+        fetch('/api/ksef/status?env=test')
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d.active === true) {
+                    badge.className = 'badge bg-success';
+                    badge.textContent = 'OK';
+                } else {
+                    badge.className = 'badge bg-danger';
+                    badge.textContent = 'brak';
+                }
+            })
+            .catch(function(){
+                badge.className = 'badge bg-secondary';
+                badge.textContent = 'błąd sprawdzania';
+            });
+    })();
+    </script>
+    <?php endif; ?>
+
 </body>
 </html>

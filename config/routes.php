@@ -90,6 +90,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->setExtensions(['json']);
         // KSeF: otrzymane – JSON API
         $builder->get('/ksef/received', ['controller' => 'KsefAuthorizations', 'action' => 'receivedApi']);
+        // KSeF: lekki status check (AJAX)
+        $builder->get('/ksef/status', ['controller' => 'KsefAuthorizations', 'action' => 'statusApi']);
         // KSeF: wystawione – JSON API
         $builder->get('/ksef/issued', ['controller' => 'KsefAuthorizations', 'action' => 'issuedApi']);
         // KSeF: uprawnienia (personal grants) – JSON API

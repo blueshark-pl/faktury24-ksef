@@ -121,6 +121,48 @@ class KsefAuthorizationsController extends AppController
     }
 
     /**
+     * Lekki endpoint AJAX: sprawdza uprawnienia KSeF (query z limit=1)
+     * i zwraca status jako JSON. Zapisuje wynik do sesji Ksef.status.
+     * GET /api/ksef/status?env=test|prod
+     */
+    public function statusApi()
+    {
+        $this->request->allowMethod(['get']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        if ($companyId === '') {
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody(json_encode(['active' => false, 'error' => 'Brak firmy']));
+        }
+
+        $env = (string)($this->request->getQuery('env', 'test'));
+        $env = ($env === 'prod') ? 'prod' : 'test';
+
+        $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+
+        try {
+            $ksef->queryReceivedMetadata(
+                companyId: $companyId,
+                environment: $env,
+                filters: [],
+                pageOffset: 0,
+                pageSize: 1
+            );
+            $status = ['active' => true, 'env' => $env, 'ts' => time(), 'lastError' => null];
+        } catch (\Throwable $e) {
+            $status = ['active' => false, 'env' => $env, 'ts' => time(), 'lastError' => $e->getMessage()];
+        }
+
+        $this->request->getSession()->write('Ksef.status', $status);
+
+        return $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode($status, JSON_UNESCAPED_UNICODE));
+    }
+    /**
      * API: Zwraca listę „Faktur wystawionych (KSeF)” w formacie JSON.
      * GET /api/ksef/issued?env=test|prod&as_nip=XXXXXXXXXX&ksef=...&inv=...&seller_nip=...&buyer_nip=...&from=Y-m-d&to=Y-m-d&currency=PLN&page=1&q=...
      */
