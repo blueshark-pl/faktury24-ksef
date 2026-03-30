@@ -45,6 +45,10 @@ class ImportLegacyUsersCommand extends Command
             ->addOption('url', [
                 'help' => 'URL endpointu get_all_users (domyślnie archiwum.faktury24.com).',
                 'default' => self::DEFAULT_URL,
+            ])
+            ->addOption('file', [
+                'help' => 'Ścieżka do lokalnego pliku JSON (zamiast pobierania z URL).',
+                'default' => '',
             ]);
 
         return $parser;
@@ -54,21 +58,37 @@ class ImportLegacyUsersCommand extends Command
     {
         $dryRun = (bool)$args->getOption('dry-run');
         $url = (string)$args->getOption('url');
+        $file = (string)$args->getOption('file');
 
         $io->info('Import użytkowników ze starego systemu faktury24');
         $io->hr();
 
-        // 1. Pobierz dane z API
-        $io->out('Pobieranie danych z: ' . $url);
-        $client = new Client();
-        $response = $client->get($url, ['token' => self::TOKEN]);
+        // 1. Pobierz dane z API lub pliku
+        if ($file !== '') {
+            $io->out('Wczytywanie danych z pliku: ' . $file);
+            if (!file_exists($file)) {
+                $io->error('Plik nie istnieje: ' . $file);
+                return self::CODE_ERROR;
+            }
+            $json = file_get_contents($file);
+            $payload = json_decode($json, true);
+        } else {
+            $io->out('Pobieranie danych z: ' . $url);
+            try {
+                $client = new Client(['timeout' => 30]);
+                $response = $client->get($url, ['token' => self::TOKEN]);
+            } catch (\Exception $e) {
+                $io->error('Błąd połączenia: ' . $e->getMessage());
+                $io->warning('Wskazówka: użyj --file=plik.json aby wczytać dane z pliku lokalnego.');
+                return self::CODE_ERROR;
+            }
 
-        if (!$response->isOk()) {
-            $io->error('Błąd HTTP: ' . $response->getStatusCode());
-            return self::CODE_ERROR;
+            if (!$response->isOk()) {
+                $io->error('Błąd HTTP: ' . $response->getStatusCode());
+                return self::CODE_ERROR;
+            }
+            $payload = $response->getJson();
         }
-
-        $payload = $response->getJson();
         if (empty($payload) || ($payload['status'] ?? 0) !== 200) {
             $io->error('Nieprawidłowa odpowiedź z API: ' . ($payload['message'] ?? 'brak danych'));
             return self::CODE_ERROR;

@@ -114,8 +114,12 @@ class ImportController extends AppController
                 ];
             }
 
-            // Pomijaj "emaile" które nie są emailami (np. sam REGON/numer)
+            // Jeśli ud_email to 10 cyfr (NIP) i firma nie ma NIPu — przepisz
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $maybeNip = preg_replace('/[^\d]/', '', $email);
+                if (strlen($maybeNip) === 10 && $companyUuid && isset($companies[$companyUuid]) && empty($companies[$companyUuid]['nip'])) {
+                    $companies[$companyUuid]['nip'] = $maybeNip;
+                }
                 $skippedEmails++;
                 continue;
             }
