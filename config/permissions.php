@@ -390,6 +390,13 @@ return [
             'controller' => 'ApiTokens',
             'action' => ['index', 'generate', 'revoke'],
         ],
+
+        // słownik walutowy NBP
+        [
+            'role' => 'user',
+            'controller' => 'Nbp',
+            'action' => ['dictionary', 'rates'],
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',
