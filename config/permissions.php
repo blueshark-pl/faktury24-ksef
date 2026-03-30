@@ -326,6 +326,7 @@ return [
                 'issued',
                 'status',
                 'statusAjax',
+                'statusApi',
                 'personalGrants',
                 'personalGrantsCheck',
                 'authorizationsGrants',
@@ -400,7 +401,7 @@ return [
             'role' => '*',
             'plugin' => '*',
             'controller' => 'KsefAuthorizations',
-            'action' => ['receivedApi', 'issuedApi', 'linesApi', 'previewApi', 'personalGrantsCheckApi'],
+            'action' => ['receivedApi', 'issuedApi', 'linesApi', 'previewApi', 'personalGrantsCheckApi', 'statusApi'],
             'bypassAuth' => true,
         ],
     ]
