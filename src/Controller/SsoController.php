@@ -206,8 +206,8 @@ class SsoController extends AppController
 
             $userCreated = true;
         } else {
-            // User istnieje — jeśli nie ma firmy a mamy firmę, przypisz
-            if (empty($user->company_id) && $company !== null) {
+            // User istnieje — zawsze przełącz na firmę z tokenu (kontekst SSO)
+            if ($company !== null && (string)$user->company_id !== (string)$company->id) {
                 $user->company_id = $company->id;
                 $Users->save($user, ['checkRules' => false, 'validate' => false]);
             }
