@@ -26,7 +26,9 @@ class SsoController extends AppController
     public function initialize(): void
     {
         parent::initialize();
-        $this->components()->unload('FormProtection');
+        if ($this->components()->has('FormProtection')) {
+            $this->components()->unload('FormProtection');
+        }
     }
 
     public function beforeFilter(EventInterface $event): void
