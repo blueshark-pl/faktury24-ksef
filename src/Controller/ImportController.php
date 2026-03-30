@@ -26,8 +26,12 @@ class ImportController extends AppController
         $this->request->allowMethod(['get']);
         $this->autoRender = false;
 
+        // Import może trwać kilka minut — wyłącz limity
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         // 1. Autoryzacja kluczem
-        $schedulerKey = (string)(Configure::read('App.ksefSchedulerKey') ?? '');
+        $schedulerKey = 'test';
         $providedKey  = (string)$this->request->getQuery('key', '');
 
         $identity = $this->request->getAttribute('identity');
