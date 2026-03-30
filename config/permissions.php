@@ -149,6 +149,13 @@ return [
             'controller' => 'Invoices',
             'action' => ['runPlannedDrafts'],
         ],
+        // jednorazowy import użytkowników ze starego systemu (chroniony kluczem w query)
+        [
+            'role' => '*',
+            'controller' => 'Import',
+            'action' => ['importLegacyUsers'],
+            'bypassAuth' => true,
+        ],
         // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
         [
             'role' => 'user',
