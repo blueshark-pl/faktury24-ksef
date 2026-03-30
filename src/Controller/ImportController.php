@@ -8,6 +8,9 @@ use Cake\Http\Client;
 use Cake\Http\Response;
 use Cake\Log\Log;
 use Cake\Utility\Text;
+use GusApi\GusApi;
+use GusApi\Exception\InvalidUserKeyException;
+use GusApi\Exception\NotFoundException as GusNotFoundException;
 
 /**
  * Jednorazowy import użytkowników i firm ze starego systemu.
@@ -133,8 +136,36 @@ class ImportController extends AppController
         $companyIdMap = [];
         $stats = ['companies_created' => 0, 'companies_skipped' => 0, 'users_created' => 0, 'users_skipped' => 0, 'users_updated' => 0];
 
+        // GUS API — login raz, użyj wielokrotnie
+        $gus = null;
+        try {
+            $apiKey = (string)Configure::read('Gus.apiKey', '');
+            if ($apiKey !== '') {
+                $isDev = (bool)Configure::read('Gus.dev', false);
+                $gus = $isDev ? new GusApi($apiKey, 'dev') : new GusApi($apiKey);
+                $gus->login();
+                $log[] = 'GUS API: zalogowano.';
+            } else {
+                $log[] = 'GUS API: brak klucza — pominięto lookup.';
+            }
+        } catch (\Throwable $e) {
+            $log[] = 'GUS API: błąd logowania — ' . $e->getMessage();
+            $gus = null;
+        }
+
+        $stats['gus_filled'] = 0;
+
         // 4a. Firmy
         foreach ($companies as $oldUuid => $data) {
+            // Sanityzacja danych
+            $data = $this->sanitizeCompanyData($data);
+
+            // Pomijaj firmy bez nazwy i bez ważnego NIP
+            if (empty($data['name']) && empty($data['nip'])) {
+                $log[] = sprintf('[SKIP] Firma bez nazwy i NIP (old_uuid: %s)', $oldUuid);
+                continue;
+            }
+
             $existing = null;
             if (!empty($data['nip'])) {
                 $existing = $CompaniesTable->find()
@@ -146,6 +177,24 @@ class ImportController extends AppController
                 $companyIdMap[$oldUuid] = $existing->id;
                 $stats['companies_skipped']++;
                 continue;
+            }
+
+            // GUS fallback: pusta nazwa lub brakujące dane → pobierz z GUS
+            if ($gus && !empty($data['nip']) && (empty($data['name']) || empty($data['street']) || empty($data['city']))) {
+                $gusData = $this->fetchFromGus($gus, $data['nip']);
+                if ($gusData) {
+                    if (empty($data['name']))        $data['name']        = $gusData['name'];
+                    if (empty($data['street']))       $data['street']       = $gusData['street'];
+                    if (empty($data['postal_code']))  $data['postal_code']  = $gusData['postal_code'];
+                    if (empty($data['city']))         $data['city']         = $gusData['city'];
+                    if (empty($data['regon']))        $data['regon']        = $gusData['regon'] ?? null;
+                    $stats['gus_filled']++;
+                }
+            }
+
+            // Jeśli nadal brak nazwy — użyj NIP jako fallback
+            if (empty($data['name'])) {
+                $data['name'] = 'Firma NIP ' . ($data['nip'] ?? 'brak');
             }
 
             $entity = $CompaniesTable->newEntity($data);
@@ -199,13 +248,84 @@ class ImportController extends AppController
             }
         }
 
-        $log[] = sprintf('Firmy: %d utworzono, %d pominięto.', $stats['companies_created'], $stats['companies_skipped']);
+        $log[] = sprintf('Firmy: %d utworzono, %d pominięto, %d uzupełniono z GUS.', $stats['companies_created'], $stats['companies_skipped'], $stats['gus_filled']);
         $log[] = sprintf('Użytkownicy: %d utworzono, %d pominięto, %d zaktualizowano.', $stats['users_created'], $stats['users_skipped'], $stats['users_updated']);
         $log[] = 'Import zakończony.';
 
         Log::info('Legacy import: ' . json_encode($stats), ['import']);
 
         return $this->jsonResponse(200, 'Import zakończony.', $log, $stats);
+    }
+
+    private function sanitizeCompanyData(array $data): array
+    {
+        // NIP: tylko cyfry, dokładnie 10
+        if (!empty($data['nip'])) {
+            $nip = preg_replace('/[^\d]/', '', $data['nip']);
+            $data['nip'] = (strlen($nip) === 10) ? $nip : null;
+        }
+
+        // REGON: max 14 cyfr
+        if (!empty($data['regon'])) {
+            $regon = preg_replace('/[^\d]/', '', $data['regon']);
+            $data['regon'] = (strlen($regon) <= 14) ? $regon : substr($regon, 0, 14);
+        }
+
+        // postal_code: max 6 znaków (XX-XXX)
+        if (!empty($data['postal_code'])) {
+            $pc = trim($data['postal_code']);
+            // Wyciągnij wzorzec XX-XXX
+            if (preg_match('/(\d{2}-\d{3})/', $pc, $m)) {
+                $data['postal_code'] = $m[1];
+            } elseif (preg_match('/^(\d{2})(\d{3})/', $pc, $m)) {
+                $data['postal_code'] = $m[1] . '-' . $m[2];
+            } else {
+                $data['postal_code'] = mb_substr($pc, 0, 6);
+            }
+        }
+
+        // bank_account: usuń spacje/myślniki, max 34 znaków
+        if (!empty($data['bank_account'])) {
+            $ba = preg_replace('/[\s\-]/', '', $data['bank_account']);
+            $data['bank_account'] = (strlen($ba) <= 34) ? $ba : substr($ba, 0, 34);
+        }
+
+        // name: trim, usuń znaki nowej linii
+        if (!empty($data['name'])) {
+            $data['name'] = trim(preg_replace('/[\r\n]+/', ' ', $data['name']));
+        }
+
+        return $data;
+    }
+
+    private function fetchFromGus(?GusApi $gus, string $nip): ?array
+    {
+        if (!$gus || strlen($nip) !== 10) {
+            return null;
+        }
+
+        try {
+            $reports = $gus->getByNip($nip);
+            if (empty($reports)) {
+                return null;
+            }
+            $r = $reports[0];
+
+            $zip = (string)$r->getZipCode();
+            if (preg_match('/^(\d{2})(\d{3})$/', $zip, $m)) {
+                $zip = $m[1] . '-' . $m[2];
+            }
+
+            return [
+                'name'        => trim((string)$r->getName()),
+                'street'      => trim(implode(' ', array_filter([(string)$r->getStreet(), (string)$r->getPropertyNumber()]))),
+                'postal_code' => $zip,
+                'city'        => trim((string)$r->getCity()),
+                'regon'       => preg_replace('/[^\d]/', '', (string)$r->getRegon()),
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function splitName(string $fullName): array
