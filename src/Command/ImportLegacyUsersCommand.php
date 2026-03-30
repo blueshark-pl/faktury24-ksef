@@ -25,7 +25,7 @@ use Cake\Utility\Text;
  */
 class ImportLegacyUsersCommand extends Command
 {
-    private const DEFAULT_URL = 'https://archiwum.faktury24.com/71572cc8-3988-426a-8940-6acd656bf1b7/get_all_users';
+    private const DEFAULT_URL = 'https://archiwum.faktury24.com/ajax/get_all_users';
     private const TOKEN = 'f24sync-8a3Kv9Xm2pLw7QzR';
 
     public static function defaultName(): string
