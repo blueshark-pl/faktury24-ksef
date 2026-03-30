@@ -916,6 +916,19 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
                         function applyStatusToFooter(status) {
                             if (!status || typeof status !== 'object') return;
+
+                            // Top-bar badge
+                            var badge = byId('ksef-perm-badge');
+                            if (badge) {
+                                if (status.active === true) {
+                                    badge.className = 'badge bg-success';
+                                    badge.textContent = 'OK';
+                                } else {
+                                    badge.className = 'badge bg-danger';
+                                    badge.textContent = 'brak';
+                                }
+                            }
+
                             var ctx = byId('ksef-auth-context');
                             var connSep = byId('ksef-auth-conn-sep');
                             var conn = byId('ksef-auth-conn');
@@ -1066,29 +1079,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         });
                     })();
                 </script>
-    <?php if ($ksefModeEnabled): ?>
-    <script>
-    (function(){
-        var badge = document.getElementById('ksef-perm-badge');
-        if (!badge) return;
-        fetch('/api/ksef/status?env=test')
-            .then(function(r){ return r.json(); })
-            .then(function(d){
-                if (d.active === true) {
-                    badge.className = 'badge bg-success';
-                    badge.textContent = 'OK';
-                } else {
-                    badge.className = 'badge bg-danger';
-                    badge.textContent = 'brak';
-                }
-            })
-            .catch(function(){
-                badge.className = 'badge bg-secondary';
-                badge.textContent = 'błąd sprawdzania';
-            });
-    })();
-    </script>
-    <?php endif; ?>
+
 
 </body>
 </html>
