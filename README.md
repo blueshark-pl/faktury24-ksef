@@ -212,6 +212,12 @@ custom styles.
 - Czas: 0.3h
 - Do sprawdzenia manualnie: wystawić fakturę marża i wysłać do KSeF — powinno wygenrować poprawny XML i wysłać bez błędu.
 
+### 2026-07-10
+- Fix: `override_next_number` w seriach faktur nie był używany przy generowaniu numeru. Pole było zapisywane poprawnie w ustawieniach firmy, ale oba ścieżki numerowania w `InvoicesController` (`ensureInvoiceNumberForSend()` i `handleAdd()`) pomijały override i zawsze brały numer z ostatniej faktury lub `starting_number`. Dodano sprawdzanie `override_next_number` w obu ścieżkach — jeśli ustawiony, numer jest nadpisywany, a pole czyszczone (jednorazowe). Logika analogiczna do `InvoiceNumberingService::computeNextNumber()`.
+- Commit: (pending)
+- Czas: 0.5h
+- Do sprawdzenia manualnie: w ustawieniach firmy ustawić `override_next_number` na np. 15 dla serii marża, wystawić fakturę marża — numer powinien zacząć od 15, a pole override powinno się wyczyścić.
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.

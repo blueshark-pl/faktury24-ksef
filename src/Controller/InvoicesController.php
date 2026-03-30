@@ -262,7 +262,15 @@ class InvoicesController extends AppController
             ->order(['number' => 'DESC', 'id' => 'DESC'])
             ->first();
 
-        if ($lastInvoice) {
+        // Jednorazowy override numeru (np. przy migracji z innego systemu)
+        $overrideNext = $series->override_next_number ?? null;
+        if ($overrideNext !== null && (int)$overrideNext > 0) {
+            $nextNumber = (int)$overrideNext;
+            $this->Invoices->getConnection()->execute(
+                'UPDATE invoice_series SET override_next_number = NULL WHERE id = ?',
+                [$series->id]
+            );
+        } elseif ($lastInvoice) {
             $extractedNumber = !empty($lastInvoice->number)
                 ? (int)$lastInvoice->number
                 : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
@@ -1666,8 +1674,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 ->order(['number' => 'DESC', 'id' => 'DESC'])
                 ->first();
             
-            // Wyciągnij numer z ostatniej faktury lub użyj startowego
-            if ($lastInvoice) {
+            // Jednorazowy override numeru (np. przy migracji z innego systemu)
+            $overrideNext = $series->override_next_number ?? null;
+            if ($overrideNext !== null && (int)$overrideNext > 0) {
+                $nextNumber = (int)$overrideNext;
+                $Invoices->getConnection()->execute(
+                    'UPDATE invoice_series SET override_next_number = NULL WHERE id = ?',
+                    [$series->id]
+                );
+                \Cake\Log\Log::debug('Using override_next_number=' . $nextNumber . ' for series ' . $series->name . ', clearing after use');
+            } elseif ($lastInvoice) {
                 // Znaleziono fakturę w bieżącym okresie - kontynuuj numerację
                 if (isset($lastInvoice->number) && $lastInvoice->number > 0) {
                     $extractedNumber = $lastInvoice->number;
