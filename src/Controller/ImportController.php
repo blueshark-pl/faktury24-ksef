@@ -77,6 +77,8 @@ class ImportController extends AppController
         $companies = [];
         $users = [];
 
+        $skippedEmails = 0;
+
         foreach ($records as $rec) {
             $email = trim($rec['ud_email'] ?? '');
             if ($email === '') {
@@ -89,9 +91,13 @@ class ImportController extends AppController
                 $nip = preg_replace('/[^\d]/', '', $rec['company_nip'] ?? '');
                 $companyName = trim($rec['company_name'] ?? '');
                 if ($companyName === '') {
-                    $companyName = trim($rec['company_fna'] ?? '');
+                    // company_fna bywa wieloliniowe (nazwa\nadres) — bierz tylko pierwszą linię
+                    $fna = trim($rec['company_fna'] ?? '');
+                    $fnaLines = preg_split('/[\r\n]+/', $fna);
+                    $companyName = trim($fnaLines[0] ?? '');
                 }
 
+                $vatRaw = $rec['company_vat_payer'] ?? '0';
                 $companies[$companyUuid] = [
                     'name' => $companyName,
                     'nip' => $nip ?: null,
@@ -102,10 +108,16 @@ class ImportController extends AppController
                     'country' => trim($rec['company_country'] ?? '') ?: 'PL',
                     'bank_account' => trim($rec['company_bank_account'] ?? '') ?: null,
                     'bank_name' => trim($rec['company_bank_name'] ?? '') ?: null,
-                    'vat_payer' => ($rec['company_vat_payer'] ?? 'f') === 't',
+                    'vat_payer' => in_array($vatRaw, ['1', 't', 'true', true], true),
                     'is_active' => true,
                     'profile_mode' => 'business',
                 ];
+            }
+
+            // Pomijaj "emaile" które nie są emailami (np. sam REGON/numer)
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $skippedEmails++;
+                continue;
             }
 
             $emailLower = mb_strtolower($email);
@@ -120,7 +132,7 @@ class ImportController extends AppController
             }
         }
 
-        $log[] = sprintf('Unikalnych firm: %d, użytkowników: %d.', count($companies), count($users));
+        $log[] = sprintf('Unikalnych firm: %d, użytkowników: %d (pominięto %d nieprawidłowych emaili).', count($companies), count($users), $skippedEmails);
 
         if ($dryRun) {
             $preview = $this->buildPreview($companies, $users);
@@ -166,10 +178,15 @@ class ImportController extends AppController
                 continue;
             }
 
+            // Dedup: po NIP, lub po REGON jeśli brak NIP
             $existing = null;
             if (!empty($data['nip'])) {
                 $existing = $CompaniesTable->find()
                     ->where(['nip' => $data['nip']])
+                    ->first();
+            } elseif (!empty($data['regon'])) {
+                $existing = $CompaniesTable->find()
+                    ->where(['regon' => $data['regon']])
                     ->first();
             }
 
