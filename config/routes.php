@@ -62,6 +62,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Endpoint HTTP do przetworzenia kolejki e-mail (cron URL)
         $builder->connect('/invoices/process-email-queue', ['controller' => 'Invoices', 'action' => 'processEmailQueue']);
 
+        // Import użytkowników ze starego systemu (jednorazowy, wywoływany z przeglądarki)
+        $builder->get('/import-legacy-users', ['controller' => 'Import', 'action' => 'importLegacyUsers']);
+
         // (opcjonalnie) wyszukiwarka kontrahentów i produktów pod Select2:
         // $builder->get('/contractors/search', 'Contractors::search');
         // $builder->get('/products/search', 'Products::search');
