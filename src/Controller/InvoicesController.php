@@ -6083,13 +6083,8 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     $xml = array_merge($xml, $this->buildCorrectionHeaderXml($inv, $rodzaj));
 }
 
-    // DodatkowyOpis — opcjonalne pary klucz-wartość (per XSD: po korekcie, przed FakturaZaliczkowa)
-    $xml = array_merge($xml, $this->buildDodatkowyOpisXml($inv));
-
-    // FakturaZaliczkowa — rozliczenie zaliczek w fakturze końcowej (ROZ)
-    $xml = array_merge($xml, $this->buildFakturaZaliczkowaXml($inv, $rodzaj));
-
-    // TP – powiązania między nabywcą a sprzedawcą (direct child of <Fa>, przed FaWiersz, per XSD FA(3))
+    // TP – powiązania między nabywcą a sprzedawcą
+    // XSD sequence: ...korekta → (ZaliczkaCzesciowa) → (FP) → TP → DodatkowyOpis → FakturaZaliczkowa → ZwrotAkcyzy → FaWiersz
     $annTp = [];
     if (!empty($inv->annotations)) {
         $dec = is_array($inv->annotations) ? $inv->annotations : json_decode((string)$inv->annotations, true);
@@ -6097,6 +6092,17 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     }
     if (isset($annTp['tp']) && (string)$annTp['tp'] === '1') {
         $xml[] = '    <TP>1</TP>';
+    }
+
+    // DodatkowyOpis — opcjonalne pary klucz-wartość
+    $xml = array_merge($xml, $this->buildDodatkowyOpisXml($inv));
+
+    // FakturaZaliczkowa — rozliczenie zaliczek w fakturze końcowej (ROZ)
+    $xml = array_merge($xml, $this->buildFakturaZaliczkowaXml($inv, $rodzaj));
+
+    // ZwrotAkcyzy — informacja dodatkowa dla rolników (annotations[excise_return])
+    if (!empty($annTp['excise_return'])) {
+        $xml[] = '    <ZwrotAkcyzy>1</ZwrotAkcyzy>';
     }
 
     // Wiersze
