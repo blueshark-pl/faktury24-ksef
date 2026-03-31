@@ -796,6 +796,7 @@ class KsefAuthorizationsController extends AppController
             $isPrivateRental = $companyProfileMode === 'private_rental';
             $this->request->getSession()->write('Ksef.status', [
                 'active' => false,
+                'companyId' => $companyId,
                 'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
                 'lastError' => $isPrivateRental
@@ -874,6 +875,7 @@ class KsefAuthorizationsController extends AppController
             $hasInvoiceWrite = is_array($items) && count($items) > 0;
             $this->request->getSession()->write('Ksef.status', [
                 'active' => $hasInvoiceWrite,
+                'companyId' => $companyId,
                 'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
                 'lastError' => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
@@ -895,6 +897,7 @@ class KsefAuthorizationsController extends AppController
             $details = $this->formatKsefError($e);
             $this->request->getSession()->write('Ksef.status', [
                 'active' => false,
+                'companyId' => $companyId,
                 'env'    => ($environment === 'prod') ? 'prod' : 'test',
                 'ts'     => time(),
                 'lastError' => $details,
@@ -946,6 +949,7 @@ class KsefAuthorizationsController extends AppController
         if (!$force) {
             $existing = $this->request->getSession()->read('Ksef.status');
             if (is_array($existing)
+                && (($existing['companyId'] ?? null) === $companyId)
                 && (($existing['env'] ?? null) === $environment)
                 && (($existing['checkKind'] ?? null) === 'personalGrants')
                 && (($existing['permissionType'] ?? null) === 'InvoiceWrite')
@@ -982,6 +986,7 @@ class KsefAuthorizationsController extends AppController
             $isPrivateRental = $companyProfileMode === 'private_rental';
             $status = [
                 'active' => false,
+                'companyId' => $companyId,
                 'env'    => $environment,
                 'ts'     => time(),
                 'lastError' => $isPrivateRental
@@ -1083,6 +1088,7 @@ class KsefAuthorizationsController extends AppController
 
             $status = [
                 'active' => $hasInvoiceWrite,
+                'companyId' => $companyId,
                 'env'    => $environment,
                 'ts'     => time(),
                 'lastError' => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
@@ -1108,6 +1114,7 @@ class KsefAuthorizationsController extends AppController
             $details = $this->formatKsefError($e);
             $status = [
                 'active' => false,
+                'companyId' => $companyId,
                 'env'    => $environment,
                 'ts'     => time(),
                 'lastError' => $details,

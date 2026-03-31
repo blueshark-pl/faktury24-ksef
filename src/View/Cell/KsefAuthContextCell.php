@@ -126,7 +126,7 @@ final class KsefAuthContextCell extends Cell
         $connTooltip = null;
         $invoiceWriteOk = false;
 
-        if (is_array($status) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
+        if (is_array($status) && (($status['companyId'] ?? null) === $companyId) && (($status['env'] ?? null) === $environment) && array_key_exists('active', $status)) {
             $active = (bool)$status['active'];
 
             $isInvoiceWriteCheck = (($status['checkKind'] ?? null) === 'personalGrants')
