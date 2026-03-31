@@ -208,7 +208,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                   </div>
                                     <div class="w-100"></div>
                                     <div class="text-muted small">
-                                        Faktury24 mają uprawnienia do wystawienia faktur w Twoim imieniu.
+                                        Faktury24 mają uprawnienia.
                                     </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                     <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'prod']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->

@@ -8,70 +8,7 @@
 
 use Cake\Core\Configure;
 
-// ─── Tryb serwisowy ─────────────────────────────────────────────────────────
-$_maintenanceAllowedIp = '188.147.249.109';
-$_clientIp = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')[0]) ?: ($_SERVER['REMOTE_ADDR'] ?? '');
-if ($_clientIp !== $_maintenanceAllowedIp):
-?><!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Faktury24 – przerwa techniczna</title>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--green:#4CAF50;--dark:#0f172a}
-    body{
-      min-height:100vh;display:flex;align-items:center;justify-content:center;
-      background:radial-gradient(ellipse 120% 80% at 50% 0%,rgba(76,175,80,.13),transparent 60%),
-                 linear-gradient(160deg,#f0fdf4 0%,#f8fafc 50%,#eff6ff 100%);
-      font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-      color:var(--dark);padding:24px;
-    }
-    .card{
-      max-width:520px;width:100%;
-      background:rgba(255,255,255,.92);backdrop-filter:blur(12px);
-      border-radius:20px;padding:48px 40px;text-align:center;
-      box-shadow:0 32px 80px rgba(15,23,42,.14),0 8px 24px rgba(15,23,42,.08);
-      border:1px solid rgba(76,175,80,.18);
-    }
-    .icon{font-size:56px;line-height:1;margin-bottom:24px}
-    h1{font-size:1.5rem;font-weight:700;margin-bottom:12px;color:var(--dark)}
-    p{font-size:.97rem;color:#475569;line-height:1.65;margin-bottom:0}
-    p+p{margin-top:12px}
-    .badge{
-      display:inline-flex;align-items:center;gap:6px;
-      background:rgba(76,175,80,.10);border:1px solid rgba(76,175,80,.30);
-      color:#166534;border-radius:999px;padding:4px 14px;font-size:.82rem;
-      font-weight:600;letter-spacing:.02em;margin-top:28px;
-    }
-    .dot{width:7px;height:7px;border-radius:50%;background:var(--green);
-         animation:pulse 1.6s ease-in-out infinite}
-    @keyframes pulse{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
-    footer{margin-top:32px;font-size:.78rem;color:#94a3b8}
-    img{display:block;width:clamp(110px,30vw,160px);height:auto;margin:0 auto 28px}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <img src="/img/logo-faktury24.png" alt="Faktury24">
-    <div class="icon">🔧</div>
-    <h1>Trwają prace administracyjne</h1>
-    <p>Prowadzimy prace związane z podłączeniem systemu do <strong>Krajowego Systemu e-Faktur (KSeF)</strong>.</p>
-    <p>Logowanie zostało tymczasowo wyłączone. Wracamy niebawem — dziękujemy za cierpliwość.</p>
-    <div class="badge">
-      <span class="dot"></span>
-      Wracamy niebawem
-    </div>
-    <footer>faktury24.com &nbsp;·&nbsp; Partner S.C.</footer>
-  </div>
-</body>
-</html>
-<?php
-  $this->response = $this->response->withStatus(503)->withHeader('Retry-After', '3600');
-  return;
-endif;
-// ────────────────────────────────────────────────────────────────────────────
+
 
 $this->assign('title', $this->fetch('title') ?: 'Sign In');
 
