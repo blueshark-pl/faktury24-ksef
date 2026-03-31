@@ -484,7 +484,7 @@ class ProductsController extends AppController
         foreach ($products as $p) {
             $results[] = [
                 'id'        => $p->id,
-                'text'      => sprintf('%s - %s', $p->code ?? $p->id, $p->name),
+                'text'      => !empty($p->code) ? sprintf('%s - %s', $p->code, $p->name) : $p->name,
                 'name'      => $p->name,
                 'code'      => $p->code ?? '',
                 'price'     => (float)$p->net_price,
