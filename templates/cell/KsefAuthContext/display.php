@@ -36,7 +36,7 @@ $fullTooltip = $fullTooltipParts ? implode("\n\n", $fullTooltipParts) : null;
   <span id="ksef-auth-conn" class="<?= h($connClass) ?>"<?= (is_string($connText) && trim($connText) !== '') ? '' : ' style="display:none"' ?>><?= h((string)$connText) ?></span>
 
     <span id="ksef-auth-invoicewrite-msg-sep" class="mx-1"<?= $invoiceWriteOk ? '' : ' style="display:none"' ?>>·</span>
-    <span id="ksef-auth-invoicewrite-msg" class="text-success"<?= $invoiceWriteOk ? '' : ' style="display:none"' ?>>Faktury24 mogą wystawiać faktury w Twoim imieniu ;)</span>
+    <span id="ksef-auth-invoicewrite-msg" class="text-success"<?= $invoiceWriteOk ? '' : ' style="display:none"' ?>>Autoryzacja KSeF aktywna – wystawianie faktur w Twoim imieniu jest włączone.</span>
 
   <span class="mx-1">·</span>
   <span id="ksef-auth-env" class="text-muted"><?= h(strtoupper($environment)) ?></span>
