@@ -46,12 +46,12 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
   <div class="d-flex gap-2">
     
         <?php if ($isProforma): ?>
-            <button type="button" class="btn btn-outline-primary" title="Wydrukuj podgląd" onclick="window.print()">
+            <button type="button" class="btn btn-outline-primary btn-sm" title="Wydrukuj podgląd" onclick="window.print()">
                 <i class="ri-printer-line me-1"></i>Drukuj
             </button>
         <?php endif; ?>
     <?php if (!$isProforma): ?>
-        <a href="#" class="btn btn-primary btn-pdf-lang"
+        <a href="#" class="btn btn-primary btn-sm btn-pdf-lang"
            data-url-pl="<?= $this->Url->build(['action' => 'print', $invoice->id]) ?>"
            data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">
           <i class="ri-printer-line me-1"></i>Pobierz PDF
@@ -66,14 +66,14 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
           </button>
           <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
               ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'prod']],
-              ['class' => 'btn btn-outline-secondary', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
+              ['class' => 'btn btn-outline-secondary btn-sm', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
           <?= $this->Html->link('<i class="ri-download-line me-1"></i>Pobierz FA(3) XML',
               ['action' => 'downloadFa3Xml', $invoice->id],
-              ['class' => 'btn btn-outline-success', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
+              ['class' => 'btn btn-outline-success btn-sm', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
           <?php if (!empty($invoice->ksef_number)): ?>
             <?= $this->Html->link('<i class="ri-file-pdf-line me-1"></i>Pobierz UPO',
                 ['action' => 'downloadUpo', '?' => ['env' => 'prod', 'ksef_number' => $invoice->ksef_number] + ($sessionRef ? ['session_reference' => $sessionRef] : [])],
-                ['class' => 'btn btn-outline-danger upo-link-needs-session', 'data-session-ref' => $sessionRef, 'escape' => false, 'title' => 'Pobierz UPO jako PDF']) ?>
+                ['class' => 'btn btn-outline-danger btn-sm upo-link-needs-session', 'data-session-ref' => $sessionRef, 'escape' => false, 'title' => 'Pobierz UPO jako PDF']) ?>
           <?php endif; ?>
         <?php endif; ?>
     <?php endif; ?>
