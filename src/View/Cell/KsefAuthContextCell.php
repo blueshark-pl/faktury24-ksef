@@ -21,7 +21,7 @@ final class KsefAuthContextCell extends Cell
         }
 
         $envFromSess = (string)($this->request->getSession()->read('Ksef.status.env') ?? '');
-        $environment = $envFromSess !== '' ? $envFromSess : 'test';
+        $environment = $envFromSess !== '' ? $envFromSess : 'prod';
         $environment = $environment === 'prod' ? 'prod' : 'test';
 
         $diag = null;
