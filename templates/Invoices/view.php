@@ -43,7 +43,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     <i class="ri-file-text-line me-2 fs-20"></i>
     Podgląd Faktury: <span id="invoice-fullnumber-display"><?= h($invoice->fullnumber ?: $invoice->id) ?></span>
   </h4>
-  <div class="d-flex gap-2">
+  <div class="d-flex align-items-center gap-2">
     
         <?php if ($isProforma): ?>
             <button type="button" class="btn btn-outline-primary btn-sm" title="Wydrukuj podgląd" onclick="window.print()">
