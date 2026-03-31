@@ -173,6 +173,12 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
+        <?php
+        $_identity = $this->request->getAttribute('identity');
+        $_role = strtolower((string)($_identity?->get('role') ?? ''));
+        $_isAdmin = (bool)($_identity?->get('is_admin') ?? false);
+        if ($_isAdmin || $_role !== 'user'):
+        ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -210,6 +216,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           });
         });
         </script>
+        <?php endif; // !user role — inv-extra-tabs-btn ?>
       </div>
 
       <div class="card-body tab-content">
@@ -1956,9 +1963,9 @@ $(function(){
     e.preventDefault();
     const ok = await runValidation();
     if (ok){
-      const $ok = $('<div class="alert alert-success mt-2">Formularz wygląda poprawnie. Możesz zapisać fakturę.</div>');
-      $('.card.custom-card .card-body').first().prepend($ok);
-      setTimeout(()=> $ok.remove(), 3000);
+      window.showToast('Formularz wygląda poprawnie. Możesz zapisać fakturę.', 'success');
+    } else {
+      window.showToast('Formularz zawiera błędy. Sprawdź zaznaczone pola.', 'danger');
     }
   });
 

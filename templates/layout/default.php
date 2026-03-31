@@ -697,6 +697,36 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                             </div>
                                         <?php endif; ?>
+                    <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert" style="display:none!important">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
+                            <div>
+                                <strong>Prosimy o weryfikację danych!</strong><br>
+                                Sprawdź i uzupełnij: <strong>Rachunek bankowy</strong>, <strong>Serie numeracji</strong> oraz <strong>Dane firmy</strong>.
+                                Dołożyliśmy wszelkich starań, aby dane zostały zaimportowane poprawnie &mdash; jednak jeśli były niepełne lub nie spełniały wymogów systemu MF / KSeF, prosimy o ich ponowne wprowadzenie.
+                                <span class="d-flex gap-2 mt-2 flex-wrap">
+                                    <a class="btn btn-sm btn-outline-danger" href="/firma/edycja">Przejdź do ustawień firmy</a>
+                                </span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"></button>
+                    </div>
+                    <script>
+                    (function () {
+                        var key = 'verificationBannerDismissed';
+                        var el = document.getElementById('verification-banner');
+                        if (el && !localStorage.getItem(key)) {
+                            el.style.removeProperty('display');
+                        }
+                        var btn = document.getElementById('verification-banner-close');
+                        if (btn) {
+                            btn.addEventListener('click', function () {
+                                localStorage.setItem(key, '1');
+                                el.style.setProperty('display', 'none', 'important');
+                            });
+                        }
+                    })();
+                    </script>
                     <?= $this->Flash->render() ?>
                     <?= $this->fetch('content') ?>
                 </div>
@@ -1080,6 +1110,34 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     })();
                 </script>
 
+    <!-- Toast container: lewy dolny róg -->
+    <div class="position-fixed bottom-0 start-0 p-3" style="z-index:11000" id="f24-toast-container"></div>
+    <script>
+    window.showToast = function(message, type) {
+        type = type || 'success';
+        var id = 'toast-' + Date.now();
+        var icons = { success: 'bi-check-circle-fill', danger: 'bi-x-circle-fill', warning: 'bi-exclamation-triangle-fill', info: 'bi-info-circle-fill' };
+        var icon = icons[type] || icons.info;
+        var html = '<div id="' + id + '" class="toast align-items-center text-bg-' + type + ' border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">'
+            + '<div class="d-flex">'
+            + '<div class="toast-body d-flex align-items-center gap-2">'
+            + '<i class="bi ' + icon + '"></i>'
+            + '<span>' + message + '</span>'
+            + '</div>'
+            + '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Zamknij"></button>'
+            + '</div>'
+            + '</div>';
+        var container = document.getElementById('f24-toast-container');
+        if (!container) return;
+        container.insertAdjacentHTML('beforeend', html);
+        var el = document.getElementById(id);
+        if (el && window.bootstrap && bootstrap.Toast) {
+            var t = new bootstrap.Toast(el, { delay: 4000 });
+            t.show();
+            el.addEventListener('hidden.bs.toast', function() { el.remove(); });
+        }
+    };
+    </script>
 
 </body>
 </html>

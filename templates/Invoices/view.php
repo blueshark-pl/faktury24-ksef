@@ -81,6 +81,29 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
   
 </div>
 
+<?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
+<div class="alert alert-warning d-flex align-items-start gap-3 shadow-sm mb-4" role="alert">
+  <i class="ri-draft-line fs-2 flex-shrink-0 mt-1"></i>
+  <div class="flex-grow-1">
+    <div class="fw-bold fs-5 mb-1">Ta faktura jest robocza</div>
+    <div class="mb-2">Sprawdź poprawność danych, a następnie wyślij fakturę do KSeF, aby została zaewidencjonowana w systemie Ministerstwa Finansów.</div>
+    <?php if ($canSendToKsef): ?>
+    <div class="d-flex flex-wrap gap-2">
+      <button id="btn-send-ksef-draft-banner"
+              class="btn btn-warning fw-semibold"
+              data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'prod', '_ext' => 'json']])) ?>"
+              <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?>>
+        <i class="ri-send-plane-fill me-1"></i>Wyślij do KSeF
+      </button>
+      <a href="<?= $this->Url->build(['action' => 'edit', $invoice->id]) ?>" class="btn btn-outline-warning">
+        <i class="ri-edit-line me-1"></i>Edytuj fakturę
+      </a>
+    </div>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <!-- Invoice Preview: 1:1 z print.php -->
 <style>
 @keyframes ksef-shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
@@ -491,6 +514,12 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
             if (bsConfirm) bsConfirm.hide();
             doSend(url);
         });
+    }
+
+    // Banner draft button — delegates to main btn click so the full confirm flow runs
+    const btnBanner = document.getElementById('btn-send-ksef-draft-banner');
+    if (btnBanner) {
+        btnBanner.addEventListener('click', function(){ btn.click(); });
     }
   }
   if (document.readyState === 'loading') {

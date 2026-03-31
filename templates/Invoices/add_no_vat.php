@@ -1355,9 +1355,9 @@ $gtuSelectHtml .= '</select>';
     e.preventDefault();
     const ok = await runValidation();
     if (ok){
-      const $ok = $('<div class="alert alert-success mt-2">Formularz wygląda poprawnie. Możesz zapisać fakturę.</div>');
-      $('.card.custom-card .card-body').first().prepend($ok);
-      setTimeout(()=> $ok.remove(), 3000);
+      window.showToast('Formularz wygląda poprawnie. Możesz zapisać fakturę.', 'success');
+    } else {
+      window.showToast('Formularz zawiera błędy. Sprawdź zaznaczone pola.', 'danger');
     }
   });
 

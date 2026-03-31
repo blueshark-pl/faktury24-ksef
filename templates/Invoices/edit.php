@@ -730,7 +730,7 @@ $sumTax = round($sumGross - $sumNet, 2);
             return !!(json && json.success);
         }catch(e){ return false; }
     }
-    $('#btn-validate').on('click', async function(e){ e.preventDefault(); const ok = await runValidation(); alert(ok? 'Formularz wygląda poprawnie.' : 'Formularz zawiera błędy.'); });
+    $('#btn-validate').on('click', async function(e){ e.preventDefault(); const ok = await runValidation(); window.showToast(ok ? 'Formularz wygląda poprawnie. Możesz zapisać fakturę.' : 'Formularz zawiera błędy. Sprawdź zaznaczone pola.', ok ? 'success' : 'danger'); });
 })();
 </script>
 

@@ -6540,6 +6540,12 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         // PMarzy – procedury marży
         $xml = array_merge($xml, $this->buildPMarzyXml($inv));
 
+        // TP – istniejące powiązania między nabywcą a sprzedawcą (§ 10 ust. 4 pkt 3 rozp. JPK_VAT)
+        // Pole fakultatywne; podaje się "1" gdy powiązania istnieją; pomijamy gdy brak lub "2"
+        if (isset($ann['tp']) && (string)$ann['tp'] === '1') {
+            $xml[] = '      <TP>1</TP>';
+        }
+
         $xml[] = '    </Adnotacje>';
 
         return $xml;

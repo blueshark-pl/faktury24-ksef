@@ -85,5 +85,18 @@ if (!empty($invoice->annotations)) {
       </button>
     </div>
 
+    <!-- TP – powiązania między nabywcą a sprzedawcą -->
+    <div class="d-flex align-items-start gap-2">
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" id="ann-tp" name="annotations[tp]" value="1"<?= isset($ann['tp']) && (string)$ann['tp'] === '1' ? ' checked' : '' ?>>
+        <label class="form-check-label" for="ann-tp">TP – powiązania między nabywcą a sprzedawcą</label>
+      </div>
+      <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+        title="TP – powiązania między nabywcą a sprzedawcą"
+        data-bs-content="<div class='small text-start'>Istniejące powiązania między nabywcą a&nbsp;dostawcą towarów lub usługodawcą w&nbsp;rozumieniu art.&nbsp;32 ust.&nbsp;2 pkt&nbsp;1 ustawy o&nbsp;VAT (§&nbsp;10 ust.&nbsp;4 pkt&nbsp;3 JPK_VAT). Zaznacz jeśli transakcja odbywa się między podmiotami powiązanymi, np. spółką matką i&nbsp;córką. Nie dotyczy dostaw dla organów władzy publicznej i&nbsp;JST.</div>">
+        <i class="ri-question-line"></i>
+      </button>
+    </div>
+
   </div>
 </div>
