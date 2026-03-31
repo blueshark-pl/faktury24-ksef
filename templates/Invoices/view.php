@@ -290,6 +290,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     }
 
     async function doSend(url) {
+        let sendSuccess = false;
         btn.disabled = true;
         spinner.style.display = '';
         linksBox.innerHTML = '';
@@ -353,8 +354,10 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
                     modalTitle.textContent = 'Wysłano do KSeF';
                 }
                 // Block re-sending after success 200
+                sendSuccess = true;
                 btn.disabled = true;
                 btn.title = 'Faktura została już wysłana do KSeF';
+                if (btnBanner) { btnBanner.disabled = true; btnBanner.title = 'Faktura została już wysłana do KSeF'; }
             }
             if (mTimeline && Array.isArray(data.messages)) {
                 mTimeline.innerHTML = '';
@@ -466,7 +469,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
             }
         } finally {
             spinner.style.display = 'none';
-            btn.disabled = false;
+            if (!sendSuccess) btn.disabled = false;
         }
     }
 
