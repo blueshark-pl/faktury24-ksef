@@ -177,7 +177,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
         $_identity = $this->request->getAttribute('identity');
         $_role = strtolower((string)($_identity?->get('role') ?? ''));
         $_isAdmin = (bool)($_identity?->get('is_admin') ?? false);
-        if ($_isAdmin || $_role !== 'user'):
+        //if ($_isAdmin || $_role !== 'user'):
         ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
@@ -216,7 +216,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           });
         });
         </script>
-        <?php endif; // !user role — inv-extra-tabs-btn ?>
+        <?php //endif; // !user role — inv-extra-tabs-btn ?>
       </div>
 
       <div class="card-body tab-content">

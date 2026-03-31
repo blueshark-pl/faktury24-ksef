@@ -733,7 +733,7 @@ public function export()
         try {
             $client = new Client();
             $resp = $client->get(
-                'https://faktury24.com/ajax/get_contractors_by_nip',
+                'https://archiwum.faktury24.com/ajax/get_contractors_by_nip',
                 ['nip' => $nip],
                 ['timeout' => 15]
             );
@@ -743,7 +743,8 @@ public function export()
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode([
                         'success' => false,
-                        'error'   => 'Serwer faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+                        'error'   => 'Serwer archiwum.faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+
                     ]));
             }
 
@@ -794,7 +795,7 @@ public function export()
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode([
                     'success' => false,
-                    'error'   => 'Błąd połączenia z faktury24.com: ' . $e->getMessage(),
+                    'error'   => 'Błąd połączenia z archiwum.faktury24.com: ' . $e->getMessage(),
                 ]));
         }
     }

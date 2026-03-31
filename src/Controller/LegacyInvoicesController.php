@@ -52,7 +52,7 @@ class LegacyInvoicesController extends AppController
         try {
             $client = new \Cake\Http\Client();
             $resp = $client->get(
-                'https://faktury24.com/ajax/get_invoice_pdf_by_nip',
+                'https://archiwum.faktury24.com/ajax/get_invoice_pdf_by_nip',
                 ['uuid' => $uuid, 'nip' => $nip, 'lang' => $lang],
                 ['timeout' => 30]
             );
@@ -63,7 +63,8 @@ class LegacyInvoicesController extends AppController
             if (!str_contains($contentType, 'pdf') && !str_contains($contentType, 'octet-stream')) {
                 return $this->response->withStatus(502)->withType('application/json')
                     ->withStringBody(json_encode([
-                        'error' => 'Serwer faktury24.com nie zwrócił pliku PDF.',
+                        'error' => 'Serwer archiwum.faktury24.com nie zwrócił pliku PDF.',
+
                     ]));
             }
 
@@ -125,7 +126,7 @@ class LegacyInvoicesController extends AppController
         try {
             $client = new \Cake\Http\Client();
             $resp = $client->get(
-                'https://faktury24.com/ajax/get_invoices_by_nip',
+                'https://archiwum.faktury24.com/ajax/get_invoices_by_nip',
                 ['nip' => $nip, 'rok' => $rok, 'miesiac' => $miesiac],
                 ['timeout' => 20]
             );
@@ -135,7 +136,8 @@ class LegacyInvoicesController extends AppController
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode([
                         'success' => false,
-                        'error'   => 'Serwer faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+                        'error'   => 'Serwer archiwum.faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+
                     ]));
             }
 
@@ -151,7 +153,7 @@ class LegacyInvoicesController extends AppController
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode([
                     'success' => false,
-                    'error'   => 'Błąd połączenia z faktury24.com: ' . $e->getMessage(),
+                    'error'   => 'Błąd połączenia z archiwum.faktury24.com: ' . $e->getMessage(),
                 ]));
         }
     }

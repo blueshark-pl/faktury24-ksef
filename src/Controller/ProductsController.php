@@ -537,7 +537,7 @@ class ProductsController extends AppController
         try {
             $client = new \Cake\Http\Client();
             $resp = $client->get(
-                'https://faktury24.com/ajax/get_gns_by_nip',
+                'https://archiwum.faktury24.com/ajax/get_gns_by_nip',
                 ['nip' => $nip],
                 ['timeout' => 15]
             );
@@ -546,7 +546,7 @@ class ProductsController extends AppController
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode([
                         'success' => false,
-                        'error'   => 'Serwer faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
+                        'error'   => 'Serwer archiwum.faktury24.com nie zwrócił wyników (status: ' . ($json['status'] ?? '?') . ').',
                     ]));
             }
 
@@ -598,7 +598,7 @@ class ProductsController extends AppController
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode([
                     'success' => false,
-                    'error'   => 'Błąd połączenia z faktury24.com: ' . $e->getMessage(),
+                    'error'   => 'Błąd połączenia z archiwum.faktury24.com: ' . $e->getMessage(),
                 ]));
         }
     }
