@@ -59,20 +59,20 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
         <?php if ($canSendToKsef): ?>
           <button id="btn-send-ksef-test"
                   class="btn btn-outline-primary"
-                  data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'test', '_ext' => 'json']])) ?>"
-                  title="Wyślij do KSeF w środowisku testowym"
+                  data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'prod', '_ext' => 'json']])) ?>"
+                  title="Wyślij do KSeF"
                   <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?>>
             <i class="ri-send-plane-line me-1"></i>Wyślij do KSeF
           </button>
           <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
-              ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'test']],
+              ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'prod']],
               ['class' => 'btn btn-outline-secondary', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
           <?= $this->Html->link('<i class="ri-download-line me-1"></i>Pobierz FA(3) XML',
               ['action' => 'downloadFa3Xml', $invoice->id],
               ['class' => 'btn btn-outline-success', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
           <?php if (!empty($invoice->ksef_number)): ?>
             <?= $this->Html->link('<i class="ri-file-pdf-line me-1"></i>Pobierz UPO',
-                ['action' => 'downloadUpo', '?' => ['env' => 'test', 'ksef_number' => $invoice->ksef_number] + ($sessionRef ? ['session_reference' => $sessionRef] : [])],
+                ['action' => 'downloadUpo', '?' => ['env' => 'prod', 'ksef_number' => $invoice->ksef_number] + ($sessionRef ? ['session_reference' => $sessionRef] : [])],
                 ['class' => 'btn btn-outline-danger upo-link-needs-session', 'data-session-ref' => $sessionRef, 'escape' => false, 'title' => 'Pobierz UPO jako PDF']) ?>
           <?php endif; ?>
         <?php endif; ?>
@@ -204,7 +204,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     </div>
     <input type="hidden" id="ksef-csrf" value="<?= h((string)($this->getRequest()->getAttribute('csrfToken') ?? '')) ?>" />
     <?php
-        $appEnv = getenv('APP_ENV') ?: (defined('APP_ENV') ? APP_ENV : 'test');
+        $appEnv = getenv('APP_ENV') ?: (defined('APP_ENV') ? APP_ENV : 'prod');
         $isProdEnv = strtolower((string)$appEnv) === 'prod' || strtolower((string)$appEnv) === 'production';
         $envParam = $isProdEnv ? 'prod' : 'test';
     ?>
@@ -305,9 +305,9 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
             statusCode.textContent = (data.statusCode || '').toString();
             statusDesc.textContent = data.statusDesc || '';
             // If semantic error 450 on TEST env, append maintenance info
-            const isTestEnv = (envInput && envInput.value) ? (envInput.value === 'test') : true;
+            const isTestEnv = (envInput && envInput.value) ? (envInput.value === 'test') : false;
             if (String(data.statusCode) === '450' && isTestEnv) {
-                const note = 'Trwa aktualnie przerwa techniczna w dostępie do https://ksef-test.mf.gov.pl/';
+                const note = 'Trwa aktualnie przerwa techniczna w dostępie do https://ksef.mf.gov.pl/';
                 const base = data.statusDesc || '';
                 statusDesc.textContent = base ? (base + ' — ' + note) : note;
             }
@@ -423,7 +423,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
                 const badge = '<span class="badge ' + (ok ? 'bg-success' : 'bg-warning') + '">' + (data.statusCode || '') + '</span>';
                 let maintenanceHtml = '';
                 if (String(data.statusCode) === '450' && isTestEnv) {
-                    maintenanceHtml = '<div class="mt-2 small text-muted">Trwa aktualnie przerwa techniczna w dostępie do <a href="https://ksef-test.mf.gov.pl/" target="_blank" rel="noopener">ksef-test.mf.gov.pl</a>.</div>';
+                    maintenanceHtml = '<div class="mt-2 small text-muted">Trwa aktualnie przerwa techniczna w dost\u0119pie do <a href="https://ksef.mf.gov.pl/" target="_blank" rel="noopener">ksef.mf.gov.pl</a>.</div>';
                 }
                 mResult.innerHTML = '<div class="alert ' + (ok ? 'alert-success' : 'alert-warning') + '" role="alert">' +
                     '<div><strong>Status:</strong> ' + badge + ' ' + (data.statusDesc || '') + '</div>' +
@@ -455,7 +455,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     btn.addEventListener('click', function(){
         if (bsConfirm) {
             // Ustaw etykietę środowiska w potwierdzeniu
-            const env = (envInput && envInput.value) ? envInput.value : 'test';
+            const env = (envInput && envInput.value) ? envInput.value : 'prod';
             if (envLabel) {
                 envLabel.textContent = (env === 'prod' ? 'PROD' : 'TEST');
             }
@@ -573,7 +573,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
                 <p>
                     Czy na pewno wysłać fakturę
                     <strong><?= h((string)($invoice->fullnumber ?? $invoice->id)) ?></strong>
-                    do KSeF (środowisko: <strong id="ksef-env-label">TEST</strong>)?
+                    do KSeF (środowisko: <strong id="ksef-env-label">PROD</strong>)?
                 </p>
                 <ul class="mb-0">
                     <li>Wyślemy dokładnie oryginalny XML FA(3) bez modyfikacji.</li>

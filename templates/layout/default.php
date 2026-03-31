@@ -171,7 +171,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                       <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#ksefVideoModal">
                         Instrukcja wideo (YouTube)
                       </button>
-                      <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'test']]) ?>"
+                      <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'prod']]) ?>"
                          class="btn btn-outline-secondary btn-sm">
                         Podgląd odebranych
                       </a>
@@ -211,7 +211,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         Faktury24 mają uprawnienia do wystawienia faktur w Twoim imieniu.
                                     </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                    <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'test']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
+                    <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'prod']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
                   </div>
                 </div>
@@ -445,7 +445,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 <?= $this->Html->link(
                                     '<svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M32,72H224V184a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="32 72 128 136 224 72" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>
                                     <span class="side-menu__label">Otrzymane</span>',
-                                    ['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'test']],
+                                    ['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'prod']],
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li> -->
@@ -976,7 +976,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             var ctx = byId('ksef-auth-context');
                             var env = ctx ? (ctx.getAttribute('data-ksef-env') || '') : '';
                             if (!env) {
-                                env = <?= json_encode((string)($envSide ?: 'test'), JSON_UNESCAPED_SLASHES) ?>;
+                                env = <?= json_encode((string)($envSide ?: 'prod'), JSON_UNESCAPED_SLASHES) ?>;
                             }
                             env = (env === 'prod') ? 'prod' : 'test';
                             return env;

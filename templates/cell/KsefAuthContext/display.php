@@ -5,7 +5,7 @@ if (empty($enabled)) {
     return;
 }
 
-$environment = (string)($environment ?? 'test');
+$environment = (string)($environment ?? 'prod');
 $certText = (string)($certText ?? '');
 $certClass = (string)($certClass ?? 'text-muted');
 $grantsHintText = $grantsHintText ?? null;

@@ -54,7 +54,7 @@ class KsefAuthorizationsController extends AppController
 
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
         $vm = $ksef->buildReceivedViewModel($companyId, $environment, $this->request->getQueryParams());
@@ -138,7 +138,7 @@ class KsefAuthorizationsController extends AppController
                 ->withStringBody(json_encode(['active' => false, 'error' => 'Brak firmy']));
         }
 
-        $env = (string)($this->request->getQuery('env', 'test'));
+        $env = (string)($this->request->getQuery('env', 'prod'));
         $env = ($env === 'prod') ? 'prod' : 'test';
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -225,7 +225,7 @@ class KsefAuthorizationsController extends AppController
         $companyId = (string)($identity?->get('company_id') ?? '');
 
         $query = $this->request->getQueryParams();
-        $env = (string)($query['env'] ?? 'test');
+        $env = (string)($query['env'] ?? 'prod');
         $env = ($env === 'prod') ? 'prod' : 'test';
         $asNip = preg_replace('/\D/', '', (string)($query['as_nip'] ?? ''));
         $limit = (int)($query['limit'] ?? 100);
@@ -342,7 +342,7 @@ class KsefAuthorizationsController extends AppController
 
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
         $vm = $ksef->buildIssuedViewModel($companyId, $environment, $this->request->getQueryParams());
@@ -393,7 +393,7 @@ class KsefAuthorizationsController extends AppController
     {
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
         $vm = $ksef->buildPersonalGrantsViewModel($companyId, $environment, $this->request->getQueryParams());
@@ -444,7 +444,7 @@ class KsefAuthorizationsController extends AppController
     {
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
         $vm = $ksef->buildAuthorizationsGrantsViewModel($companyId, $environment, $this->request->getQueryParams());
@@ -568,7 +568,7 @@ class KsefAuthorizationsController extends AppController
         }
 
         if ($this->request->is('post')) {
-            $environment = (string)$this->request->getData('environment', 'test');
+            $environment = (string)$this->request->getData('environment', 'prod');
             /**
              * Obsługujemy dwa warianty:
              * 1) pojedynczy plik (.p12/.pem) + opcjonalne hasło
@@ -609,10 +609,10 @@ class KsefAuthorizationsController extends AppController
             }
         }
 
-        // Preselect environment based on query ?env=, then last session status env, fallback to 'test'
+        // Preselect environment based on query ?env=, then last session status env, fallback to 'prod'
         $envFromQuery = (string)$this->request->getQuery('env', '');
         $envFromSess  = (string)($this->request->getSession()->read('Ksef.status.env') ?? '');
-        $defaultEnv   = $envFromQuery !== '' ? $envFromQuery : ($envFromSess !== '' ? $envFromSess : 'test');
+        $defaultEnv   = $envFromQuery !== '' ? $envFromQuery : ($envFromSess !== '' ? $envFromSess : 'prod');
 
         // Light info whether a cert is already present for this env (no sensitive details)
         $certPresent = false;
@@ -636,7 +636,7 @@ class KsefAuthorizationsController extends AppController
     {
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -667,7 +667,7 @@ class KsefAuthorizationsController extends AppController
     {
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -700,7 +700,7 @@ class KsefAuthorizationsController extends AppController
 
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -731,7 +731,7 @@ class KsefAuthorizationsController extends AppController
 
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -769,7 +769,7 @@ class KsefAuthorizationsController extends AppController
         $this->request->allowMethod(['get']);
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         if ($companyId === '') {
@@ -923,7 +923,7 @@ class KsefAuthorizationsController extends AppController
 
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $environment = ($environment === 'prod') ? 'prod' : 'test';
         $force       = (bool)$this->request->getQuery('force', false);
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
@@ -1143,7 +1143,7 @@ class KsefAuthorizationsController extends AppController
         $this->request->allowMethod(['get']);
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -1414,7 +1414,7 @@ class KsefAuthorizationsController extends AppController
         $this->request->allowMethod(['get']);
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
 
         /** @var \App\Model\Table\KsefBookingItemsTable $Table */
         $Table = $this->fetchTable('KsefBookingItems');
@@ -1471,7 +1471,7 @@ class KsefAuthorizationsController extends AppController
         $this->request->allowMethod(['get']);
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
-        $environment = (string)$this->request->getQuery('env', 'test');
+        $environment = (string)$this->request->getQuery('env', 'prod');
         $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
 
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
@@ -1501,7 +1501,7 @@ class KsefAuthorizationsController extends AppController
         $identity    = $this->request->getAttribute('identity');
         $companyId   = (string)($identity?->get('company_id') ?? '');
         $payload = json_decode((string)$this->request->getBody(), true);
-        $environment = (string)($payload['env'] ?? 'test');
+        $environment = (string)($payload['env'] ?? 'prod');
         $ksefNumber  = (string)($payload['ksef_number'] ?? '');
         $items       = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 

@@ -2212,7 +2212,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 // Uwaga: NIE ustawiamy tutaj workflow_status='sending' — robi to sendInvoiceToKsefCore()
                 // atomowo przed wysyłką, co eliminuje race condition gdy żądanie zostanie przerwane.
 
-                $envRaw = (string)($data['ksef_env'] ?? 'test');
+                $envRaw = (string)($data['ksef_env'] ?? 'prod');
                 $environment = ($envRaw === 'prod') ? 'prod' : 'test';
 
                 // Odczytaj przesłany plik XML (opcjonalny)
@@ -3063,7 +3063,7 @@ private function makeClient(string $environment): KsefClient
             throw new BadRequestException('Brak company_id w tożsamości.');
         }
 
-        $env = (string)($this->request->getQuery('env') ?? 'test');
+        $env = (string)($this->request->getQuery('env') ?? 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $ksefNumber = (string)$this->request->getQuery('ksef_number');
@@ -3110,7 +3110,7 @@ private function makeClient(string $environment): KsefClient
             throw new BadRequestException('Brak company_id w tożsamości.');
         }
 
-        $env = (string)($this->request->getQuery('env') ?? 'test');
+        $env = (string)($this->request->getQuery('env') ?? 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $ksefNumber = (string)$this->request->getQuery('ksef_number');
@@ -3233,7 +3233,7 @@ private function makeClient(string $environment): KsefClient
                 ],
             ]);
 
-        $env = (string)($this->request->getQuery('env') ?? 'test');
+        $env = (string)($this->request->getQuery('env') ?? 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
         $ksefNumber = (string)$this->request->getQuery('ksef_number');
         if ($ksefNumber === '') {
@@ -3337,7 +3337,7 @@ private function makeClient(string $environment): KsefClient
             throw new BadRequestException('Brak company_id w tożsamości.');
         }
 
-        $env = (string)($this->request->getQuery('env') ?? 'test');
+        $env = (string)($this->request->getQuery('env') ?? 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $ksefNumber = (string)$this->request->getQuery('ksef_number');
@@ -3577,7 +3577,7 @@ private function makeClient(string $environment): KsefClient
             throw new BadRequestException('Brak company_id w tożsamości.');
         }
 
-        $env = (string)($this->request->getQuery('env') ?? 'test');
+        $env = (string)($this->request->getQuery('env') ?? 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $days = max(1, (int)($this->request->getQuery('days') ?? 7));
@@ -3785,7 +3785,7 @@ private function makeClient(string $environment): KsefClient
             }
         }
         // Try to resolve session_reference and env from last send_success log entry
-        $environment = 'test';
+        $environment = 'prod';
         try {
             $conn = ConnectionManager::get('default');
             $logRow = $conn->execute(
@@ -3920,7 +3920,7 @@ private function makeClient(string $environment): KsefClient
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
                 $invRef   = (string)($invoice->ksef_invoice_reference ?? '');
                 $qrCode   = ($nip !== '' && $issueDate !== '' && $invRef !== '')
-                    ? ('https://ksef-test.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+                    ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
                     : '';
                 $http = new \Cake\Http\Client(['timeout' => 60]);
                 $resp = $http->post($apiUrl, [
@@ -4024,12 +4024,12 @@ private function makeClient(string $environment): KsefClient
                     $apiUrl = getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice';
                 }
                 $http = new \Cake\Http\Client(['timeout' => 60]);
-                // Build QR code URL for KSeF client app (TEST host by default)
+                // Build QR code URL for KSeF client app
                 $seller = $invoice->invoice_company_detail ?? null;
                 $nip = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
                 $invRef = (string)($invoice->ksef_invoice_reference ?? '');
-                $qrHost = 'https://ksef-test.mf.gov.pl';
+                $qrHost = 'https://ksef.mf.gov.pl';
                 $qrCode = ($nip !== '' && $issueDate !== '' && $invRef !== '')
                     ? ($qrHost . '/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
                     : '';
@@ -4845,7 +4845,7 @@ private function makeClient(string $environment): KsefClient
      */
     private const KSEF_BLOCKED_TYPES = ['proforma', 'internal', 'internalEvidence', 'oss'];
 
-    private function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'test', ?string $xml = null, string $source = 'sendToKsef'): array
+    private function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'prod', ?string $xml = null, string $source = 'sendToKsef'): array
     {
         if (in_array($invoice->type, self::KSEF_BLOCKED_TYPES, true)) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
@@ -5005,7 +5005,7 @@ private function makeClient(string $environment): KsefClient
         $this->request->allowMethod(['post']);
         $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $env = (string)$this->request->getQuery('env', 'test');
+        $env = (string)$this->request->getQuery('env', 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $invoice = $this->Invoices->get($id, contain: ['InvoiceContractors','InvoiceCompanyDetails','InvoiceContents' => ['Vats'], 'Companies']);
@@ -5302,7 +5302,7 @@ private function makeClient(string $environment): KsefClient
         $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
         $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
         $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
-            ? ('https://ksef-test.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+            ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
             : '';
 
         try {
@@ -5357,7 +5357,7 @@ private function makeClient(string $environment): KsefClient
             }
         }
 
-        $env = (string)$this->request->getQuery('env', 'test');
+        $env = (string)$this->request->getQuery('env', 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
         $limit = max(1, min(200, (int)$this->request->getQuery('limit', 50)));
         $today = (new FrozenTime('today'))->format('Y-m-d');
@@ -5414,7 +5414,7 @@ private function makeClient(string $environment): KsefClient
         $this->request->allowMethod(['post']);
         $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
-        $env = (string)$this->request->getQuery('env', 'test');
+        $env = (string)$this->request->getQuery('env', 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         $invoice = $this->Invoices->get($id);
@@ -5463,7 +5463,7 @@ private function makeClient(string $environment): KsefClient
                 ->withStringBody(json_encode(['success' => false, 'error' => 'Brak company_id w tożsamości.']));
         }
 
-        $env = (string)$this->request->getQuery('env', 'test');
+        $env = (string)$this->request->getQuery('env', 'prod');
         $environment = ($env === 'prod') ? 'prod' : 'test';
 
         // Pobierz fakturę wraz z danymi potrzebnymi do generatora

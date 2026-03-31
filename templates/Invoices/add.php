@@ -936,7 +936,7 @@ if ($__isEdit && !empty($__prefillItems)) {
         <p class="mb-3">Czy na pewno chcesz zapisać tę fakturę i natychmiast wysłać ją do KSeF?</p>
         <?php
           $envFromSess = (string)($this->getRequest()->getSession()->read('Ksef.status.env') ?? '');
-          $defaultEnv = $envFromSess !== '' ? $envFromSess : 'test';
+          $defaultEnv = $envFromSess !== '' ? $envFromSess : 'prod';
         ?>
         <div class="mt-2">
           <label class="form-label small mb-1">Środowisko KSeF</label>
@@ -1853,7 +1853,7 @@ $(function(){
   });
   // confirm send
   $(document).on('click', '#ksef-confirm-send-btn', function(){
-    var env = ($('#ksef-env').val() || $('#ksef-env-hidden').val() || 'test');
+    var env = ($('#ksef-env').val() || $('#ksef-env-hidden').val() || 'prod');
     if ($form.find('input[name="ksef_env"]').length === 0) {
       $('<input>').attr({type:'hidden', name:'ksef_env', value: env}).appendTo($form);
     } else {

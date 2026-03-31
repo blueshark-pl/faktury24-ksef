@@ -5,7 +5,7 @@
  * @var array $stats
  */
 $this->assign('title', 'Faktury wystawione (KSeF)');
-$env = (string)$this->getRequest()->getQuery('env', 'test');
+$env = (string)$this->getRequest()->getQuery('env', 'prod');
 ?>
 
 <?= $this->element('Ksef/filters', [

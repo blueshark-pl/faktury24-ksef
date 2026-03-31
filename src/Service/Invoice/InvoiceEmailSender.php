@@ -95,7 +95,7 @@ class InvoiceEmailSender
             $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
             $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
             $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
-                ? ('https://ksef-test.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+                ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
                 : '';
 
             $http = new Client(['timeout' => 60]);
