@@ -309,10 +309,11 @@ final class N1KsefService
         }
 
         if ($isKsefHost) {
-            if (str_ends_with($raw, '/v2')) {
+            if (str_ends_with($raw, '/api/v2')) {
+                // already correct
+            } elseif (str_ends_with($raw, '/v2')) {
                 $raw = substr($raw, 0, -3) . '/api/v2';
-            }
-            if (!str_ends_with($raw, '/api/v2')) {
+            } else {
                 $raw .= '/api/v2';
             }
             return $raw;

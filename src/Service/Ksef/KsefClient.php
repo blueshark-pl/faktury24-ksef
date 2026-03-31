@@ -23,7 +23,7 @@ final class KsefClient
         ?string $baseUrl = null,
         ?Client $http = null
     ) {
-        $this->baseUrl         = rtrim($baseUrl ?? (string)env('KSEF_BASE_URL', 'https://ksef.mf.gov.pl/api/v2'), '/');
+        $this->baseUrl         = rtrim($baseUrl ?? (string)env('KSEF_BASE_URL', 'https://api.ksef.mf.gov.pl/v2'), '/');
         $this->ksefPublicKeyPem= (string)env('KSEF_PUBLIC_KEY_PEM');
         $timeout               = (int)(env('KSEF_HTTP_TIMEOUT', 30));
 

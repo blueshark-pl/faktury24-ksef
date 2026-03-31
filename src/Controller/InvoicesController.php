@@ -3039,8 +3039,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 private function makeClient(string $environment): KsefClient
     {
         $baseUrl = ($environment === 'prod')
-            ? 'https://ksef.mf.gov.pl/api/v2'
-            : 'https://ksef-test.mf.gov.pl/api/v2';
+            ? 'https://api.ksef.mf.gov.pl/v2'
+            : 'https://api-test.ksef.mf.gov.pl/v2';
 
         return new KsefClient(new DbKsefTokenStorage(), $baseUrl);
     }

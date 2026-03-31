@@ -34,7 +34,7 @@ final class KsefApiV2Service
         //     };
         // }
         debug($baseUrl);
-        $serverUrl = $this->normalizeServerUrl("https://ksef.mf.gov.pl");
+        $serverUrl = $this->normalizeServerUrl("https://api.ksef.mf.gov.pl/v2");
         debug($serverUrl);
         $skipTlsVerify = (bool)Configure::read('Ksef.skipTlsVerify', false);
         $caBundle = ROOT . DS . 'resources' . DS . 'public-ca.pem';
