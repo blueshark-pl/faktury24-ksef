@@ -218,6 +218,12 @@ custom styles.
 - Czas: 0.5h
 - Do sprawdzenia manualnie: w ustawieniach firmy ustawić `override_next_number` na np. 15 dla serii marża, wystawić fakturę marża — numer powinien zacząć od 15, a pole override powinno się wyczyścić.
 
+### 2026-07-11
+- Fix: sesyjny cache statusu InvoiceWrite nie walidował `companyId` — po przełączeniu firmy w UI, stary (pozytywny) wynik był serwowany z sesji dla nowej firmy, mimo że ta nie miała uprawnień w KSeF. Dodano `companyId` do wszystkich session writes (`Ksef.status`) oraz do warunków cache check w `statusAjax()` i `KsefAuthContextCell::display()`. Wersja: 1.2.23 (48).
+- Commit: dff3cc4
+- Czas: 0.5h
+- Do sprawdzenia manualnie: przełączyć firmę (z uprawnieniami → bez uprawnień) i sprawdzić, czy InvoiceWrite pokazuje „brak" zamiast „OK".
+
 ## ~~TODO (Invoices)~~ ✅ ZREALIZOWANE 2026-03-18
 
 - [x] Duplikat kontrolera oznaczony: `src/InvoicesController.php` ma nagłówek `@deprecated LEGACY` wskazujący na `src/Controller/InvoicesController.php`.
