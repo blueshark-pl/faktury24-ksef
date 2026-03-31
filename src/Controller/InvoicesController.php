@@ -6089,6 +6089,16 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     // FakturaZaliczkowa — rozliczenie zaliczek w fakturze końcowej (ROZ)
     $xml = array_merge($xml, $this->buildFakturaZaliczkowaXml($inv, $rodzaj));
 
+    // TP – powiązania między nabywcą a sprzedawcą (direct child of <Fa>, przed FaWiersz, per XSD FA(3))
+    $annTp = [];
+    if (!empty($inv->annotations)) {
+        $dec = is_array($inv->annotations) ? $inv->annotations : json_decode((string)$inv->annotations, true);
+        if (is_array($dec)) $annTp = $dec;
+    }
+    if (isset($annTp['tp']) && (string)$annTp['tp'] === '1') {
+        $xml[] = '    <TP>1</TP>';
+    }
+
     // Wiersze
     $xml   = array_merge($xml, $this->buildLinesXml($inv, $items));
 
@@ -6539,12 +6549,6 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
         // PMarzy – procedury marży
         $xml = array_merge($xml, $this->buildPMarzyXml($inv));
-
-        // TP – istniejące powiązania między nabywcą a sprzedawcą (§ 10 ust. 4 pkt 3 rozp. JPK_VAT)
-        // Pole fakultatywne; podaje się "1" gdy powiązania istnieją; pomijamy gdy brak lub "2"
-        if (isset($ann['tp']) && (string)$ann['tp'] === '1') {
-            $xml[] = '      <TP>1</TP>';
-        }
 
         $xml[] = '    </Adnotacje>';
 
