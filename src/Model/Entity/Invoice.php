@@ -171,6 +171,7 @@ class Invoice extends Entity
         'ksef_desc' => true,
     'ksef_session_reference' => true,
     'ksef_invoice_reference' => true,
+        'ksef_xml_hash' => true,
         'created' => true,
         'modified' => true,
         'company' => true,

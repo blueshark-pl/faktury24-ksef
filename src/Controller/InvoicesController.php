@@ -4030,10 +4030,14 @@ private function makeClient(string $environment): KsefClient
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
                 $ksefEnv = (\Cake\Core\Configure::read('Ksef.env') === 'test') ? 'test' : 'prod';
                 $qrHost = ($ksefEnv === 'test') ? 'https://qr-test.ksef.mf.gov.pl' : 'https://qr.ksef.mf.gov.pl';
-                // QR hash: Base64URL(SHA-256(bytes XML)) per spec MF
-                $xmlHash = (is_string($xml) && trim($xml) !== '')
-                    ? rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '=')
-                    : '';
+                // QR hash musi być z dokładnych bajtów XML wysłanych do KSeF (zapisany przy wysyłce).
+                // Fallback: policz z bieżącego XML tylko gdy faktury jeszcze nie wysłano.
+                $storedHash = (string)($invoice->ksef_xml_hash ?? '');
+                $xmlHash = $storedHash !== ''
+                    ? $storedHash
+                    : (is_string($xml) && trim($xml) !== ''
+                        ? rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '=')
+                        : '');
                 $qrCode = ($nip !== '' && $issueDate !== '' && $xmlHash !== '')
                     ? ($qrHost . '/invoice/' . $nip . '/' . $issueDate . '/' . $xmlHash)
                     : '';
@@ -4964,6 +4968,10 @@ private function makeClient(string $environment): KsefClient
             $invoice->set('ksef_invoice_reference', (string)($res['invoiceReference'] ?? ''));
             $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
             $invoice->set('planned_ksef_send_at', null);
+            if (!empty($res['ok'])) {
+                // Zapisz hash dokładnie tych bajtów XML, które trafiły do KSeF – potrzebny do QR kodu.
+                $invoice->set('ksef_xml_hash', rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '='));
+            }
             $this->Invoices->save($invoice);
 
             if (!empty($res['ok'])) {
