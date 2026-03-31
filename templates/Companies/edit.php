@@ -251,13 +251,13 @@ $this->assign('title', 'Edycja firmy');
                         'placeholder' => 'np. Lipowa',
                   ]) ?>
                 </div>
-                <!-- <div class="col-xl-4">
+                <div class="col-xl-4">
                     <?= $this->Form->control('local_number', [
                       'label' => ['text' => 'Nr lokalu'],
                         'class' => 'form-control',
                         'placeholder' => 'np. 12A',
                   ]) ?>
-                </div> -->
+                </div>
                  <div class="col-xl-2">
                     <?= $this->Form->control('country', [
                       'label' => ['text' => 'Kraj', 'class' => 'form-label mb-0'],
