@@ -87,19 +87,6 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
   <div class="flex-grow-1">
     <div class="fw-bold fs-5 mb-1">Ta faktura jest robocza</div>
     <div class="mb-2">Sprawdź poprawność danych, a następnie wyślij fakturę do KSeF, aby została zaewidencjonowana w systemie Ministerstwa Finansów.</div>
-    <?php if ($canSendToKsef): ?>
-    <div class="d-flex flex-wrap gap-2">
-      <button id="btn-send-ksef-draft-banner"
-              class="btn btn-warning fw-semibold"
-              data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'prod', '_ext' => 'json']])) ?>"
-              <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?>>
-        <i class="ri-send-plane-fill me-1"></i>Wyślij do KSeF
-      </button>
-      <a href="<?= $this->Url->build(['action' => 'edit', $invoice->id]) ?>" class="btn btn-outline-warning">
-        <i class="ri-edit-line me-1"></i>Edytuj fakturę
-      </a>
-    </div>
-    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>

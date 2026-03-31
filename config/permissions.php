@@ -168,6 +168,9 @@ return [
             'action' => [
                 'addRental',
                 'index',
+                'view',
+                'add',
+                'addVat',
                 'addCurrency',
                 'addNoVat',
                 'addProforma',
