@@ -58,11 +58,11 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
         </a>
         <?php if ($canSendToKsef): ?>
           <button id="btn-send-ksef-test"
-                  class="btn btn-outline-primary"
+                  class="btn btn-primary btn-lg fw-semibold"
                   data-url="<?= h($this->Url->build(['action' => 'sendToKsef', $invoice->id, '?' => ['env' => 'prod', '_ext' => 'json']])) ?>"
                   title="Wyślij do KSeF"
                   <?= ((string)($invoice->ksef_status ?? '')) === '200' ? 'disabled' : '' ?>>
-            <i class="ri-send-plane-line me-1"></i>Wyślij do KSeF
+            <i class="ri-send-plane-fill me-1"></i>Wyślij do KSeF
           </button>
           <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
               ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'prod']],
