@@ -4028,10 +4028,14 @@ private function makeClient(string $environment): KsefClient
                 $seller = $invoice->invoice_company_detail ?? null;
                 $nip = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
-                $invRef = (string)($invoice->ksef_invoice_reference ?? '');
-                $qrHost = 'https://ksef.mf.gov.pl';
-                $qrCode = ($nip !== '' && $issueDate !== '' && $invRef !== '')
-                    ? ($qrHost . '/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+                $ksefEnv = (\Cake\Core\Configure::read('Ksef.env') === 'test') ? 'test' : 'prod';
+                $qrHost = ($ksefEnv === 'test') ? 'https://qr-test.ksef.mf.gov.pl' : 'https://qr.ksef.mf.gov.pl';
+                // QR hash: Base64URL(SHA-256(bytes XML)) per spec MF
+                $xmlHash = (is_string($xml) && trim($xml) !== '')
+                    ? rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '=')
+                    : '';
+                $qrCode = ($nip !== '' && $issueDate !== '' && $xmlHash !== '')
+                    ? ($qrHost . '/invoice/' . $nip . '/' . $issueDate . '/' . $xmlHash)
                     : '';
 
                 $payload = [

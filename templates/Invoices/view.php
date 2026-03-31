@@ -204,7 +204,7 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
     </div>
     <input type="hidden" id="ksef-csrf" value="<?= h((string)($this->getRequest()->getAttribute('csrfToken') ?? '')) ?>" />
     <?php
-        $appEnv = getenv('APP_ENV') ?: (defined('APP_ENV') ? APP_ENV : 'prod');
+        $appEnv = 'prod';
         $isProdEnv = strtolower((string)$appEnv) === 'prod' || strtolower((string)$appEnv) === 'production';
         $envParam = $isProdEnv ? 'prod' : 'test';
     ?>
