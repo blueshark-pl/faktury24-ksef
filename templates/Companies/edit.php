@@ -629,7 +629,7 @@ $this->assign('title', 'Edycja firmy');
                       <label class="form-label d-flex align-items-center gap-1">
                         Numer początkowy
                         <?php if ($isSystem): ?>
-                          <i class="ri-edit-line text-success fs-12" title="Możesz zmienić numer początkowy"></i>
+                          <i class="ri-lock-line text-muted fs-12" title="Seria systemowa – numer początkowy jest zablokowany"></i>
                         <?php endif; ?>
                       </label>
                       <input type="number" min="1" step="1"
@@ -638,7 +638,8 @@ $this->assign('title', 'Edycja firmy');
                              value="<?= h((string)$series->starting_number) ?>"
                              data-original="<?= h((string)$series->starting_number) ?>"
                              data-series-id="<?= h((string)$series->id) ?>"
-                             data-series-type="<?= h($seriesType) ?>">
+                             data-series-type="<?= h($seriesType) ?>"
+                             <?= $isSystem ? 'readonly' : '' ?>>
                       <div class="form-text text-muted">
                         Używany tylko gdy w danym okresie nie ma jeszcze żadnej faktury. Jeśli faktury już istnieją, kolejny numer = ostatni wystawiony + 1.
                       </div>

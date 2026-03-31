@@ -506,7 +506,7 @@ $companyId = $identity?->get('company_id');
 
 <!-- Modal: Add/Edit kontrahent (z GUS lookup) -->
 <div class="modal fade" id="contractor-create" tabindex="-1" aria-hidden="true" data-mode="add">
-  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
       <div class="modal-header border-bottom-0 pb-0">
         <div class="d-flex align-items-center gap-2">
@@ -927,7 +927,7 @@ Faktura została wystawiona w Faktury24.com — bezpłatnym programie do wystawi
 </div>
 <!-- Modal: Import z faktury24.com -->
 <div class="modal fade" id="importF24Modal" tabindex="-1" aria-labelledby="importF24ModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <div class="d-flex align-items-center gap-2">

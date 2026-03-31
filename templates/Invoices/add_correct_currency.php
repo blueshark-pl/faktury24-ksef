@@ -498,10 +498,13 @@ $gtuSelectHtml .= '</select>';
           <div class="row g-3">
             <!-- Waluta i kurs przeniesione do zakładki Podstawowe -->
 
+            <?php /* Język faktury – zawsze polski, pole ukryte
             <?= $this->Form->control('lang', [
               'label' => 'Język faktury', 'type' => 'select', 'class' => 'form-select',
               'options' => ['pl' => 'Polski', 'en' => 'English', 'de' => 'Deutsch', 'cs' => 'Čeština'], 'value' => 'pl'
             ]) ?>
+            */ ?>
+            <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
             <label class="form-label">Rachunek na fakturze</label>
             <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"></select>

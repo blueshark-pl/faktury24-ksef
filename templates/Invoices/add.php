@@ -501,10 +501,13 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
         <div class="tab-pane fade" id="pane-adv" role="tabpanel" aria-labelledby="tab-adv">
           <div class="row g-3">
 
+            <?php /* Język faktury – zawsze polski, pole ukryte
             <?= $this->Form->control('lang', [
               'label' => 'Język faktury', 'type' => 'select', 'class' => 'form-select',
               'options' => ['pl' => 'Polski', 'en' => 'English', 'de' => 'Deutsch', 'cs' => 'Čeština'], 'value' => 'pl'
             ]) ?>
+            */ ?>
+            <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
             <label class="form-label">Rachunek na fakturze</label>
             <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"></select>

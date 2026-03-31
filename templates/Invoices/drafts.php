@@ -97,7 +97,6 @@ $editActionByType = [
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
                   <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-secondary']) ?>
-                  <?= $this->Form->postLink('Wyślij teraz', ['action' => 'sendDraftNow', $inv->id], ['class' => 'btn btn-outline-success', 'confirm' => $sendConfirmText]) ?>
                   <?= $this->Form->postLink('Usuń', ['action' => 'delete', $inv->id], ['class' => 'btn btn-outline-danger', 'confirm' => 'Usunąć tę fakturę roboczą?']) ?>
                 </div>
               </td>

@@ -339,7 +339,7 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
 
 <!-- Modal: Add/Edit produkt/usługa -->
 <div class="modal fade" id="product-create" tabindex="-1" aria-hidden="true" data-mode="add">
-  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
 
       <div class="modal-header border-bottom-0 pb-0">

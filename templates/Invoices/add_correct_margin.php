@@ -321,10 +321,13 @@ $gtuSelectHtml .= '</select>';
           </div>
           <div class="row">
             <div class="col-lg-3 mt-2">
+              <?php /* Język faktury – zawsze polski, pole ukryte
               <?= $this->Form->control('lang', [
                 'label' => 'Język faktury', 'type' => 'select', 'class' => 'form-select',
                 'options' => ['pl' => 'Polski', 'en' => 'English', 'de' => 'Deutsch', 'cs' => 'Čeština'], 'value' => 'pl'
               ]) ?>
+              */ ?>
+              <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
               <small class="text-muted d-block mt-1">
                 &nbsp;
               </small>
