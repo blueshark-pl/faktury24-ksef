@@ -166,10 +166,8 @@ return [
             'role' => 'user',
             'controller' => ['Invoices'],
             'action' => [
+                'addRental',
                 'index',
-                'view',
-                'add',
-                'addVat',
                 'addCurrency',
                 'addNoVat',
                 'addProforma',
