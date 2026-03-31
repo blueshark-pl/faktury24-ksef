@@ -287,7 +287,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
 
-                    
+                        <!-- Start::header-element (Instrukcja obsługi) -->
+                        <li class="header-element">
+                            <a href="javascript:void(0);" class="header-link" data-bs-toggle="modal" data-bs-target="#manualPdfModal"
+                               data-bs-toggle-tooltip="tooltip" data-bs-placement="bottom" title="Instrukcja obsługi">
+                                <i class="ti ti-book-2 fs-22 header-link-icon"></i>
+                            </a>
+                        </li>
+                        <!-- End::header-element (Instrukcja obsługi) -->
 
                         <!-- Start::header-element -->
                         <li class="header-element dropdown">
@@ -796,6 +803,29 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
         </div>
       </div>
     </div>
+
+    <!-- Modal: Instrukcja obsługi (PDF) -->
+    <div class="modal fade" id="manualPdfModal" tabindex="-1" aria-labelledby="manualPdfModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title" id="manualPdfModalLabel">
+              <i class="ti ti-book-2 me-2 text-primary"></i>Instrukcja obsługi
+            </h6>
+            <div class="d-flex align-items-center gap-2">
+              <a href="/faktury24_manual.pdf" download class="btn btn-outline-primary btn-sm">
+                <i class="ti ti-download me-1"></i>Pobierz PDF
+              </a>
+              <button type="button" class="btn-close ms-1" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+          </div>
+          <div class="modal-body p-0">
+            <iframe id="manualPdfFrame" src="/faktury24_manual.pdf" width="100%" style="height:78vh;border:0;" title="Instrukcja obsługi"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <?php
         // ---------- JS na dole (lepsza wydajność) ----------
         echo $this->Html->script([
@@ -944,6 +974,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             }
                         }
 
+                        function setBadgeLoading() {
+                            var badge = byId('ksef-perm-badge');
+                            if (badge) {
+                                badge.className = 'badge bg-secondary';
+                                badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.6rem;height:.6rem;border-width:.15em" role="status" aria-hidden="true"></span> sprawdzam…';
+                            }
+                        }
+
                         function applyStatusToFooter(status) {
                             if (!status || typeof status !== 'object') return;
 
@@ -1062,6 +1100,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             if (inFlight) return Promise.resolve({ inFlight: true });
                             inFlight = true;
                             setButtonsBusy(true);
+                            setBadgeLoading();
 
                             var url = baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + 'env=' + encodeURIComponent(env);
                             if (force) url += '&force=1';
