@@ -2895,6 +2895,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             foreach (['skonto_conditions','skonto_amount','status_info_podatnika','is_new_transport_wdt','p_42_5','order_total_gross'] as $k) {
                 if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
             }
+            // Statusy nabywcy (JST / Członek grupy VAT) — zawsze nadpisuj
+            $invoicePatch['buyer_is_jst']       = !empty($data['buyer_is_jst']) ? 1 : 0;
+            $invoicePatch['buyer_in_vat_group'] = !empty($data['buyer_in_vat_group']) ? 1 : 0;
             // FA(3) LOW — warunki transakcji z POST (tc_umowy[], tc_zamowienia[])
             $tcUmowy = array_values(array_filter(array_map('trim', (array)($data['tc_umowy'] ?? []))));
             $tcZamowienia = array_values(array_filter(array_map('trim', (array)($data['tc_zamowienia'] ?? []))));
