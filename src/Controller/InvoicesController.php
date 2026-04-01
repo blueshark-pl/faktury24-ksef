@@ -2870,7 +2870,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 'tax'           => $tax,
                 'alreadypaid'   => $alreadypaid,
                 'remaining'     => $remaining,
-                'fullnumber'    => ($kind === 'proforma') ? ($invoice->fullnumber ?? null) : null,
+                'fullnumber'    => $invoice->fullnumber ?? null, // zachowaj istniejący numer, nie nadpisuj
                 'currency'      => $data['currency'] ?? $invoice->currency,
                 'currency_date' => $data['currency_date'] ?? $invoice->currency_date,
                 'currency_exchange' => $data['currency_exchange'] ?? $invoice->currency_exchange,
@@ -2962,6 +2962,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
 
                 $conn->commit();
+
+                // Jeśli faktura nie ma jeszcze numeru i KSeF jest WYŁĄCZONY — nadaj numer teraz
+                if (empty($invoice->fullnumber) && !$this->isKsefModeEnabled((string)$companyId)) {
+                    try {
+                        $this->ensureInvoiceNumberForSend($invoice, (string)$companyId);
+                    } catch (\Throwable $numErr) {
+                        $this->Flash->warning('Faktura zapisana, ale nie udało się nadac numeru: ' . $numErr->getMessage());
+                    }
+                }
+
                 $this->Flash->success('Faktura została zaktualizowana.');
                 return $this->redirect(['action' => 'view', $invoice->id]);
             } catch (\Throwable $e) {
