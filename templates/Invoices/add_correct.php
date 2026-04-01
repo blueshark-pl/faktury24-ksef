@@ -458,7 +458,8 @@ $gtuSelectHtml .= '</select>';
             <!-- Dostawa towarów/usług zwolnionych od podatku -->
             <div class="d-flex align-items-start gap-2">
               <div class="form-check m-0">
-                <input class="form-check-input" type="checkbox" id="supply-goods" name="annotations[supply_goods]" value="1">
+                <?php $__annSG = is_array($invoice->annotations) ? ($invoice->annotations['supply_goods'] ?? null) : (json_decode((string)($invoice->annotations ?? ''), true)['supply_goods'] ?? null); ?>
+                <input class="form-check-input" type="checkbox" id="supply-goods" name="annotations[supply_goods]" value="1"<?= !empty($__annSG) ? ' checked' : '' ?>>
                 <label class="form-check-label" for="supply-goods">Dostawa towarów/usług zwolnionych od podatku</label>
               </div>
               <button type="button" class="btn btn-link p-0 align-baseline" id="supply-goods-help"
@@ -475,15 +476,14 @@ $gtuSelectHtml .= '</select>';
                 <label class="form-label" for="annotations-tax-free">Podstawa zwolnienia od podatku</label>
                 <?php $__atf = $invoice->annotations_tax_free ?? ''; ?>
                 <select class="form-select" id="annotations-tax-free" name="annotations_tax_free">
-                  <option value=""<?= $__atf === '' ? ' selected' : '' ?>>-- Wybierz podstawę --</option>
-                  <option value="ustawa"<?= $__atf === 'ustawa' ? ' selected' : '' ?>>Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
+                  <option value="ustawa"<?= ($__atf === 'ustawa' || $__atf === '') ? ' selected' : '' ?>>Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
                   <option value="dyrektywa"<?= $__atf === 'dyrektywa' ? ' selected' : '' ?>>Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
-                  <option value="inna">Inna podstawa prawna wskazującą na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
+                  <option value="inna"<?= $__atf === 'inna' ? ' selected' : '' ?>>Inna podstawa prawna wskazująca na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
                 </select>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
               <div class="col-lg-6 col-12">
-                <label class="form-label" for="annotations-tax-free-field">Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</label>
+                <label class="form-label" id="annotations-tax-free-field-label" for="annotations-tax-free-field">Treść przepisu stanowiącego podstawę zwolnienia</label>
                 <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"><?= h($invoice->annotations_tax_free_field ?? '') ?></textarea>
                 <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
               </div>
@@ -541,19 +541,40 @@ $gtuSelectHtml .= '</select>';
 
               // Supply goods tax-free toggle
               const $supply = $('#supply-goods');
+              const taxFreeLabels = {
+                '':          'Treść przepisu stanowiącego podstawę zwolnienia',
+                'ustawa':    'Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku',
+                'dyrektywa': 'Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług',
+                'inna':      'Inna podstawa prawna wskazująca na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia od podatku',
+              };
+              const taxFreePlaceholders = {
+                '':          'Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia',
+                'ustawa':    'np. art. 43 ust. 1 pkt 18 ustawy z dnia 11 marca 2004 r. o podatku od towarów i usług',
+                'dyrektywa': 'np. art. 132 ust. 1 lit. b dyrektywy 2006/112/WE Rady z dnia 28 listopada 2006 r.',
+                'inna':      'Wpisz inną podstawę prawną zwolnienia od podatku',
+              };
+              function updateTaxFreeFieldLabel() {
+                const val = $('#annotations-tax-free').val() || '';
+                $('#annotations-tax-free-field-label').text(taxFreeLabels[val] || taxFreeLabels['']);
+                $('#annotations-tax-free-field').attr('placeholder', taxFreePlaceholders[val] || taxFreePlaceholders['']);
+              }
               function toggleTaxFreeExtra(){
                 const on = $supply.is(':checked');
                 $('#tax-free-extra').toggle(on);
                 const $sel = $('#annotations-tax-free');
                 if (on){
                   $sel.attr('required', true);
+                  if (!$sel.val()) $sel.val('ustawa');
                 } else {
                   $sel.removeAttr('required');
                   $sel.val('');
                 }
+                updateTaxFreeFieldLabel();
               }
               $(document).on('change', '#supply-goods', toggleTaxFreeExtra);
+              $(document).on('change', '#annotations-tax-free', updateTaxFreeFieldLabel);
               $(toggleTaxFreeExtra);
+              $(updateTaxFreeFieldLabel);
             })();
             </script>
           </div>
