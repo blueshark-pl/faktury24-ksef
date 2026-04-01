@@ -6253,6 +6253,16 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     private function buildDodatkowyOpisXml(Invoice $inv): array
     {
         $xml = [];
+
+        // Automatyczny wpis z kolumny `invoices.description` (opis faktury)
+        $descField = trim((string)($inv->description ?? ''));
+        if ($descField !== '') {
+            $xml[] = '    <DodatkowyOpis>';
+            $xml[] = '      <Klucz>' . $this->esc('Opis faktury') . '</Klucz>';
+            $xml[] = '      <Wartosc>' . $this->esc($descField) . '</Wartosc>';
+            $xml[] = '    </DodatkowyOpis>';
+        }
+
         $descriptions = (array)($inv->invoice_additional_descriptions ?? []);
         foreach ($descriptions as $desc) {
             $klucz  = trim((string)($desc->klucz ?? $desc['klucz'] ?? ''));
