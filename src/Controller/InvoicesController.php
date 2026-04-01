@@ -330,7 +330,7 @@ class InvoicesController extends AppController
      */
     public function validateAjax(): \Cake\Http\Response
     {
-        $this->request->allowMethod(['post']);
+        $this->request->allowMethod(['post', 'put', 'patch']);
 
         // Force JSON response (builder optional)
         $this->viewBuilder()->setClassName('Json');
@@ -1044,7 +1044,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     // słowniki VAT – dla noVat nie musimy ładować stawek, ale jeśli chcesz mieć np. "ZW/NP", możesz załadować i ukryć w UI
     $Vats        = $this->fetchTable('Vats');
     $vatRows     = $noVat ? [] : $Vats->find()->select(['id','name','rate'])->order(['rate' => 'DESC'])->all();
-    $vats        = $noVat ? [] : $vatRows->combine('id', fn($v) => sprintf('%s (%s%%)', (string)$v->name, rtrim(rtrim((string)$v->rate,'0'),'.')))->toArray();
+    $vats        = $noVat ? [] : $vatRows->combine('id', fn($v) => (string)$v->name)->toArray();
     $vatRatesMap = $noVat ? [] : $vatRows->combine('id', 'rate')->toArray();
 
         if ($this->request->is('post')) {
@@ -2504,7 +2504,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         // Słowniki VAT do widoku
         $Vats        = $this->fetchTable('Vats');
         $vatRows     = $Vats->find()->select(['id','name','rate'])->order(['rate' => 'DESC'])->all();
-        $vats        = $vatRows->combine('id', fn($v) => sprintf('%s (%s%%)', (string)$v->name, rtrim(rtrim((string)$v->rate,'0'),'.')))->toArray();
+        $vats        = $vatRows->combine('id', fn($v) => (string)$v->name)->toArray();
         $vatRatesMap = $vatRows->combine('id', 'rate')->toArray();
 
         if ($this->request->is(['patch', 'post', 'put'])) {
@@ -6073,7 +6073,7 @@ if (!empty($inv->currency_exchange) && $currency !== 'PLN') {
 }
 
 // ✅ najpierw Adnotacje
-$xml = array_merge($xml, $this->buildAnnotationsXml($inv));
+$xml = array_merge($xml, $this->buildAnnotationsXml($inv, $items));
 
 // ✅ potem RodzajFaktury
 $xml[] = '    <RodzajFaktury>' . $rodzaj . '</RodzajFaktury>';
@@ -6327,20 +6327,28 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     // 1) ZWYKŁE FAKTURY
     // ======================
     if (!in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
-        // 23/8/5 liczymy z pozycji tak jak wcześniej
+        // Grupy zgodnie z TStawkaPodatku FA(3)
         $grp = [
-            '23' => ['net' => 0.0, 'vat' => 0.0], // P_13_1 / P_14_1
-            '8'  => ['net' => 0.0, 'vat' => 0.0], // P_13_2 / P_14_2
-            '5'  => ['net' => 0.0, 'vat' => 0.0], // P_13_3 / P_14_3
+            '23'    => ['net' => 0.0, 'vat' => 0.0], // P_13_1 / P_14_1
+            '8'     => ['net' => 0.0, 'vat' => 0.0], // P_13_2 / P_14_2
+            '5'     => ['net' => 0.0, 'vat' => 0.0], // P_13_3 / P_14_3
+            'zw'    => ['net' => 0.0, 'vat' => 0.0], // P_13_7 zwolniona
+            'np_i'  => ['net' => 0.0, 'vat' => 0.0], // P_13_8 niepodlegające (np I, dostawa poza PL)
+            'np_ii' => ['net' => 0.0, 'vat' => 0.0], // P_13_9 niepodlegające (np II, usługi UE art. 100 pkt 4)
+            '0kr'   => ['net' => 0.0, 'vat' => 0.0], // P_13_6_1 0% KR (krajowe)
+            'oo'    => ['net' => 0.0, 'vat' => 0.0], // P_13_10 odwrotne obciążenie
+            '0wdt'  => ['net' => 0.0, 'vat' => 0.0], // P_13_6_2 0% WDT
+            '0ex'   => ['net' => 0.0, 'vat' => 0.0], // P_13_6_3 0% eksport
         ];
 
         $sumGross = 0.0;
 
         foreach ($items as $it) {
-            $rate  = isset($it->vat) ? (float)$it->vat->rate : 0.0;
-            $net   = (float)($it->netto ?? 0.0);
-            $vat   = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
-            $gross = (float)($it->brutto ?? ($net + $vat));
+            $rate     = isset($it->vat) ? (float)$it->vat->rate : 0.0;
+            $vatName  = strtolower(trim((string)($it->vat->name ?? '')));
+            $net      = (float)($it->netto ?? 0.0);
+            $vat      = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
+            $gross    = (float)($it->brutto ?? ($net + $vat));
 
             if ($rate >= 22.5) {
                 $grp['23']['net'] += $net;
@@ -6351,6 +6359,24 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             } elseif ($rate >= 4.5) {
                 $grp['5']['net']  += $net;
                 $grp['5']['vat']  += $vat;
+            } elseif (str_starts_with($vatName, 'zw')) {
+                $grp['zw']['net'] += $net;
+            } elseif (str_contains($vatName, 'wdt')) {
+                $grp['0wdt']['net'] += $net;
+            } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
+                $grp['0ex']['net'] += $net;
+            } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+                // niepodlegające UE / art. 100 ust. 1 pkt 4 → np II → P_13_9
+                $grp['np_ii']['net'] += $net;
+            } elseif (str_starts_with($vatName, 'np')) {
+                // niepodlegające krajowe/poza PL → np I → P_13_8
+                $grp['np_i']['net'] += $net;
+            } elseif (str_starts_with($vatName, 'oo')) {
+                // odwrotne obciążenie → P_13_10
+                $grp['oo']['net'] += $net;
+            } else {
+                // 0% krajowe
+                $grp['0kr']['net'] += $net;
             }
 
             $sumGross += $gross;
@@ -6386,19 +6412,29 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         $this->emitIfNotNull($xml, 'P_13_5', $inv->p_13_5 ?? null);
         $this->emitIfNotNull($xml, 'P_14_5', $inv->p_14_5 ?? null);
 
-        // P_13_6_1..3 – stawka 0% w różnych typach (inne, WDT, eksport)
-        $this->emitIfNotNull($xml, 'P_13_6_1', $inv->p_13_6_1 ?? null);
-        $this->emitIfNotNull($xml, 'P_13_6_2', $inv->p_13_6_2 ?? null);
-        $this->emitIfNotNull($xml, 'P_13_6_3', $inv->p_13_6_3 ?? null);
+        // P_13_6_1 – 0% krajowe (0 KR)
+        $p13_6_1 = $grp['0kr']['net']  ?: ($inv->p_13_6_1 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_6_1', $p13_6_1 ?: null);
+        // P_13_6_2 – 0% WDT
+        $p13_6_2 = $grp['0wdt']['net'] ?: ($inv->p_13_6_2 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_6_2', $p13_6_2 ?: null);
+        // P_13_6_3 – 0% eksport (0 EX)
+        $p13_6_3 = $grp['0ex']['net']  ?: ($inv->p_13_6_3 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_6_3', $p13_6_3 ?: null);
 
-        // P_13_7 – sprzedaż zwolniona
-        $this->emitIfNotNull($xml, 'P_13_7', $inv->p_13_7 ?? null);
-        // P_13_8 – dostawy/usługi poza terytorium kraju (poza procedurą OSS itd.)
-        $this->emitIfNotNull($xml, 'P_13_8', $inv->p_13_8 ?? null);
-        // P_13_9 – usługi z art. 100 ust. 1 pkt 4
-        $this->emitIfNotNull($xml, 'P_13_9', $inv->p_13_9 ?? null);
-        // P_13_10 – odwrotne obciążenie krajowe
-        $this->emitIfNotNull($xml, 'P_13_10', $inv->p_13_10 ?? null);
+        // P_13_7 – sprzedaż zwolniona (zw.)
+        $p13_7 = $grp['zw']['net'] ?: ($inv->p_13_7 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_7', $p13_7 ?: null);
+
+        // P_13_8 – dostawa/usługi poza terytorium kraju (np I), z wył. P_13_5 i P_13_9
+        $p13_8 = $grp['np_i']['net'] ?: ($inv->p_13_8 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_8', $p13_8 ?: null);
+        // P_13_9 – usługi art. 100 ust. 1 pkt 4 (np II, UE)
+        $p13_9 = $grp['np_ii']['net'] ?: ($inv->p_13_9 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_9', $p13_9 ?: null);
+        // P_13_10 – odwrotne obciążenie (oo)
+        $p13_10 = $grp['oo']['net'] ?: ($inv->p_13_10 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_10', $p13_10 ?: null);
         // P_13_11 – procedura marży (art. 119/120)
         $this->emitIfNotNull($xml, 'P_13_11', $inv->p_13_11 ?? null);
 
@@ -6411,14 +6447,28 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     $origItems = (array)($inv->original_items ?? []);
 
     $grpBefore = [
-        '23' => ['net' => 0.0, 'vat' => 0.0],
-        '8'  => ['net' => 0.0, 'vat' => 0.0],
-        '5'  => ['net' => 0.0, 'vat' => 0.0],
+        '23'    => ['net' => 0.0, 'vat' => 0.0],
+        '8'     => ['net' => 0.0, 'vat' => 0.0],
+        '5'     => ['net' => 0.0, 'vat' => 0.0],
+        'zw'    => ['net' => 0.0, 'vat' => 0.0],
+        'np_i'  => ['net' => 0.0, 'vat' => 0.0],
+        'np_ii' => ['net' => 0.0, 'vat' => 0.0],
+        '0kr'   => ['net' => 0.0, 'vat' => 0.0],
+        '0wdt'  => ['net' => 0.0, 'vat' => 0.0],
+        '0ex'   => ['net' => 0.0, 'vat' => 0.0],
+        'oo'    => ['net' => 0.0, 'vat' => 0.0],
     ];
     $grpAfter = [
-        '23' => ['net' => 0.0, 'vat' => 0.0],
-        '8'  => ['net' => 0.0, 'vat' => 0.0],
-        '5'  => ['net' => 0.0, 'vat' => 0.0],
+        '23'    => ['net' => 0.0, 'vat' => 0.0],
+        '8'     => ['net' => 0.0, 'vat' => 0.0],
+        '5'     => ['net' => 0.0, 'vat' => 0.0],
+        'zw'    => ['net' => 0.0, 'vat' => 0.0],
+        'np_i'  => ['net' => 0.0, 'vat' => 0.0],
+        'np_ii' => ['net' => 0.0, 'vat' => 0.0],
+        '0kr'   => ['net' => 0.0, 'vat' => 0.0],
+        '0wdt'  => ['net' => 0.0, 'vat' => 0.0],
+        '0ex'   => ['net' => 0.0, 'vat' => 0.0],
+        'oo'    => ['net' => 0.0, 'vat' => 0.0],
     ];
 
     $sumGrossBefore = 0.0;
@@ -6426,20 +6476,32 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     // --- przed korektą ---
     foreach ($origItems as $it) {
-        $rate  = isset($it->vat) ? (float)$it->vat->rate : 0.0;
-        $net   = (float)($it->netto ?? 0.0);
-        $vat   = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
-        $gross = (float)($it->brutto ?? ($net + $vat));
+        $rate     = isset($it->vat) ? (float)$it->vat->rate : 0.0;
+        $vatName  = strtolower(trim((string)($it->vat->name ?? '')));
+        $net      = (float)($it->netto ?? 0.0);
+        $vat      = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
+        $gross    = (float)($it->brutto ?? ($net + $vat));
 
         if ($rate >= 22.5) {
-            $grpBefore['23']['net'] += $net;
-            $grpBefore['23']['vat'] += $vat;
+            $grpBefore['23']['net'] += $net; $grpBefore['23']['vat'] += $vat;
         } elseif ($rate >= 7.5) {
-            $grpBefore['8']['net']  += $net;
-            $grpBefore['8']['vat']  += $vat;
+            $grpBefore['8']['net']  += $net; $grpBefore['8']['vat']  += $vat;
         } elseif ($rate >= 4.5) {
-            $grpBefore['5']['net']  += $net;
-            $grpBefore['5']['vat']  += $vat;
+            $grpBefore['5']['net']  += $net; $grpBefore['5']['vat']  += $vat;
+        } elseif (str_starts_with($vatName, 'zw')) {
+            $grpBefore['zw']['net']    += $net;
+        } elseif (str_contains($vatName, 'wdt')) {
+            $grpBefore['0wdt']['net']  += $net;
+        } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
+            $grpBefore['0ex']['net']   += $net;
+        } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+            $grpBefore['np_ii']['net'] += $net;
+        } elseif (str_starts_with($vatName, 'np')) {
+            $grpBefore['np_i']['net']  += $net;
+        } elseif (str_starts_with($vatName, 'oo')) {
+            $grpBefore['oo']['net']    += $net;
+        } else {
+            $grpBefore['0kr']['net']   += $net;
         }
 
         $sumGrossBefore += $gross;
@@ -6447,32 +6509,51 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     // --- po korekcie ---
     foreach ($items as $it) {
-        $rate  = isset($it->vat) ? (float)$it->vat->rate : 0.0;
-        $net   = (float)($it->netto ?? 0.0);
-        $vat   = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
-        $gross = (float)($it->brutto ?? ($net + $vat));
+        $rate     = isset($it->vat) ? (float)$it->vat->rate : 0.0;
+        $vatName  = strtolower(trim((string)($it->vat->name ?? '')));
+        $net      = (float)($it->netto ?? 0.0);
+        $vat      = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
+        $gross    = (float)($it->brutto ?? ($net + $vat));
 
         if ($rate >= 22.5) {
-            $grpAfter['23']['net'] += $net;
-            $grpAfter['23']['vat'] += $vat;
+            $grpAfter['23']['net'] += $net; $grpAfter['23']['vat'] += $vat;
         } elseif ($rate >= 7.5) {
-            $grpAfter['8']['net']  += $net;
-            $grpAfter['8']['vat']  += $vat;
+            $grpAfter['8']['net']  += $net; $grpAfter['8']['vat']  += $vat;
         } elseif ($rate >= 4.5) {
-            $grpAfter['5']['net']  += $net;
-            $grpAfter['5']['vat']  += $vat;
+            $grpAfter['5']['net']  += $net; $grpAfter['5']['vat']  += $vat;
+        } elseif (str_starts_with($vatName, 'zw')) {
+            $grpAfter['zw']['net']    += $net;
+        } elseif (str_contains($vatName, 'wdt')) {
+            $grpAfter['0wdt']['net']  += $net;
+        } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
+            $grpAfter['0ex']['net']   += $net;
+        } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+            $grpAfter['np_ii']['net'] += $net;
+        } elseif (str_starts_with($vatName, 'np')) {
+            $grpAfter['np_i']['net']  += $net;
+        } elseif (str_starts_with($vatName, 'oo')) {
+            $grpAfter['oo']['net']    += $net;
+        } else {
+            $grpAfter['0kr']['net']   += $net;
         }
 
         $sumGrossAfter += $gross;
     }
 
     // --- różnice (po – przed) ---
-    $d23net = $grpAfter['23']['net'] - $grpBefore['23']['net'];
-    $d23vat = $grpAfter['23']['vat'] - $grpBefore['23']['vat'];
-    $d8net  = $grpAfter['8']['net']  - $grpBefore['8']['net'];
-    $d8vat  = $grpAfter['8']['vat']  - $grpBefore['8']['vat'];
-    $d5net  = $grpAfter['5']['net']  - $grpBefore['5']['net'];
-    $d5vat  = $grpAfter['5']['vat']  - $grpBefore['5']['vat'];
+    $d23net   = $grpAfter['23']['net']    - $grpBefore['23']['net'];
+    $d23vat   = $grpAfter['23']['vat']    - $grpBefore['23']['vat'];
+    $d8net    = $grpAfter['8']['net']     - $grpBefore['8']['net'];
+    $d8vat    = $grpAfter['8']['vat']     - $grpBefore['8']['vat'];
+    $d5net    = $grpAfter['5']['net']     - $grpBefore['5']['net'];
+    $d5vat    = $grpAfter['5']['vat']     - $grpBefore['5']['vat'];
+    $d0kr     = $grpAfter['0kr']['net']   - $grpBefore['0kr']['net'];
+    $d0wdt    = $grpAfter['0wdt']['net']  - $grpBefore['0wdt']['net'];
+    $d0ex     = $grpAfter['0ex']['net']   - $grpBefore['0ex']['net'];
+    $dzwNet   = $grpAfter['zw']['net']    - $grpBefore['zw']['net'];
+    $dnpINet  = $grpAfter['np_i']['net']  - $grpBefore['np_i']['net'];
+    $dnpIINet = $grpAfter['np_ii']['net'] - $grpBefore['np_ii']['net'];
+    $dooNet   = $grpAfter['oo']['net']    - $grpBefore['oo']['net'];
 
     if ($d23net !== 0.0) {
         $xml[] = '    <P_13_1>' . $this->fmtAmount($d23net) . '</P_13_1>';
@@ -6489,8 +6570,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     $sumGrossDiff = $sumGrossAfter - $sumGrossBefore;
 
-    // Dodatkowe pola P_13_4..P_13_11 itd. – jeśli używasz w korektach,
-    // zakładamy, że w encji przechowujesz już wartości "po – przed"
+    // P_13_4 / P_14_4 / P_14_4W – ryczałt dla taksówek (ręczne)
     $this->emitIfNotNull($xml, 'P_13_4', $inv->p_13_4 ?? null);
     $this->emitIfNotNull($xml, 'P_14_4', $inv->p_14_4 ?? null);
     $this->emitIfNotNull($xml, 'P_14_4W', $inv->p_14_4w ?? null);
@@ -6498,14 +6578,31 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     $this->emitIfNotNull($xml, 'P_13_5', $inv->p_13_5 ?? null);
     $this->emitIfNotNull($xml, 'P_14_5', $inv->p_14_5 ?? null);
 
-    $this->emitIfNotNull($xml, 'P_13_6_1', $inv->p_13_6_1 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_2', $inv->p_13_6_2 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_3', $inv->p_13_6_3 ?? null);
+    // P_13_6_1 – 0% KR (diff z pozycji + ew. ręczne)
+    $c13_6_1 = $d0kr    ?: ($inv->p_13_6_1 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_6_1', $c13_6_1 ?: null);
+    // P_13_6_2 – 0% WDT
+    $c13_6_2 = $d0wdt   ?: ($inv->p_13_6_2 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_6_2', $c13_6_2 ?: null);
+    // P_13_6_3 – 0% eksport (0 EX)
+    $c13_6_3 = $d0ex    ?: ($inv->p_13_6_3 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_6_3', $c13_6_3 ?: null);
 
-    $this->emitIfNotNull($xml, 'P_13_7',  $inv->p_13_7  ?? null);
-    $this->emitIfNotNull($xml, 'P_13_8',  $inv->p_13_8  ?? null);
-    $this->emitIfNotNull($xml, 'P_13_9',  $inv->p_13_9  ?? null);
-    $this->emitIfNotNull($xml, 'P_13_10', $inv->p_13_10 ?? null);
+    // P_13_7 – sprzedaż zwolniona (zw.)
+    $c13_7 = $dzwNet   ?: ($inv->p_13_7 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_7', $c13_7 ?: null);
+
+    // P_13_8 – dostawa/usługi poza terytorium kraju (np I)
+    $c13_8 = $dnpINet  ?: ($inv->p_13_8 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_8', $c13_8 ?: null);
+
+    // P_13_9 – usługi art. 100 ust. 1 pkt 4 UE (np II)
+    $c13_9 = $dnpIINet ?: ($inv->p_13_9 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_9', $c13_9 ?: null);
+
+    // P_13_10 – odwrotne obciążenie (oo)
+    $c13_10 = $dooNet ?: ($inv->p_13_10 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_10', $c13_10 ?: null);
     $this->emitIfNotNull($xml, 'P_13_11', $inv->p_13_11 ?? null);
 
     return [$xml, $sumGrossDiff];
@@ -6513,7 +6610,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     // ======================== ADNOTACJE ========================
 
-    private function buildAnnotationsXml(Invoice $inv): array
+    private function buildAnnotationsXml(Invoice $inv, array $items = []): array
     {
         $xml = [];
 
@@ -6544,7 +6641,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         $xml[] = '      <P_18A>' . $this->esc((string)$p18a) . '</P_18A>';
 
         // Zwolnienie – sprzedaż zwolniona (P_19, P_19A/B/C, P_19N)
-        $xml = array_merge($xml, $this->buildZwolnienieXml($inv, $ann));
+        $xml = array_merge($xml, $this->buildZwolnienieXml($inv, $ann, $items));
 
         // NoweSrodkiTransportu – WDT nowych środków transportu
         $xml = array_merge($xml, $this->buildNoweSrodkiTransportuXml($inv));
@@ -6562,12 +6659,11 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     }
 
 
-    private function buildZwolnienieXml(Invoice $inv, array $ann = []): array
+    private function buildZwolnienieXml(Invoice $inv, array $ann = [], array $items = []): array
     {
         $xml = [];
 
-        // Flaga biznesowa: czy faktura dokumentuje sprzedaż zwolnioną
-        // Pochodzi z checkboxa annotations[supply_goods] (zapisanego w JSON annotations)
+        // Flaga: czy faktura dokumentuje sprzedaż zwolnioną — wyłącznie na podstawie checkboxa
         $hasExempt = !empty($ann['supply_goods']);
 
         // Dodatkowe szczegóły z osobnych kolumn DB
@@ -6579,19 +6675,16 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         if ($hasExempt) {
             // 🔹 WYSTĘPUJE SPRZEDAŻ ZWOLNIONA – NIE WYSYŁAMY P_19N
 
-            // Mapowanie: annotations_tax_free → P_19
-            // 'ustawa' → 1, 'dyrektywa' → 2, 'inna' → 3 (domyślnie 1)
-            $typeMap = ['ustawa' => '1', 'dyrektywa' => '2', 'inna' => '3'];
-            $p19Value = $typeMap[$taxFreeType] ?? '1';
-            $xml[] = '        <P_19>' . $this->esc($p19Value) . '</P_19>';
+            // P_19 jest typu etd:TWybor1 — akceptuje wyłącznie wartość "1" (flaga).
+            // Rozróżnienie ustawa/dyrektywa/inna odbywa się przez użycie P_19A/P_19B/P_19C.
+            $xml[] = '        <P_19>1</P_19>';
 
-            // Mapowanie: annotations_tax_free_field → P_19A/B/C
+            // Mapowanie: annotations_tax_free → P_19A/B/C
             // A = ustawa, B = dyrektywa, C = inna
-            if (!empty($taxFreeField)) {
-                $tagMap = ['ustawa' => 'P_19A', 'dyrektywa' => 'P_19B', 'inna' => 'P_19C'];
-                $tag = $tagMap[$taxFreeType] ?? 'P_19A';
-                $xml[] = '        <' . $tag . '>' . $this->esc((string)$taxFreeField) . '</' . $tag . '>';
-            }
+            $tagMap = ['ustawa' => 'P_19A', 'dyrektywa' => 'P_19B', 'inna' => 'P_19C'];
+            $tag = $tagMap[$taxFreeType] ?? 'P_19A';
+            // XSD wymaga dokładnie jednego z P_19A/B/C — używamy nawet gdy pole puste
+            $xml[] = '        <' . $tag . '>' . $this->esc((string)($taxFreeField ?? '')) . '</' . $tag . '>';
         } else {
             // 🔹 BRAK SPRZEDAŻY ZWOLNIONEJ – ZAWSZE P_19N = 1
             $xml[] = '        <P_19N>1</P_19N>';
@@ -6837,9 +6930,35 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <P_11Vat>' . $this->fmtAmount($vatTotal) . '</P_11Vat>';
     }
 
-    if ($rate > 0) {
-        $xml[] = '      <P_12>' . (int)$rate . '</P_12>';
+    // P_12 — stawka VAT zgodnie z FA(3) / TStawkaPodatku
+    $vatName = strtolower(trim((string)($it->vat->name ?? '')));
+    if ($rate >= 22.5) {
+        $p12 = '23';
+    } elseif ($rate >= 7.5) {
+        $p12 = '8';
+    } elseif ($rate >= 4.5) {
+        $p12 = '5';
+    } elseif ($rate > 0) {
+        $p12 = (string)(int)$rate;
+    } elseif (str_starts_with($vatName, 'zw')) {
+        $p12 = 'zw';
+    } elseif (str_starts_with($vatName, 'oo')) {
+        $p12 = 'oo';
+    } elseif (str_contains($vatName, 'wdt')) {
+        $p12 = '0 WDT';
+    } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
+        $p12 = '0 EX';
+    } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+        // niepodlegające — usługi art. 100 ust. 1 pkt 4 (UE) → np II
+        $p12 = 'np II';
+    } elseif (str_starts_with($vatName, 'np')) {
+        // niepodlegające — dostawa poza terytorium kraju (bez UE) → np I
+        $p12 = 'np I';
+    } else {
+        // 0% krajowe
+        $p12 = '0 KR';
     }
+    $xml[] = '      <P_12>' . $p12 . '</P_12>';
 
     // KwotaAkcyzy [pozycja 21 w XSD — po P_12_Zal_15]
     if (!empty($it->excise_amount)) {
@@ -7093,26 +7212,34 @@ private function mapPaymentMethod(?string $method): string
         $xml = [];
         $xml[] = '    <WarunkiTransakcji>';
 
-        // Umowy (max 100)
-        foreach (($data['umowy'] ?? []) as $u) {
+        // Umowy (max 100) — obsługuje zarówno ['umowy'=>[['nr'=>...,'data'=>...]]] jak i ['Umowy'=>['nr1','nr2']]
+        $umowy = $data['umowy'] ?? $data['Umowy'] ?? [];
+        foreach ($umowy as $u) {
+            $nr   = is_array($u) ? ($u['nr']   ?? $u['NrUmowy']   ?? '') : (string)$u;
+            $data_ = is_array($u) ? ($u['data'] ?? $u['DataUmowy'] ?? '') : '';
+            if ($nr === '' && $data_ === '') continue;
             $xml[] = '      <Umowy>';
-            if (!empty($u['data'])) {
-                $xml[] = '        <DataUmowy>' . $this->esc((string)$u['data']) . '</DataUmowy>';
+            if ($data_ !== '') {
+                $xml[] = '        <DataUmowy>' . $this->esc($data_) . '</DataUmowy>';
             }
-            if (!empty($u['nr'])) {
-                $xml[] = '        <NrUmowy>' . $this->esc((string)$u['nr']) . '</NrUmowy>';
+            if ($nr !== '') {
+                $xml[] = '        <NrUmowy>' . $this->esc($nr) . '</NrUmowy>';
             }
             $xml[] = '      </Umowy>';
         }
 
-        // Zamowienia (max 100) — referencje zamówień, nie mylić z sekcją Zamówienie
-        foreach (($data['zamowienia'] ?? []) as $z) {
+        // Zamowienia (max 100) — obsługuje zarówno ['zamowienia'=>[['nr'=>...]]] jak i ['Zamowienia'=>['nr1']]
+        $zamowienia = $data['zamowienia'] ?? $data['Zamowienia'] ?? [];
+        foreach ($zamowienia as $z) {
+            $nr   = is_array($z) ? ($z['nr']   ?? $z['NrZamowienia']   ?? '') : (string)$z;
+            $data_ = is_array($z) ? ($z['data'] ?? $z['DataZamowienia'] ?? '') : '';
+            if ($nr === '' && $data_ === '') continue;
             $xml[] = '      <Zamowienia>';
-            if (!empty($z['data'])) {
-                $xml[] = '        <DataZamowienia>' . $this->esc((string)$z['data']) . '</DataZamowienia>';
+            if ($data_ !== '') {
+                $xml[] = '        <DataZamowienia>' . $this->esc($data_) . '</DataZamowienia>';
             }
-            if (!empty($z['nr'])) {
-                $xml[] = '        <NrZamowienia>' . $this->esc((string)$z['nr']) . '</NrZamowienia>';
+            if ($nr !== '') {
+                $xml[] = '        <NrZamowienia>' . $this->esc($nr) . '</NrZamowienia>';
             }
             $xml[] = '      </Zamowienia>';
         }
