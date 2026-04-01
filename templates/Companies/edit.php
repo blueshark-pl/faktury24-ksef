@@ -617,7 +617,7 @@ $this->assign('title', 'Edycja firmy');
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer]" title="Kolejny numer faktury">[numer]</span>
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok]" title="Rok 4-cyfrowy (np. 2025)">[rok]</span>
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok:format_dwucyfrowy]" title="Rok 2-cyfrowy (np. 25)">[rok 2-cyfr.]</span>
-                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiac]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiac]</span>
+                        <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiąc]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiąc]</span>
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[dzien]" title="Dzień 2-cyfrowy (np. 07)">[dzien]</span>
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[kwartał]" title="Kwartał (1-4)">[kwartał]</span>
                         <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer:zera_wiodące=4]" title="Numer z zerami wiodącymi (np. 0001)">[numer 0001]</span>
@@ -769,7 +769,7 @@ $this->assign('title', 'Edycja firmy');
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer]" title="Kolejny numer faktury">[numer]</span>
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok]" title="Rok 4-cyfrowy (np. 2025)">[rok]</span>
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[rok:format_dwucyfrowy]" title="Rok 2-cyfrowy (np. 25)">[rok 2-cyfr.]</span>
-                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiac]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiac]</span>
+                      <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[miesiąc]" title="Miesiąc 2-cyfrowy (np. 03)">[miesiąc]</span>
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[dzien]" title="Dzień 2-cyfrowy (np. 07)">[dzien]</span>
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[kwartał]" title="Kwartał (1-4)">[kwartał]</span>
                       <span class="badge bg-light text-secondary border small fw-normal series-param-chip" data-param="[numer:zera_wiodące=4]" title="Numer z zerami wiodącymi (np. 0001)">[numer 0001]</span>

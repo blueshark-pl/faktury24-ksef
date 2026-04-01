@@ -75,13 +75,14 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
             'class' => 'form-select',
             'empty' => '— brak (domyślnie) —',
             'options' => [
-              1 => '1 — Podmiot zwolniony (art. 113 ust. 1 i 9)',
-              2 => '2 — Podatnik VAT czynny (nieobowiązkowe)',
-              3 => '3 — Podatnik VAT marża (art. 120)',
+              1 => '1 — Podatnik w stanie likwidacji',
+              2 => '2 — Podatnik w trakcie restrukturyzacji',
+              3 => '3 — Podatnik w stanie upadłości',
+              4 => '4 — Przedsiębiorstwo w spadku',
             ],
             'value' => $invoice->status_info_podatnika ?? '',
           ]) ?>
-          <small class="text-muted">Wartość 1 wymagana dla podmiotów zwolnionych z VAT.</small>
+          <small class="text-muted">Wypełniać tylko w szczególnych stanach prawnych. Większość faktur pozostawia puste.</small>
         </div>
         <div class="col-md-6">
           <label class="form-label small fw-semibold text-muted">Statusy nabywcy</label>

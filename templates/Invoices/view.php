@@ -35,6 +35,26 @@ $isNovat    = (strtolower((string)($invoice->type ?? '')) === 'novat');
 $__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
 // Typy dokumentów które nigdy nie trafiają do KSeF
 $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
+
+// Mapa typ faktury → akcja edycji
+$editActionMap = [
+    'vat'              => 'editVat',
+    'novat'            => 'editNoVat',
+    'proforma'         => 'editProforma',
+    'currency'         => 'editCurrency',
+    'advance'          => 'editAdvance',
+    'final'            => 'editAdvance',
+    'correction'       => 'editCorrection',
+    'margin'           => 'editMargin',
+    'internal'         => 'editInternal',
+    'internalevidence' => 'editInternalEvidence',
+    'oss'              => 'editVat',
+    'rental'           => 'editVat',
+];
+$invoiceType   = strtolower((string)($invoice->type ?? 'vat'));
+$editAction    = $editActionMap[$invoiceType] ?? 'editVat';
+$workflowStatus = strtolower(trim((string)($invoice->workflow_status ?? '')));
+$canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 ?>
 
 <!-- Actions Bar -->
@@ -56,6 +76,13 @@ $canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
            data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">
           <i class="ri-printer-line me-1"></i>Pobierz PDF
         </a>
+        <?php if ($canEdit): ?>
+        <?= $this->Html->link(
+            '<i class="ri-edit-line me-1"></i>' . ($workflowStatus === 'draft' ? 'Edytuj szkic' : 'Edytuj fakturę'),
+            ['action' => $editAction, $invoice->id],
+            ['class' => 'btn btn-outline-secondary btn-sm', 'escape' => false]
+        ) ?>
+        <?php endif; ?>
         <?php if ($canSendToKsef): ?>
           <button id="btn-send-ksef-test"
                   class="btn btn-primary btn-lg fw-semibold"

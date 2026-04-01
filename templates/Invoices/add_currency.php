@@ -206,7 +206,7 @@ $gtuSelectHtml .= '</select>';
             <div class="col-lg-4">
               <?= $this->Form->control('fullnumber', [
                 'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
-                'id' => 'invoice-number'
+                'id' => 'invoice-number', 'readonly' => true, 'tabindex' => '-1',
               ]) ?>
               <small class="text-muted" id="invoice-number-hint" style="display: none;">
                 <i class="ri-information-line"></i> Numer faktury: <span id="invoice-number-suggestion"></span>

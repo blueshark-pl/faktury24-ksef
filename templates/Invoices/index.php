@@ -245,11 +245,11 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
         ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'vatInvoice']) ?>
     </li>
     <?php if (!$isDemo): ?>
-      <li>
+      <!-- <li>
         <?= $this->Html->link('<i class="ri-file-2-line me-2"></i> Rachunek',
           ['controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'novat']],
           ['class' => 'dropdown-item d-flex align-items-center', 'escape' => false, 'data-testid' => 'vatInvoice']) ?>
-      </li>
+      </li> -->
       <li>
         <?= $this->Html->link('<i class="ri-price-tag-3-line me-2"></i> Proforma',
           ['controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'proforma']],

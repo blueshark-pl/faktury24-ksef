@@ -125,9 +125,9 @@ $months = [
             </div>
           </div>
         </div>
-        <div class="table-responsive" style="max-height:65vh;overflow-y:auto;">
+        <div class="table-responsive">
           <table class="table table-hover table-sm align-middle mb-0" id="invoices-table">
-            <thead class="table-light position-sticky" style="top:0;z-index:1;">
+            <thead class="table-light">
               <tr>
                 <th>Numer</th>
                 <th>Typ</th>

@@ -289,9 +289,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
                         <!-- Start::header-element (Instrukcja obsługi) -->
                         <li class="header-element">
-                            <a href="javascript:void(0);" class="header-link" data-bs-toggle="modal" data-bs-target="#manualPdfModal"
-                               data-bs-toggle-tooltip="tooltip" data-bs-placement="bottom" title="Instrukcja obsługi">
-                                <i class="ti ti-book-2 fs-22 header-link-icon"></i>
+                            <a href="javascript:void(0);" class="header-link btn btn-primary btn-sm d-flex align-items-center gap-1 px-3 py-1 ms-1"
+                               data-bs-toggle="modal" data-bs-target="#manualPdfModal">
+                                <i class="ti ti-book-2 fs-15"></i>
+                                <span class="d-none d-sm-inline fw-medium">Instrukcja obsługi</span>
                             </a>
                         </li>
                         <!-- End::header-element (Instrukcja obsługi) -->
@@ -492,13 +493,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 ['class' => trim('side-menu__item ' . $navActive('invoices', 'addVat'))]
                                             ) ?>
                                         </li>
-                                        <li class="slide">
+                                        <!-- <li class="slide">
                                             <?= $this->Html->link(
                                                 'Rachunek',
                                                 ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addNoVat'],
                                                 ['class' => trim('side-menu__item ' . $navActive('invoices', 'addNoVat'))]
                                             ) ?>
-                                        </li>
+                                        </li> -->
                                         <li class="slide">
                                             <?= $this->Html->link(
                                                 'Proforma / Oferta',
@@ -808,15 +809,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <div class="modal fade" id="manualPdfModal" tabindex="-1" aria-labelledby="manualPdfModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content">
-          <div class="modal-header">
-            <h6 class="modal-title" id="manualPdfModalLabel">
+          <div class="modal-header d-flex align-items-center justify-content-between">
+            <h6 class="modal-title mb-0" id="manualPdfModalLabel">
               <i class="ti ti-book-2 me-2 text-primary"></i>Instrukcja obsługi
             </h6>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-3 ms-3">
               <a href="/faktury24_manual.pdf" download class="btn btn-outline-primary btn-sm">
                 <i class="ti ti-download me-1"></i>Pobierz PDF
               </a>
-              <button type="button" class="btn-close ms-1" data-bs-dismiss="modal" aria-label="Close"></button>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
           </div>
           <div class="modal-body p-0">
@@ -1152,15 +1153,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <!-- Toast container: lewy dolny róg -->
     <div class="position-fixed bottom-0 start-0 p-3" style="z-index:11000" id="f24-toast-container"></div>
     <script>
-    window.showToast = function(message, type) {
+    window.showToast = function(message, type, delay) {
         type = type || 'success';
+        delay = delay || 4000;
         var id = 'toast-' + Date.now();
         var icons = { success: 'bi-check-circle-fill', danger: 'bi-x-circle-fill', warning: 'bi-exclamation-triangle-fill', info: 'bi-info-circle-fill' };
         var icon = icons[type] || icons.info;
         var html = '<div id="' + id + '" class="toast align-items-center text-bg-' + type + ' border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">'
             + '<div class="d-flex">'
             + '<div class="toast-body d-flex align-items-center gap-2">'
-            + '<i class="bi ' + icon + '"></i>'
+            + '<i class="bi ' + icon + ' flex-shrink-0"></i>'
             + '<span>' + message + '</span>'
             + '</div>'
             + '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Zamknij"></button>'
@@ -1171,7 +1173,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
         container.insertAdjacentHTML('beforeend', html);
         var el = document.getElementById(id);
         if (el && window.bootstrap && bootstrap.Toast) {
-            var t = new bootstrap.Toast(el, { delay: 4000 });
+            var t = new bootstrap.Toast(el, { delay: delay });
             t.show();
             el.addEventListener('hidden.bs.toast', function() { el.remove(); });
         }

@@ -34,6 +34,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/archiwum-faktur/pobierz', ['controller' => 'LegacyInvoices', 'action' => 'fetch']);
         $builder->get('/archiwum-faktur/pdf', ['controller' => 'LegacyInvoices', 'action' => 'downloadPdf']);
         $builder->post('/invoice-series/search', 'InvoiceSeries::search');
+        $builder->connect('/invoices/validate-ajax', ['controller' => 'Invoices', 'action' => 'validateAjax'], ['_method' => ['POST', 'PUT', 'PATCH']]);
 
         // config/routes.php
         $builder->connect('/firma/edycja', ['controller' => 'Companies', 'action' => 'edit']);

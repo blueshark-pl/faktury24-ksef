@@ -1550,8 +1550,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             return null;
         }
 
-        // Wygeneruj numer faktury jeśli nie podano (z wyjątkiem draftu)
-        if (!$isDraftWorkflow && empty($data['fullnumber'])) {
+        // Wygeneruj numer faktury jeśli nie podano
+        // Numer generujemy zawsze — nawet dla draftu KSeF. workflow_status=draft
+        // dotyczy tylko stanu wysyłki do KSeF, nie samego numerowania.
+        if (empty($data['fullnumber'])) {
             $issueDate = $data['date'] ?: date('Y-m-d');
             $dateObject = new \DateTime($issueDate);
             $year = $dateObject->format('Y');
@@ -1828,7 +1830,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'tax' => $tax,
             'alreadypaid' => $alreadypaid,
             'remaining' => $remaining,
-            'fullnumber' => $isDraftWorkflow ? null : ($data['fullnumber'] ?? null),
+            'fullnumber' => $data['fullnumber'] ?? null,
             'currency' => $cur,
             'currency_date' => $currencyDate,
             'currency_exchange' => $currencyExchange,
