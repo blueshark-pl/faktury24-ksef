@@ -2882,6 +2882,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ? 1 : ($invoice->is_receipt_invoice ?? 0),
                 'is_split_payment'   => isset($data['is_split_payment']) ? (int)!empty($data['is_split_payment'])     : ($invoice->is_split_payment ?? 0),
             ];
+            // KSeF Adnotacje — zawsze nadpisuj z danych formularza
+            $invoicePatch['annotations']             = !empty($data['annotations']) ? json_encode($data['annotations'], JSON_UNESCAPED_UNICODE) : null;
+            $invoicePatch['annotations_tax_free']    = !empty($data['annotations_tax_free']) ? (string)$data['annotations_tax_free'] : null;
+            $invoicePatch['annotations_tax_free_field'] = !empty($data['annotations_tax_free_field']) ? (string)$data['annotations_tax_free_field'] : null;
+
             // FA(3) — opcjonalne pola edycji
             foreach (['period_from','period_to','wz_number','correction_reason','place_of_issue','footer_text','payment_link'] as $k) {
                 if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
