@@ -56,7 +56,7 @@ $debug = $req->getQuery('debug') !== null;
         <a class="btn btn-outline-secondary w-100" href="<?= $this->Url->build(['action' => $currentAction]) ?>">Wyczyść</a>
       </div>
       <div class="col-md-2 text-end ms-auto">
-        <a class="btn btn-outline-info" href="<?= $this->Url->build(['action' => $peerAction] + $req->getQueryParams()) ?>">Zobacz <?= $peerAction === 'issued' ? 'wystawione' : 'otrzymane' ?></a>
+        <a class="btn btn-outline-info" href="<?= $this->Url->build(['action' => $peerAction, '?' => $req->getQueryParams()]) ?>">Zobacz <?= $peerAction === 'issued' ? 'wystawione' : 'otrzymane' ?></a>
       </div>
     </form>
   </div>

@@ -86,7 +86,7 @@ a.icon-clip i { font-size: .85rem; }
     <span class="badge bg-<?= $env === 'prod' ? 'primary' : 'warning' ?>-subtle text-<?= $env === 'prod' ? 'primary' : 'warning' ?> border env-badge">
       <?= $env === 'prod' ? 'Produkcja' : 'Test' ?>
     </span>
-    <a class="btn btn-sm btn-outline-primary btn-wave" href="<?= $this->Url->build(['action' => 'issued'] + $this->getRequest()->getQueryParams()) ?>">
+    <a class="btn btn-sm btn-outline-primary btn-wave" href="<?= $this->Url->build(['action' => 'issued', '?' => $this->getRequest()->getQueryParams()]) ?>">
       <i class="ri-send-plane-line me-1"></i>Wystawione
     </a>
   </div>
@@ -315,8 +315,9 @@ a.icon-clip i { font-size: .85rem; }
 
   <!-- Pagination -->
   <?php
-    $prevUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => max(1, $page - 1)]));
-    $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => $page + 1]));
+    $qp = $this->getRequest()->getQueryParams();
+    $prevUrl = $this->Url->build(['action' => 'received', '?' => array_merge($qp, ['page' => max(1, $page - 1)])]);
+    $nextUrl = $this->Url->build(['action' => 'received', '?' => array_merge($qp, ['page' => $page + 1])]);
     $hasMore = !empty($apiInfo['hasMore']) || count($invoices ?? []) >= 25;
   ?>
   <div class="card-footer bg-transparent d-flex justify-content-between align-items-center py-2">
