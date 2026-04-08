@@ -447,15 +447,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             <!-- Start::slide__category -->
                             <li class="slide__category"><span class="category-name">Faktury24</span></li>
                             <!-- End::slide__category -->
-                            <!-- Otrzymane -->
-                            <!-- <li class="slide">
-                                <?= $this->Html->link(
-                                    '<svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M32,72H224V184a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="32 72 128 136 224 72" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>
-                                    <span class="side-menu__label">Otrzymane</span>',
-                                    ['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'prod']],
-                                    ['escape' => false, 'class' => 'side-menu__item']
-                                ) ?>
-                            </li> -->
                             <!-- Fakturowanie -->
                             <li class="<?= $liClass(['invoices', 'nbp', 'legacyinvoices']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -590,6 +581,26 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                             </ul>
                             </li>
+
+                            <!-- Księgowość -->
+                            <li class="slide__category"><span class="category-name">Księgowość</span></li>
+                            <li class="<?= $liClass(['ksefauthorizations']) ?>">
+                            <a href="javascript:void(0);" class="side-menu__item">
+                                <i class="ri-arrow-right-s-line side-menu__angle"></i>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M32,72H224V184a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="32 72 128 136 224 72" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>
+                                <span class="side-menu__label">Dokumenty</span>
+                            </a>
+                            <ul class="slide-menu child1">
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Otrzymane z KSeF',
+                                            ['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => 'prod']],
+                                            ['class' => 'side-menu__item ' . $navActive('ksefauthorizations', 'received', ['env' => 'prod'])]
+                                    ) ?>
+                                </li>
+                            </ul>
+                            </li>
+
                             <!-- <li class="slide">
                                 <?= $this->Html->link(
                                     '<svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256">
