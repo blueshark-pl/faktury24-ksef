@@ -144,16 +144,33 @@ class KsefAuthorizationsController extends AppController
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
 
         try {
-            $ksef->queryReceivedMetadata(
+            $result = $ksef->queryPersonalGrants(
                 companyId: $companyId,
                 environment: $env,
-                filters: [],
+                filters: ['permissionState' => 'Active', 'permissionTypes' => ['InvoiceWrite']],
                 pageOffset: 0,
                 pageSize: 1
             );
-            $status = ['active' => true, 'env' => $env, 'ts' => time(), 'lastError' => null];
+            $items = [];
+            if (is_array($result)) {
+                $items = $result['permissions'] ?? $result['items'] ?? [];
+            }
+            $hasInvoiceWrite = count($items) > 0;
+            $status = [
+                'active'         => $hasInvoiceWrite,
+                'env'            => $env,
+                'ts'             => time(),
+                'lastError'      => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
+                'checkKind'      => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+            ];
         } catch (\Throwable $e) {
-            $status = ['active' => false, 'env' => $env, 'ts' => time(), 'lastError' => $e->getMessage()];
+            $status = [
+                'active'    => false,
+                'env'       => $env,
+                'ts'        => time(),
+                'lastError' => $e->getMessage() ?: get_class($e),
+            ];
         }
 
         $this->request->getSession()->write('Ksef.status', $status);
@@ -555,10 +572,10 @@ class KsefAuthorizationsController extends AppController
      */
     public function uploadCertificate()
     {
-        if ((bool)(Configure::read('Ksef.forceMasterCert') ?? false)) {
-            $this->Flash->error('Wgrywanie certyfikatów jest wyłączone. System używa certyfikatu MASTER.');
-            return $this->redirect(['action' => 'index']);
-        }
+        // if ((bool)(Configure::read('Ksef.forceMasterCert') ?? false)) {
+        //     $this->Flash->error('Wgrywanie certyfikatów jest wyłączone. System używa certyfikatu MASTER.');
+        //     return $this->redirect(['action' => 'index']);
+        // }
 
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');

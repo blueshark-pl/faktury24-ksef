@@ -9,6 +9,25 @@
 $__isEdit = !empty($isEdit) || !empty($invoice?->id) || (isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false);
 $__pageTitle = $__isEdit ? 'Edytuj fakturę walutową' : 'Faktura walutowa';
 $this->assign('title', $__pageTitle);
+// Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
+$__paymentDateVal = '';
+$__dueDaysPreset  = 7;
+$__dueDaysCustom  = false;
+if (!empty($invoice->paymentdate)) {
+    $pd = $invoice->paymentdate instanceof \DateTimeInterface
+        ? $invoice->paymentdate
+        : new \DateTime((string)$invoice->paymentdate);
+    $__paymentDateVal = $pd->format('Y-m-d');
+    $id_ = !empty($invoice->date)
+        ? ($invoice->date instanceof \DateTimeInterface ? $invoice->date : new \DateTime((string)$invoice->date))
+        : new \DateTime();
+    $diff = (int)$id_->diff($pd)->days * ($pd >= $id_ ? 1 : -1);
+    if (in_array($diff, [0, 7, 14, 30, 60, 90], true)) {
+        $__dueDaysPreset = $diff;
+    } else {
+        $__dueDaysCustom = true;
+    }
+}
 $__ksefModeEnabled = false;
 
 $__prefillContractor = null;
@@ -120,9 +139,8 @@ $gtuSelectHtml .= '</select>';
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
-        <?php if ($this->Identity->hasRole('admin')): ?>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -141,7 +159,7 @@ $gtuSelectHtml .= '</select>';
             </li>
           </ul>
         </div>
-        <?php endif; ?>
+        <?php //endif; ?>
         <script>
         $(function(){
           var $gearBtn = $("#inv-extra-tabs-btn");
@@ -276,14 +294,14 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-7">
                     <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
                       <?php foreach ([0,7,14,30,60,90] as $d): ?>
-                        <option value="<?= $d ?>"<?= $d == 7 ? ' selected' : '' ?>><?= $d ?> dni</option>
+                        <option value="<?= $d ?>"<?= (!$__dueDaysCustom && $d === $__dueDaysPreset) ? ' selected' : '' ?>><?= $d ?> dni</option>
                       <?php endforeach; ?>
-                      <option value="_custom">Inna liczba…</option>
+                      <option value="_custom"<?= $__dueDaysCustom ? ' selected' : '' ?>>Inna liczba…</option>
                     </select>
                   </div>
                   <div class="col-5">
                     <div class="input-group">
-                      <input type="date" id="payment-date" name="paymentdate" class="form-control">
+                      <input type="date" id="payment-date" name="paymentdate" class="form-control" value="<?= h($__paymentDateVal) ?>">
                       <span class="input-group-text"><i class="ri-calendar-line"></i></span>
                     </div>
                   </div>
@@ -421,17 +439,17 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
   <div class="card-title">Faktura walutowa</div>
         <div class="ms-auto mt-md-0 mt-2">
+          <?= $this->Form->button('Zapisz jako roboczą', [
+            'class' => 'btn btn-sm btn-outline-secondary',
+            'name' => 'save_draft'
+          ]) ?>
           <?php if ($__ksefModeEnabled): ?>
-            <?= $this->Form->button('Zapisz jako roboczą', [
-              'class' => 'btn btn-sm btn-outline-primary',
-              'name' => 'save_only'
-            ]) ?>
             <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
               'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
             ]) ?>
           <?php else: ?>
             <?= $this->Form->button('Zapisz i wystaw', [
-              'class' => 'btn btn-sm btn-primary',
+              'class' => 'btn btn-sm btn-primary ms-1',
               'name' => 'save_only'
             ]) ?>
           <?php endif; ?>
@@ -498,9 +516,45 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                   <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
+                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
+                  <!-- Identyfikatory UE / zagraniczne -->
+                  <div class="col-12">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle" value="1"<?= (!empty($invoice->invoice_contractor->vat_prefix) || !empty($invoice->invoice_contractor->vat_eu) || !empty($invoice->invoice_contractor->eori) || !empty($invoice->invoice_contractor->tax_id_other)) ? ' checked' : '' ?>>
+                      <label class="form-check-label small text-muted" for="snapshot-intl-toggle">Identyfikatory UE / zagraniczne</label>
+                    </div>
+                  </div>
+                  <div class="col-12<?= (!empty($invoice->invoice_contractor->vat_prefix) || !empty($invoice->invoice_contractor->vat_eu) || !empty($invoice->invoice_contractor->eori) || !empty($invoice->invoice_contractor->tax_id_other)) ? '' : ' d-none' ?>" id="snapshot-intl-fields">
+                    <div class="row g-2">
+                      <div class="col-3">
+                        <input type="text" name="invoice_contractor[vat_prefix]" class="form-control form-control-sm" maxlength="8"
+                          placeholder="Prefiks VAT UE (np. DE)"
+                          value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
+                      </div>
+                      <div class="col-5">
+                        <input type="text" name="invoice_contractor[vat_eu]" class="form-control form-control-sm" maxlength="32"
+                          placeholder="Numer VAT-UE (np. 123456789)"
+                          value="<?= h($invoice->invoice_contractor->vat_eu ?? '') ?>">
+                      </div>
+                      <div class="col-4">
+                        <input type="text" name="invoice_contractor[eori]" class="form-control form-control-sm" maxlength="32"
+                          placeholder="EORI (np. PL1234567890)"
+                          value="<?= h($invoice->invoice_contractor->eori ?? '') ?>">
+                      </div>
+                      <div class="col-8">
+                        <input type="text" name="invoice_contractor[tax_id_other]" class="form-control form-control-sm" maxlength="64"
+                          placeholder="Inny identyfikator podatkowy"
+                          value="<?= h($invoice->invoice_contractor->tax_id_other ?? '') ?>">
+                      </div>
+                      <div class="col-4">
+                        <input type="text" name="invoice_contractor[tax_id_other_country]" class="form-control form-control-sm" maxlength="8"
+                          placeholder="Kod kraju (np. GB)"
+                          value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Checkbox: zapisz do katalogu + popover info -->
@@ -1666,7 +1720,7 @@ $(function () {
   function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
   function fillContractorSnapshot(c){
     console.log('fillContractorSnapshot called with:', c);
-    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'' };
+    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'' };
     console.log('Contractor data to fill:', data);
     function setField(key, val){
       var $targets = $('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+'"],#invoice-contractor-'+key+',#invoice_contractor_'+key);
@@ -1675,6 +1729,10 @@ $(function () {
       else { var $any=$('[name="'+key+'"], #'+key); if ($any.length) $any.val(val==null?'':val).trigger('change'); }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
+    // Pokaż sekcję intl jeśli któreś pole wypełnione
+    var hasIntl = !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
+    $('#snapshot-intl-toggle').prop('checked', hasIntl);
+    $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
   }
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
@@ -1695,10 +1753,12 @@ $(function () {
     saveRecent({id: c.id || ('LS:'+ (c.nip || (c.name||''))), text: c.name || c.label});
   }
   function clearContractorSnapshot(){
-    ['name','nip','street','zip','city','country','email','phone'].forEach(function(f){
+    ['name','nip','street','zip','city','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].forEach(function(f){
       $('[name="invoice_contractor['+f+']"]').val(f==='country'?'PL':'');
     });
     $('#contractor-id-input').val('');
+    $('#snapshot-intl-toggle').prop('checked', false);
+    $('#snapshot-intl-fields').addClass('d-none');
   }
 
   // ====== OSTATNIO WYBIERANI ======
@@ -2060,6 +2120,17 @@ $('#gus-fetch-btn').on('click', function(){
     }
   }
 
+  // ===== Identyfikatory UE / zagraniczne — toggle =====
+  $(document).on('change', '#snapshot-intl-toggle', function(){
+    $('#snapshot-intl-fields').toggleClass('d-none', !this.checked);
+  });
+  (function(){
+    var hasIntl = ['vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].some(function(f){
+      return !!($('[name="invoice_contractor['+f+']"]').val()||'').trim();
+    });
+    if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
+  })();
+
   // ===== Guard & sumy =====
   function allCalc(){
     var sn = 0, sg = 0;
@@ -2168,7 +2239,7 @@ $('#gus-fetch-btn').on('click', function(){
               results: $.map(data.results, function (p) { 
                 return $.extend({ 
                   id: p.id, 
-                  text: p.text || (p.code ? p.code + ' - ' + p.name : p.name) 
+                  text: p.name || p.text 
                 }, p); 
               }) 
             };
@@ -2444,7 +2515,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {
           var $sel        = currentProductRow.find('.item-product-select');
-          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          var displayText = prodName;
           if (product.is_service) displayText += ' (usluga)';
           var opt = new Option(displayText, product.id, true, true);
           $sel.append(opt).trigger('change');
@@ -2870,14 +2941,11 @@ $('#gus-fetch-btn').on('click', function(){
     recomputeFromPreset(); 
   });
   $dueDate.on('change', recomputeFromDate);
-  setTimeout(function(){ 
-    // Jeśli preset jest wybrany (nie "_custom"), użyj preset-u
-    if ($duePreset.val() && $duePreset.val() !== '_custom') {
-      recomputeFromPreset(); 
-    } else if ($dueDate.val()) {
-      recomputeFromDate(); 
-    } else {
-      recomputeFromPreset(); 
+  setTimeout(function(){
+    if ($dueDate.val()) {
+      recomputeFromDate();
+    } else if ($duePreset.val() && $duePreset.val() !== '_custom') {
+      recomputeFromPreset();
     }
   }, 0);
 // ====== SELECT2: Seria faktury ======

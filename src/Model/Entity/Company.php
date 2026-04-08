@@ -12,6 +12,9 @@ use Cake\ORM\Entity;
  * @property string $name
  * @property string|null $altname
  * @property string|null $nip
+ * @property string|null $seller_vat_prefix
+ * @property string|null $seller_vat_eu
+ * @property string|null $seller_eori
  * @property string|null $regon
  * @property string|null $country
  * @property string|null $postal_code
@@ -62,6 +65,9 @@ class Company extends Entity
         'name' => true,
         'altname' => true,
         'nip' => true,
+        'seller_vat_prefix' => true,
+        'seller_vat_eu' => true,
+        'seller_eori' => true,
         'regon' => true,
         'country' => true,
         'postal_code' => true,

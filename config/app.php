@@ -61,7 +61,7 @@ return [
         'imageBaseUrl' => 'img/',
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
-        'version' => '1.2.23 (50)',
+        'version' => '1.4.1 (51)',
         'ksefSchedulerKey' => env('APP_KSEF_SCHEDULER_KEY', ''),
         'ssoSecret' => env('APP_SSO_SECRET', '23319ef6c6c9247c01cece1f02c6405058ecb78efd85e8aee14e1dc705d2ec7b'),
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
@@ -93,7 +93,7 @@ return [
      *   You should treat it as extremely sensitive data.
      */
     'Security' => [
-        'salt' => env('SECURITY_SALT'),
+        'salt' => env('SECURITY_SALT', '__CHANGE_ME__e8483fb7479beb0e9a6a5999f0e50c64'),
     ],
 
     /*
@@ -321,7 +321,7 @@ return [
             'className' => Connection::class,
             'driver' => Mysql::class,
             'persistent' => false,
-            'timezone' => 'UTC',
+            'timezone' => 'Europe/Warsaw',
 
             /*
              * For MariaDB/MySQL the internal default changed from utf8 to utf8mb4, aka full utf-8 support
@@ -364,7 +364,7 @@ return [
             'className' => Connection::class,
             'driver' => Mysql::class,
             'persistent' => false,
-            'timezone' => 'UTC',
+            'timezone' => 'Europe/Warsaw',
             'encoding' => 'utf8mb4',
             'flags' => [],
             'cacheMetadata' => true,

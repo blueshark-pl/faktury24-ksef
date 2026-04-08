@@ -26,7 +26,9 @@ class InvoicesController extends AppController
         $this->numbering = new InvoiceNumberingService();
 
         // Disable CSRF for API (token auth instead)
-        $this->components()->unload('FormProtection');
+        if ($this->components()->has('FormProtection')) {
+            $this->components()->unload('FormProtection');
+        }
         if ($this->components()->has('Security')) {
             $this->components()->unload('Security');
         }
@@ -44,7 +46,7 @@ class InvoicesController extends AppController
         try {
             $authentication = $this->request->getAttribute('authentication');
             if ($authentication && method_exists($authentication, 'allowUnauthenticated')) {
-                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment']);
+                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'pdf']);
             }
         } catch (\Throwable) {}
     }
@@ -193,6 +195,44 @@ class InvoicesController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // GET /api/v1/invoices/{id}/status
+    // -------------------------------------------------------------------------
+
+    public function status(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+
+        try {
+            $inv = $this->fetchTable('Invoices')
+                ->find()
+                ->select([
+                    'id', 'fullnumber', 'workflow_status',
+                    'ksef_number', 'ksef_status', 'modified',
+                ])
+                ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+                ->firstOrFail();
+        } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
+            return $this->jsonError(404, 'Faktura nie znaleziona.');
+        }
+
+        return $this->jsonOk(200, [
+            'id'              => $inv->id,
+            'fullnumber'      => $inv->fullnumber,
+            'workflow_status' => $inv->workflow_status,
+            'ksef_number'     => $inv->ksef_number,
+            'ksef_status'     => $inv->ksef_status,
+            'modified'        => $inv->modified?->format('Y-m-d H:i:s'),
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
     // GET /api/v1/invoices/{id}
     // -------------------------------------------------------------------------
 
@@ -321,6 +361,114 @@ class InvoicesController extends AppController
             'created'     => $inv->created?->format('Y-m-d H:i:s'),
             'modified'    => $inv->modified?->format('Y-m-d H:i:s'),
             'view_url'    => '/invoices/view/' . $inv->id,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/invoices/{id}/issue  — szkic → wystawiona
+    // -------------------------------------------------------------------------
+
+    public function issue(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+        $Invoices  = $this->fetchTable('Invoices');
+
+        try {
+            $inv = $Invoices->find()
+                ->select(['id', 'fullnumber', 'workflow_status', 'is_api', 'company_id'])
+                ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+                ->firstOrFail();
+        } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
+            return $this->jsonError(404, 'Faktura nie znaleziona.');
+        }
+
+        if (!$inv->is_api) {
+            return $this->jsonError(403, 'Akcja dostępna tylko dla faktur utworzonych przez API.');
+        }
+
+        if ((string)($inv->workflow_status ?? '') !== 'draft') {
+            return $this->jsonError(422, 'Faktura nie jest szkicem (workflow_status: ' . ($inv->workflow_status ?? 'brak') . ').');
+        }
+
+        $inv->set('workflow_status', 'issued');
+        $Invoices->save($inv);
+
+        return $this->jsonOk(200, [
+            'id'              => $inv->id,
+            'fullnumber'      => $inv->fullnumber,
+            'workflow_status' => 'issued',
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/invoices/{id}/send-ksef  — wystawiona → wysyłka do KSeF
+    // -------------------------------------------------------------------------
+
+    public function sendKsef(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+        $Invoices  = $this->fetchTable('Invoices');
+
+        try {
+            $inv = $Invoices->find()
+                ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number', 'is_api', 'company_id'])
+                ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+                ->firstOrFail();
+        } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
+            return $this->jsonError(404, 'Faktura nie znaleziona.');
+        }
+
+        if (!$inv->is_api) {
+            return $this->jsonError(403, 'Akcja dostępna tylko dla faktur utworzonych przez API.');
+        }
+
+        $status = (string)($inv->workflow_status ?? '');
+        if (in_array($status, ['sent', 'sending'], true)) {
+            return $this->jsonError(422, 'Faktura już została wysłana do KSeF (status: ' . $status . ').');
+        }
+        if ($status === 'draft') {
+            return $this->jsonError(422, 'Faktura jest szkicem — najpierw wywołaj /issue.');
+        }
+
+        // Wywołaj sendInvoiceToKsefCore bezpośrednio przez instancję głównego kontrolera
+        $mainController = new \App\Controller\InvoicesController(
+            $this->request
+        );
+
+        $invFull = $Invoices->get($id, contain: ['InvoiceContractors', 'InvoiceCompanyDetails', 'InvoiceContents' => ['Vats'], 'Companies']);
+
+        $send = $mainController->sendInvoiceToKsefCore($invFull, $companyId);
+
+        // Odczytaj aktualny status po wysyłce
+        $inv = $Invoices->find()
+            ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number'])
+            ->where(['Invoices.id' => $id])
+            ->first();
+
+        $sent = $send['success'] ?? false;
+
+        return $this->jsonOk($sent ? 200 : 422, [
+            'id'              => $id,
+            'fullnumber'      => $inv->fullnumber ?? null,
+            'workflow_status' => $inv->workflow_status ?? null,
+            'ksef_status'     => $inv->ksef_status ?? null,
+            'ksef_number'     => $inv->ksef_number ?? null,
+            'success'         => $sent,
+            'error'           => $sent ? null : ($send['error'] ?? 'Błąd wysyłki do KSeF'),
         ]);
     }
 
@@ -637,6 +785,16 @@ class InvoicesController extends AppController
         $template   = $series->series_template ?: '[numer]';
         $fullnumber = $this->numbering->formatPattern($template, $nextNumber, $issueDate);
 
+        // ── Override fullnumber (np. import z zewnętrznego systemu) ──────────
+        if (!empty($data['fullnumber_override'])) {
+            $fullnumber = (string)$data['fullnumber_override'];
+            // wyciągnij numer z override żeby nie zaburzać sekwencji
+            $extractedNumber = $this->numbering->extractNumberFromFullnumber($fullnumber);
+            if ($extractedNumber > 0) {
+                $nextNumber = $extractedNumber;
+            }
+        }
+
         // ── 7. Build invoice data ────────────────────────────────────────────
         $payMethod = (string)($data['payment_method'] ?? $data['paymentmethod'] ?? 'transfer');
         $payDate   = !empty($data['payment_date']) ? (string)$data['payment_date']
@@ -672,7 +830,7 @@ class InvoicesController extends AppController
             'is_print'           => false,
             'is_sent'            => false,
             'is_api'             => true,
-            'workflow_status'    => 'issued',
+            'workflow_status'    => !empty($data['is_draft']) ? 'draft' : 'issued',
             'issuer'             => (string)($data['issuer'] ?? ''),
             'place_of_issue'     => (string)($data['place_of_issue'] ?? ''),
             'footer_text'        => (string)($data['footer_text'] ?? ''),
@@ -697,7 +855,7 @@ class InvoicesController extends AppController
                 ->contain(['CompanyRegisters'])
                 ->first();
             if ($company) {
-                $this->saveCompanySnapshot($invoiceId, $company, $companyId);
+                $this->saveCompanySnapshot($invoiceId, $company, $companyId, trim((string)($data['bank_account_id'] ?? '')));
             }
 
             // Buyer snapshot
@@ -739,7 +897,7 @@ class InvoicesController extends AppController
             'id'          => $invoiceId,
             'fullnumber'  => $fullnumber,
             'date'        => $issueDate,
-            'total'       => $total,
+            'total'       => round($total, 2),
             'netto'       => round($sumNet, 2),
             'tax'         => round($sumTax, 2),
             'currency'    => 'PLN',
@@ -752,18 +910,25 @@ class InvoicesController extends AppController
     // Snapshot helpers (mirror handleAdd logic)
     // -------------------------------------------------------------------------
 
-    private function saveCompanySnapshot(string $invoiceId, mixed $company, string $companyId): void
+    private function saveCompanySnapshot(string $invoiceId, mixed $company, string $companyId, string $bankAccountId = ''): void
     {
         $InvoiceCompanyDetailsTable = $this->fetchTable('InvoiceCompanyDetails');
 
-        // Default bank account
+        // Bank account — use requested or fall back to default
         $snapshotBank = $snapshotBankName = '';
         try {
             $Cba = $this->fetchTable('CompanyBankAccounts');
-            $cba = $Cba->find()
-                ->select(['iban', 'bank_name'])
-                ->where(['company_id' => $companyId, 'is_default' => 1])
-                ->first();
+            if ($bankAccountId !== '') {
+                $cba = $Cba->find()
+                    ->select(['iban', 'bank_name'])
+                    ->where(['id' => $bankAccountId, 'company_id' => $companyId])
+                    ->first();
+            } else {
+                $cba = $Cba->find()
+                    ->select(['iban', 'bank_name'])
+                    ->where(['company_id' => $companyId, 'is_default' => 1])
+                    ->first();
+            }
             $snapshotBank     = (string)($cba->iban ?? '');
             $snapshotBankName = (string)($cba->bank_name ?? '');
         } catch (\Throwable) {}
@@ -832,5 +997,153 @@ class InvoicesController extends AppController
             ->withType('application/json')
             ->withStringBody(json_encode(['success' => false, 'error' => $message], JSON_UNESCAPED_UNICODE));
         return $this->response;
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/bank-accounts  — lista rachunków bankowych firmy
+    // -------------------------------------------------------------------------
+
+    public function bankAccounts(): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+        $rows = $this->fetchTable('CompanyBankAccounts')
+            ->find()
+            ->select(['id', 'label', 'iban', 'bank_name', 'is_default'])
+            ->where(['company_id' => $companyId])
+            ->orderBy(['is_default' => 'DESC', 'label' => 'ASC'])
+            ->all();
+
+        $accounts = [];
+        foreach ($rows as $a) {
+            $accounts[] = [
+                'id'         => $a->id,
+                'label'      => $a->label ?: $a->iban,
+                'iban'       => $a->iban,
+                'bank_name'  => $a->bank_name,
+                'is_default' => (bool)$a->is_default,
+            ];
+        }
+
+        return $this->jsonOk(200, ['bank_accounts' => $accounts]);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/series  — lista serii numeracji firmy
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/invoices/{id}/pdf  — pobierz PDF faktury (binary)
+    // -------------------------------------------------------------------------
+
+    public function pdf(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+        $Invoices  = $this->fetchTable('Invoices');
+
+        try {
+            $invoice = $Invoices->get($id, contain: [
+                'InvoiceContractors',
+                'InvoiceContents' => ['Vats'],
+                'Companies',
+                'InvoiceCompanyDetails',
+            ], conditions: ['Invoices.company_id' => $companyId]);
+        } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
+            return $this->jsonError(404, 'Faktura nie znaleziona.');
+        }
+
+        $mainController = new \App\Controller\InvoicesController($this->request);
+
+        $xml = '';
+        try {
+            $xml = $mainController->buildFa3Xml($invoice);
+        } catch (\Throwable $e) {
+            return $this->jsonError(500, 'Błąd generowania XML: ' . $e->getMessage());
+        }
+
+        if (trim($xml) === '') {
+            return $this->jsonError(500, 'Pusty XML faktury.');
+        }
+
+        $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
+        $apiUrl  = $isDraft
+            ? (getenv('INVOICE_DRAFT_API_URL') ?: 'https://faktury24-draft.3ckstudio.pl/api/invoice')
+            : (getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice');
+
+        $seller    = $invoice->invoice_company_detail ?? null;
+        $nip       = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
+        $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
+        $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
+        $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+            ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
+            : '';
+
+        try {
+            $http = new \Cake\Http\Client(['timeout' => 60]);
+            $resp = $http->post($apiUrl, [
+                'xml'            => $xml,
+                'additionalData' => [
+                    'nrKSeF'    => (string)($invoice->ksef_number ?? ''),
+                    'qrCode'    => $qrCode,
+                    'isPreview' => $isDraft,
+                ],
+            ], ['type' => 'json']);
+
+            if ($resp->getStatusCode() !== 200) {
+                return $this->jsonError(502, 'Błąd API PDF: HTTP ' . $resp->getStatusCode());
+            }
+
+            $fullnumber = (string)($invoice->fullnumber ?: $invoice->id);
+            $filename   = 'faktura_' . preg_replace('/[\/\\\\:*?"<>|]/', '_', $fullnumber) . '.pdf';
+
+            return $this->response
+                ->withType('application/pdf')
+                ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+                ->withStringBody((string)$resp->getBody());
+        } catch (\Throwable $e) {
+            return $this->jsonError(500, $e->getMessage());
+        }
+    }
+
+    public function series(): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+
+        $companyId = (string)$token->company_id;
+        $rows = $this->fetchTable('InvoiceSeries')
+            ->find()
+            ->select(['id', 'name', 'is_default'])
+            ->where(['company_id' => $companyId])
+            ->orderBy(['is_default' => 'DESC', 'name' => 'ASC'])
+            ->all();
+
+        $series = [];
+        foreach ($rows as $s) {
+            $series[] = [
+                'id'         => $s->id,
+                'name'       => $s->name,
+                'is_default' => (bool)$s->is_default,
+            ];
+        }
+
+        return $this->jsonOk(200, ['series' => $series]);
     }
 }

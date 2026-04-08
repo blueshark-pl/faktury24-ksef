@@ -212,6 +212,21 @@ class CompaniesTable extends Table
             ->inList('profile_mode', ['business', 'private_rental'])
             ->notEmptyString('profile_mode');
 
+        $validator
+            ->scalar('seller_vat_prefix')
+            ->maxLength('seller_vat_prefix', 8)
+            ->allowEmptyString('seller_vat_prefix');
+
+        $validator
+            ->scalar('seller_vat_eu')
+            ->maxLength('seller_vat_eu', 32)
+            ->allowEmptyString('seller_vat_eu');
+
+        $validator
+            ->scalar('seller_eori')
+            ->maxLength('seller_eori', 32)
+            ->allowEmptyString('seller_eori');
+
         return $validator;
     }
 }

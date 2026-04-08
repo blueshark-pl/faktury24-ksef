@@ -34,7 +34,6 @@ $this->assign('title', $__pageTitle);
         <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
       </div>
       <div class="card-body tab-content">
@@ -238,8 +237,7 @@ $this->assign('title', $__pageTitle);
             </div>
           </div>
           <div>
-            <label class="form-label mb-1">Kraj</label>
-            <input type="text" class="form-control form-control-sm" name="invoice_contractor[country]" id="ctr-hidden-country" value="<?= h($__ic?->country ?? 'PL') ?>">
+            <?= $this->element('Invoices/contractor_country_select', ['value' => $__ic?->country ?? 'PL', 'selectId' => 'ctr-hidden-country']) ?>
           </div>
           <div>
             <label class="form-label mb-1">E-mail</label>

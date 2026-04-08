@@ -1,0 +1,9 @@
+{
+    "key_file": "booklio.key",
+    "crt_file": "booklio.crt",
+    "combined_pem": "combined.pem",
+    "uploaded_at": "2026-04-08T16:11:54+02:00",
+    "pass_cipher": "DYLPzqgzB6sX9xRm+xTid+ignZYcgVxlseIHz1uqPV1cq7I+S19FrGCGpwSDjn76",
+    "file": "certificate.p12",
+    "format": "p12"
+}

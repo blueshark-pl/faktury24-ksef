@@ -184,8 +184,8 @@ final class N1KsefMasterService
         if ($bundle !== '' && is_file($bundle)) {
             @ini_set('curl.cainfo', $bundle);
             @ini_set('openssl.cafile', $bundle);
-            putenv('CURL_CA_BUNDLE=' . $bundle);
-            putenv('SSL_CERT_FILE=' . $bundle);
+            $_ENV['CURL_CA_BUNDLE'] = $_SERVER['CURL_CA_BUNDLE'] = $bundle;
+            $_ENV['SSL_CERT_FILE'] = $_SERVER['SSL_CERT_FILE'] = $bundle;
             return $bundle;
         }
 

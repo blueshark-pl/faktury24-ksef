@@ -9,6 +9,25 @@
 
 $__isEdit = isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false;
 $this->assign('title', $__isEdit ? 'Edytuj korektę' : 'Wystaw fakturę');
+// Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
+$__paymentDateVal = '';
+$__dueDaysPreset  = 7;
+$__dueDaysCustom  = false;
+if (!empty($invoice->paymentdate)) {
+    $pd = $invoice->paymentdate instanceof \DateTimeInterface
+        ? $invoice->paymentdate
+        : new \DateTime((string)$invoice->paymentdate);
+    $__paymentDateVal = $pd->format('Y-m-d');
+    $id_ = !empty($invoice->date)
+        ? ($invoice->date instanceof \DateTimeInterface ? $invoice->date : new \DateTime((string)$invoice->date))
+        : new \DateTime();
+    $diff = (int)$id_->diff($pd)->days * ($pd >= $id_ ? 1 : -1);
+    if (in_array($diff, [0, 7, 14, 30, 60, 90], true)) {
+        $__dueDaysPreset = $diff;
+    } else {
+        $__dueDaysCustom = true;
+    }
+}
 $__ksefModeEnabled = false;
 
 // Prefill danych w trybie edycji — z zapisanej korekty
@@ -265,9 +284,8 @@ $gtuSelectHtml .= '</select>';
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
-        <?php if ($this->Identity->hasRole('admin')): ?>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -286,7 +304,7 @@ $gtuSelectHtml .= '</select>';
             </li>
           </ul>
         </div>
-        <?php endif; ?>
+        <?php //endif; ?>
         <script>
         $(function(){
           var $gearBtn = $("#inv-extra-tabs-btn");
@@ -416,14 +434,14 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-7">
                     <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
                       <?php foreach ([0,7,14,30,60,90] as $d): ?>
-                        <option value="<?= $d ?>"<?= $d == 7 ? ' selected' : '' ?>><?= $d ?> dni</option>
+                        <option value="<?= $d ?>"<?= (!$__dueDaysCustom && $d === $__dueDaysPreset) ? ' selected' : '' ?>><?= $d ?> dni</option>
                       <?php endforeach; ?>
-                      <option value="_custom">Inna liczba…</option>
+                      <option value="_custom"<?= $__dueDaysCustom ? ' selected' : '' ?>>Inna liczba…</option>
                     </select>
                   </div>
                   <div class="col-5">
                     <div class="input-group">
-                      <input type="date" id="payment-date" name="paymentdate" class="form-control">
+                      <input type="date" id="payment-date" name="paymentdate" class="form-control" value="<?= h($__paymentDateVal) ?>">
                       <span class="input-group-text"><i class="ri-calendar-line"></i></span>
                     </div>
                   </div>
@@ -625,18 +643,16 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
         <div class="card-title">Wystaw fakturę</div>
         <div class="ms-auto mt-md-0 mt-2">
+          <?= $this->Form->button('Zapisz jako roboczą', [
+            'class' => 'btn btn-sm btn-outline-secondary', 'name' => 'save_draft'
+          ]) ?>
           <?php if ($__ksefModeEnabled): ?>
-            <?= $this->Form->button('Zapisz jako roboczą', [
-              'class' => 'btn btn-sm btn-outline-primary',
-              'name' => 'save_only'
-            ]) ?>
             <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
               'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
             ]) ?>
           <?php else: ?>
             <?= $this->Form->button('Zapisz i wystaw', [
-              'class' => 'btn btn-sm btn-primary',
-              'name' => 'save_only'
+              'class' => 'btn btn-sm btn-primary ms-1', 'name' => 'save_only'
             ]) ?>
           <?php endif; ?>
         </div>
@@ -703,7 +719,7 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                   <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
+                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                 </div>
@@ -990,20 +1006,16 @@ $gtuSelectHtml .= '</select>';
         </div>
         <div class="mt-2">
           <?= $this->Form->control('correction_type', [
-            'label' => 'Typ korekty (skutek w ewidencji VAT)', 'type' => 'select', 'class' => 'form-select',
+            'label' => 'Skutek korekty w ewidencji VAT (TypKorekty)', 'type' => 'select', 'class' => 'form-select',
             'options' => [
-              '' => '— Wybierz typ —',
-              'vat' => 'Zmiana wartości VAT',
-              'net' => 'Zmiana podstawy opodatkowania (netto)',
-              'gross' => 'Zmiana wartości brutto',
-              'quantity' => 'Zmiana ilości',
-              'rate' => 'Zmiana stawki VAT',
-              'return' => 'Zwrot/odebranie towaru/usługi'
+              '1' => '1 — w dacie ujęcia faktury pierwotnej (błąd pierwotny, korygujemy wstecz)',
+              '2' => '2 — w dacie wystawienia faktury korygującej (rabat, uzgodnienie — bieżący okres)',
+              '3' => '3 — w dacie innej / różne daty dla różnych pozycji',
             ],
-            'empty' => false,
-            'value' => $invoice->correction_type ?? 'vat'
+            'empty' => '— Wybierz skutek —',
+            'value' => in_array((string)($invoice->correction_type ?? ''), ['1','2','3']) ? $invoice->correction_type : ''
           ]) ?>
-          <small class="text-muted">Pole wpływa na raportowanie w ewidencji/JPK. Dobierz zgodnie ze skutkiem podatkowym.</small>
+          <small class="text-muted">Wymagane przez KSeF (FA(3)). Typ 1: wina sprzedawcy — cofasz do okresu pierwotnego. Typ 2: uzgodnienie z nabywcą — rozliczasz w bieżącym okresie.</small>
         </div>
         <?php endif; ?>
       </div>
@@ -1016,18 +1028,16 @@ $gtuSelectHtml .= '</select>';
           <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
         </button>
         
+        <?= $this->Form->button('Zapisz jako roboczą', [
+          'class' => 'btn btn-outline-secondary m-1', 'name' => 'save_draft'
+        ]) ?>
         <?php if ($__ksefModeEnabled): ?>
-          <?= $this->Form->button('Zapisz jako roboczą', [
-            'class' => 'btn btn-outline-primary m-1',
-            'name' => 'save_only'
-          ]) ?>
           <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
             'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
           ]) ?>
         <?php else: ?>
           <?= $this->Form->button('Zapisz i wystaw', [
-            'class' => 'btn btn-primary m-1',
-            'name' => 'save_only'
+            'class' => 'btn btn-primary m-1', 'name' => 'save_only'
           ]) ?>
         <?php endif; ?>
       </div>
@@ -2662,7 +2672,7 @@ $('#gus-fetch-btn').on('click', function(){
               results: $.map(data.results, function (p) { 
                 return $.extend({ 
                   id: p.id, 
-                  text: p.text || (p.code ? p.code + ' - ' + p.name : p.name) 
+                  text: p.name || p.text 
                 }, p); 
               }) 
             };
@@ -3018,7 +3028,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {
           var $sel        = currentProductRow.find('.item-product-select');
-          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          var displayText = prodName;
           if (product.is_service) displayText += ' (usluga)';
           var opt = new Option(displayText, product.id, true, true);
           $sel.append(opt).trigger('change');
@@ -3437,14 +3447,11 @@ $('#gus-fetch-btn').on('click', function(){
     recomputeFromPreset(); 
   });
   $dueDate.on('change', recomputeFromDate);
-  setTimeout(function(){ 
-    // Jeśli preset jest wybrany (nie "_custom"), użyj preset-u
-    if ($duePreset.val() && $duePreset.val() !== '_custom') {
-      recomputeFromPreset(); 
-    } else if ($dueDate.val()) {
-      recomputeFromDate(); 
-    } else {
-      recomputeFromPreset(); 
+  setTimeout(function(){
+    if ($dueDate.val()) {
+      recomputeFromDate();
+    } else if ($duePreset.val() && $duePreset.val() !== '_custom') {
+      recomputeFromPreset();
     }
   }, 0);
 // ====== SELECT2: Seria faktury ======

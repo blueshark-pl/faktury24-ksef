@@ -355,7 +355,7 @@
                             <td><?= h($invoice->day_year) ?></td>
                             <td><?= h($invoice->fullnumber) ?></td>
                             <td><?= h($invoice->type) ?></td>
-                            <td><?= h($invoice->correction_type) ?></td>
+                            <td><?= h(['1' => 'Typ 1 (data pierwotna)', '2' => 'Typ 2 (data korekty)', '3' => 'Typ 3 (inna data)'][$invoice->correction_type] ?? h($invoice->correction_type)) ?></td>
                             <td><?= h($invoice->parent_id) ?></td>
                             <td><?= h($invoice->simplified_invoice) ?></td>
                             <td><?= h($invoice->corrections) ?></td>

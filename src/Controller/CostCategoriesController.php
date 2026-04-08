@@ -11,17 +11,7 @@ class CostCategoriesController extends AppController
         $this->CostCategories = $this->fetchTable('CostCategories');
     }
 
-    private function requireAdmin(): ?\Cake\Http\Response
-    {
-        $identity = $this->request->getAttribute('identity');
-        $isAdmin = (bool)($identity?->get('is_admin') ?? false);
-        $role = (string)($identity?->get('role') ?? '');
-        if (!$isAdmin && strtolower($role) !== 'admin') {
-            $this->Flash->error('Dostęp tylko dla administratora.');
-            return $this->redirect(['controller' => 'Pages', 'action' => 'display', 'home']);
-        }
-        return null;
-    }
+    // requireAdmin() jest w AppController
 
     public function index()
     {

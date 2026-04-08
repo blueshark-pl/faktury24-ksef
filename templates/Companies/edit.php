@@ -302,6 +302,49 @@ $this->assign('title', 'Edycja firmy');
             </div>
           </div>
 
+          <!-- Sekcja: Identyfikatory międzynarodowe -->
+          <div class="card custom-card mb-3">
+            <div class="card-header justify-content-between">
+              <div class="card-title">Identyfikatory międzynarodowe (VAT-UE / EORI)</div>
+            </div>
+            <div class="card-body">
+              <div class="form-text mb-3">
+                Wypełnij tylko jeśli firma jest zarejestrowana do VAT-UE lub wykonuje operacje celne.
+                Wartości te będą automatycznie umieszczane na każdej wystawionej fakturze.
+              </div>
+              <div class="row gy-3">
+                <div class="col-xl-2">
+                  <?= $this->Form->control('seller_vat_prefix', [
+                    'label' => ['text' => 'Prefiks VAT'],
+                    'class' => 'form-control',
+                    'placeholder' => 'np. PL',
+                    'maxlength' => 8,
+                  ]) ?>
+                </div>
+                <div class="col-xl-4">
+                  <label class="form-label">Numer VAT-UE
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer VAT-UE sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer identyfikacji podatkowej z prefiksem kraju UE, wymagany przy transakcjach unijnych B2B (WDT, usługi dla podatnika z&nbsp;UE, procedura trójstronna).</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_vat_eu', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL1234567890', 'maxlength' => 32]) ?>
+                </div>
+                <div class="col-xl-6">
+                  <label class="form-label">Numer EORI
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer EORI sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer do operacji celnych &mdash; import/eksport poza UE, odprawy celne.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_eori', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL123456789000', 'maxlength' => 32]) ?>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Sekcja: Najem prywatny -->
           <div class="card custom-card mb-3">
             <div class="card-header justify-content-between">

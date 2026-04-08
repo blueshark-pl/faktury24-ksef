@@ -2153,9 +2153,12 @@ function deletePayment(paymentId) {
       data.logs.forEach(function (log) {
         var p = colorMap[log.color] || colorMap.secondary;
         var meta = [];
-        if (log.env)         meta.push('Środowisko: <strong>' + escHtml(log.env) + '</strong>');
-        if (log.status_code) meta.push('Kod: <strong>' + escHtml(log.status_code) + '</strong>');
-        if (log.ksef_number) meta.push('Nr KSeF: <strong>' + escHtml(log.ksef_number) + '</strong>');
+        if (log.env)             meta.push('Środowisko: <strong>' + escHtml(log.env) + '</strong>');
+        if (log.status_code)     meta.push('Kod HTTP: <strong>' + escHtml(log.status_code) + '</strong>');
+        if (log.http_code)       meta.push('Kod HTTP: <strong>' + escHtml(log.http_code) + '</strong>');
+        if (log.ksef_number)     meta.push('Nr KSeF: <strong>' + escHtml(log.ksef_number) + '</strong>');
+        if (log.exception_class) meta.push('Klasa: <strong>' + escHtml(log.exception_class) + '</strong>');
+        if (log.file)            meta.push('Plik: <code style="font-size:.7rem">' + escHtml(log.file) + '</code>');
 
         var li = document.createElement('li');
         li.innerHTML =

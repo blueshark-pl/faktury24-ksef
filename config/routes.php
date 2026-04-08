@@ -44,6 +44,8 @@ return function (RouteBuilder $routes): void {
         $builder->post('/konto/2fa/wlacz', ['controller' => 'TwoFactor', 'action' => 'enable']);
         $builder->post('/konto/2fa/weryfikuj', ['controller' => 'TwoFactor', 'action' => 'verify']);
         $builder->post('/konto/2fa/wylacz', ['controller' => 'TwoFactor', 'action' => 'disable']);
+        $builder->post('/invoices/{id}/send-to-ksef', ['controller' => 'Invoices', 'action' => 'sendToKsef'])
+            ->setPass(['id']);
         $builder->connect('/invoices/ksef-auth/active', ['controller' => 'Invoices', 'action' => 'ksefAuthActive']);
         $builder->connect('/invoices/ksef-auth/login',  ['controller' => 'Invoices', 'action' => 'ksefAuthLogin']);
         $builder->connect('/invoices/ksef-smoke',       ['controller' => 'Invoices', 'action' => 'ksefSmoke']);
@@ -73,22 +75,64 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // $builder->get('/contractors/search', 'Contractors::search');
         // $builder->get('/products/search', 'Products::search');
 
+        // Tasks — tablica Kanban (tylko admin)
+        $builder->get('/tasks', ['controller' => 'Tasks', 'action' => 'index']);
+        $builder->get('/tasks/add', ['controller' => 'Tasks', 'action' => 'add']);
+        $builder->post('/tasks/add', ['controller' => 'Tasks', 'action' => 'add']);
+        $builder->get('/tasks/labels', ['controller' => 'Tasks', 'action' => 'labels']);
+        $builder->post('/tasks/labels', ['controller' => 'Tasks', 'action' => 'labels']);
+        $builder->post('/tasks/move', ['controller' => 'Tasks', 'action' => 'move']);
+        $builder->connect('/tasks/{id}', ['controller' => 'Tasks', 'action' => 'view'])
+            ->setPass(['id']);
+        $builder->post('/tasks/{id}', ['controller' => 'Tasks', 'action' => 'view'])
+            ->setPass(['id']);
+        $builder->post('/tasks/{id}/start-timer', ['controller' => 'Tasks', 'action' => 'startTimer'])
+            ->setPass(['id']);
+        $builder->post('/tasks/{id}/stop-timer', ['controller' => 'Tasks', 'action' => 'stopTimer'])
+            ->setPass(['id']);
+
+        // Admin — lista i usuwanie faktur wszystkich użytkowników
+        $builder->get('/admin/faktury', ['controller' => 'Invoices', 'action' => 'adminInvoices']);
+        $builder->get('/admin/szkice', ['controller' => 'Invoices', 'action' => 'adminDrafts']);
+        $builder->get('/admin/logi-usuniec', ['controller' => 'Invoices', 'action' => 'adminDeletionLogs']);
+        $builder->get('/admin/zgloszenia', ['controller' => 'Invoices', 'action' => 'adminSupport']);
+        $builder->connect('/admin/zgloszenia/{id}', ['controller' => 'Invoices', 'action' => 'adminSupportView'])
+            ->setPass(['id']);
+        $builder->post('/admin/faktury/{id}/delete', ['controller' => 'Invoices', 'action' => 'adminDelete'])
+            ->setPass(['id']);
+
         // Fallbacks (na końcu)
         $builder->fallbacks();
     });
 
     // ── Zewnętrzne API v1 (uwierzytelnianie przez Bearer token) ──────────────
-    $routes->scope('/api/v1', function (RouteBuilder $builder): void {
+    $routes->prefix('Api', ['path' => '/api/v1'], function (RouteBuilder $builder): void {
         $builder->setExtensions(['json']);
+        // GET  /api/v1/series         — lista serii numeracji
+        $builder->get('/series', ['controller' => 'Invoices', 'action' => 'series']);
+        // GET  /api/v1/bank-accounts  — lista rachunków bankowych
+        $builder->get('/bank-accounts', ['controller' => 'Invoices', 'action' => 'bankAccounts']);
         // GET  /api/v1/invoices       — lista faktur
-        $builder->get('/invoices', ['controller' => 'Api/Invoices', 'action' => 'index']);
+        $builder->get('/invoices', ['controller' => 'Invoices', 'action' => 'index']);
         // POST /api/v1/invoices       — wystaw fakturę VAT
-        $builder->post('/invoices', ['controller' => 'Api/Invoices', 'action' => 'create']);
+        $builder->post('/invoices', ['controller' => 'Invoices', 'action' => 'create']);
         // GET  /api/v1/invoices/{id}  — szczegóły faktury
-        $builder->get('/invoices/{id}', ['controller' => 'Api/Invoices', 'action' => 'get'])
+        $builder->get('/invoices/{id}', ['controller' => 'Invoices', 'action' => 'get'])
+            ->setPass(['id']);
+        // GET  /api/v1/invoices/{id}/pdf    — pobierz PDF faktury
+        $builder->get('/invoices/{id}/pdf', ['controller' => 'Invoices', 'action' => 'pdf'])
+            ->setPass(['id']);
+        // GET  /api/v1/invoices/{id}/status — lekki status (workflow, ksef)
+        $builder->get('/invoices/{id}/status', ['controller' => 'Invoices', 'action' => 'status'])
+            ->setPass(['id']);
+        // POST /api/v1/invoices/{id}/issue — szkic → wystawiona
+        $builder->post('/invoices/{id}/issue', ['controller' => 'Invoices', 'action' => 'issue'])
+            ->setPass(['id']);
+        // POST /api/v1/invoices/{id}/send-ksef — wystawiona → wysyłka do KSeF
+        $builder->post('/invoices/{id}/send-ksef', ['controller' => 'Invoices', 'action' => 'sendKsef'])
             ->setPass(['id']);
         // POST /api/v1/invoices/{id}/payments — dodaj rozliczenie
-        $builder->post('/invoices/{id}/payments', ['controller' => 'Api/Invoices', 'action' => 'addPayment'])
+        $builder->post('/invoices/{id}/payments', ['controller' => 'Invoices', 'action' => 'addPayment'])
             ->setPass(['id']);
     });
 

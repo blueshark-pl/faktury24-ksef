@@ -1370,7 +1370,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'parent_id' => $data['parent_id'] ?? null,
             'invoice_series_id' => $series->id,
             'type' => $saveType,
-            'correction_type' => ($kind === 'correction') ? 'vat' : null,
+            'correction_type' => ($kind === 'correction') ? (in_array((string)($data['correction_type'] ?? ''), ['1','2','3']) ? (string)$data['correction_type'] : null) : null,
             'simplified_invoice' => false,
             'paymentmethod' => $data['paymentmethod'] ?? 'transfer',
             'paymentdate' => !empty($data['paymentdate']) ? $data['paymentdate'] : null,

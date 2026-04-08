@@ -405,14 +405,14 @@ final class N1KsefService
         $existingOpenSsl = (string)(ini_get('openssl.cafile') ?: '');
         if ($existingCurl !== '' && is_file($existingCurl)) {
             // Już skonfigurowane globalnie
-            putenv('CURL_CA_BUNDLE=' . $existingCurl);
-            putenv('SSL_CERT_FILE=' . $existingCurl);
+            $_ENV['CURL_CA_BUNDLE'] = $_SERVER['CURL_CA_BUNDLE'] = $existingCurl;
+            $_ENV['SSL_CERT_FILE'] = $_SERVER['SSL_CERT_FILE'] = $existingCurl;
             $this->logDebug('Using existing curl.cainfo CA bundle at: ' . $existingCurl);
             return $existingCurl;
         }
         if ($existingOpenSsl !== '' && is_file($existingOpenSsl)) {
-            putenv('CURL_CA_BUNDLE=' . $existingOpenSsl);
-            putenv('SSL_CERT_FILE=' . $existingOpenSsl);
+            $_ENV['CURL_CA_BUNDLE'] = $_SERVER['CURL_CA_BUNDLE'] = $existingOpenSsl;
+            $_ENV['SSL_CERT_FILE'] = $_SERVER['SSL_CERT_FILE'] = $existingOpenSsl;
             $this->logDebug('Using existing openssl.cafile CA bundle at: ' . $existingOpenSsl);
             return $existingOpenSsl; // Już skonfigurowane globalnie
         }
@@ -424,8 +424,8 @@ final class N1KsefService
         if (is_string($bundle) && $bundle !== '' && is_file($bundle)) {
             @ini_set('curl.cainfo', $bundle);
             @ini_set('openssl.cafile', $bundle);
-            putenv('CURL_CA_BUNDLE=' . $bundle);
-            putenv('SSL_CERT_FILE=' . $bundle);
+            $_ENV['CURL_CA_BUNDLE'] = $_SERVER['CURL_CA_BUNDLE'] = $bundle;
+            $_ENV['SSL_CERT_FILE'] = $_SERVER['SSL_CERT_FILE'] = $bundle;
             $this->logDebug('Configured CA bundle from config/env at: ' . $bundle);
             return $bundle;
         }
@@ -943,6 +943,21 @@ final class N1KsefService
         // Zbuduj klienta JEDNORAZOWO z kluczem szyfrowania (wymagany dla zasobów invoices/sessions)
         $tokens = $this->storage->getTokens($contextKey);
         $creds  = $this->storage->getSystemCreds($contextKey);
+
+        // Diagnostyka kontekstu autoryzacji (tymczasowa, do debugowania 403)
+        try {
+            $diagCtx = $this->diagnoseAuthContext($companyId, $environment);
+            $messages[] = ['stage' => 'setup', 'level' => 'info', 'ts' => $nowTs(), 'message' =>
+                'Auth diag: method=' . ($diagCtx['authMethod'] ?? '?')
+                . ' certUsed=' . ($diagCtx['certUsed'] ? 'yes' : 'no')
+                . ' certSource=' . ($diagCtx['certSource'] ?? 'none')
+                . ' certReadable=' . ($diagCtx['certReadable'] ? 'yes' : 'no')
+                . ' identifierNip=' . ($diagCtx['identifierNip'] ?? '?')
+                . ' hasAccessToken=' . ($diagCtx['hasAccessToken'] ? 'yes' : 'no')
+            ];
+        } catch (\Throwable $diagEx) {
+            $messages[] = ['stage' => 'setup', 'level' => 'warn', 'ts' => $nowTs(), 'message' => 'Auth diag failed: ' . $diagEx->getMessage()];
+        }
 
         $builder = $this->makeClientBuilder(
             companyId: $companyId,

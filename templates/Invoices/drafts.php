@@ -97,6 +97,17 @@ $editActionByType = [
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
                   <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-secondary']) ?>
+                  <?php if (empty(trim((string)($contractor->nip ?? '')))): ?>
+                    <?= $this->Form->postLink(
+                      '<i class="ri-arrow-right-line me-1"></i>Przenieś do faktur',
+                      ['action' => 'promoteToIssued', $inv->id],
+                      [
+                        'escape'  => false,
+                        'class'   => 'btn btn-outline-success',
+                        'confirm' => 'Przenieść tę fakturę na listę faktur? Nie zostanie wysłana do KSeF.',
+                      ]
+                    ) ?>
+                  <?php endif; ?>
                   <?= $this->Form->postLink('Usuń', ['action' => 'delete', $inv->id], ['class' => 'btn btn-outline-danger', 'confirm' => 'Usunąć tę fakturę roboczą?']) ?>
                 </div>
               </td>

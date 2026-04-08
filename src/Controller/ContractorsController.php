@@ -223,7 +223,7 @@ public function gusLookup()
         $all = $this->request->getQuery('all') === 'true' || $this->request->getQuery('all') === '1'; // dla katalogu
         
         $query = $this->Contractors->find()
-            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone'])
+            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
             ->where([
                 'company_id' => $companyId
             ])
@@ -252,11 +252,16 @@ public function gusLookup()
                 'name'    => $c->name,
                 'nip'     => $c->nip,
                 'street'  => $c->street,
-                'zip'     => $c->postal_code, // Map postal_code to zip for frontend compatibility
+                'zip'     => $c->postal_code,
                 'city'    => $c->city,
                 'country' => $c->country ?: 'PL',
                 'email'   => $c->email,
                 'phone'   => $c->phone,
+                'vat_prefix'           => $c->vat_prefix,
+                'vat_eu'               => $c->vat_eu,
+                'eori'                 => $c->eori,
+                'tax_id_other'         => $c->tax_id_other,
+                'tax_id_other_country' => $c->tax_id_other_country,
             ];
         })->toList();
 
@@ -325,18 +330,27 @@ $this->set(compact('contractors'));
             $data = $this->request->getData();
             $data['company_id'] = $companyId;
             $notificationsEnabled = !empty($data['notify_invoice_email']);
-            // normalize NIP for duplicate check
+            // normalize NIP — trim whitespace, keep alphanumeric (supports foreign VAT numbers)
             if (isset($data['nip'])) {
-                $data['nip'] = preg_replace('/\D+/', '', (string)$data['nip']);
+                $data['nip'] = strtoupper(trim((string)$data['nip']));
             }
             
+            // Osoba fizyczna: sklejamy first_name + last_name → name
+            if (empty(trim((string)($data['name'] ?? '')))) {
+                $first = trim((string)($data['first_name'] ?? ''));
+                $last  = trim((string)($data['last_name']  ?? ''));
+                if ($first !== '' || $last !== '') {
+                    $data['name'] = trim($first . ' ' . $last);
+                }
+            }
+
             // Validate required fields for AJAX requests
             if ($this->request->is('ajax')) {
                 if (empty(trim((string)($data['name'] ?? '')))) {
                     return $this->response->withType('application/json')
                         ->withStringBody(json_encode([
                             'success' => false,
-                            'message' => 'Nazwa kontrahenta jest wymagana.'
+                            'message' => 'Podaj imię i nazwisko lub nazwę kontrahenta.'
                         ]));
                 }
                 if ($notificationsEnabled && empty(trim((string)($data['email'] ?? '')))) {
@@ -362,7 +376,7 @@ $this->set(compact('contractors'));
             }
 
             // Prevent duplicate contractor by NIP within same company
-            $nip = preg_replace('/\D+/', '', (string)($data['nip'] ?? ''));
+            $nip = strtoupper(trim((string)($data['nip'] ?? '')));
             if ($nip !== '') {
                 $exists = $this->Contractors->exists([
                     'company_id' => $companyId,
@@ -415,6 +429,11 @@ $this->set(compact('contractors'));
                                 'country' => $contractor->country ?: 'PL',
                                 'email'   => $contractor->email,
                                 'phone'   => $contractor->phone,
+                                'vat_prefix'          => $contractor->vat_prefix,
+                                'vat_eu'              => $contractor->vat_eu,
+                                'eori'                => $contractor->eori,
+                                'tax_id_other'        => $contractor->tax_id_other,
+                                'tax_id_other_country' => $contractor->tax_id_other_country,
                             ],
                             'message' => 'Kontrahent został dodany.'
                         ]));
@@ -451,7 +470,7 @@ public function viewJson($id)
 
     $c = $this->Contractors->find()
         ->where(['Contractors.id' => $id, 'Contractors.company_id' => $companyId])
-        ->select(['id','name','altname','nip','pesel','email','phone','country','postal_code','city','street','local_number','correspondence_street','correspondence_postal_code','correspondence_city','correspondence_country','notes','privacy_consent','privacy_basis','is_active'])
+        ->select(['id','name','altname','nip','pesel','email','phone','country','postal_code','city','street','local_number','correspondence_street','correspondence_postal_code','correspondence_city','correspondence_country','notes','privacy_consent','privacy_basis','is_active','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
         ->firstOrFail();
 
     return $this->response->withType('application/json')
@@ -517,6 +536,15 @@ private function saveContractorNotificationSettings(string $companyId, string $c
         if ($this->request->is(['patch', 'post', 'put'])) {
             $data = $this->request->getData();
 
+            // Osoba fizyczna: sklejamy first_name + last_name → name
+            if (empty(trim((string)($data['name'] ?? '')))) {
+                $first = trim((string)($data['first_name'] ?? ''));
+                $last  = trim((string)($data['last_name']  ?? ''));
+                if ($first !== '' || $last !== '') {
+                    $data['name'] = trim($first . ' ' . $last);
+                }
+            }
+
             // Guard: do not allow switching a person to company during edit
             $incomingName  = trim((string)($data['name'] ?? ''));
             $incomingFirst = trim((string)($data['first_name'] ?? ''));
@@ -552,6 +580,11 @@ private function saveContractorNotificationSettings(string $companyId, string $c
                                 'street'      => (string)$contractor->street,
                                 'postal_code' => (string)$contractor->postal_code,
                                 'is_active'   => (int)$contractor->is_active,
+                                'vat_prefix'           => (string)$contractor->vat_prefix,
+                                'vat_eu'               => (string)$contractor->vat_eu,
+                                'eori'                 => (string)$contractor->eori,
+                                'tax_id_other'         => (string)$contractor->tax_id_other,
+                                'tax_id_other_country' => (string)$contractor->tax_id_other_country,
                             ]
                         ]));
                 }

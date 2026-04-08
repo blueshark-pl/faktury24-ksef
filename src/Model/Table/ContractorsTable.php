@@ -164,9 +164,7 @@ class ContractorsTable extends Table
                 }
                 // For persons, identifiers optional
 
-                if ($nip !== '') {
-                    return self::isValidNip($nip) ? true : 'Nieprawidłowy NIP (suma kontrolna).';
-                }
+                // NIP checksum validation intentionally skipped — supports foreign VAT numbers
 
                 if ($pesel !== '') {
                     if (!self::isValidPesel($pesel)) {
@@ -212,6 +210,31 @@ class ContractorsTable extends Table
         $validator
             ->boolean('eu_vat')
             ->notEmptyString('eu_vat');
+
+        $validator
+            ->scalar('vat_prefix')
+            ->maxLength('vat_prefix', 8)
+            ->allowEmptyString('vat_prefix');
+
+        $validator
+            ->scalar('vat_eu')
+            ->maxLength('vat_eu', 32)
+            ->allowEmptyString('vat_eu');
+
+        $validator
+            ->scalar('eori')
+            ->maxLength('eori', 32)
+            ->allowEmptyString('eori');
+
+        $validator
+            ->scalar('tax_id_other')
+            ->maxLength('tax_id_other', 64)
+            ->allowEmptyString('tax_id_other');
+
+        $validator
+            ->scalar('tax_id_other_country')
+            ->maxLength('tax_id_other_country', 8)
+            ->allowEmptyString('tax_id_other_country');
 
         $validator
             ->scalar('country')

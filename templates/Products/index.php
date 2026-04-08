@@ -338,29 +338,30 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
 </div>
 
 <!-- Modal: Add/Edit produkt/usługa -->
-<div class="modal fade" id="product-create" tabindex="-1" aria-hidden="true" data-mode="add">
-  <div class="modal-dialog modal-dialog-centered modal-xl">
+<div class="modal fade" id="product-create" tabindex="-1" aria-hidden="true" data-mode="add" data-bs-scroll="true" data-bs-backdrop="false">
+  <div class="modal-dialog modal-dialog-scrollable modal-xl">
     <div class="modal-content">
 
-      <div class="modal-header border-bottom-0 pb-0">
-        <div>
+      <div class="modal-header border-bottom-0 pb-0 align-items-start">
+        <div class="flex-grow-1 min-width-0">
           <h6 class="modal-title mb-0" id="product-modal-title">
-            <i class="ri-price-tag-3-line me-1 text-primary"></i> Dodaj produkt / usługę
+            <i class="ri-price-tag-3-line me-1 text-primary"></i>
+            <span id="product-modal-title-text">Dodaj produkt / usługę</span>
           </h6>
           <p class="text-muted small mb-0 mt-1" id="product-modal-subtitle">Wypełnij pola i kliknij Zapisz.</p>
         </div>
-        <div class="d-flex align-items-center gap-2 ms-3">
-          <button class="btn btn-sm btn-light" type="button"
+        <div class="d-flex align-items-center gap-1 ms-auto ps-2 flex-shrink-0">
+          <button class="btn btn-sm btn-ghost-secondary rounded-circle" type="button"
             data-bs-toggle="collapse" data-bs-target="#product-help"
-            title="Wskazówki" aria-label="Wskazówki">
-            <i class="ri-information-line"></i>
+            title="Wskazówki" aria-label="Wskazówki" style="width:2rem;height:2rem;padding:0">
+            <i class="ri-information-line fs-6"></i>
           </button>
-          <button class="btn btn-sm btn-light" type="button"
+          <button class="btn btn-sm btn-ghost-secondary rounded-circle" type="button"
             data-bs-toggle="modal" data-bs-target="#gtu-legend-modal"
-            title="Legenda GTU" aria-label="Legenda GTU">
-            <i class="ri-book-open-line"></i>
+            title="Legenda GTU" aria-label="Legenda GTU" style="width:2rem;height:2rem;padding:0">
+            <i class="ri-book-open-line fs-6"></i>
           </button>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+          <button type="button" class="btn-close ms-1" data-bs-dismiss="modal" aria-label="Zamknij"></button>
         </div>
       </div>
 
@@ -375,6 +376,14 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
       <?= $this->Form->hidden('company_id', ['value' => $companyId]) ?>
 
       <div class="modal-body pt-2">
+
+        <!-- Alert błędów zapisu -->
+        <div id="prod-form-alert" class="alert alert-danger d-none py-2 px-3 mb-3" role="alert">
+          <div class="d-flex align-items-start gap-2">
+            <i class="ri-error-warning-line fs-5 flex-shrink-0 mt-1"></i>
+            <div id="prod-form-alert-body" class="small"></div>
+          </div>
+        </div>
 
         <!-- Wskazówki (collapse) -->
         <div id="product-help" class="collapse mb-3">
@@ -705,7 +714,15 @@ $currencies = ['PLN' => 'PLN', 'EUR' => 'EUR', 'USD' => 'USD'];
   /* Modal produktu */
   #product-create #prod-currency { max-width: 90px; }
   #product-create #prod-net-price { text-align: right; }
-  #product-create .modal-body { padding-top: .75rem; }
+  /* form między modal-header a modal-footer musi być flex-child żeby scrollable działało */
+  #product-create .modal-dialog { max-height: calc(100vh - 3.5rem); margin-top: 1.75rem; margin-bottom: 1.75rem; }
+  #product-create .modal-content { max-height: calc(100vh - 3.5rem); overflow: hidden; }
+  #product-create #product-form { display: flex; flex-direction: column; flex: 1 1 auto; overflow: hidden; min-height: 0; }
+  #product-create .modal-body { padding-top: .75rem; flex: 1 1 auto; overflow-y: scroll; min-height: 0; }
+  #product-create .modal-body::-webkit-scrollbar { width: 8px; }
+  #product-create .modal-body::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+  #product-create .modal-body::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+  #product-create .modal-body::-webkit-scrollbar-thumb:hover { background: #6c757d; }
   #product-create hr { border-color: var(--bs-border-color-translucent); }
   #product-create #prod-ksef-collapse .bg-body-tertiary { background-color: var(--bs-tertiary-bg) !important; }
   #product-create .badge { vertical-align: middle; }
@@ -914,7 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalEl    = document.getElementById('product-create');
   const modal      = new bootstrap.Modal(modalEl);
   const form       = document.getElementById('product-form');
-  const titleEl    = document.getElementById('product-modal-title');
+  const titleEl    = document.getElementById('product-modal-title-text');
   const subtitleEl = document.getElementById('product-modal-subtitle');
   const idField    = document.getElementById('product-id');
   const methodFld  = document.getElementById('product-method');
@@ -923,6 +940,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitSpinner = document.getElementById('prod-form-spinner');
   const submitIcon    = document.getElementById('prod-form-icon');
   const submitLabel   = document.getElementById('prod-form-label');
+  const formAlert     = document.getElementById('prod-form-alert');
+  const formAlertBody = document.getElementById('prod-form-alert-body');
+
+  function showFormError(errors) {
+    const fieldLabels = {
+      name: 'Nazwa', net_price: 'Cena netto', vat_id: 'Stawka VAT',
+      unit_id: 'Jednostka miary', currency: 'Waluta', code: 'Kod / symbol',
+      pkwiu: 'PKWiU', gtu_code: 'Kod GTU', barcode: 'Kod kreskowy',
+      gtin: 'GTIN', cn_code: 'Kod CN', excise_amount: 'Podatek akcyzowy',
+      company_id: 'Produkt',
+    };
+    function translateMsg(text) {
+      return text
+        .replace(/This value is already in use/gi, 'Ta wartość jest już zajęta')
+        .replace(/This field cannot be left empty/gi, 'To pole jest wymagane')
+        .replace(/The provided value is invalid/gi, 'Nieprawidłowa wartość')
+        .replace(/is required/gi, 'jest wymagane');
+    }
+    let html = '';
+    if (errors && typeof errors === 'object') {
+      const lines = Object.entries(errors).map(([field, msg]) => {
+        const text = typeof msg === 'string' ? msg : Object.values(msg).flat().join(', ');
+        const translated = translateMsg(text);
+        if (field === '_') return `<li>${translated}</li>`;
+        const label = fieldLabels[field] || null;
+        return label ? `<li><strong>${label}:</strong> ${translated}</li>` : `<li>${translated}</li>`;
+      });
+      html = lines.length === 1
+        ? `<span>${lines[0].replace(/<\/?li>/g, '')}</span>`
+        : `<ul class="mb-0 ps-3">${lines.join('')}</ul>`;
+    }
+    formAlertBody.innerHTML = html || 'Nie udało się zapisać. Sprawdź formularz.';
+    formAlert.classList.remove('d-none');
+    formAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function hideFormError() {
+    formAlert.classList.add('d-none');
+    formAlertBody.innerHTML = '';
+  }
 
   // Generator SKU
   codeGen?.addEventListener('click', () => {
@@ -969,11 +1026,12 @@ document.addEventListener('DOMContentLoaded', () => {
     methodFld.value = 'POST';
     form.setAttribute('action', '<?= $this->Url->build(['controller' => 'Products', 'action' => 'add']) ?>');
     modalEl.dataset.mode    = 'add';
-    titleEl.innerHTML       = '<i class="ri-price-tag-3-line me-1 text-primary"></i> Dodaj produkt / usługę';
+    titleEl.textContent     = 'Dodaj produkt / usługę';
     if (subtitleEl) subtitleEl.textContent = 'Wypełnij pola i kliknij Zapisz.';
     form.querySelectorAll('.is-invalid').forEach(i => i.classList.remove('is-invalid'));
-    form.querySelectorAll('.invalid-feedback').forEach(i => i.remove());
+    form.querySelectorAll('.server-invalid-feedback').forEach(i => i.remove());
     form.classList.remove('was-validated');
+    hideFormError();
     setBtnLoading(false);
     // radio na "Produkt" domyślnie
     setRadio('is_service', '0');
@@ -990,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id; if (!id) return;
       resetFormToAdd();
-      titleEl.innerHTML = '<i class="ri-pencil-line me-1 text-warning"></i> Edytuj produkt / usługę';
+      titleEl.textContent = 'Edytuj produkt / usługę';
       if (subtitleEl) subtitleEl.textContent = btn.dataset.name || ('ID: ' + id);
       modalEl.dataset.mode = 'edit';
       idField.value   = id;
@@ -1048,8 +1106,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (ksefEl) bootstrap.Collapse.getOrCreateInstance(ksefEl, { toggle: false }).show();
         }
 
-      } catch {
-        toastBody.textContent = 'Nie udało się wczytać danych produktu.'; toast.show();
+      } catch (err) {
+        toastBody.textContent = 'Nie udało się wczytać danych produktu. Odśwież stronę i spróbuj ponownie.'; toast.show();
+        console.error('Product load error:', err);
+        bootstrap.Modal.getInstance(modalEl)?.hide();
       }
     });
   });
@@ -1078,29 +1138,18 @@ document.addEventListener('DOMContentLoaded', () => {
       form.querySelectorAll('.server-invalid-feedback').forEach(i => i.remove());
 
       if (data.success) {
-        toastBody.textContent = mode === 'add' ? 'Dodano produkt/usługę.' : 'Zapisano zmiany.'; toast.show();
+        hideFormError();
+        toastBody.textContent = data.message || (mode === 'add' ? 'Dodano produkt/usługę.' : 'Zapisano zmiany.'); toast.show();
         bootstrap.Modal.getInstance(modalEl)?.hide();
-        // odśwież – najszybciej zsynchronizuje mapy Jm/VAT
         window.location.reload();
       } else {
-        toastBody.textContent = data.message || 'Błąd zapisu.'; toast.show();
-        if (data.errors) {
-          for (const [field, msgs] of Object.entries(data.errors)) {
-            const input = form.querySelector(`[name="${field}"]`);
-            if (input) {
-              input.classList.add('is-invalid');
-              const fb = document.createElement('div');
-              fb.className = 'invalid-feedback server-invalid-feedback';
-              fb.textContent = Object.values(msgs).flat().join(', ');
-              input.insertAdjacentElement('afterend', fb);
-            }
-          }
-        }
+        showFormError(data.errors || { '_': data.message || 'Nie udało się zapisać.' });
         setBtnLoading(false);
       }
-    } catch {
+    } catch (err) {
       setBtnLoading(false);
-      toastBody.textContent = 'Błąd połączenia z serwerem.'; toast.show();
+      showFormError({ '_': 'Błąd połączenia z serwerem. Spróbuj ponownie.' });
+      console.error('Product save error:', err);
     }
   });
 

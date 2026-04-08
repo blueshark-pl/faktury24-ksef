@@ -212,6 +212,7 @@ return [
                 'drafts',
                 'sendDraftNow',
                 'scheduleDraft',
+                'promoteToIssued',
                 'ksefSendLogs',
                 'contractorEmailLookup',
                 'emailInvoice',
@@ -405,6 +406,16 @@ return [
             'controller' => 'Nbp',
             'action' => ['dictionary', 'rates'],
         ],
+
+        // tablica Kanban / taski (tylko admin — ale admin ma wildcard, tu na wszelki wypadek)
+        // Admin wildcard (linia ~100) już to pokrywa. Brak wpisów dla 'user' — intencjonalne.
+
+        // zgłoszenia i uwagi (support tickets)
+        [
+            'role' => 'user',
+            'controller' => 'SupportTickets',
+            'action' => ['index', 'add', 'view', 'download'],
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',
@@ -417,6 +428,14 @@ return [
             'plugin' => '*',
             'controller' => 'KsefAuthorizations',
             'action' => ['receivedApi', 'issuedApi', 'linesApi', 'previewApi', 'personalGrantsCheckApi', 'statusApi'],
+            'bypassAuth' => true,
+        ],
+        [
+            'role' => '*',
+            'prefix' => 'Api',
+            'plugin' => '*',
+            'controller' => '*',
+            'action' => '*',
             'bypassAuth' => true,
         ],
         [

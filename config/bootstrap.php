@@ -66,12 +66,14 @@ require CAKE . 'functions.php';
  * for more information for recommended practices.
 */
 if (!env('APP_NAME') && file_exists(CONFIG . '.env')) {
-    $dotenv = new \josegonzalez\Dotenv\Loader([CONFIG . '.env']);
-    $dotenv->parse()
-        ->putenv()
-        ->toEnv()
-        ->toServer();
-        debug('Loaded .env file');
+    try {
+        $dotenv = new \josegonzalez\Dotenv\Loader([CONFIG . '.env']);
+        $dotenv->parse()
+            ->toEnv()
+            ->toServer();
+    } catch (\Throwable $e) {
+        // .env parse failed — continue with defaults from app.php / app_local.php
+    }
 }
 
 /*

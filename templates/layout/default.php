@@ -211,7 +211,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         Faktury24 mają uprawnienia.
                                     </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                    <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'prod']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
                   </div>
                 </div>
@@ -391,7 +390,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <!-- Start::main-sidebar-header -->
                 <div class="main-sidebar-header">
                     <a href="/" class="header-logo">
-                        <img src="/img/logo-faktury24.png" alt="logo" class="desktop-logo">
+                        <!-- <img src="/img/logo-faktury24.png" alt="logo" class="desktop-logo"> -->
                         <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
                         <img src="../assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
                         <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
@@ -616,6 +615,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li> -->
 
+                            <!-- Zgłoszenia support – dla wszystkich użytkowników -->
+                            <li class="slide__category"><span class="category-name">Pomoc</span></li>
+                            <li class="slide <?= $navActive('SupportTickets', 'index') || $navActive('SupportTickets', 'add') || $navActive('SupportTickets', 'view') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-customer-service-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Zgłoszenia i uwagi</span>',
+                                    ['plugin' => false, 'controller' => 'SupportTickets', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php
                             // Sekcja administracyjna – widoczna tylko dla administratorów
                             $identity = $this->request->getAttribute('identity') ?? null;
@@ -624,15 +634,54 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             if ($isAdmin || $role === 'admin'):
                             ?>
                             <!-- Administracja -->
-                            <!-- <li class="slide__category"><span class="category-name">Administracja</span></li> -->
-                            <!-- <li class="slide">
+                            <li class="slide__category"><span class="category-name">Administracja</span></li>
+                            <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
-                                    '<svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M40,64H216" stroke="currentColor" fill="none" stroke-width="16"/><path d="M40,128H216" stroke="currentColor" fill="none" stroke-width="16"/><path d="M40,192H216" stroke="currentColor" fill="none" stroke-width="16"/></svg>
-                                    <span class="side-menu__label">Kategorie kosztów</span>',
-                                    ['plugin' => false, 'controller' => 'CostCategories', 'action' => 'index'],
+                                    '<i class="ri-file-list-3-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Faktury użytkowników</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminInvoices'],
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
-                            </li> -->
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminDrafts') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-draft-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Szkice faktur</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminDrafts'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminDeletionLogs') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-delete-bin-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Logi usunięć</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminDeletionLogs'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminSupport') || $navActive('Invoices', 'adminSupportView') ?>">
+                                <?php
+                                $adminSupportNewCount = 0;
+                                try {
+                                    $adminSupportNewCount = (int)$this->fetchTable('SupportTickets')->find()->where(['status' => 'nowe'])->count();
+                                } catch (\Throwable) {}
+                                ?>
+                                <?= $this->Html->link(
+                                    '<i class="ri-customer-service-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Zgłoszenia support</span>'
+                                    . ($adminSupportNewCount > 0 ? ' <span class="badge bg-danger ms-1">' . $adminSupportNewCount . '</span>' : ''),
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminSupport'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Tasks', 'index') || $navActive('Tasks', 'view') || $navActive('Tasks', 'add') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-kanban-view side-menu__icon"></i>
+                                    <span class="side-menu__label">Tablica Kanban</span>',
+                                    ['plugin' => false, 'controller' => 'Tasks', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <?php endif; ?>
 
                         </ul>
@@ -705,7 +754,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                             </div>
                                         <?php endif; ?>
-                    <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert" style="display:none!important">
+                    <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm pe-5" role="alert" style="display:none!important">
+                        <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"><i class="ri-close-line"></i></button>
                         <div class="d-flex align-items-start gap-2">
                             <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
                             <div>
@@ -717,7 +767,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </span>
                             </div>
                         </div>
-                        <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"></button>
                     </div>
                     <script>
                     (function () {

@@ -67,7 +67,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
           <div class="<?= h($authColumnClass) ?>">
             <div class="mb-3 d-flex justify-content-center auth-logo">
               <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none" aria-label="Faktury24">
-                <img src="/img/logo-faktury24.png" alt="Faktury24">
+                <!-- <img src="/img/logo-faktury24.png" alt="Faktury24"> -->
               </a>
             </div>
             <?= $this->cell('KsefStatus::banner') ?>

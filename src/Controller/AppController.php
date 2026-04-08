@@ -340,4 +340,16 @@ class AppController extends Controller
         // domyślnie: redirect do kreatora
         return $this->redirect(Router::url(['controller' => 'Companies', 'action' => 'onboarding']));
     }
+
+    protected function requireAdmin(): ?\Cake\Http\Response
+    {
+        $identity = $this->request->getAttribute('identity');
+        $isAdmin  = (bool)($identity?->get('is_admin') ?? false);
+        $role     = strtolower((string)($identity?->get('role') ?? ''));
+        if (!$isAdmin && $role !== 'admin') {
+            $this->Flash->error('Dostęp tylko dla administratora.');
+            return $this->redirect(['controller' => 'Invoices', 'action' => 'index']);
+        }
+        return null;
+    }
 }
