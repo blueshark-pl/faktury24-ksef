@@ -28,6 +28,8 @@ return function (RouteBuilder $routes): void {
         $builder->post('/contractors/search', 'Contractors::search');
         $builder->get('/contractors/import-fetch', 'Contractors::importFetch');
         $builder->post('/contractors/import-batch', 'Contractors::importBatch');
+        $builder->get('/contractors/import-speed-fetch', 'Contractors::importSpeedFetch');
+        $builder->post('/contractors/import-speed-batch', 'Contractors::importSpeedBatch');
         $builder->get('/products/import-fetch', 'Products::importFetch');
         $builder->post('/products/import-batch', 'Products::importBatch');
         $builder->get('/archiwum-faktur', ['controller' => 'LegacyInvoices', 'action' => 'index']);

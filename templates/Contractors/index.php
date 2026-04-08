@@ -69,6 +69,9 @@ $companyId = $identity?->get('company_id');
     <button class="btn btn-outline-info btn-wave" id="btn-import-f24">
       <i class="ri-download-cloud-2-line align-middle me-1"></i> Importuj z faktury24
     </button>
+    <button class="btn btn-outline-warning btn-wave" id="btn-import-speed">
+      <i class="ri-database-2-line align-middle me-1"></i> Importuj z Speed
+    </button>
     <button class="btn btn-primary btn-wave" data-bs-toggle="modal" data-bs-target="#contractor-create">
       <i class="ri-add-line me-1"></i> Dodaj kontrahenta
     </button>
@@ -656,6 +659,104 @@ $companyId = $identity?->get('company_id');
 <style>
   #importF24Modal .sticky-top { top: 0; z-index: 1; }
   #importF24Modal tbody tr.already-imported td { opacity: .5; }
+</style>
+
+<!-- Modal: Import z Speed -->
+<div class="modal fade" id="importSpeedModal" tabindex="-1" aria-labelledby="importSpeedModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar bg-warning-transparent rounded" style="width:2.5rem;height:2.5rem;display:flex;align-items:center;justify-content:center;">
+            <i class="ri-database-2-line fs-18 text-warning"></i>
+          </div>
+          <div>
+            <h5 class="modal-title mb-0" id="importSpeedModalLabel">Import z Speed</h5>
+            <small class="text-muted">Kontrahenci z systemu Speed ERP</small>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        <!-- Stan: ładowanie -->
+        <div id="spd-loading" class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
+          <div class="spinner-border text-warning" role="status" style="width:2.5rem;height:2.5rem;"></div>
+          <div class="text-muted">Pobieranie kontrahentów z Speed…</div>
+        </div>
+
+        <!-- Stan: błąd -->
+        <div id="spd-error" class="d-none p-4">
+          <div class="alert alert-danger mb-0" id="spd-error-msg"></div>
+        </div>
+
+        <!-- Stan: wyniki -->
+        <div id="spd-results" class="d-none">
+          <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <span class="fw-semibold" id="spd-count-label">0 kontrahentów</span>
+              <span class="text-muted ms-2 small" id="spd-already-label"></span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-outline-secondary btn-sm" id="spd-prev-btn" disabled>&laquo; Poprzednia</button>
+                <span class="small text-muted" id="spd-page-label">Strona 1</span>
+                <button class="btn btn-outline-secondary btn-sm" id="spd-next-btn" disabled>Następna &raquo;</button>
+              </div>
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="spd-check-all">
+                <label class="form-check-label small" for="spd-check-all">Zaznacz wszystkich nieimportowanych</label>
+              </div>
+              <span class="badge bg-warning-transparent text-warning" id="spd-selected-badge">0 zaznaczonych</span>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+            <table class="table table-hover table-sm align-middle mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="width:2.5rem;"></th>
+                  <th>Nazwa</th>
+                  <th>Skrót</th>
+                  <th>NIP</th>
+                  <th>Adres</th>
+                  <th>E-mail / Tel</th>
+                  <th style="width:8rem;text-align:center;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="spd-tbody"></tbody>
+            </table>
+          </div>
+
+          <!-- Pasek postępu importu -->
+          <div id="spd-import-progress" class="d-none px-4 py-3 border-top">
+            <div class="d-flex justify-content-between mb-1">
+              <small class="text-muted" id="spd-progress-label">Importowanie…</small>
+              <small class="text-muted" id="spd-progress-pct">0%</small>
+            </div>
+            <div class="progress" style="height:.5rem;">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" id="spd-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <!-- Wynik importu -->
+          <div id="spd-import-result" class="d-none px-4 py-3 border-top"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-warning d-none" id="spd-btn-import" disabled>
+          <i class="ri-database-2-line me-1"></i>
+          <span id="spd-btn-import-label">Importuj zaznaczonych</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #importSpeedModal .sticky-top { top: 0; z-index: 1; }
+  #importSpeedModal tbody tr.already-imported td { opacity: .5; }
 </style>
 
 <!-- Modal: Postęp eksportu -->
@@ -1922,6 +2023,252 @@ csSave?.addEventListener('click', async () => {
     // Przeładuj przy ponownym otwarciu
     modalEl.addEventListener('hidden.bs.modal', () => {
       allRows = [];
+      if (tbody) tbody.innerHTML = '';
+    });
+  })();
+
+  // === Import z Speed ===
+  (function(){
+    const btnOpen    = document.getElementById('btn-import-speed');
+    const modalEl    = document.getElementById('importSpeedModal');
+    if (!btnOpen || !modalEl) return;
+    const bsModal    = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+
+    const elLoading  = document.getElementById('spd-loading');
+    const elError    = document.getElementById('spd-error');
+    const elErrorMsg = document.getElementById('spd-error-msg');
+    const elResults  = document.getElementById('spd-results');
+    const tbody      = document.getElementById('spd-tbody');
+    const checkAll   = document.getElementById('spd-check-all');
+    const selBadge   = document.getElementById('spd-selected-badge');
+    const countLabel = document.getElementById('spd-count-label');
+    const alreadyLbl = document.getElementById('spd-already-label');
+    const btnImport  = document.getElementById('spd-btn-import');
+    const btnImpLbl  = document.getElementById('spd-btn-import-label');
+    const progWrap   = document.getElementById('spd-import-progress');
+    const progBar    = document.getElementById('spd-progress-bar');
+    const progLabel  = document.getElementById('spd-progress-label');
+    const progPct    = document.getElementById('spd-progress-pct');
+    const resultDiv  = document.getElementById('spd-import-result');
+    const prevBtn    = document.getElementById('spd-prev-btn');
+    const nextBtn    = document.getElementById('spd-next-btn');
+    const pageLabel  = document.getElementById('spd-page-label');
+
+    const FETCH_URL  = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'importSpeedFetch']) ?>';
+    const IMPORT_URL = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'importSpeedBatch']) ?>';
+
+    let allRows      = [];
+    let currentPage  = 1;
+    let totalPages   = 1;
+    let selectedRows = {}; // key = speed_id, value = row object
+
+    function escHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function show(el) {
+      ['spd-loading','spd-error','spd-results'].forEach(id => document.getElementById(id)?.classList.add('d-none'));
+      el?.classList.remove('d-none');
+    }
+
+    function updateSelectedBadge() {
+      const count = Object.keys(selectedRows).length;
+      selBadge.textContent = count + ' zaznaczonych';
+      if (btnImport) {
+        btnImport.disabled = count === 0;
+        if (btnImpLbl) btnImpLbl.textContent = count > 0 ? 'Importuj zaznaczonych (' + count + ')' : 'Importuj zaznaczonych';
+        btnImport.classList.toggle('d-none', false);
+      }
+    }
+
+    function syncCheckAllState() {
+      const allCheck = tbody.querySelectorAll('input[type="checkbox"]:not(:disabled)');
+      const checkedN = tbody.querySelectorAll('input[type="checkbox"]:not(:disabled):checked').length;
+      checkAll.indeterminate = checkedN > 0 && checkedN < allCheck.length;
+      checkAll.checked = allCheck.length > 0 && checkedN === allCheck.length;
+    }
+
+    function renderRows(rows) {
+      allRows = rows;
+      const alreadyCount = rows.filter(r => r.already_imported).length;
+      countLabel.textContent = rows.length + ' kontrahentów (strona ' + currentPage + ')';
+      alreadyLbl.textContent = alreadyCount > 0 ? '(' + alreadyCount + ' już w bazie)' : '';
+
+      tbody.innerHTML = rows.map((r) => {
+        const addr = [r.street, r.postal_code, r.city].filter(Boolean).join(', ');
+        const contact = [r.email, r.phone].filter(Boolean).join(' / ');
+        const badgeHtml = r.already_imported
+          ? '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>'
+          : '<span class="badge bg-success-transparent text-success">Nowy</span>';
+        const key = String(r.speed_id || r.nip_clean || r.name);
+        const isSelected = !!selectedRows[key];
+        return `<tr class="${r.already_imported ? 'already-imported' : ''}" data-key="${escHtml(key)}">
+          <td class="text-center">
+            <input type="checkbox" class="form-check-input spd-row-check" data-key="${escHtml(key)}"
+              ${r.already_imported ? 'disabled title="Już istnieje w bazie"' : ''}
+              ${isSelected ? 'checked' : ''}>
+          </td>
+          <td><strong>${escHtml(r.name)}</strong></td>
+          <td class="small text-muted">${escHtml(r.altname)}</td>
+          <td><code>${escHtml(r.nip)}</code></td>
+          <td class="small text-muted">${escHtml(addr)}</td>
+          <td class="small">${escHtml(contact)}</td>
+          <td class="text-center">${badgeHtml}</td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.spd-row-check').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const key = cb.dataset.key;
+          const row = allRows.find(r => String(r.speed_id || r.nip_clean || r.name) === key);
+          if (row) {
+            if (cb.checked) selectedRows[key] = row;
+            else delete selectedRows[key];
+          }
+          syncCheckAllState();
+          updateSelectedBadge();
+        });
+      });
+
+      syncCheckAllState();
+      updateSelectedBadge();
+    }
+
+    checkAll?.addEventListener('change', () => {
+      tbody.querySelectorAll('.spd-row-check:not(:disabled)').forEach(cb => {
+        cb.checked = checkAll.checked;
+        const key = cb.dataset.key;
+        const row = allRows.find(r => String(r.speed_id || r.nip_clean || r.name) === key);
+        if (row) {
+          if (checkAll.checked) selectedRows[key] = row;
+          else delete selectedRows[key];
+        }
+      });
+      syncCheckAllState();
+      updateSelectedBadge();
+    });
+
+    async function fetchPage(page) {
+      show(elLoading);
+      currentPage = page;
+      if (progWrap) progWrap.classList.add('d-none');
+      if (resultDiv) { resultDiv.innerHTML = ''; resultDiv.classList.add('d-none'); }
+      try {
+        const resp = await fetch(FETCH_URL + '?page=' + page, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await resp.json();
+        if (!data.success) {
+          elErrorMsg.textContent = data.error || 'Nieznany błąd.';
+          show(elError);
+          return;
+        }
+        if (!data.rows || data.rows.length === 0) {
+          elErrorMsg.textContent = 'Brak kontrahentów w systemie Speed.';
+          show(elError);
+          return;
+        }
+        totalPages = data.totalPages || 1;
+        pageLabel.textContent = 'Strona ' + currentPage + ' / ' + totalPages;
+        prevBtn.disabled = currentPage <= 1;
+        nextBtn.disabled = currentPage >= totalPages;
+        renderRows(data.rows);
+        show(elResults);
+        btnImport?.classList.remove('d-none');
+      } catch (e) {
+        elErrorMsg.textContent = 'Błąd połączenia z Speed API: ' + (e?.message || e);
+        show(elError);
+      }
+    }
+
+    prevBtn?.addEventListener('click', () => { if (currentPage > 1) fetchPage(currentPage - 1); });
+    nextBtn?.addEventListener('click', () => { if (currentPage < totalPages) fetchPage(currentPage + 1); });
+
+    btnOpen.addEventListener('click', () => {
+      bsModal.show();
+      selectedRows = {};
+      fetchPage(1);
+    });
+
+    btnImport?.addEventListener('click', async () => {
+      const selected = Object.values(selectedRows);
+      if (!selected.length) return;
+
+      btnImport.disabled = true;
+      checkAll.disabled = true;
+      if (progWrap) {
+        progWrap.classList.remove('d-none');
+        progBar.style.width = '0%';
+        progPct.textContent = '0%';
+        progLabel.textContent = 'Importowanie ' + selected.length + ' kontrahentów…';
+      }
+
+      let fake = 0;
+      const t = setInterval(() => {
+        if (fake < 88) { fake += 3; progBar.style.width = fake + '%'; progPct.textContent = fake + '%'; }
+      }, 120);
+
+      try {
+        const resp = await fetch(IMPORT_URL, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': CSRF_TOKEN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rows: selected }),
+        });
+        const data = await resp.json();
+
+        clearInterval(t);
+        progBar.style.width = '100%';
+        progPct.textContent = '100%';
+        progBar.classList.remove('progress-bar-animated');
+
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          if (data.success) {
+            const errHtml = data.errors?.length
+              ? '<ul class="mb-0 mt-2 small">' + data.errors.map(e => '<li>' + escHtml(e) + '</li>').join('') + '</ul>'
+              : '';
+            resultDiv.innerHTML = `<div class="alert alert-success mb-0">
+              <i class="ri-check-circle-line me-1"></i>
+              <strong>Zaimportowano: ${data.imported}</strong>${data.skipped > 0 ? ', pominięto (duplikaty/błędy): ' + data.skipped : ''}
+              ${errHtml}
+            </div>`;
+            // Mark imported rows on current page view as "already in db"
+            if (data.imported > 0) {
+              tbody.querySelectorAll('.spd-row-check:checked').forEach(cb => {
+                const tr = cb.closest('tr');
+                if (tr) tr.classList.add('already-imported');
+                cb.checked = false;
+                cb.disabled = true;
+                const key = cb.dataset.key;
+                delete selectedRows[key];
+              });
+              tbody.querySelectorAll('tr.already-imported td:last-child').forEach(td => {
+                if (td.innerHTML.includes('Nowy')) td.innerHTML = '<span class="badge bg-secondary-transparent text-secondary">Już w bazie</span>';
+              });
+              syncCheckAllState();
+              updateSelectedBadge();
+            }
+          } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="ri-error-warning-line me-1"></i>${escHtml(data.error || 'Błąd importu.')}</div>`;
+          }
+        }
+      } catch (e) {
+        clearInterval(t);
+        if (resultDiv) {
+          resultDiv.classList.remove('d-none');
+          resultDiv.innerHTML = `<div class="alert alert-danger mb-0">Błąd: ${escHtml(e?.message || e)}</div>`;
+        }
+      } finally {
+        btnImport.disabled = false;
+        checkAll.disabled = false;
+      }
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      allRows = [];
+      selectedRows = {};
       if (tbody) tbody.innerHTML = '';
     });
   })();

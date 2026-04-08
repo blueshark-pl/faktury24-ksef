@@ -897,6 +897,234 @@ public function export()
             ]));
     }
 
+    /**
+     * Pobiera kontrahentów z systemu Speed (API paginowane).
+     * Wymaga SPEED_API_URL i SPEED_API_TOKEN w zmiennych środowiskowych.
+     * GET /contractors/import-speed-fetch?page=1
+     */
+    public function importSpeedFetch(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $apiUrl   = rtrim((string)(getenv('SPEED_API_URL') ?: Configure::read('Speed.apiUrl') ?: ''), '/');
+        $apiToken = (string)(getenv('SPEED_API_TOKEN') ?: Configure::read('Speed.apiToken') ?: '');
+
+        if ($apiUrl === '') {
+            $this->jsonError('Brak konfiguracji SPEED_API_URL. Skontaktuj się z administratorem.');
+            return;
+        }
+
+        $page  = max(1, (int)$this->request->getQuery('page', 1));
+        $limit = 100; // pobieramy po 100 rekordów
+
+        try {
+            $client = new Client();
+            $headers = $apiToken !== '' ? ['Authorization' => 'Bearer ' . $apiToken] : [];
+            $resp = $client->get(
+                $apiUrl . '/kontrahenci',
+                ['page' => $page, 'limit' => $limit],
+                ['headers' => $headers, 'timeout' => 20]
+            );
+
+            if ($resp->getStatusCode() !== 200) {
+                $this->jsonError('Speed API zwróciło HTTP ' . $resp->getStatusCode() . '. Sprawdź konfigurację.');
+                return;
+            }
+
+            $json = $resp->getJson();
+            if (!is_array($json) || !isset($json['data'])) {
+                $this->jsonError('Nieoczekiwana odpowiedź z Speed API (brak klucza "data").');
+                return;
+            }
+
+            $payload    = (array)$json['data'];
+            $total      = (int)($json['total'] ?? 0);
+            $totalPages = (int)($json['totalPages'] ?? 1);
+
+            // Oznacz NIP-y, które już istnieją lokalnie
+            $existingNips = [];
+            $remoteNips = array_filter(array_map(
+                fn($r) => preg_replace('/\D+/', '', trim((string)($r['KON_NIP'] ?? ''))),
+                $payload
+            ));
+            if (!empty($remoteNips)) {
+                $found = $this->Contractors->find()
+                    ->select(['nip'])
+                    ->where(['company_id' => $companyId, 'nip IN' => array_values($remoteNips)])
+                    ->all();
+                foreach ($found as $c) {
+                    $existingNips[$c->nip] = true;
+                }
+            }
+
+            $rows = [];
+            foreach ($payload as $r) {
+                $nipRaw   = trim((string)($r['KON_NIP'] ?? ''));
+                $nipClean = preg_replace('/\D+/', '', $nipRaw);
+
+                // Adres: ulica + numer domu
+                $ulica  = trim((string)($r['KON_ULICA'] ?? ''));
+                $nrDom  = trim((string)($r['KON_NRDOM'] ?? ''));
+                $street = trim($ulica . ($nrDom !== '' ? ' ' . $nrDom : ''));
+
+                // Kraj: Speed przechowuje 2-znakowy kod lub spacje → domyślnie PL
+                $krajRaw = trim((string)($r['KON_KRAJ'] ?? ''));
+                $country = (strlen($krajRaw) === 2 && ctype_alpha($krajRaw)) ? strtoupper($krajRaw) : 'PL';
+
+                // Pola niemapowalne → JSON w notes
+                $extra = [];
+                $unmapped = [
+                    'speed_id'         => $r['KON_ID'] ?? null,
+                    'konto'            => trim((string)($r['KON_KONTO'] ?? '')),
+                    'ean'              => trim((string)($r['KON_EAN'] ?? '')),
+                    'bank'             => trim((string)($r['KON_BANK'] ?? '')),
+                    'bank_adres'       => trim((string)($r['KON_BANK_ADRES'] ?? '')),
+                    'numer_rachunku'   => trim((string)($r['KON_NUMER'] ?? '')),
+                    'waluta'           => trim((string)($r['KON_WALUTA'] ?? '')),
+                    'limit_kredytowy'  => $r['KON_LIMIT'] ?? null,
+                    'upust'            => $r['KON_UPUST'] ?? null,
+                    'fax'              => trim((string)($r['KON_FAX'] ?? '')),
+                    'www'              => trim((string)($r['KON_WWW'] ?? '')),
+                    'pesel'            => trim((string)($r['KON_PESEL'] ?? '')),
+                    'krs'              => trim((string)($r['KON_KRS'] ?? '')),
+                    'wojewodztwo'      => trim((string)($r['KON_WOJ'] ?? '')),
+                    'powiat'           => trim((string)($r['KON_POWIAT'] ?? '')),
+                    'gmina'            => trim((string)($r['KON_GMINA'] ?? '')),
+                    'poczta'           => trim((string)($r['KON_POCZTA'] ?? '')),
+                    'uwagi'            => trim((string)($r['KON_UWAGI'] ?? '')),
+                    'prog'             => trim((string)($r['KON_PROG'] ?? '')),
+                    'status'           => trim((string)($r['KON_STATUS'] ?? '')),
+                    'osoba_kontakt'    => trim((string)($r['KON_OSOBA'] ?? '')),
+                    'przedstawiciel'   => trim((string)($r['KON_PRZEDSTAW'] ?? '')),
+                ];
+                foreach ($unmapped as $k => $v) {
+                    if ($v !== null && $v !== '' && $v !== 0 && $v !== 0.0) {
+                        $extra[$k] = $v;
+                    }
+                }
+
+                $rows[] = [
+                    'speed_id'         => (int)($r['KON_ID'] ?? 0),
+                    'nip'              => $nipRaw,
+                    'nip_clean'        => $nipClean,
+                    'name'             => trim((string)($r['KON_NAZWA1'] ?? '')),
+                    'altname'          => trim((string)($r['KON_SKROT'] ?? '')),
+                    'regon'            => trim((string)($r['KON_REGON'] ?? '')),
+                    'country'          => $country,
+                    'postal_code'      => trim((string)($r['KON_KOD'] ?? '')),
+                    'city'             => trim((string)($r['KON_MIEJSC'] ?? '')),
+                    'street'           => $street,
+                    'local_number'     => trim((string)($r['KON_NRLOKAL'] ?? '')),
+                    'phone'            => trim((string)($r['KON_TEL'] ?? '')),
+                    'email'            => trim((string)($r['KON_EMAIL'] ?? '')),
+                    'extra_json'       => empty($extra) ? null : $extra,
+                    'already_imported' => isset($existingNips[$nipClean]),
+                ];
+            }
+
+            $this->response = $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success'    => true,
+                    'page'       => $page,
+                    'totalPages' => $totalPages,
+                    'total'      => $total,
+                    'count'      => count($rows),
+                    'rows'       => $rows,
+                ]));
+        } catch (\Throwable $e) {
+            $this->jsonError('Błąd połączenia z Speed API: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Importuje zaznaczonych kontrahentów z Speed do lokalnej bazy.
+     * POST /contractors/import-speed-batch
+     * Body: { "rows": [ { nip_clean, name, altname, regon, country, postal_code, city, street, local_number, phone, email, extra_json } ] }
+     */
+    public function importSpeedBatch(): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $rows = (array)($this->request->getData('rows') ?? []);
+        if (empty($rows)) {
+            $this->response = $this->response->withType('application/json')
+                ->withStringBody(json_encode(['success' => false, 'error' => 'Brak danych do importu.']));
+            return;
+        }
+
+        $imported = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        foreach ($rows as $r) {
+            $nipClean = preg_replace('/\D+/', '', (string)($r['nip_clean'] ?? $r['nip'] ?? ''));
+            $name     = trim((string)($r['name'] ?? ''));
+            if ($name === '') {
+                $errors[] = 'Pominięto rekord bez nazwy (NIP: ' . ($r['nip'] ?? '?') . ')';
+                $skipped++;
+                continue;
+            }
+
+            // Duplikat po NIP
+            if ($nipClean !== '' && $this->Contractors->exists(['company_id' => $companyId, 'nip' => $nipClean])) {
+                $skipped++;
+                continue;
+            }
+
+            // Pola niemapowalne → notes jako JSON
+            $notesData = null;
+            if (!empty($r['extra_json']) && is_array($r['extra_json'])) {
+                $notesData = json_encode($r['extra_json'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }
+
+            $entity = $this->Contractors->newEntity([
+                'company_id'   => $companyId,
+                'name'         => $name,
+                'altname'      => (string)($r['altname'] ?? '') ?: null,
+                'nip'          => $nipClean !== '' ? $nipClean : null,
+                'regon'        => (string)($r['regon'] ?? '') ?: null,
+                'country'      => (string)($r['country'] ?? 'PL') ?: 'PL',
+                'postal_code'  => (string)($r['postal_code'] ?? '') ?: null,
+                'city'         => (string)($r['city'] ?? '') ?: null,
+                'street'       => (string)($r['street'] ?? '') ?: null,
+                'local_number' => (string)($r['local_number'] ?? '') ?: null,
+                'phone'        => (string)($r['phone'] ?? '') ?: null,
+                'email'        => (string)($r['email'] ?? '') ?: null,
+                'notes'        => $notesData,
+                'is_active'    => true,
+            ]);
+
+            if ($this->Contractors->save($entity)) {
+                $imported++;
+            } else {
+                $errors[] = 'Nie udało się zapisać: ' . $name . ' (' . implode(', ', array_map(
+                    fn($errs) => implode(', ', $errs),
+                    $entity->getErrors()
+                )) . ')';
+                $skipped++;
+            }
+        }
+
+        $this->response = $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success'  => true,
+                'imported' => $imported,
+                'skipped'  => $skipped,
+                'errors'   => $errors,
+            ]));
+    }
+
+    /** Helper: zwraca JSON z błędem */
+    private function jsonError(string $message): void
+    {
+        $this->response = $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => false, 'error' => $message]));
+    }
+
 public function invoices($contractorId)
 {
     $this->request->allowMethod(['get']);
