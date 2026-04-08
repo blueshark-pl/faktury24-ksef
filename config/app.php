@@ -61,7 +61,7 @@ return [
         'imageBaseUrl' => 'img/',
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
-        'version' => '1.4.8 (57)',
+        'version' => '1.4.8 (58)',
         'ksefSchedulerKey' => env('APP_KSEF_SCHEDULER_KEY', ''),
         'ssoSecret' => env('APP_SSO_SECRET', '23319ef6c6c9247c01cece1f02c6405058ecb78efd85e8aee14e1dc705d2ec7b'),
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.

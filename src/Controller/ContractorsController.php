@@ -904,6 +904,7 @@ public function export()
      */
     public function importSpeedFetch(): void
     {
+        $this->disableAutoRender();
         $this->request->allowMethod(['get']);
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
@@ -1045,6 +1046,7 @@ public function export()
      */
     public function importSpeedBatch(): void
     {
+        $this->disableAutoRender();
         $this->request->allowMethod(['post']);
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
