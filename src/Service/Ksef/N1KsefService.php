@@ -639,7 +639,7 @@ final class N1KsefService
 
                 // Rate limit (429) — retry with exponential backoff
                 if ($httpCode === 429 && $attempt < $maxRetries) {
-                    $wait = $attempt * 2; // 2s, 4s
+                    $wait = $attempt === 1 ? 5 : 12; // 5s, 12s (KSeF wymaga dłuższych przerw)
                     if ($enableTrace || $this->isAppDebugEnabled()) {
                         try {
                             KsefHttpTrace::add([

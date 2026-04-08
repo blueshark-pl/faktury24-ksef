@@ -35,9 +35,9 @@ if (!empty($invoices)) {
             $uniqueSellers[$selNip] = $inv['InvoiceContractors']['name'] ?? $selNip;
         }
 
-        if ($inv['date'] instanceof \Cake\I18n\FrozenDate) {
-            if ($dateMin === null || $inv['date']->lt($dateMin)) $dateMin = $inv['date'];
-            if ($dateMax === null || $inv['date']->gt($dateMax)) $dateMax = $inv['date'];
+        if ($inv['date'] instanceof \Cake\I18n\Date || $inv['date'] instanceof \Cake\I18n\FrozenDate) {
+            if ($dateMin === null || $inv['date'] < $dateMin) $dateMin = $inv['date'];
+            if ($dateMax === null || $inv['date'] > $dateMax) $dateMax = $inv['date'];
         }
     }
 }
