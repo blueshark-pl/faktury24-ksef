@@ -86,6 +86,17 @@ return [
     ],
 
     /*
+     * Konfiguracja Speed ERP API (import kontrahentów).
+     * Ustaw w app_local.php lub via zmienne środowiskowe:
+     *   SPEED_API_URL   – bazowy URL API, np. https://speed.example.com/api
+     *   SPEED_API_TOKEN – Bearer token do autoryzacji
+     */
+    'Speed' => [
+        'apiUrl'   => env('SPEED_API_URL', ''),
+        'apiToken' => env('SPEED_API_TOKEN', ''),
+    ],
+
+    /*
      * Security and encryption configuration
      *
      * - salt - A random string used in security hashing methods.
