@@ -16,6 +16,10 @@ $money = function ($amount, $cur = 'PLN') {
 
 // Statystyki per waluta (z bieżącej strony)
 $currencies = [];
+$uniqueSellers = [];
+$dateMin = null;
+$dateMax = null;
+$totalGrossAll = 0.0;
 if (!empty($invoices)) {
     foreach ($invoices as $inv) {
         $c = strtoupper($inv['currency'] ?? 'PLN');
@@ -24,8 +28,21 @@ if (!empty($invoices)) {
         }
         $currencies[$c]['count']++;
         $currencies[$c]['sum'] += (float)($inv['total'] ?? 0);
+        $totalGrossAll += (float)($inv['total'] ?? 0);
+
+        $selNip = trim($inv['InvoiceContractors']['tax_id'] ?? '');
+        if ($selNip !== '') {
+            $uniqueSellers[$selNip] = $inv['InvoiceContractors']['name'] ?? $selNip;
+        }
+
+        if ($inv['date'] instanceof \Cake\I18n\FrozenDate) {
+            if ($dateMin === null || $inv['date']->lt($dateMin)) $dateMin = $inv['date'];
+            if ($dateMax === null || $inv['date']->gt($dateMax)) $dateMax = $inv['date'];
+        }
     }
 }
+$invoiceCount = count($invoices);
+$avgGross = $invoiceCount > 0 ? $totalGrossAll / $invoiceCount : 0.0;
 ?>
 
 <style>
@@ -45,9 +62,11 @@ if (!empty($invoices)) {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: .75rem;
 }
-.stat-card { border: 0; border-radius: .75rem; }
-.stat-card .stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
-.stat-card .stat-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; }
+.stat-card { border: 0; border-radius: .75rem; height: 100%; }
+.stat-card .card-body { display: flex; flex-direction: column; }
+.stat-card .stat-value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+.stat-card .stat-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; font-weight: 600; }
+.stat-card .stat-icon { font-size: .875rem; flex-shrink: 0; }
 a.icon-clip {
     display: inline-flex;
     align-items: center;
@@ -94,38 +113,119 @@ a.icon-clip i { font-size: .85rem; }
 <!-- End::page-header -->
 
 <!-- Stats -->
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3">
-    <div class="card stat-card shadow-sm">
-      <div class="card-body py-3">
-        <div class="stat-label mb-1">Dokumentów na stronie</div>
-        <div class="stat-value text-primary"><?= count($invoices ?? []) ?></div>
-        <?php if ($total > 0): ?>
-          <div class="small text-muted mt-1">Łącznie w API: <?= number_format($total) ?></div>
+<div class="row g-3 mb-4 row-cols-2 row-cols-md-3 row-cols-xl-5">
+  <!-- 1. Dokumenty -->
+  <div class="col d-flex">
+    <div class="card stat-card shadow-sm w-100">
+      <div class="card-body py-3 d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+          <span class="stat-icon bg-primary-subtle text-primary rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+            <i class="ri-file-list-3-line"></i>
+          </span>
+          <span class="stat-label ms-2">Dokumenty</span>
+        </div>
+        <div class="stat-value text-primary"><?= $invoiceCount ?></div>
+        <?php if ($total > 0 && $total > $invoiceCount): ?>
+          <div class="small text-muted mt-auto pt-1">z <?= number_format($total) ?> w KSeF</div>
         <?php endif; ?>
       </div>
     </div>
   </div>
-  <?php $idx = 0; foreach ($currencies as $cur => $s): if ($idx >= 3) break; ?>
-  <div class="col-sm-6 col-lg-3">
-    <div class="card stat-card shadow-sm">
-      <div class="card-body py-3">
-        <div class="stat-label mb-1">Suma <?= h($cur) ?> (<?= $s['count'] ?>)</div>
-        <div class="stat-value"><?= $money($s['sum'], $cur) ?></div>
+
+  <!-- 2. Suma brutto (główna waluta) -->
+  <?php $mainCur = 'PLN'; $mainSum = $currencies[$mainCur]['sum'] ?? $totalGrossAll; $mainCnt = $currencies[$mainCur]['count'] ?? $invoiceCount; ?>
+  <div class="col d-flex">
+    <div class="card stat-card shadow-sm w-100">
+      <div class="card-body py-3 d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+          <span class="stat-icon bg-success-subtle text-success rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+            <i class="ri-money-dollar-circle-line"></i>
+          </span>
+          <span class="stat-label ms-2">Suma brutto</span>
+        </div>
+        <div class="stat-value text-success"><?= $money($mainSum, $mainCur) ?></div>
+        <div class="small text-muted mt-auto pt-1"><?= $mainCnt ?> <?= $mainCnt === 1 ? 'faktura' : ($mainCnt < 5 ? 'faktury' : 'faktur') ?></div>
       </div>
     </div>
   </div>
-  <?php $idx++; endforeach; ?>
-  <?php if (!empty($apiInfo['hasMore']) || !empty($apiInfo['isTruncated'])): ?>
-  <div class="col-sm-6 col-lg-3">
-    <div class="card stat-card shadow-sm border-warning">
-      <div class="card-body py-3">
-        <div class="stat-label mb-1 text-warning">Więcej wyników</div>
-        <div class="small text-muted">API KSeF zwróciło częściowe wyniki. Zawęź zakres dat.</div>
+
+  <!-- 3. Średnia faktura -->
+  <div class="col d-flex">
+    <div class="card stat-card shadow-sm w-100">
+      <div class="card-body py-3 d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+          <span class="stat-icon bg-info-subtle text-info rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+            <i class="ri-bar-chart-box-line"></i>
+          </span>
+          <span class="stat-label ms-2">Średnia kwota</span>
+        </div>
+        <div class="stat-value text-info"><?= $invoiceCount > 0 ? $money($avgGross) : '—' ?></div>
+        <div class="small text-muted mt-auto pt-1">na fakturę brutto</div>
       </div>
     </div>
   </div>
-  <?php endif; ?>
+
+  <!-- 4. Kontrahenci -->
+  <div class="col d-flex">
+    <div class="card stat-card shadow-sm w-100">
+      <div class="card-body py-3 d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+          <span class="stat-icon bg-warning-subtle text-warning rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+            <i class="ri-building-2-line"></i>
+          </span>
+          <span class="stat-label ms-2">Sprzedawcy</span>
+        </div>
+        <div class="stat-value text-warning"><?= count($uniqueSellers) ?></div>
+        <div class="small text-muted mt-auto pt-1">unikalnych NIP</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Zakres dat / dodatkowe waluty / hasMore -->
+  <div class="col d-flex">
+    <?php if (!empty($apiInfo['hasMore']) || !empty($apiInfo['isTruncated'])): ?>
+      <div class="card stat-card shadow-sm w-100 border-warning">
+        <div class="card-body py-3 d-flex flex-column">
+          <div class="d-flex align-items-center mb-2">
+            <span class="stat-icon bg-danger-subtle text-danger rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+              <i class="ri-error-warning-line"></i>
+            </span>
+            <span class="stat-label ms-2">Uwaga</span>
+          </div>
+          <div class="stat-value text-danger" style="font-size:1rem">Częściowe wyniki</div>
+          <div class="small text-muted mt-auto pt-1">Zawęź zakres dat</div>
+        </div>
+      </div>
+    <?php else: ?>
+      <div class="card stat-card shadow-sm w-100">
+        <div class="card-body py-3 d-flex flex-column">
+          <div class="d-flex align-items-center mb-2">
+            <span class="stat-icon bg-secondary-subtle text-secondary rounded-circle d-inline-flex align-items-center justify-content-center" style="width:2rem;height:2rem">
+              <i class="ri-calendar-line"></i>
+            </span>
+            <span class="stat-label ms-2">Okres</span>
+          </div>
+          <?php if ($dateMin && $dateMax): ?>
+            <div class="stat-value text-secondary" style="font-size:1rem"><?= $dateMin->format('d.m') ?> – <?= $dateMax->format('d.m.Y') ?></div>
+          <?php else: ?>
+            <div class="stat-value text-secondary" style="font-size:1rem">—</div>
+          <?php endif; ?>
+          <?php
+            $otherCurs = array_filter($currencies, fn($v, $k) => $k !== 'PLN', ARRAY_FILTER_USE_BOTH);
+          ?>
+          <?php if (!empty($otherCurs)): ?>
+            <div class="small text-muted mt-auto pt-1">
+              <?php foreach ($otherCurs as $cur => $s): ?>
+                <?= h($cur) ?>: <?= $money($s['sum'], $cur) ?><?= next($otherCurs) !== false ? ', ' : '' ?>
+              <?php endforeach; ?>
+            </div>
+          <?php else: ?>
+            <div class="small text-muted mt-auto pt-1"><?= $invoiceCount ?> pozycji na stronie</div>
+          <?php endif; ?>
+        </div>
+      </div>
+    <?php endif; ?>
+  </div>
 </div>
 
 <!-- Filters -->
