@@ -275,6 +275,9 @@ a.icon-clip i { font-size: .85rem; }
                       <a class="btn btn-sm btn-outline-primary" href="<?= $this->Url->build(['action' => 'download', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz XML">
                         <i class="ri-download-2-line"></i>
                       </a>
+                      <a class="btn btn-sm btn-outline-danger" href="<?= $this->Url->build(['action' => 'downloadPdf', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz PDF">
+                        <i class="ri-file-pdf-2-line"></i>
+                      </a>
                       <a class="btn btn-sm btn-outline-secondary preview-xml" href="#" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>" title="Podgląd XML">
                         <i class="ri-code-s-slash-line"></i>
                       </a>

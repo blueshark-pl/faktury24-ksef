@@ -676,6 +676,65 @@ class KsefAuthorizationsController extends AppController
     }
 
     /**
+     * Pobiera XML faktury z KSeF, konwertuje na PDF przez zewnętrzne API i zwraca do pobrania.
+     * URL: /ksef-authorizations/download-pdf/{ksefNumber}?env=test
+     */
+    public function downloadPdf(string $ksefNumber)
+    {
+        $identity    = $this->request->getAttribute('identity');
+        $companyId   = (string)($identity?->get('company_id') ?? '');
+        $environment = (string)$this->request->getQuery('env', 'prod');
+        $asNip       = preg_replace('/\D/', '', (string)$this->request->getQuery('as_nip'));
+
+        $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+        try {
+            $client = $ksef->buildClient($companyId, $environment, $asNip ?: null);
+            $response = $client->invoices()->download(new DownloadRequest(KsefNumberVO::from($ksefNumber)));
+            $xml = $response->body();
+        } catch (\Throwable $e) {
+            $this->Flash->error('Nie udało się pobrać pliku z KSeF: ' . $this->formatKsefError($e));
+            return $this->redirect($this->referer(['action' => 'received']));
+        }
+
+        if (empty($xml)) {
+            $this->Flash->error('Pobrano pusty XML z KSeF.');
+            return $this->redirect($this->referer(['action' => 'received']));
+        }
+
+        $apiUrl = getenv('INVOICE_API_URL') ?: 'https://faktury24.3ckstudio.pl/api/invoice';
+        try {
+            $http = new \Cake\Http\Client(['timeout' => 60]);
+            $resp = $http->post($apiUrl, [
+                'xml' => $xml,
+                'additionalData' => [
+                    'nrKSeF'    => $ksefNumber,
+                    'qrCode'    => '',
+                    'isPreview' => false,
+                ],
+            ], ['type' => 'json']);
+
+            if ($resp->getStatusCode() !== 200) {
+                throw new \RuntimeException('API zwróciło status ' . $resp->getStatusCode());
+            }
+            $pdfContent = (string)$resp->getBody();
+            if ($pdfContent === '') {
+                throw new \RuntimeException('API zwróciło pustą odpowiedź');
+            }
+        } catch (\Throwable $e) {
+            $this->Flash->error('Nie udało się wygenerować PDF: ' . $e->getMessage());
+            return $this->redirect($this->referer(['action' => 'received']));
+        }
+
+        $safeFilename = sprintf('ksef-%s.pdf', preg_replace('/[^A-Za-z0-9\-]/', '_', $ksefNumber));
+        $this->response = $this->response
+            ->withType('application/pdf')
+            ->withStringBody($pdfContent)
+            ->withDownload($safeFilename);
+
+        return $this->response;
+    }
+
+    /**
      * Podgląd pliku faktury z KSeF po numerze KSeF, bez wymuszenia pobrania.
      * Zwraca treść XML jako text/plain do użycia w modalu.
      * URL: /ksef-authorizations/preview/{ksefNumber}?env=test
