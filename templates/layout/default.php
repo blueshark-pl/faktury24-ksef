@@ -564,6 +564,24 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <!-- Zlecenia Speed -->
+                            <li class="<?= $liClass(['speedorders']) ?>">
+                            <a href="javascript:void(0);" class="side-menu__item">
+                                <i class="ri-arrow-right-s-line side-menu__angle"></i>
+                                <i class="ri-truck-line side-menu__icon"></i>
+                                <span class="side-menu__label">Zlecenia</span>
+                            </a>
+                            <ul class="slide-menu child1">
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Lista zleceń',
+                                            ['plugin' => false, 'controller' => 'SpeedOrders', 'action' => 'index'],
+                                            ['class' => 'side-menu__item ' . $navActive('speedorders', 'index')]
+                                    ) ?>
+                                </li>
+                            </ul>
+                            </li>
+
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
