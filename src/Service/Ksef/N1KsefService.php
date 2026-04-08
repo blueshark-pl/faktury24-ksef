@@ -355,6 +355,20 @@ final class N1KsefService
     }
 
     /**
+     * Formatuje komunikat błędu połączenia z KSeF.
+     * Rozróżnia HTTP 429 (rate limit) od pozostałych błędów.
+     */
+    private function formatKsefConnectionError(string $errorDetails, ?\Throwable $e = null): string
+    {
+        $is429 = str_contains($errorDetails, '429')
+            || ($e !== null && (int)$e->getCode() === 429);
+        if ($is429) {
+            return 'Serwer KSeF tymczasowo ogranicza liczbę zapytań (HTTP 429). Odczekaj kilkanaście sekund i spróbuj ponownie.';
+        }
+        return 'Błąd połączenia z KSeF: ' . $errorDetails;
+    }
+
+    /**
      * Ustala NIP firmy do użycia jako identifier.
      * Preferencja zgodnie z prośbą: NAJPIERW z tabeli Companies.nip, a dopiero potem z credów.
      */
@@ -614,31 +628,53 @@ final class N1KsefService
         );
 
         // Wywołanie zgodne z README/tests: invoices()->query()->metadata(MetadataRequest)->object()/array()
-        try {
-            $resp = $client->invoices()->query()->metadata($request);
-        } catch (\Throwable $e) {
-            // Na PROD spotykane są rozjazdy host/basePath (auth działa, ale invoices endpoint zwraca 404).
-            // Spróbujmy jednorazowo alternatywnego base URL przy 404.
-            if ((int)$e->getCode() === 404 && is_string($apiUrl) && $apiUrl !== '') {
-                $alt = $this->alternateApiUrl($environment, $apiUrl);
-                if ($alt !== null && $alt !== $apiUrl) {
+        $maxRetries = 3;
+        $resp = null;
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $resp = $client->invoices()->query()->metadata($request);
+                break; // success
+            } catch (\Throwable $e) {
+                $httpCode = (int)$e->getCode();
+
+                // Rate limit (429) — retry with exponential backoff
+                if ($httpCode === 429 && $attempt < $maxRetries) {
+                    $wait = $attempt * 2; // 2s, 4s
                     if ($enableTrace || $this->isAppDebugEnabled()) {
                         try {
                             KsefHttpTrace::add([
                                 'ts' => date('Y-m-d H:i:s'),
                                 'stage' => 'retry',
-                                'message' => 'Metadata 404; retry with alternate apiUrl=' . $alt,
+                                'message' => "Metadata 429 (rate limit); waiting {$wait}s before retry #{$attempt}",
                             ]);
-                        } catch (\Throwable) {
-                            // ignore
-                        }
+                        } catch (\Throwable) {}
                     }
-                    $client2 = $this->buildClient($companyId, $environment, $overrideIdentifierNip, $alt, $enableTrace);
-                    $resp = $client2->invoices()->query()->metadata($request);
-                } else {
-                    throw $e;
+                    sleep($wait);
+                    continue;
                 }
-            } else {
+
+                // Na PROD spotykane są rozjazdy host/basePath (auth działa, ale invoices endpoint zwraca 404).
+                // Spróbujmy jednorazowo alternatywnego base URL przy 404.
+                if ($httpCode === 404 && is_string($apiUrl) && $apiUrl !== '') {
+                    $alt = $this->alternateApiUrl($environment, $apiUrl);
+                    if ($alt !== null && $alt !== $apiUrl) {
+                        if ($enableTrace || $this->isAppDebugEnabled()) {
+                            try {
+                                KsefHttpTrace::add([
+                                    'ts' => date('Y-m-d H:i:s'),
+                                    'stage' => 'retry',
+                                    'message' => 'Metadata 404; retry with alternate apiUrl=' . $alt,
+                                ]);
+                            } catch (\Throwable) {
+                                // ignore
+                            }
+                        }
+                        $client2 = $this->buildClient($companyId, $environment, $overrideIdentifierNip, $alt, $enableTrace);
+                        $resp = $client2->invoices()->query()->metadata($request);
+                        break;
+                    }
+                }
+
                 throw $e;
             }
         }
@@ -1175,7 +1211,7 @@ final class N1KsefService
                     // ignore
                 }
             }
-            $error = 'Błąd połączenia z KSeF: ' . $errorDetails;
+            $error = $this->formatKsefConnectionError($errorDetails, $e);
             if (class_exists('Cake\\Log\\Log')) {
                 try {
                     \Cake\Log\Log::error('[KSeF] Błąd autoryzacji/zapytania: ' . $e::class . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString());
@@ -1413,7 +1449,7 @@ final class N1KsefService
                     // ignore
                 }
             }
-            $error = 'Błąd połączenia z KSeF: ' . $errorDetails;
+            $error = $this->formatKsefConnectionError($errorDetails, $e);
             if (class_exists('Cake\\Log\\Log')) {
                 try {
                     \Cake\Log\Log::error('[KSeF] Błąd autoryzacji/zapytania (issued): ' . $e::class . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString());
@@ -2155,7 +2191,7 @@ final class N1KsefService
 
         $flash = null;
         if ($errorDetails !== null) {
-            $flash = ['type' => 'error', 'message' => 'Błąd połączenia z KSeF: ' . $errorDetails];
+            $flash = ['type' => 'error', 'message' => $this->formatKsefConnectionError($errorDetails)];
         } elseif (!empty($items)) {
             $flash = ['type' => 'success', 'message' => sprintf('Pobrano %d pozycji uprawnień (strona %d).', count($items), $page)];
         } else {
