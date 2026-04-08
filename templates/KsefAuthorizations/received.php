@@ -2,200 +2,332 @@
 /**
  * @var \App\View\AppView $this
  * @var array $invoices
- * @var array $stats
+ * @var array $apiInfo
+ * @var array $certInfo
  */
-$this->assign('title', 'Faktury otrzymane (KSeF)');
-$env = (string)$this->getRequest()->getQuery('env', 'prod');
+$this->assign('title', 'Dokumenty otrzymane z KSeF');
+$env   = (string)$this->getRequest()->getQuery('env', 'prod');
+$page  = max(1, (int)$this->getRequest()->getQuery('page', 1));
+$total = (int)($apiInfo['total'] ?? 0);
+
+$money = function ($amount, $cur = 'PLN') {
+    return number_format((float)$amount, 2, ',', "\u{00a0}") . ' ' . $cur;
+};
+
+// Statystyki per waluta (z bieżącej strony)
+$currencies = [];
+if (!empty($invoices)) {
+    foreach ($invoices as $inv) {
+        $c = strtoupper($inv['currency'] ?? 'PLN');
+        if (!isset($currencies[$c])) {
+            $currencies[$c] = ['count' => 0, 'sum' => 0.0];
+        }
+        $currencies[$c]['count']++;
+        $currencies[$c]['sum'] += (float)($inv['total'] ?? 0);
+    }
+}
 ?>
 
+<style>
+/* ---------- KSeF Received – page styles ---------- */
+.ksef-table th {
+    font-weight: 600;
+    font-size: .8125rem;
+    text-transform: uppercase;
+    letter-spacing: .025em;
+    color: #6c757d;
+    white-space: nowrap;
+}
+.ksef-table td { vertical-align: middle; }
+.ksef-table tbody tr { transition: background-color .12s ease; }
+.ksef-table tbody tr:hover { background-color: rgba(var(--bs-primary-rgb), .04); }
+.ksef-number-badge {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: .75rem;
+}
+.stat-card { border: 0; border-radius: .75rem; }
+.stat-card .stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.stat-card .stat-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; }
+a.icon-clip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: .25rem;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    transition: background-color .12s;
+}
+a.icon-clip:hover { background-color: var(--bs-tertiary-bg); }
+a.icon-clip i { font-size: .85rem; }
+.toast-container.received-toasts { z-index: 1080; }
+.env-badge { font-size: .65rem; padding: .2em .5em; }
+.btn-xs { font-size: .7rem; padding: .15em .45em; }
+</style>
+
+<!-- Start::page-header -->
+<div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
+  <div>
+    <h1 class="page-title fw-medium fs-18 mb-2">Dokumenty otrzymane z KSeF</h1>
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
+      <li class="breadcrumb-item">Księgowość</li>
+      <li class="breadcrumb-item active" aria-current="page">Otrzymane</li>
+    </ol>
+  </div>
+  <div class="btn-list d-flex align-items-center gap-2">
+    <?php if (!empty($certInfo)): ?>
+      <span class="badge bg-success-subtle text-success border env-badge">
+        <i class="ri-shield-check-line me-1"></i><?= h($certInfo['subjectCN'] ?? 'Cert aktywny') ?>
+        <?php if (!empty($certInfo['nip'])): ?> &middot; NIP <?= h($certInfo['nip']) ?><?php endif; ?>
+      </span>
+    <?php endif; ?>
+    <span class="badge bg-<?= $env === 'prod' ? 'primary' : 'warning' ?>-subtle text-<?= $env === 'prod' ? 'primary' : 'warning' ?> border env-badge">
+      <?= $env === 'prod' ? 'Produkcja' : 'Test' ?>
+    </span>
+    <a class="btn btn-sm btn-outline-primary btn-wave" href="<?= $this->Url->build(['action' => 'issued'] + $this->getRequest()->getQueryParams()) ?>">
+      <i class="ri-send-plane-line me-1"></i>Wystawione
+    </a>
+  </div>
+</div>
+<!-- End::page-header -->
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card shadow-sm">
+      <div class="card-body py-3">
+        <div class="stat-label mb-1">Dokumentów na stronie</div>
+        <div class="stat-value text-primary"><?= count($invoices ?? []) ?></div>
+        <?php if ($total > 0): ?>
+          <div class="small text-muted mt-1">Łącznie w API: <?= number_format($total) ?></div>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+  <?php $idx = 0; foreach ($currencies as $cur => $s): if ($idx >= 3) break; ?>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card shadow-sm">
+      <div class="card-body py-3">
+        <div class="stat-label mb-1">Suma <?= h($cur) ?> (<?= $s['count'] ?>)</div>
+        <div class="stat-value"><?= $money($s['sum'], $cur) ?></div>
+      </div>
+    </div>
+  </div>
+  <?php $idx++; endforeach; ?>
+  <?php if (!empty($apiInfo['hasMore']) || !empty($apiInfo['isTruncated'])): ?>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card stat-card shadow-sm border-warning">
+      <div class="card-body py-3">
+        <div class="stat-label mb-1 text-warning">Więcej wyników</div>
+        <div class="small text-muted">API KSeF zwróciło częściowe wyniki. Zawęź zakres dat.</div>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
+</div>
+
+<!-- Filters -->
 <?= $this->element('Ksef/filters', [
-  'currentAction' => 'received',
-  'peerAction' => 'issued',
-  'storageKey' => 'ksef_filters_received',
+    'currentAction' => 'received',
+    'peerAction' => 'issued',
+    'storageKey' => 'ksef_filters_received',
 ]) ?>
 
-<?= $this->element('Ksef/info') ?>
-<?= $this->element('Ksef/legend') ?>
-
-<!-- INFO: połączenie z KSeF jest konfigurowane certyfikatem/tokenem w ustawieniach integracji. -->
-
+<!-- Debug trace (only when enabled) -->
 <?php if (!empty($ksefTraceEnabled)): ?>
   <?php
     $diag = is_array($ksefDiag ?? null) ? $ksefDiag : [];
     $trace = is_array($ksefTrace ?? null) ? $ksefTrace : [];
   ?>
-  <details class="mb-3" open>
-    <summary class="fw-semibold">Debug KSeF (krok po kroku)</summary>
-    <div class="small text-muted mt-2">
-      <?php if (!empty($diag)): ?>
-        <div><strong>Env:</strong> <?= h((string)($diag['environment'] ?? '')) ?></div>
-        <div><strong>API URL:</strong> <?= h((string)($diag['apiUrl'] ?? '')) ?></div>
-        <div><strong>Auth:</strong> <?= h((string)($diag['authMethod'] ?? '')) ?>, <strong>NIP:</strong> <?= h((string)($diag['identifierNip'] ?? '')) ?> (<?= h((string)($diag['identifierSource'] ?? '')) ?>)</div>
-        <?php if (!empty($diag['certPresent'])): ?>
-          <div>
-            <strong>Cert:</strong> <?= h((string)($diag['certFile'] ?? '')) ?>
-            (source: <?= h((string)($diag['certSource'] ?? '')) ?>,
-            companyId: <?= h((string)($diag['certCompanyId'] ?? '')) ?>,
-            readable: <?= ($diag['certReadable'] ?? null) === true ? 'yes' : (($diag['certReadable'] ?? null) === false ? 'no' : 'n/a') ?>,
-            used: <?= !empty($diag['certUsed']) ? 'yes' : 'no' ?>)
-            <?php if (!empty($diag['certOriginalFile']) && (string)$diag['certOriginalFile'] !== (string)($diag['certFile'] ?? '')): ?>
-              <div class="text-muted">original: <?= h((string)$diag['certOriginalFile']) ?></div>
-            <?php endif; ?>
-            <?php if (!empty($diag['certOpenSslErrors']) && is_array($diag['certOpenSslErrors'])): ?>
-              <details class="mt-1">
-                <summary>OpenSSL errors</summary>
-                <pre class="mb-0" style="white-space: pre-wrap;"><?= h(implode("\n", array_map('strval', $diag['certOpenSslErrors']))) ?></pre>
-              </details>
+  <div class="card shadow-sm mb-4 border-warning">
+    <div class="card-header py-2 bg-warning-subtle d-flex align-items-center gap-2 cursor-pointer" data-bs-toggle="collapse" data-bs-target="#ksef-debug-body" role="button">
+      <i class="ri-bug-line"></i>
+      <span class="fw-semibold small">Debug KSeF</span>
+      <span class="badge bg-warning text-dark ms-auto"><?= count($trace) ?> req</span>
+    </div>
+    <div class="collapse" id="ksef-debug-body">
+      <div class="card-body small">
+        <?php if (!empty($diag)): ?>
+          <div class="mb-2">
+            <span class="text-muted">Env:</span> <?= h($diag['environment'] ?? '') ?>
+            &middot; <span class="text-muted">API:</span> <?= h($diag['apiUrl'] ?? '') ?>
+            &middot; <span class="text-muted">Auth:</span> <?= h($diag['authMethod'] ?? '') ?>
+            &middot; <span class="text-muted">NIP:</span> <?= h($diag['identifierNip'] ?? '') ?>
+            <?php if (!empty($diag['certPresent'])): ?>
+              &middot; <span class="text-muted">Cert:</span> <?= h($diag['certFile'] ?? '') ?>
+              (<?= ($diag['certReadable'] ?? null) === true ? 'OK' : 'BRAK' ?>)
             <?php endif; ?>
           </div>
         <?php endif; ?>
-      <?php endif; ?>
-    </div>
-
-    <?php if (empty($trace)): ?>
-      <div class="alert alert-secondary mt-2 mb-0">Brak trace (nie wykonano requestów HTTP albo trace wyłączony).</div>
-    <?php else: ?>
-      <div class="table-responsive mt-2">
-        <table class="table table-sm table-striped align-middle mb-0">
-          <thead>
-            <tr>
-              <th style="width: 140px;">Czas</th>
-              <th style="width: 90px;">Metoda</th>
-              <th>URL</th>
-              <th style="width: 90px;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($trace as $step): ?>
-              <?php
-                $status = $step['status'] ?? null;
-                $isError = isset($step['exceptionClass']) || (is_int($status) && $status >= 400);
-              ?>
-              <tr class="<?= $isError ? 'table-danger' : '' ?>">
-                <td><?= h((string)($step['ts'] ?? '')) ?></td>
-                <td><?= h((string)($step['method'] ?? '')) ?></td>
-                <td>
-                  <div class="text-break"><?= h((string)($step['uri'] ?? '')) ?></div>
-                  <?php if (!empty($step['contentType'])): ?>
-                    <div class="text-muted">CT: <?= h((string)$step['contentType']) ?></div>
-                  <?php endif; ?>
-                  <?php if (isset($step['exceptionClass'])): ?>
-                    <div class="text-danger"><strong><?= h((string)$step['exceptionClass']) ?>:</strong> <?= h((string)($step['exceptionMessage'] ?? '')) ?></div>
-                  <?php endif; ?>
-                  <?php if (!empty($step['requestBody'])): ?>
-                    <details class="mt-1">
-                      <summary>Request body</summary>
-                      <pre class="mb-0" style="white-space: pre-wrap;"><?= h((string)$step['requestBody']) ?></pre>
-                    </details>
-                  <?php endif; ?>
-                  <?php if (!empty($step['responseBody'])): ?>
-                    <details class="mt-1">
-                      <summary>Response body</summary>
-                      <pre class="mb-0" style="white-space: pre-wrap;"><?= h((string)$step['responseBody']) ?></pre>
-                    </details>
-                  <?php endif; ?>
-                </td>
-                <td><?= $status !== null ? h((string)$status) : '—' ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+        <?php if (!empty($trace)): ?>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+              <thead><tr><th style="width:140px">Czas</th><th style="width:80px">Metoda</th><th>URL</th><th style="width:80px">Status</th></tr></thead>
+              <tbody>
+                <?php foreach ($trace as $step): ?>
+                  <?php $status = $step['status'] ?? null; $isError = isset($step['exceptionClass']) || (is_int($status) && $status >= 400); ?>
+                  <tr class="<?= $isError ? 'table-danger' : '' ?>">
+                    <td><?= h($step['ts'] ?? '') ?></td>
+                    <td><code><?= h($step['method'] ?? '') ?></code></td>
+                    <td class="text-break" style="max-width:400px">
+                      <?= h($step['uri'] ?? '') ?>
+                      <?php if (isset($step['exceptionClass'])): ?>
+                        <div class="text-danger"><strong><?= h($step['exceptionClass']) ?>:</strong> <?= h($step['exceptionMessage'] ?? '') ?></div>
+                      <?php endif; ?>
+                      <?php if (!empty($step['responseBody'])): ?>
+                        <details class="mt-1"><summary>Response</summary><pre class="mb-0" style="white-space:pre-wrap;font-size:.75rem"><?= h($step['responseBody']) ?></pre></details>
+                      <?php endif; ?>
+                    </td>
+                    <td><?= $status !== null ? h((string)$status) : '—' ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php else: ?>
+          <div class="text-muted">Brak trace (nie wykonano requestów HTTP).</div>
+        <?php endif; ?>
       </div>
-      <div class="small text-muted mt-2">Wskazówka: aby włączyć trace dodaj parametr <code>ksef_trace=1</code> do URL. Tokeny w logu są automatycznie redaktowane.</div>
-    <?php endif; ?>
-  </details>
+    </div>
+  </div>
 <?php endif; ?>
 
-<div class="table-responsive">
-  <table class="table table-striped align-middle">
-    <thead>
-      <tr>
-        <th>Data</th>
-        <th>Numer</th>
-        <th>Kontrahent</th>
-        <th>NIP</th>
-        <th class="text-end">Kwota brutto</th>
-        <th>Waluta</th>
-        <th>Status</th>
-  <th>Plik</th>
-  <th>Księgowanie</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php if (!empty($invoices)): ?>
-        <?php foreach ($invoices as $row): ?>
+<!-- Main table card -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 ksef-table">
+        <thead class="table-light">
           <tr>
-            <td><?= $row['date']?->i18nFormat('yyyy-MM-dd') ?? '' ?></td>
-            <td>
-              <div><?= h($row['fullnumber'] ?? '') ?></div>
-              
-              <?php if (!empty($row['ksef_number'])): ?>
-                <div class="small text-muted mt-1 d-flex align-items-center gap-2">
-                  <span class="badge bg-secondary-subtle border text-secondary">KSeF: <?= h($row['ksef_number']) ?></span>
-                  <a href="#" class="copy-ksef icon-clip" data-ksef="<?= h($row['ksef_number']) ?>" aria-label="Kopiuj numer KSeF" title="Kopiuj numer KSeF">
-                    <i class="bi bi-clipboard"></i>
-                  </a>
-                </div>
-              <?php endif; ?>
-            </td>
-            <td><?= h($row['InvoiceContractors']['name'] ?? '') ?></td>
-            <td><?= h($row['InvoiceContractors']['tax_id'] ?? '') ?></td>
-            <td class="text-end"><?= number_format((float)($row['total'] ?? 0), 2, ',', ' ') ?></td>
-            <td><?= h($row['currency'] ?? 'PLN') ?></td>
-              <td>
-                <div class="d-flex flex-wrap gap-1">
-                  <?php if (!empty($row['invoiceType'])): ?>
-                    <span class="badge bg-secondary-subtle border text-secondary"><?= h($row['invoiceType']) ?></span>
+            <th style="width:100px">Data</th>
+            <th>Numer faktury</th>
+            <th>Kontrahent</th>
+            <th class="text-end" style="width:140px">Kwota brutto</th>
+            <th style="width:60px">Waluta</th>
+            <th style="width:130px">Typ</th>
+            <th style="width:110px" class="text-center">Akcje</th>
+            <th style="width:140px">Księgowanie</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php if (!empty($invoices)): ?>
+            <?php foreach ($invoices as $row): ?>
+              <tr>
+                <!-- Data -->
+                <td class="text-nowrap"><?= $row['date']?->i18nFormat('yyyy-MM-dd') ?? '' ?></td>
+
+                <!-- Numer -->
+                <td>
+                  <div class="fw-semibold"><?= h($row['fullnumber'] ?? '') ?></div>
+                  <?php if (!empty($row['ksef_number'])): ?>
+                    <div class="d-flex align-items-center gap-1 mt-1">
+                      <span class="badge bg-light text-dark border ksef-number-badge">KSeF: <?= h($row['ksef_number']) ?></span>
+                      <a href="#" class="copy-ksef icon-clip" data-ksef="<?= h($row['ksef_number']) ?>" title="Kopiuj numer KSeF">
+                        <i class="bi bi-clipboard"></i>
+                      </a>
+                    </div>
                   <?php endif; ?>
-                  <?php if (!empty($row['invoicingMode'])): ?>
-                    <span class="badge bg-secondary-subtle border text-secondary"><?= h($row['invoicingMode']) ?></span>
+                </td>
+
+                <!-- Kontrahent -->
+                <td>
+                  <div><?= h($row['InvoiceContractors']['name'] ?? '') ?></div>
+                  <?php if (!empty($row['InvoiceContractors']['tax_id'])): ?>
+                    <div class="small text-muted">NIP: <?= h($row['InvoiceContractors']['tax_id']) ?></div>
                   <?php endif; ?>
-                  <?php if (!empty($row['isSelfInvoicing'])): ?>
-                    <span class="badge bg-info-subtle border text-info">Self-billing</span>
+                </td>
+
+                <!-- Kwota brutto -->
+                <td class="text-end fw-semibold text-nowrap"><?= $money($row['total'] ?? 0, $row['currency'] ?? 'PLN') ?></td>
+
+                <!-- Waluta -->
+                <td><span class="badge bg-light text-dark border"><?= h($row['currency'] ?? 'PLN') ?></span></td>
+
+                <!-- Typ / Status -->
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    <?php if (!empty($row['invoiceType'])): ?>
+                      <?php
+                        $typeBg = match($row['invoiceType']) {
+                            'KOR' => 'danger',
+                            'ZAL' => 'info',
+                            'ROZ' => 'warning',
+                            default => 'secondary',
+                        };
+                      ?>
+                      <span class="badge bg-<?= $typeBg ?>-subtle text-<?= $typeBg ?> border"><?= h($row['invoiceType']) ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($row['invoicingMode'])): ?>
+                      <span class="badge bg-secondary-subtle text-secondary border"><?= h($row['invoicingMode']) ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($row['isSelfInvoicing'])): ?>
+                      <span class="badge bg-info-subtle text-info border">Self-billing</span>
+                    <?php endif; ?>
+                  </div>
+                </td>
+
+                <!-- Akcje -->
+                <td class="text-center">
+                  <?php if (!empty($row['ksef_number'])): ?>
+                    <div class="btn-group btn-group-sm">
+                      <a class="btn btn-sm btn-outline-primary" href="<?= $this->Url->build(['action' => 'download', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz XML">
+                        <i class="ri-download-2-line"></i>
+                      </a>
+                      <a class="btn btn-sm btn-outline-secondary preview-xml" href="#" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>" title="Podgląd XML">
+                        <i class="ri-code-s-slash-line"></i>
+                      </a>
+                    </div>
+                  <?php else: ?>
+                    <span class="text-muted">—</span>
                   <?php endif; ?>
-                  <?php if (!empty($row['hasAttachment'])): ?>
-                    <span class="badge bg-secondary-subtle border text-secondary" title="Załączniki">📎</span>
+                </td>
+
+                <!-- Księgowanie -->
+                <td>
+                  <?php if (!empty($row['ksef_number'])): ?>
+                    <button type="button" class="btn btn-sm btn-outline-success open-booking" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>">
+                      <i class="ri-book-2-line me-1"></i>Księguj
+                    </button>
+                    <div class="text-muted small mt-1 booking-summary" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>"></div>
+                  <?php else: ?>
+                    <span class="text-muted">—</span>
                   <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <tr>
+              <td colspan="8" class="text-center py-5">
+                <div class="text-muted">
+                  <i class="ri-inbox-line" style="font-size:2rem"></i>
+                  <div class="mt-2">Brak dokumentów dla wybranych filtrów</div>
+                  <div class="small mt-1">Zmień zakres dat lub kryteria wyszukiwania</div>
                 </div>
               </td>
-            <td>
-              <?php if (!empty($row['ksef_number'])): ?>
-                <a class="btn btn-sm btn-outline-primary" href="<?= $this->Url->build(['action' => 'download', $row['ksef_number'], '?' => ['env' => $env]]) ?>">Pobierz XML</a>
-              <?php else: ?>
-                <span class="text-muted">—</span>
-              <?php endif; ?>
-            </td>
-            <td>
-              <?php if (!empty($row['ksef_number'])): ?>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <button type="button" class="btn btn-sm btn-outline-success open-booking" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>">
-                    Wybierz pozycje
-                  </button>
-                  <span class="text-muted small booking-summary" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>">—</span>
-                </div>
-              <?php else: ?>
-                <span class="text-muted">—</span>
-              <?php endif; ?>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      <?php else: ?>
-        <tr>
-          <td colspan="9" class="text-center text-muted py-4">Brak wyników dla wybranych filtrów.</td>
-        </tr>
-      <?php endif; ?>
-    </tbody>
-  </table>
+            </tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-<?php
-$page = max(1, (int)$this->getRequest()->getQuery('page', 1));
-$prevUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => max(1, $page - 1)]));
-$nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => $page + 1]));
-?>
-<div class="d-flex justify-content-between my-3">
-  <a class="btn btn-outline-secondary<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= $page <= 1 ? '#' : $prevUrl ?>">&laquo; Poprzednia</a>
-  <span class="text-muted">Strona <?= (int)$page ?></span>
-  <a class="btn btn-outline-secondary" href="<?= $nextUrl ?>">Następna &raquo;</a>
+  <!-- Pagination -->
+  <?php
+    $prevUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => max(1, $page - 1)]));
+    $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRequest()->getQueryParams(), ['page' => $page + 1]));
+    $hasMore = !empty($apiInfo['hasMore']) || count($invoices ?? []) >= 25;
+  ?>
+  <div class="card-footer bg-transparent d-flex justify-content-between align-items-center py-2">
+    <a class="btn btn-sm btn-outline-secondary<?= $page <= 1 ? ' disabled' : '' ?>" href="<?= $page <= 1 ? '#' : $prevUrl ?>">
+      <i class="ri-arrow-left-s-line me-1"></i>Poprzednia
+    </a>
+    <span class="text-muted small">Strona <?= (int)$page ?></span>
+    <a class="btn btn-sm btn-outline-secondary<?= !$hasMore ? ' disabled' : '' ?>" href="<?= $hasMore ? $nextUrl : '#' ?>">
+      Następna<i class="ri-arrow-right-s-line ms-1"></i>
+    </a>
+  </div>
 </div>
 
 <?= $this->element('Ksef/xml_modal', ['env' => $env]) ?>
@@ -205,7 +337,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
 
 <script>
 (function(){
-  // Lightweight toast helper using Bootstrap Toast when available
+  // ── Toast helper ──
   function showToast(message){
     try {
       let container = document.querySelector('.toast-container.received-toasts');
@@ -227,7 +359,6 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
         el.addEventListener('hidden.bs.toast', () => el.remove());
         t.show();
       } else {
-        // Fallback minimal behavior
         el.style.display = 'block';
         setTimeout(() => { el.remove(); }, 2000);
       }
@@ -250,6 +381,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
     });
   }
 
+  // ── Copy KSeF number ──
   function initCopyIcons(){
     document.addEventListener('click', function(e){
       const a = e.target.closest('a.copy-inv, a.copy-ksef');
@@ -260,7 +392,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
       const ksef= a.getAttribute('data-ksef');
       const val = inv || ksef || '';
       if (!val) return;
-      const icon = a.querySelector('i.bi');
+      const icon = a.querySelector('i');
       const prev = icon ? icon.className : '';
       copyTextToClipboard(val).then(() => {
         if (icon){ icon.className = 'bi bi-clipboard-check'; }
@@ -272,6 +404,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
     });
   }
 
+  // ── Booking modal ──
   function initBooking(){
     const buttons = document.querySelectorAll('.open-booking');
     if (!buttons.length) return;
@@ -282,7 +415,6 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
         const env  = this.getAttribute('data-env') || 'prod';
         if (!window.bootstrap) return;
         const modalEl = document.getElementById('bookingModal');
-        const title   = document.getElementById('bookingModalLabel');
         const list    = document.getElementById('booking-list');
         const info    = document.getElementById('booking-info');
         const saveBtn = document.getElementById('booking-save');
@@ -294,14 +426,12 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
         info.innerHTML = '';
         badgeK.textContent = ksef;
         badgeE.textContent = env.toUpperCase();
-  // Force visible without flicker
-  spinner.classList.remove('d-none');
-  spinner.style.setProperty('display', 'flex', 'important');
+        spinner.classList.remove('d-none');
+        spinner.style.setProperty('display', 'flex', 'important');
         const bs = new bootstrap.Modal(modalEl, {backdrop: 'static', keyboard: false});
         bs.show();
 
         try {
-          // Load categories first
           const catsUrl = <?= json_encode($this->Url->build(['controller' => 'KsefAuthorizations','action' => 'costCategories','_full' => true])) ?>;
           const [catsResp, linesResp] = await Promise.all([
             fetch(catsUrl, { headers: { 'Accept': 'application/json' } }),
@@ -315,6 +445,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
             info.innerHTML = '<div class="alert alert-danger">Nie udało się pobrać pozycji: ' + (data && data.error ? data.error : ('HTTP ' + resp.status)) + '</div>';
             return;
           }
+
           // Populate default cost select
           const defSel = document.getElementById('booking-default-cost');
           if (defSel && cats && Array.isArray(cats.items)) {
@@ -325,215 +456,136 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
               opt.textContent = it.name || it.code || '';
               defSel.appendChild(opt);
             });
-            // Enhance default with Select2 if available
             if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
               const $def = window.jQuery(defSel);
               $def.addClass('select2-selection--sm');
               $def.select2({ width: '16rem', placeholder: '— wybierz —', allowClear: true });
             }
           }
+
           const items = Array.isArray(data.items) ? data.items : [];
           if (!items.length) {
             info.innerHTML = '<div class="alert alert-warning">Brak pozycji do wyświetlenia.</div>';
           }
-          // Render list with checkboxes, per-item details (collapsible), cost-type selector, and quick remove
+
+          const fmt = (v) => {
+            if (typeof v === 'number' && !isNaN(v)) return v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (typeof v === 'string' && v !== '' && !isNaN(parseFloat(v))) return Number(v).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return v ?? '';
+          };
+
+          // Render list
           items.forEach((it, idx) => {
             const li = document.createElement('li');
             li.className = 'list-group-item d-flex align-items-start justify-content-between flex-wrap gap-2';
             const left = document.createElement('div');
             left.className = 'flex-grow-1';
             const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.className = 'form-check-input me-2 booking-cb';
-            cb.checked = true;
-            cb.dataset.index = (it.index ?? idx);
-            // Summary text
+            cb.type = 'checkbox'; cb.className = 'form-check-input me-2 booking-cb'; cb.checked = true; cb.dataset.index = (it.index ?? idx);
             const title = document.createElement('div');
             title.className = 'fw-semibold d-flex align-items-center gap-2';
-            const titleIcon = document.createElement('i');
-            titleIcon.className = 'bi bi-receipt';
+            const titleIcon = document.createElement('i'); titleIcon.className = 'bi bi-receipt';
             const titleText = document.createTextNode(it.name || it.description || 'Pozycja');
-            title.appendChild(titleIcon);
-            title.appendChild(titleText);
-            const small = document.createElement('div');
-            small.className = 'small text-muted mt-1';
-            const qty = (typeof it.quantity === 'number') ? it.quantity : (it.quantity ?? '');
+            title.appendChild(titleIcon); title.appendChild(titleText);
+
+            const qty = it.quantity ?? '';
             const unit = it.unit ?? '';
-            const price = (typeof it.unit_price === 'number') ? it.unit_price : (it.unit_price ?? '');
-            const net = (typeof it.net_amount === 'number') ? it.net_amount : (it.net_amount ?? '');
-            const vatRate = (it.vat_rate ?? '');
-            const vatAmt = (typeof it.vat_amount === 'number') ? it.vat_amount : (it.vat_amount ?? '');
-            const gross = (typeof it.gross_amount === 'number') ? it.gross_amount : (it.gross_amount ?? '');
-            const currency = (it.currency ?? '');
-            const lineId = (it.line_id || it.index || '');
-            const fmt = (v) => {
-              if (typeof v === 'number' && !isNaN(v)) return v.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              if (typeof v === 'string' && v !== '' && !isNaN(parseFloat(v))) return Number(v).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              return v ?? '';
-            };
+            const price = it.unit_price ?? '';
+            const net = it.net_amount ?? '';
+            const vatRate = it.vat_rate ?? '';
+            const vatAmt = it.vat_amount ?? '';
+            const gross = it.gross_amount ?? '';
+            const currency = it.currency ?? '';
+            const lineId = it.line_id || it.index || '';
+
             const detailsGrid = document.createElement('div');
             detailsGrid.className = 'kv-grid';
             const addKV = (label, iconClass, value, titleAttr, isNumber) => {
               if (value === null || value === undefined || value === '') return;
-              const span = document.createElement('span');
-              span.className = 'kv-pair';
+              const span = document.createElement('span'); span.className = 'kv-pair';
               if (titleAttr) span.title = titleAttr;
-              const lab = document.createElement('span');
-              lab.className = 'text-muted';
-              if (iconClass) {
-                const ic = document.createElement('i'); ic.className = 'bi ' + iconClass + ' me-1'; lab.appendChild(ic);
-              }
+              const lab = document.createElement('span'); lab.className = 'text-muted';
+              if (iconClass) { const ic = document.createElement('i'); ic.className = 'bi ' + iconClass + ' me-1'; lab.appendChild(ic); }
               lab.appendChild(document.createTextNode(label + ':'));
-              const val = document.createElement('span');
-              val.className = 'fw-semibold' + (isNumber ? ' kv-value-number' : '');
+              const val = document.createElement('span'); val.className = 'fw-semibold' + (isNumber ? ' kv-value-number' : '');
               val.textContent = value;
               span.appendChild(lab); span.appendChild(val);
               detailsGrid.appendChild(span);
             };
-            // Row of clearly labeled values so it's obvious what's what
-            if (qty !== '' || unit) {
-              const qtyText = (qty !== '' ? String(qty) : '') + (unit ? (' ' + unit) : '');
-              addKV('Ilość', 'bi-calculator', qtyText, 'FA: P_8A/P_8B', false);
-            }
+            if (qty !== '' || unit) { addKV('Ilość', 'bi-calculator', (qty !== '' ? String(qty) : '') + (unit ? (' ' + unit) : ''), 'FA: P_8A/P_8B', false); }
             addKV('Cena netto', 'bi-cash-coin', (price !== '' ? (fmt(price) + (currency ? ' ' + currency : '')) : ''), 'FA: P_9A', true);
             addKV('Wartość netto', 'bi-cash-coin', (net !== '' ? (fmt(net) + (currency ? ' ' + currency : '')) : ''), 'FA: P_11', true);
             addKV('Stawka VAT', 'bi-percent', (vatRate || ''), 'FA: P_12', false);
             addKV('Kwota VAT', 'bi-cash-coin', (vatAmt !== '' ? (fmt(vatAmt) + (currency ? ' ' + currency : '')) : ''), 'FA: (KwotaVat)', true);
             addKV('Brutto', 'bi-cash-coin', (gross !== '' ? (fmt(gross) + (currency ? ' ' + currency : '')) : ''), 'FA: (WartoscBrutto)', true);
-            if (!currency && (price || net || gross || vatAmt)) {
-              // If we didn't add currency within values, show it explicitly
-              addKV('Waluta', 'bi-currency-exchange', (it.currency || 'PLN'));
-            }
             addKV('Nr wiersza', 'bi-hash', (lineId || ''), 'FA: NrWierszaFa');
-            // Header summary badges and toggle
+
+            // Header badges + toggle
             const hdrBar = document.createElement('div');
             hdrBar.className = 'small text-muted d-flex align-items-center gap-2 mt-1 item-header';
             if (gross !== ''){
-              const bg = document.createElement('span');
-              bg.className = 'badge bg-secondary-subtle border text-secondary';
+              const bg = document.createElement('span'); bg.className = 'badge bg-secondary-subtle border text-secondary';
               const lab = document.createElement('span'); lab.className = 'text-muted'; lab.textContent = 'Brutto:';
               const val = document.createElement('span'); val.className = 'badge-num ms-1'; val.textContent = fmt(gross);
-              bg.appendChild(lab);
-              bg.appendChild(val);
+              bg.appendChild(lab); bg.appendChild(val);
               if (currency) { const cur = document.createElement('span'); cur.className = 'ms-1'; cur.textContent = currency; bg.appendChild(cur); }
               hdrBar.appendChild(bg);
             }
-            if (vatRate){
-              const bv = document.createElement('span');
-              bv.className = 'badge bg-secondary-subtle border text-secondary';
-              bv.textContent = 'VAT ' + vatRate;
-              hdrBar.appendChild(bv);
-            }
+            if (vatRate){ const bv = document.createElement('span'); bv.className = 'badge bg-secondary-subtle border text-secondary'; bv.textContent = 'VAT ' + vatRate; hdrBar.appendChild(bv); }
             const togg = document.createElement('button');
-            togg.type = 'button';
-            togg.className = 'btn btn-link btn-sm p-0 ms-1 toggle-details';
-            togg.setAttribute('aria-expanded', 'true');
-            togg.setAttribute('aria-label', 'Szczegóły');
-            togg.title = 'Szczegóły';
-            const toggIcon = document.createElement('i');
-            toggIcon.className = 'bi bi-chevron-up';
+            togg.type = 'button'; togg.className = 'btn btn-link btn-sm p-0 ms-1 toggle-details';
+            togg.setAttribute('aria-expanded', 'true'); togg.title = 'Szczegóły';
+            const toggIcon = document.createElement('i'); toggIcon.className = 'bi bi-chevron-up';
             togg.appendChild(toggIcon);
             togg.addEventListener('click', () => {
               li.classList.toggle('open');
               const expanded = li.classList.contains('open');
               togg.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-              // If in compact mode, ensure this item's details show when opened
-              if (expanded) { details.classList.remove('d-none'); }
-              // update chevron icon
+              if (expanded) details.classList.remove('d-none');
               toggIcon.className = expanded ? 'bi bi-chevron-up me-1' : 'bi bi-chevron-down me-1';
             });
             hdrBar.appendChild(togg);
-            // "Nie księguj tej pozycji" przeniesione do nagłówka jako link
             const rm = document.createElement('button');
-            rm.type = 'button';
-            rm.className = 'btn btn-link btn-sm text-danger p-0 ms-3';
-            rm.textContent = 'Nie księguj tej pozycji';
-            rm.title = 'Wyłącz pozycję z księgowania';
+            rm.type = 'button'; rm.className = 'btn btn-link btn-sm text-danger p-0 ms-3'; rm.textContent = 'Nie księguj tej pozycji';
             rm.addEventListener('click', () => { cb.checked = false; li.classList.add('opacity-50'); updateCounter(); });
             hdrBar.appendChild(rm);
-            left.appendChild(title);
-            left.appendChild(hdrBar);
-            const details = document.createElement('div');
-            details.className = 'item-details w-100 mt-2';
+            left.appendChild(title); left.appendChild(hdrBar);
+            const details = document.createElement('div'); details.className = 'item-details w-100 mt-2';
             details.appendChild(detailsGrid);
-            left.appendChild(details);
-            const right = document.createElement('div');
-            right.className = 'd-flex align-items-center gap-2 flex-wrap';
-            // Cost type selector
-            const costWrap = document.createElement('div');
-            costWrap.className = 'd-flex flex-column';
-            const costLbl = document.createElement('label');
-            costLbl.className = 'form-label small mb-1';
-            costLbl.textContent = 'Rodzaj kosztu';
-            const costSel = document.createElement('select');
-            costSel.className = 'form-select form-select-sm booking-cost-type';
-            // Options from categories
+
+            const right = document.createElement('div'); right.className = 'd-flex align-items-center gap-2 flex-wrap';
+            const costWrap = document.createElement('div'); costWrap.className = 'd-flex flex-column';
+            const costLbl = document.createElement('label'); costLbl.className = 'form-label small mb-1'; costLbl.textContent = 'Rodzaj kosztu';
+            const costSel = document.createElement('select'); costSel.className = 'form-select form-select-sm booking-cost-type';
             const opts = (cats && Array.isArray(cats.items)) ? cats.items : [];
-            const buildOptions = () => {
-              costSel.innerHTML = '';
-              const opt0 = document.createElement('option');
-              opt0.value = '';
-              opt0.textContent = '— wybierz —';
-              costSel.appendChild(opt0);
-              opts.forEach(o => {
-                const opt = document.createElement('option');
-                opt.value = o.code || o.name || '';
-                opt.textContent = o.name || o.code || '';
-                costSel.appendChild(opt);
-              });
-            };
-            buildOptions();
-            if (it.cost_type) {
-              costSel.value = it.cost_type;
-            }
-            costWrap.appendChild(costLbl);
-            costWrap.appendChild(costSel);
+            costSel.innerHTML = '<option value="">— wybierz —</option>';
+            opts.forEach(o => { const opt = document.createElement('option'); opt.value = o.code || o.name || ''; opt.textContent = o.name || o.code || ''; costSel.appendChild(opt); });
+            if (it.cost_type) costSel.value = it.cost_type;
+            costWrap.appendChild(costLbl); costWrap.appendChild(costSel);
             right.appendChild(costWrap);
-            // Select2 enhance when available
             if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-              setTimeout(() => {
-                const $sel = window.jQuery(costSel);
-                $sel.addClass('select2-selection--sm');
-                $sel.select2({ width: '16rem', placeholder: '— wybierz —', allowClear: true });
-              }, 0);
+              setTimeout(() => { const $sel = window.jQuery(costSel); $sel.addClass('select2-selection--sm'); $sel.select2({ width: '16rem', placeholder: '— wybierz —', allowClear: true }); }, 0);
             }
-            // Note input – full width row under the entire item, inside details
-            const noteRow = document.createElement('div');
-            noteRow.className = 'mt-2 w-100';
-            const noteLbl = document.createElement('label');
-            noteLbl.className = 'form-label small mb-1 d-block';
-            noteLbl.textContent = 'Uwagi';
-            const noteInp = document.createElement('input');
-            noteInp.type = 'text';
-            noteInp.className = 'form-control form-control-sm booking-note';
+
+            const noteRow = document.createElement('div'); noteRow.className = 'mt-2 w-100';
+            const noteLbl = document.createElement('label'); noteLbl.className = 'form-label small mb-1 d-block'; noteLbl.textContent = 'Uwagi';
+            const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.className = 'form-control form-control-sm booking-note';
             if (it.note) noteInp.value = it.note;
-            if (it.saved) {
-              const saved = document.createElement('span');
-              saved.className = 'badge bg-success-subtle border text-success';
-              saved.textContent = 'Dodane do księgowania';
-              right.appendChild(saved);
-            }
-            // usunięto przycisk z sekcji prawej – przeniesiony do nagłówka
-            li.prepend(cb);
-            li.appendChild(left);
-            li.appendChild(right);
-            // attach serialized payload for save
+            if (it.saved) { const saved = document.createElement('span'); saved.className = 'badge bg-success-subtle border text-success'; saved.textContent = 'Dodane do księgowania'; right.appendChild(saved); }
+            li.prepend(cb); li.appendChild(left); li.appendChild(right);
             li.dataset.payload = JSON.stringify(it);
-            // append full-width note row at the bottom of the li
-            noteRow.appendChild(noteLbl);
-            noteRow.appendChild(noteInp);
-            details.appendChild(noteRow);
-            // open by default
+            noteRow.appendChild(noteLbl); noteRow.appendChild(noteInp);
+            details.appendChild(noteRow); left.appendChild(details);
             li.classList.add('open');
             list.appendChild(li);
           });
 
-          // Toolbar logic: counter, select-all, unselect-all, search filter
+          // ── Toolbar logic ──
           const counterEl = document.getElementById('booking-counter');
           function updateCounter(){
             const all = list.querySelectorAll('li').length;
             const sel = list.querySelectorAll('input.booking-cb:checked').length;
-            if (counterEl) counterEl.textContent = `Wybrane: ${sel} / ${all}`;
+            if (counterEl) counterEl.textContent = 'Wybrane: ' + sel + ' / ' + all;
           }
           list.addEventListener('change', (e) => {
             if (e.target && e.target.classList && e.target.classList.contains('booking-cb')) {
@@ -544,90 +596,72 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
           });
           const btnAll = document.getElementById('booking-select-all');
           const btnNone = document.getElementById('booking-unselect-all');
-          if (btnAll) btnAll.onclick = function(){
-            list.querySelectorAll('input.booking-cb').forEach(cb => { cb.checked = true; cb.closest('li')?.classList.remove('opacity-50'); });
-            updateCounter();
-          };
-          if (btnNone) btnNone.onclick = function(){
-            list.querySelectorAll('input.booking-cb').forEach(cb => { cb.checked = false; cb.closest('li')?.classList.add('opacity-50'); });
-            updateCounter();
-          };
+          if (btnAll) btnAll.onclick = function(){ list.querySelectorAll('input.booking-cb').forEach(cb => { cb.checked = true; cb.closest('li')?.classList.remove('opacity-50'); }); updateCounter(); };
+          if (btnNone) btnNone.onclick = function(){ list.querySelectorAll('input.booking-cb').forEach(cb => { cb.checked = false; cb.closest('li')?.classList.add('opacity-50'); }); updateCounter(); };
           const search = document.getElementById('booking-search');
           if (search) {
-            search.oninput = function(){
-              const q = (this.value || '').toLowerCase().trim();
-              list.querySelectorAll('li').forEach(li => {
-                const text = li.innerText.toLowerCase();
-                li.style.display = q === '' || text.includes(q) ? '' : 'none';
-              });
-            };
+            search.oninput = function(){ const q = (this.value || '').toLowerCase().trim(); list.querySelectorAll('li').forEach(li => { li.style.display = q === '' || li.innerText.toLowerCase().includes(q) ? '' : 'none'; }); };
           }
           updateCounter();
 
-          // Global compact view toggle + expand/collapse all + auto-compact + persistence
+          // ── Compact mode ──
           const compactBtn = document.getElementById('booking-toggle-compact');
           const expandAllBtn = document.getElementById('booking-expand-all');
           const collapseAllBtn = document.getElementById('booking-collapse-all');
-          const COMPACT_PREF_KEY = 'ksef_booking_compact_mode'; // 'compact' | 'detailed'
-          const AUTO_COMPACT_THRESHOLD = 30;
+          const COMPACT_PREF_KEY = 'ksef_booking_compact_mode';
           let isCompact = false;
 
           function updateAllTogglesIcon(){
             list.querySelectorAll('.toggle-details').forEach(btn => {
-              const li = btn.closest('li');
-              const icon = btn.querySelector('i.bi');
+              const li = btn.closest('li'); const icon = btn.querySelector('i.bi');
               if (!icon || !li) return;
-              const expanded = li.classList.contains('open');
-              icon.className = expanded ? 'bi bi-chevron-up me-1' : 'bi bi-chevron-down me-1';
-              btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+              icon.className = li.classList.contains('open') ? 'bi bi-chevron-up me-1' : 'bi bi-chevron-down me-1';
+              btn.setAttribute('aria-expanded', li.classList.contains('open') ? 'true' : 'false');
             });
           }
 
           function setCompactMode(flag){
             isCompact = !!flag;
             list.classList.toggle('compact', isCompact);
-            // synchronize open state for all items for clarity
-            list.querySelectorAll('li').forEach(li => {
-              if (isCompact) li.classList.remove('open'); else li.classList.add('open');
-            });
+            list.querySelectorAll('li').forEach(li => { if (isCompact) li.classList.remove('open'); else li.classList.add('open'); });
             if (compactBtn) compactBtn.textContent = isCompact ? 'Widok: szczegółowy' : 'Widok: kompaktowy';
             try { localStorage.setItem(COMPACT_PREF_KEY, isCompact ? 'compact' : 'detailed'); } catch {}
             updateAllTogglesIcon();
           }
 
-          // Apply initial mode: prefer stored pref, else auto-compact if many items
           (function initCompact(){
             let pref = null; try { pref = localStorage.getItem(COMPACT_PREF_KEY); } catch {}
             if (pref === 'compact') setCompactMode(true);
             else if (pref === 'detailed') setCompactMode(false);
-            else setCompactMode(items.length > AUTO_COMPACT_THRESHOLD);
+            else setCompactMode(items.length > 30);
           })();
 
-          if (compactBtn) {
-            compactBtn.onclick = function(){ setCompactMode(!isCompact); };
-          }
-          if (expandAllBtn) {
-            expandAllBtn.onclick = function(){ setCompactMode(false); };
-          }
-          if (collapseAllBtn) {
-            collapseAllBtn.onclick = function(){ setCompactMode(true); };
-          }
-          // Initial chevron state
+          if (compactBtn) compactBtn.onclick = function(){ setCompactMode(!isCompact); };
+          if (expandAllBtn) expandAllBtn.onclick = function(){ setCompactMode(false); };
+          if (collapseAllBtn) collapseAllBtn.onclick = function(){ setCompactMode(true); };
           updateAllTogglesIcon();
 
-          // Recent categories from localStorage (up to 6)
+          // ── Recent categories ──
           const recentBox = document.getElementById('booking-recent');
           const RECENT_KEY = 'ksef_recent_cost_categories';
           function getRecent(){ try { return JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')||[]; } catch { return []; } }
           function pushRecent(val){ if(!val) return; let arr=getRecent(); arr=arr.filter(v=>v!==val); arr.unshift(val); if(arr.length>6) arr=arr.slice(0,6); localStorage.setItem(RECENT_KEY, JSON.stringify(arr)); renderRecent(arr); }
-          function renderRecent(arr){ if(!recentBox) return; recentBox.innerHTML=''; if(!arr||!arr.length) return; const lbl=document.createElement('div'); lbl.className='text-muted small'; lbl.textContent='Ostatnio wybierane:'; recentBox.appendChild(lbl); arr.forEach(v=>{ const chip=document.createElement('span'); chip.className='badge-chip'; chip.textContent=v; chip.onclick=()=>{ // apply to focused select if any, else to default
-              const active = document.activeElement && document.activeElement.tagName==='SELECT' && document.activeElement.classList.contains('booking-cost-type') ? document.activeElement : null;
-              if (active) { active.value = v; if (window.jQuery && window.jQuery.fn && window.jQuery(active).data('select2')) { window.jQuery(active).val(v).trigger('change'); } }
-              else { if (defSel){ defSel.value = v; if (window.jQuery && window.jQuery.fn && window.jQuery(defSel).data('select2')) { window.jQuery(defSel).val(v).trigger('change'); } } }
-            }; recentBox.appendChild(chip); }); }
+          function renderRecent(arr){
+            if(!recentBox) return; recentBox.innerHTML='';
+            if(!arr||!arr.length) return;
+            const lbl=document.createElement('div'); lbl.className='text-muted small'; lbl.textContent='Ostatnio wybierane:'; recentBox.appendChild(lbl);
+            arr.forEach(v=>{ const chip=document.createElement('span'); chip.className='badge-chip'; chip.textContent=v;
+              chip.onclick=()=>{
+                const active = document.activeElement && document.activeElement.tagName==='SELECT' && document.activeElement.classList.contains('booking-cost-type') ? document.activeElement : null;
+                if (active) { active.value = v; if (window.jQuery?.fn?.select2 && window.jQuery(active).data('select2')) window.jQuery(active).val(v).trigger('change'); }
+                else if (defSel) { defSel.value = v; if (window.jQuery?.fn?.select2 && window.jQuery(defSel).data('select2')) window.jQuery(defSel).val(v).trigger('change'); }
+              };
+              recentBox.appendChild(chip);
+            });
+          }
           renderRecent(getRecent());
 
-          // Apply default cost to all lines
+          // ── Apply default cost ──
           const applyAllBtn = document.getElementById('booking-apply-all');
           if (applyAllBtn) {
             applyAllBtn.onclick = function(){
@@ -636,44 +670,27 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
               if (!val) return;
               list.querySelectorAll('select.booking-cost-type').forEach(s => { s.value = val; });
               if (window.jQuery && window.jQuery.fn) {
-                list.querySelectorAll('select.booking-cost-type').forEach(s => {
-                  const $s = window.jQuery(s);
-                  if ($s.data('select2')) $s.val(val).trigger('change');
-                });
+                list.querySelectorAll('select.booking-cost-type').forEach(s => { const $s = window.jQuery(s); if ($s.data('select2')) $s.val(val).trigger('change'); });
               }
             };
           }
 
-          // Save handler
+          // ── Save handler ──
           saveBtn.onclick = async function(){
-            // Clear previous validation styling
             list.querySelectorAll('select.booking-cost-type').forEach(s => s.classList.remove('is-invalid'));
-
             const selectedLis = Array.from(list.querySelectorAll('li')).filter(li => li.querySelector('.booking-cb')?.checked);
-            // Validate: require cost_type for each selected item
             let invalid = false;
-            selectedLis.forEach(li => {
-              const sel = li.querySelector('select.booking-cost-type');
-              if (sel && !sel.value) {
-                sel.classList.add('is-invalid');
-                invalid = true;
-              }
-            });
-            if (invalid) {
-              info.innerHTML = '<div class="alert alert-danger">Wybierz kategorię kosztu dla wszystkich zaznaczonych pozycji.</div>';
-              return;
-            }
+            selectedLis.forEach(li => { const sel = li.querySelector('select.booking-cost-type'); if (sel && !sel.value) { sel.classList.add('is-invalid'); invalid = true; } });
+            if (invalid) { info.innerHTML = '<div class="alert alert-danger">Wybierz kategorię kosztu dla wszystkich zaznaczonych pozycji.</div>'; return; }
 
             const selected = selectedLis.map(li => {
               let obj; try { obj = JSON.parse(li.dataset.payload || '{}'); } catch { obj = {}; }
-              const sel = li.querySelector('.booking-cost-type');
-              if (sel) { obj.cost_type = sel.value || ''; }
-              const n = li.querySelector('.booking-note');
-              if (n) { obj.note = n.value || ''; }
+              const sel = li.querySelector('.booking-cost-type'); if (sel) obj.cost_type = sel.value || '';
+              const n = li.querySelector('.booking-note'); if (n) obj.note = n.value || '';
               return obj;
             }).filter(x => x && Object.keys(x).length);
-            // Save selected categories to recent
             try { const uniq = Array.from(new Set(selected.map(o => o.cost_type).filter(Boolean))); uniq.forEach(pushRecent); } catch {}
+
             const postUrl = <?= json_encode($this->Url->build(['controller' => 'KsefAuthorizations','action' => 'saveBookingItems','_full' => true])) ?>;
             const csrf = document.getElementById('csrf-token')?.value || '';
             const resp2 = await fetch(postUrl, {
@@ -687,7 +704,6 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
               return;
             }
             info.innerHTML = '<div class="alert alert-success">Zapisano ' + (out.count ?? selected.length) + ' pozycji do księgowania.</div>';
-            // Refresh row summaries after save
             try { loadSummaries(); } catch(_) {}
             setTimeout(() => { bs.hide(); }, 800);
           };
@@ -698,6 +714,8 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
       });
     });
   }
+
+  // ── Booking summaries ──
   function loadSummaries(){
     const nodes = document.querySelectorAll('.booking-summary');
     nodes.forEach(async (el) => {
@@ -707,18 +725,10 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
       try {
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         const j = await r.json();
-        if (r.ok && j && typeof j.count !== 'undefined') {
-          const parts = [];
-          parts.push('zapisane: ' + j.count);
-          if (typeof j.without_category !== 'undefined') parts.push('bez kategorii: ' + j.without_category);
-          if (j.first_note) parts.push('uwagi: ' + j.first_note);
-          el.textContent = parts.join(' • ');
-        } else {
-          el.textContent = '—';
+        if (r.ok && j && typeof j.count !== 'undefined' && j.count > 0) {
+          el.innerHTML = '<span class="badge bg-success-subtle text-success border"><i class="bi bi-check-circle me-1"></i>' + j.count + ' poz.</span>';
         }
-      } catch(e) {
-        el.textContent = '—';
-      }
+      } catch(e) {}
     });
   }
 
@@ -729,10 +739,3 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
   }
 })();
 </script>
-<style>
-  /* Icon-only copy link */
-  a.icon-clip{ display:inline-flex; align-items:center; justify-content:center; width:1.75rem; height:1.75rem; border-radius:.375rem; color: var(--bs-secondary-color); text-decoration:none; }
-  a.icon-clip:hover{ background-color: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
-  a.icon-clip i{ font-size: 1rem; }
-  .toast-container.received-toasts{ z-index: 1080; }
-</style>
