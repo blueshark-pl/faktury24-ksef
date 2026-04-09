@@ -348,6 +348,7 @@ $gtuSelectHtml .= '</select>';
                 'class' => 'form-control', 'id' => 'fx-rate'
               ]) ?>
             </div>
+            <?= $this->Form->hidden('currency_date', ['id' => 'currency-date-hidden']) ?>
 
           </div>
         </div>

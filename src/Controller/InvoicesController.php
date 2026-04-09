@@ -1268,9 +1268,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     // ── Waluta i kurs ──
                     $cur = (string)($speedOrder->currency ?? 'PLN');
                     $invoice->set('currency', $cur);
-                    if ($cur !== 'PLN' && !empty($speedOrder->exchange_rate)) {
-                        $invoice->set('exchange_rate', $speedOrder->exchange_rate);
-                    }
 
                     // ── Snapshot kontrahenta ──
                     $ctr = new \stdClass();
@@ -1332,6 +1329,30 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         }
                     }
 
+                    // GLO_WALUTA — fallback waluty, gdyby entity nie zmapowała (np. kolumna pusta)
+                    $gloWaluta = strtoupper(trim((string)($rawArr['GLO_WALUTA'] ?? '')));
+                    if ($gloWaluta !== '' && $cur === 'PLN') {
+                        $cur = $gloWaluta;
+                        $invoice->set('currency', $cur);
+                    }
+                    // GLO_WAL_PRZEL — kurs z zlecenia np. 4.2894; pre-fill pola fx_rate w formularzu
+                    $gloWalPrzelRaw = trim((string)($rawArr['GLO_WAL_PRZEL'] ?? ''));
+                    if ($gloWalPrzelRaw !== '') {
+                        $gloWalPrzel = (float)str_replace(',', '.', $gloWalPrzelRaw);
+                        if ($gloWalPrzel > 0.0001) {
+                            $invoice->set('fx_rate', $gloWalPrzel);
+                        }
+                    }
+                    // GLO_DATA_ZAK — data zakończenia zlecenia; kurs bierzemy na 1 dzień wcześniej (art. 31a uVAT)
+                    $gloDataZak = trim((string)($rawArr['GLO_DATA_ZAK'] ?? ''));
+                    if ($gloDataZak !== '') {
+                        try {
+                            $zakDate  = new \DateTimeImmutable($gloDataZak);
+                            $rateDate = $zakDate->modify('-1 day');
+                            $invoice->set('currency_date', $rateDate->format('Y-m-d'));
+                        } catch (\Throwable) { /* nieprawidłowy format daty — ignoruj */ }
+                    }
+
                     $addDescs = [];
 
                     // Nasz numer (symbol zlecenia)
@@ -1352,11 +1373,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         $addDescs[] = $d;
                     }
 
-                    // Środo transportu
+                    // Środek transportu
                     if ($vehicleReg !== '') {
                         $d = new \stdClass();
                         $d->nr_wiersza = 1;
-                        $d->klucz      = 'Środo transportu';
+                        $d->klucz      = 'Środek transportu';
                         $d->wartosc    = $vehicleReg;
                         $addDescs[] = $d;
                     }
