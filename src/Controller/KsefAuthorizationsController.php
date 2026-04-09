@@ -27,13 +27,16 @@ class KsefAuthorizationsController extends AppController
      */
     private $KsefBookingItems;
 
+    /** @var \App\Model\Table\KsefInvoiceStatusesTable */
+    private $KsefInvoiceStatuses;
+
     public function initialize(): void
     {
         parent::initialize();
         // CakePHP 5: bez loadModel, używamy fetchTable
         $this->Invoices = $this->fetchTable('Invoices');
-        // Lazy; created when first used
         $this->KsefBookingItems = $this->fetchTable('KsefBookingItems');
+        $this->KsefInvoiceStatuses = $this->fetchTable('KsefInvoiceStatuses');
     }
 
 
@@ -85,6 +88,10 @@ class KsefAuthorizationsController extends AppController
         $ksefDiag  = $vm['ksefDiag'] ?? null;
         $ksefRaw   = $vm['ksefRaw'] ?? null;
 
+        // Załaduj statusy workflow dla bieżącej strony faktur
+        $ksefNumbers = array_filter(array_column($invoices, 'ksef_number'));
+        $invoiceStatuses = $this->KsefInvoiceStatuses->fetchForNumbers($companyId, $environment, $ksefNumbers);
+
         $this->set('apiInfo', $apiInfo);
         $this->set('ksefEnv', $environment);
         $this->set('certInfo', $certInfo);
@@ -92,9 +99,92 @@ class KsefAuthorizationsController extends AppController
         $this->set('ksefTrace', $ksefTrace);
         $this->set('ksefDiag', $ksefDiag);
         $this->set('ksefRaw', $ksefRaw);
+        $this->set('invoiceStatuses', $invoiceStatuses);
 
         $this->set(compact('companyId', 'environment', 'invoices', 'stats', 'currency'));
         $this->render('received');
+    }
+
+    /**
+     * AJAX POST /ksef/invoice-status
+     * Ustawia / aktualizuje status workflow faktury kosztowej.
+     * Body JSON: { ksef_number, environment, cost_status, docs_received_at?, rejection_reason?, notes? }
+     */
+    public function setInvoiceStatus(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') {
+            $this->jsonResp(['success' => false, 'error' => 'Brak sesji firmy.']);
+            return;
+        }
+
+        $body        = (array)$this->request->getData();
+        $ksefNumber  = trim((string)($body['ksef_number'] ?? ''));
+        $environment = ($body['environment'] ?? 'prod') === 'test' ? 'test' : 'prod';
+        $costStatus  = (int)($body['cost_status'] ?? 0);
+
+        if ($ksefNumber === '' || $costStatus < 1 || $costStatus > 9) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowe parametry.']);
+            return;
+        }
+
+        $data = ['cost_status' => $costStatus];
+
+        $docsAt = trim((string)($body['docs_received_at'] ?? ''));
+        if ($docsAt !== '') {
+            $data['docs_received_at'] = $docsAt;
+        } elseif ($costStatus >= 4 && $costStatus <= 6) {
+            // Przy akceptacji ustaw datę dokumentów na dziś jeśli nie podano
+            $existing = $this->KsefInvoiceStatuses->find()->where([
+                'company_id'  => $companyId,
+                'environment' => $environment,
+                'ksef_number' => $ksefNumber,
+            ])->first();
+            if (empty($existing?->docs_received_at)) {
+                $data['docs_received_at'] = date('Y-m-d');
+            }
+        }
+
+        if (array_key_exists('rejection_reason', $body)) {
+            $data['rejection_reason'] = trim((string)$body['rejection_reason']);
+        }
+        if (array_key_exists('notes', $body)) {
+            $data['notes'] = trim((string)$body['notes']);
+        }
+        if (array_key_exists('payment_due_date', $body)) {
+            $pdd = trim((string)$body['payment_due_date']);
+            $data['payment_due_date'] = $pdd !== '' ? $pdd : null;
+        }
+
+        $user = $identity?->get('username') ?? $identity?->get('email') ?? null;
+        if ($user) {
+            $data['changed_by'] = (string)$user;
+        }
+
+        $entity = $this->KsefInvoiceStatuses->upsert($companyId, $environment, $ksefNumber, $data);
+        if (!$this->KsefInvoiceStatuses->save($entity)) {
+            $errors = $entity->getErrors();
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.', 'errors' => $errors]);
+            return;
+        }
+
+        $this->jsonResp([
+            'success'          => true,
+            'cost_status'      => $entity->cost_status,
+            'docs_received_at' => $entity->docs_received_at?->format('Y-m-d'),
+            'payment_due_date' => $entity->payment_due_date?->format('Y-m-d'),
+        ]);
+    }
+
+    private function jsonResp(array $data): void
+    {
+        $this->response = $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
     /**

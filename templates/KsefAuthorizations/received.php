@@ -4,11 +4,38 @@
  * @var array $invoices
  * @var array $apiInfo
  * @var array $certInfo
+ * @var array $invoiceStatuses   ksef_number => \App\Model\Entity\KsefInvoiceStatus
  */
 $this->assign('title', 'Dokumenty otrzymane z KSeF');
 $env   = (string)$this->getRequest()->getQuery('env', 'prod');
 $page  = max(1, (int)$this->getRequest()->getQuery('page', 1));
 $total = (int)($apiInfo['total'] ?? 0);
+
+$invoiceStatuses = $invoiceStatuses ?? [];
+
+// Słownik statusów workflow FV kosztowych
+$costStatusLabels = [
+    1 => 'FV DO POTWIERDZENIA',
+    2 => 'FV OCZEKUJĄCA NA DOKUMENTY',
+    3 => 'FV GOTOWA DO AKCEPTACJI',
+    4 => 'FV ZAAKCEPTOWANA',
+    5 => 'FV DO OPŁACENIA',
+    6 => 'FV PRZETERMINOWANA',
+    7 => 'FV ODRZUCONA',
+    8 => 'FV WSTRZYMANA',
+    9 => 'FV DO WYJAŚNIENIA',
+];
+$costStatusColors = [
+    1 => 'warning',
+    2 => 'orange',
+    3 => 'primary',
+    4 => 'success',
+    5 => 'info',
+    6 => 'danger',
+    7 => 'dark',
+    8 => 'secondary',
+    9 => 'warning',
+];
 
 $money = function ($amount, $cur = 'PLN') {
     return number_format((float)$amount, 2, ',', "\u{00a0}") . ' ' . $cur;
@@ -83,6 +110,15 @@ a.icon-clip i { font-size: .85rem; }
 .toast-container.received-toasts { z-index: 1080; }
 .env-badge { font-size: .65rem; padding: .2em .5em; }
 .btn-xs { font-size: .7rem; padding: .15em .45em; }
+
+/* ---- Status FV workflow ---- */
+.cost-status-badge { cursor: pointer; user-select: none; font-size:.72rem; }
+.cost-status-badge:hover { filter: brightness(.92); }
+.cost-status-dropdown { min-width: 220px; }
+.cost-status-dropdown .dropdown-item { font-size: .8rem; white-space: normal; }
+.cost-status-dropdown .dropdown-item:hover { background: rgba(var(--bs-primary-rgb),.07); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.docs-date-wrap { white-space: nowrap; }
 </style>
 
 <!-- Start::page-header -->
@@ -307,8 +343,9 @@ a.icon-clip i { font-size: .85rem; }
             <th class="text-end" style="width:140px">Kwota brutto</th>
             <th style="width:60px">Waluta</th>
             <th style="width:130px">Typ</th>
+            <th style="width:170px">Status FV</th>
             <th style="width:110px" class="text-center">Akcje</th>
-            <th style="width:140px">Księgowanie</th>
+            <th style="width:140px">Dekretacja</th>
           </tr>
         </thead>
         <tbody>
@@ -368,11 +405,57 @@ a.icon-clip i { font-size: .85rem; }
                   </div>
                 </td>
 
+                <!-- Status FV (workflow kosztowy) -->
+                <td>
+                  <?php if (!empty($row['ksef_number'])):
+                    $ksefNum = $row['ksef_number'];
+                    $statusRec = $invoiceStatuses[$ksefNum] ?? null;
+                    $cStatus = (int)($statusRec?->cost_status ?? 1);
+                    $cLabel  = $costStatusLabels[$cStatus] ?? 'Nieznany';
+                    $cColor  = $costStatusColors[$cStatus] ?? 'secondary';
+                    $docsAt  = $statusRec?->docs_received_at;
+                  ?>
+                  <div class="dropdown" data-ksef="<?= h($ksefNum) ?>">
+                    <button type="button"
+                      class="btn btn-sm bg-<?= $cColor ?>-subtle text-<?= $cColor ?> border cost-status-badge w-100 text-start dropdown-toggle"
+                      data-bs-toggle="dropdown"
+                      data-cost-status="<?= $cStatus ?>"
+                      title="Kliknij, aby zmienić status factury"
+                      style="font-size:.72rem;line-height:1.3;padding:.25em .5em">
+                      <?= h($cLabel) ?>
+                    </button>
+                    <ul class="dropdown-menu cost-status-dropdown shadow-sm" data-ksef="<?= h($ksefNum) ?>" data-env="<?= h($env) ?>">
+                      <?php foreach ($costStatusLabels as $sv => $sl):
+                        $sc = $costStatusColors[$sv] ?? 'secondary';
+                      ?>
+                      <li>
+                        <button type="button" class="dropdown-item d-flex align-items-center gap-2 status-select-item <?= $sv === $cStatus ? 'fw-semibold' : '' ?>"
+                                data-status="<?= $sv ?>" data-ksef="<?= h($ksefNum) ?>" data-env="<?= h($env) ?>">
+                          <span class="status-dot bg-<?= $sc ?>" style="background:<?= match($sc) { 'warning' => '#f59e0b', 'primary' => '#3b82f6', 'success' => '#22c55e', 'info' => '#06b6d4', 'danger' => '#ef4444', 'dark' => '#1f2937', 'secondary' => '#6b7280', 'orange' => '#f97316', default => '#9ca3af' } ?>"></span>
+                          <?= h($sl) ?>
+                        </button>
+                      </li>
+                      <?php endforeach; ?>
+                      <?php if ($docsAt): ?>
+                      <li><hr class="dropdown-divider my-1"></li>
+                      <li><span class="dropdown-item-text small text-muted docs-date-wrap"><i class="ri-calendar-check-line me-1"></i>Docs: <?= h($docsAt->format('d.m.Y')) ?></span></li>
+                      <?php endif; ?>
+                    </ul>
+                  </div>
+                  <?php if ($docsAt): ?>
+                    <div class="small text-muted mt-1 docs-date-wrap" title="Data kompletności dokumentów (start terminu płatności)">
+                      <i class="ri-calendar-check-line"></i> <?= h($docsAt->format('d.m.Y')) ?>
+                    </div>
+                  <?php endif; ?>
+                  <?php else: ?>
+                    <span class="text-muted">—</span>
+                  <?php endif; ?>
+                </td>
+
                 <!-- Akcje -->
                 <td class="text-center">
                   <?php if (!empty($row['ksef_number'])): ?>
-                    <div class="btn-group btn-group-sm">
-                      <a class="btn btn-sm btn-outline-primary" href="<?= $this->Url->build(['action' => 'download', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz XML">
+                    <div class="btn-group btn-group-sm">                      <a class="btn btn-sm btn-outline-primary" href="<?= $this->Url->build(['action' => 'download', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz XML">
                         <i class="ri-download-2-line"></i>
                       </a>
                       <a class="btn btn-sm btn-outline-danger" href="<?= $this->Url->build(['action' => 'downloadPdf', $row['ksef_number'], '?' => ['env' => $env]]) ?>" title="Pobierz PDF">
@@ -402,7 +485,7 @@ a.icon-clip i { font-size: .85rem; }
             <?php endforeach; ?>
           <?php else: ?>
             <tr>
-              <td colspan="8" class="text-center py-5">
+              <td colspan="9" class="text-center py-5">
                 <div class="text-muted">
                   <i class="ri-inbox-line" style="font-size:2rem"></i>
                   <div class="mt-2">Brak dokumentów dla wybranych filtrów</div>
@@ -836,10 +919,90 @@ a.icon-clip i { font-size: .85rem; }
     });
   }
 
+  // ── Cost-status workflow ──
+  const STATUS_COLORS = {
+    1: 'warning', 2: 'orange', 3: 'primary', 4: 'success',
+    5: 'info', 6: 'danger', 7: 'dark', 8: 'secondary', 9: 'warning'
+  };
+  const STATUS_BG_MAP = {
+    'warning': '#f59e0b', 'orange': '#f97316', 'primary': '#3b82f6',
+    'success': '#22c55e', 'info': '#06b6d4', 'danger': '#ef4444',
+    'dark': '#1f2937', 'secondary': '#6b7280'
+  };
+  const STATUS_URL = <?= json_encode($this->Url->build(['/api/ksef/invoice-status', '_full' => true])) ?>;
+
+  function initCostStatus() {
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.status-select-item');
+      if (!btn) return;
+
+      const newStatus = parseInt(btn.dataset.status, 10);
+      const ksefNumber = btn.dataset.ksef;
+      const env = btn.dataset.env || 'prod';
+      if (!ksefNumber || !newStatus) return;
+
+      const wrap = btn.closest('[data-ksef]');
+      const trigger = wrap?.querySelector('.cost-status-badge');
+      if (!trigger) return;
+
+      // Optimistic UI
+      const currentStatus = parseInt(trigger.dataset.costStatus || '1', 10);
+      const newColor = STATUS_COLORS[newStatus] || 'secondary';
+      const newLabel = btn.textContent.trim().replace(/[\u2022\u25cf●]/g, '').trim().replace(/\s+/g,' ').trim();
+      trigger.className = trigger.className.replace(/bg-\S+-subtle/g, `bg-${newColor}-subtle`).replace(/text-\S+(?=\s|$)/g, `text-${newColor}`);
+      trigger.dataset.costStatus = newStatus;
+      trigger.textContent = newLabel;
+
+      const csrf = document.getElementById('csrf-token')?.value || '';
+      try {
+        const resp = await fetch(STATUS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrf },
+          body: JSON.stringify({ ksef_number: ksefNumber, environment: env, cost_status: newStatus })
+        });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok || !data?.success) {
+          // Rollback optimistic
+          const oldColor = STATUS_COLORS[currentStatus] || 'secondary';
+          trigger.className = trigger.className.replace(/bg-\S+-subtle/g, `bg-${oldColor}-subtle`).replace(/text-\S+(?=\s|$)/g, `text-${oldColor}`);
+          trigger.dataset.costStatus = currentStatus;
+          const oldBtn = wrap.querySelector(`.status-select-item[data-status="${currentStatus}"]`);
+          if (oldBtn) trigger.textContent = oldBtn.textContent.trim().replace(/[\u2022\u25cf●]/g, '').trim().replace(/\s+/g,' ').trim();
+          alert('Błąd zapisu statusu: ' + (data?.error || ('HTTP ' + resp.status)));
+          return;
+        }
+
+        // Show docs_received_at if returned
+        if (data.docs_received_at) {
+          const existing = wrap.closest('td')?.querySelector('.docs-date-wrap');
+          if (existing) {
+            existing.innerHTML = '<i class="ri-calendar-check-line"></i> ' + data.docs_received_at;
+          } else {
+            const td = wrap.closest('td');
+            if (td) {
+              const d = document.createElement('div');
+              d.className = 'small text-muted mt-1 docs-date-wrap';
+              d.title = 'Data kompletności dokumentów';
+              d.innerHTML = '<i class="ri-calendar-check-line"></i> ' + data.docs_received_at;
+              td.appendChild(d);
+            }
+          }
+        }
+
+        // Update fw-semibold on menu items
+        wrap.querySelectorAll('.status-select-item').forEach(b => {
+          b.classList.toggle('fw-semibold', parseInt(b.dataset.status, 10) === newStatus);
+        });
+      } catch (err) {
+        console.error('Cost status error:', err);
+      }
+    });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function(){ initCopyIcons(); initBooking(); loadSummaries(); });
+    document.addEventListener('DOMContentLoaded', function(){ initCopyIcons(); initBooking(); loadSummaries(); initCostStatus(); });
   } else {
-    initCopyIcons(); initBooking(); loadSummaries();
+    initCopyIcons(); initBooking(); loadSummaries(); initCostStatus();
   }
 })();
 </script>
