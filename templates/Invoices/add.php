@@ -837,7 +837,8 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
               <tbody id="items-body">
 <?php
 $__renderItems = [];
-if ($__isEdit && !empty($__prefillItems)) {
+if (!empty($__prefillItems)) {
+    // Dotyczy: edycja (edit) ORAZ nowa faktura z pre-fill (np. ze zlecenia Speed)
     $__renderItems = $__prefillItems;
 } elseif (!$__isEdit && !empty($__originalItems)) {
     $__renderItems = $__originalItems;
@@ -3185,6 +3186,15 @@ $('#gus-fetch-btn').on('click', function(){
       // Items are already rendered by PHP in edit mode — no JS prefill needed
     } catch (e) {
       console.warn('Edit prefill failed', e);
+    }
+  } else if (editPrefill && editPrefill.contractor) {
+    // Pre-fill z zewnętrznego źródła (np. zlecenie Speed) — nie jest trybem edycji
+    try {
+      applyContractor(editPrefill.contractor);
+      // Pozycje są już wyrenderowane przez PHP ($__prefillItems) — tylko odrysuj kalkulację
+      setTimeout(function(){ allCalc(); }, 100);
+    } catch (e) {
+      console.warn('Order prefill contractor failed', e);
     }
   }
 

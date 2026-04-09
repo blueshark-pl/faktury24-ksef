@@ -1299,25 +1299,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                     $invoice->set('invoice_contractor', $ctr);
 
-                    // ── Pozycja fakturowa (usługa transportowa) ──
-                    // Tytuł zestawiamy z title1 / title2 i trasy
-                    $lineName = trim(implode(' ', array_filter([
-                        (string)($speedOrder->title1 ?? ''),
-                        (string)($speedOrder->title2 ?? ''),
-                    ])));
-                    if ($lineName === '') {
-                        $lineName = trim((string)($speedOrder->route_description ?? ''));
-                    }
-                    if ($lineName === '') {
-                        $lineName = 'Usługa transportowa ' . (string)($speedOrder->symbol ?? '');
-                    }
+                    // ── Pozycja fakturowa (usługa spedycyjna) ──
                     $lineObj = new \stdClass();
-                    $lineObj->name             = $lineName;
+                    $lineObj->name             = 'Usługa spedycyjna fracht';
                     $lineObj->quantity         = 1;
                     $lineObj->unit             = 'usł.';
                     $lineObj->price            = (float)($speedOrder->netto ?? 0);
                     $lineObj->discount_percent = 0;
-                    $lineObj->vat_code_id      = null;
+                    $lineObj->vat_code_id      = null; // użytkownik dobiera stawkę (NP/ZW)
                     $lineObj->gtu_code         = 'GTU_13';
                     $lineObj->product_desc     = '';
                     $lineObj->purchase_price   = 0;
@@ -1325,48 +1314,100 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $invoice->set('invoice_contents', [$lineObj]);
 
                     // ── Dodatkowe opisy (DodatkowyOpis) — dane zlecenia ──
+                    // Ekstrakcja pola środek transportu z raw_json
+                    $rawArr = [];
+                    if (!empty($speedOrder->raw_json)) {
+                        $rawArr = (array)(json_decode((string)$speedOrder->raw_json, true) ?? []);
+                    }
+                    $vehicleReg = '';
+                    foreach (['GLO_AUTO1','GLO_AUTO2','GLO_AUTO','GLO_POJAZD','GLO_REJ','GLO_NAZ7','GLO_NAZ8'] as $vKey) {
+                        $v = trim((string)($rawArr[$vKey] ?? ''));
+                        if ($v !== '') { $vehicleReg = $v; break; }
+                    }
+                    // Fallback: title2 jeśli raw_json nie ma pola pojazdu, ale title2 wygląda jak tablica rejestracyjna (litery + cyfry)
+                    if ($vehicleReg === '' && !empty($speedOrder->title2)) {
+                        $t2 = trim((string)$speedOrder->title2);
+                        if (preg_match('/^[A-Z]{2,3}[\s\-]?\d+$/i', $t2)) {
+                            $vehicleReg = $t2;
+                        }
+                    }
+
                     $addDescs = [];
+
+                    // Nasz numer (symbol zlecenia)
                     if (!empty($speedOrder->symbol)) {
                         $d = new \stdClass();
                         $d->nr_wiersza = 1;
-                        $d->klucz      = 'Numer zlecenia';
+                        $d->klucz      = 'Nasz numer';
                         $d->wartosc    = (string)$speedOrder->symbol;
                         $addDescs[] = $d;
                     }
-                    if (!empty($speedOrder->place_from_name) || !empty($speedOrder->place_to_name)) {
-                        $trasa = trim(implode(' → ', array_filter([
-                            (string)($speedOrder->place_from_name ?? ''),
-                            (string)($speedOrder->place_to_name ?? ''),
-                        ])));
-                        if ($trasa !== '') {
-                            $d2 = new \stdClass();
-                            $d2->nr_wiersza = 1;
-                            $d2->klucz      = 'Trasa';
-                            $d2->wartosc    = $trasa;
-                            $addDescs[] = $d2;
-                        }
+
+                    // Zlecenie (numer zlecenia klienta / title1)
+                    if (!empty($speedOrder->title1)) {
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Zlecenie';
+                        $d->wartosc    = (string)$speedOrder->title1;
+                        $addDescs[] = $d;
                     }
-                    if (!empty($speedOrder->route_description)) {
-                        $d3 = new \stdClass();
-                        $d3->nr_wiersza = 1;
-                        $d3->klucz      = 'Opis trasy';
-                        $d3->wartosc    = (string)$speedOrder->route_description;
-                        $addDescs[] = $d3;
+
+                    // Środo transportu
+                    if ($vehicleReg !== '') {
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Środo transportu';
+                        $d->wartosc    = $vehicleReg;
+                        $addDescs[] = $d;
                     }
-                    if (!empty($speedOrder->date_doc)) {
-                        $d4 = new \stdClass();
-                        $d4->nr_wiersza = 1;
-                        $d4->klucz      = 'Data zlecenia';
-                        $d4->wartosc    = $speedOrder->date_doc->format('d.m.Y');
-                        $addDescs[] = $d4;
-                    }
+
+                    // Rodzaj ładunku
                     if (!empty($speedOrder->cargo_type)) {
-                        $d5 = new \stdClass();
-                        $d5->nr_wiersza = 1;
-                        $d5->klucz      = 'Rodzaj ładunku';
-                        $d5->wartosc    = (string)$speedOrder->cargo_type;
-                        $addDescs[] = $d5;
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Rodzaj ładunku';
+                        $d->wartosc    = (string)$speedOrder->cargo_type;
+                        $addDescs[] = $d;
                     }
+
+                    // Załadunek: {kraj} {miejsce} ({data})
+                    if (!empty($speedOrder->place_from_name)) {
+                        $part = trim(implode(' ', array_filter([
+                            (string)($speedOrder->place_from_country ?? ''),
+                            (string)$speedOrder->place_from_name,
+                        ])));
+                        if ($speedOrder->date_ship) {
+                            $shipDate = $speedOrder->date_ship instanceof \DateTimeInterface
+                                ? $speedOrder->date_ship->format('Y-m-d')
+                                : substr((string)$speedOrder->date_ship, 0, 10);
+                            $part .= ' (' . $shipDate . ')';
+                        }
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Załadunek';
+                        $d->wartosc    = $part;
+                        $addDescs[] = $d;
+                    }
+
+                    // Rozładunek: {kraj} {miejsce} ({data})
+                    if (!empty($speedOrder->place_to_name)) {
+                        $part = trim(implode(' ', array_filter([
+                            (string)($speedOrder->place_to_country ?? ''),
+                            (string)$speedOrder->place_to_name,
+                        ])));
+                        if ($speedOrder->date_delivery) {
+                            $delivDate = $speedOrder->date_delivery instanceof \DateTimeInterface
+                                ? $speedOrder->date_delivery->format('Y-m-d')
+                                : substr((string)$speedOrder->date_delivery, 0, 10);
+                            $part .= ' (' . $delivDate . ')';
+                        }
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Rozładunek';
+                        $d->wartosc    = $part;
+                        $addDescs[] = $d;
+                    }
+
                     if (!empty($addDescs)) {
                         $invoice->set('invoice_additional_descriptions', $addDescs);
                     }

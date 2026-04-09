@@ -327,7 +327,7 @@ $gtuSelectHtml .= '</select>';
             <!-- Waluta i kurs przeniesione z zakładki Zaawansowane -->
             <div class="col-12 d-flex align-items-center gap-2">
               <?= $this->Form->control('currency', [
-                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency', 'value' => !$__isEdit ? 'PLN' : ($invoice->currency ?? null),
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency', 'value' => $invoice->currency ?? (!$__isEdit ? 'PLN' : null),
                 'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
               ]) ?>
               <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
@@ -2403,6 +2403,16 @@ $('#gus-fetch-btn').on('click', function(){
       }
     } catch (e) {
       console.warn('Edit prefill failed', e);
+    }
+  } else if (editPrefill && editPrefill.contractor) {
+    // Pre-fill z zewnętrznego źródła (np. zlecenie Speed) — nie jest trybem edycji
+    try {
+      if (typeof applyContractor === 'function') applyContractor(editPrefill.contractor);
+      if (editPrefill.items && editPrefill.items.length && typeof prefillItems === 'function') {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Order prefill failed', e);
     }
   }
 
