@@ -16,12 +16,6 @@ use Cake\Http\Client;
  */
 class SpeedOrdersController extends AppController
 {
-    public function initialize(): void
-    {
-        parent::initialize();
-        $this->loadModel('SpeedOrders');
-    }
-
     // -------------------------------------------------------------------------
     // Lista zleceń
     // -------------------------------------------------------------------------
@@ -36,7 +30,8 @@ class SpeedOrdersController extends AppController
         $page    = max(1, (int)$this->request->getQuery('page', 1));
         $limit   = 50;
 
-        $query = $this->SpeedOrders->find()
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $query = $SpeedOrders->find()
             ->orderByDesc('SpeedOrders.date_doc');
 
         if ($search !== '') {
@@ -54,6 +49,7 @@ class SpeedOrdersController extends AppController
         if ($status !== '') {
             $query->where(['SpeedOrders.status' => (int)$status]);
         }
+
 
         if ($dateFrom !== '') {
             $query->where(['SpeedOrders.date_doc >=' => $dateFrom]);
@@ -78,7 +74,8 @@ class SpeedOrdersController extends AppController
     {
         $this->request->allowMethod(['get']);
 
-        $order = $this->SpeedOrders->get($id);
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->get($id);
         $rawData = null;
         if (!empty($order->raw_json)) {
             $rawData = json_decode($order->raw_json, true);
@@ -138,6 +135,7 @@ class SpeedOrdersController extends AppController
             $saved   = 0;
             $updated = 0;
             $errors  = [];
+            $SpeedOrders = $this->fetchTable('SpeedOrders');
 
             foreach ($payload as $r) {
                 $speedId = (int)($r['GLO_ID'] ?? 0);
@@ -201,17 +199,17 @@ class SpeedOrdersController extends AppController
                 ];
 
                 // Upsert po speed_id
-                $existing = $this->SpeedOrders->findBy(['speed_id' => $speedId])->first();
+                $existing = $SpeedOrders->find()->where(['speed_id' => $speedId])->first();
                 if ($existing) {
-                    $entity = $this->SpeedOrders->patchEntity($existing, $data);
-                    if ($this->SpeedOrders->save($entity)) {
+                    $entity = $SpeedOrders->patchEntity($existing, $data);
+                    if ($SpeedOrders->save($entity)) {
                         $updated++;
                     } else {
                         $errors[] = 'Błąd aktualizacji GLO_ID=' . $speedId;
                     }
                 } else {
-                    $entity = $this->SpeedOrders->newEntity($data);
-                    if ($this->SpeedOrders->save($entity)) {
+                    $entity = $SpeedOrders->newEntity($data);
+                    if ($SpeedOrders->save($entity)) {
                         $saved++;
                     } else {
                         $errors[] = 'Błąd zapisu GLO_ID=' . $speedId;
