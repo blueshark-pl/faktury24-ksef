@@ -1254,6 +1254,130 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $invoice->set('invoice_series_id', (string)$ser->id);
             }
         } catch (\Throwable $e) { /* ignore — nie blokujemy formularza */ }
+
+        // Pre-fill z zlecenia Speed ERP (from_order_id)
+        $fromOrderId = $this->request->getQuery('from_order_id');
+        if (!empty($fromOrderId) && in_array($kind, ['vat', 'currency'], true)) {
+            try {
+                $SpeedOrders = $this->fetchTable('SpeedOrders');
+                /** @var \App\Model\Entity\SpeedOrder|null $speedOrder */
+                $speedOrder = $SpeedOrders->find()
+                    ->where(['SpeedOrders.id' => (int)$fromOrderId])
+                    ->first();
+                if ($speedOrder) {
+                    // ── Waluta i kurs ──
+                    $cur = (string)($speedOrder->currency ?? 'PLN');
+                    $invoice->set('currency', $cur);
+                    if ($cur !== 'PLN' && !empty($speedOrder->exchange_rate)) {
+                        $invoice->set('exchange_rate', $speedOrder->exchange_rate);
+                    }
+
+                    // ── Snapshot kontrahenta ──
+                    $ctr = new \stdClass();
+                    $ctr->name    = (string)($speedOrder->buyer_name ?? '');
+                    $ctr->nip     = (string)($speedOrder->buyer_nip ?? '');
+                    $ctr->street  = (string)($speedOrder->buyer_street ?? '');
+                    $ctr->zip     = (string)($speedOrder->buyer_postal_code ?? '');
+                    $ctr->city    = (string)($speedOrder->buyer_city ?? '');
+                    $ctr->country = (string)($speedOrder->buyer_country ?? 'PL');
+                    $ctr->email   = (string)($speedOrder->buyer_email ?? '');
+                    $ctr->phone   = '';
+                    // Spróbuj dopasować kontrahenta z bazy po NIP
+                    if (!empty($ctr->nip)) {
+                        try {
+                            $Contractors = $this->fetchTable('Contractors');
+                            $matchedC = $Contractors->find()
+                                ->where(['company_id' => $companyId, 'nip' => $ctr->nip])
+                                ->first();
+                            if ($matchedC) {
+                                $invoice->set('contractor_id', (string)$matchedC->id);
+                                $ctr->name  = $ctr->name ?: (string)($matchedC->name ?? '');
+                                $ctr->email = $ctr->email ?: (string)($matchedC->email ?? '');
+                                $ctr->phone = (string)($matchedC->phone ?? '');
+                            }
+                        } catch (\Throwable) { /* ignoruj */ }
+                    }
+                    $invoice->set('invoice_contractor', $ctr);
+
+                    // ── Pozycja fakturowa (usługa transportowa) ──
+                    // Tytuł zestawiamy z title1 / title2 i trasy
+                    $lineName = trim(implode(' ', array_filter([
+                        (string)($speedOrder->title1 ?? ''),
+                        (string)($speedOrder->title2 ?? ''),
+                    ])));
+                    if ($lineName === '') {
+                        $lineName = trim((string)($speedOrder->route_description ?? ''));
+                    }
+                    if ($lineName === '') {
+                        $lineName = 'Usługa transportowa ' . (string)($speedOrder->symbol ?? '');
+                    }
+                    $lineObj = new \stdClass();
+                    $lineObj->name             = $lineName;
+                    $lineObj->quantity         = 1;
+                    $lineObj->unit             = 'usł.';
+                    $lineObj->price            = (float)($speedOrder->netto ?? 0);
+                    $lineObj->discount_percent = 0;
+                    $lineObj->vat_code_id      = null;
+                    $lineObj->gtu_code         = 'GTU_13';
+                    $lineObj->product_desc     = '';
+                    $lineObj->purchase_price   = 0;
+                    $lineObj->price_mode       = 'net';
+                    $invoice->set('invoice_contents', [$lineObj]);
+
+                    // ── Dodatkowe opisy (DodatkowyOpis) — dane zlecenia ──
+                    $addDescs = [];
+                    if (!empty($speedOrder->symbol)) {
+                        $d = new \stdClass();
+                        $d->nr_wiersza = 1;
+                        $d->klucz      = 'Numer zlecenia';
+                        $d->wartosc    = (string)$speedOrder->symbol;
+                        $addDescs[] = $d;
+                    }
+                    if (!empty($speedOrder->place_from_name) || !empty($speedOrder->place_to_name)) {
+                        $trasa = trim(implode(' → ', array_filter([
+                            (string)($speedOrder->place_from_name ?? ''),
+                            (string)($speedOrder->place_to_name ?? ''),
+                        ])));
+                        if ($trasa !== '') {
+                            $d2 = new \stdClass();
+                            $d2->nr_wiersza = 1;
+                            $d2->klucz      = 'Trasa';
+                            $d2->wartosc    = $trasa;
+                            $addDescs[] = $d2;
+                        }
+                    }
+                    if (!empty($speedOrder->route_description)) {
+                        $d3 = new \stdClass();
+                        $d3->nr_wiersza = 1;
+                        $d3->klucz      = 'Opis trasy';
+                        $d3->wartosc    = (string)$speedOrder->route_description;
+                        $addDescs[] = $d3;
+                    }
+                    if (!empty($speedOrder->date_doc)) {
+                        $d4 = new \stdClass();
+                        $d4->nr_wiersza = 1;
+                        $d4->klucz      = 'Data zlecenia';
+                        $d4->wartosc    = $speedOrder->date_doc->format('d.m.Y');
+                        $addDescs[] = $d4;
+                    }
+                    if (!empty($speedOrder->cargo_type)) {
+                        $d5 = new \stdClass();
+                        $d5->nr_wiersza = 1;
+                        $d5->klucz      = 'Rodzaj ładunku';
+                        $d5->wartosc    = (string)$speedOrder->cargo_type;
+                        $addDescs[] = $d5;
+                    }
+                    if (!empty($addDescs)) {
+                        $invoice->set('invoice_additional_descriptions', $addDescs);
+                    }
+
+                    // ── Przekaż zlecenie do widoku (np. dla alertu) ──
+                    $this->set('fromSpeedOrder', $speedOrder);
+                }
+            } catch (\Throwable $e) {
+                \Cake\Log\Log::warning('prefill from_order_id error: ' . $e->getMessage());
+            }
+        }
     }
 
     // słowniki VAT – dla noVat nie musimy ładować stawek, ale jeśli chcesz mieć np. "ZW/NP", możesz załadować i ukryć w UI

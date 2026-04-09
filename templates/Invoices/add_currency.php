@@ -112,6 +112,18 @@ $gtuSelectHtml .= '</select>';
 
 <?= $this->Form->create($invoice, ['class' => 'needs-validation', 'novalidate' => true]) ?>
 
+<?php if (!empty($fromSpeedOrder)): ?>
+  <div class="alert alert-success d-flex align-items-center gap-2 mt-3" role="alert">
+    <i class="ri-truck-line fs-18 flex-shrink-0"></i>
+    <div>
+      Dane uzupełnione na podstawie zlecenia <strong><?= h($fromSpeedOrder->symbol) ?></strong>
+      <?php if (!empty($fromSpeedOrder->route_description)): ?>
+        &mdash; <?= h($fromSpeedOrder->route_description) ?>
+      <?php endif; ?>
+      <a href="<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'view', $fromSpeedOrder->id]) ?>" class="ms-2 small">pokaż zlecenie</a>
+    </div>
+  </div>
+<?php endif; ?>
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
   <div>

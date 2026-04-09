@@ -146,9 +146,23 @@ $statusBadge = function(int $s): string {
             <td><?= $statusBadge((int)$order->status) ?></td>
             <td class="text-muted small"><?= h($order->nick_created) ?></td>
             <td class="text-end">
+                <?php
+                    $cur = strtoupper(trim((string)($order->currency ?? 'PLN')));
+                    $fvAction = ($cur !== '' && $cur !== 'PLN') ? 'addCurrency' : 'addVat';
+                    $fvUrl = $this->Url->build([
+                        'controller' => 'Invoices',
+                        'action'     => $fvAction,
+                        '?'          => ['from_order_id' => $order->id],
+                    ]);
+                ?>
                 <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>"
                    class="btn btn-xs btn-outline-secondary py-0 px-1" title="Szczegóły">
                     <i class="ri-eye-line"></i>
+                </a>
+                <a href="<?= h($fvUrl) ?>"
+                   class="btn btn-xs btn-outline-primary py-0 px-1 ms-1"
+                   title="Wystaw fakturę na podstawie zlecenia">
+                    <i class="ri-file-add-line"></i>
                 </a>
             </td>
         </tr>

@@ -188,6 +188,18 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
     </div>
   </div>
 <?php endif; ?>
+<?php if (!empty($fromSpeedOrder)): ?>
+  <div class="alert alert-success d-flex align-items-center gap-2" role="alert">
+    <i class="ri-truck-line fs-18 flex-shrink-0"></i>
+    <div>
+      Dane uzupełnione na podstawie zlecenia <strong><?= h($fromSpeedOrder->symbol) ?></strong>
+      <?php if (!empty($fromSpeedOrder->route_description)): ?>
+        &mdash; <?= h($fromSpeedOrder->route_description) ?>
+      <?php endif; ?>
+      <a href="<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'view', $fromSpeedOrder->id]) ?>" class="ms-2 small">pokaż zlecenie</a>
+    </div>
+  </div>
+<?php endif; ?>
 
 <div class="row">
   <div class="col-xxl-12">
