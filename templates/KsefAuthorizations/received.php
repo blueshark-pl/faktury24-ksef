@@ -391,7 +391,7 @@ a.icon-clip i { font-size: .85rem; }
                 <td>
                   <?php if (!empty($row['ksef_number'])): ?>
                     <button type="button" class="btn btn-sm btn-outline-success open-booking" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>">
-                      <i class="ri-book-2-line me-1"></i>Księguj
+                      <i class="ri-book-2-line me-1"></i>Dekretuj
                     </button>
                     <div class="text-muted small mt-1 booking-summary" data-ksef="<?= h($row['ksef_number']) ?>" data-env="<?= h($env) ?>"></div>
                   <?php else: ?>
