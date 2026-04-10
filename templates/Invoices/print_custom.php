@@ -364,7 +364,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .parties { display:flex; gap:1cm; margin-bottom:.7cm; }
 .party { flex:1; }
 .party-label { font-size:7pt; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; border-bottom:1px solid #e5e7eb; padding-bottom:2px; margin-bottom:4px; }
-.party-name { font-size:11pt; font-weight:700; color:#111; }
+.party-name { font-size:9pt; font-weight:700; color:#111; }
 .party-detail { font-size:8.5pt; color:#444; line-height:1.5; }
 
 /* Summary */
@@ -586,18 +586,18 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
             <br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span>
             <?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
-            <div class="item-descs">
+            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:7.8pt;font-family:'DejaVu Sans',Arial,sans-serif;border-collapse:collapse"><tbody>
                 <?php foreach ($rowDescs as $d):
                     $k = trim((string)($d->klucz ?? ''));
                     $v = trim((string)($d->wartosc ?? ''));
                     if ($k===''&&$v==='') continue;
                 ?>
-                <div class="item-desc-row">
-                    <span class="item-desc-key"><?= h($translatePhrase($k)) ?>:</span>
-                    <span class="item-desc-val"><?= h($translatePhrase($v)) ?></span>
-                </div>
+                <tr style="font-family:'DejaVu Sans',Arial,sans-serif">
+                    <td style="color:#6b7280;white-space:nowrap;width:90px;padding:1px 6px 1px 6px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($k)) ?>:</td>
+                    <td style="font-weight:600;padding:1px 4px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($v)) ?></td>
+                </tr>
                 <?php endforeach; ?>
-            </div>
+            </tbody></table>
             <?php endif; ?>
         </td>
         <td><?= $num2($qty) ?></td>
@@ -653,11 +653,14 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
             <strong><?= h($translatePhrase($it->name ?? '')) ?></strong>
             <?php if (!empty($it->product_desc)): ?><br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span><?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
-            <div class="item-descs">
+            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:7.8pt;font-family:'DejaVu Sans',Arial,sans-serif;border-collapse:collapse"><tbody>
                 <?php foreach ($rowDescs as $d): $k=trim((string)($d->klucz??'')); $v=trim((string)($d->wartosc??'')); if($k===''&&$v==='') continue; ?>
-                <div class="item-desc-row"><span class="item-desc-key"><?= h($translatePhrase($k)) ?>:</span><span class="item-desc-val"><?= h($translatePhrase($v)) ?></span></div>
+                <tr style="font-family:'DejaVu Sans',Arial,sans-serif">
+                    <td style="color:#6b7280;white-space:nowrap;width:90px;padding:1px 6px 1px 6px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($k)) ?>:</td>
+                    <td style="font-weight:600;padding:1px 4px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($v)) ?></td>
+                </tr>
                 <?php endforeach; ?>
-            </div>
+            </tbody></table>
             <?php endif; ?>
         </td>
         <td><?= $num2($qty) ?></td>
