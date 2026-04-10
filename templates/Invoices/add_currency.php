@@ -112,7 +112,22 @@ $gtuSelectHtml .= '</select>';
 
 <?= $this->Form->create($invoice, ['class' => 'needs-validation', 'novalidate' => true]) ?>
 
-<?php if (!empty($fromSpeedOrder)): ?>
+<?php if (!empty($fromSpeedOrders) && is_array($fromSpeedOrders) && count($fromSpeedOrders) > 1): ?>
+  <div class="alert alert-success mt-3" role="alert">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <i class="ri-truck-line fs-18 flex-shrink-0"></i>
+      <strong>Dane uzupełnione na podstawie <?= count($fromSpeedOrders) ?> zleceń Speed ERP</strong>
+    </div>
+    <div class="d-flex flex-wrap gap-1">
+      <?php foreach ($fromSpeedOrders as $so): ?>
+        <a href="<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'view', $so->id]) ?>"
+           class="badge bg-success-subtle text-success border text-decoration-none" target="_blank">
+          <?= h($so->symbol) ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+<?php elseif (!empty($fromSpeedOrder)): ?>
   <div class="alert alert-success d-flex align-items-center gap-2 mt-3" role="alert">
     <i class="ri-truck-line fs-18 flex-shrink-0"></i>
     <div>
@@ -265,7 +280,9 @@ $gtuSelectHtml .= '</select>';
             <div class="col-lg-2">
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
+              'value' => !empty($invoice->sold_date)
+                ? ($invoice->sold_date instanceof \DateTimeInterface ? $invoice->sold_date->format('Y-m-d') : (string)$invoice->sold_date)
+                : date('Y-m-d')
             ]) ?>
             </div>
 
@@ -343,12 +360,22 @@ $gtuSelectHtml .= '</select>';
             </div>
 
             <div class="col-12" id="fx-rate-group" style="display:none;">
-              <?= $this->Form->control('fx_rate', [
-                'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
-                'class' => 'form-control', 'id' => 'fx-rate'
-              ]) ?>
+              <div class="row g-2">
+                <div class="col-8">
+                  <?= $this->Form->control('fx_rate', [
+                    'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
+                    'class' => 'form-control', 'id' => 'fx-rate'
+                  ]) ?>
+                </div>
+                <div class="col-4">
+                  <label class="form-label" for="currency-rate-date">Data kursu</label>
+                  <input type="date" id="currency-rate-date" name="currency_date" class="form-control"
+                    value="<?= h(!empty($invoice->currency_date) ? (($invoice->currency_date instanceof \DateTimeInterface) ? $invoice->currency_date->format('Y-m-d') : (string)$invoice->currency_date) : '') ?>">
+                  <small class="text-muted d-block mt-1" id="fx-rate-date-hint"></small>
+                </div>
+              </div>
             </div>
-            <?= $this->Form->hidden('currency_date', ['id' => 'currency-date-hidden']) ?>
+            <?php /* currency_date jest już wysyłane przez widoczne pole #currency-rate-date */ ?>
 
           </div>
         </div>
@@ -1742,11 +1769,65 @@ $(function () {
       else { var $any=$('[name="'+key+'"], #'+key); if ($any.length) $any.val(val==null?'':val).trigger('change'); }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
-    // Pokaż sekcję intl jeśli któreś pole wypełnione
-    var hasIntl = !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
+    // Pokaż sekcję intl jeśli kraj != PL lub któreś pole wypełnione
+    var country = (data.country||'PL').toUpperCase();
+    var hasIntl = country !== 'PL' || !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
     $('#snapshot-intl-toggle').prop('checked', hasIntl);
     $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
+    // Auto-prefill vat_prefix z kodu kraju (jeśli UE i brak prefiksu)
+    if (country !== 'PL' && !data.vat_prefix) {
+      $('[name="invoice_contractor[vat_prefix]"]').val(country);
+    }
   }
+  // ====== AUTO VAT / ODWROTNE OBCIĄŻENIE DLA KONTRAHENTÓW SPOZA PL ======
+  var EU_COUNTRIES = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE'];
+  var VAT_ID_EU_NP     = '647d0008-fe92-4322-978d-57f9d4fbfc61'; // nie podl. UE
+  var VAT_ID_NONEU_NP  = '5affc5e5-2db9-11f1-b082-3cecef763615'; // nie podl. poza UE
+
+  function applyForeignVat(country) {
+    var c = (country||'PL').toUpperCase().trim();
+    if (c === 'PL') return;
+    var isEU = EU_COUNTRIES.indexOf(c) !== -1;
+    var vatId = isEU ? VAT_ID_EU_NP : VAT_ID_NONEU_NP;
+    var vatLabel = isEU ? 'nie podl. UE' : 'nie podl. (poza UE)';
+    var regionLabel = isEU ? 'kraj UE' : 'kraj spoza UE';
+    var iconHtml = isEU
+      ? '<i class="ri-earth-line" style="font-size:2.5rem;color:#4f8ef7"></i>'
+      : '<i class="ri-earth-line" style="font-size:2.5rem;color:#f7a44f"></i>';
+
+    Swal.fire({
+      title: 'Kontrahent zagraniczny',
+      iconHtml: iconHtml,
+      customClass: { icon: 'border-0' },
+      html:
+        '<p class="mb-2">Wykryto kontrahenta z kraju <strong>' + c + '</strong> (' + regionLabel + ').</p>'
+        + '<p class="mb-3">System może automatycznie ustawić na wszystkich pozycjach:</p>'
+        + '<div class="text-start d-inline-block">'
+        + '  <div class="d-flex align-items-center gap-2 mb-1">'
+        + '    <span class="badge bg-danger-subtle text-danger border">VAT nabywca</span>'
+        + '    <span>Odwrotne obciążenie</span>'
+        + '  </div>'
+        + '  <div class="d-flex align-items-center gap-2">'
+        + '    <span class="badge bg-secondary-subtle text-secondary border">stawka</span>'
+        + '    <span>' + vatLabel + '</span>'
+        + '  </div>'
+        + '</div>',
+      showCancelButton: true,
+      confirmButtonText: 'Tak, zastosuj',
+      cancelButtonText: 'Nie, zostaw',
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#6c757d',
+      reverseButtons: true,
+    }).then(function(result) {
+      if (!result.isConfirmed) return;
+      $itemsBody.find('tr').each(function(){
+        var $vat = $(this).find('.item-vatcode');
+        if ($vat.length) $vat.val(vatId).trigger('change');
+      });
+      if (typeof allCalc === 'function') allCalc();
+    });
+  }
+
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
     if (!c) return;
@@ -1764,7 +1845,27 @@ $(function () {
       console.log('Contractor applied to Select2');
     }
     saveRecent({id: c.id || ('LS:'+ (c.nip || (c.name||''))), text: c.name || c.label});
+    // Auto VAT dla zagranicznego kontrahenta
+    var country = (c.country||'PL').toUpperCase().trim();
+    if (country !== 'PL') applyForeignVat(country);
   }
+
+  // Ręczna zmiana kraju w snapshocie kontrahenta
+  $(document).on('change', '[name="invoice_contractor[country]"]', function(){
+    var country = ($(this).val()||'PL').toUpperCase().trim();
+    // Pokaż / ukryj sekcję identyfikatorów
+    var showIntl = country !== 'PL';
+    $('#snapshot-intl-toggle').prop('checked', showIntl);
+    $('#snapshot-intl-fields').toggleClass('d-none', !showIntl);
+    // Auto-prefill vat_prefix jeśli pole puste
+    if (showIntl && !$('[name="invoice_contractor[vat_prefix]"]').val()) {
+      $('[name="invoice_contractor[vat_prefix]"]').val(country);
+    }
+    if (country === 'PL') {
+      $('[name="invoice_contractor[vat_prefix]"]').val('');
+    }
+    if (showIntl) applyForeignVat(country);
+  });
   function clearContractorSnapshot(){
     ['name','nip','street','zip','city','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].forEach(function(f){
       $('[name="invoice_contractor['+f+']"]').val(f==='country'?'PL':'');
@@ -2347,7 +2448,7 @@ $('#gus-fetch-btn').on('click', function(){
     rowCalc($tr); allCalc(); guardMinRows();
   })();
 
-  // ====== PREFILL: EDIT MODE ======
+  // ====== PREFILL helpers (definicje — wywołanie po rejestracji handlera DODAJ WIERSZ) ======
   function getItemRows(){ return $itemsBody.find('tr').has('.item-product-select'); }
   function prefillRow($tr, item){
     if (!$tr || !$tr.length || !item) return;
@@ -2392,31 +2493,6 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   }
 
-  if (isEdit) {
-    try {
-      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
-        applyContractor(editPrefill.contractor);
-      } else {
-        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
-      }
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
-    } catch (e) {
-      console.warn('Edit prefill failed', e);
-    }
-  } else if (editPrefill && editPrefill.contractor) {
-    // Pre-fill z zewnętrznego źródła (np. zlecenie Speed) — nie jest trybem edycji
-    try {
-      if (typeof applyContractor === 'function') applyContractor(editPrefill.contractor);
-      if (editPrefill.items && editPrefill.items.length && typeof prefillItems === 'function') {
-        prefillItems(editPrefill.items);
-      }
-    } catch (e) {
-      console.warn('Order prefill failed', e);
-    }
-  }
-
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
     var $addRow = $('#btn-add-item').closest('tr');
@@ -2449,6 +2525,31 @@ $('#gus-fetch-btn').on('click', function(){
     rowCalc($tr); allCalc(); guardMinRows();
     idx++;
   });
+
+  // ====== PREFILL: wywołanie (po rejestracji handlera btn-add-item) ======
+  if (isEdit) {
+    try {
+      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
+        applyContractor(editPrefill.contractor);
+      } else {
+        if (($('[name=”invoice_contractor[name]”]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
+      }
+      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Edit prefill failed', e);
+    }
+  } else if (editPrefill && editPrefill.contractor) {
+    try {
+      if (typeof applyContractor === 'function') applyContractor(editPrefill.contractor);
+      if (editPrefill.items && editPrefill.items.length && typeof prefillItems === 'function') {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Order prefill failed', e);
+    }
+  }
 
   // ====== „Dodaj produkt” (ikona w wierszu) ======
   $itemsBody.on('click', '.btn-new-product', function(){ currentProductRow = $(this).closest('tr'); $('#product-create-modal').modal('show'); });
@@ -2795,31 +2896,95 @@ $('#gus-fetch-btn').on('click', function(){
   $currency.on('change', onCurrencyChange); onCurrencyChange();
 
   // Fetch NBP rate and prefill fx-rate for foreign currency
-  async function fetchNbpRate(){
+  const $fxRateDate = $('#currency-rate-date');
+  const $fxRateDateHint = $('#fx-rate-date-hint');
+  var _fxAutoDate = $fxRateDate.val() || ''; // inicjalizuj z istniejącej wartości (edit mode)
+
+  async function fetchNbpRate(forceOverwrite){
     var cur = ($currency.val()||'PLN').toUpperCase();
-    if (cur === 'PLN') { $fxInput.val(''); return; }
+    if (cur === 'PLN') { $fxInput.val(''); $fxRateDate.val(''); $fxRateDateHint.text(''); _fxAutoDate = ''; return; }
+    // Nie nadpisuj jeśli kurs jest już wpisany (pre-fill ze zlecenia), chyba że forceOverwrite
+    if (!forceOverwrite && $fxInput.val()) return;
     try {
       var params = new URLSearchParams({ currency: cur, date: $issueDate.val()||'', sold_date: $soldDate.val()||'' });
       var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept':'application/json' }});
       var json = await res.json();
       if (json && json.success && json.rate){
         $fxInput.val(Number(json.rate).toFixed(4));
+        _fxAutoDate = json.effectiveDate || '';
+        // Wstaw datę kursu automatycznie (jeśli pole puste lub auto-refresh)
+        if (!$fxRateDate.val() || forceOverwrite) $fxRateDate.val(_fxAutoDate);
+        $fxRateDateHint.text('');
         // store meta for preview
-        try { $fxInput.data('rateDate', json.effectiveDate || ''); } catch(_) {}
+        try { $fxInput.data('rateDate', _fxAutoDate); } catch(_) {}
         // Optional: show a small hint
         var hintId = 'fx-rate-hint';
         var $hint = $('#'+hintId);
-        var text = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+(json.effectiveDate||'')+': 1 '+cur+' = '+Number(json.rate).toFixed(4)+' PLN';
+        var text = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+_fxAutoDate+': 1 '+cur+' = '+Number(json.rate).toFixed(4)+' PLN';
         if ($hint.length) { $hint.text(text); } else { $fxGroup.after('<small id="'+hintId+'" class="text-muted d-block mt-1">'+text+'</small>'); }
-  if (typeof updatePlnPreview === 'function') updatePlnPreview();
-  if (typeof mirrorSums === 'function') mirrorSums();
+        if (typeof updatePlnPreview === 'function') updatePlnPreview();
+        if (typeof mirrorSums === 'function') mirrorSums();
       }
     } catch (e) { /* ignore */ }
   }
-  $currency.on('change', fetchNbpRate);
-  $issueDate.on('change', fetchNbpRate);
-  $soldDate.on('change', fetchNbpRate);
-  setTimeout(fetchNbpRate, 0);
+  $currency.on('change', function(){ fetchNbpRate(true); });
+  $issueDate.on('change', function(){ fetchNbpRate(true); });
+  $soldDate.on('change', function(){ fetchNbpRate(true); });
+  setTimeout(function(){ fetchNbpRate(false); }, 0);
+
+  // Ręczna zmiana daty kursu — SweetAlert
+  $fxRateDate.on('change', function(){
+    var $self = $(this);
+    var newDate = $self.val();
+    if (!newDate || newDate === _fxAutoDate) { $fxRateDateHint.text(''); return; }
+    var cur = ($currency.val()||'PLN').toUpperCase();
+    var autoLabel = _fxAutoDate || 'brak';
+
+    Swal.fire({
+      title: 'Zmiana daty kursu',
+      iconHtml: '<i class="ri-calendar-line" style="font-size:2.5rem;color:#4f8ef7"></i>',
+      customClass: { icon: 'border-0' },
+      html:
+        '<p class="mb-3">Zmieniasz datę kursu <strong>' + cur + '/PLN</strong>:</p>'
+        + '<div class="d-flex justify-content-center align-items-center gap-3 mb-3">'
+        + '  <span class="badge bg-secondary-subtle text-secondary border fs-6 px-3 py-2">' + autoLabel + '</span>'
+        + '  <i class="ri-arrow-right-line text-muted"></i>'
+        + '  <span class="badge bg-primary-subtle text-primary border fs-6 px-3 py-2">' + newDate + '</span>'
+        + '</div>'
+        + '<p class="text-muted small mb-0">System pobierze kurs NBP dla wybranej daty.</p>',
+      showCancelButton: true,
+      confirmButtonText: 'Tak, zmień',
+      cancelButtonText: 'Anuluj',
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#6c757d',
+      reverseButtons: true,
+    }).then(function(result) {
+      if (!result.isConfirmed) {
+        $self.val(_fxAutoDate);
+        $fxRateDateHint.text('');
+        return;
+      }
+      // Pobierz kurs NBP dla nowej daty
+      (async function(){
+        if (cur === 'PLN') return;
+        try {
+          var params = new URLSearchParams({ currency: cur, date: newDate });
+          var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept':'application/json' }});
+          var json = await res.json();
+          if (json && json.success && json.rate){
+            $fxInput.val(Number(json.rate).toFixed(4));
+            var actualDate = json.effectiveDate || newDate;
+            var rateText = 'Kurs NBP z dnia ' + actualDate + ': 1 ' + cur + ' = ' + Number(json.rate).toFixed(4) + ' PLN';
+            $fxRateDateHint.text(rateText);
+            var $hint = $('#fx-rate-hint');
+            if ($hint.length) $hint.text(rateText);
+            if (typeof updatePlnPreview === 'function') updatePlnPreview();
+            if (typeof mirrorSums === 'function') mirrorSums();
+          }
+        } catch(e) { /* ignore */ }
+      })();
+    });
+  });
 
   // Update PLN preview on fx rate manual change
   $fxInput.on('input change', function(){ if (typeof updatePlnPreview === 'function') updatePlnPreview(); if (typeof mirrorSums === 'function') mirrorSums(); });

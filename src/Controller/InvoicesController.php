@@ -1316,19 +1316,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     if (!empty($speedOrder->raw_json)) {
                         $rawArr = (array)(json_decode((string)$speedOrder->raw_json, true) ?? []);
                     }
-                    $vehicleReg = '';
-                    foreach (['GLO_AUTO1','GLO_AUTO2','GLO_AUTO','GLO_POJAZD','GLO_REJ','GLO_NAZ7','GLO_NAZ8'] as $vKey) {
-                        $v = trim((string)($rawArr[$vKey] ?? ''));
-                        if ($v !== '') { $vehicleReg = $v; break; }
-                    }
-                    // Fallback: title2 jeśli raw_json nie ma pola pojazdu, ale title2 wygląda jak tablica rejestracyjna (litery + cyfry)
-                    if ($vehicleReg === '' && !empty($speedOrder->title2)) {
-                        $t2 = trim((string)$speedOrder->title2);
-                        if (preg_match('/^[A-Z]{2,3}[\s\-]?\d+$/i', $t2)) {
-                            $vehicleReg = $t2;
-                        }
-                    }
-
                     // GLO_WALUTA — fallback waluty, gdyby entity nie zmapowała (np. kolumna pusta)
                     $gloWaluta = strtoupper(trim((string)($rawArr['GLO_WALUTA'] ?? '')));
                     if ($gloWaluta !== '' && $cur === 'PLN') {
@@ -1343,91 +1330,91 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                             $invoice->set('fx_rate', $gloWalPrzel);
                         }
                     }
-                    // GLO_DATA_ZAK — data zakończenia zlecenia; kurs bierzemy na 1 dzień wcześniej (art. 31a uVAT)
+                    // GLO_DATA_ZAK — data zakończenia zlecenia:
+                    //   → data sprzedaży (sold_date)
+                    //   → kurs NBP bierzemy na 1 dzień wcześniej (art. 31a uVAT)
                     $gloDataZak = trim((string)($rawArr['GLO_DATA_ZAK'] ?? ''));
                     if ($gloDataZak !== '') {
                         try {
                             $zakDate  = new \DateTimeImmutable($gloDataZak);
+                            $invoice->set('sold_date', $zakDate->format('Y-m-d'));
                             $rateDate = $zakDate->modify('-1 day');
                             $invoice->set('currency_date', $rateDate->format('Y-m-d'));
                         } catch (\Throwable) { /* nieprawidłowy format daty — ignoruj */ }
                     }
 
+                    // GLO_PLATNOSC — termin płatności ze zlecenia, np. "Przelew 30 dni"
+                    // Wyekstrahuj liczbę dni i ustaw paymentdate
+                    $gloPlatnosc = trim((string)($rawArr['GLO_PLATNOSC'] ?? ''));
+                    if ($gloPlatnosc !== '') {
+                        if (preg_match('/(\d+)\s*dni/i', $gloPlatnosc, $pm)) {
+                            $dueDays = (int)$pm[1];
+                        } elseif (preg_match('/(\d+)/', $gloPlatnosc, $pm)) {
+                            $dueDays = (int)$pm[1];
+                        } else {
+                            $dueDays = null;
+                        }
+                        if ($dueDays !== null && $dueDays >= 0 && $dueDays <= 365) {
+                            $baseDate = new \DateTimeImmutable('today');
+                            $invoice->set('paymentdate', $baseDate->modify("+{$dueDays} days")->format('Y-m-d'));
+                        }
+                    }
+
                     $addDescs = [];
-
-                    // Nasz numer (symbol zlecenia)
-                    if (!empty($speedOrder->symbol)) {
+                    $addRow = function(string $klucz, string $wartosc) use (&$addDescs): void {
+                        $wartosc = trim($wartosc);
+                        if ($wartosc === '') return;
                         $d = new \stdClass();
                         $d->nr_wiersza = 1;
-                        $d->klucz      = 'Nasz numer';
-                        $d->wartosc    = (string)$speedOrder->symbol;
+                        $d->klucz      = $klucz;
+                        $d->wartosc    = $wartosc;
                         $addDescs[] = $d;
-                    }
+                    };
 
-                    // Zlecenie (numer zlecenia klienta / title1)
-                    if (!empty($speedOrder->title1)) {
-                        $d = new \stdClass();
-                        $d->nr_wiersza = 1;
-                        $d->klucz      = 'Zlecenie';
-                        $d->wartosc    = (string)$speedOrder->title1;
-                        $addDescs[] = $d;
-                    }
+                    // Nasz numer: GLO_POD
+                    $addRow('Nasz numer', trim((string)($rawArr['GLO_POD'] ?? '')));
 
-                    // Środek transportu
-                    if ($vehicleReg !== '') {
-                        $d = new \stdClass();
-                        $d->nr_wiersza = 1;
-                        $d->klucz      = 'Środek transportu';
-                        $d->wartosc    = $vehicleReg;
-                        $addDescs[] = $d;
-                    }
+                    // Zlecenie: GLO_TYT1
+                    $addRow('Zlecenie', trim((string)($rawArr['GLO_TYT1'] ?? '')));
 
-                    // Rodzaj ładunku
-                    if (!empty($speedOrder->cargo_type)) {
-                        $d = new \stdClass();
-                        $d->nr_wiersza = 1;
-                        $d->klucz      = 'Rodzaj ładunku';
-                        $d->wartosc    = (string)$speedOrder->cargo_type;
-                        $addDescs[] = $d;
-                    }
+                    // Środek transportu: GLO_MIE_RODZAJ + GLO_KONTO
+                    $transportParts = array_filter([
+                        trim((string)($rawArr['GLO_MIE_RODZAJ'] ?? '')),
+                        trim((string)($rawArr['GLO_KONTO']      ?? '')),
+                    ]);
+                    $addRow('Środek transportu', implode(' ', $transportParts));
 
-                    // Załadunek: {kraj} {miejsce} ({data})
-                    if (!empty($speedOrder->place_from_name)) {
-                        $part = trim(implode(' ', array_filter([
-                            (string)($speedOrder->place_from_country ?? ''),
-                            (string)$speedOrder->place_from_name,
-                        ])));
-                        if ($speedOrder->date_ship) {
-                            $shipDate = $speedOrder->date_ship instanceof \DateTimeInterface
-                                ? $speedOrder->date_ship->format('Y-m-d')
-                                : substr((string)$speedOrder->date_ship, 0, 10);
-                            $part .= ' (' . $shipDate . ')';
-                        }
-                        $d = new \stdClass();
-                        $d->nr_wiersza = 1;
-                        $d->klucz      = 'Załadunek';
-                        $d->wartosc    = $part;
-                        $addDescs[] = $d;
+                    // Załadunek: GLO_MIE_KRAJ GLO_MIE_KOD GLO_MIE_POCZTA (GLO_DATA_TER)
+                    $zalParts = array_filter([
+                        trim((string)($rawArr['GLO_MIE_KRAJ']   ?? '')),
+                        trim((string)($rawArr['GLO_MIE_KOD']    ?? '')),
+                        trim((string)($rawArr['GLO_MIE_POCZTA'] ?? '')),
+                    ]);
+                    $zalDate = trim((string)($rawArr['GLO_DATA_TER'] ?? ''));
+                    if ($zalDate !== '') {
+                        try {
+                            $zalDate = (new \DateTimeImmutable($zalDate))->format('Y-m-d');
+                        } catch (\Throwable) { /* zostaw surową wartość */ }
                     }
+                    $zalStr = implode(' ', $zalParts);
+                    if ($zalDate !== '') $zalStr .= ($zalStr !== '' ? ' ' : '') . '(' . $zalDate . ')';
+                    $addRow('Załadunek', $zalStr);
 
-                    // Rozładunek: {kraj} {miejsce} ({data})
-                    if (!empty($speedOrder->place_to_name)) {
-                        $part = trim(implode(' ', array_filter([
-                            (string)($speedOrder->place_to_country ?? ''),
-                            (string)$speedOrder->place_to_name,
-                        ])));
-                        if ($speedOrder->date_delivery) {
-                            $delivDate = $speedOrder->date_delivery instanceof \DateTimeInterface
-                                ? $speedOrder->date_delivery->format('Y-m-d')
-                                : substr((string)$speedOrder->date_delivery, 0, 10);
-                            $part .= ' (' . $delivDate . ')';
-                        }
-                        $d = new \stdClass();
-                        $d->nr_wiersza = 1;
-                        $d->klucz      = 'Rozładunek';
-                        $d->wartosc    = $part;
-                        $addDescs[] = $d;
+                    // Rozładunek: GLO_MIE_NAZWA1 GLO_MIE_NAZWA2 GLO_MIE_MIEJSC (GLO_DATA_ZAK)
+                    $rozParts = array_filter([
+                        trim((string)($rawArr['GLO_MIE_NAZWA1'] ?? '')),
+                        trim((string)($rawArr['GLO_MIE_NAZWA2'] ?? '')),
+                        trim((string)($rawArr['GLO_MIE_MIEJSC'] ?? '')),
+                    ]);
+                    $rozDate = $gloDataZak; // już sparsowany wyżej jako string Y-m-d lub surowy
+                    if ($rozDate !== '') {
+                        try {
+                            $rozDate = (new \DateTimeImmutable($rozDate))->format('Y-m-d');
+                        } catch (\Throwable) { /* zostaw surową wartość */ }
                     }
+                    $rozStr = implode(' ', $rozParts);
+                    if ($rozDate !== '') $rozStr .= ($rozStr !== '' ? ' ' : '') . '(' . $rozDate . ')';
+                    $addRow('Rozładunek', $rozStr);
 
                     if (!empty($addDescs)) {
                         $invoice->set('invoice_additional_descriptions', $addDescs);
@@ -1438,6 +1425,165 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
             } catch (\Throwable $e) {
                 \Cake\Log\Log::warning('prefill from_order_id error: ' . $e->getMessage());
+            }
+        }
+
+        // Pre-fill z wielu zleceń Speed ERP (from_order_ids[])
+        $fromOrderIds = $this->request->getQuery('from_order_ids');
+        if (!empty($fromOrderIds) && is_array($fromOrderIds) && in_array($kind, ['vat', 'currency'], true)) {
+            try {
+                $ids = array_values(array_filter(array_map('intval', $fromOrderIds)));
+                if (!empty($ids)) {
+                    $SpeedOrders = $this->fetchTable('SpeedOrders');
+                    $speedOrders = $SpeedOrders->find()
+                        ->where(['SpeedOrders.id IN' => $ids])
+                        ->orderByAsc('SpeedOrders.id')
+                        ->all()
+                        ->toArray();
+
+                    if (!empty($speedOrders)) {
+                        $firstOrder = $speedOrders[0];
+
+                        // ── Waluta z pierwszego zlecenia ──
+                        $cur = strtoupper(trim((string)($firstOrder->currency ?? 'PLN')));
+                        $invoice->set('currency', $cur);
+
+                        // ── Snapshot kontrahenta z pierwszego zlecenia ──
+                        $ctr = new \stdClass();
+                        $ctr->name    = (string)($firstOrder->buyer_name ?? '');
+                        $ctr->nip     = (string)($firstOrder->buyer_nip ?? '');
+                        $ctr->street  = (string)($firstOrder->buyer_street ?? '');
+                        $ctr->zip     = (string)($firstOrder->buyer_postal_code ?? '');
+                        $ctr->city    = (string)($firstOrder->buyer_city ?? '');
+                        $ctr->country = (string)($firstOrder->buyer_country ?? 'PL');
+                        $ctr->email   = (string)($firstOrder->buyer_email ?? '');
+                        $ctr->phone   = '';
+                        if (!empty($ctr->nip)) {
+                            try {
+                                $Contractors = $this->fetchTable('Contractors');
+                                $found = $Contractors->find()
+                                    ->where(['company_id' => $companyId, 'nip' => $ctr->nip])
+                                    ->first();
+                                if ($found) {
+                                    $invoice->set('contractor_id', $found->id);
+                                }
+                            } catch (\Throwable) {}
+                        }
+                        $invoice->set('invoice_contractor', $ctr);
+
+                        // ── Kurs i daty z pierwszego zlecenia ──
+                        $rawArrFirst = [];
+                        if (!empty($firstOrder->raw_json)) {
+                            $rawArrFirst = (array)(json_decode((string)$firstOrder->raw_json, true) ?? []);
+                        }
+                        $gloWalPrzelRaw = trim((string)($rawArrFirst['GLO_WAL_PRZEL'] ?? ''));
+                        if ($gloWalPrzelRaw !== '') {
+                            $gloWalPrzel = (float)str_replace(',', '.', $gloWalPrzelRaw);
+                            if ($gloWalPrzel > 0.0001) $invoice->set('fx_rate', $gloWalPrzel);
+                        }
+                        $gloDataZakFirst = trim((string)($rawArrFirst['GLO_DATA_ZAK'] ?? ''));
+                        if ($gloDataZakFirst !== '') {
+                            try {
+                                $zakDate = new \DateTimeImmutable($gloDataZakFirst);
+                                $invoice->set('sold_date', $zakDate->format('Y-m-d'));
+                                $invoice->set('currency_date', $zakDate->modify('-1 day')->format('Y-m-d'));
+                            } catch (\Throwable) {}
+                        }
+                        $gloPlatnosc = trim((string)($rawArrFirst['GLO_PLATNOSC'] ?? ''));
+                        if ($gloPlatnosc !== '') {
+                            if (preg_match('/(\d+)\s*dni/i', $gloPlatnosc, $pm)) $dueDays = (int)$pm[1];
+                            elseif (preg_match('/(\d+)/', $gloPlatnosc, $pm)) $dueDays = (int)$pm[1];
+                            else $dueDays = null;
+                            if ($dueDays !== null && $dueDays >= 0 && $dueDays <= 365) {
+                                $invoice->set('paymentdate', (new \DateTimeImmutable('today'))->modify("+{$dueDays} days")->format('Y-m-d'));
+                            }
+                        }
+
+                        // ── Pozycje — każde zlecenie jako osobna linia ──
+                        $lines = [];
+                        foreach ($speedOrders as $so) {
+                            $lineObj = new \stdClass();
+                            $lineObj->name             = trim(implode(' ', array_filter([
+                                'Usługa spedycyjna fracht',
+                                !empty($so->symbol) ? '(' . $so->symbol . ')' : '',
+                            ])));
+                            $lineObj->quantity         = 1;
+                            $lineObj->unit             = 'usł.';
+                            $lineObj->price            = (float)($so->netto ?? 0);
+                            $lineObj->discount_percent = 0;
+                            $lineObj->vat_code_id      = null;
+                            $lineObj->gtu_code         = 'GTU_13';
+                            $lineObj->product_desc     = '';
+                            $lineObj->purchase_price   = 0;
+                            $lines[] = $lineObj;
+                        }
+                        $invoice->set('invoice_contents', $lines);
+
+                        // ── Dodatkowe opisy — per zlecenie ──
+                        $allAddDescs = [];
+                        $rowNum = 1;
+                        foreach ($speedOrders as $so) {
+                            $rawArr = [];
+                            if (!empty($so->raw_json)) {
+                                $rawArr = (array)(json_decode((string)$so->raw_json, true) ?? []);
+                            }
+                            $addRow = function(string $klucz, string $wartosc) use (&$allAddDescs, $rowNum): void {
+                                $wartosc = trim($wartosc);
+                                if ($wartosc === '') return;
+                                $d = new \stdClass();
+                                $d->nr_wiersza = $rowNum;
+                                $d->klucz      = $klucz;
+                                $d->wartosc    = $wartosc;
+                                $allAddDescs[] = $d;
+                            };
+
+                            $addRow('Nasz numer', trim((string)($rawArr['GLO_POD'] ?? '')));
+                            $addRow('Zlecenie', trim((string)($rawArr['GLO_TYT1'] ?? '')));
+
+                            $transportParts = array_filter([
+                                trim((string)($rawArr['GLO_MIE_RODZAJ'] ?? '')),
+                                trim((string)($rawArr['GLO_KONTO'] ?? '')),
+                            ]);
+                            $addRow('Środek transportu', implode(' ', $transportParts));
+
+                            $zalParts = array_filter([
+                                trim((string)($rawArr['GLO_MIE_KRAJ']   ?? '')),
+                                trim((string)($rawArr['GLO_MIE_KOD']    ?? '')),
+                                trim((string)($rawArr['GLO_MIE_POCZTA'] ?? '')),
+                            ]);
+                            $zalDate = trim((string)($rawArr['GLO_DATA_TER'] ?? ''));
+                            if ($zalDate !== '') {
+                                try { $zalDate = (new \DateTimeImmutable($zalDate))->format('Y-m-d'); } catch (\Throwable) {}
+                            }
+                            $zalStr = implode(' ', $zalParts);
+                            if ($zalDate !== '') $zalStr .= ($zalStr !== '' ? ' ' : '') . '(' . $zalDate . ')';
+                            $addRow('Załadunek', $zalStr);
+
+                            $rozParts = array_filter([
+                                trim((string)($rawArr['GLO_MIE_NAZWA1'] ?? '')),
+                                trim((string)($rawArr['GLO_MIE_NAZWA2'] ?? '')),
+                                trim((string)($rawArr['GLO_MIE_MIEJSC'] ?? '')),
+                            ]);
+                            $gloDataZak = trim((string)($rawArr['GLO_DATA_ZAK'] ?? ''));
+                            if ($gloDataZak !== '') {
+                                try { $gloDataZak = (new \DateTimeImmutable($gloDataZak))->format('Y-m-d'); } catch (\Throwable) {}
+                            }
+                            $rozStr = implode(' ', $rozParts);
+                            if ($gloDataZak !== '') $rozStr .= ($rozStr !== '' ? ' ' : '') . '(' . $gloDataZak . ')';
+                            $addRow('Rozładunek', $rozStr);
+
+                            $rowNum++;
+                        }
+                        if (!empty($allAddDescs)) {
+                            $invoice->set('invoice_additional_descriptions', $allAddDescs);
+                        }
+
+                        // ── Alert w widoku ──
+                        $this->set('fromSpeedOrders', $speedOrders);
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Cake\Log\Log::warning('prefill from_order_ids error: ' . $e->getMessage());
             }
         }
     }
@@ -2630,6 +2776,27 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $this->saveInvoiceRelationalFa3($invoiceId, $data);
 
             $conn->commit();
+
+            // ── Powiąż zlecenia Speed ERP z fakturą ──
+            try {
+                $speedOrderIds = [];
+                $fromId  = $this->request->getQuery('from_order_id');
+                $fromIds = $this->request->getQuery('from_order_ids');
+                if (!empty($fromId))  $speedOrderIds[] = (int)$fromId;
+                if (!empty($fromIds) && is_array($fromIds)) {
+                    foreach ($fromIds as $oid) { $speedOrderIds[] = (int)$oid; }
+                }
+                $speedOrderIds = array_values(array_unique(array_filter($speedOrderIds)));
+                if (!empty($speedOrderIds)) {
+                    $SpeedOrders = $this->fetchTable('SpeedOrders');
+                    $SpeedOrders->updateAll(
+                        ['invoice_id' => $invoiceId, 'invoiced_at' => date('Y-m-d H:i:s')],
+                        ['id IN' => $speedOrderIds]
+                    );
+                }
+            } catch (\Throwable $ex) {
+                \Cake\Log\Log::warning('link speed orders to invoice failed: ' . $ex->getMessage());
+            }
 
             // Opcjonalna ścieżka: po zapisie wyślij od razu do KSeF z przesłanego pliku XML (FA (3))
             if ($doSend) {
@@ -7313,7 +7480,21 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         $xml[] = '      <P_17>2</P_17>';
 
         // P_18 – odwrotne obciążenie (reverse charge) (1 – TAK, 2 – NIE)
-        $p18 = !empty($ann['reverse_charge']) ? 1 : 2;
+        // Auto-detect: ręczna flaga LUB pozycje np_ii (usługi UE art. 100 ust. 1 pkt 4 — transport/spedycja)
+        // LUB pozycje np_i (dostawa/usługi poza terytorium PL — spoza UE)
+        $hasReverseCharge = !empty($ann['reverse_charge']);
+        if (!$hasReverseCharge) {
+            foreach ($items as $it) {
+                $vatName = strtolower(trim((string)($it->vat->name ?? '')));
+                if (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+                    $hasReverseCharge = true; break;
+                }
+                if (str_starts_with($vatName, 'np')) {
+                    $hasReverseCharge = true; break;
+                }
+            }
+        }
+        $p18 = $hasReverseCharge ? 1 : 2;
         $xml[] = '      <P_18>' . $this->esc((string)$p18) . '</P_18>';
 
         // P_18A – MPP (mechanizm podzielonej płatności) (1 – TAK, 2 – NIE)
