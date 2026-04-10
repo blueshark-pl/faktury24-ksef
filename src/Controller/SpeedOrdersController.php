@@ -27,6 +27,8 @@ class SpeedOrdersController extends AppController
         $status  = $this->request->getQuery('status', '');
         $dateFrom = $this->request->getQuery('date_from', '');
         $dateTo   = $this->request->getQuery('date_to', '');
+        $deliveryFrom = $this->request->getQuery('delivery_from', '');
+        $deliveryTo   = $this->request->getQuery('delivery_to', '');
         $page    = max(1, (int)$this->request->getQuery('page', 1));
         $limit   = 50;
 
@@ -78,12 +80,20 @@ class SpeedOrdersController extends AppController
             $query->where(['SpeedOrders.date_doc <=' => $dateTo]);
         }
 
+        if ($deliveryFrom !== '') {
+            $query->where(['SpeedOrders.date_delivery >=' => $deliveryFrom]);
+        }
+
+        if ($deliveryTo !== '') {
+            $query->where(['SpeedOrders.date_delivery <=' => $deliveryTo]);
+        }
+
         $total  = (clone $query)->count();
         $pages  = max(1, (int)ceil($total / $limit));
         $page   = min($page, $pages);
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'dateFrom', 'dateTo'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'dateFrom', 'dateTo', 'deliveryFrom', 'deliveryTo'));
     }
 
     // -------------------------------------------------------------------------
@@ -98,6 +108,8 @@ class SpeedOrdersController extends AppController
         $status   = $this->request->getQuery('status', '');
         $dateFrom = $this->request->getQuery('date_from', '');
         $dateTo   = $this->request->getQuery('date_to', '');
+        $deliveryFrom = $this->request->getQuery('delivery_from', '');
+        $deliveryTo   = $this->request->getQuery('delivery_to', '');
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
         $query = $SpeedOrders->find()->orderByDesc('SpeedOrders.date_doc');
@@ -120,6 +132,8 @@ class SpeedOrdersController extends AppController
         }
         if ($dateFrom !== '') $query->where(['SpeedOrders.date_doc >=' => $dateFrom]);
         if ($dateTo   !== '') $query->where(['SpeedOrders.date_doc <=' => $dateTo]);
+        if ($deliveryFrom !== '') $query->where(['SpeedOrders.date_delivery >=' => $deliveryFrom]);
+        if ($deliveryTo   !== '') $query->where(['SpeedOrders.date_delivery <=' => $deliveryTo]);
 
         $nlLabels = [1=>'Przyjęte',2=>'Zaplanowane',3=>'Załadowane',4=>'Zrealizowane',5=>'Zafakturowane'];
         $fdt = fn($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d H:i') : substr((string)($v ?? ''), 0, 16);

@@ -10,6 +10,8 @@
  * @var string $status
  * @var string $dateFrom
  * @var string $dateTo
+ * @var string $deliveryFrom
+ * @var string $deliveryTo
  */
 
 $this->assign('title', 'Zlecenia Speed');
@@ -109,7 +111,7 @@ foreach ($orders as $order) {
         <a href="<?= $this->Url->build(['action' => 'dashboard']) ?>" class="btn btn-sm btn-outline-secondary">
             <i class="ri-dashboard-line me-1"></i> Control Tower
         </a>
-        <a href="<?= $this->Url->build(['action' => 'exportCsv', '?' => ['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo]]) ?>"
+        <a href="<?= $this->Url->build(['action' => 'exportCsv', '?' => ['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo]]) ?>"
            class="btn btn-sm btn-outline-success" title="Eksportuj widoczne zlecenia do CSV">
             <i class="ri-download-2-line me-1"></i> CSV
         </a>
@@ -228,7 +230,7 @@ $quickFilters = [
         $baseCls  = $qf['cls'] ?? 'btn-outline-secondary';
         $activeCls = $isActive ? str_replace('outline-', '', $baseCls) . ' text-white' : $baseCls;
     ?>
-    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo]]) ?>"
+    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo]]) ?>"
        class="btn btn-sm <?= $activeCls ?>">
         <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
     </a>
@@ -237,7 +239,7 @@ $quickFilters = [
 
 <!-- Filtry -->
 <form method="get" class="row g-2 mb-3">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <input type="text" name="q" class="form-control form-control-sm"
                placeholder="Szukaj (symbol, nabywca, trasa, tytuł)…" value="<?= h($search) ?>">
     </div>
@@ -255,16 +257,24 @@ $quickFilters = [
         </select>
     </div>
     <div class="col-md-2">
-        <input type="date" name="date_from" class="form-control form-control-sm" value="<?= h($dateFrom) ?>">
+        <label class="form-label mb-0 small text-muted">Data dok.</label>
+        <div class="d-flex gap-1">
+            <input type="date" name="date_from" class="form-control form-control-sm" value="<?= h($dateFrom) ?>" title="Data dokumentu od">
+            <input type="date" name="date_to" class="form-control form-control-sm" value="<?= h($dateTo) ?>" title="Data dokumentu do">
+        </div>
     </div>
-    <div class="col-md-2">
-        <input type="date" name="date_to" class="form-control form-control-sm" value="<?= h($dateTo) ?>">
+    <div class="col-md-3">
+        <label class="form-label mb-0 small text-muted">Rozładunek</label>
+        <div class="d-flex gap-1">
+            <input type="date" name="delivery_from" class="form-control form-control-sm" value="<?= h($deliveryFrom) ?>" title="Rozładunek od">
+            <input type="date" name="delivery_to" class="form-control form-control-sm" value="<?= h($deliveryTo) ?>" title="Rozładunek do">
+        </div>
     </div>
-    <div class="col-md-2 d-flex gap-1">
+    <div class="col-md-2 d-flex gap-1 align-items-end">
         <button type="submit" class="btn btn-sm btn-outline-primary flex-grow-1">
             <i class="ri-search-line"></i> Filtruj
         </button>
-        <?php if ($search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
+        <?php if ($search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== '' || $deliveryFrom !== '' || $deliveryTo !== ''): ?>
         <a href="<?= $this->Url->build(['action' => 'index']) ?>"
            class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
             <i class="ri-close-line"></i>
@@ -548,6 +558,8 @@ $quickFilters = [
             $status !== '' ? ['status' => $status] : [],
             $dateFrom !== '' ? ['date_from' => $dateFrom] : [],
             $dateTo !== '' ? ['date_to' => $dateTo] : [],
+            $deliveryFrom !== '' ? ['delivery_from' => $deliveryFrom] : [],
+            $deliveryTo !== '' ? ['delivery_to' => $deliveryTo] : [],
             ['page' => $p]
         )]) ?>"><?= $p ?></a>
     </li>
