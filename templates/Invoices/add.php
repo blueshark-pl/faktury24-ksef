@@ -944,7 +944,7 @@ if (!empty($__prefillItems)) {
                <tr>
   <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
-    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 6.85% od brutto">
+    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.45% od brutto">
       <i class="ri-gas-station-line me-1"></i>Fuel surcharge
     </button>
   </td>
@@ -3219,7 +3219,7 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   });
 
-  // ====== FUEL SURCHARGE (6.85% od brutto, VAT 23%, GTU_13) ======
+  // ====== FUEL SURCHARGE (7.45% od brutto, VAT 23%, GTU_13) ======
   $('#btn-fuel-surcharge').on('click', function () {
     // Oblicz brutto z istniejących wierszy (bez ewentualnych wcześniejszych surcharge)
     var grossBase = toNum($('#sum-gross').val(), 0);
@@ -3227,8 +3227,8 @@ $('#gus-fetch-btn').on('click', function(){
       alert('Najpierw dodaj pozycje — brutto wynosi 0.');
       return;
     }
-    var surchargeRate = 0.0685;
-    // Brutto surcharge = 6.85% brutto, potem rozbijamy na netto+VAT 23%
+    var surchargeRate = 0.0745;
+    // Brutto surcharge = 7.45% brutto, potem rozbijamy na netto+VAT 23%
     var surchargeGross = +(grossBase * surchargeRate).toFixed(2);
     var vatRate23 = 23;
     var surchargeNetto = +(surchargeGross / (1 + vatRate23 / 100)).toFixed(2);
@@ -3243,7 +3243,7 @@ $('#gus-fetch-btn').on('click', function(){
 
     var $tr = addItemRow();
     prefillRow($tr, {
-      name: 'fuel surcharge 6.85%',
+      name: 'fuel surcharge 7.45%',
       quantity: 1,
       unit: 'szt.',
       price: surchargeNetto,

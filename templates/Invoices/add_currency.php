@@ -728,7 +728,7 @@ $gtuSelectHtml .= '</select>';
                <tr>
   <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
-    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 6.85% od brutto">
+    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.45% od brutto">
       <i class="ri-gas-station-line me-1"></i>Fuel surcharge
     </button>
   </td>
@@ -2529,14 +2529,14 @@ $('#gus-fetch-btn').on('click', function(){
     idx++;
   });
 
-  // ====== FUEL SURCHARGE (6.85% od brutto, stawka: nie podl. UE) ======
+  // ====== FUEL SURCHARGE (7.45% od brutto, stawka: nie podl. UE) ======
   $('#btn-fuel-surcharge').on('click', function () {
     var grossBase = toNum($('#sum-gross').val(), 0);
     if (grossBase <= 0) {
       alert('Najpierw dodaj pozycje — brutto wynosi 0.');
       return;
     }
-    var surchargeRate = 0.0685;
+    var surchargeRate = 0.0745;
     // Przy "nie podlega" stawka = 0%, więc netto = brutto
     var surchargeNetto = +(grossBase * surchargeRate).toFixed(2);
 
@@ -2561,7 +2561,7 @@ $('#gus-fetch-btn').on('click', function(){
     $('#btn-add-item').trigger('click');
     var $tr = getItemRows().last();
     prefillRow($tr, {
-      name: 'fuel surcharge 6.85%',
+      name: 'fuel surcharge 7.45%',
       quantity: 1,
       unit: 'szt.',
       price: surchargeNetto,
