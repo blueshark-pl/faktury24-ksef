@@ -381,10 +381,10 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
 .items-table tfoot td { padding:6px; font-weight:700; background:#e0e7ff; border-top:2px solid #1e40af; color:#1e40af; }
 
 /* Opis dodatkowy pod pozycją */
-.item-descs { border-left:3px solid #3b82f6; margin:3px 0 2px 2px; padding:3px 8px; background:#eff6ff; border-radius:0 4px 4px 0; }
-.item-desc-row { display:flex; gap:8px; font-size:7.8pt; color:#334155; line-height:1.5; }
-.item-desc-key { color:#6b7280; white-space:nowrap; min-width:90px; }
-.item-desc-val { font-weight:600; flex:1; }
+.item-descs { border-left:3px solid #3b82f6; margin:3px 0 2px 2px; padding:3px 8px; background:#eff6ff; border-radius:0 4px 4px 0; font-family:'DejaVu Sans',Arial,sans-serif; }
+.item-desc-row { display:flex; gap:8px; font-size:7.8pt; color:#334155; line-height:1.5; font-family:'DejaVu Sans',Arial,sans-serif; }
+.item-desc-key { color:#6b7280; white-space:nowrap; min-width:90px; font-family:'DejaVu Sans',Arial,sans-serif; }
+.item-desc-val { font-weight:600; flex:1; font-family:'DejaVu Sans',Arial,sans-serif; }
 
 /* VAT summary */
 .vat-table { width:100%; border-collapse:collapse; font-size:8.5pt; }
@@ -394,8 +394,8 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
 .vat-table tfoot td { font-weight:700; background:#e0e7ff; color:#1e40af; }
 .total-box { min-width:5.5cm; text-align:right; }
 .total-label { font-size:8pt; color:#6b7280; }
-.total-amount { font-size:16pt; font-weight:700; color:#1e40af; line-height:1.1; }
-.total-words { font-size:7.5pt; color:#555; margin-top:3px; }
+.total-amount { font-size:12pt; font-weight:700; color:#1e40af; line-height:1.2; white-space:nowrap; }
+.total-words { font-size:7pt; color:#555; margin-top:3px; white-space:nowrap; }
 
 /* Odwrotne obciążenie */
 .rc-box { border:2px solid #dc2626; background:#fff5f5; border-radius:6px; padding:10px 14px; margin-bottom:.5cm; }
@@ -412,9 +412,9 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
 .fx-legal { font-size:7.5pt; color:#6b7280; margin-top:5px; border-top:1px solid #bfdbfe; padding-top:5px; }
 
 /* Dodatkowe opisy faktury */
-.invoice-descs { border-left:3px solid #6366f1; background:#f5f3ff; border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:.5cm; }
-.invoice-descs-title { font-weight:700; color:#4f46e5; font-size:8.5pt; margin-bottom:5px; }
-.invoice-desc-row { display:flex; gap:8px; font-size:8pt; color:#334155; line-height:1.6; border-bottom:1px solid #ede9fe; }
+.invoice-descs { border-left:3px solid #6366f1; background:#f5f3ff; border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:.5cm; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-descs-title { font-weight:700; color:#4f46e5; font-size:8.5pt; margin-bottom:5px; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-desc-row { display:flex; gap:8px; font-size:8pt; color:#334155; line-height:1.6; border-bottom:1px solid #ede9fe; font-family:'DejaVu Sans',Arial,sans-serif; }
 .invoice-desc-row:last-child { border-bottom:none; }
 
 /* Płatność */
@@ -464,12 +464,13 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
 .payment-item:last-child { padding-right:0; }
 .signatures     { display:table; width:100%; margin-top:1.5cm; }
 .sig-block      { display:table-cell; width:33%; text-align:center; }
-.item-desc-row  { display:table; width:100%; }
-.item-desc-key  { display:table-cell; color:#6b7280; white-space:nowrap; width:90px; padding-right:8px; }
-.item-desc-val  { display:table-cell; font-weight:600; }
-.invoice-desc-row { display:table; width:100%; border-bottom:1px solid #ede9fe; }
-.invoice-desc-row > span:first-child { display:table-cell; width:130px; color:#6b7280; font-size:7.8pt; padding-right:8px; }
-.invoice-desc-row > span:last-child  { display:table-cell; font-weight:600; }
+.item-desc-row  { display:table; width:100%; font-family:'DejaVu Sans',Arial,sans-serif; }
+.item-desc-key  { display:table-cell; color:#6b7280; white-space:nowrap; width:90px; padding-right:8px; font-family:'DejaVu Sans',Arial,sans-serif; }
+.item-desc-val  { display:table-cell; font-weight:600; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-desc-row { display:table; width:100%; border-bottom:1px solid #ede9fe; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-desc-row > span:first-child { display:table-cell; width:130px; color:#6b7280; font-size:7.8pt; padding-right:8px; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-desc-row > span:last-child  { display:table-cell; font-weight:600; font-family:'DejaVu Sans',Arial,sans-serif; }
+.total-amount   { font-size:12pt; white-space:nowrap; }
 <?php endif; ?>
 </style>
 </head>
