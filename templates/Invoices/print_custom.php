@@ -390,7 +390,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 
 /* Tabela pozycji */
 .items-table { width:100%; border-collapse:collapse; margin-bottom:.5cm; font-size:8.5pt; }
-.items-table thead th { background:#1e40af; color:#fff; padding:4px 5px; text-align:center; font-weight:600; vertical-align:middle; font-size:8pt; }
+.items-table thead th { background:#1e40af; color:#fff; padding:4px 5px; text-align:center; font-weight:bold; vertical-align:middle; font-size:8pt; }
 .items-table thead th.left { text-align:left; }
 .items-table tbody tr { page-break-inside:avoid; }
 .items-table tbody td { padding:4px 5px; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:center; font-size:8pt; }
@@ -406,7 +406,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 
 /* VAT summary */
 .vat-table { width:100%; border-collapse:collapse; font-size:8.5pt; }
-.vat-table th { background:#f1f5f9; padding:4px 6px; font-weight:600; border:1px solid #e5e7eb; text-align:center; }
+.vat-table th { background:#f1f5f9; padding:4px 6px; font-weight:bold; border:1px solid #e5e7eb; text-align:center; }
 .vat-table td { padding:4px 6px; border:1px solid #e5e7eb; text-align:right; }
 .vat-table td.left { text-align:left; }
 .vat-table tfoot td { font-weight:700; background:#e0e7ff; color:#1e40af; }
@@ -440,7 +440,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .payment-grid { display:flex; gap:1cm; flex-wrap:wrap; margin-bottom:6px; }
 .payment-item { min-width:4cm; }
 .payment-label { color:#6b7280; font-size:7.8pt; }
-.payment-val { font-weight:600; font-size:9pt; }
+.payment-val { font-weight:bold; font-size:9pt; }
 .bank-account { font-family:monospace; font-size:9pt; letter-spacing:.05em; }
 .remaining-highlight { color:#dc2626; }
 
@@ -568,19 +568,20 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 <?php if (!$isMargin): ?>
 <table class="items-table">
     <thead>
+        <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>
         <tr>
-            <th style="width:3%"><?= h($t['no']) ?></th>
-            <th class="left" style="width:<?= $isNoVat ? '46%' : '32%' ?>"><?= h($t['item_name']) ?></th>
-            <th style="width:6%"><?= h($t['qty']) ?></th>
-            <th style="width:5%"><?= h($t['unit']) ?></th>
-            <th style="width:9%"><?= h($t['price_net']) ?></th>
+            <th style="width:3%;<?= $f ?>"><?= h($t['no']) ?></th>
+            <th class="left" style="width:<?= $isNoVat ? '46%' : '32%' ?>;<?= $f ?>"><?= h($t['item_name']) ?></th>
+            <th style="width:6%;<?= $f ?>"><?= h($t['qty']) ?></th>
+            <th style="width:5%;<?= $f ?>"><?= h($t['unit']) ?></th>
+            <th style="width:9%;<?= $f ?>"><?= h($t['price_net']) ?></th>
             <?php if (!$isNoVat): ?>
-            <th style="width:5%"><?= h($t['vat_rate']) ?></th>
-            <th style="width:8%"><?= h($t['net']) ?></th>
-            <th style="width:7%"><?= h($t['vat_amt']) ?></th>
-            <th style="width:9%"><?= h($t['gross']) ?></th>
+            <th style="width:5%;<?= $f ?>"><?= h($t['vat_rate']) ?></th>
+            <th style="width:8%;<?= $f ?>"><?= h($t['net']) ?></th>
+            <th style="width:7%;<?= $f ?>"><?= h($t['vat_amt']) ?></th>
+            <th style="width:9%;<?= $f ?>"><?= h($t['gross']) ?></th>
             <?php else: ?>
-            <th style="width:10%"><?= h($t['gross']) ?></th>
+            <th style="width:10%;<?= $f ?>"><?= h($t['gross']) ?></th>
             <?php endif; ?>
         </tr>
     </thead>
@@ -647,13 +648,14 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 <?php else: /* MARŻA */ ?>
 <table class="items-table">
     <thead>
+        <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>
         <tr>
-            <th style="width:4%"><?= h($t['no']) ?></th>
-            <th class="left" style="width:60%"><?= h($t['item_name']) ?></th>
-            <th style="width:8%"><?= h($t['qty']) ?></th>
-            <th style="width:8%"><?= h($t['unit']) ?></th>
-            <th style="width:10%"><?= h($t['price_net']) ?></th>
-            <th style="width:10%"><?= h($t['gross']) ?></th>
+            <th style="width:4%;<?= $f ?>"><?= h($t['no']) ?></th>
+            <th class="left" style="width:60%;<?= $f ?>"><?= h($t['item_name']) ?></th>
+            <th style="width:8%;<?= $f ?>"><?= h($t['qty']) ?></th>
+            <th style="width:8%;<?= $f ?>"><?= h($t['unit']) ?></th>
+            <th style="width:10%;<?= $f ?>"><?= h($t['price_net']) ?></th>
+            <th style="width:10%;<?= $f ?>"><?= h($t['gross']) ?></th>
         </tr>
     </thead>
     <tbody>
@@ -703,11 +705,12 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
     <div class="vat-table-wrap">
         <table class="vat-table">
             <thead>
+                <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>
                 <tr>
-                    <th class="left"><?= h($t['vat_rate_col']) ?></th>
-                    <th><?= h($t['net_total']) ?></th>
-                    <th><?= h($t['vat_total']) ?></th>
-                    <th><?= h($t['gross_total']) ?></th>
+                    <th class="left" style="<?= $f ?>"><?= h($t['vat_rate_col']) ?></th>
+                    <th style="<?= $f ?>"><?= h($t['net_total']) ?></th>
+                    <th style="<?= $f ?>"><?= h($t['vat_total']) ?></th>
+                    <th style="<?= $f ?>"><?= h($t['gross_total']) ?></th>
                 </tr>
             </thead>
             <tbody>
