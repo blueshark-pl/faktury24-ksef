@@ -93,7 +93,7 @@ class CostInvoicesController extends AppController
     // -------------------------------------------------------------------------
     // Dodaj FK ręcznie
     // -------------------------------------------------------------------------
-    public function add(): void
+    public function add(): ?\Cake\Http\Response
     {
         $CI = $this->fetchTable('CostInvoices');
         $invoice = $CI->newEmptyEntity();
@@ -129,12 +129,13 @@ class CostInvoicesController extends AppController
         }
 
         $this->set(compact('invoice'));
+        return null;
     }
 
     // -------------------------------------------------------------------------
     // Edytuj FK
     // -------------------------------------------------------------------------
-    public function edit(int $id): void
+    public function edit(int $id): ?\Cake\Http\Response
     {
         $CI = $this->fetchTable('CostInvoices');
         $invoice = $CI->get($id);
@@ -162,12 +163,13 @@ class CostInvoicesController extends AppController
         }
 
         $this->set(compact('invoice'));
+        return null;
     }
 
     // -------------------------------------------------------------------------
     // Usuń FK
     // -------------------------------------------------------------------------
-    public function delete(int $id): void
+    public function delete(int $id): ?\Cake\Http\Response
     {
         $this->request->allowMethod(['post']);
         $CI = $this->fetchTable('CostInvoices');

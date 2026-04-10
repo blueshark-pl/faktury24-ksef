@@ -396,10 +396,10 @@ class SpeedOrdersController extends AppController
                 ];
 
                 // ── Auto-POL/POD na podstawie dat ze Speed ──
-                // POD: GLO_DATA_ZAK wypełnione → rozładunek zakończony
-                $autoPod = ($dateDelivery !== null);
-                // POL: GLO_DATA_TER wypełnione I data <= dziś → załadunek wykonany
-                $autoPol = ($dateDeadline !== null && $dateDeadline <= date('Y-m-d'));
+                // POL: GLO_DATA_TER (data załadunku) < dziś → załadunek zakończony
+                $autoPol = ($dateDeadline !== null && $dateDeadline < date('Y-m-d'));
+                // POD: GLO_DATA_ZAK (data rozładunku) < dziś → rozładunek zakończony
+                $autoPod = ($dateDelivery !== null && $dateDelivery < date('Y-m-d'));
 
                 // Upsert po speed_id
                 $existing = $SpeedOrders->find()->where(['speed_id' => $speedId])->first();
