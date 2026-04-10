@@ -4828,8 +4828,31 @@ private function makeClient(string $environment): KsefClient
             } catch (\Throwable) {}
         }
 
+        // Język dokumentu (pl/en)
+        $lang = in_array($this->request->getQuery('lang'), ['en'], true) ? 'en' : 'pl';
+
+        // Adnotacje (reverse_charge, split_payment, itp.)
+        $ann = [];
+        if (!empty($invoice->annotations)) {
+            $ann = is_array($invoice->annotations)
+                ? $invoice->annotations
+                : (json_decode((string)$invoice->annotations, true) ?: []);
+        }
+
+        // Auto-detect odwrotnego obciążenia z nazw stawek VAT (jak w buildFa3Xml)
+        $hasReverseCharge = !empty($ann['reverse_charge']);
+        if (!$hasReverseCharge && !empty($invoice->invoice_contents)) {
+            foreach ($invoice->invoice_contents as $it) {
+                $vatName = strtolower(trim((string)($it->vat->name ?? '')));
+                if (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl') || str_starts_with($vatName, 'np')) {
+                    $hasReverseCharge = true;
+                    break;
+                }
+            }
+        }
+
         $this->viewBuilder()->setLayout('ajax'); // brak wrappera layoutu — standalone HTML
-        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable'));
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge'));
         return null;
     }
 

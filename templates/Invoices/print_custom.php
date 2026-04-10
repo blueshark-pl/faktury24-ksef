@@ -2,18 +2,146 @@
 /**
  * @var \App\View\AppView $this
  * @var \App\Model\Entity\Invoice $invoice
- * @var string  $cur      — kod waluty np. 'EUR'
- * @var float   $fxRate   — kurs waluty do PLN (0 jeśli PLN)
- * @var mixed   $fxDate   — data kursu (string lub DateTimeInterface lub null)
- * @var string  $fxTable  — tabela NBP np. 'A/012/2026'
+ * @var string  $cur              — kod waluty np. 'EUR'
+ * @var float   $fxRate           — kurs waluty do PLN (0 jeśli PLN)
+ * @var mixed   $fxDate           — data kursu
+ * @var string  $fxTable          — tabela NBP np. 'A/012/2026'
+ * @var string  $lang             — 'pl' lub 'en'
+ * @var array   $ann              — adnotacje faktury
+ * @var bool    $hasReverseCharge — odwrotne obciążenie
  */
 
+/* ─── słownik tłumaczeń PL/EN ─── */
+$t = ($lang === 'en') ? [
+    'inv_type_suffix' => [
+        'vat'=>'VAT INVOICE','novat'=>'INVOICE','proforma'=>'PROFORMA INVOICE',
+        'advance'=>'ADVANCE INVOICE','correction'=>'CREDIT NOTE','margin'=>'MARGIN INVOICE',
+        'internal'=>'INTERNAL INVOICE','oss'=>'OSS INVOICE','final'=>'FINAL INVOICE','currency'=>'INVOICE',
+    ],
+    'original'        => 'Original',
+    'draft'           => 'DRAFT — document not approved',
+    'issue_date'      => 'Issue date',
+    'sold_date'       => 'Sale date',
+    'due_date'        => 'Payment due',
+    'seller'          => 'Seller',
+    'buyer'           => 'Buyer',
+    'no'              => 'No.',
+    'item_name'       => 'Description',
+    'qty'             => 'Qty',
+    'unit'            => 'Unit',
+    'price_net'       => 'Unit price',
+    'vat_rate'        => 'VAT',
+    'net'             => 'Net',
+    'vat_amt'         => 'VAT amt',
+    'gross'           => 'Gross',
+    'total_due'       => 'TOTAL DUE',
+    'vat_rate_col'    => 'VAT rate',
+    'net_total'       => 'Net total',
+    'vat_total'       => 'VAT total',
+    'gross_total'     => 'Gross total',
+    'overall'         => 'TOTAL',
+    'add_info'        => 'Additional information',
+    'payment_info'    => 'Payment information',
+    'pay_method'      => 'Payment method',
+    'pay_due'         => 'Due date',
+    'paid'            => 'Amount paid',
+    'remaining'       => 'Balance due',
+    'bank'            => 'Bank',
+    'account'         => 'Account no.',
+    'in_words'        => 'In words',
+    'notes'           => 'Notes',
+    'fx_title'        => 'Exchange rate',
+    'fx_rate'         => 'Rate',
+    'fx_date'         => 'NBP date',
+    'fx_table'        => 'NBP table',
+    'fx_vat_pln'      => 'VAT (PLN)',
+    'fx_gross_pln'    => 'Gross (PLN)',
+    'fx_legal'        => 'Amounts shown in document currency (%s). VAT in PLN pursuant to Art. 106e(11) of the Polish VAT Act.',
+    'fx_no_rate'      => 'No NBP exchange rate — please enter rate manually.',
+    'rc_title'        => 'REVERSE CHARGE',
+    'rc_text'         => 'VAT to be accounted for by the buyer pursuant to Art. 17(1)(7) or 17(1)(8) of the Polish VAT Act.',
+    'rc_buyer_ref'    => 'Buyer\'s VAT No.',
+    'pay_transfer'    => 'Bank transfer',
+    'pay_cash'        => 'Cash',
+    'pay_compensation'=> 'Set-off',
+    'sig_receiver'    => 'Authorised signatory\n(buyer)',
+    'sig_date'        => 'Date of receipt',
+    'sig_issuer'      => 'Authorised signatory\n(seller)',
+    'print_btn'       => '🖨 Print / Save PDF',
+    'close_btn'       => '✕ Close',
+    'lang_pl'         => '🇵🇱 Polski',
+    'lang_en'         => '🇬🇧 English',
+    'margin_note'     => 'VAT margin scheme – VAT is calculated on the margin only (Art. 120 Polish VAT Act).',
+    'draft_footer'    => 'DRAFT — for review only',
+] : [
+    'inv_type_suffix' => [
+        'vat'=>'FAKTURA VAT','novat'=>'FAKTURA','proforma'=>'FAKTURA PROFORMA',
+        'advance'=>'FAKTURA ZALICZKOWA','correction'=>'FAKTURA KORYGUJĄCA','margin'=>'FAKTURA MARŻY',
+        'internal'=>'FAKTURA WEWNĘTRZNA','oss'=>'FAKTURA OSS','final'=>'FAKTURA KOŃCOWA','currency'=>'FAKTURA WALUTOWA',
+    ],
+    'original'        => 'Oryginał',
+    'draft'           => 'WERSJA ROBOCZA — dokument niezatwierdony',
+    'issue_date'      => 'Data wystawienia',
+    'sold_date'       => 'Data sprzedaży',
+    'due_date'        => 'Termin płatności',
+    'seller'          => 'Sprzedawca',
+    'buyer'           => 'Nabywca',
+    'no'              => 'Lp',
+    'item_name'       => 'Nazwa towaru / usługi',
+    'qty'             => 'Ilość',
+    'unit'            => 'J.m.',
+    'price_net'       => 'Cena netto',
+    'vat_rate'        => 'VAT',
+    'net'             => 'Wartość netto',
+    'vat_amt'         => 'Kwota VAT',
+    'gross'           => 'Brutto',
+    'total_due'       => 'RAZEM DO ZAPŁATY',
+    'vat_rate_col'    => 'Stawka VAT',
+    'net_total'       => 'Wartość netto',
+    'vat_total'       => 'Kwota VAT',
+    'gross_total'     => 'Wartość brutto',
+    'overall'         => 'OGÓŁEM',
+    'add_info'        => 'Dodatkowe informacje',
+    'payment_info'    => 'Informacje o płatności',
+    'pay_method'      => 'Sposób płatności',
+    'pay_due'         => 'Termin płatności',
+    'paid'            => 'Zapłacono',
+    'remaining'       => 'Pozostało do zapłaty',
+    'bank'            => 'Bank',
+    'account'         => 'Nr konta',
+    'in_words'        => 'Słownie',
+    'notes'           => 'Uwagi',
+    'fx_title'        => 'Kurs waluty',
+    'fx_rate'         => 'Kurs',
+    'fx_date'         => 'Data kursu (NBP)',
+    'fx_table'        => 'Tabela NBP',
+    'fx_vat_pln'      => 'VAT (PLN)',
+    'fx_gross_pln'    => 'Brutto (PLN)',
+    'fx_legal'        => 'Kwoty netto i brutto wykazane są w walucie dokumentu (%s). VAT należny wykazany w PLN zgodnie z art. 106e ust. 11 ustawy o VAT.',
+    'fx_no_rate'      => 'Brak kursu NBP — wprowadź kurs ręcznie w ustawieniach faktury.',
+    'rc_title'        => 'ODWROTNE OBCIĄŻENIE',
+    'rc_text'         => 'Podatek VAT rozlicza nabywca zgodnie z art. 17 ust. 1 pkt 7 lub 8 ustawy o VAT.',
+    'rc_buyer_ref'    => 'Nr VAT nabywcy',
+    'pay_transfer'    => 'Przelew bankowy',
+    'pay_cash'        => 'Gotówka',
+    'pay_compensation'=> 'Kompensata',
+    'sig_receiver'    => "Podpis osoby upoważnionej\ndo odbioru faktury",
+    'sig_date'        => 'Data odbioru',
+    'sig_issuer'      => "Podpis i pieczęć\nwystawcy",
+    'print_btn'       => '🖨 Drukuj / Zapisz PDF',
+    'close_btn'       => '✕ Zamknij',
+    'lang_pl'         => '🇵🇱 Polski',
+    'lang_en'         => '🇬🇧 English',
+    'margin_note'     => 'Sprzedaż w procedurze marży. VAT naliczany wyłącznie od marży zgodnie z art. 120 ustawy o VAT.',
+    'draft_footer'    => 'WERSJA ROBOCZA — tylko do podglądu',
+];
+
 /* ─── helpers ─── */
-$fdate = function($v): string {
+$fdate = function($v) use ($lang): string {
     if (!$v) return '—';
-    if ($v instanceof \DateTimeInterface) return $v->format('d.m.Y');
+    if ($v instanceof \DateTimeInterface) return $lang === 'en' ? $v->format('Y-m-d') : $v->format('d.m.Y');
     $s = substr((string)$v, 0, 10);
-    // Y-m-d → d.m.Y
+    if ($lang === 'en') return $s;
     if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) return $m[3].'.'.$m[2].'.'.$m[1];
     return $s;
 };
@@ -24,31 +152,22 @@ $num2  = fn($v) => number_format((float)$v, 2, ',', ' ');
 /* ─── dane stron ─── */
 $seller = $invoice->invoice_company_details ?? $invoice->invoice_company_detail ?? $invoice->company ?? null;
 $buyer  = $invoice->invoice_contractor ?? null;
-
 $bankName    = $seller->bank_name    ?? null;
 $bankAccount = $seller->bank_account ?? null;
 
 /* ─── typ faktury ─── */
-$typeNames = [
-    'vat'        => 'FAKTURA VAT',
-    'novat'      => 'FAKTURA',
-    'proforma'   => 'FAKTURA PROFORMA',
-    'advance'    => 'FAKTURA ZALICZKOWA',
-    'correction' => 'FAKTURA KORYGUJĄCA',
-    'margin'     => 'FAKTURA MARŻY',
-    'internal'   => 'FAKTURA WEWNĘTRZNA',
-    'oss'        => 'FAKTURA OSS',
-    'final'      => 'FAKTURA KOŃCOWA',
-    'currency'   => 'FAKTURA WALUTOWA',
-];
-$typeName = $typeNames[$invoice->type ?? ''] ?? 'FAKTURA';
-$isMargin = ($invoice->type ?? '') === 'margin';
-$isNoVat  = ($invoice->type ?? '') === 'novat';
+$typeName = $t['inv_type_suffix'][$invoice->type ?? ''] ?? ($t['inv_type_suffix']['vat']);
+$isMargin  = ($invoice->type ?? '') === 'margin';
+$isNoVat   = ($invoice->type ?? '') === 'novat';
 $isForeign = ($cur !== 'PLN');
 
+/* ─── odwrotne obciążenie — dodatkowe dane ─── */
+$rcBuyerVat = $buyer->vat_eu ?? $buyer->vat_prefix ?? null;
+if ($rcBuyerVat === null && !empty($buyer->nip) && !empty($buyer->vat_prefix ?? null)) {
+    $rcBuyerVat = ($buyer->vat_prefix ?? '') . $buyer->nip;
+}
+
 /* ─── dodatkowe opisy — grupowanie wg nr_wiersza ─── */
-// nr_wiersza = 0 lub null → opis do całej faktury
-// nr_wiersza > 0           → opis do pozycji o tym numerze
 $addDescsByRow = [];
 foreach (($invoice->invoice_additional_descriptions ?? []) as $d) {
     $nr = (int)($d->nr_wiersza ?? 0);
@@ -71,7 +190,7 @@ if (!$isMargin && !empty($invoice->invoice_contents)) {
     ksort($vatSummary);
 }
 
-/* ─── kwota słownie (uproszczona) ─── */
+/* ─── kwota słownie ─── */
 $__pl_words = function(int $n): string {
     $u=['','jeden','dwa','trzy','cztery','pięć','sześć','siedem','osiem','dziewięć'];
     $t=['dziesięć','jedenaście','dwanaście','trzynaście','czternaście','piętnaście','szesnaście','siedemnaście','osiemnaście','dziewiętnaście'];
@@ -100,556 +219,555 @@ $__pl_words = function(int $n): string {
     }
     return implode(' ',$out);
 };
-$amountInWords = function($amount, $currency='PLN') use ($__pl_words): string {
+$amountInWords = function($amount, $currency='PLN') use ($__pl_words, $lang): string {
     $currency = strtoupper((string)$currency);
     $amt = (float)$amount;
     $int = (int)floor($amt + 1e-8);
     $frac= (int)round(($amt - $int) * 100);
+    $cents = sprintf('%02d', $frac);
+    if ($lang === 'en') {
+        // Simple English format
+        $map = ['EUR'=>['euro','euro cent'],'USD'=>['dollar','cent'],'GBP'=>['pound','penny'],'PLN'=>['zloty','grosz']];
+        $names = $map[$currency] ?? [strtolower($currency), 'cent'];
+        return $__pl_words($int) . ' ' . $names[0] . ' ' . $cents . '/100 ' . $names[1];
+    }
     $decl = function(int $n, array $f): string {
         $n1=$n%10; $n2=$n%100;
         if ($n==1) return $f[0];
         if ($n1>=2&&$n1<=4&&!($n2>=12&&$n2<=14)) return $f[1];
         return $f[2];
     };
-    $cents = sprintf('%02d', $frac);
     if ($currency==='PLN') return trim($__pl_words($int).' '.$decl($int,['złoty','złote','złotych']).' '.$cents.'/100 '.$decl($frac,['grosz','grosze','groszy']));
     if ($currency==='EUR') return trim($__pl_words($int).' euro '.$cents.'/100 '.$decl($frac,['eurocent','eurocenty','eurocentów']));
     if ($currency==='USD') return trim($__pl_words($int).' '.$decl($int,['dolar','dolary','dolarów']).' '.$cents.'/100 '.$decl($frac,['cent','centy','centów']));
     return trim($__pl_words($int).' '.strtoupper($currency).' '.$cents.'/100');
 };
 
-/* ─── kurs — oblicz VAT w PLN jeśli walutowa ─── */
-$taxPln = $isForeign && $fxRate > 0 ? round((float)($invoice->tax ?? 0) * $fxRate, 2) : null;
+/* ─── kurs — VAT/brutto w PLN ─── */
+$taxPln   = $isForeign && $fxRate > 0 ? round((float)($invoice->tax   ?? 0) * $fxRate, 2) : null;
 $totalPln = $isForeign && $fxRate > 0 ? round((float)($invoice->total ?? 0) * $fxRate, 2) : null;
-$fxDateStr = $fxDate instanceof \DateTimeInterface ? $fxDate->format('d.m.Y') : ($fxDate ? substr((string)$fxDate, 0, 10) : null);
+$fxDateStr = $fxDate instanceof \DateTimeInterface ? $fxDate->format('Y-m-d') : ($fxDate ? substr((string)$fxDate, 0, 10) : null);
+
+/* ─── URL przełączenia języka ─── */
+$urlPl = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['lang' => 'pl']]);
+$urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['lang' => 'en']]);
 ?>
 <!doctype html>
-<html lang="pl">
+<html lang="<?= $lang ?>">
 <head>
 <meta charset="utf-8">
-<title>Faktura <?= h($invoice->fullnumber ?: $invoice->id) ?></title>
+<title><?= h($typeName) ?> <?= h($invoice->fullnumber ?: $invoice->id) ?></title>
 <style>
-/* ════════════════════════════════════════════
-   CUSTOM PRINT TEMPLATE — drukuje przez przeglądarkę
-   Zgodny z @page CSS, bez zależności od bibliotek
-════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; }
-
-@page {
-    size: A4 portrait;
-    margin: 1.5cm 1.5cm 2cm 1.5cm;
-}
+@page { size: A4 portrait; margin: 1.4cm 1.5cm 2cm 1.5cm; }
 @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
-    .page-break { page-break-before: always; }
 }
 @media screen {
     body { background: #f0f2f5; }
     .sheet { box-shadow: 0 4px 32px rgba(0,0,0,.12); margin: 24px auto; }
 }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; line-height: 1.4; }
+.sheet { background: #fff; max-width: 21cm; padding: 1.2cm 1.3cm; }
 
-body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 10pt;
-    color: #222;
-    line-height: 1.4;
-}
+/* Nagłówek */
+.hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.8cm; border-bottom:2.5px solid #1e40af; padding-bottom:.4cm; }
+.inv-type { font-size:15pt; font-weight:700; color:#1e40af; text-transform:uppercase; letter-spacing:.04em; }
+.inv-number { font-size:12pt; font-weight:700; color:#111; margin-top:3px; }
+.inv-meta { font-size:8.5pt; color:#555; margin-top:4px; line-height:1.7; }
+.badge-draft { display:inline-block; background:#fef3c7; color:#92400e; font-size:7.5pt; font-weight:700; padding:2px 7px; border-radius:3px; border:1px solid #fcd34d; margin-top:5px; }
 
-.sheet {
-    background: #fff;
-    max-width: 21cm;
-    padding: 1.2cm 1.3cm;
-}
+/* Strony */
+.parties { display:flex; gap:1cm; margin-bottom:.7cm; }
+.party { flex:1; }
+.party-label { font-size:7pt; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; border-bottom:1px solid #e5e7eb; padding-bottom:2px; margin-bottom:4px; }
+.party-name { font-size:11pt; font-weight:700; color:#111; }
+.party-detail { font-size:8.5pt; color:#444; line-height:1.5; }
 
-/* ── Nagłówek ── */
-.hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: .9cm; border-bottom: 2px solid #3b82f6; padding-bottom: .4cm; }
-.hdr-left { flex: 1; }
-.hdr-right { text-align: right; }
-.inv-type { font-size: 15pt; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: .04em; line-height: 1.2; }
-.inv-number { font-size: 12pt; font-weight: 700; color: #111; margin-top: 2px; }
-.inv-meta { font-size: 8.5pt; color: #555; margin-top: 4px; line-height: 1.6; }
-.badge-draft { display:inline-block; background:#fef3c7; color:#92400e; font-size:7.5pt; font-weight:700; padding:1px 6px; border-radius:3px; border:1px solid #fcd34d; margin-top:4px; }
+/* Tabela pozycji */
+.items-table { width:100%; border-collapse:collapse; margin-bottom:.5cm; font-size:8.5pt; }
+.items-table thead th { background:#1e40af; color:#fff; padding:5px 6px; text-align:center; font-weight:600; vertical-align:middle; }
+.items-table thead th.left { text-align:left; }
+.items-table tbody tr { page-break-inside:avoid; }
+.items-table tbody td { padding:5px 6px; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:center; }
+.items-table tbody td.left { text-align:left; }
+.items-table tbody tr:nth-child(even) { background:#f8fafc; }
+.items-table tfoot td { padding:6px; font-weight:700; background:#e0e7ff; border-top:2px solid #1e40af; color:#1e40af; }
 
-/* ── Strony (sprzedawca / nabywca) ── */
-.parties { display: flex; gap: 1cm; margin-bottom: .7cm; }
-.party { flex: 1; }
-.party-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 4px; }
-.party-name { font-size: 11pt; font-weight: 700; color: #111; }
-.party-detail { font-size: 8.5pt; color: #444; line-height: 1.5; }
+/* Opis dodatkowy pod pozycją */
+.item-descs { border-left:3px solid #3b82f6; margin:3px 0 2px 2px; padding:3px 8px; background:#eff6ff; border-radius:0 4px 4px 0; }
+.item-desc-row { display:flex; gap:8px; font-size:7.8pt; color:#334155; line-height:1.5; }
+.item-desc-key { color:#6b7280; white-space:nowrap; min-width:90px; }
+.item-desc-val { font-weight:600; flex:1; }
 
-/* ── Tabela pozycji ── */
-.items-table { width: 100%; border-collapse: collapse; margin-bottom: .5cm; font-size: 8.5pt; }
-.items-table thead th { background: #1e40af; color: #fff; padding: 5px 6px; text-align: center; font-weight: 600; vertical-align: middle; }
-.items-table thead th.left { text-align: left; }
-.items-table tbody tr { page-break-inside: avoid; }
-.items-table tbody td { padding: 5px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; text-align: center; }
-.items-table tbody td.left { text-align: left; }
-.items-table tbody tr:nth-child(even) { background: #f8fafc; }
-.items-table tfoot td { padding: 6px; font-weight: 700; background: #f1f5f9; border-top: 2px solid #3b82f6; }
+/* VAT summary */
+.summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; }
+.vat-table-wrap { flex:1; }
+.vat-table { width:100%; border-collapse:collapse; font-size:8.5pt; }
+.vat-table th { background:#f1f5f9; padding:4px 6px; font-weight:600; border:1px solid #e5e7eb; text-align:center; }
+.vat-table td { padding:4px 6px; border:1px solid #e5e7eb; text-align:right; }
+.vat-table td.left { text-align:left; }
+.vat-table tfoot td { font-weight:700; background:#e0e7ff; color:#1e40af; }
+.total-box { min-width:5.5cm; text-align:right; }
+.total-label { font-size:8pt; color:#6b7280; }
+.total-amount { font-size:16pt; font-weight:700; color:#1e40af; line-height:1.1; }
+.total-words { font-size:7.5pt; color:#555; margin-top:3px; }
 
-/* ── Opis dodatkowy pod pozycją ── */
-.item-descs { border-left: 3px solid #3b82f6; margin: 3px 0 4px 4px; padding: 3px 8px; background: #eff6ff; border-radius: 0 4px 4px 0; }
-.item-desc-row { display: flex; gap: 8px; font-size: 7.8pt; color: #334155; line-height: 1.5; }
-.item-desc-key { color: #6b7280; white-space: nowrap; min-width: 90px; }
-.item-desc-val { font-weight: 600; flex: 1; }
+/* Odwrotne obciążenie */
+.rc-box { border:2px solid #dc2626; background:#fff5f5; border-radius:6px; padding:10px 14px; margin-bottom:.5cm; }
+.rc-box-title { font-size:11pt; font-weight:700; color:#dc2626; letter-spacing:.04em; margin-bottom:5px; }
+.rc-text { font-size:9pt; color:#7f1d1d; line-height:1.5; }
+.rc-buyer { margin-top:6px; font-size:8.5pt; }
 
-/* ── Blok VAT + suma ── */
-.summary-section { display: flex; gap: .5cm; margin-bottom: .6cm; align-items: flex-start; }
-.vat-table-wrap { flex: 1; }
-.vat-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
-.vat-table th { background: #f1f5f9; padding: 4px 6px; font-weight: 600; border: 1px solid #e5e7eb; text-align: center; }
-.vat-table td { padding: 4px 6px; border: 1px solid #e5e7eb; text-align: right; }
-.vat-table td.left { text-align: left; }
-.vat-table tfoot td { font-weight: 700; background: #e0e7ff; }
-.total-box { min-width: 5.5cm; text-align: right; }
-.total-label { font-size: 8pt; color: #6b7280; }
-.total-amount { font-size: 16pt; font-weight: 700; color: #1e40af; line-height: 1.1; }
-.total-words { font-size: 7.5pt; color: #555; margin-top: 3px; line-height: 1.4; }
+/* Kurs walut */
+.fx-box { border:1.5px solid #bfdbfe; background:#eff6ff; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; }
+.fx-box-title { font-weight:700; color:#1e40af; font-size:9pt; margin-bottom:5px; }
+.fx-grid { display:flex; gap:1.5cm; flex-wrap:wrap; }
+.fx-item-label { color:#6b7280; font-size:7.8pt; }
+.fx-item-val { font-weight:700; font-size:9.5pt; color:#111; }
+.fx-legal { font-size:7.5pt; color:#6b7280; margin-top:5px; border-top:1px solid #bfdbfe; padding-top:5px; }
 
-/* ── Blok kursu walut ── */
-.fx-box { border: 1.5px solid #bfdbfe; background: #eff6ff; border-radius: 6px; padding: 8px 12px; margin-bottom: .5cm; font-size: 8.5pt; }
-.fx-box-title { font-weight: 700; color: #1e40af; font-size: 9pt; margin-bottom: 4px; }
-.fx-grid { display: flex; gap: 1.5cm; flex-wrap: wrap; }
-.fx-item { }
-.fx-item-label { color: #6b7280; font-size: 7.8pt; }
-.fx-item-val { font-weight: 700; font-size: 9.5pt; color: #111; }
-.fx-plnamount { margin-top: 6px; padding-top: 6px; border-top: 1px solid #bfdbfe; font-size: 8pt; }
-.fx-plnamount strong { color: #1e40af; }
-.fx-legal { font-size: 7.5pt; color: #6b7280; margin-top: 4px; }
+/* Dodatkowe opisy faktury */
+.invoice-descs { border-left:3px solid #6366f1; background:#f5f3ff; border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:.5cm; }
+.invoice-descs-title { font-weight:700; color:#4f46e5; font-size:8.5pt; margin-bottom:5px; }
+.invoice-desc-row { display:flex; gap:8px; font-size:8pt; color:#334155; line-height:1.6; border-bottom:1px solid #ede9fe; }
+.invoice-desc-row:last-child { border-bottom:none; }
 
-/* ── Blok dodatkowych opisów faktury ── */
-.invoice-descs { border-left: 3px solid #6366f1; background: #f5f3ff; border-radius: 0 6px 6px 0; padding: 8px 12px; margin-bottom: .5cm; }
-.invoice-descs-title { font-weight: 700; color: #4f46e5; font-size: 8.5pt; margin-bottom: 5px; }
-.invoice-desc-row { display: flex; gap: 8px; font-size: 8pt; color: #334155; line-height: 1.6; border-bottom: 1px solid #e9d8fd; }
-.invoice-desc-row:last-child { border-bottom: none; }
+/* Płatność */
+.payment-section { border:1px solid #e5e7eb; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; }
+.payment-grid { display:flex; gap:1cm; flex-wrap:wrap; margin-bottom:6px; }
+.payment-item { min-width:4cm; }
+.payment-label { color:#6b7280; font-size:7.8pt; }
+.payment-val { font-weight:600; font-size:9pt; }
+.bank-account { font-family:monospace; font-size:9pt; letter-spacing:.05em; }
+.remaining-highlight { color:#dc2626; }
 
-/* ── Płatność ── */
-.payment-section { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; margin-bottom: .5cm; font-size: 8.5pt; }
-.payment-grid { display: flex; gap: 1cm; flex-wrap: wrap; }
-.payment-item { min-width: 4cm; }
-.payment-label { color: #6b7280; font-size: 7.8pt; }
-.payment-val { font-weight: 600; font-size: 9pt; }
-.bank-account { font-family: monospace; font-size: 9pt; letter-spacing: .05em; }
-.remaining-highlight { color: #dc2626; font-weight: 700; }
+/* Uwagi */
+.notes-box { background:#fafafa; border:1px solid #e5e7eb; border-radius:4px; padding:6px 10px; font-size:8.5pt; color:#444; margin-bottom:.4cm; }
 
-/* ── Uwagi / dodatkowe opisy (nr_wiersza=0) ── */
-.notes-box { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px 10px; font-size: 8.5pt; color: #444; margin-bottom: .4cm; }
+/* Podpisy */
+.signatures { display:flex; justify-content:space-between; margin-top:1.5cm; font-size:8pt; }
+.sig-block { width:30%; text-align:center; }
+.sig-line { border-top:1px solid #999; padding-top:5px; color:#6b7280; white-space:pre-line; }
 
-/* ── Podpisy ── */
-.signatures { display: flex; justify-content: space-between; margin-top: 1.5cm; font-size: 8pt; }
-.sig-block { width: 30%; text-align: center; }
-.sig-line { border-top: 1px solid #999; padding-top: 5px; color: #6b7280; }
+/* Stopka robocza */
+.draft-watermark { text-align:center; color:#fca5a5; font-size:8pt; font-weight:700; margin-top:.5cm; letter-spacing:.1em; }
 
-/* ── Przyciski ekranowe ── */
-.print-toolbar { position: fixed; top: 16px; right: 24px; display: flex; gap: 8px; z-index: 100; }
-.print-btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 10pt; font-weight: 600; }
-.print-btn-primary { background: #1e40af; color: #fff; }
-.print-btn-secondary { background: #f1f5f9; color: #374151; border: 1px solid #d1d5db; }
+/* Toolbar ekranowy */
+.print-toolbar { position:fixed; top:16px; right:20px; display:flex; gap:6px; z-index:100; align-items:center; }
+.print-btn { padding:7px 16px; border-radius:6px; border:none; cursor:pointer; font-size:9.5pt; font-weight:600; text-decoration:none; display:inline-block; }
+.print-btn-primary { background:#1e40af; color:#fff; }
+.print-btn-secondary { background:#f1f5f9; color:#374151; border:1px solid #d1d5db; }
+.print-btn-active { background:#166534; color:#fff; }
+.lang-sep { color:#d1d5db; font-size:10pt; }
 </style>
 </head>
 <body>
 
-<!-- ── Toolbar (tylko na ekranie) ── -->
+<!-- ── Toolbar ── -->
 <div class="print-toolbar no-print">
-    <button class="print-btn print-btn-secondary" onclick="window.close()">✕ Zamknij</button>
-    <button class="print-btn print-btn-primary" onclick="window.print()">🖨 Drukuj / Zapisz PDF</button>
+    <a href="<?= h($urlPl) ?>" class="print-btn <?= $lang === 'pl' ? 'print-btn-active' : 'print-btn-secondary' ?>"><?= h($t['lang_pl']) ?></a>
+    <span class="lang-sep">|</span>
+    <a href="<?= h($urlEn) ?>" class="print-btn <?= $lang === 'en' ? 'print-btn-active' : 'print-btn-secondary' ?>"><?= h($t['lang_en']) ?></a>
+    <span class="lang-sep">|</span>
+    <button class="print-btn print-btn-secondary" onclick="window.close()"><?= h($t['close_btn']) ?></button>
+    <button class="print-btn print-btn-primary" onclick="window.print()"><?= h($t['print_btn']) ?></button>
 </div>
 
 <div class="sheet">
 
-    <!-- ════ NAGŁÓWEK ════ -->
-    <div class="hdr">
-        <div class="hdr-left">
-            <div class="inv-type"><?= h($typeName) ?></div>
-            <div class="inv-number">Nr: <?= h($invoice->fullnumber ?: ('ID-'.$invoice->id)) ?></div>
-            <?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
-            <div><span class="badge-draft">WERSJA ROBOCZA — dokument niezatwierdony</span></div>
-            <?php endif; ?>
-            <div class="inv-meta">
-                <?php if ($isForeign): ?>
-                <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-weight:700;font-size:7.5pt"><?= h($cur) ?></span>
-                <?php endif; ?>
-            </div>
-        </div>
-        <div class="hdr-right inv-meta">
-            <div><strong>Data wystawienia:</strong> <?= $fdate($invoice->date ?? $invoice->created ?? null) ?></div>
-            <div><strong>Data sprzedaży:</strong> <?= $fdate($invoice->sold_date ?? $invoice->date ?? null) ?></div>
-            <?php if (!empty($invoice->paymentdate)): ?>
-            <div><strong>Termin płatności:</strong> <?= $fdate($invoice->paymentdate) ?></div>
-            <?php endif; ?>
+<!-- ════ NAGŁÓWEK ════ -->
+<div class="hdr">
+    <div>
+        <div class="inv-type"><?= h($typeName) ?></div>
+        <div class="inv-number">Nr: <?= h($invoice->fullnumber ?: ('ID-'.$invoice->id)) ?></div>
+        <div class="inv-meta"><?= h($t['original']) ?><?php if ($isForeign): ?> &nbsp;·&nbsp; <span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:3px;font-weight:700"><?= h($cur) ?></span><?php endif; ?></div>
+        <?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
+        <div><span class="badge-draft"><?= h($t['draft']) ?></span></div>
+        <?php endif; ?>
+    </div>
+    <div style="text-align:right" class="inv-meta">
+        <div><strong><?= h($t['issue_date']) ?>:</strong> <?= $fdate($invoice->date ?? $invoice->created ?? null) ?></div>
+        <div><strong><?= h($t['sold_date']) ?>:</strong> <?= $fdate($invoice->sold_date ?? $invoice->date ?? null) ?></div>
+        <?php if (!empty($invoice->paymentdate)): ?>
+        <div><strong><?= h($t['due_date']) ?>:</strong> <?= $fdate($invoice->paymentdate) ?></div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- ════ STRONY ════ -->
+<div class="parties">
+    <div class="party">
+        <div class="party-label"><?= h($t['seller']) ?></div>
+        <div class="party-name"><?= h($seller->name ?? '—') ?></div>
+        <div class="party-detail">
+            <?php
+            $selAddr = trim(implode(', ', array_filter([
+                trim(($seller->street ?? '') . ' ' . ($seller->building_number ?? '') . (isset($seller->flat_number) && $seller->flat_number ? '/'.$seller->flat_number : '')),
+                trim(($seller->zip ?? $seller->postal_code ?? '') . ' ' . ($seller->city ?? '')),
+            ])));
+            echo h($selAddr) ?: '—';
+            ?>
+            <?php if (!empty($seller->nip)): ?><br>NIP: <?= h($seller->nip) ?><?php endif; ?>
+            <?php
+            $regs = json_decode((string)($seller->registers_json ?? ''), true) ?: [];
+            foreach ($regs as $reg):
+                if (!empty($reg['krs']))   echo '<br>KRS: '.h($reg['krs']);
+                if (!empty($reg['regon'])) echo '<br>REGON: '.h($reg['regon']);
+            endforeach;
+            ?>
         </div>
     </div>
-
-    <!-- ════ STRONY ════ -->
-    <div class="parties">
-        <div class="party">
-            <div class="party-label">Sprzedawca</div>
-            <div class="party-name"><?= h($seller->name ?? '—') ?></div>
-            <div class="party-detail">
-                <?php
-                $addr = trim(implode(', ', array_filter([
-                    trim(($seller->street ?? '') . ' ' . ($seller->building_number ?? '') . (isset($seller->flat_number) && $seller->flat_number ? '/'.$seller->flat_number : '')),
-                    trim(($seller->zip ?? $seller->postal_code ?? '') . ' ' . ($seller->city ?? '')),
-                ])));
-                echo h($addr) ?: '—';
-                ?>
-                <?php if (!empty($seller->nip)): ?><br>NIP: <?= h($seller->nip) ?><?php endif; ?>
-                <?php
-                $regs = json_decode((string)($seller->registers_json ?? ''), true) ?: [];
-                foreach ($regs as $reg):
-                    if (!empty($reg['krs']))   echo '<br>KRS: ' . h($reg['krs']);
-                    if (!empty($reg['regon'])) echo '<br>REGON: ' . h($reg['regon']);
-                endforeach;
-                ?>
-            </div>
-        </div>
-        <div class="party">
-            <div class="party-label">Nabywca</div>
-            <div class="party-name"><?= h($buyer->name ?? '—') ?></div>
-            <div class="party-detail">
-                <?php if (!empty($buyer->street)): ?><?= h($buyer->street) ?><br><?php endif; ?>
-                <?= h(trim(($buyer->zip ?? '') . ' ' . ($buyer->city ?? ''))) ?>
-                <?php if (!empty($buyer->nip)): ?><br>NIP: <?= h($buyer->nip) ?><?php endif; ?>
-                <?php if (!empty($buyer->vat_eu)): ?><br>VAT-UE: <?= h($buyer->vat_eu) ?><?php endif; ?>
-                <?php if (!empty($buyer->country) && $buyer->country !== 'PL'): ?><br><?= h($buyer->country) ?><?php endif; ?>
-            </div>
+    <div class="party">
+        <div class="party-label"><?= h($t['buyer']) ?></div>
+        <div class="party-name"><?= h($buyer->name ?? '—') ?></div>
+        <div class="party-detail">
+            <?php if (!empty($buyer->street)): ?><?= h($buyer->street) ?><br><?php endif; ?>
+            <?= h(trim(($buyer->zip ?? '') . ' ' . ($buyer->city ?? ''))) ?>
+            <?php if (!empty($buyer->nip)): ?><br>NIP: <?= h($buyer->nip) ?><?php endif; ?>
+            <?php if (!empty($buyer->vat_eu)): ?><br>VAT-EU: <?= h($buyer->vat_eu) ?><?php endif; ?>
+            <?php if (!empty($buyer->country) && $buyer->country !== 'PL'): ?><br><?= h($buyer->country) ?><?php endif; ?>
         </div>
     </div>
+</div>
 
-    <!-- ════ TABELA POZYCJI ════ -->
-    <?php if (!$isMargin): ?>
-    <table class="items-table">
-        <thead>
-            <tr>
-                <th style="width:3%">#</th>
-                <th class="left" style="width:<?= $isNoVat ? '44%' : '32%' ?>">Nazwa towaru / usługi</th>
-                <th style="width:7%">Ilość</th>
-                <th style="width:6%">J.m.</th>
-                <th style="width:9%">Cena netto</th>
-                <?php if (!$isNoVat): ?>
-                <th style="width:5%">VAT</th>
-                <th style="width:8%">Wartość netto</th>
-                <th style="width:7%">Kwota VAT</th>
-                <th style="width:9%">Brutto</th>
-                <?php else: ?>
-                <th style="width:10%">Wartość</th>
-                <?php endif; ?>
-            </tr>
-        </thead>
-        <tbody>
-        <?php
-        $rowIdx = 0;
-        foreach ($invoice->invoice_contents as $it):
-            $rowIdx++;
-            $qty    = (float)($it->quantity ?? $it->count ?? 1);
-            $unit   = $it->unit ?? 'szt.';
-            $net    = (float)$it->netto;
-            $brut   = (float)$it->brutto;
-            $vatAmt = $brut - $net;
-            $netUnit= $qty ? $net / $qty : $net;
-            $rateName = $it->vat->name ?? (isset($it->vat->rate) ? $it->vat->rate.'%' : '0%');
-
-            // Dodatkowe opisy powiązane z tym wierszem (nr_wiersza = $rowIdx)
-            $rowDescs = $addDescsByRow[$rowIdx] ?? [];
-        ?>
+<!-- ════ TABELA POZYCJI ════ -->
+<?php if (!$isMargin): ?>
+<table class="items-table">
+    <thead>
         <tr>
-            <td><?= $rowIdx ?></td>
-            <td class="left">
-                <strong><?= h($it->name) ?></strong>
-                <?php if (!empty($it->product_desc)): ?>
-                <br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span>
-                <?php endif; ?>
-                <?php if (!empty($rowDescs)): ?>
-                <div class="item-descs">
-                    <?php foreach ($rowDescs as $d):
-                        $klucz   = trim((string)($d->klucz ?? ''));
-                        $wartosc = trim((string)($d->wartosc ?? ''));
-                        if ($klucz === '' && $wartosc === '') continue;
-                    ?>
-                    <div class="item-desc-row">
-                        <span class="item-desc-key"><?= h($klucz) ?>:</span>
-                        <span class="item-desc-val"><?= h($wartosc) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </td>
-            <td><?= $num2($qty) ?></td>
-            <td><?= h($unit) ?></td>
-            <td><?= $num2($netUnit) ?></td>
+            <th style="width:3%"><?= h($t['no']) ?></th>
+            <th class="left" style="width:<?= $isNoVat ? '46%' : '32%' ?>"><?= h($t['item_name']) ?></th>
+            <th style="width:6%"><?= h($t['qty']) ?></th>
+            <th style="width:5%"><?= h($t['unit']) ?></th>
+            <th style="width:9%"><?= h($t['price_net']) ?></th>
             <?php if (!$isNoVat): ?>
-            <td><?= h($rateName) ?></td>
-            <td><?= $num2($net) ?></td>
-            <td><?= $num2($vatAmt) ?></td>
-            <td style="font-weight:700"><?= $num2($brut) ?></td>
+            <th style="width:5%"><?= h($t['vat_rate']) ?></th>
+            <th style="width:8%"><?= h($t['net']) ?></th>
+            <th style="width:7%"><?= h($t['vat_amt']) ?></th>
+            <th style="width:9%"><?= h($t['gross']) ?></th>
             <?php else: ?>
-            <td style="font-weight:700"><?= $num2($net) ?></td>
+            <th style="width:10%"><?= h($t['gross']) ?></th>
             <?php endif; ?>
         </tr>
-        <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-weight:600;background:#e0e7ff;color:#1e40af;font-size:10pt">
-                    RAZEM DO ZAPŁATY:
-                </td>
-                <?php if (!$isNoVat): ?>
-                <td style="text-align:right"><?= $num2($invoice->netto ?? 0) ?></td>
-                <td style="text-align:right"><?= $num2($invoice->tax ?? 0) ?></td>
-                <?php endif; ?>
-                <td style="text-align:right;font-size:11pt;color:#1e40af">
-                    <?= $money($invoice->total ?? 0, $cur) ?>
-                </td>
-            </tr>
-        </tfoot>
-    </table>
-    <?php else: /* MARŻA */ ?>
-    <table class="items-table">
-        <thead>
-            <tr>
-                <th style="width:4%">#</th>
-                <th class="left" style="width:60%">Nazwa towaru / usługi</th>
-                <th style="width:8%">Ilość</th>
-                <th style="width:8%">J.m.</th>
-                <th style="width:10%">Cena brutto</th>
-                <th style="width:10%">Wartość brutto</th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php $rowIdx=0; foreach ($invoice->invoice_contents as $it):
-            $rowIdx++;
-            $qty  = (float)($it->quantity ?? 1);
-            $unit = $it->unit ?? 'szt.';
-            $brut = (float)$it->brutto;
-            $unitGross = $qty ? $brut / $qty : $brut;
-            $rowDescs = $addDescsByRow[$rowIdx] ?? [];
-        ?>
-        <tr>
-            <td><?= $rowIdx ?></td>
-            <td class="left">
-                <strong><?= h($it->name) ?></strong>
-                <?php if (!empty($it->product_desc)): ?>
-                <br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span>
-                <?php endif; ?>
-                <?php if (!empty($rowDescs)): ?>
-                <div class="item-descs">
-                    <?php foreach ($rowDescs as $d):
-                        $k = trim((string)($d->klucz ?? ''));
-                        $v = trim((string)($d->wartosc ?? ''));
-                        if ($k===''&&$v==='') continue;
-                    ?>
-                    <div class="item-desc-row">
-                        <span class="item-desc-key"><?= h($k) ?>:</span>
-                        <span class="item-desc-val"><?= h($v) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </td>
-            <td><?= $num2($qty) ?></td>
-            <td><?= h($unit) ?></td>
-            <td><?= $num2($unitGross) ?></td>
-            <td style="font-weight:700"><?= $num2($brut) ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="5" style="text-align:right;font-weight:600;background:#e0e7ff;color:#1e40af">RAZEM:</td>
-                <td style="text-align:right;font-size:11pt;color:#1e40af"><?= $money($invoice->total ?? 0, $cur) ?></td>
-            </tr>
-        </tfoot>
-    </table>
-    <p style="font-size:8pt;color:#6b7280;margin-top:4px">
-        Sprzedaż w procedurze marży. VAT naliczany wyłącznie od marży zgodnie z art. 120 ustawy o VAT.
-    </p>
-    <?php endif; ?>
-
-    <!-- ════ PODSUMOWANIE VAT ════ -->
-    <?php if (!$isMargin && !$isNoVat && !empty($vatSummary)): ?>
-    <div class="summary-section">
-        <div class="vat-table-wrap">
-            <table class="vat-table">
-                <thead>
-                    <tr>
-                        <th class="left">Stawka VAT</th>
-                        <th>Wartość netto</th>
-                        <th>Kwota VAT</th>
-                        <th>Wartość brutto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($vatSummary as $rate => $row): ?>
-                <tr>
-                    <td class="left"><?= h($row['name']) ?></td>
-                    <td><?= $num2($row['netto']) ?></td>
-                    <td><?= $num2($row['vat']) ?></td>
-                    <td><?= $num2($row['brutto']) ?></td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td class="left">OGÓŁEM</td>
-                        <td><?= $num2($invoice->netto ?? 0) ?></td>
-                        <td><?= $num2($invoice->tax ?? 0) ?></td>
-                        <td><?= $num2($invoice->total ?? 0) ?></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        <div class="total-box">
-            <div class="total-label">Do zapłaty:</div>
-            <div class="total-amount"><?= $money($invoice->total ?? 0, $cur) ?></div>
-            <div class="total-words"><?= h($amountInWords($invoice->total ?? 0, $cur)) ?></div>
-        </div>
-    </div>
-    <?php else: ?>
-    <div style="text-align:right;margin-bottom:.5cm">
-        <div class="total-label" style="font-size:8pt;color:#6b7280">Do zapłaty:</div>
-        <div class="total-amount" style="font-size:16pt;font-weight:700;color:#1e40af"><?= $money($invoice->total ?? 0, $cur) ?></div>
-        <div class="total-words" style="font-size:7.5pt;color:#555;margin-top:3px"><?= h($amountInWords($invoice->total ?? 0, $cur)) ?></div>
-    </div>
-    <?php endif; ?>
-
-    <!-- ════ KURS WALUT ════ -->
-    <?php if ($isForeign): ?>
-    <div class="fx-box">
-        <div class="fx-box-title"><span style="font-size:11pt">💱</span> Kurs waluty — <?= h($cur) ?></div>
-        <div class="fx-grid">
-            <?php if ($fxRate > 0): ?>
-            <div class="fx-item">
-                <div class="fx-item-label">Kurs</div>
-                <div class="fx-item-val">1 <?= h($cur) ?> = <?= $num4($fxRate) ?> PLN</div>
-            </div>
-            <?php endif; ?>
-            <?php if ($fxDateStr): ?>
-            <div class="fx-item">
-                <div class="fx-item-label">Data kursu (NBP)</div>
-                <div class="fx-item-val"><?= h($fxDateStr) ?></div>
-            </div>
-            <?php endif; ?>
-            <?php if ($fxTable !== ''): ?>
-            <div class="fx-item">
-                <div class="fx-item-label">Tabela NBP</div>
-                <div class="fx-item-val"><?= h($fxTable) ?></div>
-            </div>
-            <?php endif; ?>
-            <?php if ($taxPln !== null): ?>
-            <div class="fx-item">
-                <div class="fx-item-label">VAT (PLN)</div>
-                <div class="fx-item-val" style="color:#1e40af"><?= $num2($taxPln) ?> PLN</div>
-            </div>
-            <?php endif; ?>
-            <?php if ($totalPln !== null): ?>
-            <div class="fx-item">
-                <div class="fx-item-label">Brutto (PLN)</div>
-                <div class="fx-item-val" style="color:#1e40af"><?= $num2($totalPln) ?> PLN</div>
-            </div>
-            <?php endif; ?>
-        </div>
-        <?php if ($fxRate > 0): ?>
-        <div class="fx-legal">
-            Kwoty netto i brutto wykazane są w walucie dokumentu (<?= h($cur) ?>).
-            VAT należny wykazany w PLN zgodnie z art. 106e ust. 11 ustawy o VAT.
-            <?php if ($fxDateStr): ?>Kurs z dnia <?= h($fxDateStr) ?><?= $fxTable ? ', tabela NBP '.h($fxTable) : '' ?>.<?php endif; ?>
-        </div>
-        <?php else: ?>
-        <div class="fx-legal" style="color:#dc2626">Brak kursu NBP — wprowadź kurs ręcznie w ustawieniach faktury.</div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-    <!-- ════ DODATKOWE OPISY FAKTURY (nr_wiersza = 0) ════ -->
-    <?php $invoiceDescs = $addDescsByRow[0] ?? []; ?>
-    <?php if (!empty($invoiceDescs)): ?>
-    <div class="invoice-descs">
-        <div class="invoice-descs-title">Dodatkowe informacje</div>
-        <?php foreach ($invoiceDescs as $d):
-            $k = trim((string)($d->klucz ?? ''));
-            $v = trim((string)($d->wartosc ?? ''));
-            if ($k===''&&$v==='') continue;
-        ?>
-        <div class="invoice-desc-row">
-            <span style="min-width:120px;color:#6b7280;font-size:7.8pt"><?= h($k) ?>:</span>
-            <span style="font-weight:600;flex:1"><?= h($v) ?></span>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
-
-    <!-- ════ UWAGI (description) ════ -->
-    <?php if (!empty($invoice->description)): ?>
-    <div class="notes-box"><strong>Uwagi:</strong> <?= h($invoice->description) ?></div>
-    <?php endif; ?>
-
-    <!-- ════ PŁATNOŚĆ ════ -->
-    <?php
-    $alreadyPaid = (float)($invoice->alreadypaid ?? 0);
-    $remaining   = max(0.0, (float)($invoice->total ?? 0) - $alreadyPaid);
-    $payMethod   = $invoice->paymentmethod ?: 'transfer';
-    $methodLabel = ['transfer'=>'Przelew bankowy','cash'=>'Gotówka','compensation'=>'Kompensata'][$payMethod] ?? ucfirst($payMethod);
-    $bankAccFormatted = $bankAccount ?? '—';
-    if ($bankAccount && strlen($bankAccount) >= 26) {
-        $bankAccFormatted = trim(chunk_split($bankAccount, 4, ' '));
-    }
+    </thead>
+    <tbody>
+    <?php $rowIdx = 0; foreach ($invoice->invoice_contents as $it): $rowIdx++;
+        $qty    = (float)($it->quantity ?? $it->count ?? 1);
+        $unit   = $it->unit ?? ($lang === 'en' ? 'pcs' : 'szt.');
+        $net    = (float)$it->netto;
+        $brut   = (float)$it->brutto;
+        $vatAmt = $brut - $net;
+        $netUnit= $qty ? $net / $qty : $net;
+        $rateName = $it->vat->name ?? (isset($it->vat->rate) ? $it->vat->rate.'%' : '0%');
+        $rowDescs = $addDescsByRow[$rowIdx] ?? [];
     ?>
-    <div class="payment-section">
-        <div style="font-weight:700;color:#374151;margin-bottom:6px;font-size:9pt">Informacje o płatności</div>
-        <div class="payment-grid">
-            <div class="payment-item">
-                <div class="payment-label">Sposób płatności</div>
-                <div class="payment-val"><?= h($methodLabel) ?></div>
+    <tr>
+        <td><?= $rowIdx ?></td>
+        <td class="left">
+            <strong><?= h($it->name) ?></strong>
+            <?php if (!empty($it->product_desc)): ?>
+            <br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span>
+            <?php endif; ?>
+            <?php if (!empty($rowDescs)): ?>
+            <div class="item-descs">
+                <?php foreach ($rowDescs as $d):
+                    $k = trim((string)($d->klucz ?? ''));
+                    $v = trim((string)($d->wartosc ?? ''));
+                    if ($k===''&&$v==='') continue;
+                ?>
+                <div class="item-desc-row">
+                    <span class="item-desc-key"><?= h($k) ?>:</span>
+                    <span class="item-desc-val"><?= h($v) ?></span>
+                </div>
+                <?php endforeach; ?>
             </div>
-            <div class="payment-item">
-                <div class="payment-label">Termin płatności</div>
-                <div class="payment-val"><?= $fdate($invoice->paymentdate ?? $invoice->disposaldate ?? null) ?></div>
+            <?php endif; ?>
+        </td>
+        <td><?= $num2($qty) ?></td>
+        <td><?= h($unit) ?></td>
+        <td><?= $num2($netUnit) ?></td>
+        <?php if (!$isNoVat): ?>
+        <td><?= h($rateName) ?></td>
+        <td><?= $num2($net) ?></td>
+        <td><?= $num2($vatAmt) ?></td>
+        <td style="font-weight:700"><?= $num2($brut) ?></td>
+        <?php else: ?>
+        <td style="font-weight:700"><?= $num2($net) ?></td>
+        <?php endif; ?>
+    </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-size:10pt">
+                <?= h($t['total_due']) ?>:
+            </td>
+            <?php if (!$isNoVat): ?>
+            <td style="text-align:right"><?= $num2($invoice->netto ?? 0) ?></td>
+            <td style="text-align:right"><?= $num2($invoice->tax ?? 0) ?></td>
+            <?php endif; ?>
+            <td style="text-align:right;font-size:11pt"><?= $money($invoice->total ?? 0, $cur) ?></td>
+        </tr>
+    </tfoot>
+</table>
+<?php else: /* MARŻA */ ?>
+<table class="items-table">
+    <thead>
+        <tr>
+            <th style="width:4%"><?= h($t['no']) ?></th>
+            <th class="left" style="width:60%"><?= h($t['item_name']) ?></th>
+            <th style="width:8%"><?= h($t['qty']) ?></th>
+            <th style="width:8%"><?= h($t['unit']) ?></th>
+            <th style="width:10%"><?= h($t['price_net']) ?></th>
+            <th style="width:10%"><?= h($t['gross']) ?></th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php $rowIdx=0; foreach ($invoice->invoice_contents as $it): $rowIdx++;
+        $qty  = (float)($it->quantity ?? 1);
+        $unit = $it->unit ?? ($lang === 'en' ? 'pcs' : 'szt.');
+        $brut = (float)$it->brutto;
+        $unitG= $qty ? $brut/$qty : $brut;
+        $rowDescs = $addDescsByRow[$rowIdx] ?? [];
+    ?>
+    <tr>
+        <td><?= $rowIdx ?></td>
+        <td class="left">
+            <strong><?= h($it->name) ?></strong>
+            <?php if (!empty($it->product_desc)): ?><br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span><?php endif; ?>
+            <?php if (!empty($rowDescs)): ?>
+            <div class="item-descs">
+                <?php foreach ($rowDescs as $d): $k=trim((string)($d->klucz??'')); $v=trim((string)($d->wartosc??'')); if($k===''&&$v==='') continue; ?>
+                <div class="item-desc-row"><span class="item-desc-key"><?= h($k) ?>:</span><span class="item-desc-val"><?= h($v) ?></span></div>
+                <?php endforeach; ?>
             </div>
-            <div class="payment-item">
-                <div class="payment-label">Zapłacono</div>
-                <div class="payment-val"><?= $money($alreadyPaid, $cur) ?></div>
-            </div>
-            <div class="payment-item">
-                <div class="payment-label">Pozostało do zapłaty</div>
-                <div class="payment-val <?= $remaining > 0 ? 'remaining-highlight' : '' ?>"><?= $money($remaining, $cur) ?></div>
-            </div>
-        </div>
-        <?php if ($bankName || $bankAccount): ?>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb">
-            <?php if ($bankName): ?><span style="color:#6b7280;font-size:8pt">Bank: </span><strong><?= h($bankName) ?></strong>&nbsp;&nbsp;<?php endif; ?>
-            <?php if ($bankAccount): ?><span style="color:#6b7280;font-size:8pt">Nr konta: </span><span class="bank-account"><?= h($bankAccFormatted) ?></span><?php endif; ?>
+            <?php endif; ?>
+        </td>
+        <td><?= $num2($qty) ?></td>
+        <td><?= h($unit) ?></td>
+        <td><?= $num2($unitG) ?></td>
+        <td style="font-weight:700"><?= $num2($brut) ?></td>
+    </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="5" style="text-align:right;font-size:10pt"><?= h($t['total_due']) ?>:</td>
+            <td style="text-align:right;font-size:11pt"><?= $money($invoice->total ?? 0, $cur) ?></td>
+        </tr>
+    </tfoot>
+</table>
+<p style="font-size:8pt;color:#6b7280;margin-top:4px"><?= h($t['margin_note']) ?></p>
+<?php endif; ?>
+
+<!-- ════ PODSUMOWANIE VAT ════ -->
+<?php if (!$isMargin && !$isNoVat && !empty($vatSummary)): ?>
+<div class="summary-section">
+    <div class="vat-table-wrap">
+        <table class="vat-table">
+            <thead>
+                <tr>
+                    <th class="left"><?= h($t['vat_rate_col']) ?></th>
+                    <th><?= h($t['net_total']) ?></th>
+                    <th><?= h($t['vat_total']) ?></th>
+                    <th><?= h($t['gross_total']) ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($vatSummary as $row): ?>
+            <tr>
+                <td class="left"><?= h($row['name']) ?></td>
+                <td><?= $num2($row['netto']) ?></td>
+                <td><?= $num2($row['vat']) ?></td>
+                <td><?= $num2($row['brutto']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td class="left"><?= h($t['overall']) ?></td>
+                    <td><?= $num2($invoice->netto ?? 0) ?></td>
+                    <td><?= $num2($invoice->tax ?? 0) ?></td>
+                    <td><?= $num2($invoice->total ?? 0) ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    <div class="total-box">
+        <div class="total-label"><?= h($t['total_due']) ?>:</div>
+        <div class="total-amount"><?= $money($invoice->total ?? 0, $cur) ?></div>
+        <div class="total-words"><?= h($amountInWords($invoice->total ?? 0, $cur)) ?></div>
+    </div>
+</div>
+<?php else: ?>
+<div style="text-align:right;margin-bottom:.5cm">
+    <div style="font-size:8pt;color:#6b7280"><?= h($t['total_due']) ?>:</div>
+    <div style="font-size:16pt;font-weight:700;color:#1e40af"><?= $money($invoice->total ?? 0, $cur) ?></div>
+    <div style="font-size:7.5pt;color:#555;margin-top:3px"><?= h($amountInWords($invoice->total ?? 0, $cur)) ?></div>
+</div>
+<?php endif; ?>
+
+<!-- ════ ODWROTNE OBCIĄŻENIE ════ -->
+<?php if ($hasReverseCharge): ?>
+<div class="rc-box">
+    <div class="rc-box-title">⟳ <?= h($t['rc_title']) ?></div>
+    <div class="rc-text"><?= h($t['rc_text']) ?></div>
+    <?php
+    $rcVatNo = $buyer->vat_eu ?? null;
+    if (!$rcVatNo && !empty($buyer->vat_prefix ?? null)) {
+        $rcVatNo = ($buyer->vat_prefix ?? '') . ($buyer->nip ?? '');
+    }
+    if (!$rcVatNo && !empty($ann['buyer_vat_eu'] ?? null)) {
+        $rcVatNo = $ann['buyer_vat_eu'];
+    }
+    if ($rcVatNo): ?>
+    <div class="rc-buyer"><strong><?= h($t['rc_buyer_ref']) ?>:</strong> <?= h($rcVatNo) ?></div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- ════ KURS WALUT ════ -->
+<?php if ($isForeign): ?>
+<div class="fx-box">
+    <div class="fx-box-title">💱 <?= h($t['fx_title']) ?> — <?= h($cur) ?></div>
+    <div class="fx-grid">
+        <?php if ($fxRate > 0): ?>
+        <div class="fx-item">
+            <div class="fx-item-label"><?= h($t['fx_rate']) ?></div>
+            <div class="fx-item-val">1 <?= h($cur) ?> = <?= $num4($fxRate) ?> PLN</div>
         </div>
         <?php endif; ?>
-        <div style="margin-top:6px;font-size:8pt;color:#555">
-            Słownie: <?= h($amountInWords($invoice->total ?? 0, $cur)) ?>
+        <?php if ($fxDateStr): ?>
+        <div class="fx-item">
+            <div class="fx-item-label"><?= h($t['fx_date']) ?></div>
+            <div class="fx-item-val"><?= h($fxDateStr) ?></div>
         </div>
+        <?php endif; ?>
+        <?php if ($fxTable !== ''): ?>
+        <div class="fx-item">
+            <div class="fx-item-label"><?= h($t['fx_table']) ?></div>
+            <div class="fx-item-val"><?= h($fxTable) ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if ($taxPln !== null): ?>
+        <div class="fx-item">
+            <div class="fx-item-label"><?= h($t['fx_vat_pln']) ?></div>
+            <div class="fx-item-val" style="color:#1e40af"><?= $num2($taxPln) ?> PLN</div>
+        </div>
+        <?php endif; ?>
+        <?php if ($totalPln !== null): ?>
+        <div class="fx-item">
+            <div class="fx-item-label"><?= h($t['fx_gross_pln']) ?></div>
+            <div class="fx-item-val" style="color:#1e40af"><?= $num2($totalPln) ?> PLN</div>
+        </div>
+        <?php endif; ?>
     </div>
+    <div class="fx-legal">
+        <?php if ($fxRate > 0): ?>
+        <?= h(sprintf($t['fx_legal'], $cur)) ?>
+        <?php if ($fxDateStr): ?> (<?= h($fxDateStr) ?><?= $fxTable ? ', '.h($fxTable) : '' ?>)<?php endif; ?>
+        <?php else: ?>
+        <span style="color:#dc2626"><?= h($t['fx_no_rate']) ?></span>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
 
-    <!-- ════ PODPISY ════ -->
-    <div class="signatures">
-        <div class="sig-block">
-            <div style="height:30px"></div>
-            <div class="sig-line">Podpis osoby upoważnionej<br>do odbioru faktury</div>
+<!-- ════ DODATKOWE OPISY FAKTURY (nr_wiersza = 0) ════ -->
+<?php $invoiceDescs = $addDescsByRow[0] ?? []; ?>
+<?php if (!empty($invoiceDescs)): ?>
+<div class="invoice-descs">
+    <div class="invoice-descs-title"><?= h($t['add_info']) ?></div>
+    <?php foreach ($invoiceDescs as $d):
+        $k = trim((string)($d->klucz ?? ''));
+        $v = trim((string)($d->wartosc ?? ''));
+        if ($k===''&&$v==='') continue;
+    ?>
+    <div class="invoice-desc-row">
+        <span style="min-width:120px;color:#6b7280;font-size:7.8pt"><?= h($k) ?>:</span>
+        <span style="font-weight:600;flex:1"><?= h($v) ?></span>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<!-- ════ UWAGI ════ -->
+<?php if (!empty($invoice->description)): ?>
+<div class="notes-box"><strong><?= h($t['notes']) ?>:</strong> <?= h($invoice->description) ?></div>
+<?php endif; ?>
+
+<!-- ════ PŁATNOŚĆ ════ -->
+<?php
+$alreadyPaid = (float)($invoice->alreadypaid ?? 0);
+$remaining   = max(0.0, (float)($invoice->total ?? 0) - $alreadyPaid);
+$payMethod   = $invoice->paymentmethod ?: 'transfer';
+$methodLabel = [
+    'transfer'    => $t['pay_transfer'],
+    'cash'        => $t['pay_cash'],
+    'compensation'=> $t['pay_compensation'],
+][$payMethod] ?? ucfirst($payMethod);
+$bankAccFormatted = $bankAccount ?? '—';
+if ($bankAccount && strlen($bankAccount) >= 26) {
+    $bankAccFormatted = trim(chunk_split($bankAccount, 4, ' '));
+}
+?>
+<div class="payment-section">
+    <div style="font-weight:700;color:#374151;margin-bottom:6px;font-size:9pt"><?= h($t['payment_info']) ?></div>
+    <div class="payment-grid">
+        <div class="payment-item">
+            <div class="payment-label"><?= h($t['pay_method']) ?></div>
+            <div class="payment-val"><?= h($methodLabel) ?></div>
         </div>
-        <div class="sig-block">
-            <div style="height:30px"></div>
-            <div class="sig-line">Data odbioru</div>
+        <div class="payment-item">
+            <div class="payment-label"><?= h($t['pay_due']) ?></div>
+            <div class="payment-val"><?= $fdate($invoice->paymentdate ?? $invoice->disposaldate ?? null) ?></div>
         </div>
-        <div class="sig-block">
-            <div style="height:30px;text-align:right;padding-right:4px;font-size:8pt;color:#555"><?= h($invoice->user_name ?? '') ?></div>
-            <div class="sig-line">Podpis i pieczęć wystawcy</div>
+        <div class="payment-item">
+            <div class="payment-label"><?= h($t['paid']) ?></div>
+            <div class="payment-val"><?= $money($alreadyPaid, $cur) ?></div>
+        </div>
+        <div class="payment-item">
+            <div class="payment-label"><?= h($t['remaining']) ?></div>
+            <div class="payment-val <?= $remaining > 0 ? 'remaining-highlight' : '' ?>"><?= $money($remaining, $cur) ?></div>
         </div>
     </div>
+    <?php if ($bankName || $bankAccount): ?>
+    <div style="padding-top:6px;border-top:1px solid #e5e7eb;font-size:8.5pt">
+        <?php if ($bankName): ?><span class="payment-label"><?= h($t['bank']) ?>: </span><strong><?= h($bankName) ?></strong>&nbsp;&nbsp;<?php endif; ?>
+        <?php if ($bankAccount): ?><span class="payment-label"><?= h($t['account']) ?>: </span><span class="bank-account"><?= h($bankAccFormatted) ?></span><?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <div style="margin-top:6px;font-size:8pt;color:#555">
+        <?= h($t['in_words']) ?>: <?= h($amountInWords($invoice->total ?? 0, $cur)) ?>
+    </div>
+</div>
+
+<!-- ════ PODPISY ════ -->
+<div class="signatures">
+    <div class="sig-block">
+        <div style="height:32px"></div>
+        <div class="sig-line"><?= nl2br(h($t['sig_receiver'])) ?></div>
+    </div>
+    <div class="sig-block">
+        <div style="height:32px"></div>
+        <div class="sig-line"><?= h($t['sig_date']) ?></div>
+    </div>
+    <div class="sig-block">
+        <div style="height:32px;text-align:right;font-size:8pt;color:#555;padding-right:4px"><?= h($invoice->user_name ?? '') ?></div>
+        <div class="sig-line"><?= nl2br(h($t['sig_issuer'])) ?></div>
+    </div>
+</div>
+
+<?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
+<div class="draft-watermark"><?= h($t['draft_footer']) ?></div>
+<?php endif; ?>
 
 </div><!-- /sheet -->
-
 <script>
-// Auto-print jeśli URL zawiera ?autoprint=1
 if (new URLSearchParams(location.search).get('autoprint') === '1') {
-    window.addEventListener('load', function() {
-        setTimeout(function() { window.print(); }, 400);
-    });
+    window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
 }
 </script>
 </body>
