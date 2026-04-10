@@ -441,12 +441,21 @@ $quickFilters = [
                     data-symbol="<?= h($order->symbol) ?>">
             </td>
 
-            <!-- Symbol + data dok. -->
+            <!-- Symbol + data dok. + nr zleceń kontrahenta -->
             <td class="text-nowrap">
                 <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>"
                    class="fw-semibold text-decoration-none d-block"><?= h($order->symbol) ?></a>
                 <?php if ($dateDoc): ?>
                     <span class="text-muted" style="font-size:.72rem"><?= h($dateDoc) ?></span>
+                <?php endif; ?>
+                <?php
+                    $tyt1 = trim((string)($order->title1 ?? ''));
+                    $tyt2 = trim((string)($order->title2 ?? ''));
+                    $tytParts = array_filter([$tyt1, $tyt2]);
+                    if ($tytParts): ?>
+                    <div class="text-primary" style="font-size:.72rem" title="Nr zlecenia kontrahenta">
+                        <i class="ri-file-list-3-line me-1 opacity-50"></i><?= h(implode(' / ', $tytParts)) ?>
+                    </div>
                 <?php endif; ?>
             </td>
 
