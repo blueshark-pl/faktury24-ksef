@@ -750,19 +750,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 <!-- ════ ODWROTNE OBCIĄŻENIE ════ -->
 <?php if ($hasReverseCharge): ?>
 <div class="rc-box">
-    <div class="rc-box-title">⟳ <?= h($t['rc_title']) ?></div>
-    <div class="rc-text"><?= h($t['rc_text']) ?></div>
-    <?php
-    $rcVatNo = $buyer->vat_eu ?? null;
-    if (!$rcVatNo && !empty($buyer->vat_prefix ?? null)) {
-        $rcVatNo = ($buyer->vat_prefix ?? '') . ($buyer->nip ?? '');
-    }
-    if (!$rcVatNo && !empty($ann['buyer_vat_eu'] ?? null)) {
-        $rcVatNo = $ann['buyer_vat_eu'];
-    }
-    if ($rcVatNo): ?>
-    <div class="rc-buyer"><strong><?= h($t['rc_buyer_ref']) ?>:</strong> <?= h($rcVatNo) ?></div>
-    <?php endif; ?>
+    <div class="rc-box-title" style="font-family:'DejaVu Sans',sans-serif;font-size:11pt;font-weight:bold;color:#dc2626;letter-spacing:.04em">⟳ <?= h($t['rc_title']) ?></div>
 </div>
 <?php endif; ?>
 
@@ -855,24 +843,24 @@ if ($bankAccount && strlen($bankAccount) >= 26) {
 ?>
 <div class="payment-section">
     <div style="font-weight:700;color:#374151;margin-bottom:6px;font-size:9pt"><?= h($t['payment_info']) ?></div>
-    <div class="payment-grid">
-        <div class="payment-item">
-            <div class="payment-label"><?= h($t['pay_method']) ?></div>
-            <div class="payment-val"><?= h($methodLabel) ?></div>
-        </div>
-        <div class="payment-item">
-            <div class="payment-label"><?= h($t['pay_due']) ?></div>
-            <div class="payment-val"><?= $fdate($invoice->paymentdate ?? $invoice->disposaldate ?? null) ?></div>
-        </div>
-        <div class="payment-item">
-            <div class="payment-label"><?= h($t['paid']) ?></div>
-            <div class="payment-val"><?= $money($alreadyPaid, $cur) ?></div>
-        </div>
-        <div class="payment-item">
-            <div class="payment-label"><?= h($t['remaining']) ?></div>
-            <div class="payment-val <?= $remaining > 0 ? 'remaining-highlight' : '' ?>"><?= $money($remaining, $cur) ?></div>
-        </div>
-    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;font-family:'DejaVu Sans',sans-serif;font-size:8.5pt"><tbody><tr>
+        <td style="font-family:'DejaVu Sans',sans-serif;padding:0 12px 0 0;vertical-align:top">
+            <div style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;font-size:7.8pt"><?= h($t['pay_method']) ?></div>
+            <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;font-size:9pt"><?= h($methodLabel) ?></div>
+        </td>
+        <td style="font-family:'DejaVu Sans',sans-serif;padding:0 12px 0 0;vertical-align:top">
+            <div style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;font-size:7.8pt"><?= h($t['pay_due']) ?></div>
+            <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;font-size:9pt"><?= $fdate($invoice->paymentdate ?? $invoice->disposaldate ?? null) ?></div>
+        </td>
+        <td style="font-family:'DejaVu Sans',sans-serif;padding:0 12px 0 0;vertical-align:top">
+            <div style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;font-size:7.8pt"><?= h($t['paid']) ?></div>
+            <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;font-size:9pt"><?= $money($alreadyPaid, $cur) ?></div>
+        </td>
+        <td style="font-family:'DejaVu Sans',sans-serif;vertical-align:top">
+            <div style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;font-size:7.8pt"><?= h($t['remaining']) ?></div>
+            <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;font-size:9pt;<?= $remaining > 0 ? 'color:#dc2626' : '' ?>"><?= $money($remaining, $cur) ?></div>
+        </td>
+    </tr></tbody></table>
     <?php if ($bankName || $bankAccount): ?>
     <div style="padding-top:6px;border-top:1px solid #e5e7eb;font-size:8.5pt">
         <?php if ($bankName): ?><span class="payment-label"><?= h($t['bank']) ?>: </span><strong><?= h($bankName) ?></strong>&nbsp;&nbsp;<?php endif; ?>
