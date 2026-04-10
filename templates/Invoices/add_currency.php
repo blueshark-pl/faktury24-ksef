@@ -728,6 +728,9 @@ $gtuSelectHtml .= '</select>';
                <tr>
   <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
+    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 6.85% od brutto">
+      <i class="ri-gas-station-line me-1"></i>Fuel surcharge
+    </button>
   </td>
 </tr>
 
@@ -2524,6 +2527,50 @@ $('#gus-fetch-btn').on('click', function(){
     $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
     idx++;
+  });
+
+  // ====== FUEL SURCHARGE (6.85% od brutto, stawka: nie podl. UE) ======
+  $('#btn-fuel-surcharge').on('click', function () {
+    var grossBase = toNum($('#sum-gross').val(), 0);
+    if (grossBase <= 0) {
+      alert('Najpierw dodaj pozycje — brutto wynosi 0.');
+      return;
+    }
+    var surchargeRate = 0.0685;
+    // Przy "nie podlega" stawka = 0%, więc netto = brutto
+    var surchargeNetto = +(grossBase * surchargeRate).toFixed(2);
+
+    // Znajdź UUID stawki "nie podl." (rate=0, nazwa zawiera "nie podl" ale NIE "UE")
+    var vatNpId = null;
+    $itemsBody.find('.item-vatcode').first().find('option').each(function(){
+      var txt = ($(this).text() || '').toLowerCase();
+      if (txt.indexOf('nie podl.') !== -1 && txt.indexOf('ue') === -1) {
+        vatNpId = $(this).val(); return false;
+      }
+    });
+    // Fallback: "nie podl. UE" jeśli nie znaleziono bez "UE"
+    if (!vatNpId) {
+      $itemsBody.find('.item-vatcode').first().find('option').each(function(){
+        var txt = ($(this).text() || '').toLowerCase();
+        if (txt.indexOf('nie podl') !== -1) {
+          vatNpId = $(this).val(); return false;
+        }
+      });
+    }
+
+    $('#btn-add-item').trigger('click');
+    var $tr = getItemRows().last();
+    prefillRow($tr, {
+      name: 'fuel surcharge 6.85%',
+      quantity: 1,
+      unit: 'szt.',
+      price: surchargeNetto,
+      price_mode: 'net',
+      vat_code_id: vatNpId,
+      gtu_code: 'GTU_13',
+      discount_percent: 0
+    });
+    allCalc();
   });
 
   // ====== PREFILL: wywołanie (po rejestracji handlera btn-add-item) ======
