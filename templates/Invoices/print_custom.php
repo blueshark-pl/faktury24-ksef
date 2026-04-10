@@ -385,7 +385,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .party-detail { font-size:8pt; color:#444; line-height:1.5; }
 
 /* Summary */
-.summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; }
+.summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; page-break-inside:avoid; }
 .vat-table-wrap { flex:1; }
 
 /* Tabela pozycji */
@@ -416,13 +416,13 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .total-words { font-size:7pt; color:#555; margin-top:3px; white-space:nowrap; }
 
 /* Odwrotne obciążenie */
-.rc-box { border:2px solid #dc2626; background:#fff5f5; border-radius:6px; padding:10px 14px; margin-bottom:.5cm; }
+.rc-box { border:2px solid #dc2626; background:#fff5f5; border-radius:6px; padding:10px 14px; margin-bottom:.5cm; page-break-inside:avoid; }
 .rc-box-title { font-size:11pt; font-weight:700; color:#dc2626; letter-spacing:.04em; margin-bottom:5px; }
 .rc-text { font-size:9pt; color:#7f1d1d; line-height:1.5; }
 .rc-buyer { margin-top:6px; font-size:8.5pt; }
 
 /* Kurs walut */
-.fx-box { border:1.5px solid #bfdbfe; background:#eff6ff; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; }
+.fx-box { border:1.5px solid #bfdbfe; background:#eff6ff; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; page-break-inside:avoid; }
 .fx-box-title { font-weight:700; color:#1e40af; font-size:9pt; margin-bottom:5px; }
 .fx-grid { display:flex; gap:1.5cm; flex-wrap:wrap; }
 .fx-item-label { color:#6b7280; font-size:7.8pt; }
@@ -430,13 +430,13 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .fx-legal { font-size:7.5pt; color:#6b7280; margin-top:5px; border-top:1px solid #bfdbfe; padding-top:5px; }
 
 /* Dodatkowe opisy faktury */
-.invoice-descs { border-left:3px solid #6366f1; background:#f5f3ff; border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:.5cm; font-family:'DejaVu Sans',Arial,sans-serif; }
+.invoice-descs { border-left:3px solid #6366f1; background:#f5f3ff; border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:.5cm; font-family:'DejaVu Sans',Arial,sans-serif; page-break-inside:avoid; }
 .invoice-descs-title { font-weight:700; color:#4f46e5; font-size:8.5pt; margin-bottom:5px; font-family:'DejaVu Sans',Arial,sans-serif; }
 .invoice-desc-row { display:flex; gap:8px; font-size:8pt; color:#334155; line-height:1.6; border-bottom:1px solid #ede9fe; font-family:'DejaVu Sans',Arial,sans-serif; }
 .invoice-desc-row:last-child { border-bottom:none; }
 
 /* Płatność */
-.payment-section { border:1px solid #e5e7eb; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; }
+.payment-section { border:1px solid #e5e7eb; border-radius:6px; padding:8px 12px; margin-bottom:.5cm; font-size:8.5pt; page-break-inside:avoid; }
 .payment-grid { display:flex; gap:1cm; flex-wrap:wrap; margin-bottom:6px; }
 .payment-item { min-width:4cm; }
 .payment-label { color:#6b7280; font-size:7.8pt; }
@@ -448,7 +448,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .notes-box { background:#fafafa; border:1px solid #e5e7eb; border-radius:4px; padding:6px 10px; font-size:8.5pt; color:#444; margin-bottom:.4cm; }
 
 /* Podpisy */
-.signatures { display:flex; justify-content:space-between; margin-top:1.5cm; font-size:8pt; }
+.signatures { display:flex; justify-content:space-between; margin-top:1.5cm; font-size:8pt; page-break-inside:avoid; }
 .sig-block { width:30%; text-align:center; }
 .sig-line { border-top:1px solid #999; padding-top:5px; color:#6b7280; white-space:pre-line; }
 
