@@ -455,6 +455,9 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 /* Stopka robocza */
 .draft-watermark { text-align:center; color:#fca5a5; font-size:8pt; font-weight:700; margin-top:.5cm; letter-spacing:.1em; }
 
+/* Stopka faktury */
+.inv-footer { border-top:1px solid #e5e7eb; margin-top:.6cm; padding-top:5px; text-align:center; font-size:7pt; color:#6b7280; line-height:1.6; font-family:'DejaVu Sans',sans-serif; }
+
 /* Toolbar ekranowy */
 .print-toolbar { position:fixed; top:16px; right:20px; display:flex; gap:6px; z-index:100; align-items:center; }
 .print-btn { padding:7px 16px; border-radius:6px; border:none; cursor:pointer; font-size:9.5pt; font-weight:600; text-decoration:none; display:inline-block; }
@@ -891,6 +894,46 @@ if ($bankAccount && strlen($bankAccount) >= 26) {
 <?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
 <div class="draft-watermark"><?= h($t['draft_footer']) ?></div>
 <?php endif; ?>
+
+<!-- ════ STOPKA ════ -->
+<?php
+$ftrName = $seller->name ?? null;
+$ftrStreet = trim(($seller->street ?? '') . ' ' . ($seller->building_number ?? '') . (isset($seller->flat_number) && $seller->flat_number ? '/'.$seller->flat_number : ''));
+$ftrCity = trim(($seller->zip ?? $seller->postal_code ?? '') . ' ' . ($seller->city ?? ''));
+$ftrNip = $seller->nip ?? null;
+$ftrRegs = json_decode((string)($seller->registers_json ?? ''), true) ?: [];
+$ftrKrs = ''; $ftrRegon = ''; $ftrCapital = '';
+foreach ($ftrRegs as $r) {
+    if (!empty($r['krs']))     $ftrKrs    = $r['krs'];
+    if (!empty($r['regon']))   $ftrRegon  = $r['regon'];
+    if (!empty($r['kapital'])) $ftrCapital = $r['kapital'];
+}
+$ftrPhone = $seller->phone ?? null;
+$ftrWww   = $seller->website ?? $seller->www ?? null;
+$ftrEmail = $seller->email ?? null;
+?>
+<div class="inv-footer" style="font-family:'DejaVu Sans',sans-serif">
+    <?php if ($ftrName): ?>
+    <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;color:#374151;font-size:7.5pt"><?= h($ftrName) ?></div>
+    <?php endif; ?>
+    <div style="font-family:'DejaVu Sans',sans-serif">
+        <?= h(implode(' * ', array_filter([$ftrStreet ? $ftrStreet.($ftrCity ? ', '.$ftrCity : '') : $ftrCity]))) ?>
+        <?php if ($ftrNip):   ?> &nbsp;·&nbsp; NIP <?= h($ftrNip) ?><?php endif; ?>
+        <?php if ($ftrKrs):   ?> &nbsp;·&nbsp; KRS <?= h($ftrKrs) ?><?php endif; ?>
+        <?php if ($ftrRegon): ?> &nbsp;·&nbsp; REGON <?= h($ftrRegon) ?><?php endif; ?>
+        <?php if ($ftrCapital): ?> &nbsp;·&nbsp; <?= $lang === 'en' ? 'Share capital' : 'Kapitał zakładowy' ?> <?= h($ftrCapital) ?><?php endif; ?>
+    </div>
+    <?php
+    $ftrContact = array_filter([
+        $ftrPhone ? 'Tel. ' . $ftrPhone : null,
+        $ftrWww   ? $ftrWww             : null,
+        $ftrEmail ? $ftrEmail           : null,
+    ]);
+    ?>
+    <?php if ($ftrContact): ?>
+    <div style="font-family:'DejaVu Sans',sans-serif"><?= h(implode(' &nbsp;·&nbsp; ', $ftrContact)) ?></div>
+    <?php endif; ?>
+</div>
 
 </div><!-- /sheet -->
 <?php if (empty($renderPdf)): ?>
