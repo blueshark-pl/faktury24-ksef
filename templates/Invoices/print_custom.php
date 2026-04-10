@@ -603,15 +603,15 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
             <br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span>
             <?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
-            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:7.8pt;font-family:'DejaVu Sans',Arial,sans-serif;border-collapse:collapse"><tbody>
+            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:7.8pt;font-family:'DejaVu Sans',sans-serif;border-collapse:collapse"><tbody>
                 <?php foreach ($rowDescs as $d):
                     $k = trim((string)($d->klucz ?? ''));
                     $v = trim((string)($d->wartosc ?? ''));
                     if ($k===''&&$v==='') continue;
                 ?>
-                <tr style="font-family:'DejaVu Sans',Arial,sans-serif">
-                    <td style="color:#6b7280;white-space:nowrap;width:90px;padding:1px 6px 1px 6px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($k)) ?>:</td>
-                    <td style="font-weight:600;padding:1px 4px;font-family:'DejaVu Sans',Arial,sans-serif"><?= h($translatePhrase($v)) ?></td>
+                <tr>
+                    <td style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;white-space:nowrap;width:90px;padding:1px 6px;"><?= h($translatePhrase($k)) ?>:</td>
+                    <td style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;padding:1px 4px;"><?= h($translatePhrase($v)) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody></table>
@@ -814,17 +814,19 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 <?php $invoiceDescs = $addDescsByRow[0] ?? []; ?>
 <?php if (!empty($invoiceDescs)): ?>
 <div class="invoice-descs">
-    <div class="invoice-descs-title"><?= h($t['add_info']) ?></div>
+    <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;color:#4f46e5;font-size:8.5pt;margin-bottom:5px"><?= h($t['add_info']) ?></div>
+    <table style="width:100%;border-collapse:collapse;font-family:'DejaVu Sans',sans-serif;font-size:8pt">
     <?php foreach ($invoiceDescs as $d):
         $k = trim((string)($d->klucz ?? ''));
         $v = trim((string)($d->wartosc ?? ''));
         if ($k===''&&$v==='') continue;
     ?>
-    <div class="invoice-desc-row">
-        <span style="min-width:120px;color:#6b7280;font-size:7.8pt"><?= h($k) ?>:</span>
-        <span style="font-weight:600;flex:1"><?= h($v) ?></span>
-    </div>
+    <tr>
+        <td style="font-family:'DejaVu Sans',sans-serif;width:130px;color:#6b7280;font-size:7.8pt;padding:1px 6px 1px 0;border-bottom:1px solid #ede9fe"><?= h($translatePhrase($k)) ?>:</td>
+        <td style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;padding:1px 4px;border-bottom:1px solid #ede9fe"><?= h($translatePhrase($v)) ?></td>
+    </tr>
     <?php endforeach; ?>
+    </table>
 </div>
 <?php endif; ?>
 
