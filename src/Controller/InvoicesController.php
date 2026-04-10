@@ -4831,6 +4831,9 @@ private function makeClient(string $environment): KsefClient
         // Język dokumentu (pl/en)
         $lang = in_array($this->request->getQuery('lang'), ['en'], true) ? 'en' : 'pl';
 
+        // Tryb renderowania: pdf = przez CakePdf/DomPdf, html = przeglądarka
+        $renderPdf = $this->request->getQuery('render') === 'pdf';
+
         // Adnotacje (reverse_charge, split_payment, itp.)
         $ann = [];
         if (!empty($invoice->annotations)) {
@@ -4851,8 +4854,29 @@ private function makeClient(string $environment): KsefClient
             }
         }
 
-        $this->viewBuilder()->setLayout('ajax'); // brak wrappera layoutu — standalone HTML
-        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge'));
+        $safeNumber = preg_replace('/[^A-Za-z0-9_\-]/', '_', (string)($invoice->fullnumber ?: $invoice->id));
+        $filename   = 'faktura_custom_' . $safeNumber . ($lang === 'en' ? '_EN' : '') . '.pdf';
+
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf'));
+
+        if ($renderPdf) {
+            $this->viewBuilder()
+                ->setClassName('CakePdf.Pdf')
+                ->setTemplate('print_custom')
+                ->setLayout('ajax')
+                ->setOptions([
+                    'pdfConfig' => [
+                        'filename'    => $filename,
+                        'download'    => true,
+                        'orientation' => 'portrait',
+                        'paper'       => 'A4',
+                        'engine'      => 'CakePdf.DomPdf',
+                    ],
+                ]);
+        } else {
+            $this->viewBuilder()->setLayout('ajax'); // standalone HTML z toolbarem
+        }
+
         return null;
     }
 

@@ -809,8 +809,10 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                   <li>
                     <a href="#" class="dropdown-item btn-pdf-custom-lang"
                        data-url-pl="<?= $this->Url->build(['action' => 'printCustom', $inv->id]) ?>"
-                       data-url-en="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['lang' => 'en']]) ?>">
-                      <i class="ri-file-pdf-2-line me-2"></i> PDF custom (przeglądarka)
+                       data-url-en="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['lang' => 'en']]) ?>"
+                       data-url-pdf-pl="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['render' => 'pdf']]) ?>"
+                       data-url-pdf-en="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['render' => 'pdf', 'lang' => 'en']]) ?>">
+                      <i class="ri-file-pdf-2-line me-2"></i> PDF custom
                     </a>
                   </li>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
@@ -1468,14 +1470,24 @@ document.addEventListener('DOMContentLoaded', function(){
     if (!btn) return;
     e.preventDefault();
     Swal.fire({
-      title: 'PDF custom (przeglądarka)',
-      html: '<p class="mb-3">Wybierz język faktury:</p>'
-          + '<div class="d-flex justify-content-center gap-3">'
-          + '  <button id="swal-cust-pl" class="btn btn-outline-primary btn-lg px-4">'
-          + '    <i class="fi fi-pl me-2" style="font-size:1.2em"></i>Polski'
+      title: 'PDF custom',
+      html: '<p class="mb-2 text-muted" style="font-size:.85em">Podgląd w przeglądarce:</p>'
+          + '<div class="d-flex justify-content-center gap-2 mb-3">'
+          + '  <button id="swal-cust-pl" class="btn btn-outline-primary px-3">'
+          + '    <i class="fi fi-pl me-1" style="font-size:1.1em"></i>Polski'
           + '  </button>'
-          + '  <button id="swal-cust-en" class="btn btn-outline-primary btn-lg px-4">'
-          + '    <i class="fi fi-gb me-2" style="font-size:1.2em"></i>English'
+          + '  <button id="swal-cust-en" class="btn btn-outline-primary px-3">'
+          + '    <i class="fi fi-gb me-1" style="font-size:1.1em"></i>English'
+          + '  </button>'
+          + '</div>'
+          + '<hr class="my-2">'
+          + '<p class="mb-2 text-muted" style="font-size:.85em">Pobierz PDF (DomPdf):</p>'
+          + '<div class="d-flex justify-content-center gap-2">'
+          + '  <button id="swal-cust-pdf-pl" class="btn btn-primary px-3">'
+          + '    <i class="ri-download-line me-1"></i><i class="fi fi-pl me-1" style="font-size:1.1em"></i>PL'
+          + '  </button>'
+          + '  <button id="swal-cust-pdf-en" class="btn btn-primary px-3">'
+          + '    <i class="ri-download-line me-1"></i><i class="fi fi-gb me-1" style="font-size:1.1em"></i>EN'
           + '  </button>'
           + '</div>',
       showConfirmButton: false,
@@ -1487,6 +1499,14 @@ document.addEventListener('DOMContentLoaded', function(){
         });
         document.getElementById('swal-cust-en').addEventListener('click', function () {
           window.open(btn.dataset.urlEn, '_blank');
+          Swal.close();
+        });
+        document.getElementById('swal-cust-pdf-pl').addEventListener('click', function () {
+          window.location.href = btn.dataset.urlPdfPl;
+          Swal.close();
+        });
+        document.getElementById('swal-cust-pdf-en').addEventListener('click', function () {
+          window.location.href = btn.dataset.urlPdfEn;
           Swal.close();
         });
       }

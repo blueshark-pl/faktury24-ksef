@@ -445,7 +445,8 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
 </head>
 <body>
 
-<!-- ── Toolbar ── -->
+<!-- ── Toolbar (tylko HTML, ukryty przy renderowaniu PDF) ── -->
+<?php if (empty($renderPdf)): ?>
 <div class="print-toolbar no-print">
     <a href="<?= h($urlPl) ?>" class="print-btn <?= $lang === 'pl' ? 'print-btn-active' : 'print-btn-secondary' ?>"><?= h($t['lang_pl']) ?></a>
     <span class="lang-sep">|</span>
@@ -454,6 +455,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
     <button class="print-btn print-btn-secondary" onclick="window.close()"><?= h($t['close_btn']) ?></button>
     <button class="print-btn print-btn-primary" onclick="window.print()"><?= h($t['print_btn']) ?></button>
 </div>
+<?php endif; ?>
 
 <div class="sheet">
 
@@ -846,10 +848,12 @@ if ($bankAccount && strlen($bankAccount) >= 26) {
 <?php endif; ?>
 
 </div><!-- /sheet -->
+<?php if (empty($renderPdf)): ?>
 <script>
 if (new URLSearchParams(location.search).get('autoprint') === '1') {
     window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 400); });
 }
 </script>
+<?php endif; ?>
 </body>
 </html>
