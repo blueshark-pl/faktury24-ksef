@@ -365,6 +365,10 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
 .party-name { font-size:11pt; font-weight:700; color:#111; }
 .party-detail { font-size:8.5pt; color:#444; line-height:1.5; }
 
+/* Summary */
+.summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; }
+.vat-table-wrap { flex:1; }
+
 /* Tabela pozycji */
 .items-table { width:100%; border-collapse:collapse; margin-bottom:.5cm; font-size:8.5pt; }
 .items-table thead th { background:#1e40af; color:#fff; padding:5px 6px; text-align:center; font-weight:600; vertical-align:middle; }
@@ -382,8 +386,6 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
 .item-desc-val { font-weight:600; flex:1; }
 
 /* VAT summary */
-.summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; }
-.vat-table-wrap { flex:1; }
 .vat-table { width:100%; border-collapse:collapse; font-size:8.5pt; }
 .vat-table th { background:#f1f5f9; padding:4px 6px; font-weight:600; border:1px solid #e5e7eb; text-align:center; }
 .vat-table td { padding:4px 6px; border:1px solid #e5e7eb; text-align:right; }
@@ -441,6 +443,33 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
 .print-btn-secondary { background:#f1f5f9; color:#374151; border:1px solid #d1d5db; }
 .print-btn-active { background:#166534; color:#fff; }
 .lang-sep { color:#d1d5db; font-size:10pt; }
+<?php if (!empty($renderPdf)): ?>
+/* ── DomPdf overrides: flex → table layout ── */
+.hdr            { display:table; width:100%; border-bottom:2.5px solid #1e40af; margin-bottom:.8cm; padding-bottom:.4cm; }
+.hdr > div      { display:table-cell; vertical-align:top; }
+.hdr > div:last-child { text-align:right; width:220px; }
+.hdr img        { max-height:55px; max-width:190px; }
+.parties        { display:table; width:100%; margin-bottom:.7cm; }
+.party          { display:table-cell; vertical-align:top; width:50%; padding-right:1cm; }
+.party:last-child { padding-right:0; }
+.summary-section { display:table; width:100%; margin-bottom:.5cm; }
+.vat-table-wrap { display:table-cell; vertical-align:top; }
+.total-box      { display:table-cell; vertical-align:top; text-align:right; width:6cm; padding-left:.5cm; }
+.fx-grid        { display:table; width:100%; }
+.fx-item        { display:table-cell; vertical-align:top; padding-right:1cm; }
+.fx-item:last-child { padding-right:0; }
+.payment-grid   { display:table; width:100%; margin-bottom:6px; }
+.payment-item   { display:table-cell; vertical-align:top; padding-right:.8cm; }
+.payment-item:last-child { padding-right:0; }
+.signatures     { display:table; width:100%; margin-top:1.5cm; }
+.sig-block      { display:table-cell; width:33%; text-align:center; }
+.item-desc-row  { display:table; width:100%; }
+.item-desc-key  { display:table-cell; color:#6b7280; white-space:nowrap; width:90px; padding-right:8px; }
+.item-desc-val  { display:table-cell; font-weight:600; }
+.invoice-desc-row { display:table; width:100%; border-bottom:1px solid #ede9fe; }
+.invoice-desc-row > span:first-child { display:table-cell; width:130px; color:#6b7280; font-size:7.8pt; padding-right:8px; }
+.invoice-desc-row > span:last-child  { display:table-cell; font-weight:600; }
+<?php endif; ?>
 </style>
 </head>
 <body>
