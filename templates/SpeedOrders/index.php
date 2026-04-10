@@ -193,10 +193,16 @@ body { padding-bottom: 68px; }
       </div>
       <div class="modal-body">
         <div id="invoice-confirm-phase-preview">
-          <p class="text-muted mb-3 small">
+          <p class="text-muted mb-3 small" id="invoice-grouping-hint">
               Zlecenia są grupowane według <strong>zleceniodawcy i daty rozładunku</strong> —
               tylko takie mogą trafić na jedną fakturę. Każda grupa = jedna faktura, każde zlecenie = osobna pozycja.
           </p>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="chk-merge-contractor">
+            <label class="form-check-label small" for="chk-merge-contractor">
+              Połącz zlecenia tego samego kontrahenta <span class="text-muted">(ignoruj datę rozładunku)</span>
+            </label>
+          </div>
           <div id="invoice-groups-preview"></div>
         </div>
         <div id="invoice-confirm-phase-links" class="d-none">
@@ -735,20 +741,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const confirmModal = new bootstrap.Modal(document.getElementById('invoiceConfirmModal'));
     const previewDiv   = document.getElementById('invoice-groups-preview');
 
-    function buildGroupsFromSelection() {
+    function buildGroupsFromSelection(mergeByContractor) {
         const checked = getCheckedOrders();
         const grps = {};
         checked.forEach(chk => {
-            const g = chk.dataset.group;
+            // Klucz grupowania: kontrahent+waluta (merge) lub pełny group key
+            const contractorKey = (chk.dataset.nip || chk.dataset.contractor || '') + '||' + (chk.dataset.currency || 'PLN');
+            const g = mergeByContractor ? contractorKey : chk.dataset.group;
             if (!grps[g]) grps[g] = {
                 contractor: chk.dataset.contractor,
                 nip: chk.dataset.nip,
-                delivery: chk.dataset.delivery,
+                delivery: mergeByContractor ? '' : chk.dataset.delivery,
+                deliveries: [],
                 currency: chk.dataset.currency,
                 ids: [], symbols: [],
             };
             grps[g].ids.push(chk.value);
             grps[g].symbols.push(chk.dataset.symbol || chk.value);
+            if (chk.dataset.delivery && grps[g].deliveries.indexOf(chk.dataset.delivery) === -1) {
+                grps[g].deliveries.push(chk.dataset.delivery);
+            }
         });
         return grps;
     }
@@ -766,35 +778,60 @@ document.addEventListener('DOMContentLoaded', function () {
         if (btn) btn.addEventListener('click', doConfirmInvoices);
     });
 
-    btnInvoke.addEventListener('click', function () {
-        const grps = buildGroupsFromSelection();
+    function renderInvoicePreview() {
+        const merge = document.getElementById('chk-merge-contractor')?.checked || false;
+        const grps = buildGroupsFromSelection(merge);
         const list = Object.values(grps);
-        if (list.length === 0) return;
+        if (list.length === 0) { previewDiv.innerHTML = ''; return; }
+
+        const hint = document.getElementById('invoice-grouping-hint');
+        if (hint) {
+            hint.innerHTML = merge
+                ? 'Zlecenia s\u0105 grupowane wed\u0142ug <strong>zleceniodawcy</strong> (r\u00f3\u017cne daty roz\u0142adunku po\u0142\u0105czone). Ka\u017cda grupa = jedna faktura.'
+                : 'Zlecenia s\u0105 grupowane wed\u0142ug <strong>zleceniodawcy i daty roz\u0142adunku</strong> \u2014 tylko takie mog\u0105 trafi\u0107 na jedn\u0105 faktur\u0119. Ka\u017cda grupa = jedna faktura, ka\u017cde zlecenie = osobna pozycja.';
+        }
 
         let html = '';
         list.forEach(function (g, i) {
+            const deliveryBadges = (g.deliveries && g.deliveries.length > 0)
+                ? g.deliveries.map(d => '<span class="badge bg-secondary-subtle text-secondary">' + esc(d) + '</span>').join(' ')
+                : (g.delivery ? '<span class="badge bg-secondary-subtle text-secondary">' + esc(g.delivery) + '</span>' : '');
+
             html += '<div class="card mb-2"><div class="card-body py-2">'
                 + '<div class="d-flex align-items-center gap-2 flex-wrap mb-1">'
                 + '<span class="badge bg-primary">Faktura ' + (i + 1) + '</span>'
                 + '<strong>' + esc(g.contractor) + '</strong>'
                 + (g.nip ? ' <span class="text-muted small">' + esc(g.nip) + '</span>' : '')
-                + (g.delivery ? ' <span class="badge bg-secondary-subtle text-secondary">' + esc(g.delivery) + '</span>' : '')
+                + ' ' + deliveryBadges
                 + (g.currency !== 'PLN' ? ' <span class="badge bg-info-subtle text-info">' + esc(g.currency) + '</span>' : '')
                 + '</div>'
-                + '<div class="text-muted small">Pozycji: ' + g.ids.length + ' — ' + g.symbols.map(s => '<code>' + esc(s) + '</code>').join(', ') + '</div>'
+                + '<div class="text-muted small">Pozycji: ' + g.ids.length + ' \u2014 ' + g.symbols.map(s => '<code>' + esc(s) + '</code>').join(', ') + '</div>'
                 + '</div></div>';
         });
         previewDiv.innerHTML = html;
+    }
+
+    btnInvoke.addEventListener('click', function () {
+        const grps = buildGroupsFromSelection(false);
+        if (Object.keys(grps).length === 0) return;
+        // Reset toggle do domy\u015blnego trybu
+        const chkMerge = document.getElementById('chk-merge-contractor');
+        if (chkMerge) chkMerge.checked = false;
+        renderInvoicePreview();
         confirmModal.show();
     });
 
+    // Toggle merge-by-contractor: od\u015bwie\u017c podgl\u0105d w modalu
+    document.getElementById('chk-merge-contractor')?.addEventListener('change', renderInvoicePreview);
+
     function doConfirmInvoices() {
-        const grps = buildGroupsFromSelection();
+        const merge = document.getElementById('chk-merge-contractor')?.checked || false;
+        const grps = buildGroupsFromSelection(merge);
         const payload = Object.values(grps).map(g => ({
             order_ids: g.ids.map(Number),
             contractor: g.contractor,
             nip: g.nip,
-            delivery_date: g.delivery,
+            delivery_date: g.deliveries ? g.deliveries.join(', ') : (g.delivery || ''),
             currency: g.currency,
         }));
 
