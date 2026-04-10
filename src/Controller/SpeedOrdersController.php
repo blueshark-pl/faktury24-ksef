@@ -481,9 +481,15 @@ class SpeedOrdersController extends AppController
             return null;
         }
         $s = (string)$val;
-        // ISO 8601 datetime: 2026-04-08T00:00:00.000Z
+        // ISO 8601 datetime: 2026-04-08T00:00:00.000Z  →  "2026-04-08 00:00:00"
+        // Cake DateTimeType::marshal() wymaga formatu z czasem (Y-m-d H:i:s),
+        // sam Y-m-d nie pasuje do żadnego _marshalFormats i zwraca null.
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/', $s, $m)) {
+            return $m[1] . ' ' . $m[2]; // "2026-04-08 00:00:00"
+        }
+        // fallback: data bez czasu (dla kolumn typu `date`)
         if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $s, $m)) {
-            return $m[1]; // zwróć date część, Cake/MySQL zaakceptuje też datetime
+            return $m[1];
         }
         return null;
     }
