@@ -65,9 +65,13 @@ use Cake\ORM\Entity;
  * @property string|null $invoice_id
  * @property \Cake\I18n\DateTime|null $invoiced_at
  * @property \Cake\I18n\DateTime|null $pol_at
+ * @property string|null              $pol_by
  * @property \Cake\I18n\DateTime|null $pod_at
+ * @property string|null              $pod_by
  * @property \Cake\I18n\DateTime|null $fk_at
+ * @property string|null              $fk_by
  * @property \Cake\I18n\DateTime|null $fs_at
+ * @property string|null              $fs_by
  * @property bool        $is_complete
  * @property \Cake\I18n\DateTime|null $imported_at
  * @property \Cake\I18n\DateTime|null $speed_modified_at

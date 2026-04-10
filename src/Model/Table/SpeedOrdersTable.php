@@ -22,6 +22,12 @@ class SpeedOrdersTable extends Table
             'foreignKey' => 'invoice_id',
             'joinType'   => 'LEFT',
         ]);
+
+        $this->hasMany('SpeedOrderStatusLogs', [
+            'foreignKey' => 'speed_order_id',
+            'order'      => ['SpeedOrderStatusLogs.created' => 'ASC'],
+            'dependent'  => true,
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

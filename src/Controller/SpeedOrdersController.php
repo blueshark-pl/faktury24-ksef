@@ -249,7 +249,15 @@ class SpeedOrdersController extends AppController
                 ->toArray();
         }
 
-        $this->set(compact('order', 'rawData', 'costInvoices'));
+        // Historia zmian statusów
+        $statusLogs = $this->fetchTable('SpeedOrderStatusLogs')
+            ->find()
+            ->where(['speed_order_id' => $id])
+            ->orderByAsc('created')
+            ->all()
+            ->toArray();
+
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs'));
     }
 
     // -------------------------------------------------------------------------
@@ -535,22 +543,52 @@ class SpeedOrdersController extends AppController
 
         $now = date('Y-m-d H:i:s');
 
+        // Identyfikacja zalogowanego usera
+        $identity  = $this->request->getAttribute('identity');
+        $userId    = $identity ? (int)$identity->getIdentifier() : null;
+        $username  = $identity
+            ? (string)($identity->get('username') ?? $identity->get('email') ?? $identity->getIdentifier())
+            : 'system';
+
+        $Logs = $this->fetchTable('SpeedOrderStatusLogs');
+        $logEntries = [];
+
         // Zmiana statusu operacyjnego
         if ($this->request->getData('nordlogis_status') !== null) {
             $ns = (int)$this->request->getData('nordlogis_status');
             if ($ns >= 1 && $ns <= 5) {
+                $oldNs = (int)($order->nordlogis_status ?? 1);
+                if ($oldNs !== $ns) {
+                    $logEntries[] = ['field' => 'nordlogis_status', 'old' => (string)$oldNs, 'new' => (string)$ns];
+                }
                 $order->set('nordlogis_status', $ns);
             }
         }
 
-        // Checkboxy — ustawiamy datę lub null
+        // Checkboxy — ustawiamy datę, pole *_by i null
         foreach (['pol', 'pod', 'fk', 'fs'] as $chk) {
             $val = $this->request->getData($chk);
             if ($val !== null) {
-                $field = $chk . '_at';
-                $order->set($field, (bool)$val ? $now : null);
-                if ($chk === 'fs' && (bool)$val) {
+                $fieldAt = $chk . '_at';
+                $fieldBy = $chk . '_by';
+                $checked = (bool)$val;
+                $oldVal  = $order->{$fieldAt} ? (string)$order->{$fieldAt} : null;
+                $newVal  = $checked ? $now : null;
+
+                $order->set($fieldAt, $newVal);
+                // *_by: ustawiamy przy zaznaczeniu, czyścimy przy odznaczeniu
+                $order->set($fieldBy, $checked ? $username : null);
+
+                if ($chk === 'fs' && $checked) {
                     $order->set('invoiced_at', $now);
+                }
+
+                if ($oldVal !== $newVal) {
+                    $logEntries[] = [
+                        'field' => $fieldAt,
+                        'old'   => $oldVal ? substr($oldVal, 0, 16) : null,
+                        'new'   => $newVal ? substr($newVal, 0, 16) : null,
+                    ];
                 }
             }
         }
@@ -559,14 +597,32 @@ class SpeedOrdersController extends AppController
         $this->applyAutoNlStatus($order);
 
         if ($SpeedOrders->save($order)) {
+            // Zapisz logi
+            foreach ($logEntries as $entry) {
+                $log = $Logs->newEntity([
+                    'speed_order_id' => $order->id,
+                    'field'          => $entry['field'],
+                    'old_value'      => $entry['old'],
+                    'new_value'      => $entry['new'],
+                    'user_id'        => $userId,
+                    'username'       => $username,
+                    'created'        => $now,
+                ]);
+                $Logs->save($log);
+            }
+
             $this->jsonResp([
                 'success'          => true,
                 'nordlogis_status' => $order->nordlogis_status,
                 'is_complete'      => $order->is_complete,
                 'pol_at'           => $order->pol_at ? (string)$order->pol_at : null,
+                'pol_by'           => $order->pol_by,
                 'pod_at'           => $order->pod_at ? (string)$order->pod_at : null,
+                'pod_by'           => $order->pod_by,
                 'fk_at'            => $order->fk_at ? (string)$order->fk_at : null,
+                'fk_by'            => $order->fk_by,
                 'fs_at'            => $order->fs_at ? (string)$order->fs_at : null,
+                'fs_by'            => $order->fs_by,
             ]);
         } else {
             $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);

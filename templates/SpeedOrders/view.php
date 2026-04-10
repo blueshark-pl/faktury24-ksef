@@ -4,6 +4,7 @@
  * @var \App\Model\Entity\SpeedOrder $order
  * @var array|null $rawData
  * @var \App\Model\Entity\CostInvoice[] $costInvoices
+ * @var \App\Model\Entity\SpeedOrderStatusLog[] $statusLogs
  */
 
 $this->assign('title', 'Zlecenie ' . h($order->symbol));
@@ -51,10 +52,29 @@ if ($order->date_deadline) {
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany załadunek', 'sub' => $fdate($order->date_deadline), 'icon' => 'ri-upload-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
+// Helper: wyciągnij username z logów dla danego pola (ostatni wpis ustawienia)
+$logByField = [];
+foreach ($statusLogs as $log) {
+    if ($log->new_value !== null) { // zmiana "na coś" (zaznaczenie)
+        $logByField[$log->field] = $log;
+    }
+}
+$byUser = function(string $field) use ($order, $logByField): ?string {
+    // Priorytet: pole *_by w encji (najświeższe)
+    $byField = str_replace('_at', '_by', $field);
+    $byVal = $order->{$byField} ?? null;
+    if ($byVal) return (string)$byVal;
+    // Fallback: z logów
+    return isset($logByField[$field]) ? (string)($logByField[$field]->username ?? '') : null;
+};
+
 // 3. POL — załadunek potwierdzony
 if ($order->pol_at) {
     $d = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at : new \DateTimeImmutable(substr((string)$order->pol_at,0,16));
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony', 'sub' => $fdatetime($order->pol_at), 'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
+    $by = $byUser('pol_at');
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony',
+        'sub' => $fdatetime($order->pol_at), 'by' => $by,
+        'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
 }
 // 4. Planowany rozładunek
 if ($order->date_delivery) {
@@ -66,32 +86,42 @@ if ($order->date_delivery) {
 // 5. POD — rozładunek potwierdzony
 if ($order->pod_at) {
     $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony', 'sub' => $fdatetime($order->pod_at), 'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
+    $by = $byUser('pod_at');
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony',
+        'sub' => $fdatetime($order->pod_at), 'by' => $by,
+        'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
 }
 // 6. FK
 if ($order->fk_at) {
     $d = $order->fk_at instanceof \DateTimeInterface ? $order->fk_at : new \DateTimeImmutable(substr((string)$order->fk_at,0,16));
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FK — faktura kosztowa', 'sub' => $fdatetime($order->fk_at) . (count($costInvoices) ? ' ('.count($costInvoices).' dok.)' : ''), 'icon' => 'ri-receipt-line', 'color' => '#8b5cf6', 'done' => true];
+    $by = $byUser('fk_at');
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FK — faktura kosztowa',
+        'sub' => $fdatetime($order->fk_at) . (count($costInvoices) ? ' ('.count($costInvoices).' dok.)' : ''),
+        'by' => $by, 'icon' => 'ri-receipt-line', 'color' => '#8b5cf6', 'done' => true];
 }
 // 7. FS / faktura sprzedażowa
 if ($order->fs_at || $order->invoice_id) {
     $d = $order->fs_at ? ($order->fs_at instanceof \DateTimeInterface ? $order->fs_at : new \DateTimeImmutable(substr((string)$order->fs_at,0,16))) : $today;
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FS — faktura sprzedażowa', 'sub' => $fdatetime($order->fs_at ?? null) ?? 'Wystawiona', 'icon' => 'ri-file-text-line', 'color' => '#374151', 'done' => true];
+    $by = $byUser('fs_at');
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FS — faktura sprzedażowa',
+        'sub' => $fdatetime($order->fs_at ?? null) ?? 'Wystawiona',
+        'by' => $by, 'icon' => 'ri-file-text-line', 'color' => '#374151', 'done' => true];
 }
 
 usort($tlEvents, fn($a,$b) => $a['ts'] <=> $b['ts']);
 
 // Checkboxy
 $checks = [
-    ['field'=>'pol_at','label'=>'POL','title'=>'Załadunek','desc'=>'Proof of Loading','icon'=>'ri-upload-2-line','color'=>'#6366f1'],
-    ['field'=>'pod_at','label'=>'POD','title'=>'Rozładunek','desc'=>'Proof of Delivery','icon'=>'ri-download-2-line','color'=>'#22c55e'],
-    ['field'=>'fk_at', 'label'=>'FK', 'title'=>'Faktura kosztowa','desc'=>'Od przewoźnika','icon'=>'ri-receipt-line','color'=>'#8b5cf6'],
-    ['field'=>'fs_at', 'label'=>'FS', 'title'=>'Faktura sprzedażowa','desc'=>'Dla klienta','icon'=>'ri-file-text-line','color'=>'#374151'],
+    ['field'=>'pol_at','byField'=>'pol_by','label'=>'POL','title'=>'Załadunek','desc'=>'Proof of Loading','icon'=>'ri-upload-2-line','color'=>'#6366f1'],
+    ['field'=>'pod_at','byField'=>'pod_by','label'=>'POD','title'=>'Rozładunek','desc'=>'Proof of Delivery','icon'=>'ri-download-2-line','color'=>'#22c55e'],
+    ['field'=>'fk_at', 'byField'=>'fk_by', 'label'=>'FK', 'title'=>'Faktura kosztowa','desc'=>'Od przewoźnika','icon'=>'ri-receipt-line','color'=>'#8b5cf6'],
+    ['field'=>'fs_at', 'byField'=>'fs_by', 'label'=>'FS', 'title'=>'Faktura sprzedażowa','desc'=>'Dla klienta','icon'=>'ri-file-text-line','color'=>'#374151'],
 ];
 foreach ($checks as &$chk) {
     $val = $order->{$chk['field']} ?? null;
     $chk['checked'] = !empty($val);
     $chk['date']    = $fdatetime($val);
+    $chk['by']      = $byUser($chk['field']);
 }
 unset($chk);
 
@@ -319,12 +349,19 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                        data-field="<?= $chk['field'] ?>"
                        <?= $chk['checked'] ? 'checked' : '' ?>>
                 <i class="<?= $chk['icon'] ?>"></i>
-                <span><?= $chk['label'] ?> — <?= $chk['title'] ?></span>
-                <?php if ($chk['date']): ?>
-                    <span class="opacity-75" style="font-size:.68rem;font-weight:400"><?= h($chk['date']) ?></span>
-                <?php else: ?>
-                    <span class="opacity-50" style="font-weight:400">niezaznaczone</span>
-                <?php endif; ?>
+                <span class="d-flex flex-column gap-0" style="line-height:1.2">
+                    <span><?= $chk['label'] ?> — <?= $chk['title'] ?></span>
+                    <?php if ($chk['date']): ?>
+                        <span class="opacity-75" style="font-size:.65rem;font-weight:400"><?= h($chk['date']) ?></span>
+                        <?php if ($chk['by']): ?>
+                        <span class="opacity-60" style="font-size:.62rem;font-weight:400">
+                            <i class="ri-user-line"></i> <?= h($chk['by']) ?>
+                        </span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="opacity-50" style="font-weight:400;font-size:.65rem">niezaznaczone</span>
+                    <?php endif; ?>
+                </span>
             </label>
             <?php endforeach; ?>
         </div>
@@ -482,6 +519,11 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                     <div class="fw-semibold" style="font-size:.8rem"><?= h($ev['label']) ?></div>
                     <?php if ($ev['sub']): ?>
                     <div class="text-muted" style="font-size:.72rem"><?= h($ev['sub']) ?></div>
+                    <?php endif; ?>
+                    <?php if (!empty($ev['by'])): ?>
+                    <div style="font-size:.68rem;color:#6b7280;margin-top:.15rem">
+                        <i class="ri-user-line me-1"></i><?= h($ev['by']) ?>
+                    </div>
                     <?php endif; ?>
                     <?php if ($ev['late']??false): ?>
                     <div class="text-danger" style="font-size:.68rem;font-weight:600"><i class="ri-alarm-warning-line me-1"></i>Przeterminowane</div>
@@ -777,6 +819,82 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- HISTORIA ZMIAN STATUSÓW                                               -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<?php if (!empty($statusLogs)): ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2"
+         style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#status-log-body">
+        <i class="ri-history-line text-secondary"></i>
+        Historia zmian statusów
+        <span class="badge bg-secondary-subtle text-secondary ms-1"><?= count($statusLogs) ?></span>
+        <i class="ri-arrow-down-s-line ms-auto text-muted" id="log-toggle-icon"></i>
+    </div>
+    <div class="collapse" id="status-log-body">
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.78rem">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3" style="width:150px">Data i godzina</th>
+                    <th style="width:140px">Pole</th>
+                    <th>Zmiana</th>
+                    <th style="width:180px"><i class="ri-user-line me-1"></i>Użytkownik</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php
+            $fieldLabels = [
+                'pol_at'          => 'POL — Załadunek',
+                'pod_at'          => 'POD — Rozładunek',
+                'fk_at'           => 'FK — Faktura kosztowa',
+                'fs_at'           => 'FS — Faktura sprzedażowa',
+                'nordlogis_status'=> 'Status Nordlogis',
+            ];
+            $nlLabels = [1=>'Przyjęte',2=>'Zaplanowane',3=>'Załadowane',4=>'Zrealizowane',5=>'Zafakturowane'];
+            foreach (array_reverse($statusLogs) as $log):
+                $fieldLabel = $fieldLabels[$log->field] ?? h($log->field);
+                $isCheck    = str_ends_with($log->field, '_at');
+                $isSet      = ($log->new_value !== null);
+                if ($isCheck) {
+                    $changeHtml = $isSet
+                        ? '<span class="badge bg-success-subtle text-success border">✔ Zaznaczono</span> <span class="text-muted">' . h($log->new_value) . '</span>'
+                        : '<span class="badge bg-secondary-subtle text-secondary border">✗ Odznaczono</span>';
+                } elseif ($log->field === 'nordlogis_status') {
+                    $oldLabel = $nlLabels[(int)$log->old_value] ?? $log->old_value;
+                    $newLabel = $nlLabels[(int)$log->new_value] ?? $log->new_value;
+                    $changeHtml = '<span class="text-muted">' . h($oldLabel) . '</span>'
+                        . ' <i class="ri-arrow-right-line mx-1 text-muted"></i>'
+                        . '<span class="fw-semibold">' . h($newLabel) . '</span>';
+                } else {
+                    $changeHtml = h($log->old_value) . ' → ' . h($log->new_value);
+                }
+                $createdStr = $log->created instanceof \DateTimeInterface
+                    ? $log->created->format('d.m.Y H:i:s')
+                    : substr((string)($log->created ?? ''), 0, 19);
+            ?>
+            <tr>
+                <td class="ps-3 text-muted"><?= h($createdStr) ?></td>
+                <td class="fw-semibold"><?= $fieldLabel ?></td>
+                <td><?= $changeHtml ?></td>
+                <td>
+                    <?php if ($log->username): ?>
+                    <span class="badge bg-light border text-dark">
+                        <i class="ri-user-line me-1"></i><?= h($log->username) ?>
+                    </span>
+                    <?php else: ?>
+                    <span class="text-muted">—</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php $this->append('scriptBottom'); ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -822,15 +940,52 @@ document.addEventListener('DOMContentLoaded', function() {
     // ── Pills: POL/POD/FK/FS ──
     document.querySelectorAll('.check-toggle').forEach(function(chk) {
         chk.addEventListener('change', function() {
-            var self = this;
-            var key  = this.dataset.field.replace('_at','');
-            var val  = this.checked;
+            var self  = this;
+            var key   = this.dataset.field.replace('_at','');
+            var field = this.dataset.field;
+            var val   = this.checked;
             var payload = { id: orderId };
             payload[key] = val;
             post(updateUrl, payload).then(function(data) {
                 if (data.success) {
                     showToast((val?'✔ ':'✖ ') + key.toUpperCase() + (val?' zaznaczony':' odznaczony'), true);
-                    setTimeout(function(){ location.reload(); }, 700);
+                    // Zaktualizuj pill bez reload
+                    var label = self.closest('label');
+                    if (label) {
+                        label.classList.toggle('checked', val);
+                        label.classList.toggle('unchecked', !val);
+                        // Zaktualizuj tekst daty i usera
+                        var span = label.querySelector('span.d-flex');
+                        if (span) {
+                            var dateSpan = span.querySelectorAll('span')[1];
+                            var bySpan   = span.querySelectorAll('span')[2];
+                            if (val) {
+                                var atVal = data[field];
+                                var byVal = data[field.replace('_at','_by')];
+                                if (dateSpan) {
+                                    dateSpan.textContent = atVal ? atVal.substring(0,16).replace('T',' ') : '';
+                                    dateSpan.className = 'opacity-75';
+                                    dateSpan.style.fontSize = '.65rem';
+                                    dateSpan.style.fontWeight = '400';
+                                }
+                                if (byVal) {
+                                    if (!bySpan) {
+                                        bySpan = document.createElement('span');
+                                        span.appendChild(bySpan);
+                                    }
+                                    bySpan.innerHTML = '<i class="ri-user-line"></i> ' + byVal;
+                                    bySpan.className = 'opacity-60';
+                                    bySpan.style.fontSize = '.62rem';
+                                    bySpan.style.fontWeight = '400';
+                                }
+                            } else {
+                                if (dateSpan) { dateSpan.textContent = 'niezaznaczone'; dateSpan.className = 'opacity-50'; dateSpan.style.fontSize = '.65rem'; dateSpan.style.fontWeight = '400'; }
+                                if (bySpan)   { bySpan.textContent = ''; }
+                            }
+                        }
+                    }
+                    // Odśwież sekcję historii po chwili (logi są server-side)
+                    setTimeout(function(){ location.reload(); }, 1500);
                 } else {
                     self.checked = !val;
                     showToast(data.error||'Błąd', false);
