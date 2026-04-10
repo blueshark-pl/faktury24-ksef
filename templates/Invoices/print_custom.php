@@ -338,7 +338,24 @@ $urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['la
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title><?= h($typeName) ?> <?= h($invoice->fullnumber ?: $invoice->id) ?></title>
 <style>
-*, *::before, *::after { box-sizing: border-box; font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; }
+<?php
+$fontDir    = str_replace('\\', '/', ROOT) . '/vendor/dompdf/dompdf/lib/fonts/';
+$fontNormal = $fontDir . 'DejaVuSans.ttf';
+$fontBold   = $fontDir . 'DejaVuSans-Bold.ttf';
+?>
+@font-face {
+    font-family: 'DejaVu Sans';
+    font-style: normal;
+    font-weight: normal;
+    src: url('<?= $fontNormal ?>') format('truetype');
+}
+@font-face {
+    font-family: 'DejaVu Sans';
+    font-style: normal;
+    font-weight: bold;
+    src: url('<?= $fontBold ?>') format('truetype');
+}
+*, *::before, *::after { box-sizing: border-box; font-family: 'DejaVu Sans', sans-serif; }
 @page { size: A4 portrait; margin: .8cm 1cm 1.2cm 1cm; }
 @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -475,7 +492,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 <?php endif; ?>
 </style>
 </head>
-<body>
+<body style="font-family:'DejaVu Sans',sans-serif">
 
 <!-- ── Toolbar (tylko HTML, ukryty przy renderowaniu PDF) ── -->
 <?php if (empty($renderPdf)): ?>
