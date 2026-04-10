@@ -76,6 +76,10 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
            data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">
           <i class="ri-printer-line me-1"></i>Pobierz PDF
         </a>
+        <a href="<?= $this->Url->build(['action' => 'printCustom', $invoice->id]) ?>"
+           target="_blank" class="btn btn-outline-primary btn-sm" title="PDF renderowany przez przeglądarkę — z kursami walut i opisami pozycji">
+          <i class="ri-file-pdf-2-line me-1"></i>PDF custom
+        </a>
         <?php if ($canEdit): ?>
         <?= $this->Html->link(
             '<i class="ri-edit-line me-1"></i>' . ($workflowStatus === 'draft' ? 'Edytuj szkic' : 'Edytuj fakturę'),

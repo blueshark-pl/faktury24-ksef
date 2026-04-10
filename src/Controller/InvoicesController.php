@@ -4782,6 +4782,57 @@ private function makeClient(string $environment): KsefClient
         return null;
     }
 
+    // -------------------------------------------------------------------------
+    // Custom print — HTML renderowany przez przeglądarkę (window.print())
+    // Zawiera: kursy walut, dodatkowe opisy przypisane do pozycji.
+    // -------------------------------------------------------------------------
+    public function printCustom($id = null): ?\Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $invoice = $this->Invoices->get($id, [
+            'contain' => [
+                'InvoiceContractors',
+                'InvoiceContents' => ['Vats'],
+                'Companies',
+                'InvoiceCompanyDetails',
+            ],
+            'conditions' => ['Invoices.company_id' => $companyId],
+        ]);
+
+        // Dodatkowe opisy (DodatkowyOpis) — nr_wiersza 0/null = do faktury, >0 = do pozycji
+        if (!$invoice->has('invoice_additional_descriptions')) {
+            $invoice->invoice_additional_descriptions = $this->fetchTable('InvoiceAdditionalDescriptions')
+                ->find()
+                ->where(['invoice_id' => $invoice->id])
+                ->orderByAsc('nr_wiersza')
+                ->all()
+                ->toArray();
+        }
+
+        // Kurs waluty — z encji lub próba NBP
+        $cur = strtoupper((string)($invoice->currency ?? 'PLN'));
+        $fxRate  = (float)($invoice->currency_exchange ?? $invoice->fx_rate ?? 0);
+        $fxDate  = $invoice->currency_date ?? null;
+        $fxTable = (string)($invoice->exchange_table ?? '');
+        if ($cur !== 'PLN' && $fxRate === 0.0) {
+            try {
+                $nbp = $this->computeNbpAvgRate($cur, $invoice->date ?? new \DateTimeImmutable());
+                if (!empty($nbp['rate'])) {
+                    $fxRate  = (float)$nbp['rate'];
+                    $fxDate  = $nbp['date'] ?? null;
+                    $fxTable = $nbp['table'] ?? '';
+                }
+            } catch (\Throwable) {}
+        }
+
+        $this->viewBuilder()->setLayout('ajax'); // brak wrappera layoutu — standalone HTML
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable'));
+        return null;
+    }
+
     /**
      * API: Generowanie PDF z przesłanego XML (FA(3)).
      * POST /api/invoices/print

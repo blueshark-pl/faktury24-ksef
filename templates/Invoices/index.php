@@ -806,6 +806,12 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       <i class="ri-printer-line me-2"></i> Pobierz PDF
                     </a>
                   </li>
+                  <li>
+                    <a href="<?= $this->Url->build(['action' => 'printCustom', $inv->id]) ?>"
+                       target="_blank" class="dropdown-item">
+                      <i class="ri-file-pdf-2-line me-2"></i> PDF custom (przeglądarka)
+                    </a>
+                  </li>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
                   <li>
                     <a href="#" class="dropdown-item inv-email-btn"
