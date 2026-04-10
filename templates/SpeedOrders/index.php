@@ -230,7 +230,7 @@ $quickFilters = [
         $baseCls  = $qf['cls'] ?? 'btn-outline-secondary';
         $activeCls = $isActive ? str_replace('outline-', '', $baseCls) . ' text-white' : $baseCls;
     ?>
-    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo]]) ?>"
+    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
        class="btn btn-sm <?= $activeCls ?>">
         <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
     </a>
@@ -239,6 +239,7 @@ $quickFilters = [
 
 <!-- Filtry -->
 <form method="get" class="row g-2 mb-3">
+    <input type="hidden" name="limit" value="<?= $limit ?>">
     <div class="col-md-3">
         <input type="text" name="q" class="form-control form-control-sm"
                placeholder="Szukaj (symbol, nabywca, trasa, tytuł)…" value="<?= h($search) ?>">
@@ -283,11 +284,24 @@ $quickFilters = [
     </div>
 </form>
 
-<p class="text-muted small mb-2">
-    Znaleziono: <strong><?= number_format($total, 0, ',', ' ') ?></strong> zleceń
-    <?php if ($total > $limit): ?>(strona <?= $page ?> z <?= $pages ?>)<?php endif; ?>
-    &mdash; <?= count($groups) ?> grup (kontrahent + data rozładunku)
-</p>
+<div class="d-flex align-items-center gap-3 mb-2">
+    <p class="text-muted small mb-0">
+        Znaleziono: <strong><?= number_format($total, 0, ',', ' ') ?></strong> zleceń
+        <?php if ($total > $limit): ?>(strona <?= $page ?> z <?= $pages ?>)<?php endif; ?>
+        &mdash; <?= count($groups) ?> grup (kontrahent + data rozładunku)
+    </p>
+    <form method="get" class="d-flex align-items-center gap-1 ms-auto">
+        <?php foreach (['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo] as $k => $v): ?>
+            <?php if ($v !== ''): ?><input type="hidden" name="<?= $k ?>" value="<?= h($v) ?>"><?php endif; ?>
+        <?php endforeach; ?>
+        <label class="small text-muted text-nowrap">Na stronę</label>
+        <select name="limit" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+            <?php foreach ([25, 50, 100, 200, 500] as $opt): ?>
+            <option value="<?= $opt ?>" <?= $limit === $opt ? 'selected' : '' ?>><?= $opt ?></option>
+            <?php endforeach; ?>
+        </select>
+    </form>
+</div>
 
 <style>
 .orders-table th, .orders-table td { font-size: .8rem; vertical-align: middle; }
@@ -569,7 +583,7 @@ $quickFilters = [
             $dateTo !== '' ? ['date_to' => $dateTo] : [],
             $deliveryFrom !== '' ? ['delivery_from' => $deliveryFrom] : [],
             $deliveryTo !== '' ? ['delivery_to' => $deliveryTo] : [],
-            ['page' => $p]
+            ['page' => $p, 'limit' => $limit]
         )]) ?>"><?= $p ?></a>
     </li>
     <?php endfor; ?>

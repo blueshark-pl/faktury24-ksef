@@ -30,7 +30,10 @@ class SpeedOrdersController extends AppController
         $deliveryFrom = $this->request->getQuery('delivery_from', '');
         $deliveryTo   = $this->request->getQuery('delivery_to', '');
         $page    = max(1, (int)$this->request->getQuery('page', 1));
-        $limit   = 50;
+        $limit   = (int)$this->request->getQuery('limit', 50);
+        if (!in_array($limit, [25, 50, 100, 200, 500], true)) {
+            $limit = 50;
+        }
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
         $query = $SpeedOrders->find()
