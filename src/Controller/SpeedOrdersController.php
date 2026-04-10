@@ -249,13 +249,17 @@ class SpeedOrdersController extends AppController
                 ->toArray();
         }
 
-        // Historia zmian statusów
-        $statusLogs = $this->fetchTable('SpeedOrderStatusLogs')
-            ->find()
-            ->where(['speed_order_id' => $id])
-            ->orderByAsc('created')
-            ->all()
-            ->toArray();
+        // Historia zmian statusów (tabela może nie istnieć przed migracją)
+        try {
+            $statusLogs = $this->fetchTable('SpeedOrderStatusLogs')
+                ->find()
+                ->where(['speed_order_id' => $id])
+                ->orderByAsc('created')
+                ->all()
+                ->toArray();
+        } catch (\Throwable) {
+            $statusLogs = [];
+        }
 
         $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs'));
     }
