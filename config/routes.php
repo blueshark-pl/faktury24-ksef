@@ -30,9 +30,26 @@ return function (RouteBuilder $routes): void {
         $builder->post('/contractors/import-batch', 'Contractors::importBatch');
         $builder->get('/contractors/import-speed-fetch', 'Contractors::importSpeedFetch');
         $builder->post('/contractors/import-speed-batch', 'Contractors::importSpeedBatch');
+        // Faktury kosztowe
+        $builder->get('/koszty', 'CostInvoices::index');
+        $builder->get('/koszty/import-ksef', 'CostInvoices::importKsef');
+        $builder->post('/koszty/do-import-ksef', 'CostInvoices::doImportKsef');
+        $builder->get('/koszty/search', 'CostInvoices::searchAjax');
+        $builder->post('/koszty/assign-order', 'CostInvoices::assignOrder');
+        $builder->post('/koszty/unassign-order', 'CostInvoices::unassignOrder');
+        $builder->post('/koszty/set-status', 'CostInvoices::setStatus');
+        $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
+        $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
+        $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);
+        $builder->get('/koszty/view/{id}', ['controller' => 'CostInvoices', 'action' => 'view'])->setPass(['id']);
+
         $builder->get('/zlecenia', 'SpeedOrders::index');
+        $builder->get('/zlecenia/dashboard', 'SpeedOrders::dashboard');
+        $builder->get('/zlecenia/export-csv', 'SpeedOrders::exportCsv');
         $builder->get('/zlecenia/view/{id}', 'SpeedOrders::view');
         $builder->post('/zlecenia/sync', 'SpeedOrders::sync');
+        $builder->post('/zlecenia/create-batch-invoices', 'SpeedOrders::createBatchInvoices');
+        $builder->post('/zlecenia/update-status', 'SpeedOrders::updateStatus');
         $builder->get('/products/import-fetch', 'Products::importFetch');
         $builder->post('/products/import-batch', 'Products::importBatch');
         $builder->get('/archiwum-faktur', ['controller' => 'LegacyInvoices', 'action' => 'index']);

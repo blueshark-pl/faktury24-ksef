@@ -3,187 +3,918 @@
  * @var \App\View\AppView $this
  * @var \App\Model\Entity\SpeedOrder $order
  * @var array|null $rawData
+ * @var \App\Model\Entity\CostInvoice[] $costInvoices
  */
 
 $this->assign('title', 'Zlecenie ' . h($order->symbol));
 
-$statusLabel = match((int)$order->status) {
-    1 => ['label' => 'Nowe',         'class' => 'bg-secondary-transparent'],
-    2 => ['label' => 'W realizacji', 'class' => 'bg-warning-transparent'],
-    3 => ['label' => 'Zrealizowane', 'class' => 'bg-success-transparent'],
-    4 => ['label' => 'Anulowane',    'class' => 'bg-danger-transparent'],
-    default => ['label' => (string)$order->status, 'class' => 'bg-light text-dark'],
-};
+$fdate     = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : null;
+$fdatetime = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:i') : substr((string)$v, 0, 16)) : null;
+$fnum      = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
 
-$fdate = fn($v) => $v ? $v->format('d.m.Y') : '—';
-$fdatetime = fn($v) => $v ? $v->format('d.m.Y H:i') : '—';
-$fnum = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
+$nlStatusMap = [
+    1 => ['label' => 'Przyjęte',     'cls' => 'bg-warning text-dark',     'icon' => 'ri-inbox-line',             'color' => '#f59e0b'],
+    2 => ['label' => 'Zaplanowane',  'cls' => 'bg-info text-white',       'icon' => 'ri-calendar-check-line',    'color' => '#0ea5e9'],
+    3 => ['label' => 'Załadowane',   'cls' => 'bg-primary text-white',    'icon' => 'ri-truck-line',             'color' => '#6366f1'],
+    4 => ['label' => 'Zrealizowane', 'cls' => 'bg-success text-white',    'icon' => 'ri-checkbox-circle-line',   'color' => '#22c55e'],
+    5 => ['label' => 'Zafakturowane','cls' => 'bg-dark text-white',       'icon' => 'ri-file-text-line',         'color' => '#374151'],
+];
+$speedStatusMap = [1=>'Przyjęte',2=>'Zrealizowane',3=>'Zafakturowane',4=>'Archiwum',5=>'Anulowane'];
+
+$nlStatus  = (int)($order->nordlogis_status ?? 1);
+$nlCurrent = $nlStatusMap[$nlStatus] ?? $nlStatusMap[1];
+$speedLabel= $speedStatusMap[(int)($order->status ?? 1)] ?? '';
+$cur       = h($order->currency ?? 'PLN');
+
+// Załadunek / rozładunek
+$loadCountry = (string)($order->load_country     ?? $rawData['GLO_MIE_KRAJ']    ?? '');
+$loadCode    = (string)($order->load_postal_code ?? $rawData['GLO_MIE_KOD']     ?? '');
+$loadCity    = (string)($order->load_city        ?? $rawData['GLO_MIE_POCZTA']  ?? '');
+$unloadName  = (string)($order->unload_name      ?? $rawData['GLO_MIE_NAZWA1']  ?? '');
+$unloadCity  = (string)($order->unload_city      ?? $rawData['GLO_MIE_MIEJSC']  ?? '');
+$unloadCountry=(string)($order->unload_country   ?? '');
+
+// Timeline events
+$today = new \DateTimeImmutable('today');
+
+$tlEvents = [];
+
+// 1. Zlecenie przyjęte
+if ($order->date_doc) {
+    $d = $order->date_doc instanceof \DateTimeInterface ? $order->date_doc : new \DateTimeImmutable(substr((string)$order->date_doc,0,10));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Zlecenie przyjęte', 'sub' => $order->nick_created ? 'Wystawił: '.$order->nick_created : null, 'icon' => 'ri-file-add-line', 'color' => '#64748b', 'done' => true];
+}
+// 2. Planowany załadunek
+if ($order->date_deadline) {
+    $d = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline : new \DateTimeImmutable(substr((string)$order->date_deadline,0,10));
+    $done = !empty($order->pol_at);
+    $late = !$done && $d < $today;
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany załadunek', 'sub' => $fdate($order->date_deadline), 'icon' => 'ri-upload-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
+}
+// 3. POL — załadunek potwierdzony
+if ($order->pol_at) {
+    $d = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at : new \DateTimeImmutable(substr((string)$order->pol_at,0,16));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony', 'sub' => $fdatetime($order->pol_at), 'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
+}
+// 4. Planowany rozładunek
+if ($order->date_delivery) {
+    $d = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
+    $done = !empty($order->pod_at);
+    $late = !$done && $d < $today;
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany rozładunek', 'sub' => $fdate($order->date_delivery), 'icon' => 'ri-download-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
+}
+// 5. POD — rozładunek potwierdzony
+if ($order->pod_at) {
+    $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony', 'sub' => $fdatetime($order->pod_at), 'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
+}
+// 6. FK
+if ($order->fk_at) {
+    $d = $order->fk_at instanceof \DateTimeInterface ? $order->fk_at : new \DateTimeImmutable(substr((string)$order->fk_at,0,16));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FK — faktura kosztowa', 'sub' => $fdatetime($order->fk_at) . (count($costInvoices) ? ' ('.count($costInvoices).' dok.)' : ''), 'icon' => 'ri-receipt-line', 'color' => '#8b5cf6', 'done' => true];
+}
+// 7. FS / faktura sprzedażowa
+if ($order->fs_at || $order->invoice_id) {
+    $d = $order->fs_at ? ($order->fs_at instanceof \DateTimeInterface ? $order->fs_at : new \DateTimeImmutable(substr((string)$order->fs_at,0,16))) : $today;
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FS — faktura sprzedażowa', 'sub' => $fdatetime($order->fs_at ?? null) ?? 'Wystawiona', 'icon' => 'ri-file-text-line', 'color' => '#374151', 'done' => true];
+}
+
+usort($tlEvents, fn($a,$b) => $a['ts'] <=> $b['ts']);
+
+// Checkboxy
+$checks = [
+    ['field'=>'pol_at','label'=>'POL','title'=>'Załadunek','desc'=>'Proof of Loading','icon'=>'ri-upload-2-line','color'=>'#6366f1'],
+    ['field'=>'pod_at','label'=>'POD','title'=>'Rozładunek','desc'=>'Proof of Delivery','icon'=>'ri-download-2-line','color'=>'#22c55e'],
+    ['field'=>'fk_at', 'label'=>'FK', 'title'=>'Faktura kosztowa','desc'=>'Od przewoźnika','icon'=>'ri-receipt-line','color'=>'#8b5cf6'],
+    ['field'=>'fs_at', 'label'=>'FS', 'title'=>'Faktura sprzedażowa','desc'=>'Dla klienta','icon'=>'ri-file-text-line','color'=>'#374151'],
+];
+foreach ($checks as &$chk) {
+    $val = $order->{$chk['field']} ?? null;
+    $chk['checked'] = !empty($val);
+    $chk['date']    = $fdatetime($val);
+}
+unset($chk);
+
+$missing = array_filter(array_map(fn($c) => $c['checked'] ? null : $c['label'], $checks));
+
+$fvUrl           = $this->Url->build(['controller'=>'Invoices','action'=>strtoupper(trim((string)($order->currency??'PLN')))!=='PLN'?'addCurrency':'addVat','?'=>['from_order_id'=>$order->id]]);
+$updateStatusUrl = $this->Url->build(['controller'=>'SpeedOrders','action'=>'updateStatus']);
+$assignFkUrl     = $this->Url->build(['controller'=>'CostInvoices','action'=>'assignOrder']);
+$unassignFkUrl   = $this->Url->build(['controller'=>'CostInvoices','action'=>'unassignOrder']);
+$searchFkUrl     = $this->Url->build(['controller'=>'CostInvoices','action'=>'searchAjax']);
+$csrfToken       = $this->request->getAttribute('csrfToken');
 ?>
 
-<div class="d-flex align-items-center gap-2 mb-3">
-    <a href="<?= $this->Url->build(['action' => 'index']) ?>"
-       class="btn btn-sm btn-outline-secondary">
-        <i class="ri-arrow-left-line me-1"></i> Lista zleceń
+<style>
+/* ── Topbar ── */
+.order-topbar { background:#fff; border-bottom:1px solid #e5e7eb; padding:.75rem 1.25rem; margin-bottom:1.25rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
+/* ── Status stepper ── */
+.stepper { display:flex; align-items:stretch; gap:0; }
+.stepper-step { flex:1; display:flex; flex-direction:column; align-items:center; position:relative; cursor:pointer; padding:.5rem .25rem; border:2px solid transparent; border-radius:.5rem; transition:all .15s; }
+.stepper-step:hover { background:#f8fafc; }
+.stepper-step.active  { border-color:var(--step-color,#6366f1); background:color-mix(in srgb,var(--step-color,#6366f1) 8%,white); }
+.stepper-step.past    { opacity:.65; }
+.stepper-step.future  { opacity:.4; }
+.stepper-dot { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.1rem; }
+.stepper-label { font-size:.72rem; font-weight:600; margin-top:.3rem; text-align:center; letter-spacing:.02em; }
+.stepper-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.2rem; padding:0 .1rem; flex-shrink:0; }
+
+/* ── KPI tiles ── */
+.kpi-tile { background:#fff; border:1px solid #e5e7eb; border-radius:.75rem; padding:.85rem 1.1rem; display:flex; flex-direction:column; gap:.2rem; transition:box-shadow .15s; }
+.kpi-tile:hover { box-shadow:0 2px 12px rgba(0,0,0,.08); }
+.kpi-tile .kpi-val { font-size:1.45rem; font-weight:700; line-height:1; }
+.kpi-tile .kpi-label { font-size:.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
+.kpi-tile .kpi-sub   { font-size:.75rem; color:#9ca3af; }
+
+/* ── Timeline ── */
+.tl { position:relative; padding-left:2.4rem; }
+.tl::before { content:''; position:absolute; left:.95rem; top:.5rem; bottom:.5rem; width:2px; background:linear-gradient(to bottom,#e5e7eb 0%,#e5e7eb 100%); }
+.tl-item { position:relative; margin-bottom:1.1rem; }
+.tl-item:last-child { margin-bottom:0; }
+.tl-dot { position:absolute; left:-1.95rem; top:.1rem; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.7rem; z-index:1; }
+.tl-dot.done  { box-shadow:0 0 0 3px rgba(34,197,94,.2); }
+.tl-dot.late  { animation:pulse-red 1.5s infinite; }
+@keyframes pulse-red { 0%,100%{box-shadow:0 0 0 2px rgba(239,68,68,.3)} 50%{box-shadow:0 0 0 6px rgba(239,68,68,.1)} }
+.tl-content { background:#f9fafb; border:1px solid #f1f5f9; border-radius:.5rem; padding:.45rem .75rem; }
+.tl-content.done  { border-color:#d1fae5; background:#f0fdf4; }
+.tl-content.late  { border-color:#fee2e2; background:#fff5f5; }
+
+/* ── Trasa visual ── */
+.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 1rem; }
+.route-node { flex-shrink:0; }
+.route-node .rn-flag { font-size:1.3rem; line-height:1; }
+.route-node .rn-city { font-size:.78rem; font-weight:600; }
+.route-node .rn-date { font-size:.68rem; color:#6b7280; }
+.route-line { flex:1; height:3px; background:linear-gradient(to right,#6366f1,#22c55e); border-radius:2px; position:relative; margin:0 .5rem; }
+.route-line-truck { position:absolute; top:-9px; left:50%; transform:translateX(-50%); font-size:1.1rem; }
+.route-pol { color:#6366f1; font-size:.65rem; font-weight:700; position:absolute; top:6px; left:4px; }
+.route-pod { color:#22c55e; font-size:.65rem; font-weight:700; position:absolute; top:6px; right:4px; }
+
+/* ── FK badges ── */
+.check-pill { display:inline-flex; align-items:center; gap:.35rem; padding:.35rem .7rem; border-radius:2rem; font-size:.78rem; font-weight:600; cursor:pointer; border:2px solid transparent; transition:all .15s; user-select:none; }
+.check-pill.checked  { border-color:var(--pill-color); background:color-mix(in srgb,var(--pill-color) 12%,white); color:var(--pill-color); }
+.check-pill.unchecked{ border-color:#e5e7eb; background:#f9fafb; color:#9ca3af; }
+.check-pill.unchecked:hover { border-color:var(--pill-color); color:var(--pill-color); }
+</style>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- TOPBAR                                                                 -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="order-topbar rounded-3 shadow-sm mb-3">
+    <a href="<?= $this->Url->build(['action'=>'index']) ?>" class="btn btn-sm btn-outline-secondary">
+        <i class="ri-arrow-left-line"></i>
     </a>
-    <h4 class="mb-0 fw-semibold ms-2">
-        <?= h($order->symbol) ?>
-        <?php if (!empty($order->ozn)): ?>
-            <span class="text-muted fw-normal fs-6 ms-1"><?= h($order->ozn) ?></span>
-        <?php endif; ?>
-    </h4>
-    <span class="badge <?= $statusLabel['class'] ?> ms-2"><?= h($statusLabel['label']) ?></span>
-</div>
 
-<div class="row g-3">
-
-    <!-- Dane ogólne -->
-    <div class="col-lg-6">
-        <div class="card">
-            <div class="card-header fw-semibold">Dane zlecenia</div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <tbody>
-                        <tr><th class="w-40 ps-3">Symbol</th><td><?= h($order->symbol) ?></td></tr>
-                        <?php if (!empty($order->ozn)): ?>
-                        <tr><th class="ps-3">Oznaczenie</th><td><?= h($order->ozn) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->teczka)): ?>
-                        <tr><th class="ps-3">Teczka</th><td><?= h($order->teczka) ?></td></tr>
-                        <?php endif; ?>
-                        <tr><th class="ps-3">Data dokumentu</th><td><?= $fdate($order->date_doc) ?></td></tr>
-                        <?php if ($order->date_ship): ?>
-                        <tr><th class="ps-3">Data wysyłki</th><td><?= $fdatetime($order->date_ship) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if ($order->date_deadline): ?>
-                        <tr><th class="ps-3">Termin</th><td><?= $fdatetime($order->date_deadline) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if ($order->date_delivery): ?>
-                        <tr><th class="ps-3">Data dostawy</th><td><?= $fdatetime($order->date_delivery) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->title1)): ?>
-                        <tr><th class="ps-3">Tytuł 1</th><td><?= h($order->title1) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->title2)): ?>
-                        <tr><th class="ps-3">Tytuł 2</th><td><?= h($order->title2) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->cargo_type)): ?>
-                        <tr><th class="ps-3">Rodzaj ładunku</th><td><?= h($order->cargo_type) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->notes)): ?>
-                        <tr><th class="ps-3">Uwagi</th><td style="white-space:pre-wrap"><?= h($order->notes) ?></td></tr>
-                        <?php endif; ?>
-                        <tr><th class="ps-3">Wystawił</th><td><?= h($order->nick_created) ?></td></tr>
-                        <?php if (!empty($order->nick_modified)): ?>
-                        <tr><th class="ps-3">Zmienił</th><td><?= h($order->nick_modified) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if ($order->speed_modified_at): ?>
-                        <tr><th class="ps-3">Ostatnia zmiana (Speed)</th><td><?= $fdatetime($order->speed_modified_at) ?></td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <div class="d-flex flex-column">
+        <span class="fw-bold fs-5 lh-1"><?= h($order->symbol) ?></span>
+        <?php if ($order->ozn): ?><span class="text-muted small"><?= h($order->ozn) ?></span><?php endif; ?>
     </div>
 
-    <!-- Nabywca -->
-    <div class="col-lg-6">
-        <div class="card">
-            <div class="card-header fw-semibold">Nabywca</div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <tbody>
-                        <tr><th class="w-40 ps-3">Nazwa</th><td><?= h($order->buyer_name) ?></td></tr>
-                        <?php if (!empty($order->buyer_nip)): ?>
-                        <tr><th class="ps-3">NIP</th><td><?= h($order->buyer_nip) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->buyer_street)): ?>
-                        <tr><th class="ps-3">Ulica</th><td><?= h($order->buyer_street) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->buyer_postal_code) || !empty($order->buyer_city)): ?>
-                        <tr><th class="ps-3">Miejsc.</th><td><?= h(trim($order->buyer_postal_code . ' ' . $order->buyer_city)) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->buyer_country)): ?>
-                        <tr><th class="ps-3">Kraj</th><td><?= h($order->buyer_country) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->buyer_email)): ?>
-                        <tr><th class="ps-3">E-mail</th><td><a href="mailto:<?= h($order->buyer_email) ?>"><?= h($order->buyer_email) ?></a></td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Wartości -->
-        <div class="card mt-3">
-            <div class="card-header fw-semibold">Wartości</div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <tbody>
-                        <tr><th class="w-40 ps-3">Netto</th><td><?= $fnum($order->netto) ?> <?= h($order->currency ?? 'PLN') ?></td></tr>
-                        <tr><th class="ps-3">VAT</th><td><?= $fnum($order->vat) ?> <?= h($order->currency ?? 'PLN') ?></td></tr>
-                        <tr><th class="ps-3">Brutto</th><td class="fw-semibold"><?= $fnum($order->brutto) ?> <?= h($order->currency ?? 'PLN') ?></td></tr>
-                        <?php if ($order->exchange_rate && $order->exchange_rate != 1): ?>
-                        <tr><th class="ps-3">Kurs</th><td><?= number_format((float)$order->exchange_rate, 6, ',', ' ') ?><?= !empty($order->exchange_table) ? ' (tabela ' . h($order->exchange_table) . ')' : '' ?></td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Trasa -->
-    <?php if (!empty($order->route_description) || !empty($order->place_from_name) || !empty($order->place_to_name)): ?>
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header fw-semibold">Trasa</div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <tbody>
-                        <?php if (!empty($order->route_description)): ?>
-                        <tr><th class="w-20 ps-3">Opis trasy</th><td><?= h($order->route_description) ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->place_from_name)): ?>
-                        <tr><th class="ps-3">Miejsce załadunku</th>
-                            <td><?= h($order->place_from_name) ?><?= !empty($order->place_from_country) ? ' (' . h($order->place_from_country) . ')' : '' ?></td></tr>
-                        <?php endif; ?>
-                        <?php if (!empty($order->place_to_name)): ?>
-                        <tr><th class="ps-3">Miejsce rozładunku</th>
-                            <td><?= h($order->place_to_name) ?><?= !empty($order->place_to_country) ? ' (' . h($order->place_to_country) . ')' : '' ?></td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    <span class="badge <?= $nlCurrent['cls'] ?> fs-6 px-3">
+        <i class="<?= $nlCurrent['icon'] ?> me-1"></i><?= $nlCurrent['label'] ?>
+    </span>
+    <span class="badge bg-light border text-muted" title="Status Speed ERP">Speed: <?= h($speedLabel) ?></span>
+    <?php if ($order->is_complete): ?>
+    <span class="badge bg-success"><i class="ri-check-double-line me-1"></i>KOMPLETNE</span>
     <?php endif; ?>
 
-    <!-- Raw JSON -->
-    <?php if ($rawData !== null): ?>
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                <span>Surowe dane Speed (GLO_*)</span>
-                <button class="btn btn-sm btn-outline-secondary py-0"
-                        data-bs-toggle="collapse" data-bs-target="#raw-json">
-                    Pokaż / Ukryj
-                </button>
+    <!-- Separator -->
+    <div class="ms-auto d-flex gap-2 align-items-center">
+        <?php if (!empty($order->invoice_id)): ?>
+        <a href="<?= $this->Url->build(['controller'=>'Invoices','action'=>'view',$order->invoice_id]) ?>"
+           class="btn btn-sm btn-success">
+            <i class="ri-file-text-line me-1"></i>Faktura sprzedażowa
+        </a>
+        <?php elseif (empty($order->pod_at)): ?>
+        <button class="btn btn-sm btn-outline-secondary" disabled title="Potwierdź POD żeby odblokować fakturowanie">
+            <i class="ri-lock-line me-1"></i>Wystaw fakturę
+        </button>
+        <?php else: ?>
+        <a href="<?= h($fvUrl) ?>" class="btn btn-sm btn-primary fw-semibold">
+            <i class="ri-file-add-line me-1"></i>Wystaw fakturę
+        </a>
+        <?php endif; ?>
+        <a href="<?= $this->Url->build(['action'=>'index','?'=>['status'=>'przetermin']]) ?>"
+           class="btn btn-sm btn-outline-secondary" title="Dashboard">
+            <i class="ri-dashboard-line"></i>
+        </a>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- KPI: 4 kafelki u góry                                                 -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="row g-2 mb-3">
+    <?php
+    // Czas transportu (deadline → delivery)
+    $transportDays = null;
+    if ($order->date_deadline && $order->date_delivery) {
+        $d1 = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline : new \DateTimeImmutable(substr((string)$order->date_deadline,0,10));
+        $d2 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
+        $transportDays = $d1->diff($d2)->days;
+    }
+    // Opóźnienie (delivery vs POD)
+    $delayDays = null;
+    if ($order->date_delivery && $order->pod_at) {
+        $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
+        $d2 = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
+        $diff = $d1->diff($d2);
+        $delayDays = $diff->invert ? -$diff->days : $diff->days; // ujemny = wcześniej
+    } elseif ($order->date_delivery && empty($order->pod_at)) {
+        $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
+        if ($d1 < $today) { $delayDays = $today->diff($d1)->days; } // przeterminowane
+    }
+    ?>
+    <div class="col-6 col-md-3">
+        <div class="kpi-tile">
+            <div class="kpi-label"><i class="ri-money-dollar-circle-line me-1"></i>Wartość netto</div>
+            <div class="kpi-val"><?= $fnum($order->netto) ?></div>
+            <div class="kpi-sub"><?= $cur ?><?= ($order->exchange_rate && $order->exchange_rate != 1) ? ' · kurs '.number_format((float)$order->exchange_rate,4,',','') : '' ?></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-tile">
+            <div class="kpi-label"><i class="ri-route-line me-1"></i>Czas transportu</div>
+            <div class="kpi-val <?= $transportDays === null ? 'text-muted' : '' ?>">
+                <?= $transportDays !== null ? $transportDays.' dni' : '—' ?>
             </div>
-            <div class="collapse" id="raw-json">
-                <div class="card-body p-0">
-                    <table class="table table-sm mb-0 font-monospace small">
-                        <tbody>
-                            <?php foreach ($rawData as $k => $v): ?>
-                            <tr>
-                                <th class="ps-3 text-nowrap text-muted fw-normal" style="width:220px"><?= h($k) ?></th>
-                                <td><?= h((string)($v ?? '')) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+            <div class="kpi-sub">
+                <?= $fdate($order->date_deadline) ?? '?' ?> → <?= $fdate($order->date_delivery) ?? '?' ?>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-tile">
+            <div class="kpi-label"><i class="ri-timer-line me-1"></i>Terminowość</div>
+            <?php if ($delayDays === null && empty($order->pod_at) && $order->date_delivery): ?>
+            <?php   $d1=($order->date_delivery instanceof \DateTimeInterface?$order->date_delivery:new \DateTimeImmutable(substr((string)$order->date_delivery,0,10))); ?>
+            <?php   $daysLeft = (int)$today->diff($d1)->days * ($d1 >= $today ? 1 : -1); ?>
+            <div class="kpi-val <?= $daysLeft < 0 ? 'text-danger' : 'text-warning' ?>">
+                <?= $daysLeft >= 0 ? 'za '.$daysLeft.'d' : abs($daysLeft).'d po term.' ?>
+            </div>
+            <div class="kpi-sub">oczekiwanie na POD</div>
+            <?php elseif ($delayDays !== null): ?>
+            <div class="kpi-val <?= $delayDays <= 0 ? 'text-success' : 'text-danger' ?>">
+                <?= $delayDays <= 0 ? ($delayDays==0?'W terminie':abs($delayDays).'d wcześniej') : $delayDays.'d opóźnienia' ?>
+            </div>
+            <div class="kpi-sub"><?= $delayDays <= 0 ? '✔ OK' : '⚠ Opóźnienie' ?></div>
+            <?php else: ?>
+            <div class="kpi-val text-muted">—</div>
+            <div class="kpi-sub">brak danych</div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-tile">
+            <div class="kpi-label"><i class="ri-receipt-line me-1"></i>FK / zlecenia rozl.</div>
+            <div class="kpi-val <?= count($costInvoices) ? 'text-purple' : 'text-muted' ?>">
+                <?= count($costInvoices) ?> FK
+            </div>
+            <div class="kpi-sub">
+                <?php if (count($costInvoices)):
+                    $totalFk = array_sum(array_map(fn($ci)=>(float)$ci->brutto, $costInvoices));
+                ?>
+                Suma: <?= $fnum($totalFk) ?> <?= h($costInvoices[0]->currency ?? 'PLN') ?>
+                <?php else: ?>brak przypisanych<?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- STEPPER + POL/POD/FK/FS PILLS                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+
+        <!-- Stepper 5 kroków -->
+        <div class="stepper mb-4" id="status-stepper">
+            <?php foreach ($nlStatusMap as $val => $s):
+                $state = $val < $nlStatus ? 'past' : ($val === $nlStatus ? 'active' : 'future');
+            ?>
+            <div class="stepper-step <?= $state ?>" data-status="<?= $val ?>"
+                 style="--step-color:<?= $s['color'] ?>" title="Ustaw: <?= h($s['label']) ?>">
+                <div class="stepper-dot" style="background:<?= $state !== 'future' ? $s['color'] : '#e5e7eb' ?>;color:<?= $state!=='future'?'white':'#9ca3af' ?>">
+                    <i class="<?= $s['icon'] ?>"></i>
+                </div>
+                <div class="stepper-label" style="color:<?= $state==='active'?$s['color']:($state==='future'?'#9ca3af':'#6b7280') ?>">
+                    <?= h($s['label']) ?>
                 </div>
             </div>
+            <?php if ($val < 5): ?>
+            <div class="stepper-arrow"><i class="ri-arrow-right-s-line"></i></div>
+            <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- POL/POD/FK/FS pills -->
+        <div class="d-flex gap-2 flex-wrap justify-content-center" id="checks-row">
+            <?php foreach ($checks as $chk): ?>
+            <label class="check-pill <?= $chk['checked'] ? 'checked' : 'unchecked' ?>"
+                   style="--pill-color:<?= $chk['color'] ?>"
+                   title="<?= h($chk['desc']) ?>"
+                   for="chk-<?= $chk['field'] ?>">
+                <input type="checkbox" class="d-none check-toggle"
+                       id="chk-<?= $chk['field'] ?>"
+                       data-field="<?= $chk['field'] ?>"
+                       <?= $chk['checked'] ? 'checked' : '' ?>>
+                <i class="<?= $chk['icon'] ?>"></i>
+                <span><?= $chk['label'] ?> — <?= $chk['title'] ?></span>
+                <?php if ($chk['date']): ?>
+                    <span class="opacity-75" style="font-size:.68rem;font-weight:400"><?= h($chk['date']) ?></span>
+                <?php else: ?>
+                    <span class="opacity-50" style="font-weight:400">niezaznaczone</span>
+                <?php endif; ?>
+            </label>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Alerty -->
+        <?php if (empty($order->pod_at) && empty($order->invoice_id)): ?>
+        <div class="alert alert-warning d-flex align-items-center gap-2 mt-3 mb-0 py-2">
+            <i class="ri-lock-line fs-5"></i>
+            <div><strong>Blokada fakturowania</strong> — potwierdź POD żeby odblokować wystawienie faktury sprzedażowej.</div>
+        </div>
+        <?php endif; ?>
+        <?php if (!$order->is_complete && count($missing)): ?>
+        <div class="alert alert-light border mt-2 mb-0 py-2 d-flex align-items-center gap-2">
+            <i class="ri-information-line text-muted"></i>
+            <div class="text-muted small">Brakuje do zamknięcia zlecenia: <strong><?= implode(' · ', $missing) ?></strong></div>
+        </div>
+        <?php endif; ?>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- TRASA WIZUALNA + TIMELINE                                              -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+<div class="col-lg-8">
+<div class="card border-0 shadow-sm h-100">
+    <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2">
+        <i class="ri-map-2-line text-primary"></i>Trasa transportu
+    </div>
+    <div class="card-body">
+
+        <!-- Wizualna linia trasy -->
+        <div class="route-bar mb-3">
+            <!-- Załadunek -->
+            <div class="route-node text-center" style="min-width:90px">
+                <?php if ($loadCountry): ?>
+                <div class="rn-flag"><?php
+                    $cc = strtolower($loadCountry);
+                    $map2 = ['pl'=>'🇵🇱','de'=>'🇩🇪','fr'=>'🇫🇷','nl'=>'🇳🇱','be'=>'🇧🇪','cz'=>'🇨🇿','sk'=>'🇸🇰','hu'=>'🇭🇺','ro'=>'🇷🇴','ua'=>'🇺🇦','gb'=>'🇬🇧','it'=>'🇮🇹','es'=>'🇪🇸','at'=>'🇦🇹','lt'=>'🇱🇹','lv'=>'🇱🇻','ee'=>'🇪🇪','se'=>'🇸🇪','no'=>'🇳🇴','dk'=>'🇩🇰','fi'=>'🇫🇮'];
+                    echo $map2[$cc] ?? '🏳️';
+                ?></div>
+                <?php endif; ?>
+                <div class="rn-city fw-bold"><?= h($loadCity ?: $loadCountry ?: '—') ?></div>
+                <?php if ($loadCode): ?><div class="rn-date"><?= h($loadCode) ?></div><?php endif; ?>
+                <div class="rn-date text-warning fw-semibold"><?= $fdate($order->date_deadline) ?? '' ?></div>
+                <?php if ($order->pol_at): ?>
+                <span class="badge bg-success mt-1" style="font-size:.62rem">✔ POL</span>
+                <?php else: ?>
+                <span class="badge bg-light border text-muted mt-1" style="font-size:.62rem">POL pending</span>
+                <?php endif; ?>
+            </div>
+
+            <!-- Linia z ciężarówką -->
+            <div class="route-line flex-grow-1 mx-3" style="position:relative;top:0">
+                <div class="route-line-truck">🚛</div>
+                <?php if ($order->pol_at): ?><div class="route-pol">POL ✔</div><?php endif; ?>
+                <?php if ($order->pod_at): ?><div class="route-pod">✔ POD</div><?php endif; ?>
+            </div>
+
+            <!-- Rozładunek -->
+            <div class="route-node text-center" style="min-width:90px">
+                <?php if ($unloadCountry): ?>
+                <div class="rn-flag"><?php
+                    $cc2 = strtolower($unloadCountry);
+                    echo $map2[$cc2] ?? '🏳️';
+                ?></div>
+                <?php endif; ?>
+                <div class="rn-city fw-bold"><?= h($unloadCity ?: $unloadCountry ?: '—') ?></div>
+                <?php if ($unloadName): ?><div class="rn-date"><?= h($unloadName) ?></div><?php endif; ?>
+                <div class="rn-date text-success fw-semibold"><?= $fdate($order->date_delivery) ?? '' ?></div>
+                <?php if ($order->pod_at): ?>
+                <span class="badge bg-success mt-1" style="font-size:.62rem">✔ POD</span>
+                <?php else: ?>
+                <span class="badge bg-light border text-muted mt-1" style="font-size:.62rem">POD pending</span>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Transport -->
+        <div class="row g-2">
+            <?php if ($order->transport_type || $order->vehicle_reg): ?>
+            <div class="col-auto">
+                <div class="d-flex align-items-center gap-2 bg-light rounded px-3 py-2">
+                    <i class="ri-truck-line text-primary fs-5"></i>
+                    <div>
+                        <?php if ($order->transport_type): ?><div class="fw-semibold small"><?= h($order->transport_type) ?></div><?php endif; ?>
+                        <?php if ($order->vehicle_reg): ?><div class="text-muted small"><?= h($order->vehicle_reg) ?></div><?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            <?php if ($order->driver): ?>
+            <div class="col-auto">
+                <div class="d-flex align-items-center gap-2 bg-light rounded px-3 py-2">
+                    <i class="ri-user-line text-muted fs-5"></i>
+                    <div>
+                        <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Kierowca</div>
+                        <div class="fw-semibold small"><?= h($order->driver) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            <?php if ($order->carrier): ?>
+            <div class="col-auto">
+                <div class="d-flex align-items-center gap-2 bg-light rounded px-3 py-2">
+                    <i class="ri-building-line text-muted fs-5"></i>
+                    <div>
+                        <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Przewoźnik</div>
+                        <div class="fw-semibold small"><?= h($order->carrier) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            <?php if ($order->cargo_type): ?>
+            <div class="col-auto">
+                <div class="d-flex align-items-center gap-2 bg-light rounded px-3 py-2">
+                    <i class="ri-box-3-line text-muted fs-5"></i>
+                    <div>
+                        <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Ładunek</div>
+                        <div class="fw-semibold small"><?= h($order->cargo_type) ?></div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($order->route_description): ?>
+        <div class="mt-2 text-muted small"><i class="ri-map-pin-line me-1"></i><?= h($order->route_description) ?></div>
+        <?php endif; ?>
+
+    </div>
+</div>
+</div>
+
+<!-- Timeline -->
+<div class="col-lg-4">
+<div class="card border-0 shadow-sm h-100">
+    <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2">
+        <i class="ri-history-line text-primary"></i>Timeline zlecenia
+    </div>
+    <div class="card-body py-3">
+        <?php if (empty($tlEvents)): ?>
+        <div class="text-muted small text-center">Brak danych timeline.</div>
+        <?php else: ?>
+        <div class="tl">
+            <?php foreach ($tlEvents as $ev): ?>
+            <div class="tl-item">
+                <div class="tl-dot <?= ($ev['done']??false)?'done':'' ?> <?= ($ev['late']??false)?'late':'' ?>"
+                     style="background:<?= $ev['color'] ?>;color:white">
+                    <i class="<?= $ev['icon'] ?>" style="font-size:.65rem"></i>
+                </div>
+                <div class="tl-content <?= ($ev['done']??false)?'done':'' ?> <?= ($ev['late']??false)?'late':'' ?>">
+                    <div class="fw-semibold" style="font-size:.8rem"><?= h($ev['label']) ?></div>
+                    <?php if ($ev['sub']): ?>
+                    <div class="text-muted" style="font-size:.72rem"><?= h($ev['sub']) ?></div>
+                    <?php endif; ?>
+                    <?php if ($ev['late']??false): ?>
+                    <div class="text-danger" style="font-size:.68rem;font-weight:600"><i class="ri-alarm-warning-line me-1"></i>Przeterminowane</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+</div>
+
+</div><!-- /row trasa + timeline -->
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- DANE SZCZEGÓŁOWE: zleceniodawca + finansowe                           -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+<div class="col-lg-4">
+<div class="card border-0 shadow-sm h-100">
+    <div class="card-header fw-semibold bg-white border-bottom">
+        <i class="ri-building-4-line me-1 text-muted"></i>Zleceniodawca
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                <tr><th class="ps-3 text-muted fw-normal" style="width:42%">Nazwa</th>
+                    <td class="fw-semibold"><?= h($order->buyer_name) ?></td></tr>
+                <?php if ($order->buyer_nip): ?>
+                <tr><th class="ps-3 text-muted fw-normal">NIP</th>
+                    <td><code><?= h($order->buyer_nip) ?></code></td></tr>
+                <?php endif; ?>
+                <?php if ($order->buyer_street): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Adres</th>
+                    <td><?= h($order->buyer_street) ?></td></tr>
+                <?php endif; ?>
+                <?php if ($order->buyer_postal_code || $order->buyer_city): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Miasto</th>
+                    <td><?= h(trim($order->buyer_postal_code.' '.$order->buyer_city)) ?></td></tr>
+                <?php endif; ?>
+                <?php if ($order->buyer_country): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Kraj</th>
+                    <td><?= h($order->buyer_country) ?></td></tr>
+                <?php endif; ?>
+                <?php if ($order->buyer_email): ?>
+                <tr><th class="ps-3 text-muted fw-normal">E-mail</th>
+                    <td><a href="mailto:<?= h($order->buyer_email) ?>"><?= h($order->buyer_email) ?></a></td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<div class="col-lg-4">
+<div class="card border-0 shadow-sm h-100">
+    <div class="card-header fw-semibold bg-white border-bottom">
+        <i class="ri-file-list-3-line me-1 text-muted"></i>Dane zlecenia
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                <?php if ($order->our_ref): ?>
+                <tr><th class="ps-3 text-muted fw-normal" style="width:50%">Nasz ref.</th>
+                    <td class="fw-semibold"><?= h($order->our_ref) ?></td></tr>
+                <?php endif; ?>
+                <?php if ($order->title1): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Tytuł</th>
+                    <td><?= h($order->title1) ?></td></tr>
+                <?php endif; ?>
+                <tr><th class="ps-3 text-muted fw-normal">Data dok.</th>
+                    <td><?= $fdate($order->date_doc) ?? '—' ?></td></tr>
+                <?php if ($order->payment_terms): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Płatność</th>
+                    <td><?= h($order->payment_terms) ?></td></tr>
+                <?php endif; ?>
+                <tr><th class="ps-3 text-muted fw-normal">Wystawił</th>
+                    <td><?= h($order->nick_created) ?></td></tr>
+                <?php if ($order->speed_modified_at): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Sync Speed</th>
+                    <td class="text-muted small"><?= $fdatetime($order->speed_modified_at) ?></td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<div class="col-lg-4">
+<div class="card border-0 shadow-sm h-100">
+    <div class="card-header fw-semibold bg-white border-bottom">
+        <i class="ri-money-dollar-circle-line me-1 text-muted"></i>Finansowe
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                <tr><th class="ps-3 text-muted fw-normal" style="width:45%">Netto</th>
+                    <td><?= $fnum($order->netto) ?> <span class="text-muted"><?= $cur ?></span></td></tr>
+                <tr><th class="ps-3 text-muted fw-normal">VAT</th>
+                    <td><?= $fnum($order->vat) ?> <span class="text-muted"><?= $cur ?></span></td></tr>
+                <tr><th class="ps-3 text-muted fw-normal">Brutto</th>
+                    <td class="fw-bold fs-6"><?= $fnum($order->brutto) ?> <span class="fw-normal text-muted"><?= $cur ?></span></td></tr>
+                <?php if ($order->exchange_rate && $order->exchange_rate != 1): ?>
+                <tr><th class="ps-3 text-muted fw-normal">Kurs</th>
+                    <td><?= number_format((float)$order->exchange_rate,6,',','') ?><?= $order->exchange_table?' <span class="text-muted small">('.h($order->exchange_table).')</span>':'' ?></td></tr>
+                <?php endif; ?>
+                <?php if (count($costInvoices)):
+                    $sumFk = array_sum(array_map(fn($ci)=>(float)$ci->brutto,$costInvoices));
+                    $margin = (float)$order->netto - $sumFk;
+                ?>
+                <tr class="table-light"><th class="ps-3 text-muted fw-normal">Suma FK</th>
+                    <td class="text-danger fw-semibold">−<?= $fnum($sumFk) ?></td></tr>
+                <tr class="<?= $margin >= 0 ? 'table-success' : 'table-danger' ?>">
+                    <th class="ps-3 fw-semibold">Marża</th>
+                    <td class="fw-bold"><?= $fnum($margin) ?> <span class="fw-normal text-muted"><?= $cur ?></span></td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+</div><!-- /row details -->
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- FAKTURY KOSZTOWE (FK)                                                  -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2">
+        <i class="ri-receipt-line text-purple"></i>Faktury kosztowe (FK)
+        <span class="badge bg-primary-subtle text-primary ms-1"><?= count($costInvoices) ?></span>
+        <button class="btn btn-sm btn-outline-primary ms-auto" data-bs-toggle="modal" data-bs-target="#modalFkSearch">
+            <i class="ri-link me-1"></i>Przypisz FK
+        </button>
+    </div>
+    <div class="card-body p-0">
+    <?php if (empty($costInvoices)): ?>
+        <div class="text-center text-muted py-4 small">
+            <i class="ri-receipt-line fs-2 d-block mb-1 opacity-25"></i>
+            Brak przypisanych faktur kosztowych.
+            <div class="mt-2">
+                <a href="<?= $this->Url->build(['controller'=>'CostInvoices','action'=>'importKsef']) ?>" class="btn btn-sm btn-outline-primary me-1">
+                    <i class="ri-government-line me-1"></i>Importuj z KSeF
+                </a>
+                <a href="<?= $this->Url->build(['controller'=>'CostInvoices','action'=>'add']) ?>" class="btn btn-sm btn-outline-secondary">
+                    <i class="ri-add-line me-1"></i>Dodaj ręcznie
+                </a>
+            </div>
+        </div>
+    <?php else: ?>
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">Numer</th>
+                    <th>Przewoźnik</th>
+                    <th>Miesiąc</th>
+                    <th>Data wyst.</th>
+                    <th class="text-end">Brutto</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($costInvoices as $ci):
+                $ciSt = ['received'=>'Otrzymana','verified'=>'Zweryfikowana','paid'=>'Zapłacona'][$ci->status]??$ci->status;
+                $ciStCls = ['received'=>'bg-secondary-subtle text-secondary','verified'=>'bg-info-subtle text-info','paid'=>'bg-success-subtle text-success'][$ci->status]??'bg-light text-dark';
+                $ciNum = $ci->invoice_number ?: ($ci->ksef_number ? '(KSeF)' : '—');
+            ?>
+            <tr data-ci-id="<?= $ci->id ?>">
+                <td class="ps-3 fw-semibold">
+                    <a href="<?= $this->Url->build(['controller'=>'CostInvoices','action'=>'view',$ci->id]) ?>"
+                       class="text-decoration-none"><?= h($ciNum) ?></a>
+                    <?php if ($ci->source === 'ksef'): ?>
+                    <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:.62rem">KSeF</span>
+                    <?php endif; ?>
+                </td>
+                <td style="font-size:.82rem"><?= h($ci->contractor_name) ?></td>
+                <td><span class="badge bg-dark-subtle text-dark" style="font-size:.7rem"><?= h($ci->accounting_month) ?></span></td>
+                <td style="font-size:.82rem"><?= h($fdate($ci->issue_date) ?? '—') ?></td>
+                <td class="text-end fw-semibold" style="font-size:.82rem">
+                    <?= $fnum($ci->brutto) ?> <span class="text-muted fw-normal"><?= h($ci->currency) ?></span>
+                </td>
+                <td><span class="badge <?= $ciStCls ?>" style="font-size:.7rem"><?= $ciSt ?></span></td>
+                <td class="text-end">
+                    <button class="btn btn-xs btn-outline-danger py-0 px-1 btn-fk-unassign"
+                            data-ci-id="<?= $ci->id ?>" data-num="<?= h($ciNum) ?>" title="Odepnij">
+                        <i class="ri-unlink"></i>
+                    </button>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- FAKTURA SPRZEDAŻOWA                                                    -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<?php if (!empty($order->invoice_id)): ?>
+<div class="card border-success shadow-sm mb-3">
+    <div class="card-header fw-semibold text-success bg-success-subtle border-bottom d-flex align-items-center gap-2">
+        <i class="ri-file-text-line"></i>Powiązana faktura sprzedażowa
+        <?php if ($order->invoiced_at): ?>
+        <span class="text-muted fw-normal small ms-2">Wystawiono: <?= $fdatetime($order->invoiced_at) ?></span>
+        <?php endif; ?>
+        <a href="<?= $this->Url->build(['controller'=>'Invoices','action'=>'view',$order->invoice_id]) ?>"
+           class="btn btn-sm btn-success ms-auto">
+            <i class="ri-external-link-line me-1"></i>Otwórz fakturę
+        </a>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- UWAGI                                                                  -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<?php if ($order->notes): ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header fw-semibold bg-white border-bottom"><i class="ri-sticky-note-line me-1 text-warning"></i>Uwagi</div>
+    <div class="card-body"><p class="mb-0" style="white-space:pre-wrap"><?= h($order->notes) ?></p></div>
+</div>
+<?php endif; ?>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- SUROWE DANE SPEED (zwijalne)                                           -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<?php if ($rawData): ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between">
+        <span class="text-muted small">Surowe dane Speed ERP (GLO_*)</span>
+        <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="collapse" data-bs-target="#raw-json">
+            Pokaż / Ukryj
+        </button>
+    </div>
+    <div class="collapse" id="raw-json">
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 font-monospace small">
+                <tbody>
+                    <?php foreach ($rawData as $k=>$v): ?>
+                    <tr>
+                        <th class="ps-3 text-nowrap text-muted fw-normal" style="width:200px"><?= h($k) ?></th>
+                        <td><?= h((string)($v??'')) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
-    <?php endif; ?>
-
 </div>
+<?php endif; ?>
+
+<!-- Modal: wyszukiwarka FK -->
+<div class="modal fade" id="modalFkSearch" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ri-receipt-line me-1"></i>Przypisz fakturę kosztową</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <input type="text" id="fk-search-q" class="form-control form-control-sm"
+                       placeholder="Numer faktury, NIP, przewoźnik…">
+            </div>
+            <div class="col-md-4">
+                <input type="month" id="fk-search-month" class="form-control form-control-sm" value="<?= date('Y-m') ?>">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-sm btn-primary w-100" id="btn-fk-search">
+                    <i class="ri-search-line"></i>
+                </button>
+            </div>
+        </div>
+        <div id="fk-search-results">
+            <div class="text-muted small text-center py-3">Wpisz frazę lub wybierz miesiąc i kliknij Szukaj.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a href="<?= $this->Url->build(['controller'=>'CostInvoices','action'=>'add']) ?>" class="btn btn-outline-secondary btn-sm" target="_blank">
+            <i class="ri-add-line me-1"></i>Dodaj FK
+        </a>
+        <a href="<?= $this->Url->build(['controller'=>'CostInvoices','action'=>'importKsef']) ?>" class="btn btn-outline-primary btn-sm" target="_blank">
+            <i class="ri-government-line me-1"></i>Importuj z KSeF
+        </a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php $this->append('scriptBottom'); ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var orderId      = <?= (int)$order->id ?>;
+    var updateUrl    = '<?= $updateStatusUrl ?>';
+    var assignFkUrl  = '<?= $assignFkUrl ?>';
+    var unassignFkUrl= '<?= $unassignFkUrl ?>';
+    var searchFkUrl  = '<?= $searchFkUrl ?>';
+    var csrfToken    = '<?= h($csrfToken) ?>';
+    var nlLabels     = <?= json_encode(array_map(fn($s)=>$s['label'],$nlStatusMap)) ?>;
+
+    function post(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify(payload),
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        });
+    }
+
+    function showToast(msg, ok) {
+        if (window.Swal) {
+            Swal.fire({ toast:true, position:'bottom-end', icon: ok?'success':'error',
+                title:msg, showConfirmButton:false, timer:2500, timerProgressBar:true });
+        } else { alert(msg); }
+    }
+
+    // ── Stepper: zmiana statusu ──
+    document.querySelectorAll('.stepper-step').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var ns = parseInt(this.dataset.status);
+            post(updateUrl, { id: orderId, nordlogis_status: ns }).then(function(data) {
+                if (data.success) {
+                    showToast('Status: ' + (nlLabels[ns]||ns), true);
+                    setTimeout(function(){ location.reload(); }, 700);
+                } else { showToast(data.error||'Błąd', false); }
+            }).catch(function(e){ showToast('Błąd: '+e.message, false); });
+        });
+    });
+
+    // ── Pills: POL/POD/FK/FS ──
+    document.querySelectorAll('.check-toggle').forEach(function(chk) {
+        chk.addEventListener('change', function() {
+            var self = this;
+            var key  = this.dataset.field.replace('_at','');
+            var val  = this.checked;
+            var payload = { id: orderId };
+            payload[key] = val;
+            post(updateUrl, payload).then(function(data) {
+                if (data.success) {
+                    showToast((val?'✔ ':'✖ ') + key.toUpperCase() + (val?' zaznaczony':' odznaczony'), true);
+                    setTimeout(function(){ location.reload(); }, 700);
+                } else {
+                    self.checked = !val;
+                    showToast(data.error||'Błąd', false);
+                }
+            }).catch(function(e){ self.checked=!val; showToast('Błąd: '+e.message,false); });
+        });
+    });
+
+    // ── FK: wyszukiwarka ──
+    var fkStatusLabels = { received:'Otrzymana', verified:'Zweryfikowana', paid:'Zapłacona' };
+
+    document.getElementById('btn-fk-search')?.addEventListener('click', function() {
+        var q     = document.getElementById('fk-search-q').value;
+        var month = document.getElementById('fk-search-month').value;
+        document.getElementById('fk-search-results').innerHTML = '<div class="text-center py-3 text-muted small"><i class="ri-loader-4-line"></i> Szukam…</div>';
+
+        fetch(searchFkUrl + '?' + new URLSearchParams({q:q, month:month}))
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            if (!data.success || !data.results.length) {
+                document.getElementById('fk-search-results').innerHTML =
+                    '<div class="text-muted small text-center py-3">Brak wyników. <a href="/koszty/import-ksef" target="_blank">Importuj z KSeF</a></div>';
+                return;
+            }
+            var rows = data.results.map(function(ci) {
+                var num = ci.invoice_number || ci.ksef_number || '(brak numeru)';
+                var st  = fkStatusLabels[ci.status] || ci.status;
+                var brutto = parseFloat(ci.brutto||0).toLocaleString('pl-PL',{minimumFractionDigits:2});
+                return '<tr>'
+                    + '<td class="ps-2 fw-semibold" style="font-size:.82rem">' + num + '</td>'
+                    + '<td style="font-size:.82rem">' + (ci.contractor_name||'—') + '</td>'
+                    + '<td><span class="badge bg-dark-subtle text-dark" style="font-size:.68rem">' + (ci.accounting_month||'—') + '</span></td>'
+                    + '<td style="font-size:.82rem">' + (ci.issue_date||'—') + '</td>'
+                    + '<td class="text-end fw-semibold" style="font-size:.82rem">' + brutto + ' ' + ci.currency + '</td>'
+                    + '<td><button class="btn btn-sm btn-primary py-0 btn-assign-fk" data-ci=\'' + JSON.stringify(ci) + '\'>Przypisz</button></td>'
+                    + '</tr>';
+            }).join('');
+            document.getElementById('fk-search-results').innerHTML =
+                '<table class="table table-sm table-hover mb-0">'
+                + '<thead class="table-light"><tr><th class="ps-2">Numer</th><th>Przewoźnik</th><th>Miesiąc</th><th>Data</th><th class="text-end">Brutto</th><th></th></tr></thead>'
+                + '<tbody>' + rows + '</tbody></table>';
+
+            document.querySelectorAll('.btn-assign-fk').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var ci = JSON.parse(this.dataset.ci);
+                    post(assignFkUrl, { cost_invoice_id: ci.id, speed_order_id: orderId })
+                    .then(function(data) {
+                        if (data.success) {
+                            showToast('Przypisano: ' + (ci.invoice_number||ci.ksef_number), true);
+                            bootstrap.Modal.getInstance(document.getElementById('modalFkSearch'))?.hide();
+                            setTimeout(function(){ location.reload(); }, 600);
+                        } else { showToast(data.error||'Błąd', false); }
+                    }).catch(function(e){ showToast('Błąd: '+e.message,false); });
+                });
+            });
+        })
+        .catch(function(e){
+            document.getElementById('fk-search-results').innerHTML =
+                '<div class="alert alert-danger py-2">Błąd: ' + e.message + '</div>';
+        });
+    });
+
+    // ── FK: odpinanie ──
+    document.querySelectorAll('.btn-fk-unassign').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var ciId = parseInt(this.dataset.ciId);
+            var num  = this.dataset.num;
+            if (!confirm('Odpiąć fakturę ' + num + '?')) return;
+            post(unassignFkUrl, { cost_invoice_id: ciId, speed_order_id: orderId })
+            .then(function(data) {
+                if (data.success) {
+                    var tr = document.querySelector('tr[data-ci-id="'+ciId+'"]');
+                    if (tr) tr.remove();
+                    showToast('Odpięto FK', true);
+                    setTimeout(function(){ location.reload(); }, 600);
+                } else { showToast(data.error||'Błąd', false); }
+            }).catch(function(e){ showToast('Błąd: '+e.message,false); });
+        });
+    });
+
+    // Trigger wyszukiwania po Enter w polu
+    document.getElementById('fk-search-q')?.addEventListener('keydown', function(e){
+        if (e.key === 'Enter') document.getElementById('btn-fk-search').click();
+    });
+});
+</script>
+<?php $this->end(); ?>

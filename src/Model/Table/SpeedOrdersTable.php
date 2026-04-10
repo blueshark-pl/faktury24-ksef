@@ -17,6 +17,11 @@ class SpeedOrdersTable extends Table
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
+
+        $this->belongsTo('Invoices', [
+            'foreignKey' => 'invoice_id',
+            'joinType'   => 'LEFT',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator
