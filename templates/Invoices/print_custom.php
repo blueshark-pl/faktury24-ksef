@@ -219,17 +219,27 @@ $__pl_words = function(int $n): string {
     }
     return implode(' ',$out);
 };
-$amountInWords = function($amount, $currency='PLN') use ($__pl_words, $lang): string {
+$__en_words = function(int $n) use (&$__en_words): string {
+    if ($n === 0) return 'zero';
+    $u = ['','one','two','three','four','five','six','seven','eight','nine',
+          'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+    $d = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+    if ($n < 20)  return $u[$n];
+    if ($n < 100) return $d[intdiv($n,10)] . ($n%10 ? '-'.$u[$n%10] : '');
+    if ($n < 1000) return $u[intdiv($n,100)].' hundred'.($n%100 ? ' '.$__en_words($n%100) : '');
+    if ($n < 1000000) return $__en_words(intdiv($n,1000)).' thousand'.($n%1000 ? ' '.$__en_words($n%1000) : '');
+    return $__en_words(intdiv($n,1000000)).' million'.($n%1000000 ? ' '.$__en_words($n%1000000) : '');
+};
+$amountInWords = function($amount, $currency='PLN') use ($__pl_words, $__en_words, $lang): string {
     $currency = strtoupper((string)$currency);
     $amt = (float)$amount;
     $int = (int)floor($amt + 1e-8);
     $frac= (int)round(($amt - $int) * 100);
     $cents = sprintf('%02d', $frac);
     if ($lang === 'en') {
-        // Simple English format
         $map = ['EUR'=>['euro','euro cent'],'USD'=>['dollar','cent'],'GBP'=>['pound','penny'],'PLN'=>['zloty','grosz']];
         $names = $map[$currency] ?? [strtolower($currency), 'cent'];
-        return $__pl_words($int) . ' ' . $names[0] . ' ' . $cents . '/100 ' . $names[1];
+        return ucfirst($__en_words($int)) . ' ' . $names[0] . ' ' . $cents . '/100 ' . $names[1];
     }
     $decl = function(int $n, array $f): string {
         $n1=$n%10; $n2=$n%100;
@@ -241,6 +251,75 @@ $amountInWords = function($amount, $currency='PLN') use ($__pl_words, $lang): st
     if ($currency==='EUR') return trim($__pl_words($int).' euro '.$cents.'/100 '.$decl($frac,['eurocent','eurocenty','eurocentów']));
     if ($currency==='USD') return trim($__pl_words($int).' '.$decl($int,['dolar','dolary','dolarów']).' '.$cents.'/100 '.$decl($frac,['cent','centy','centów']));
     return trim($__pl_words($int).' '.strtoupper($currency).' '.$cents.'/100');
+};
+
+/* ─── tłumaczenie fraz PL→EN w nazwach pozycji ─── */
+$__phrasesEN = [
+    // usługi spedycyjne / transportowe
+    'Usługa spedycyjna'          => 'Freight forwarding service',
+    'Usługa transportowa'        => 'Transport service',
+    'Usługa kurierska'           => 'Courier service',
+    'Usługa logistyczna'         => 'Logistics service',
+    'Załadunek'                  => 'Loading',
+    'Rozładunek'                 => 'Unloading',
+    'Przeładunek'                => 'Transshipment',
+    'Zlecenie'                   => 'Order',
+    'Zlecenie transportowe'      => 'Transport order',
+    'Zlecenie spedycyjne'        => 'Forwarding order',
+    'Transport'                  => 'Transport',
+    'Fracht'                     => 'Freight',
+    'Fracht morski'              => 'Sea freight',
+    'Fracht lotniczy'            => 'Air freight',
+    'Fracht drogowy'             => 'Road freight',
+    'Magazynowanie'              => 'Warehousing',
+    'Składowanie'                => 'Storage',
+    'Odprawa celna'              => 'Customs clearance',
+    'Ubezpieczenie'              => 'Insurance',
+    'Ubezpieczenie ładunku'      => 'Cargo insurance',
+    'Opłata drogowa'             => 'Road toll',
+    'Opłata manipulacyjna'       => 'Handling fee',
+    'Opłata terminalowa'         => 'Terminal fee',
+    'Dopłata paliwowa'           => 'Fuel surcharge',
+    'Dopłata drogowa'            => 'Road surcharge',
+    'Data załadunku'             => 'Loading date',
+    'Data rozładunku'            => 'Unloading date',
+    'Miejsce załadunku'          => 'Loading place',
+    'Miejsce rozładunku'         => 'Unloading place',
+    'Dostawa'                    => 'Delivery',
+    'Odbiór'                     => 'Collection',
+    'Przewóz'                    => 'Carriage',
+    'Kierowca'                   => 'Driver',
+    'Pojazd'                     => 'Vehicle',
+    'Naczepa'                    => 'Semi-trailer',
+    'Kontener'                   => 'Container',
+    'Paleta'                     => 'Pallet',
+    // ogólne
+    'Usługa'                     => 'Service',
+    'Towar'                      => 'Goods',
+    'Produkt'                    => 'Product',
+    'Wynagrodzenie'              => 'Remuneration',
+    'Prowizja'                   => 'Commission',
+    'Abonament'                  => 'Subscription',
+    'Faktura'                    => 'Invoice',
+    'Zaliczka'                   => 'Advance payment',
+    'Przedpłata'                 => 'Prepayment',
+    'Netto'                      => 'Net',
+    'Brutto'                     => 'Gross',
+    'Razem'                      => 'Total',
+];
+$translatePhrase = function(string $text) use ($__phrasesEN, $lang): string {
+    if ($lang !== 'en') return $text;
+    // najpierw spróbuj dopasować pełną frazę (case-insensitive)
+    foreach ($__phrasesEN as $pl => $en) {
+        if (mb_strtolower($text) === mb_strtolower($pl)) return $en;
+    }
+    // zamień pasujące podfrazy (dłuższe pierwsze, żeby uniknąć częściowych zastąpień)
+    $sorted = $__phrasesEN;
+    uksort($sorted, fn($a,$b) => mb_strlen($b) <=> mb_strlen($a));
+    foreach ($sorted as $pl => $en) {
+        $text = preg_replace('/\b'.preg_quote($pl,'/').'(?=[,.:;\s]|$)/ui', $en, $text);
+    }
+    return $text;
 };
 
 /* ─── kurs — VAT/brutto w PLN ─── */
@@ -468,9 +547,9 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
     <tr>
         <td><?= $rowIdx ?></td>
         <td class="left">
-            <strong><?= h($it->name) ?></strong>
+            <strong><?= h($translatePhrase($it->name ?? '')) ?></strong>
             <?php if (!empty($it->product_desc)): ?>
-            <br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span>
+            <br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span>
             <?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
             <div class="item-descs">
@@ -480,8 +559,8 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
                     if ($k===''&&$v==='') continue;
                 ?>
                 <div class="item-desc-row">
-                    <span class="item-desc-key"><?= h($k) ?>:</span>
-                    <span class="item-desc-val"><?= h($v) ?></span>
+                    <span class="item-desc-key"><?= h($translatePhrase($k)) ?>:</span>
+                    <span class="item-desc-val"><?= h($translatePhrase($v)) ?></span>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -537,12 +616,12 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
     <tr>
         <td><?= $rowIdx ?></td>
         <td class="left">
-            <strong><?= h($it->name) ?></strong>
-            <?php if (!empty($it->product_desc)): ?><br><span style="color:#6b7280;font-size:7.8pt"><?= h($it->product_desc) ?></span><?php endif; ?>
+            <strong><?= h($translatePhrase($it->name ?? '')) ?></strong>
+            <?php if (!empty($it->product_desc)): ?><br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span><?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
             <div class="item-descs">
                 <?php foreach ($rowDescs as $d): $k=trim((string)($d->klucz??'')); $v=trim((string)($d->wartosc??'')); if($k===''&&$v==='') continue; ?>
-                <div class="item-desc-row"><span class="item-desc-key"><?= h($k) ?>:</span><span class="item-desc-val"><?= h($v) ?></span></div>
+                <div class="item-desc-row"><span class="item-desc-key"><?= h($translatePhrase($k)) ?>:</span><span class="item-desc-val"><?= h($translatePhrase($v)) ?></span></div>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
