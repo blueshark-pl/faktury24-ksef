@@ -76,8 +76,10 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
            data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">
           <i class="ri-printer-line me-1"></i>Pobierz PDF
         </a>
-        <a href="<?= $this->Url->build(['action' => 'printCustom', $invoice->id]) ?>"
-           target="_blank" class="btn btn-outline-primary btn-sm" title="PDF renderowany przez przeglądarkę — z kursami walut i opisami pozycji">
+        <a href="#" class="btn btn-outline-primary btn-sm btn-pdf-custom-lang"
+           data-url-pl="<?= $this->Url->build(['action' => 'printCustom', $invoice->id]) ?>"
+           data-url-en="<?= $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['lang' => 'en']]) ?>"
+           title="PDF renderowany przez przeglądarkę — z kursami walut i opisami pozycji">
           <i class="ri-file-pdf-2-line me-1"></i>PDF custom
         </a>
         <?php if ($canEdit): ?>
@@ -666,6 +668,36 @@ document.addEventListener('click', function (e) {
                 Swal.close();
             });
             document.getElementById('swal-pdf-en').addEventListener('click', function () {
+                window.open(btn.dataset.urlEn, '_blank');
+                Swal.close();
+            });
+        }
+    });
+});
+
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-pdf-custom-lang');
+    if (!btn) return;
+    e.preventDefault();
+    Swal.fire({
+        title: 'PDF custom (przeglądarka)',
+        html: '<p class="mb-3">Wybierz język faktury:</p>'
+            + '<div class="d-flex justify-content-center gap-3">'
+            + '  <button id="swal-cust-pl" class="btn btn-outline-primary btn-lg px-4">'
+            + '    <i class="fi fi-pl me-2" style="font-size:1.2em"></i>Polski'
+            + '  </button>'
+            + '  <button id="swal-cust-en" class="btn btn-outline-primary btn-lg px-4">'
+            + '    <i class="fi fi-gb me-2" style="font-size:1.2em"></i>English'
+            + '  </button>'
+            + '</div>',
+        showConfirmButton: false,
+        showCloseButton: true,
+        didOpen: function () {
+            document.getElementById('swal-cust-pl').addEventListener('click', function () {
+                window.open(btn.dataset.urlPl, '_blank');
+                Swal.close();
+            });
+            document.getElementById('swal-cust-en').addEventListener('click', function () {
                 window.open(btn.dataset.urlEn, '_blank');
                 Swal.close();
             });

@@ -807,8 +807,9 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                     </a>
                   </li>
                   <li>
-                    <a href="<?= $this->Url->build(['action' => 'printCustom', $inv->id]) ?>"
-                       target="_blank" class="dropdown-item">
+                    <a href="#" class="dropdown-item btn-pdf-custom-lang"
+                       data-url-pl="<?= $this->Url->build(['action' => 'printCustom', $inv->id]) ?>"
+                       data-url-en="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['lang' => 'en']]) ?>">
                       <i class="ri-file-pdf-2-line me-2"></i> PDF custom (przeglądarka)
                     </a>
                   </li>
@@ -1454,6 +1455,37 @@ document.addEventListener('DOMContentLoaded', function(){
           Swal.close();
         });
         document.getElementById('swal-pdf-en').addEventListener('click', function () {
+          window.open(btn.dataset.urlEn, '_blank');
+          Swal.close();
+        });
+      }
+    });
+  });
+
+  /* ---------- PDF custom language chooser ---------- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-pdf-custom-lang');
+    if (!btn) return;
+    e.preventDefault();
+    Swal.fire({
+      title: 'PDF custom (przeglądarka)',
+      html: '<p class="mb-3">Wybierz język faktury:</p>'
+          + '<div class="d-flex justify-content-center gap-3">'
+          + '  <button id="swal-cust-pl" class="btn btn-outline-primary btn-lg px-4">'
+          + '    <i class="fi fi-pl me-2" style="font-size:1.2em"></i>Polski'
+          + '  </button>'
+          + '  <button id="swal-cust-en" class="btn btn-outline-primary btn-lg px-4">'
+          + '    <i class="fi fi-gb me-2" style="font-size:1.2em"></i>English'
+          + '  </button>'
+          + '</div>',
+      showConfirmButton: false,
+      showCloseButton: true,
+      didOpen: function () {
+        document.getElementById('swal-cust-pl').addEventListener('click', function () {
+          window.open(btn.dataset.urlPl, '_blank');
+          Swal.close();
+        });
+        document.getElementById('swal-cust-en').addEventListener('click', function () {
           window.open(btn.dataset.urlEn, '_blank');
           Swal.close();
         });
