@@ -364,8 +364,8 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 .parties { display:flex; gap:1cm; margin-bottom:.7cm; }
 .party { flex:1; }
 .party-label { font-size:7pt; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; border-bottom:1px solid #e5e7eb; padding-bottom:2px; margin-bottom:4px; }
-.party-name { font-size:9pt; font-weight:700; color:#111; }
-.party-detail { font-size:8.5pt; color:#444; line-height:1.5; }
+.party-name { font-size:9pt; font-weight:700; color:#111; word-break:break-word; }
+.party-detail { font-size:8pt; color:#444; line-height:1.5; }
 
 /* Summary */
 .summary-section { display:flex; gap:.5cm; margin-bottom:.5cm; align-items:flex-start; }
@@ -373,11 +373,11 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 
 /* Tabela pozycji */
 .items-table { width:100%; border-collapse:collapse; margin-bottom:.5cm; font-size:8.5pt; }
-.items-table thead th { background:#1e40af; color:#fff; padding:5px 6px; text-align:center; font-weight:600; vertical-align:middle; }
+.items-table thead th { background:#1e40af; color:#fff; padding:4px 5px; text-align:center; font-weight:600; vertical-align:middle; font-size:8pt; }
 .items-table thead th.left { text-align:left; }
 .items-table tbody tr { page-break-inside:avoid; }
-.items-table tbody td { padding:5px 6px; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:center; }
-.items-table tbody td.left { text-align:left; }
+.items-table tbody td { padding:4px 5px; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:center; font-size:8pt; }
+.items-table tbody td.left { text-align:left; word-break:break-word; }
 .items-table tbody tr:nth-child(even) { background:#f8fafc; }
 .items-table tfoot td { padding:6px; font-weight:700; background:#e0e7ff; border-top:2px solid #1e40af; color:#1e40af; white-space:nowrap; font-size:9.5pt; }
 

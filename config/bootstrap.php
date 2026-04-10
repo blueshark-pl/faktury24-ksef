@@ -190,12 +190,11 @@ Configure::write('CakePdf', [
     'engine' => 'CakePdf.DomPdf',
     'options' => [
         // Dompdf options
-        'isRemoteEnabled' => true,
-        'isHtml5ParserEnabled' => true,
-                        'isPhpEnabled' => true,     // CakePdf 8.x + Dompdf >= 1.0/2.0
-                                'enable_php' => true,
-
-
+        'isRemoteEnabled'     => true,
+        'isHtml5ParserEnabled'=> true,
+        'isPhpEnabled'        => true,
+        'enable_php'          => true,
+        'defaultFont'         => 'dejavu sans',  // polskie znaki out-of-the-box
     ],
     'margin' => [
         'top' => 12,
