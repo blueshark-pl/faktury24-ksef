@@ -338,7 +338,7 @@ $urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['la
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title><?= h($typeName) ?> <?= h($invoice->fullnumber ?: $invoice->id) ?></title>
 <style>
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; }
 @page { size: A4 portrait; margin: .8cm 1cm 1.2cm 1cm; }
 @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -349,6 +349,7 @@ $urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['la
     .sheet { box-shadow: 0 4px 32px rgba(0,0,0,.12); margin: 24px auto; }
 }
 body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; line-height: 1.4; }
+table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; }
 .sheet { background: #fff; max-width: 21cm; padding: .8cm 1cm; }
 
 /* Nagłówek */
@@ -378,7 +379,7 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
 .items-table tbody td { padding:5px 6px; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:center; }
 .items-table tbody td.left { text-align:left; }
 .items-table tbody tr:nth-child(even) { background:#f8fafc; }
-.items-table tfoot td { padding:6px; font-weight:700; background:#e0e7ff; border-top:2px solid #1e40af; color:#1e40af; }
+.items-table tfoot td { padding:6px; font-weight:700; background:#e0e7ff; border-top:2px solid #1e40af; color:#1e40af; white-space:nowrap; font-size:9.5pt; }
 
 /* Opis dodatkowy pod pozycją */
 .item-descs { border-left:3px solid #3b82f6; margin:3px 0 2px 2px; padding:3px 8px; background:#eff6ff; border-radius:0 4px 4px 0; font-family:'DejaVu Sans',Arial,sans-serif; }
@@ -622,7 +623,7 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
             <td style="text-align:right"><?= $num2($invoice->netto ?? 0) ?></td>
             <td style="text-align:right"><?= $num2($invoice->tax ?? 0) ?></td>
             <?php endif; ?>
-            <td style="text-align:right;font-size:11pt"><?= $money($invoice->total ?? 0, $cur) ?></td>
+            <td style="text-align:right;font-size:9.5pt;white-space:nowrap"><?= $money($invoice->total ?? 0, $cur) ?></td>
         </tr>
     </tfoot>
 </table>
@@ -669,7 +670,7 @@ body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt
     <tfoot>
         <tr>
             <td colspan="5" style="text-align:right;font-size:10pt"><?= h($t['total_due']) ?>:</td>
-            <td style="text-align:right;font-size:11pt"><?= $money($invoice->total ?? 0, $cur) ?></td>
+            <td style="text-align:right;font-size:9.5pt;white-space:nowrap"><?= $money($invoice->total ?? 0, $cur) ?></td>
         </tr>
     </tfoot>
 </table>
