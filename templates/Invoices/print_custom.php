@@ -64,9 +64,9 @@ $t = ($lang === 'en') ? [
     'pay_transfer'    => 'Bank transfer',
     'pay_cash'        => 'Cash',
     'pay_compensation'=> 'Set-off',
-    'sig_receiver'    => 'Authorised signatory\n(buyer)',
+    'sig_receiver'    => "Authorised signatory\n(buyer)",
     'sig_date'        => 'Date of receipt',
-    'sig_issuer'      => 'Authorised signatory\n(seller)',
+    'sig_issuer'      => "Authorised signatory\n(seller)",
     'print_btn'       => '🖨 Print / Save PDF',
     'close_btn'       => '✕ Close',
     'lang_pl'         => '🇵🇱 Polski',
@@ -604,15 +604,15 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
             <br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span>
             <?php endif; ?>
             <?php if (!empty($rowDescs)): ?>
-            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:7.8pt;font-family:'DejaVu Sans',sans-serif;border-collapse:collapse"><tbody>
+            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:6.5pt;font-family:'DejaVu Sans',sans-serif;border-collapse:collapse"><tbody>
                 <?php foreach ($rowDescs as $d):
                     $k = trim((string)($d->klucz ?? ''));
                     $v = trim((string)($d->wartosc ?? ''));
                     if ($k===''&&$v==='') continue;
                 ?>
                 <tr>
-                    <td style="font-family:'DejaVu Sans',sans-serif;color:#6b7280;white-space:nowrap;width:90px;padding:1px 6px;"><?= h($translatePhrase($k)) ?>:</td>
-                    <td style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;padding:1px 4px;"><?= h($translatePhrase($v)) ?></td>
+                    <td style="font-family:'DejaVu Sans',sans-serif;font-size:6.5pt;color:#6b7280;white-space:nowrap;width:80px;padding:1px 5px;text-align:left;"><?= h($translatePhrase($k)) ?>:</td>
+                    <td style="font-family:'DejaVu Sans',sans-serif;font-size:6.5pt;font-weight:bold;padding:1px 4px;text-align:left;"><?= h($translatePhrase($v)) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody></table>
