@@ -902,15 +902,15 @@ $ftrStreet = trim(($seller->street ?? '') . ' ' . ($seller->building_number ?? '
 $ftrCity = trim(($seller->zip ?? $seller->postal_code ?? '') . ' ' . ($seller->city ?? ''));
 $ftrNip = $seller->nip ?? null;
 $ftrRegs = json_decode((string)($seller->registers_json ?? ''), true) ?: [];
-$ftrKrs = ''; $ftrRegon = ''; $ftrCapital = '';
+$ftrKrs = ''; $ftrRegon = ''; $ftrCapital = '50 000 PLN';
 foreach ($ftrRegs as $r) {
-    if (!empty($r['krs']))     $ftrKrs    = $r['krs'];
-    if (!empty($r['regon']))   $ftrRegon  = $r['regon'];
+    if (!empty($r['krs']))     $ftrKrs     = $r['krs'];
+    if (!empty($r['regon']))   $ftrRegon   = $r['regon'];
     if (!empty($r['kapital'])) $ftrCapital = $r['kapital'];
 }
-$ftrPhone = $seller->phone ?? null;
-$ftrWww   = $seller->website ?? $seller->www ?? null;
-$ftrEmail = $seller->email ?? null;
+$ftrPhone = $seller->phone ?? '+48 58 337 69 50 // +48 726 004 233';
+$ftrWww   = $seller->website ?? $seller->www ?? 'www.NordLogis.pl';
+$ftrEmail = $seller->email ?? 'kontakt@nordlogis.pl';
 ?>
 <div class="inv-footer" style="font-family:'DejaVu Sans',sans-serif">
     <?php if ($ftrName): ?>
