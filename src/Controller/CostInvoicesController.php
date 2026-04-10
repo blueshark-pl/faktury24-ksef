@@ -1,0 +1,495 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Controller;
+
+use App\Service\Ksef\N1KsefService;
+use App\Service\Ksef\DbKsefTokenStorage;
+use App\Service\Ksef\CertificateStorage;
+use Cake\Log\Log;
+
+/**
+ * Faktury kosztowe (od przewoźników).
+ *
+ * Źródła:
+ *  - KSeF received  — przeglądaj i importuj do bazy
+ *  - Ręczne         — formularz + opcjonalny PDF
+ *
+ * Akcje:
+ *  index        GET  /koszty
+ *  view         GET  /koszty/view/{id}
+ *  add          GET/POST /koszty/add
+ *  edit         GET/POST /koszty/edit/{id}
+ *  delete       POST /koszty/delete/{id}
+ *  importKsef   GET  /koszty/import-ksef          — przeglądarka KSeF
+ *  doImportKsef POST /koszty/do-import-ksef       — zapis wybranych z KSeF
+ *  searchAjax   GET  /koszty/search               — AJAX wyszukiwarka (dla modalu w zleceniu)
+ *  assignOrder  POST /koszty/assign-order         — przypisz FK do zlecenia
+ *  unassignOrder POST /koszty/unassign-order      — odepnij FK od zlecenia
+ */
+class CostInvoicesController extends AppController
+{
+    // -------------------------------------------------------------------------
+    // Lista FK
+    // -------------------------------------------------------------------------
+    public function index(): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $search   = trim((string)$this->request->getQuery('q', ''));
+        $month    = trim((string)$this->request->getQuery('month', ''));   // YYYY-MM
+        $status   = trim((string)$this->request->getQuery('status', ''));
+        $source   = trim((string)$this->request->getQuery('source', ''));
+        $page     = max(1, (int)$this->request->getQuery('page', 1));
+        $limit    = 50;
+
+        $CI = $this->fetchTable('CostInvoices');
+        $query = $CI->find()->orderByDesc('CostInvoices.issue_date');
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(['OR' => [
+                'CostInvoices.invoice_number LIKE'  => $like,
+                'CostInvoices.contractor_name LIKE' => $like,
+                'CostInvoices.contractor_nip LIKE'  => $like,
+                'CostInvoices.ksef_number LIKE'     => $like,
+            ]]);
+        }
+        if ($month  !== '') $query->where(['CostInvoices.accounting_month' => $month]);
+        if ($status !== '') $query->where(['CostInvoices.status' => $status]);
+        if ($source !== '') $query->where(['CostInvoices.source' => $source]);
+
+        $total = (clone $query)->count();
+        $pages = max(1, (int)ceil($total / $limit));
+        $page  = min($page, $pages);
+        $invoices = $query->limit($limit)->offset(($page - 1) * $limit)->all();
+
+        // Miesiące dostępne do filtra
+        $months = $CI->find()
+            ->select(['accounting_month'])
+            ->where(['accounting_month IS NOT' => null])
+            ->groupBy('accounting_month')
+            ->orderByDesc('accounting_month')
+            ->all()
+            ->map(fn($r) => $r->accounting_month)
+            ->toArray();
+
+        $this->set(compact('invoices', 'total', 'page', 'pages', 'limit', 'search', 'month', 'status', 'source', 'months'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Szczegóły FK
+    // -------------------------------------------------------------------------
+    public function view(int $id): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $invoice = $CI->get($id, contain: ['SpeedOrders']);
+
+        $this->set(compact('invoice'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Dodaj FK ręcznie
+    // -------------------------------------------------------------------------
+    public function add(): void
+    {
+        $CI = $this->fetchTable('CostInvoices');
+        $invoice = $CI->newEmptyEntity();
+
+        // Domyślny miesiąc rozliczeniowy = bieżący
+        $invoice->set('accounting_month', date('Y-m'));
+        $invoice->set('source', 'manual');
+        $invoice->set('status', 'received');
+        $invoice->set('currency', 'PLN');
+        $invoice->set('receipt_date', date('Y-m-d'));
+
+        if ($this->request->is('post')) {
+            $data = (array)$this->request->getData();
+
+            // Upload PDF
+            $pdf = $this->request->getUploadedFile('pdf_file');
+            if ($pdf && $pdf->getError() === UPLOAD_ERR_OK) {
+                $ext      = strtolower(pathinfo((string)$pdf->getClientFilename(), PATHINFO_EXTENSION));
+                $filename = 'cost_' . date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $dir      = WWW_ROOT . 'files' . DS . 'cost_invoices' . DS;
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $pdf->moveTo($dir . $filename);
+                $data['pdf_path'] = 'files/cost_invoices/' . $filename;
+            }
+            unset($data['pdf_file']);
+
+            $invoice = $CI->patchEntity($invoice, $data);
+            if ($CI->save($invoice)) {
+                $this->Flash->success('Faktura kosztowa została zapisana.');
+                return $this->redirect(['action' => 'view', $invoice->id]);
+            }
+            $this->Flash->error('Błąd zapisu. Sprawdź formularz.');
+        }
+
+        $this->set(compact('invoice'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Edytuj FK
+    // -------------------------------------------------------------------------
+    public function edit(int $id): void
+    {
+        $CI = $this->fetchTable('CostInvoices');
+        $invoice = $CI->get($id);
+
+        if ($this->request->is(['post', 'put', 'patch'])) {
+            $data = (array)$this->request->getData();
+
+            $pdf = $this->request->getUploadedFile('pdf_file');
+            if ($pdf && $pdf->getError() === UPLOAD_ERR_OK) {
+                $ext      = strtolower(pathinfo((string)$pdf->getClientFilename(), PATHINFO_EXTENSION));
+                $filename = 'cost_' . date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $dir      = WWW_ROOT . 'files' . DS . 'cost_invoices' . DS;
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $pdf->moveTo($dir . $filename);
+                $data['pdf_path'] = 'files/cost_invoices/' . $filename;
+            }
+            unset($data['pdf_file']);
+
+            $invoice = $CI->patchEntity($invoice, $data);
+            if ($CI->save($invoice)) {
+                $this->Flash->success('Zapisano zmiany.');
+                return $this->redirect(['action' => 'view', $invoice->id]);
+            }
+            $this->Flash->error('Błąd zapisu.');
+        }
+
+        $this->set(compact('invoice'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Usuń FK
+    // -------------------------------------------------------------------------
+    public function delete(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $CI = $this->fetchTable('CostInvoices');
+        $invoice = $CI->get($id);
+        if ($CI->delete($invoice)) {
+            $this->Flash->success('Faktura kosztowa usunięta.');
+        } else {
+            $this->Flash->error('Nie udało się usunąć.');
+        }
+        return $this->redirect(['action' => 'index']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Przeglądarka KSeF received → import
+    // -------------------------------------------------------------------------
+    public function importKsef(): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        // Pobierz listę z KSeF (przez istniejący serwis)
+        $ksefInvoices = [];
+        $ksefError    = null;
+        $ksefTotal    = 0;
+        $ksefPage     = max(1, (int)$this->request->getQuery('page', 1));
+
+        if ($companyId !== '') {
+            try {
+                $ksef   = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+                $result = $ksef->buildReceivedApiResult($companyId, array_merge(
+                    $this->request->getQueryParams(),
+                    ['page' => $ksefPage]
+                ));
+                $payload = $result['payload'] ?? [];
+                if (!empty($payload['success'])) {
+                    $ksefInvoices = $payload['invoices'] ?? [];
+                    $ksefTotal    = (int)($payload['total'] ?? 0);
+                } else {
+                    $ksefError = $payload['error'] ?? 'Błąd KSeF';
+                }
+            } catch (\Throwable $e) {
+                $ksefError = $e->getMessage();
+            }
+        }
+
+        // Sprawdź które ksef_number są już w bazie
+        $CI = $this->fetchTable('CostInvoices');
+        $existingKsefNumbers = [];
+        if (!empty($ksefInvoices)) {
+            $nums = array_filter(array_column($ksefInvoices, 'ksef_number'));
+            if (!empty($nums)) {
+                $existingKsefNumbers = $CI->find()
+                    ->where(['ksef_number IN' => $nums])
+                    ->all()
+                    ->map(fn($r) => $r->ksef_number)
+                    ->toArray();
+                $existingKsefNumbers = array_flip($existingKsefNumbers);
+            }
+        }
+
+        $this->set(compact('ksefInvoices', 'ksefError', 'ksefTotal', 'ksefPage', 'existingKsefNumbers'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Zapisz wybrane faktury z KSeF do bazy
+    // -------------------------------------------------------------------------
+    public function doImportKsef(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $items = (array)($this->request->getData('items') ?? []);
+        if (empty($items)) {
+            $this->jsonResp(['success' => false, 'error' => 'Brak danych.']);
+            return;
+        }
+
+        $CI      = $this->fetchTable('CostInvoices');
+        $saved   = 0;
+        $skipped = 0;
+        $errors  = [];
+
+        foreach ($items as $item) {
+            $ksefNumber = trim((string)($item['ksef_number'] ?? ''));
+            if ($ksefNumber === '') { $skipped++; continue; }
+
+            // Nie importuj duplikatów
+            if ($CI->find()->where(['ksef_number' => $ksefNumber])->count() > 0) {
+                $skipped++;
+                continue;
+            }
+
+            $issueDate = trim((string)($item['date'] ?? ''));
+            $accMonth  = $issueDate !== '' ? substr($issueDate, 0, 7) : date('Y-m');
+
+            $entity = $CI->newEntity([
+                'source'           => 'ksef',
+                'ksef_number'      => $ksefNumber,
+                'invoice_number'   => trim((string)($item['fullnumber'] ?? '')),
+                'contractor_name'  => trim((string)($item['InvoiceContractors']['name'] ?? '')),
+                'contractor_nip'   => trim((string)($item['InvoiceContractors']['tax_id'] ?? '')),
+                'issue_date'       => $issueDate ?: null,
+                'receipt_date'     => date('Y-m-d'),
+                'accounting_month' => $accMonth,
+                'brutto'           => (float)($item['total'] ?? 0),
+                'netto'            => 0.0,
+                'vat'              => 0.0,
+                'currency'         => strtoupper(trim((string)($item['currency'] ?? 'PLN'))) ?: 'PLN',
+                'status'           => 'received',
+                'ksef_raw_json'    => json_encode($item, JSON_UNESCAPED_UNICODE),
+            ]);
+
+            if ($CI->save($entity)) {
+                $saved++;
+            } else {
+                $errors[] = 'Błąd zapisu: ' . $ksefNumber;
+            }
+        }
+
+        $this->jsonResp(['success' => true, 'saved' => $saved, 'skipped' => $skipped, 'errors' => $errors]);
+    }
+
+    // -------------------------------------------------------------------------
+    // AJAX: wyszukiwarka FK (dla modalu w zleceniu)
+    // GET /koszty/search?q=...&month=...
+    // -------------------------------------------------------------------------
+    public function searchAjax(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+
+        $q     = trim((string)$this->request->getQuery('q', ''));
+        $month = trim((string)$this->request->getQuery('month', ''));
+
+        $CI = $this->fetchTable('CostInvoices');
+        $query = $CI->find()->orderByDesc('issue_date')->limit(30);
+
+        if ($q !== '') {
+            $like = '%' . $q . '%';
+            $query->where(['OR' => [
+                'invoice_number LIKE'  => $like,
+                'contractor_name LIKE' => $like,
+                'contractor_nip LIKE'  => $like,
+                'ksef_number LIKE'     => $like,
+            ]]);
+        }
+        if ($month !== '') {
+            $query->where(['accounting_month' => $month]);
+        }
+
+        $results = array_map(fn($r) => [
+            'id'               => $r->id,
+            'invoice_number'   => $r->invoice_number,
+            'ksef_number'      => $r->ksef_number,
+            'contractor_name'  => $r->contractor_name,
+            'contractor_nip'   => $r->contractor_nip,
+            'issue_date'       => $r->issue_date instanceof \DateTimeInterface
+                                    ? $r->issue_date->format('Y-m-d')
+                                    : substr((string)($r->issue_date ?? ''), 0, 10),
+            'accounting_month' => $r->accounting_month,
+            'brutto'           => (float)($r->brutto ?? 0),
+            'currency'         => $r->currency,
+            'status'           => $r->status,
+            'source'           => $r->source,
+        ], $query->all()->toArray());
+
+        $this->jsonResp(['success' => true, 'results' => $results]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Przypisz FK do zlecenia (AJAX POST)
+    // { cost_invoice_id: X, speed_order_id: Y }
+    // -------------------------------------------------------------------------
+    public function assignOrder(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $ciId  = (int)$this->request->getData('cost_invoice_id', 0);
+        $ordId = (int)$this->request->getData('speed_order_id', 0);
+
+        if ($ciId === 0 || $ordId === 0) {
+            $this->jsonResp(['success' => false, 'error' => 'Brak danych.']);
+            return;
+        }
+
+        $CI     = $this->fetchTable('CostInvoices');
+        $Orders = $this->fetchTable('SpeedOrders');
+        $Pivot  = $this->fetchTable('CostInvoiceOrders');
+
+        $ci    = $CI->find()->where(['id' => $ciId])->first();
+        $order = $Orders->find()->where(['id' => $ordId])->first();
+
+        if (!$ci || !$order) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono rekordu.']);
+            return;
+        }
+
+        // Sprawdź czy już przypisane
+        if ($Pivot->find()->where(['cost_invoice_id' => $ciId, 'speed_order_id' => $ordId])->count() > 0) {
+            $this->jsonResp(['success' => false, 'error' => 'Faktura już jest przypisana do tego zlecenia.']);
+            return;
+        }
+
+        // Zapisz pivot
+        $pivot = $Pivot->newEntity(['cost_invoice_id' => $ciId, 'speed_order_id' => $ordId]);
+        if (!$Pivot->save($pivot)) {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
+            return;
+        }
+
+        // Ustaw fk_at na zleceniu jeśli puste
+        $now = date('Y-m-d H:i:s');
+        if (empty($order->fk_at)) {
+            $order->set('fk_at', $now);
+            // Automatyczne przejście statusu
+            $this->applyAutoNlStatus($order);
+            $Orders->save($order);
+        }
+
+        $this->jsonResp([
+            'success'           => true,
+            'cost_invoice_id'   => $ciId,
+            'speed_order_id'    => $ordId,
+            'invoice_number'    => $ci->invoice_number ?: $ci->ksef_number,
+            'contractor_name'   => $ci->contractor_name,
+            'fk_at'             => $order->fk_at ? (string)$order->fk_at : $now,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Odepnij FK od zlecenia (AJAX POST)
+    // { cost_invoice_id: X, speed_order_id: Y }
+    // -------------------------------------------------------------------------
+    public function unassignOrder(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $ciId  = (int)$this->request->getData('cost_invoice_id', 0);
+        $ordId = (int)$this->request->getData('speed_order_id', 0);
+
+        $Pivot  = $this->fetchTable('CostInvoiceOrders');
+        $Orders = $this->fetchTable('SpeedOrders');
+
+        $pivot = $Pivot->find()->where(['cost_invoice_id' => $ciId, 'speed_order_id' => $ordId])->first();
+        if (!$pivot) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono przypisania.']);
+            return;
+        }
+
+        $Pivot->delete($pivot);
+
+        // Jeśli to było ostatnie przypisanie FK dla zlecenia — wyczyść fk_at
+        $remaining = $Pivot->find()->where(['speed_order_id' => $ordId])->count();
+        if ($remaining === 0) {
+            $order = $Orders->find()->where(['id' => $ordId])->first();
+            if ($order) {
+                $order->set('fk_at', null);
+                $this->applyAutoNlStatus($order);
+                $Orders->save($order);
+            }
+        }
+
+        $this->jsonResp(['success' => true]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Zmień status FK (received → verified → paid)
+    // -------------------------------------------------------------------------
+    public function setStatus(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $id     = (int)$this->request->getData('id', 0);
+        $status = trim((string)$this->request->getData('status', ''));
+        $allowed = ['received', 'verified', 'paid'];
+
+        if (!in_array($status, $allowed, true)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowy status.']);
+            return;
+        }
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono.']);
+            return;
+        }
+
+        $ci->set('status', $status);
+        if ($CI->save($ci)) {
+            $this->jsonResp(['success' => true, 'status' => $status]);
+        } else {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private function applyAutoNlStatus(\App\Model\Entity\SpeedOrder $entity): void
+    {
+        $ns = (int)($entity->nordlogis_status ?? 1);
+        if (!empty($entity->pol_at) && $ns < 3) $ns = 3;
+        if (!empty($entity->pod_at) && $ns < 4) $ns = 4;
+        if (!empty($entity->fs_at)  && $ns < 5) $ns = 5;
+        $entity->set('nordlogis_status', $ns);
+        $entity->set('is_complete',
+            !empty($entity->pol_at) && !empty($entity->pod_at) &&
+            !empty($entity->fk_at)  && !empty($entity->fs_at)
+        );
+    }
+
+    private function jsonResp(array $data): void
+    {
+        $this->response = $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
+}
