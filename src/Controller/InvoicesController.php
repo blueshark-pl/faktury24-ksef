@@ -2760,11 +2760,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
             }
 
-            // Zapisz pozycje faktury (invoice_contents)
+            // Zapisz pozycje faktury (invoice_contents) — z kolumną position dla stabilnej kolejności
             $InvoiceContentsTable = $this->fetchTable('InvoiceContents');
-            foreach ($contents as $contentData) {
+            foreach ($contents as $pos => $contentData) {
                 $contentEntity = $InvoiceContentsTable->newEmptyEntity();
                 $contentData['invoice_id'] = $invoiceId;
+                $contentData['position']   = (int)$pos;
                 
                 $contentEntity = $InvoiceContentsTable->patchEntity($contentEntity, $contentData);
                 if (!$InvoiceContentsTable->save($contentEntity)) {
@@ -2772,7 +2773,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
             }
 
-            // FA(3) LOW — zapis tabel relacyjnych: charges, factor_banks, authorized_entities, order_lines
+            // FA(3) LOW — zapis tabel relacyjnych: charges, factor_banks, authorized_entities, order_lines, add_desc
             $this->saveInvoiceRelationalFa3($invoiceId, $data);
 
             $conn->commit();
@@ -3578,17 +3579,21 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                 }
 
-                // Pozycje: prosty model replace-all
+                // Pozycje: prosty model replace-all — z kolumną position dla stabilnej kolejności
                 $InvoiceContents = $this->fetchTable('InvoiceContents');
                 $InvoiceContents->deleteAll(['invoice_id' => $invoice->id]);
-                foreach ($contents as $c) {
+                foreach ($contents as $pos => $c) {
                     $ent = $InvoiceContents->newEmptyEntity();
                     $c['invoice_id'] = $invoice->id;
+                    $c['position']   = (int)$pos;
                     $ent = $InvoiceContents->patchEntity($ent, $c);
                     if (!$InvoiceContents->save($ent)) {
                         throw new \RuntimeException('Błąd zapisu pozycji faktury');
                     }
                 }
+
+                // FA(3) — zapis tabel relacyjnych: charges, factor_banks, authorized_entities, order_lines, add_desc
+                $this->saveInvoiceRelationalFa3((string)$invoice->id, $data);
 
                 $conn->commit();
 

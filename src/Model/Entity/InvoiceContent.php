@@ -51,6 +51,7 @@ class InvoiceContent extends Entity
      */
     protected array $_accessible = [
         'invoice_id' => true,
+        'position' => true,
         'vat_code_id' => true,
         'name' => true,
         'product_desc' => true,
