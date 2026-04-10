@@ -273,6 +273,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
 
 /* Nagłówek */
 .hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.8cm; border-bottom:2.5px solid #1e40af; padding-bottom:.4cm; }
+.hdr img { max-height:60px; max-width:200px; object-fit:contain; display:block; margin-left:auto; }
 .inv-type { font-size:15pt; font-weight:700; color:#1e40af; text-transform:uppercase; letter-spacing:.04em; }
 .inv-number { font-size:12pt; font-weight:700; color:#111; margin-top:3px; }
 .inv-meta { font-size:8.5pt; color:#555; margin-top:4px; line-height:1.7; }
@@ -388,6 +389,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; 
         <?php endif; ?>
     </div>
     <div style="text-align:right" class="inv-meta">
+        <div style="margin-bottom:8px"><?= $this->element('logo') ?></div>
         <div><strong><?= h($t['issue_date']) ?>:</strong> <?= $fdate($invoice->date ?? $invoice->created ?? null) ?></div>
         <div><strong><?= h($t['sold_date']) ?>:</strong> <?= $fdate($invoice->sold_date ?? $invoice->date ?? null) ?></div>
         <?php if (!empty($invoice->paymentdate)): ?>
