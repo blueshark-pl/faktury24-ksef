@@ -375,7 +375,7 @@ class SpeedOrdersController extends AppController
                     'buyer_name'        => trim((string)($r['GLO_ODB_NAZWA1'] ?? '')),
                     'buyer_street'      => trim((string)($r['GLO_ODB_ULICA'] ?? '')),
                     'buyer_postal_code' => trim((string)($r['GLO_ODB_KOD'] ?? '')),
-                    'buyer_city'        => trim((string)($r['GLO_ODB_MIEJSC'] ?? $r['GLO_ODB_POCZTA'] ?? '')),
+                    'buyer_city'        => trim((string)($r['GLO_ODB_MIEJSC'] ?? '')) ?: trim((string)($r['GLO_ODB_POCZTA'] ?? '')),
                     'buyer_country'     => trim((string)($r['GLO_ODB_KRAJ'] ?? '')),
                     'buyer_email'       => trim((string)($r['GLO_ODB_EMAIL'] ?? '')),
                     // Załadunek
