@@ -335,10 +335,11 @@ $urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['la
 <html lang="<?= $lang ?>">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title><?= h($typeName) ?> <?= h($invoice->fullnumber ?: $invoice->id) ?></title>
 <style>
 *, *::before, *::after { box-sizing: border-box; }
-@page { size: A4 portrait; margin: 1.4cm 1.5cm 2cm 1.5cm; }
+@page { size: A4 portrait; margin: .8cm 1cm 1.2cm 1cm; }
 @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
@@ -347,8 +348,8 @@ $urlEn = $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['la
     body { background: #f0f2f5; }
     .sheet { box-shadow: 0 4px 32px rgba(0,0,0,.12); margin: 24px auto; }
 }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; line-height: 1.4; }
-.sheet { background: #fff; max-width: 21cm; padding: 1.2cm 1.3cm; }
+body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; line-height: 1.4; }
+.sheet { background: #fff; max-width: 21cm; padding: .8cm 1cm; }
 
 /* Nagłówek */
 .hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.8cm; border-bottom:2.5px solid #1e40af; padding-bottom:.4cm; }
