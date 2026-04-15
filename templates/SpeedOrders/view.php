@@ -743,6 +743,9 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 </div>
 <?php endif; ?>
 
+<!-- GLightbox — CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- ZAŁĄCZNIKI CMR                                                          -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -792,21 +795,26 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
       <?php foreach ($attachments as $att): ?>
       <?php
         $isImg = str_starts_with($att->mime_type ?? '', 'image/');
-        $isPdf = ($att->mime_type === 'application/pdf');
         $url   = '/' . ltrim(str_replace('\\', '/', $att->file_path), '/');
         $labelName = $att->speed_order_attachment_label->name ?? 'Brak etykiety';
+        $glType    = $isImg ? 'image' : 'iframe';
+        $glHref    = $isImg ? h($url) : h($url) . '?t=' . time();
       ?>
       <div class="col-6 col-md-3 col-lg-2" id="cmr-att-<?= $att->id ?>">
         <div class="card h-100 border shadow-sm cmr-thumb position-relative">
-          <?php if ($isImg): ?>
-          <a href="<?= h($url) ?>" target="_blank" class="d-block overflow-hidden" style="height:110px">
+          <a href="<?= $glHref ?>"
+             class="cmr-lightbox d-flex align-items-center justify-content-center overflow-hidden"
+             style="height:110px;background:#f8f9fa"
+             data-gallery="cmr-gallery-<?= (int)$order->id ?>"
+             data-type="<?= $glType ?>"
+             data-title="<?= h($att->original_name) ?> — <?= h($labelName) ?>"
+             data-description="<?= h($att->uploaded_by ?? '') ?><?= $att->uploaded_by ? ' · ' : '' ?><?= $att->created instanceof \DateTimeInterface ? $att->created->format('d.m.Y H:i') : substr((string)$att->created, 0, 16) ?>">
+            <?php if ($isImg): ?>
             <img src="<?= h($url) ?>" class="w-100 h-100" style="object-fit:cover" alt="<?= h($att->original_name) ?>">
+            <?php else: ?>
+            <i class="ri-file-pdf-2-line text-danger" style="font-size:2.5rem"></i>
+            <?php endif; ?>
           </a>
-          <?php else: ?>
-          <a href="<?= h($url) ?>" target="_blank" class="d-flex align-items-center justify-content-center bg-light text-danger" style="height:110px">
-            <i class="ri-file-pdf-2-line" style="font-size:2.5rem"></i>
-          </a>
-          <?php endif; ?>
           <div class="card-body p-1">
             <div class="small fw-semibold text-truncate" title="<?= h($att->original_name) ?>"><?= h($att->original_name) ?></div>
             <span class="badge bg-primary-subtle text-primary" style="font-size:.65rem"><?= h($labelName) ?></span>
@@ -834,12 +842,15 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
   </div>
 </div>
 
+<!-- GLightbox — JS -->
+<script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
 <script>
 (function () {
   const orderId   = <?= (int)$order->id ?>;
   const uploadUrl = '/zlecenia/' + orderId + '/upload-attachment';
   const deleteUrl = (attId) => '/zlecenia/' + orderId + '/delete-attachment/' + attId;
   const csrfToken = document.querySelector('meta[name="csrfToken"]')?.content ?? '';
+  const galleryAttr = 'cmr-gallery-' + orderId;
 
   const dropzone    = document.getElementById('cmr-dropzone');
   const fileInput   = document.getElementById('cmr-file-input');
@@ -856,10 +867,16 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
   const emptyMsg    = document.getElementById('cmr-empty-msg');
 
   let pendingFiles = [];
+  let lightbox = null;
+
+  function initLightbox() {
+    if (lightbox) lightbox.destroy();
+    lightbox = GLightbox({ selector: '.cmr-lightbox', touchNavigation: true, loop: true, zoomable: true });
+  }
+  initLightbox();
 
   // Pokaż/ukryj dropzone
   function showDropzone(show) {
-    dropzone.style.display = show ? 'flex' : 'none';
     dropzone.style.setProperty('display', show ? 'flex' : 'none', 'important');
   }
 
@@ -870,10 +887,8 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
     fileInput.value = '';
   });
 
-  // Klik na dropzone → otwórz input
   dropzone.addEventListener('click', () => fileInput.click());
 
-  // Drag & drop
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.background = '#f0f7ff'; });
   dropzone.addEventListener('dragleave', () => { dropzone.style.background = ''; });
   dropzone.addEventListener('drop', e => {
@@ -938,25 +953,36 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
       labelForm.classList.add('d-none');
       pendingFiles = [];
       fileInput.value = '';
+      initLightbox();
     }, 600);
   }
 
   function appendThumb(data) {
     if (emptyMsg) emptyMsg.style.display = 'none';
 
-    const isImg = data.mime_type?.startsWith('image/');
-    const url   = '/' + data.file_path.replace(/^\//, '');
-    const label = data.label ?? 'Brak etykiety';
+    const isImg   = data.mime_type?.startsWith('image/');
+    const url     = '/' + data.file_path.replace(/^\//, '');
+    const label   = data.label ?? 'Brak etykiety';
+    const glType  = isImg ? 'image' : 'iframe';
+    const glHref  = isImg ? url : url + '?t=' + Date.now();
+    const desc    = (data.uploaded_by ? data.uploaded_by + ' · ' : '') + data.created;
 
     const col = document.createElement('div');
     col.className = 'col-6 col-md-3 col-lg-2';
     col.id = 'cmr-att-' + data.id;
     col.innerHTML = `
       <div class="card h-100 border shadow-sm cmr-thumb position-relative">
-        ${isImg
-          ? `<a href="${url}" target="_blank" class="d-block overflow-hidden" style="height:110px"><img src="${url}" class="w-100 h-100" style="object-fit:cover"></a>`
-          : `<a href="${url}" target="_blank" class="d-flex align-items-center justify-content-center bg-light text-danger" style="height:110px"><i class="ri-file-pdf-2-line" style="font-size:2.5rem"></i></a>`
-        }
+        <a href="${glHref}"
+           class="cmr-lightbox d-flex align-items-center justify-content-center overflow-hidden"
+           style="height:110px;background:#f8f9fa"
+           data-gallery="${galleryAttr}"
+           data-type="${glType}"
+           data-title="${data.original_name} — ${label}"
+           data-description="${desc}">
+          ${isImg
+            ? `<img src="${url}" class="w-100 h-100" style="object-fit:cover">`
+            : `<i class="ri-file-pdf-2-line text-danger" style="font-size:2.5rem"></i>`}
+        </a>
         <div class="card-body p-1">
           <div class="small fw-semibold text-truncate" title="${data.original_name}">${data.original_name}</div>
           <span class="badge bg-primary-subtle text-primary" style="font-size:.65rem">${label}</span>
@@ -972,10 +998,12 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
     updateCount(1);
   }
 
-  // Usuwanie
+  // Usuwanie — obsługa przez delegację, z pominięciem kliknięcia w link lightboxa
   gallery.addEventListener('click', async e => {
     const btn = e.target.closest('.cmr-delete-btn');
     if (!btn) return;
+    e.stopPropagation();
+
     const attId = btn.dataset.id;
     const name  = btn.dataset.name;
 
@@ -998,7 +1026,8 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
       if (data.ok) {
         document.getElementById('cmr-att-' + attId)?.remove();
         updateCount(-1);
-        if (!gallery.querySelector('.col-6')) {
+        initLightbox();
+        if (!gallery.querySelector('[id^="cmr-att-"]')) {
           const msg = document.createElement('p');
           msg.id = 'cmr-empty-msg';
           msg.className = 'text-muted small mb-0';
