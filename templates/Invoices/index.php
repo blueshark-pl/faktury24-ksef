@@ -158,11 +158,129 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
 
 
 
+<?php
+$typeLabels = [
+    'vat'      => ['label' => 'Faktura VAT',      'icon' => 'ri-file-text-line',          'cls' => 'primary'],
+    'currency' => ['label' => 'Walutowa',          'icon' => 'ri-money-euro-circle-line',  'cls' => 'info'],
+    'proforma' => ['label' => 'Proforma',          'icon' => 'ri-price-tag-3-line',        'cls' => 'secondary'],
+    'advance'  => ['label' => 'Zaliczkowa',        'icon' => 'ri-money-dollar-circle-line','cls' => 'warning'],
+    'margin'   => ['label' => 'Marża',             'icon' => 'ri-percent-line',            'cls' => 'dark'],
+    'final'    => ['label' => 'Końcowa',           'icon' => 'ri-file-check-line',         'cls' => 'success'],
+];
+$stateLabels = [
+    'unpaid'  => ['label' => 'Nieopłacona',         'icon' => 'ri-error-warning-line',  'cls' => 'danger'],
+    'partial' => ['label' => 'Częściowo opłacona',  'icon' => 'ri-time-line',           'cls' => 'warning'],
+    'paid'    => ['label' => 'Opłacona',            'icon' => 'ri-checkbox-circle-line','cls' => 'success'],
+    'overdue' => ['label' => 'Po terminie',         'icon' => 'ri-alarm-warning-line',  'cls' => 'dark'],
+];
+?>
+<form method="get" id="inv-filter-form" class="mb-3">
+<div class="card custom-card">
+  <div class="card-body p-2">
+
+    <!-- Wiersz 1: Szukaj + Typ faktury -->
+    <div class="row g-2 align-items-center mb-2">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-light border-end-0"><i class="ri-search-line text-muted"></i></span>
+          <input type="text" name="q" class="form-control form-control-sm border-start-0"
+                 placeholder="Numer, kontrahent, NIP…" value="<?= h($q) ?>">
+        </div>
+      </div>
+      <div class="col-md-8">
+        <div class="d-flex gap-1 flex-wrap align-items-center">
+          <span class="small text-muted text-nowrap me-1">Typ:</span>
+          <?php foreach ($typeLabels as $val => $tl):
+            $isActive = ($type === $val);
+            $cls = $isActive ? "btn-{$tl['cls']} text-white" : "btn-outline-{$tl['cls']}";
+          ?>
+          <button type="submit" name="type" value="<?= $isActive ? '' : $val ?>"
+                  class="btn btn-sm <?= $cls ?>">
+            <i class="<?= $tl['icon'] ?> me-1"></i><?= h($tl['label']) ?>
+          </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wiersz 2: Status + Waluta + Data + Przyciski -->
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-bank-card-line me-1"></i>Status płatności
+        </label>
+        <div class="d-flex gap-1 flex-wrap">
+          <?php foreach ($stateLabels as $val => $sl):
+            $isActive = ($state === $val);
+            $cls = $isActive ? "btn-{$sl['cls']} text-white" : "btn-outline-{$sl['cls']}";
+          ?>
+          <button type="submit" name="state" value="<?= $isActive ? '' : $val ?>"
+                  class="btn btn-sm <?= $cls ?>">
+            <i class="<?= $sl['icon'] ?> me-1"></i><?= h($sl['label']) ?>
+          </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-money-euro-circle-line me-1"></i>Waluta
+        </label>
+        <div class="d-flex gap-1">
+          <?php foreach (['PLN', 'EUR'] as $cur):
+            $isActive = ($currency === $cur);
+          ?>
+          <button type="submit" name="currency" value="<?= $isActive ? '' : $cur ?>"
+                  class="btn btn-sm <?= $isActive ? 'btn-primary' : 'btn-outline-secondary' ?>">
+            <?= $cur ?>
+          </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-calendar-line me-1"></i>Data wystawienia
+        </label>
+        <div class="d-flex gap-1 align-items-center">
+          <input type="date" name="from" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($from) ?>" title="Od">
+          <span class="text-muted small">—</span>
+          <input type="date" name="to" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($to) ?>" title="Do">
+        </div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2 align-items-end">
+        <?php if ($hasFilters): ?>
+        <a href="<?= $this->Url->build(['action' => 'index']) ?>"
+           class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
+          <i class="ri-close-line me-1"></i>Wyczyść
+        </a>
+        <?php endif; ?>
+        <button type="submit" class="btn btn-sm btn-primary px-3">
+          <i class="ri-search-line me-1"></i>Filtruj
+        </button>
+      </div>
+    </div>
+
+    <?php if ($hasFilters): ?>
+    <div class="mt-2 pt-2 border-top d-flex gap-2 flex-wrap align-items-center" style="font-size:.78rem">
+      <span class="text-muted">Aktywne filtry:</span>
+      <?php if ($q !== ''): ?><span class="badge bg-secondary-subtle text-secondary">Szukaj: <?= h($q) ?></span><?php endif; ?>
+      <?php if ($type !== '' && isset($typeLabels[$type])): ?><span class="badge bg-primary-subtle text-primary"><?= h($typeLabels[$type]['label']) ?></span><?php endif; ?>
+      <?php if ($state !== '' && isset($stateLabels[$state])): ?><span class="badge bg-warning-subtle text-warning-emphasis"><?= h($stateLabels[$state]['label']) ?></span><?php endif; ?>
+      <?php if ($currency !== ''): ?><span class="badge bg-info-subtle text-info"><?= h($currency) ?></span><?php endif; ?>
+      <?php if ($from !== '' || $to !== ''): ?><span class="badge bg-light text-dark border"><?= h($from ?: '…') ?> — <?= h($to ?: '…') ?></span><?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+  </div>
+</div>
+</form>
+
 <div class="card">
   <div class="card-body p-0">
   <?= $this->Form->create(null, [
-        'type' => 'post', 
-        'url' => ['action' => 'bulkAction'], 
+        'type' => 'post',
+        'url' => ['action' => 'bulkAction'],
         'id' => 'bulk-actions-form'
     ]) ?>
   <input type="hidden" name="bulk_action" id="bulk-action-input" value="">
@@ -344,130 +462,8 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
           </div>
         </div>
       </div>
-
-
-<!-- Panel filtrów faktur —— wstrzyknięty wewnątrz card-header (przed zamknięciem .d-flex) -->
-</div><!-- /.d-flex (przyciski nagłówka) -->
-</div><!-- /.card-header -->
-
-<!-- Panel filtrów faktur -->
-<?php
-$typeLabels = [
-    'vat'      => ['label' => 'Faktura VAT',      'icon' => 'ri-file-text-line',          'cls' => 'primary'],
-    'currency' => ['label' => 'Walutowa',          'icon' => 'ri-money-euro-circle-line',  'cls' => 'info'],
-    'proforma' => ['label' => 'Proforma',          'icon' => 'ri-price-tag-3-line',        'cls' => 'secondary'],
-    'advance'  => ['label' => 'Zaliczkowa',        'icon' => 'ri-money-dollar-circle-line','cls' => 'warning'],
-    'margin'   => ['label' => 'Marża',             'icon' => 'ri-percent-line',            'cls' => 'dark'],
-    'final'    => ['label' => 'Końcowa',           'icon' => 'ri-file-check-line',         'cls' => 'success'],
-];
-$stateLabels = [
-    'unpaid'  => ['label' => 'Nieopłacona',         'icon' => 'ri-error-warning-line', 'cls' => 'danger'],
-    'partial' => ['label' => 'Częściowo opłacona',  'icon' => 'ri-time-line',          'cls' => 'warning'],
-    'paid'    => ['label' => 'Opłacona',            'icon' => 'ri-checkbox-circle-line','cls' => 'success'],
-    'overdue' => ['label' => 'Po terminie',         'icon' => 'ri-alarm-warning-line', 'cls' => 'dark'],
-];
-?>
-<form method="get" id="inv-filter-form" class="mb-3">
-<div class="card custom-card">
-  <div class="card-body p-2">
-
-    <!-- Wiersz 1: Szukaj + Typ faktury -->
-    <div class="row g-2 align-items-center mb-2">
-      <div class="col-md-4">
-        <div class="input-group input-group-sm">
-          <span class="input-group-text bg-light border-end-0"><i class="ri-search-line text-muted"></i></span>
-          <input type="text" name="q" class="form-control form-control-sm border-start-0"
-                 placeholder="Numer, kontrahent, NIP…" value="<?= h($q) ?>">
-        </div>
-      </div>
-      <div class="col-md-8">
-        <div class="d-flex gap-1 flex-wrap align-items-center">
-          <span class="small text-muted text-nowrap me-1">Typ:</span>
-          <?php foreach ($typeLabels as $val => $tl):
-            $isActive = ($type === $val);
-            $cls = $isActive ? "btn-{$tl['cls']} text-white" : "btn-outline-{$tl['cls']}";
-          ?>
-          <button type="submit" name="type" value="<?= $isActive ? '' : $val ?>"
-                  class="btn btn-sm <?= $cls ?>">
-            <i class="<?= $tl['icon'] ?> me-1"></i><?= h($tl['label']) ?>
-          </button>
-          <?php endforeach; ?>
-        </div>
-      </div>
-    </div>
-
-    <!-- Wiersz 2: Status + Waluta + Data + Przyciski -->
-    <div class="row g-2 align-items-end">
-      <div class="col-auto">
-        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
-          <i class="ri-bank-card-line me-1"></i>Status płatności
-        </label>
-        <div class="d-flex gap-1 flex-wrap">
-          <?php foreach ($stateLabels as $val => $sl):
-            $isActive = ($state === $val);
-            $cls = $isActive ? "btn-{$sl['cls']} text-white" : "btn-outline-{$sl['cls']}";
-          ?>
-          <button type="submit" name="state" value="<?= $isActive ? '' : $val ?>"
-                  class="btn btn-sm <?= $cls ?>">
-            <i class="<?= $sl['icon'] ?> me-1"></i><?= h($sl['label']) ?>
-          </button>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <div class="col-auto">
-        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
-          <i class="ri-money-euro-circle-line me-1"></i>Waluta
-        </label>
-        <div class="d-flex gap-1">
-          <?php foreach (['PLN', 'EUR'] as $cur):
-            $isActive = ($currency === $cur);
-          ?>
-          <button type="submit" name="currency" value="<?= $isActive ? '' : $cur ?>"
-                  class="btn btn-sm <?= $isActive ? 'btn-primary' : 'btn-outline-secondary' ?>">
-            <?= $cur ?>
-          </button>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <div class="col-auto">
-        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
-          <i class="ri-calendar-line me-1"></i>Data wystawienia
-        </label>
-        <div class="d-flex gap-1 align-items-center">
-          <input type="date" name="from" class="form-control form-control-sm" style="width:140px"
-                 value="<?= h($from) ?>" title="Od">
-          <span class="text-muted small">—</span>
-          <input type="date" name="to" class="form-control form-control-sm" style="width:140px"
-                 value="<?= h($to) ?>" title="Do">
-        </div>
-      </div>
-      <div class="col-auto ms-auto d-flex gap-2 align-items-end">
-        <?php if ($hasFilters): ?>
-        <a href="<?= $this->Url->build(['action' => 'index']) ?>"
-           class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
-          <i class="ri-close-line me-1"></i>Wyczyść
-        </a>
-        <?php endif; ?>
-        <button type="submit" class="btn btn-sm btn-primary px-3">
-          <i class="ri-search-line me-1"></i>Filtruj
-        </button>
-      </div>
-    </div>
-
-    <?php if ($hasFilters): ?>
-    <div class="mt-2 pt-2 border-top d-flex gap-2 flex-wrap align-items-center" style="font-size:.78rem">
-      <span class="text-muted">Aktywne filtry:</span>
-      <?php if ($q !== ''): ?><span class="badge bg-secondary-subtle text-secondary">Szukaj: <?= h($q) ?></span><?php endif; ?>
-      <?php if ($type !== '' && isset($typeLabels[$type])): ?><span class="badge bg-primary-subtle text-primary"><?= h($typeLabels[$type]['label']) ?></span><?php endif; ?>
-      <?php if ($state !== '' && isset($stateLabels[$state])): ?><span class="badge bg-warning-subtle text-warning-emphasis"><?= h($stateLabels[$state]['label']) ?></span><?php endif; ?>
-      <?php if ($currency !== ''): ?><span class="badge bg-info-subtle text-info"><?= h($currency) ?></span><?php endif; ?>
-      <?php if ($from !== '' || $to !== ''): ?><span class="badge bg-light text-dark border"><?= h($from ?: '…') ?> — <?= h($to ?: '…') ?></span><?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-  </div>
-</div>
-</form>
+      </div><!-- /.d-flex align-items-center gap-2 -->
+    </div><!-- /.card-header -->
 
   <div class="card-body p-0">
     <div class="table-responsive">
