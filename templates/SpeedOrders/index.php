@@ -13,6 +13,7 @@
  * @var string $amountMax
  * @var string $deliveryFrom
  * @var string $deliveryTo
+ * @var array $cmrMap   speed_order_id => [{id, path, mime, name, label}]
  */
 
 $this->assign('title', 'Zlecenia Speed');
@@ -601,6 +602,16 @@ $quickFilters = [
 
             <!-- Akcje -->
             <td class="text-end text-nowrap">
+                <?php if (!empty($cmrMap[$order->id])): ?>
+                <button type="button"
+                        class="btn btn-xs btn-outline-info py-0 px-1 cmr-list-btn"
+                        title="CMR (<?= count($cmrMap[$order->id]) ?>)"
+                        data-order-id="<?= $order->id ?>"
+                        data-cmr="<?= h(json_encode($cmrMap[$order->id])) ?>">
+                    <i class="ri-image-2-line"></i>
+                    <span style="font-size:.65rem"><?= count($cmrMap[$order->id]) ?></span>
+                </button>
+                <?php endif; ?>
                 <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>"
                    class="btn btn-xs btn-outline-secondary py-0 px-1" title="Szczegóły">
                     <i class="ri-eye-line"></i>
@@ -960,4 +971,36 @@ document.addEventListener('DOMContentLoaded', function () {
         return d.innerHTML;
     }
 });
+</script>
+
+<!-- GLightbox — CMR na liście zleceń -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+<script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+<script>
+(function () {
+    let cmrLightbox = null;
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.cmr-list-btn');
+        if (!btn) return;
+
+        const files = JSON.parse(btn.dataset.cmr || '[]');
+        if (!files.length) return;
+
+        const elements = files.map(f => {
+            const isImg = (f.mime || '').startsWith('image/');
+            const url   = '/' + f.path.replace(/^\//, '');
+            return {
+                href:        isImg ? url : url,
+                type:        isImg ? 'image' : 'iframe',
+                title:       f.name + (f.label ? ' — ' + f.label : ''),
+                description: f.label || '',
+            };
+        });
+
+        if (cmrLightbox) cmrLightbox.destroy();
+        cmrLightbox = GLightbox({ elements, touchNavigation: true, loop: elements.length > 1, zoomable: true });
+        cmrLightbox.open();
+    });
+})();
 </script>

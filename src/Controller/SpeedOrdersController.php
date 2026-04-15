@@ -99,7 +99,33 @@ class SpeedOrdersController extends AppController
         $page   = min($page, $pages);
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo'));
+        // Mapa załączników CMR: speed_order_id → [[file_path, mime_type, label, original_name], …]
+        $cmrMap = [];
+        try {
+            $orderIds = array_map(fn($o) => $o->id, $orders->toArray());
+            if (!empty($orderIds)) {
+                $attachRows = $this->fetchTable('SpeedOrderAttachments')
+                    ->find()
+                    ->select(['SpeedOrderAttachments.id', 'SpeedOrderAttachments.speed_order_id', 'SpeedOrderAttachments.file_path', 'SpeedOrderAttachments.mime_type', 'SpeedOrderAttachments.original_name', 'SpeedOrderAttachmentLabels.name'])
+                    ->contain(['SpeedOrderAttachmentLabels'])
+                    ->where(['SpeedOrderAttachments.speed_order_id IN' => $orderIds])
+                    ->orderByAsc('SpeedOrderAttachments.created')
+                    ->all();
+                foreach ($attachRows as $att) {
+                    $cmrMap[$att->speed_order_id][] = [
+                        'id'    => $att->id,
+                        'path'  => $att->file_path,
+                        'mime'  => $att->mime_type,
+                        'name'  => $att->original_name,
+                        'label' => $att->speed_order_attachment_label->name ?? '',
+                    ];
+                }
+            }
+        } catch (\Throwable) {
+            $cmrMap = [];
+        }
+
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap'));
     }
 
     // -------------------------------------------------------------------------
