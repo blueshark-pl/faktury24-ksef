@@ -50,6 +50,10 @@ return function (RouteBuilder $routes): void {
         $builder->post('/zlecenia/sync', 'SpeedOrders::sync');
         $builder->post('/zlecenia/create-batch-invoices', 'SpeedOrders::createBatchInvoices');
         $builder->post('/zlecenia/update-status', 'SpeedOrders::updateStatus');
+        $builder->post('/zlecenia/{id}/upload-attachment', ['controller' => 'SpeedOrders', 'action' => 'uploadAttachment'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/{orderId}/delete-attachment/{attachmentId}', ['controller' => 'SpeedOrders', 'action' => 'deleteAttachment'])
+            ->setPass(['orderId', 'attachmentId']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/products/import-fetch', 'Products::importFetch');
         $builder->post('/products/import-batch', 'Products::importBatch');

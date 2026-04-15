@@ -5,6 +5,8 @@
  * @var array|null $rawData
  * @var \App\Model\Entity\CostInvoice[] $costInvoices
  * @var \App\Model\Entity\SpeedOrderStatusLog[] $statusLogs
+ * @var \App\Model\Entity\SpeedOrderAttachment[] $attachments
+ * @var \App\Model\Entity\SpeedOrderAttachmentLabel[] $attachmentLabels
  */
 
 $this->assign('title', 'Zlecenie ' . h($order->symbol));
@@ -740,6 +742,283 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
     </div>
 </div>
 <?php endif; ?>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- ZAŁĄCZNIKI CMR                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="card border-0 shadow-sm mb-3" id="cmr-card">
+  <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2">
+    <i class="ri-attachment-2 text-primary"></i>Dokumenty CMR
+    <span class="badge bg-primary-subtle text-primary ms-1" id="cmr-count"><?= count($attachments) ?></span>
+    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="cmr-upload-btn">
+      <i class="ri-upload-cloud-line me-1"></i>Dodaj plik
+    </button>
+  </div>
+  <div class="card-body">
+
+    <!-- Strefa drag & drop -->
+    <div id="cmr-dropzone"
+         class="border border-2 border-dashed rounded-3 d-flex flex-column align-items-center justify-content-center text-muted mb-3"
+         style="min-height:120px;cursor:pointer;border-color:#cbd5e1!important;transition:background .2s;display:none!important">
+      <i class="ri-cloud-upload-line" style="font-size:2rem"></i>
+      <div class="mt-1 small">Przeciągnij pliki lub <span class="text-primary text-decoration-underline">kliknij</span> aby wybrać</div>
+      <div class="text-muted" style="font-size:.72rem">JPG, PNG, WEBP, GIF, PDF · max 15 MB</div>
+      <input type="file" id="cmr-file-input" multiple accept="image/*,application/pdf" class="d-none">
+    </div>
+
+    <!-- Formularz etykiety (pojawia się przy wyborze pliku) -->
+    <div id="cmr-label-form" class="mb-3 d-none">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <label class="small fw-semibold text-nowrap mb-0">Etykieta:</label>
+        <select id="cmr-label-select" class="form-select form-select-sm" style="width:auto;min-width:180px">
+          <option value="">— brak etykiety —</option>
+          <?php foreach ($attachmentLabels as $lbl): ?>
+          <option value="<?= $lbl->id ?>"><?= h($lbl->name) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <button type="button" class="btn btn-sm btn-primary" id="cmr-upload-confirm">
+          <i class="ri-upload-2-line me-1"></i>Wyślij
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="cmr-upload-cancel">Anuluj</button>
+        <span id="cmr-selected-name" class="small text-muted fst-italic"></span>
+      </div>
+      <div id="cmr-progress-wrap" class="mt-2 d-none">
+        <div class="progress" style="height:6px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="cmr-progress-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Galeria istniejących załączników -->
+    <div id="cmr-gallery" class="row g-2">
+      <?php foreach ($attachments as $att): ?>
+      <?php
+        $isImg = str_starts_with($att->mime_type ?? '', 'image/');
+        $isPdf = ($att->mime_type === 'application/pdf');
+        $url   = '/' . ltrim(str_replace('\\', '/', $att->file_path), '/');
+        $labelName = $att->speed_order_attachment_label->name ?? 'Brak etykiety';
+      ?>
+      <div class="col-6 col-md-3 col-lg-2" id="cmr-att-<?= $att->id ?>">
+        <div class="card h-100 border shadow-sm cmr-thumb position-relative">
+          <?php if ($isImg): ?>
+          <a href="<?= h($url) ?>" target="_blank" class="d-block overflow-hidden" style="height:110px">
+            <img src="<?= h($url) ?>" class="w-100 h-100" style="object-fit:cover" alt="<?= h($att->original_name) ?>">
+          </a>
+          <?php else: ?>
+          <a href="<?= h($url) ?>" target="_blank" class="d-flex align-items-center justify-content-center bg-light text-danger" style="height:110px">
+            <i class="ri-file-pdf-2-line" style="font-size:2.5rem"></i>
+          </a>
+          <?php endif; ?>
+          <div class="card-body p-1">
+            <div class="small fw-semibold text-truncate" title="<?= h($att->original_name) ?>"><?= h($att->original_name) ?></div>
+            <span class="badge bg-primary-subtle text-primary" style="font-size:.65rem"><?= h($labelName) ?></span>
+            <div class="text-muted mt-1" style="font-size:.65rem">
+              <?= $att->created instanceof \DateTimeInterface ? $att->created->format('d.m.Y H:i') : substr((string)$att->created, 0, 16) ?>
+              <?php if ($att->uploaded_by): ?> · <?= h($att->uploaded_by) ?><?php endif; ?>
+            </div>
+          </div>
+          <button type="button"
+                  class="btn btn-sm btn-danger cmr-delete-btn position-absolute"
+                  style="top:4px;right:4px;padding:2px 6px;font-size:.7rem;opacity:.85"
+                  data-id="<?= $att->id ?>"
+                  data-name="<?= h($att->original_name) ?>"
+                  title="Usuń">
+            <i class="ri-delete-bin-line"></i>
+          </button>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+
+    <?php if (empty($attachments)): ?>
+    <p class="text-muted small mb-0" id="cmr-empty-msg">Brak załączników. Dodaj pierwsze dokumenty CMR.</p>
+    <?php endif; ?>
+  </div>
+</div>
+
+<script>
+(function () {
+  const orderId   = <?= (int)$order->id ?>;
+  const uploadUrl = '/zlecenia/' + orderId + '/upload-attachment';
+  const deleteUrl = (attId) => '/zlecenia/' + orderId + '/delete-attachment/' + attId;
+  const csrfToken = document.querySelector('meta[name="csrfToken"]')?.content ?? '';
+
+  const dropzone    = document.getElementById('cmr-dropzone');
+  const fileInput   = document.getElementById('cmr-file-input');
+  const labelForm   = document.getElementById('cmr-label-form');
+  const labelSelect = document.getElementById('cmr-label-select');
+  const uploadBtn   = document.getElementById('cmr-upload-btn');
+  const confirmBtn  = document.getElementById('cmr-upload-confirm');
+  const cancelBtn   = document.getElementById('cmr-upload-cancel');
+  const selectedName= document.getElementById('cmr-selected-name');
+  const progressWrap= document.getElementById('cmr-progress-wrap');
+  const progressBar = document.getElementById('cmr-progress-bar');
+  const gallery     = document.getElementById('cmr-gallery');
+  const countBadge  = document.getElementById('cmr-count');
+  const emptyMsg    = document.getElementById('cmr-empty-msg');
+
+  let pendingFiles = [];
+
+  // Pokaż/ukryj dropzone
+  function showDropzone(show) {
+    dropzone.style.display = show ? 'flex' : 'none';
+    dropzone.style.setProperty('display', show ? 'flex' : 'none', 'important');
+  }
+
+  uploadBtn.addEventListener('click', () => {
+    showDropzone(true);
+    labelForm.classList.add('d-none');
+    pendingFiles = [];
+    fileInput.value = '';
+  });
+
+  // Klik na dropzone → otwórz input
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  // Drag & drop
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.background = '#f0f7ff'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.style.background = ''; });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.style.background = '';
+    handleFiles(Array.from(e.dataTransfer.files));
+  });
+
+  fileInput.addEventListener('change', () => handleFiles(Array.from(fileInput.files)));
+
+  function handleFiles(files) {
+    if (!files.length) return;
+    pendingFiles = files;
+    showDropzone(false);
+    labelForm.classList.remove('d-none');
+    selectedName.textContent = files.length === 1 ? files[0].name : files.length + ' pliki';
+  }
+
+  cancelBtn.addEventListener('click', () => {
+    showDropzone(false);
+    labelForm.classList.add('d-none');
+    pendingFiles = [];
+    fileInput.value = '';
+  });
+
+  confirmBtn.addEventListener('click', () => uploadFiles());
+
+  async function uploadFiles() {
+    if (!pendingFiles.length) return;
+    const labelId = labelSelect.value;
+    confirmBtn.disabled = true;
+    progressWrap.classList.remove('d-none');
+    progressBar.style.width = '0%';
+
+    for (let i = 0; i < pendingFiles.length; i++) {
+      const file = pendingFiles[i];
+      const fd   = new FormData();
+      fd.append('file', file);
+      fd.append('label_id', labelId);
+      fd.append('_csrfToken', csrfToken);
+
+      progressBar.style.width = Math.round((i / pendingFiles.length) * 80) + '%';
+
+      try {
+        const resp = await fetch(uploadUrl, { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.ok) {
+          appendThumb(data);
+        } else {
+          Swal.fire({ icon: 'error', title: 'Błąd', text: data.error ?? 'Nieznany błąd', toast: true, position: 'top-end', timer: 4000, showConfirmButton: false });
+        }
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Błąd sieci', text: String(err), toast: true, position: 'top-end', timer: 4000, showConfirmButton: false });
+      }
+    }
+
+    progressBar.style.width = '100%';
+    setTimeout(() => {
+      progressWrap.classList.add('d-none');
+      progressBar.style.width = '0%';
+      confirmBtn.disabled = false;
+      labelForm.classList.add('d-none');
+      pendingFiles = [];
+      fileInput.value = '';
+    }, 600);
+  }
+
+  function appendThumb(data) {
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    const isImg = data.mime_type?.startsWith('image/');
+    const url   = '/' + data.file_path.replace(/^\//, '');
+    const label = data.label ?? 'Brak etykiety';
+
+    const col = document.createElement('div');
+    col.className = 'col-6 col-md-3 col-lg-2';
+    col.id = 'cmr-att-' + data.id;
+    col.innerHTML = `
+      <div class="card h-100 border shadow-sm cmr-thumb position-relative">
+        ${isImg
+          ? `<a href="${url}" target="_blank" class="d-block overflow-hidden" style="height:110px"><img src="${url}" class="w-100 h-100" style="object-fit:cover"></a>`
+          : `<a href="${url}" target="_blank" class="d-flex align-items-center justify-content-center bg-light text-danger" style="height:110px"><i class="ri-file-pdf-2-line" style="font-size:2.5rem"></i></a>`
+        }
+        <div class="card-body p-1">
+          <div class="small fw-semibold text-truncate" title="${data.original_name}">${data.original_name}</div>
+          <span class="badge bg-primary-subtle text-primary" style="font-size:.65rem">${label}</span>
+          <div class="text-muted mt-1" style="font-size:.65rem">${data.created}${data.uploaded_by ? ' · ' + data.uploaded_by : ''}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-danger cmr-delete-btn position-absolute"
+                style="top:4px;right:4px;padding:2px 6px;font-size:.7rem;opacity:.85"
+                data-id="${data.id}" data-name="${data.original_name}" title="Usuń">
+          <i class="ri-delete-bin-line"></i>
+        </button>
+      </div>`;
+    gallery.appendChild(col);
+    updateCount(1);
+  }
+
+  // Usuwanie
+  gallery.addEventListener('click', async e => {
+    const btn = e.target.closest('.cmr-delete-btn');
+    if (!btn) return;
+    const attId = btn.dataset.id;
+    const name  = btn.dataset.name;
+
+    const res = await Swal.fire({
+      title: 'Usunąć załącznik?',
+      text: name,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc3545',
+      confirmButtonText: 'Tak, usuń',
+      cancelButtonText: 'Anuluj',
+    });
+    if (!res.isConfirmed) return;
+
+    const fd = new FormData();
+    fd.append('_csrfToken', csrfToken);
+    try {
+      const resp = await fetch(deleteUrl(attId), { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (data.ok) {
+        document.getElementById('cmr-att-' + attId)?.remove();
+        updateCount(-1);
+        if (!gallery.querySelector('.col-6')) {
+          const msg = document.createElement('p');
+          msg.id = 'cmr-empty-msg';
+          msg.className = 'text-muted small mb-0';
+          msg.textContent = 'Brak załączników. Dodaj pierwsze dokumenty CMR.';
+          gallery.parentElement.appendChild(msg);
+        }
+      } else {
+        Swal.fire({ icon: 'error', title: 'Błąd', text: data.error ?? 'Nieznany błąd' });
+      }
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Błąd sieci', text: String(err) });
+    }
+  });
+
+  function updateCount(delta) {
+    const cur = parseInt(countBadge.textContent || '0', 10);
+    countBadge.textContent = Math.max(0, cur + delta);
+  }
+})();
+</script>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- UWAGI                                                                  -->

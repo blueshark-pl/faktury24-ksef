@@ -281,7 +281,143 @@ class SpeedOrdersController extends AppController
             $statusLogs = [];
         }
 
-        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs'));
+        // Załączniki CMR
+        try {
+            $attachments = $this->fetchTable('SpeedOrderAttachments')
+                ->find()
+                ->contain(['SpeedOrderAttachmentLabels'])
+                ->where(['SpeedOrderAttachments.speed_order_id' => $id])
+                ->orderByAsc('SpeedOrderAttachments.created')
+                ->all()
+                ->toArray();
+            $attachmentLabels = $this->fetchTable('SpeedOrderAttachmentLabels')
+                ->find()
+                ->orderByAsc('sort')
+                ->all()
+                ->toArray();
+        } catch (\Throwable) {
+            $attachments = [];
+            $attachmentLabels = [];
+        }
+
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'attachments', 'attachmentLabels'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Upload załącznika CMR (AJAX POST)
+    // -------------------------------------------------------------------------
+    public function uploadAttachment(int $id): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $order = $this->fetchTable('SpeedOrders')->get($id);
+
+        $file = $this->request->getUploadedFile('file');
+        if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Brak pliku lub błąd uploadu']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+        $mime = $file->getClientMediaType();
+        if (!in_array($mime, $allowedMimes, true)) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Niedozwolony typ pliku']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        if ($file->getSize() > 15 * 1024 * 1024) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Plik za duży (max 15 MB)']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        $ext = strtolower(pathinfo($file->getClientFilename(), PATHINFO_EXTENSION));
+        $safeName = date('YmdHis') . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+        $subDir = 'files' . DS . 'speed_orders' . DS . 'cmr' . DS . date('Y') . DS . date('m');
+        $dir = WWW_ROOT . $subDir;
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        $file->moveTo($dir . DS . $safeName);
+
+        $labelId = (int)$this->request->getData('label_id') ?: null;
+        $username = $this->Authentication->getIdentity()?->getIdentifier() ?? null;
+
+        $Attachments = $this->fetchTable('SpeedOrderAttachments');
+        $entity = $Attachments->newEntity([
+            'speed_order_id' => $id,
+            'label_id'       => $labelId,
+            'file_path'      => str_replace(DS, '/', $subDir . '/' . $safeName),
+            'original_name'  => $file->getClientFilename(),
+            'mime_type'      => $mime,
+            'file_size'      => $file->getSize(),
+            'uploaded_by'    => $username,
+        ]);
+
+        if (!$Attachments->save($entity)) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Błąd zapisu w bazie']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        // Załaduj etykietę do odpowiedzi
+        $label = null;
+        if ($labelId) {
+            try {
+                $label = $this->fetchTable('SpeedOrderAttachmentLabels')->get($labelId);
+            } catch (\Throwable) {}
+        }
+
+        $this->response->getBody()->write(json_encode([
+            'ok'            => true,
+            'id'            => $entity->id,
+            'file_path'     => $entity->file_path,
+            'original_name' => $entity->original_name,
+            'mime_type'     => $mime,
+            'label'         => $label ? $label->name : null,
+            'uploaded_by'   => $username,
+            'created'       => date('Y-m-d H:i'),
+        ]));
+        $this->response = $this->response->withType('json');
+    }
+
+    // -------------------------------------------------------------------------
+    // Usunięcie załącznika CMR (AJAX DELETE/POST)
+    // -------------------------------------------------------------------------
+    public function deleteAttachment(int $orderId, int $attachmentId): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post', 'delete']);
+
+        $Attachments = $this->fetchTable('SpeedOrderAttachments');
+        try {
+            $entity = $Attachments->get($attachmentId);
+        } catch (\Throwable) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Nie znaleziono załącznika']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        if ($entity->speed_order_id !== $orderId) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Brak dostępu']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        // Usuń plik z dysku
+        $fullPath = WWW_ROOT . str_replace('/', DS, $entity->file_path);
+        if (file_exists($fullPath)) {
+            unlink($fullPath);
+        }
+
+        $Attachments->delete($entity);
+
+        $this->response->getBody()->write(json_encode(['ok' => true]));
+        $this->response = $this->response->withType('json');
     }
 
     // -------------------------------------------------------------------------
