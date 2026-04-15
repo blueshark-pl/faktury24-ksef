@@ -23,14 +23,15 @@ class SpeedOrdersController extends AppController
     {
         $this->request->allowMethod(['get']);
 
-        $search  = trim((string)$this->request->getQuery('q', ''));
-        $status  = $this->request->getQuery('status', '');
-        $dateFrom = $this->request->getQuery('date_from', '');
-        $dateTo   = $this->request->getQuery('date_to', '');
+        $search       = trim((string)$this->request->getQuery('q', ''));
+        $status       = $this->request->getQuery('status', '');
+        $currency     = strtoupper(trim((string)$this->request->getQuery('currency', '')));
+        $amountMin    = $this->request->getQuery('amount_min', '');
+        $amountMax    = $this->request->getQuery('amount_max', '');
         $deliveryFrom = $this->request->getQuery('delivery_from', '');
         $deliveryTo   = $this->request->getQuery('delivery_to', '');
-        $page    = max(1, (int)$this->request->getQuery('page', 1));
-        $limit   = (int)$this->request->getQuery('limit', 50);
+        $page         = max(1, (int)$this->request->getQuery('page', 1));
+        $limit        = (int)$this->request->getQuery('limit', 50);
         if (!in_array($limit, [25, 50, 100, 200, 500], true)) {
             $limit = 50;
         }
@@ -69,18 +70,20 @@ class SpeedOrdersController extends AppController
                     'SpeedOrders.invoice_id IS'    => null,
                 ]);
             } else {
-                // backwards compat
                 $query->where(['SpeedOrders.status' => (int)$status]);
             }
         }
 
-
-        if ($dateFrom !== '') {
-            $query->where(['SpeedOrders.date_doc >=' => $dateFrom]);
+        if ($currency !== '') {
+            $query->where(['SpeedOrders.currency' => $currency]);
         }
 
-        if ($dateTo !== '') {
-            $query->where(['SpeedOrders.date_doc <=' => $dateTo]);
+        if ($amountMin !== '') {
+            $query->where(['SpeedOrders.netto >=' => (float)$amountMin]);
+        }
+
+        if ($amountMax !== '') {
+            $query->where(['SpeedOrders.netto <=' => (float)$amountMax]);
         }
 
         if ($deliveryFrom !== '') {
@@ -96,7 +99,7 @@ class SpeedOrdersController extends AppController
         $page   = min($page, $pages);
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'dateFrom', 'dateTo', 'deliveryFrom', 'deliveryTo'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo'));
     }
 
     // -------------------------------------------------------------------------

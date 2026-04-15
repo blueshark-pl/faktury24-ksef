@@ -8,8 +8,9 @@
  * @var int $limit
  * @var string $search
  * @var string $status
- * @var string $dateFrom
- * @var string $dateTo
+ * @var string $currency
+ * @var string $amountMin
+ * @var string $amountMax
  * @var string $deliveryFrom
  * @var string $deliveryTo
  */
@@ -221,7 +222,7 @@ body { padding-bottom: 68px; }
 </div>
 
 <?php
-$hasFilters = $search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== '' || $deliveryFrom !== '' || $deliveryTo !== '';
+$hasFilters = $search !== '' || $status !== '' || $currency !== '' || $amountMin !== '' || $amountMax !== '' || $deliveryFrom !== '' || $deliveryTo !== '';
 $quickFilters = [
     ['label' => 'Wszystkie',        'status' => '',           'icon' => 'ri-list-check',          'cls' => 'secondary'],
     ['label' => 'Bez POD',          'status' => 'brak_pod',   'icon' => 'ri-alarm-warning-line',  'cls' => 'warning'],
@@ -268,11 +269,10 @@ $quickFilters = [
       <div class="col-md-5">
         <div class="d-flex gap-1 flex-wrap">
           <?php foreach ($quickFilters as $qf):
-            $isActive = $status === $qf['status'] && !$hasFilters || ($status === $qf['status'] && $qf['status'] !== '');
             $isActive = ($status === $qf['status']);
             $cls = $isActive ? "btn-{$qf['cls']} text-white" : "btn-outline-{$qf['cls']}";
           ?>
-          <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
+          <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'currency' => $currency, 'amount_min' => $amountMin, 'amount_max' => $amountMax, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
              class="btn btn-sm <?= $cls ?>">
             <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
           </a>
@@ -281,18 +281,31 @@ $quickFilters = [
       </div>
     </div>
 
-    <!-- Wiersz 2: Daty + Przyciski -->
+    <!-- Wiersz 2: Waluta + Kwota + Rozładunek + Przyciski -->
     <div class="row g-2 align-items-end">
       <div class="col-auto">
         <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
-          <i class="ri-calendar-line me-1"></i>Data dokumentu
+          <i class="ri-money-euro-circle-line me-1"></i>Waluta
+        </label>
+        <div class="d-flex gap-1">
+          <?php foreach (['EUR', 'PLN'] as $cur): ?>
+          <button type="submit" name="currency" value="<?= $currency === $cur ? '' : $cur ?>"
+                  class="btn btn-sm <?= $currency === $cur ? 'btn-primary' : 'btn-outline-secondary' ?>">
+            <?= $cur ?>
+          </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-coin-line me-1"></i>Kwota netto
         </label>
         <div class="d-flex gap-1 align-items-center">
-          <input type="date" name="date_from" class="form-control form-control-sm" style="width:140px"
-                 value="<?= h($dateFrom) ?>" title="Od">
+          <input type="number" name="amount_min" class="form-control form-control-sm" style="width:110px"
+                 placeholder="Od" step="0.01" min="0" value="<?= h($amountMin) ?>">
           <span class="text-muted small">—</span>
-          <input type="date" name="date_to" class="form-control form-control-sm" style="width:140px"
-                 value="<?= h($dateTo) ?>" title="Do">
+          <input type="number" name="amount_max" class="form-control form-control-sm" style="width:110px"
+                 placeholder="Do" step="0.01" min="0" value="<?= h($amountMax) ?>">
         </div>
       </div>
       <div class="col-auto">
