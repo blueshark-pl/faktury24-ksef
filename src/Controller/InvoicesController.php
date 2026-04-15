@@ -589,7 +589,6 @@ public function index()
     $to       = trim((string)$this->request->getQuery('to', ''));
 
     $query = $this->Invoices->find()
-        ->leftJoinWith('InvoiceContractors')
         ->contain(['InvoiceContractors' => function ($q) {
             return $q->select(['invoice_id', 'name', 'nip', 'email', 'vatid']);
         }])
@@ -598,12 +597,21 @@ public function index()
 
     if ($q !== '') {
         $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
-        $query->andWhere(function ($exp) use ($like) {
+        // Subquery na InvoiceContractors żeby uniknąć konfliktu leftJoinWith + contain
+        $contractorIds = $this->fetchTable('InvoiceContractors')
+            ->find()
+            ->select(['invoice_id'])
+            ->where(function ($exp) use ($like) {
+                return $exp->or([
+                    'InvoiceContractors.name LIKE'  => $like,
+                    'InvoiceContractors.nip LIKE'   => $like,
+                    'InvoiceContractors.vatid LIKE' => $like,
+                ]);
+            });
+        $query->andWhere(function ($exp) use ($like, $contractorIds) {
             return $exp->or([
-                'Invoices.fullnumber LIKE'      => $like,
-                'InvoiceContractors.name LIKE'  => $like,
-                'InvoiceContractors.nip LIKE'   => $like,
-                'InvoiceContractors.vatid LIKE' => $like,
+                'Invoices.fullnumber LIKE' => $like,
+                'Invoices.id IN'           => $contractorIds,
             ]);
         });
     }
