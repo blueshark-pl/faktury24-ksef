@@ -581,34 +581,49 @@ public function index()
     $identity  = $this->request->getAttribute('identity');
     $companyId = $identity?->get('company_id'); // char(36)
 
-    $q        = trim((string)$this->request->getQuery('q'));
-    $state    = $this->request->getQuery('state');
-    $from     = $this->request->getQuery('from');
-    $to       = $this->request->getQuery('to');
-    $currency = $this->request->getQuery('currency');
+    $q        = trim((string)$this->request->getQuery('q', ''));
+    $state    = trim((string)$this->request->getQuery('state', ''));
+    $type     = trim((string)$this->request->getQuery('type', ''));
+    $currency = strtoupper(trim((string)$this->request->getQuery('currency', '')));
+    $from     = trim((string)$this->request->getQuery('from', ''));
+    $to       = trim((string)$this->request->getQuery('to', ''));
 
-                $query = $this->Invoices->find()
-            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); }])
-            ->where(['Invoices.company_id' => $companyId])
-            ->where($this->nonDraftConditions());
+    $query = $this->Invoices->find()
+        ->leftJoinWith('InvoiceContractors')
+        ->contain(['InvoiceContractors' => function ($q) {
+            return $q->select(['invoice_id', 'name', 'nip', 'email', 'vatid']);
+        }])
+        ->where(['Invoices.company_id' => $companyId])
+        ->where($this->nonDraftConditions());
 
     if ($q !== '') {
-      $query->where(function($exp) use ($q) {
-        return $exp->or_([
-          'Invoices.fullnumber LIKE' => "%$q%",
-          'InvoiceContractors.name LIKE' => "%$q%",
-          'InvoiceContractors.nip LIKE' => "%$q%",
-        ]);
-      });
+        $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
+        $query->andWhere(function ($exp) use ($like) {
+            return $exp->or([
+                'Invoices.fullnumber LIKE'      => $like,
+                'InvoiceContractors.name LIKE'  => $like,
+                'InvoiceContractors.nip LIKE'   => $like,
+                'InvoiceContractors.vatid LIKE' => $like,
+            ]);
+        });
     }
-    if ($state) {
-      $query->where(['Invoices.paymentstate' => $state]);
+    if ($state !== '') {
+        $query->andWhere(['Invoices.paymentstate' => $state]);
     }
-    if ($currency) {
-      $query->where(['Invoices.currency' => strtoupper($currency)]);
+    if ($type !== '') {
+        $query->andWhere(['Invoices.type' => $type]);
     }
-    if ($from) { $query->where(['Invoices.date >=' => $from]); }
-    if ($to)   { $query->where(['Invoices.date <=' => $to]); }
+    if ($currency !== '') {
+        $query->andWhere(['Invoices.currency' => $currency]);
+    }
+    if ($from !== '') {
+        $query->andWhere(['Invoices.date >=' => $from]);
+    }
+    if ($to !== '') {
+        $query->andWhere(['Invoices.date <=' => $to]);
+    }
+
+    $this->set(compact('q', 'state', 'type', 'currency', 'from', 'to'));
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
