@@ -220,93 +220,129 @@ body { padding-bottom: 68px; }
   </div>
 </div>
 
-<!-- Szybkie filtry -->
 <?php
+$hasFilters = $search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== '' || $deliveryFrom !== '' || $deliveryTo !== '';
 $quickFilters = [
-    ['label' => 'Wszystkie',        'status' => '',           'icon' => 'ri-list-check'],
-    ['label' => 'Bez POD',          'status' => 'brak_pod',   'icon' => 'ri-alarm-warning-line',  'cls' => 'btn-outline-warning'],
-    ['label' => 'Bez FK',           'status' => 'brak_fk',    'icon' => 'ri-file-damage-line',    'cls' => 'btn-outline-danger'],
-    ['label' => 'Niezafakturowane', 'status' => 'niezafakt',  'icon' => 'ri-file-add-line',       'cls' => 'btn-outline-primary'],
-    ['label' => 'Przeterminowane',  'status' => 'przetermin', 'icon' => 'ri-time-line',           'cls' => 'btn-outline-danger'],
+    ['label' => 'Wszystkie',        'status' => '',           'icon' => 'ri-list-check',          'cls' => 'secondary'],
+    ['label' => 'Bez POD',          'status' => 'brak_pod',   'icon' => 'ri-alarm-warning-line',  'cls' => 'warning'],
+    ['label' => 'Bez FK',           'status' => 'brak_fk',    'icon' => 'ri-file-damage-line',    'cls' => 'danger'],
+    ['label' => 'Niezafakturowane', 'status' => 'niezafakt',  'icon' => 'ri-file-add-line',       'cls' => 'primary'],
+    ['label' => 'Przeterminowane',  'status' => 'przetermin', 'icon' => 'ri-time-line',           'cls' => 'danger'],
 ];
 ?>
-<div class="d-flex gap-1 flex-wrap mb-3">
-    <?php foreach ($quickFilters as $qf):
-        $isActive = $status === $qf['status'];
-        $baseCls  = $qf['cls'] ?? 'btn-outline-secondary';
-        $activeCls = $isActive ? str_replace('outline-', '', $baseCls) . ' text-white' : $baseCls;
-    ?>
-    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
-       class="btn btn-sm <?= $activeCls ?>">
-        <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
-    </a>
-    <?php endforeach; ?>
-</div>
 
-<!-- Filtry -->
-<form method="get" class="row g-2 mb-3">
-    <input type="hidden" name="limit" value="<?= $limit ?>">
-    <div class="col-md-3">
-        <input type="text" name="q" class="form-control form-control-sm"
-               placeholder="Szukaj (symbol, nabywca, trasa, tytuł)…" value="<?= h($search) ?>">
-    </div>
-    <div class="col-md-2">
+<!-- Panel filtrów -->
+<form method="get" id="orders-filter-form">
+<input type="hidden" name="limit" value="<?= $limit ?>">
+<div class="card custom-card mb-3">
+  <div class="card-body p-2">
+
+    <!-- Wiersz 1: Szukaj + Status + Szybkie filtry -->
+    <div class="row g-2 align-items-center mb-2">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-light border-end-0"><i class="ri-search-line text-muted"></i></span>
+          <input type="text" name="q" class="form-control form-control-sm border-start-0"
+                 placeholder="Symbol, nabywca, trasa, tytuł…" value="<?= h($search) ?>">
+        </div>
+      </div>
+      <div class="col-md-3">
         <select name="status" class="form-select form-select-sm">
-            <option value="">-- Status Nordlogis --</option>
-            <?php foreach ($nlStatusMap as $val => $s): ?>
-            <option value="nl_<?= $val ?>" <?= $status === 'nl_' . $val ? 'selected' : '' ?>><?= h($s['label']) ?></option>
-            <?php endforeach; ?>
-            <optgroup label="Speed ERP">
-            <?php foreach ($speedStatusMap as $val => $s): ?>
-            <option value="sp_<?= $val ?>" <?= $status === 'sp_' . $val ? 'selected' : '' ?>>Speed: <?= h($s['label']) ?></option>
-            <?php endforeach; ?>
-            </optgroup>
+          <option value="">Wszystkie statusy</option>
+          <optgroup label="Status Nordlogis">
+          <?php foreach ($nlStatusMap as $val => $s): ?>
+          <option value="nl_<?= $val ?>" <?= $status === 'nl_' . $val ? 'selected' : '' ?>>
+            <?= h($s['label']) ?>
+          </option>
+          <?php endforeach; ?>
+          </optgroup>
+          <optgroup label="Status Speed ERP">
+          <?php foreach ($speedStatusMap as $val => $s): ?>
+          <option value="sp_<?= $val ?>" <?= $status === 'sp_' . $val ? 'selected' : '' ?>>
+            <?= h($s['label']) ?>
+          </option>
+          <?php endforeach; ?>
+          </optgroup>
         </select>
-    </div>
-    <div class="col-md-2">
-        <label class="form-label mb-0 small text-muted">Data dok.</label>
-        <div class="d-flex gap-1">
-            <input type="date" name="date_from" class="form-control form-control-sm" value="<?= h($dateFrom) ?>" title="Data dokumentu od">
-            <input type="date" name="date_to" class="form-control form-control-sm" value="<?= h($dateTo) ?>" title="Data dokumentu do">
+      </div>
+      <div class="col-md-5">
+        <div class="d-flex gap-1 flex-wrap">
+          <?php foreach ($quickFilters as $qf):
+            $isActive = $status === $qf['status'] && !$hasFilters || ($status === $qf['status'] && $qf['status'] !== '');
+            $isActive = ($status === $qf['status']);
+            $cls = $isActive ? "btn-{$qf['cls']} text-white" : "btn-outline-{$qf['cls']}";
+          ?>
+          <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
+             class="btn btn-sm <?= $cls ?>">
+            <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
+          </a>
+          <?php endforeach; ?>
         </div>
+      </div>
     </div>
-    <div class="col-md-3">
-        <label class="form-label mb-0 small text-muted">Rozładunek</label>
-        <div class="d-flex gap-1">
-            <input type="date" name="delivery_from" class="form-control form-control-sm" value="<?= h($deliveryFrom) ?>" title="Rozładunek od">
-            <input type="date" name="delivery_to" class="form-control form-control-sm" value="<?= h($deliveryTo) ?>" title="Rozładunek do">
+
+    <!-- Wiersz 2: Daty + Przyciski -->
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-calendar-line me-1"></i>Data dokumentu
+        </label>
+        <div class="d-flex gap-1 align-items-center">
+          <input type="date" name="date_from" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($dateFrom) ?>" title="Od">
+          <span class="text-muted small">—</span>
+          <input type="date" name="date_to" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($dateTo) ?>" title="Do">
         </div>
-    </div>
-    <div class="col-md-2 d-flex gap-1 align-items-end">
-        <button type="submit" class="btn btn-sm btn-outline-primary flex-grow-1">
-            <i class="ri-search-line"></i> Filtruj
-        </button>
-        <?php if ($search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== '' || $deliveryFrom !== '' || $deliveryTo !== ''): ?>
-        <a href="<?= $this->Url->build(['action' => 'index']) ?>"
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-truck-line me-1"></i>Rozładunek
+        </label>
+        <div class="d-flex gap-1 align-items-center">
+          <input type="date" name="delivery_from" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($deliveryFrom) ?>" title="Od">
+          <span class="text-muted small">—</span>
+          <input type="date" name="delivery_to" class="form-control form-control-sm" style="width:140px"
+                 value="<?= h($deliveryTo) ?>" title="Do">
+        </div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2 align-items-end">
+        <?php if ($hasFilters): ?>
+        <a href="<?= $this->Url->build(['action' => 'index', '?' => ['limit' => $limit]]) ?>"
            class="btn btn-sm btn-outline-secondary" title="Wyczyść filtry">
-            <i class="ri-close-line"></i>
+          <i class="ri-close-line me-1"></i>Wyczyść
         </a>
         <?php endif; ?>
+        <button type="submit" class="btn btn-sm btn-primary px-3">
+          <i class="ri-search-line me-1"></i>Filtruj
+        </button>
+      </div>
     </div>
+
+  </div>
+</div>
 </form>
 
+<!-- Pasek wyników + limit -->
 <div class="d-flex align-items-center gap-3 mb-2">
-    <p class="text-muted small mb-0">
-        Znaleziono: <strong><?= number_format($total, 0, ',', ' ') ?></strong> zleceń
-        <?php if ($total > $limit): ?>(strona <?= $page ?> z <?= $pages ?>)<?php endif; ?>
-        &mdash; <?= count($groups) ?> grup (kontrahent + data rozładunku)
-    </p>
-    <form method="get" class="d-flex align-items-center gap-1 ms-auto">
-        <?php foreach (['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo] as $k => $v): ?>
-            <?php if ($v !== ''): ?><input type="hidden" name="<?= $k ?>" value="<?= h($v) ?>"><?php endif; ?>
-        <?php endforeach; ?>
-        <label class="small text-muted text-nowrap">Na stronę</label>
-        <select name="limit" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
-            <?php foreach ([25, 50, 100, 200, 500] as $opt): ?>
-            <option value="<?= $opt ?>" <?= $limit === $opt ? 'selected' : '' ?>><?= $opt ?></option>
-            <?php endforeach; ?>
-        </select>
-    </form>
+  <p class="text-muted small mb-0">
+    Znaleziono: <strong><?= number_format($total, 0, ',', ' ') ?></strong> zleceń
+    <?php if ($total > $limit): ?>(strona <?= $page ?> z <?= $pages ?>)<?php endif; ?>
+    &mdash; <?= count($groups) ?> grup
+    <?php if ($hasFilters): ?>
+    <span class="badge bg-primary-subtle text-primary ms-1"><i class="ri-filter-3-line me-1"></i>Filtry aktywne</span>
+    <?php endif; ?>
+  </p>
+  <div class="d-flex align-items-center gap-1 ms-auto">
+    <label class="small text-muted text-nowrap">Na stronę</label>
+    <select name="limit" class="form-select form-select-sm" style="width:auto"
+            onchange="const u=new URL(location.href);u.searchParams.set('limit',this.value);u.searchParams.set('page','1');location.href=u.toString()">
+      <?php foreach ([25, 50, 100, 200, 500] as $opt): ?>
+      <option value="<?= $opt ?>" <?= $limit === $opt ? 'selected' : '' ?>><?= $opt ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
 </div>
 
 <style>
