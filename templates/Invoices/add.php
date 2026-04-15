@@ -311,7 +311,9 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
             <div class="col-lg-2">
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
+              'value' => !empty($invoice->sold_date)
+                ? ($invoice->sold_date instanceof \DateTimeInterface ? $invoice->sold_date->format('Y-m-d') : (string)$invoice->sold_date)
+                : date('Y-m-d')
             ]) ?>
             </div>
 
