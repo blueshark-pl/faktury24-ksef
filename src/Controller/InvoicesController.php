@@ -590,22 +590,20 @@ public function index()
 
     $query = $this->Invoices->find()
         ->contain(['InvoiceContractors' => function ($q) {
-            return $q->select(['invoice_id', 'name', 'nip', 'email', 'vatid']);
+            return $q->select(['invoice_id', 'name', 'nip', 'email']);
         }])
         ->where(['Invoices.company_id' => $companyId])
         ->where($this->nonDraftConditions());
 
     if ($q !== '') {
         $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
-        // Subquery na InvoiceContractors żeby uniknąć konfliktu leftJoinWith + contain
         $contractorIds = $this->fetchTable('InvoiceContractors')
             ->find()
             ->select(['invoice_id'])
             ->where(function ($exp) use ($like) {
                 return $exp->or([
-                    'InvoiceContractors.name LIKE'  => $like,
-                    'InvoiceContractors.nip LIKE'   => $like,
-                    'InvoiceContractors.vatid LIKE' => $like,
+                    'InvoiceContractors.name LIKE' => $like,
+                    'InvoiceContractors.nip LIKE'  => $like,
                 ]);
             });
         $query->andWhere(function ($exp) use ($like, $contractorIds) {
