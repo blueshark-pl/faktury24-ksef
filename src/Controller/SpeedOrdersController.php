@@ -344,8 +344,11 @@ class SpeedOrdersController extends AppController
 
         $file->moveTo($dir . DS . $safeName);
 
-        $labelId = (int)$this->request->getData('label_id') ?: null;
-        $username = $this->Authentication->getIdentity()?->getIdentifier() ?? null;
+        $labelId  = (int)$this->request->getData('label_id') ?: null;
+        $identity = $this->request->getAttribute('identity');
+        $username = $identity
+            ? (string)($identity->get('username') ?? $identity->get('email') ?? $identity->getIdentifier())
+            : null;
 
         $Attachments = $this->fetchTable('SpeedOrderAttachments');
         $entity = $Attachments->newEntity([
