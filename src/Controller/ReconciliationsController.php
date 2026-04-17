@@ -77,19 +77,19 @@ class ReconciliationsController extends AppController
         // ── Statystyki (prosta agregacja SQL bez contain) ────────────────────
         $statsRows = $Invoices->find()
             ->select([
-                'total'       => 'Invoices.total',
-                'alreadypaid' => 'Invoices.alreadypaid',
-                'remaining'   => 'Invoices.remaining',
+                'total'        => 'Invoices.total',
+                'alreadypaid'  => 'Invoices.alreadypaid',
+                'remaining'    => 'Invoices.remaining',
                 'paymentstate' => 'Invoices.paymentstate',
-                'paymentdate' => 'Invoices.paymentdate',
+                'paymentdate'  => 'Invoices.paymentdate',
             ])
             ->where($baseConditions)
-            ->where(function ($exp) {
-                return $exp->or([
-                    $exp->notEq('Invoices.workflow_status', 'draft'),
-                    $exp->isNull('Invoices.workflow_status'),
-                ]);
-            })
+            ->where([
+                'OR' => [
+                    ['Invoices.workflow_status IS'  => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
             ->disableHydration()
             ->all()
             ->toArray();
@@ -114,12 +114,12 @@ class ReconciliationsController extends AppController
                 'Invoices.currency', 'Invoices.type', 'Invoices.created',
             ])
             ->where($baseConditions)
-            ->where(function ($exp) {
-                return $exp->or([
-                    $exp->notEq('Invoices.workflow_status', 'draft'),
-                    $exp->isNull('Invoices.workflow_status'),
-                ]);
-            })
+            ->where([
+                'OR' => [
+                    ['Invoices.workflow_status IS'  => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
             ->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
 
         $total    = (clone $invoiceQuery)->count();
