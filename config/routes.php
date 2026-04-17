@@ -47,6 +47,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/dashboard', 'SpeedOrders::dashboard');
         $builder->get('/zlecenia/export-csv', 'SpeedOrders::exportCsv');
         $builder->get('/zlecenia/view/{id}', 'SpeedOrders::view');
+        $builder->get('/zlecenia/view-modal/{id}', 'SpeedOrders::viewModal');
         $builder->post('/zlecenia/sync', 'SpeedOrders::sync');
         $builder->post('/zlecenia/create-batch-invoices', 'SpeedOrders::createBatchInvoices');
         $builder->post('/zlecenia/update-status', 'SpeedOrders::updateStatus');
@@ -55,6 +56,10 @@ return function (RouteBuilder $routes): void {
         $builder->post('/zlecenia/{orderId}/delete-attachment/{attachmentId}', ['controller' => 'SpeedOrders', 'action' => 'deleteAttachment'])
             ->setPass(['orderId', 'attachmentId']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
+        $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
+        $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);
+        $builder->post('/invoices/{id}/mark-sent', ['controller' => 'Invoices', 'action' => 'markSent'])->setPass(['id']);
+        $builder->get('/invoices/scan/{id}/{token}', ['controller' => 'Invoices', 'action' => 'scanLabel'])->setPass(['id', 'token']);
         $builder->get('/products/import-fetch', 'Products::importFetch');
         $builder->post('/products/import-batch', 'Products::importBatch');
         $builder->get('/archiwum-faktur', ['controller' => 'LegacyInvoices', 'action' => 'index']);
@@ -119,6 +124,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
 
         // Admin — lista i usuwanie faktur wszystkich użytkowników
+        $builder->post('/invoices/check-rates-batch', ['controller' => 'Invoices', 'action' => 'checkRatesBatch']);
+        $builder->get('/admin/check-currency-rates', ['controller' => 'Invoices', 'action' => 'checkCurrencyRates']);
         $builder->get('/admin/faktury', ['controller' => 'Invoices', 'action' => 'adminInvoices']);
         $builder->get('/admin/szkice', ['controller' => 'Invoices', 'action' => 'adminDrafts']);
         $builder->get('/admin/logi-usuniec', ['controller' => 'Invoices', 'action' => 'adminDeletionLogs']);
@@ -126,6 +133,27 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->connect('/admin/zgloszenia/{id}', ['controller' => 'Invoices', 'action' => 'adminSupportView'])
             ->setPass(['id']);
         $builder->post('/admin/faktury/{id}/delete', ['controller' => 'Invoices', 'action' => 'adminDelete'])
+            ->setPass(['id']);
+
+        // Rozliczenia
+        $builder->get('/rozliczenia', ['controller' => 'Reconciliations', 'action' => 'index']);
+        $builder->post('/rozliczenia/add-payment', ['controller' => 'Reconciliations', 'action' => 'addPayment']);
+        $builder->post('/rozliczenia/delete-payment/{id}', ['controller' => 'Reconciliations', 'action' => 'deletePayment'])
+            ->setPass(['id']);
+        $builder->get('/rozliczenia/bank-transactions/{id}', ['controller' => 'Reconciliations', 'action' => 'bankTransactions'])
+            ->setPass(['id']);
+
+        // Wyciągi bankowe MT940
+        $builder->get('/wyciagi', ['controller' => 'BankTransactions', 'action' => 'index']);
+        $builder->get('/wyciagi/transakcje', ['controller' => 'BankTransactions', 'action' => 'transactions']);
+        $builder->connect('/wyciagi/import', ['controller' => 'BankTransactions', 'action' => 'import']);
+        $builder->connect('/wyciagi/view/{id}', ['controller' => 'BankTransactions', 'action' => 'view'])
+            ->setPass(['id']);
+        $builder->post('/wyciagi/delete/{id}', ['controller' => 'BankTransactions', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->post('/wyciagi/confirm-match/{id}', ['controller' => 'BankTransactions', 'action' => 'confirmMatch'])
+            ->setPass(['id']);
+        $builder->post('/wyciagi/ignore/{id}', ['controller' => 'BankTransactions', 'action' => 'ignoreTransaction'])
             ->setPass(['id']);
 
         // Fallbacks (na końcu)
