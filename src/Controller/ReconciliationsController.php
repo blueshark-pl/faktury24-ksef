@@ -230,17 +230,36 @@ class ReconciliationsController extends AppController
             ->orderByDesc('value_date')
             ->all()->toArray();
 
-        // Kandydaci — niedopasowane/proponowane dla tego samego NIP
+        // Kandydaci — niedopasowane/proponowane pasujące do nazwy kontrahenta lub NIP
         $candidates = [];
-        if ($nip !== null && $nip !== '') {
-            $linkedIds  = array_column($linked, 'id');
+        $linkedIds  = array_column($linked, 'id');
+
+        // Buduj warunki wyszukiwania po nazwie (party_name LIKE) + opcjonalnie NIP
+        $nameOrConditions = [];
+
+        // Wyciągnij znaczące słowa z nazwy kontrahenta (dł. >= 3, pomijaj "sp.", "z", "o.o." itp.)
+        if ($contractorName !== null && $contractorName !== '') {
+            $stopWords = ['sp', 'zoo', 'o.o', 'ltd', 'gmbh', 's.a', 'z', 'i', 'oraz', 'the'];
+            $words = preg_split('/[\s\.,]+/', mb_strtolower($contractorName));
+            $significant = array_values(array_filter($words, fn($w) => strlen($w) >= 3 && !in_array($w, $stopWords, true)));
+            foreach (array_slice($significant, 0, 3) as $word) {
+                $nameOrConditions[] = ['BankTransactions.party_name LIKE' => '%' . $word . '%'];
+            }
+        }
+
+        // Fallback na NIP jeśli nie ma nazwy
+        if (empty($nameOrConditions) && $nip !== null && $nip !== '') {
+            $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
+        }
+
+        if (!empty($nameOrConditions)) {
             $conditions = [
-                'company_id'      => $companyId,
-                'match_status IN' => ['unmatched', 'proposed'],
-                'parsed_nip'      => $nip,
+                'BankTransactions.company_id'      => $companyId,
+                'BankTransactions.match_status IN' => ['unmatched', 'proposed'],
+                'OR'                               => $nameOrConditions,
             ];
             if (!empty($linkedIds)) {
-                $conditions['id NOT IN'] = $linkedIds;
+                $conditions['BankTransactions.id NOT IN'] = $linkedIds;
             }
             $candidates = $BankTransactions->find()
                 ->where($conditions)

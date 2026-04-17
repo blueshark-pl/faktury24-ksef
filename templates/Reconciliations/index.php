@@ -345,10 +345,7 @@ $typeLabels = [
                     <th style="min-width:160px">Kontrahent</th>
                     <th class="text-center" style="width:55px">Typ</th>
                     <th class="text-nowrap"><?= $sortLink('date', 'Wystawiona') ?></th>
-                    <th class="text-nowrap"><?= $sortLink('paymentdate', 'Termin (faktura)') ?></th>
-                    <th class="text-nowrap" title="Termin płatności liczony od daty dostawy zlecenia (Speed ERP)">
-                        Termin (dostawa) <i class="ri-information-line text-muted small"></i>
-                    </th>
+                    <th class="text-nowrap"><?= $sortLink('paymentdate', 'Termin') ?></th>
                     <th class="text-end text-nowrap"><?= $sortLink('total', 'Brutto') ?></th>
                     <th class="text-end text-nowrap"><?= $sortLink('remaining', 'Pozostało') ?></th>
                     <th style="min-width:140px">Status</th>
@@ -358,18 +355,25 @@ $typeLabels = [
             </thead>
             <tbody>
             <?php foreach ($invoices as $invoice):
-                $bt         = $bankByInvoice[(string)$invoice->id] ?? null;
-                $so         = $speedByInvoice[(string)$invoice->id] ?? null;
-                $sdStr      = $shipDueDate($invoice, $so);
-                $state      = $invoice->paymentstate ?? 'unpaid';
-                $pdateStr   = $invoice->paymentdate instanceof \DateTimeInterface
-                    ? $invoice->paymentdate->format('Y-m-d')
-                    : substr((string)($invoice->paymentdate ?? ''), 0, 10);
+                $bt    = $bankByInvoice[(string)$invoice->id] ?? null;
+                $state = $invoice->paymentstate ?? 'unpaid';
+
+                // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
+                $rawPd = $invoice->paymentdate;
+                if ($rawPd instanceof \DateTimeInterface) {
+                    $pdateStr = $rawPd->format('Y-m-d');
+                } elseif ($rawPd) {
+                    $s = (string)$rawPd;
+                    $dt = \DateTime::createFromFormat('d.m.Y', substr($s, 0, 10))
+                       ?: \DateTime::createFromFormat('Y-m-d', substr($s, 0, 10));
+                    $pdateStr = $dt ? $dt->format('Y-m-d') : null;
+                } else {
+                    $pdateStr = null;
+                }
 
                 // Efektywny termin płatności (priorytet dla oceny przeterminowania):
-                // 1. sent_at + dni płatności (data wysyłki dokumentów z labelki)
-                // 2. fallback: normalny termin z faktury
-                // Kolumna "Termin (dostawa)" nadal pokazuje termin od Speed — tylko do informacji
+                // sent_at + dni płatności (data wysyłki dokumentów z labelki),
+                // fallback: normalny termin z faktury
                 $sentDue      = $sentBasedDue($invoice);
                 $effectiveDue = $sentDue ?? $pdateStr;
 
@@ -434,23 +438,6 @@ $typeLabels = [
                             <?php endif; ?>
                         <?php else: ?>
                             <span class="text-muted">—</span>
-                        <?php endif; ?>
-                    </td>
-                    <!-- Termin od dostawy -->
-                    <td class="text-nowrap small">
-                        <?php if ($sdStr && $so): ?>
-                            <?php
-                            $sdPast  = $sdStr < $todayStr && $state !== 'paid';
-                            $sdCls   = $sdPast ? 'text-danger fw-semibold' : 'text-muted';
-                            ?>
-                            <span class="<?= $sdCls ?>" title="Dostawa: <?= $fdate($so->date_delivery ?? $so->date_ship) ?> · Zlecenie: <?= h($so->symbol ?? '') ?>">
-                                <?= $fdate($sdStr) ?>
-                                <?php if ($so->symbol): ?>
-                                    <span class="text-muted ms-1 small">(<?= h($so->symbol) ?>)</span>
-                                <?php endif; ?>
-                            </span>
-                        <?php else: ?>
-                            <span class="text-muted small">—</span>
                         <?php endif; ?>
                     </td>
                     <!-- Brutto -->
