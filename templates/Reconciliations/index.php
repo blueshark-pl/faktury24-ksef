@@ -70,20 +70,25 @@ $sentBasedDue = function (?\App\Model\Entity\Invoice $invoice): ?string {
     $paymentDate = $invoice->paymentdate;
     if (!$sentAt || !$invoiceDate || !$paymentDate) return null;
 
-    if (!$invoiceDate instanceof \DateTimeInterface) {
-        $invoiceDate = new \DateTime(substr((string)$invoiceDate, 0, 10));
-    }
-    if (!$paymentDate instanceof \DateTimeInterface) {
-        $paymentDate = new \DateTime(substr((string)$paymentDate, 0, 10));
-    }
-    if (!$sentAt instanceof \DateTimeInterface) {
-        $sentAt = new \DateTime(substr((string)$sentAt, 0, 19));
-    }
+    // Normalizuj do mutowalnych DateTime (sent_at i date są Cake\I18n\Date/DateTime → DateTimeImmutable,
+    // modify() na immutable zwraca nowy obiekt zamiast modyfikować w miejscu — stąd używamy DateTime)
+    $toMutable = static function ($v, int $substLen = 10): \DateTime {
+        if ($v instanceof \DateTimeInterface) {
+            return \DateTime::createFromFormat('Y-m-d', $v->format('Y-m-d'));
+        }
+        $s = substr((string)$v, 0, $substLen);
+        return \DateTime::createFromFormat('d.m.Y', $s)
+            ?: \DateTime::createFromFormat('Y-m-d', $s)
+            ?: new \DateTime($s);
+    };
 
-    $paymentDays = (int)$invoiceDate->diff($paymentDate)->days;
-    $due = clone $sentAt;
-    $due->modify('+' . $paymentDays . ' days');
-    return $due->format('Y-m-d');
+    $invoiceDt = $toMutable($invoiceDate);
+    $paymentDt = $toMutable($paymentDate);
+    $sentDt    = $toMutable($sentAt, 19);
+
+    $paymentDays = (int)$invoiceDt->diff($paymentDt)->days;
+    $sentDt->modify('+' . $paymentDays . ' days');
+    return $sentDt->format('Y-m-d');
 };
 
 // Badge statusu płatności
@@ -393,6 +398,11 @@ $typeLabels = [
                            class="fw-semibold text-decoration-none text-dark">
                             <?= h($invoice->fullnumber ?? '—') ?>
                         </a>
+                        <?php if ($invoice->sent_at): ?>
+                            <span class="ms-1 text-info" title="Dokumenty wysłane pocztą: <?= $fdate($invoice->sent_at) ?>">
+                                <i class="ri-mail-send-line"></i>
+                            </span>
+                        <?php endif; ?>
                     </td>
                     <!-- Kontrahent -->
                     <td class="text-truncate" style="max-width:200px" title="<?= h($contractorName) ?>">
