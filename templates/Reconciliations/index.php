@@ -152,20 +152,25 @@ $sortLink = function (string $col, string $label) use ($sort, $dir, $currentUrl)
 
 $todayStr = $today->format('Y-m-d');
 
-// Nazwy typów faktur
-$typeLabels = [
-    'vat'        => 'FV VAT',
-    'novat'      => 'FV',
-    'currency'   => 'FV walut.',
-    'proforma'   => 'Proforma',
-    'advance'    => 'Zaliczk.',
-    'final'      => 'Końcowa',
-    'correction' => 'Korekta',
-    'margin'     => 'Marża',
-    'rental'     => 'Najem',
-    'oss'        => 'OSS',
-    'internal'   => 'Wewn.',
-];
+// Badge typów — identyczna kolorystyka jak na liście faktur
+$typeBadge = function (string $type): string {
+    $map = [
+        'vat'              => ['bg-primary',   'VAT'],
+        'novat'            => ['bg-secondary',  'Rachunek'],
+        'currency'         => ['bg-info',       'Walutowa'],
+        'proforma'         => ['bg-info',       'Proforma'],
+        'advance'          => ['bg-warning',    'Zaliczka'],
+        'final'            => ['bg-dark',       'Końcowa'],
+        'correction'       => ['bg-danger',     'Korekta'],
+        'margin'           => ['bg-success',    'Marża'],
+        'rental'           => ['bg-success',    'Najem'],
+        'oss'              => ['bg-purple',     'OSS'],
+        'internal'         => ['bg-dark',       'Wewnętrzna'],
+        'internalEvidence' => ['bg-dark',       'Dowód wewn.'],
+    ];
+    [$cls, $label] = $map[$type] ?? ['bg-light text-dark', h($type)];
+    return '<span class="badge ' . $cls . '">' . $label . '</span>';
+};
 ?>
 
 <!-- Nagłówek -->
@@ -411,9 +416,7 @@ $typeLabels = [
                     </td>
                     <!-- Typ -->
                     <td class="text-center">
-                        <span class="badge bg-secondary-subtle text-secondary border small">
-                            <?= h($typeLabels[$invoice->type] ?? h($invoice->type ?? '')) ?>
-                        </span>
+                        <?= $typeBadge($invoice->type ?? '') ?>
                     </td>
                     <!-- Data wystawienia -->
                     <td class="text-nowrap small text-muted"><?= $fdate($invoice->date) ?></td>
