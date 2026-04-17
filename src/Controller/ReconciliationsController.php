@@ -188,7 +188,7 @@ class ReconciliationsController extends AppController
                     return $q->select(['id', 'invoice_id', 'name', 'nip']);
                 },
             ])
-            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency'])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency', 'Invoices.date'])
             ->where(['Invoices.id' => $invoiceId, 'Invoices.company_id' => $companyId])
             ->first();
 
@@ -253,12 +253,18 @@ class ReconciliationsController extends AppController
             $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
         }
 
+        // Data wystawienia faktury — przelew musi być >= tej daty
+        $invoiceDateStr = $fmtDate($invoice->date);
+
         if (!empty($nameOrConditions)) {
             $conditions = [
                 'BankTransactions.company_id'      => $companyId,
                 'BankTransactions.match_status IN' => ['unmatched', 'proposed'],
                 'OR'                               => $nameOrConditions,
             ];
+            if ($invoiceDateStr !== '') {
+                $conditions['BankTransactions.value_date >='] = $invoiceDateStr;
+            }
             if (!empty($linkedIds)) {
                 $conditions['BankTransactions.id NOT IN'] = $linkedIds;
             }
