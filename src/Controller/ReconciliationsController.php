@@ -147,16 +147,17 @@ class ReconciliationsController extends AppController
                 $bankByInvoice[$iid] ??= $bt;
             }
 
-            // ── Zlecenia Speed (data dostawy) ────────────────────────────────
+            // ── Zlecenia Speed (lista per faktura) ───────────────────────────
             $speedByInvoice = [];
             $speedRows = $this->fetchTable('SpeedOrders')->find()
                 ->where(['invoice_id IN' => $invoiceIds])
-                ->select(['invoice_id', 'date_delivery', 'date_ship', 'symbol'])
+                ->select(['id', 'invoice_id', 'symbol', 'date_delivery', 'date_ship'])
+                ->orderByAsc('symbol')
                 ->all()->toArray();
 
             foreach ($speedRows as $so) {
                 $iid = (string)$so->invoice_id;
-                $speedByInvoice[$iid] ??= $so;
+                $speedByInvoice[$iid][] = $so;
             }
         } else {
             $speedByInvoice = [];

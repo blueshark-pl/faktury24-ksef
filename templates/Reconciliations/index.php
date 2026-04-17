@@ -355,6 +355,7 @@ $typeLabels = [
                     <th class="text-end text-nowrap"><?= $sortLink('remaining', 'Pozostało') ?></th>
                     <th style="min-width:140px">Status</th>
                     <th style="min-width:100px">Przelew</th>
+                    <th style="min-width:100px">Zlecenia</th>
                     <th class="pe-3 text-end" style="min-width:110px">Akcje</th>
                 </tr>
             </thead>
@@ -479,6 +480,20 @@ $typeLabels = [
                                 <?= number_format((float)$bt->amount, 2, ',', ' ') ?> PLN
                                 · <?= $fdate($bt->value_date) ?>
                             </div>
+                        <?php endif; ?>
+                    </td>
+                    <!-- Zlecenia Speed -->
+                    <td class="small">
+                        <?php $orders = $speedByInvoice[(string)$invoice->id] ?? []; ?>
+                        <?php foreach ($orders as $so): ?>
+                            <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'SpeedOrders', 'action' => 'view', $so->id]) ?>"
+                               class="d-block text-decoration-none text-dark fw-semibold"
+                               title="<?= h($so->symbol ?? '') ?> · dostawa: <?= $fdate($so->date_delivery ?? $so->date_ship) ?>">
+                                <i class="ri-truck-line me-1 text-muted"></i><?= h($so->symbol ?? '—') ?>
+                            </a>
+                        <?php endforeach; ?>
+                        <?php if (empty($orders)): ?>
+                            <span class="text-muted">—</span>
                         <?php endif; ?>
                     </td>
                     <!-- Akcje -->
