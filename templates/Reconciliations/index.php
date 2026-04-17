@@ -483,17 +483,40 @@ $typeLabels = [
                         <?php endif; ?>
                     </td>
                     <!-- Zlecenia Speed -->
-                    <td class="small">
+                    <td>
                         <?php $orders = $speedByInvoice[(string)$invoice->id] ?? []; ?>
-                        <?php foreach ($orders as $so): ?>
-                            <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'SpeedOrders', 'action' => 'view', $so->id]) ?>"
-                               class="d-block text-decoration-none text-dark fw-semibold"
-                               title="<?= h($so->symbol ?? '') ?> · dostawa: <?= $fdate($so->date_delivery ?? $so->date_ship) ?>">
-                                <i class="ri-truck-line me-1 text-muted"></i><?= h($so->symbol ?? '—') ?>
-                            </a>
-                        <?php endforeach; ?>
                         <?php if (empty($orders)): ?>
-                            <span class="text-muted">—</span>
+                            <span class="text-muted small">—</span>
+                        <?php elseif (count($orders) === 1):
+                            $so = $orders[0]; ?>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary py-0 px-1 btn-view-order-modal"
+                                    data-order-id="<?= h($so->id) ?>"
+                                    title="<?= h($so->symbol ?? '') ?> · dostawa: <?= $fdate($so->date_delivery ?? $so->date_ship) ?>">
+                                <i class="ri-truck-line me-1"></i><span class="small"><?= h($so->symbol ?? '—') ?></span>
+                            </button>
+                        <?php else: ?>
+                            <div class="dropdown">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary py-0 px-1 dropdown-toggle"
+                                        data-bs-toggle="dropdown"
+                                        title="<?= count($orders) ?> zlecenia">
+                                    <i class="ri-truck-line me-1"></i><span class="small"><?= count($orders) ?></span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <?php foreach ($orders as $so): ?>
+                                        <li>
+                                            <button type="button"
+                                                    class="dropdown-item small btn-view-order-modal"
+                                                    data-order-id="<?= h($so->id) ?>">
+                                                <i class="ri-truck-line me-1 text-muted"></i>
+                                                <?= h($so->symbol ?? '—') ?>
+                                                <span class="text-muted ms-1"><?= $fdate($so->date_delivery ?? $so->date_ship) ?></span>
+                                            </button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
                         <?php endif; ?>
                     </td>
                     <!-- Akcje -->
@@ -824,6 +847,75 @@ $typeLabels = [
 
             loadBankTransactions(currentInvoiceId);
         });
+    });
+}());
+</script>
+
+<!-- ── Modal podglądu zlecenia Speed (identyczny mechanizm jak na liście zleceń) ── -->
+<div class="modal fade" id="orderViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header py-2 border-bottom">
+        <h6 class="modal-title flex-grow-1 text-truncate me-3" id="orderViewModalTitle">
+          <i class="ri-eye-line me-1"></i>Podgląd zlecenia
+        </h6>
+        <a href="#" id="orderViewModalLink" class="btn btn-sm btn-outline-primary me-2 flex-shrink-0" target="_blank" title="Otwórz w nowej karcie">
+          <i class="ri-external-link-line me-1"></i>Pełny widok
+        </a>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body p-0" id="orderViewModalBody" style="overflow-y:auto">
+        <div class="d-flex justify-content-center align-items-center" style="min-height:300px">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Ładowanie…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    const viewModalEl = document.getElementById('orderViewModal');
+    const viewModal   = new bootstrap.Modal(viewModalEl);
+    const modalBody   = document.getElementById('orderViewModalBody');
+    const modalTitle  = document.getElementById('orderViewModalTitle');
+    const modalLink   = document.getElementById('orderViewModalLink');
+    const baseViewUrl = '<?= $this->Url->build(['plugin' => false, 'controller' => 'SpeedOrders', 'action' => 'viewModal', '__ID__']) ?>'.replace('__ID__', '');
+    const fullViewUrl = '<?= $this->Url->build(['plugin' => false, 'controller' => 'SpeedOrders', 'action' => 'view', '__ID__']) ?>'.replace('__ID__', '');
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-view-order-modal');
+        if (!btn) return;
+        e.preventDefault();
+        const orderId = btn.dataset.orderId;
+        if (!orderId) return;
+
+        modalBody.innerHTML = '<div class="d-flex justify-content-center align-items-center" style="min-height:300px">'
+            + '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Ładowanie…</span></div></div>';
+        modalTitle.innerHTML = '<i class="ri-eye-line me-1"></i>Ładowanie…';
+        modalLink.href = fullViewUrl + orderId;
+        viewModal.show();
+
+        fetch(baseViewUrl + orderId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+            .then(function (html) {
+                modalBody.innerHTML = '<div class="p-3">' + html + '</div>';
+                modalTitle.innerHTML = '<i class="ri-eye-line me-1"></i>Podgląd zlecenia';
+                modalBody.querySelectorAll('script').forEach(function (old) {
+                    const s = document.createElement('script');
+                    old.src ? (s.src = old.src) : (s.textContent = old.textContent);
+                    old.parentNode.replaceChild(s, old);
+                });
+            })
+            .catch(function (err) {
+                modalBody.innerHTML = '<div class="alert alert-danger m-4">'
+                    + '<i class="ri-error-warning-line me-2"></i>Nie udało się załadować zlecenia: ' + err.message + '</div>';
+            });
+    });
+
+    viewModalEl.addEventListener('hidden.bs.modal', function () {
+        modalBody.innerHTML = '';
     });
 }());
 </script>
