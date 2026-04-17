@@ -35,7 +35,7 @@ $fnum = function ($v, string $currency = 'PLN'): string {
     return number_format((float)$v, 2, ',', ' ') . ' ' . h($currency);
 };
 
-// Oblicz termin płatności od daty dostawy (speed order)
+// Oblicz termin płatności od daty dostawy (speed order) — używane tylko do wyświetlenia w kolumnie
 // payment_days = paymentdate - date (w dniach)
 $shipDueDate = function (?\App\Model\Entity\Invoice $invoice, ?object $speedOrder): ?string {
     if ($invoice === null || $speedOrder === null) return null;
@@ -59,6 +59,31 @@ $shipDueDate = function (?\App\Model\Entity\Invoice $invoice, ?object $speedOrde
     $shipDue = clone $deliveryDate;
     $shipDue->modify('+' . $paymentDays . ' days');
     return $shipDue->format('Y-m-d');
+};
+
+// Oblicz termin płatności od daty wysyłki dokumentów (invoices.sent_at + dni płatności)
+// To jest EFEKTYWNY termin — priorytetowy dla oceny przeterminowania
+$sentBasedDue = function (?\App\Model\Entity\Invoice $invoice): ?string {
+    if ($invoice === null) return null;
+    $sentAt      = $invoice->sent_at ?? null;
+    $invoiceDate = $invoice->date;
+    $paymentDate = $invoice->paymentdate;
+    if (!$sentAt || !$invoiceDate || !$paymentDate) return null;
+
+    if (!$invoiceDate instanceof \DateTimeInterface) {
+        $invoiceDate = new \DateTime(substr((string)$invoiceDate, 0, 10));
+    }
+    if (!$paymentDate instanceof \DateTimeInterface) {
+        $paymentDate = new \DateTime(substr((string)$paymentDate, 0, 10));
+    }
+    if (!$sentAt instanceof \DateTimeInterface) {
+        $sentAt = new \DateTime(substr((string)$sentAt, 0, 19));
+    }
+
+    $paymentDays = (int)$invoiceDate->diff($paymentDate)->days;
+    $due = clone $sentAt;
+    $due->modify('+' . $paymentDays . ' days');
+    return $due->format('Y-m-d');
 };
 
 // Badge statusu płatności
@@ -341,10 +366,12 @@ $typeLabels = [
                     ? $invoice->paymentdate->format('Y-m-d')
                     : substr((string)($invoice->paymentdate ?? ''), 0, 10);
 
-                // Efektywny termin płatności:
-                // — jeśli faktura ma powiązane zlecenie Speed → liczymy od daty dostawy
-                // — w przeciwnym razie → normalny termin z faktury
-                $effectiveDue = ($sdStr !== null && $sdStr !== '') ? $sdStr : $pdateStr;
+                // Efektywny termin płatności (priorytet dla oceny przeterminowania):
+                // 1. sent_at + dni płatności (data wysyłki dokumentów z labelki)
+                // 2. fallback: normalny termin z faktury
+                // Kolumna "Termin (dostawa)" nadal pokazuje termin od Speed — tylko do informacji
+                $sentDue      = $sentBasedDue($invoice);
+                $effectiveDue = $sentDue ?? $pdateStr;
 
                 // Kolorowanie wiersza — na podstawie efektywnego terminu
                 $rowClass = '';

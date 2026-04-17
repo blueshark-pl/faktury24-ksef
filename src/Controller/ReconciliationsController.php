@@ -112,6 +112,7 @@ class ReconciliationsController extends AppController
                 'Invoices.paymentdate', 'Invoices.paymentstate', 'Invoices.paymentmethod',
                 'Invoices.total', 'Invoices.alreadypaid', 'Invoices.remaining',
                 'Invoices.currency', 'Invoices.type', 'Invoices.created',
+                'Invoices.sent_at',
             ])
             ->where($baseConditions)
             ->where([
