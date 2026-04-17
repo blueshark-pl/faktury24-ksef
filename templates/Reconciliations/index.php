@@ -406,22 +406,32 @@ $typeLabels = [
                     <td class="text-nowrap small">
                         <?php if ($pdateStr): ?>
                             <?php
-                            // Ostrzeżenie "dni temu" bazuje na efektywnym terminie, nie samej dacie faktury.
-                            // Dzięki temu jeśli Speed delivery jest w przyszłości, nie świecimy na czerwono.
-                            $isPast  = $effectiveDue < $todayStr && $state !== 'paid';
-                            $isToday = $effectiveDue === $todayStr && $state !== 'paid';
-                            $cls     = $isPast ? 'text-danger fw-semibold' : ($isToday ? 'text-warning fw-semibold' : 'text-muted');
+                            // Kolumna pokazuje termin z faktury — "dni temu" dotyczy tej samej daty.
+                            // Kolor wiersza i badge statusu używają $effectiveDue (od sent_at).
+                            $invPast  = $pdateStr < $todayStr && $state !== 'paid';
+                            $invToday = $pdateStr === $todayStr && $state !== 'paid';
+                            $cls      = $invPast ? 'text-danger fw-semibold' : ($invToday ? 'text-warning fw-semibold' : 'text-muted');
                             ?>
                             <span class="<?= $cls ?>">
                                 <?= $fdate($invoice->paymentdate) ?>
-                                <?php if ($isPast): ?>
+                                <?php if ($invPast): ?>
                                     <span class="ms-1 small text-danger">
-                                        (<?= (int)(new \DateTime($effectiveDue))->diff($today)->days ?> dni temu)
+                                        (<?= (int)(new \DateTime($pdateStr))->diff($today)->days ?> dni temu)
                                     </span>
-                                <?php elseif ($isToday): ?>
+                                <?php elseif ($invToday): ?>
                                     <span class="ms-1 badge bg-warning-subtle text-warning border border-warning-subtle small">dziś</span>
                                 <?php endif; ?>
                             </span>
+                            <?php if ($sentDue && $sentDue !== $pdateStr): ?>
+                                <div class="text-muted" style="font-size:0.7rem" title="Termin liczony od daty wysyłki dokumentów">
+                                    ef: <?= $fdate($sentDue) ?>
+                                    <?php if ($sentDue < $todayStr && $state !== 'paid'): ?>
+                                        <span class="text-danger">
+                                            (<?= (int)(new \DateTime($sentDue))->diff($today)->days ?> dni temu)
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <span class="text-muted">—</span>
                         <?php endif; ?>
