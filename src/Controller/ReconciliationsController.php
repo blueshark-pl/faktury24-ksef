@@ -254,7 +254,17 @@ class ReconciliationsController extends AppController
         }
 
         // Data wystawienia faktury — przelew musi być >= tej daty
-        $invoiceDateStr = $fmtDate($invoice->date);
+        // Normalizuj do Y-m-d niezależnie od formatu (DateTimeInterface lub string d.m.Y)
+        $rawDate = $invoice->date;
+        if ($rawDate instanceof \DateTimeInterface) {
+            $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif ($rawDate) {
+            $s  = substr((string)$rawDate, 0, 10);
+            $dt = \DateTime::createFromFormat('d.m.Y', $s) ?: \DateTime::createFromFormat('Y-m-d', $s);
+            $invoiceDateStr = $dt ? $dt->format('Y-m-d') : '';
+        } else {
+            $invoiceDateStr = '';
+        }
 
         if (!empty($nameOrConditions)) {
             $conditions = [
