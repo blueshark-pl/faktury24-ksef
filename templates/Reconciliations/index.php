@@ -341,9 +341,14 @@ $typeLabels = [
                     ? $invoice->paymentdate->format('Y-m-d')
                     : substr((string)($invoice->paymentdate ?? ''), 0, 10);
 
-                // Kolorowanie wiersza
+                // Efektywny termin płatności:
+                // — jeśli faktura ma powiązane zlecenie Speed → liczymy od daty dostawy
+                // — w przeciwnym razie → normalny termin z faktury
+                $effectiveDue = ($sdStr !== null && $sdStr !== '') ? $sdStr : $pdateStr;
+
+                // Kolorowanie wiersza — na podstawie efektywnego terminu
                 $rowClass = '';
-                if ($state !== 'paid' && $pdateStr && $pdateStr < $todayStr) {
+                if ($state !== 'paid' && $effectiveDue && $effectiveDue < $todayStr) {
                     $rowClass = 'table-danger';
                 }
 
@@ -374,15 +379,17 @@ $typeLabels = [
                     <td class="text-nowrap small">
                         <?php if ($pdateStr): ?>
                             <?php
-                            $isPast  = $pdateStr < $todayStr && $state !== 'paid';
-                            $isToday = $pdateStr === $todayStr;
-                            $cls = $isPast ? 'text-danger fw-semibold' : ($isToday ? 'text-warning fw-semibold' : 'text-muted');
+                            // Ostrzeżenie "dni temu" bazuje na efektywnym terminie, nie samej dacie faktury.
+                            // Dzięki temu jeśli Speed delivery jest w przyszłości, nie świecimy na czerwono.
+                            $isPast  = $effectiveDue < $todayStr && $state !== 'paid';
+                            $isToday = $effectiveDue === $todayStr && $state !== 'paid';
+                            $cls     = $isPast ? 'text-danger fw-semibold' : ($isToday ? 'text-warning fw-semibold' : 'text-muted');
                             ?>
                             <span class="<?= $cls ?>">
                                 <?= $fdate($invoice->paymentdate) ?>
                                 <?php if ($isPast): ?>
                                     <span class="ms-1 small text-danger">
-                                        (<?= (int)(new \DateTime($pdateStr))->diff($today)->days ?> dni temu)
+                                        (<?= (int)(new \DateTime($effectiveDue))->diff($today)->days ?> dni temu)
                                     </span>
                                 <?php elseif ($isToday): ?>
                                     <span class="ms-1 badge bg-warning-subtle text-warning border border-warning-subtle small">dziś</span>
@@ -429,7 +436,7 @@ $typeLabels = [
                         <?php endif; ?>
                     </td>
                     <!-- Status -->
-                    <td><?= $paymentBadge($state, $pdateStr ?: null, $todayStr) ?></td>
+                    <td><?= $paymentBadge($state, $effectiveDue ?: null, $todayStr) ?></td>
                     <!-- Przelew -->
                     <td>
                         <?= $bankBadge($bt) ?>
