@@ -142,6 +142,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->get('/rozliczenia/bank-transactions/{id}', ['controller' => 'Reconciliations', 'action' => 'bankTransactions'])
             ->setPass(['id']);
+        $builder->get('/rozliczenia/contractor-info/{id}', ['controller' => 'Reconciliations', 'action' => 'contractorInfo'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/create-contractor/{id}', ['controller' => 'Reconciliations', 'action' => 'createContractorFromInvoice'])
+            ->setPass(['id']);
 
         // Wyciągi bankowe MT940
         $builder->get('/wyciagi', ['controller' => 'BankTransactions', 'action' => 'index']);

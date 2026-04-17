@@ -411,8 +411,17 @@ $typeBadge = function (string $type): string {
                         <?php endif; ?>
                     </td>
                     <!-- Kontrahent -->
-                    <td class="text-truncate" style="max-width:200px" title="<?= h($contractorName) ?>">
-                        <span class="small"><?= h($contractorName) ?></span>
+                    <td style="max-width:200px">
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="small text-truncate" title="<?= h($contractorName) ?>"><?= h($contractorName) ?></span>
+                            <button type="button"
+                                    class="btn btn-xs p-0 border-0 text-muted flex-shrink-0 btn-contractor-info"
+                                    data-invoice-id="<?= h($invoice->id) ?>"
+                                    title="Szczegóły kontrahenta"
+                                    style="line-height:1">
+                                <i class="ri-user-line fs-6"></i>
+                            </button>
+                        </div>
                     </td>
                     <!-- Typ -->
                     <td class="text-center">
@@ -919,6 +928,157 @@ $typeBadge = function (string $type): string {
 
     viewModalEl.addEventListener('hidden.bs.modal', function () {
         modalBody.innerHTML = '';
+    });
+}());
+</script>
+
+<!-- ── Modal kontrahenta ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="contractorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="contractorModalTitle"><i class="ri-user-line me-1"></i>Kontrahent</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="contractorModalBody">
+        <div class="d-flex justify-content-center py-4">
+          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Ładowanie…</span></div>
+        </div>
+      </div>
+      <div class="modal-footer py-2" id="contractorModalFooter" style="display:none!important"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    const modalEl    = document.getElementById('contractorModal');
+    const modal      = new bootstrap.Modal(modalEl);
+    const body       = document.getElementById('contractorModalBody');
+    const footer     = document.getElementById('contractorModalFooter');
+    const title      = document.getElementById('contractorModalTitle');
+    const infoUrl    = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'contractorInfo', '__ID__']) ?>'.replace('__ID__', '');
+    const createUrl  = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'createContractorFromInvoice', '__ID__']) ?>'.replace('__ID__', '');
+    const viewUrl    = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'view', '__ID__']) ?>'.replace('__ID__', '');
+    const csrfToken  = document.querySelector('meta[name="csrfToken"]')?.content
+                    || document.querySelector('input[name="_csrfToken"]')?.value || '';
+
+    function row(label, value) {
+        if (!value) return '';
+        return '<tr><th class="text-muted fw-normal small pe-3" style="white-space:nowrap">' + label + '</th>'
+             + '<td class="small">' + value + '</td></tr>';
+    }
+
+    function renderContractor(data) {
+        const ic = data.invoice_contractor;
+        const c  = data.contractor;
+
+        title.innerHTML = '<i class="ri-user-line me-1"></i>' + (ic.name || 'Kontrahent');
+
+        let html = '';
+
+        if (c) {
+            // Kontrahent znaleziony w bazie
+            html += '<div class="alert alert-success py-2 small mb-3">'
+                  + '<i class="ri-checkbox-circle-line me-1"></i>Kontrahent jest w bazie danych.'
+                  + '</div>';
+            html += '<table class="table table-sm table-borderless mb-0">';
+            html += row('Nazwa',    c.name);
+            html += row('NIP',      c.nip);
+            html += row('E-mail',   c.email);
+            html += row('Telefon',  c.phone);
+            html += row('Adres',    [c.street, c.postal_code ? c.postal_code + ' ' + c.city : c.city].filter(Boolean).join(', '));
+            html += row('Kraj',     c.country);
+            html += '</table>';
+            footer.style.removeProperty('display');
+            footer.innerHTML = '<a href="' + viewUrl + c.id + '" target="_blank" class="btn btn-sm btn-outline-primary">'
+                + '<i class="ri-external-link-line me-1"></i>Otwórz kartę kontrahenta</a>'
+                + '<button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Zamknij</button>';
+        } else {
+            // Kontrahent nie istnieje w bazie
+            html += '<div class="alert alert-warning py-2 small mb-3">'
+                  + '<i class="ri-error-warning-line me-1"></i>Kontrahent nie jest jeszcze w bazie danych.'
+                  + '</div>';
+            html += '<p class="small text-muted mb-2">Dane z faktury <strong>' + (data.fullnumber || '') + '</strong>:</p>';
+            html += '<table class="table table-sm table-borderless mb-0">';
+            html += row('Nazwa',   ic.name);
+            html += row('NIP',     ic.nip);
+            html += row('E-mail',  ic.email);
+            html += row('Telefon', ic.phone);
+            html += row('Adres',   [ic.street, ic.zip ? ic.zip + ' ' + ic.city : ic.city].filter(Boolean).join(', '));
+            html += '</table>';
+            footer.style.removeProperty('display');
+            footer.innerHTML = '<button type="button" id="btnCreateContractor" class="btn btn-sm btn-success" data-invoice-id="' + data.invoice_id + '">'
+                + '<i class="ri-user-add-line me-1"></i>Utwórz kontrahenta</button>'
+                + '<button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Zamknij</button>';
+        }
+
+        body.innerHTML = html;
+    }
+
+    // Otwórz modal po kliknięciu ikonki użytkownika
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-contractor-info');
+        if (!btn) return;
+        const invoiceId = btn.dataset.invoiceId;
+        if (!invoiceId) return;
+
+        body.innerHTML = '<div class="d-flex justify-content-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+        footer.style.display = 'none';
+        footer.innerHTML = '';
+        title.innerHTML = '<i class="ri-user-line me-1"></i>Ładowanie…';
+        modal.show();
+
+        fetch(infoUrl + invoiceId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    body.innerHTML = '<div class="alert alert-danger small">' + data.error + '</div>';
+                } else {
+                    renderContractor(data);
+                }
+            })
+            .catch(function (err) {
+                body.innerHTML = '<div class="alert alert-danger small">Błąd: ' + err.message + '</div>';
+            });
+    });
+
+    // Utwórz kontrahenta
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('#btnCreateContractor');
+        if (!btn) return;
+        const invoiceId = btn.dataset.invoiceId;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Tworzenie…';
+
+        fetch(createUrl + invoiceId, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-user-add-line me-1"></i>Utwórz kontrahenta';
+                body.innerHTML += '<div class="alert alert-danger small mt-2">' + data.error + '</div>';
+            } else {
+                body.innerHTML = '<div class="alert alert-success small"><i class="ri-checkbox-circle-line me-1"></i>'
+                    + (data.already_existed ? 'Kontrahent już był w bazie.' : 'Kontrahent został dodany do bazy.') + '</div>';
+                footer.innerHTML = '<a href="' + viewUrl + data.contractor_id + '" target="_blank" class="btn btn-sm btn-outline-primary">'
+                    + '<i class="ri-external-link-line me-1"></i>Otwórz kartę kontrahenta</a>'
+                    + '<button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Zamknij</button>';
+            }
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-user-add-line me-1"></i>Utwórz kontrahenta';
+            body.innerHTML += '<div class="alert alert-danger small mt-2">Błąd: ' + err.message + '</div>';
+        });
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        body.innerHTML = '';
+        footer.style.display = 'none';
+        footer.innerHTML = '';
     });
 }());
 </script>

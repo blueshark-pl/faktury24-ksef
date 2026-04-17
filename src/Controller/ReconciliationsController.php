@@ -412,6 +412,165 @@ class ReconciliationsController extends AppController
 
     // ── Statystyki ───────────────────────────────────────────────────────────
 
+    // ── Info o kontrahencie z bazy contractors (AJAX) ────────────────────────
+
+    public function contractorInfo(string $invoiceId): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        // Pobierz dane kontrahenta z faktury
+        $invoice = $this->fetchTable('Invoices')->find()
+            ->contain([
+                'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'invoice_id', 'name', 'nip', 'street', 'city', 'zip', 'country', 'email', 'phone']);
+                },
+            ])
+            ->select(['Invoices.id', 'Invoices.fullnumber'])
+            ->where(['Invoices.id' => $invoiceId, 'Invoices.company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Faktura nie istnieje']));
+        }
+
+        $ic = $invoice->invoice_contractor;
+        if ($ic === null) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Brak danych kontrahenta na fakturze']));
+        }
+
+        // Szukaj w tabeli contractors po NIP + company
+        $contractor = null;
+        $contractorId = null;
+        if (!empty($ic->nip)) {
+            $found = $this->fetchTable('Contractors')->find()
+                ->where(['company_id' => $companyId, 'nip' => $ic->nip])
+                ->select(['id', 'name', 'nip', 'email', 'phone', 'street', 'city', 'postal_code', 'country', 'is_active'])
+                ->first();
+
+            if ($found !== null) {
+                $contractorId = (string)$found->id;
+                $contractor   = [
+                    'id'          => $contractorId,
+                    'name'        => (string)($found->name ?? ''),
+                    'nip'         => (string)($found->nip ?? ''),
+                    'email'       => (string)($found->email ?? ''),
+                    'phone'       => (string)($found->phone ?? ''),
+                    'street'      => (string)($found->street ?? ''),
+                    'city'        => (string)($found->city ?? ''),
+                    'postal_code' => (string)($found->postal_code ?? ''),
+                    'country'     => (string)($found->country ?? ''),
+                    'is_active'   => (bool)$found->is_active,
+                ];
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'invoice_id'   => $invoiceId,
+                'fullnumber'   => (string)($invoice->fullnumber ?? ''),
+                'invoice_contractor' => [
+                    'name'    => (string)($ic->name ?? ''),
+                    'nip'     => (string)($ic->nip ?? ''),
+                    'street'  => (string)($ic->street ?? ''),
+                    'city'    => (string)($ic->city ?? ''),
+                    'zip'     => (string)($ic->zip ?? ''),
+                    'country' => (string)($ic->country ?? ''),
+                    'email'   => (string)($ic->email ?? ''),
+                    'phone'   => (string)($ic->phone ?? ''),
+                ],
+                'contractor_id' => $contractorId,
+                'contractor'    => $contractor,
+            ]));
+    }
+
+    // ── Utwórz kontrahenta z danych faktury (AJAX POST) ──────────────────────
+
+    public function createContractorFromInvoice(string $invoiceId): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $invoice = $this->fetchTable('Invoices')->find()
+            ->contain([
+                'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'invoice_id', 'name', 'nip', 'street', 'city', 'zip', 'country', 'email', 'phone', 'vat_prefix', 'vat_eu']);
+                },
+            ])
+            ->select(['Invoices.id'])
+            ->where(['Invoices.id' => $invoiceId, 'Invoices.company_id' => $companyId])
+            ->first();
+
+        if ($invoice === null) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Faktura nie istnieje']));
+        }
+
+        $ic = $invoice->invoice_contractor;
+        if ($ic === null || empty($ic->name)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Brak danych kontrahenta na fakturze']));
+        }
+
+        $Contractors = $this->fetchTable('Contractors');
+
+        // Sprawdź czy już istnieje (zabezpieczenie przed duplikate)
+        if (!empty($ic->nip)) {
+            $existing = $Contractors->find()
+                ->where(['company_id' => $companyId, 'nip' => $ic->nip])
+                ->select(['id'])
+                ->first();
+
+            if ($existing !== null) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success'       => true,
+                        'contractor_id' => (string)$existing->id,
+                        'message'       => 'Kontrahent już istnieje w bazie.',
+                        'already_existed' => true,
+                    ]));
+            }
+        }
+
+        $contractor = $Contractors->newEntity([
+            'id'          => \Cake\Utility\Text::uuid(),
+            'company_id'  => $companyId,
+            'name'        => $ic->name,
+            'nip'         => $ic->nip ?: null,
+            'vat_prefix'  => $ic->vat_prefix ?: null,
+            'vat_eu'      => $ic->vat_eu ?: null,
+            'email'       => $ic->email ?: null,
+            'phone'       => $ic->phone ?: null,
+            'street'      => $ic->street ?: null,
+            'city'        => $ic->city ?: null,
+            'postal_code' => $ic->zip ?: null,
+            'country'     => $ic->country ?: 'PL',
+            'is_active'   => true,
+        ]);
+
+        if (!$Contractors->save($contractor)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'error'  => 'Nie udało się zapisać kontrahenta.',
+                    'errors' => $contractor->getErrors(),
+                ]));
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success'       => true,
+                'contractor_id' => (string)$contractor->id,
+                'message'       => 'Kontrahent został dodany do bazy.',
+                'already_existed' => false,
+            ]));
+    }
+
     private function _computeStats(array $rows, string $today): array
     {
         $totalReceivables = 0.0;
