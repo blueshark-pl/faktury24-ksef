@@ -1111,6 +1111,7 @@ class ReconciliationsController extends AppController
         $overdueCount     = 0;
 
         foreach ($rows as $r) {
+            // total/alreadypaid/remaining są zawsze w PLN (dla legacy: GLO_BRUTTO/GLO_ZL_ZAPLATA/POZOSTALO_PLN)
             $total     = (float)($r['total']       ?? 0);
             $remaining = (float)($r['remaining']   ?? 0);
             $paid      = (float)($r['alreadypaid'] ?? 0);
