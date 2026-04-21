@@ -755,13 +755,15 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         if (!$displayPdate && !empty($leg->platnosc)) {
                             if (preg_match('/(\d+)\s*dni/i', $leg->platnosc, $m)) {
                                 $days = (int)$m[1];
-                                $docDate = $leg->date instanceof \DateTimeInterface
-                                    ? $leg->date
-                                    : (\DateTime::createFromFormat('Y-m-d', substr((string)$leg->date, 0, 10)) ?: null);
-                                if ($docDate) {
-                                    $calc = clone $docDate;
-                                    $calc->modify("+{$days} days");
-                                    $displayPdate = $calc->format('Y-m-d');
+                                $dateStr = $leg->date instanceof \DateTimeInterface
+                                    ? $leg->date->format('Y-m-d')
+                                    : substr((string)$leg->date, 0, 10);
+                                if ($dateStr) {
+                                    $calc = \DateTime::createFromFormat('Y-m-d', $dateStr);
+                                    if ($calc) {
+                                        $calc->modify("+{$days} days");
+                                        $displayPdate = $calc->format('Y-m-d');
+                                    }
                                 }
                             }
                         }
@@ -775,7 +777,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                             $legToday = $displayPdate === $todayStr && $legState !== 'paid';
                             $cls      = $legPast ? 'text-danger fw-semibold' : ($legToday ? 'text-warning fw-semibold' : 'text-muted');
                             ?>
-                            <span class="<?= $cls ?>"><?= h(date('d.m.Y', strtotime($displayPdate))) ?></span>
+                            <span class="<?= $cls ?>"><?= $fdate($displayPdate) ?></span>
                             <?php if ($legPast): ?>
                                 <span class="ms-1 small text-danger">(<?= (int)(new \DateTime($displayPdate))->diff($today)->days ?> dni)</span>
                             <?php endif; ?>
