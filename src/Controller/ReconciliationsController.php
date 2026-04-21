@@ -530,7 +530,7 @@ class ReconciliationsController extends AppController
         $LegacyInvoices = $this->fetchTable('LegacyInvoices');
         $invoice = $LegacyInvoices->find()
             ->where(['id' => $legacyInvoiceId, 'company_id' => $companyId])
-            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date'])
+            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date', 'remaining', 'total'])
             ->first();
 
         if ($invoice === null) {
@@ -541,6 +541,10 @@ class ReconciliationsController extends AppController
 
         $nip            = $invoice->contractor_nip ?? null;
         $contractorName = $invoice->contractor_name ?? null;
+        $invoiceRemaining = (float)($invoice->remaining ?? 0);
+        $invoiceTotal     = (float)($invoice->total ?? 0);
+        // Kwota referencyjna: jeśli coś już zapłacono — porównujemy do remaining, wpp do total
+        $refAmount = $invoiceRemaining > 0.01 ? $invoiceRemaining : $invoiceTotal;
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
@@ -549,11 +553,15 @@ class ReconciliationsController extends AppController
             return $v ? substr((string)$v, 0, 10) : '';
         };
 
-        $mapTx = static function ($tx) use ($fmtDate): array {
+        $mapTx = static function ($tx) use ($fmtDate, $refAmount): array {
+            $amount     = (float)$tx->amount;
+            $amountDiff = $refAmount > 0 ? abs($amount - $refAmount) : null;
+            // Trafienie kwotowe: różnica < 1% lub < 1 PLN
+            $amountMatch = $amountDiff !== null && ($amountDiff < 1.0 || ($refAmount > 0 && $amountDiff / $refAmount < 0.01));
             return [
                 'id'               => (string)$tx->id,
                 'value_date'       => $fmtDate($tx->value_date),
-                'amount'           => (float)$tx->amount,
+                'amount'           => $amount,
                 'direction'        => (string)($tx->direction ?? 'C'),
                 'party_name'       => (string)($tx->party_name ?? ''),
                 'title'            => (string)($tx->title ?? ''),
@@ -561,7 +569,9 @@ class ReconciliationsController extends AppController
                 'match_confidence' => (int)($tx->match_confidence ?? 0),
                 'match_reason'     => (string)($tx->match_reason ?? ''),
                 'parsed_inv'       => (string)($tx->parsed_inv ?? ''),
-                'legacy'           => true,  // Informuje frontend: brak przycisku Powiąż
+                'amount_match'     => $amountMatch,
+                'amount_diff'      => $amountDiff !== null ? round($amountDiff, 2) : null,
+                'legacy'           => true,
             ];
         };
 
@@ -608,9 +618,19 @@ class ReconciliationsController extends AppController
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
                           'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
-                ->limit(30)
+                ->limit(50)
                 ->all()->toArray();
         }
+
+        $mappedCandidates = array_map($mapTx, $candidates);
+
+        // Sortuj: trafienia kwotowe na górze, potem wg daty desc
+        usort($mappedCandidates, static function (array $a, array $b): int {
+            if ($a['amount_match'] !== $b['amount_match']) {
+                return $a['amount_match'] ? -1 : 1;
+            }
+            return strcmp($b['value_date'], $a['value_date']);
+        });
 
         return $this->response
             ->withType('application/json')
@@ -618,8 +638,9 @@ class ReconciliationsController extends AppController
                 'nip'        => $nip,
                 'contractor' => $contractorName,
                 'legacy'     => true,
+                'ref_amount' => $refAmount,
                 'linked'     => [],
-                'candidates' => array_map($mapTx, $candidates),
+                'candidates' => $mappedCandidates,
             ]));
     }
 

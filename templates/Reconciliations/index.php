@@ -1154,10 +1154,19 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         + '<i class="ri-check-line me-1"></i>Powiązany</span>';
             actionCol   = '<span class="text-success"><i class="ri-checkbox-circle-line"></i></span>';
         } else if (isLegacy) {
-            statusBadge = tx.match_status === 'matched'
-                ? '<span class="badge bg-success-subtle text-success border">Dopasowany</span>'
-                : '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>';
-            actionCol   = '';
+            if (tx.amount_match) {
+                statusBadge = '<span class="badge bg-success text-white border border-success">'
+                            + '<i class="ri-checkbox-circle-line me-1"></i>Kwota pasuje</span>';
+            } else {
+                var diffTxt = (tx.amount_diff != null && tx.amount_diff > 0)
+                    ? ' <small class="opacity-75 fw-normal">Δ\u202f' + fmtAmount(tx.amount_diff) + '</small>' : '';
+                statusBadge = '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>' + diffTxt;
+            }
+            actionCol = '<button type="button" class="btn btn-sm btn-outline-primary py-0 btn-use-tx"'
+                      + ' data-tx-amount="' + esc(tx.amount) + '"'
+                      + ' data-tx-date="' + esc(tx.value_date) + '"'
+                      + ' title="Wpisz tę kwotę i datę w formularz wpłaty">'
+                      + '<i class="ri-arrow-left-up-line me-1"></i>Użyj</button>';
         } else if (tx.match_status === 'proposed') {
             statusBadge = '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">'
                         + '<i class="ri-alert-line me-1"></i>Sugerowany</span>';
@@ -1222,6 +1231,13 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             ? '<div class="alert alert-info py-1 px-2 small mb-2 border"><i class="ri-archive-line me-1"></i>Faktura archiwalna — przelewy widoczne informacyjnie. Rozlicz przez lokalne wpłaty (przycisk + w tabeli).</div>'
             : '';
 
+        if (isLegacy && data.ref_amount > 0) {
+            note += '<div class="d-flex align-items-center gap-2 small text-muted mb-2 px-1 border-start border-primary ps-2">'
+                  + '<i class="ri-scales-line text-primary"></i>'
+                  + 'Kwota referencyjna: <strong class="text-dark">' + fmtAmount(data.ref_amount) + '\u202fPLN</strong>'
+                  + ' — podświetlam przelewy z pasującą kwotą.</div>';
+        }
+
         linked.forEach(function (tx) { rows += renderTxRow(tx, true, isLegacy); });
         candidates.forEach(function (tx) { rows += renderTxRow(tx, false, isLegacy); });
 
@@ -1234,7 +1250,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             + '<th class="text-end">Kwota</th>'
             + '<th>Nadawca</th>'
             + '<th>Status</th>'
-            + (isLegacy ? '' : '<th></th>')
+            + '<th></th>'
             + '</tr>'
             + '</thead>'
             + '<tbody>' + rows + '</tbody>'
@@ -1251,17 +1267,16 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 });
             });
         }
-    }
 
-    // ── Pobieranie przelewów po otwarciu modala ───────────────────────────────
-    function loadBankTransactions(invoiceId) {
-        var container = document.getElementById('bankTxSection');
-        var spinner   = document.getElementById('bankTxSpinner');
-        container.innerHTML = '<div class="text-muted small fst-italic">Ładowanie przelewów…</div>';
-        if (spinner) spinner.style.removeProperty('display');
-
-        fetch('/rozliczenia/bank-transactions/' + invoiceId, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        container.querySelectorAll('.btn-use-tx').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var amtField  = document.getElementById('modalAmount');
+                var dateField = document.getElementById('modalPaymentDate');
+                if (amtField)  amtField.value  = parseFloat(this.dataset.txAmount).toFixed(2);
+                if (dateField) dateField.value  = this.dataset.txDate;
+                if (amtField)  amtField.focus();
+            });
+        });
         })
         .then(function (r) { return r.json(); })
         .then(renderBankTransactions)
