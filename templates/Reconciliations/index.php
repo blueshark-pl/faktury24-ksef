@@ -925,7 +925,9 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <td class="text-end text-nowrap small fw-semibold">
                         <?php if ($legCur !== 'PLN' && ($leg->total_wal ?? 0) > 0): ?>
                             <div><?= number_format((float)$leg->total_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
-                            <div class="text-muted" style="font-size:.7rem"><?= number_format($legTotal, 2, ',', ' ') ?> PLN</div>
+                            <?php if (($leg->exchange_rate ?? 0) > 0): ?>
+                                <div class="text-muted" style="font-size:.7rem"><?= number_format((float)$leg->total_wal * (float)$leg->exchange_rate, 2, ',', ' ') ?> PLN</div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <?= number_format($legTotal, 2, ',', ' ') ?> PLN
                         <?php endif; ?>
@@ -938,7 +940,9 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php else: ?>
                             <?php if ($legCur !== 'PLN' && ($leg->remaining_wal ?? 0) > 0): ?>
                                 <div class="fw-semibold text-dark"><?= number_format((float)$leg->remaining_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
-                                <div class="text-muted" style="font-size:.7rem"><?= number_format($legRemain, 2, ',', ' ') ?> PLN</div>
+                                <?php if (($leg->exchange_rate ?? 0) > 0): ?>
+                                    <div class="text-muted" style="font-size:.7rem"><?= number_format((float)$leg->remaining_wal * (float)$leg->exchange_rate, 2, ',', ' ') ?> PLN</div>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span class="<?= $legRemain > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
                                     <?= number_format($legRemain, 2, ',', ' ') ?> PLN
