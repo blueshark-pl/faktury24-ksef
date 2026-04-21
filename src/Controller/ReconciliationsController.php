@@ -615,6 +615,7 @@ class ReconciliationsController extends AppController
             }
             $candidates = $BankTransactions->find()
                 ->where($conditions)
+                ->where(['BankTransactions.direction' => 'C'])
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
                           'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
@@ -753,6 +754,7 @@ class ReconciliationsController extends AppController
             }
             $candidates = $BankTransactions->find()
                 ->where($conditions)
+                ->where(['BankTransactions.direction' => 'C'])
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
                           'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
