@@ -248,6 +248,22 @@ class ReconciliationsController extends AppController
             $legacyTotal = (clone $legacyQ)->count();
             $legacyPages = (int)ceil($legacyTotal / $limit) ?: 1;
             $legacyInvoices = $legacyQ->limit($limit)->offset(($legacyPage - 1) * $limit)->all()->toArray();
+
+            // ── Lokalne wpłaty per faktura legacy ────────────────────────────
+            $legacyPaymentsByInvoiceId = [];
+            if (!empty($legacyInvoices)) {
+                $legacyIds = array_column($legacyInvoices, 'id');
+                $legacyPaymentRows = $this->fetchTable('LegacyInvoicePayments')->find()
+                    ->where(['legacy_invoice_id IN' => $legacyIds])
+                    ->select(['id', 'legacy_invoice_id', 'payment_date', 'amount', 'payment_method', 'description'])
+                    ->orderByAsc('payment_date')
+                    ->all()->toArray();
+                foreach ($legacyPaymentRows as $lp) {
+                    $legacyPaymentsByInvoiceId[(string)$lp->legacy_invoice_id][] = $lp;
+                }
+            }
+        } else {
+            $legacyPaymentsByInvoiceId = [];
         }
 
         // Ostatnia synchronizacja legacy — dla UI
@@ -265,9 +281,146 @@ class ReconciliationsController extends AppController
             'search', 'status', 'dateFrom', 'dateTo', 'typeFilter', 'sort', 'dir',
             'stats', 'bankByInvoice', 'speedByInvoice',
             'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
-            'sourceFilter', 'lastSync'
+            'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync'
         ));
         $this->set('title', 'Rozliczenia');
+    }
+
+    // ── Dodaj wpłatę do faktury archiwalnej (AJAX / POST) ───────────────────
+
+    public function addLegacyPayment(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $legacyInvoiceId = (string)($this->request->getData('legacy_invoice_id') ?? '');
+        $amount          = (float)($this->request->getData('amount') ?? 0);
+        $paymentDate     = (string)($this->request->getData('payment_date') ?? date('Y-m-d'));
+        $method          = (string)($this->request->getData('payment_method') ?? 'transfer');
+        $description     = (string)($this->request->getData('description') ?? '');
+        $isAjax          = $this->request->is('ajax') || $this->request->getData('ajax') === '1';
+
+        if ($legacyInvoiceId === '' || $amount <= 0) {
+            if ($isAjax) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['error' => 'Nieprawidłowe dane wpłaty.']));
+            }
+            $this->Flash->error('Nieprawidłowe dane wpłaty.');
+            return $this->redirect(['action' => 'index']);
+        }
+
+        $LegacyInvoices = $this->fetchTable('LegacyInvoices');
+        $invoice = $LegacyInvoices->find()
+            ->where(['id' => $legacyInvoiceId, 'company_id' => $companyId])
+            ->select(['id', 'fullnumber', 'currency', 'total', 'remaining'])
+            ->first();
+
+        if ($invoice === null) {
+            if ($isAjax) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['error' => 'Faktura nie istnieje lub brak uprawnień.']));
+            }
+            $this->Flash->error('Faktura archiwalna nie istnieje lub brak uprawnień.');
+            return $this->redirect(['action' => 'index']);
+        }
+
+        $LegacyInvoicePayments = $this->fetchTable('LegacyInvoicePayments');
+        $payment = $LegacyInvoicePayments->newEntity([
+            'id'                => \Cake\Utility\Text::uuid(),
+            'legacy_invoice_id' => $legacyInvoiceId,
+            'company_id'        => $companyId,
+            'payment_date'      => $paymentDate,
+            'amount'            => $amount,
+            'payment_method'    => $method ?: 'transfer',
+            'description'       => $description ?: null,
+        ]);
+
+        if ($LegacyInvoicePayments->save($payment)) {
+            $this->_refreshLegacyPaymentState($legacyInvoiceId);
+            if ($isAjax) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['success' => true, 'message' => 'Wpłata zapisana.']));
+            }
+            $this->Flash->success(sprintf(
+                'Wpłata %.2f %s zarejestrowana dla faktury archiwalnej %s.',
+                $amount,
+                h($invoice->currency ?? 'PLN'),
+                h($invoice->fullnumber ?? $legacyInvoiceId)
+            ));
+        } else {
+            if ($isAjax) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['error' => 'Nie udało się zapisać wpłaty.']));
+            }
+            $this->Flash->error('Nie udało się zapisać wpłaty.');
+        }
+
+        $redirect = $this->request->getData('redirect') ?? $this->referer(['action' => 'index']);
+        return $this->redirect($redirect);
+    }
+
+    // ── Usuń wpłatę z faktury archiwalnej ────────────────────────────────────
+
+    public function deleteLegacyPayment(string $paymentId): Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $LegacyInvoicePayments = $this->fetchTable('LegacyInvoicePayments');
+        $payment = $LegacyInvoicePayments->find()
+            ->where(['id' => $paymentId, 'company_id' => $companyId])
+            ->first();
+
+        if ($payment === null) {
+            $this->Flash->error('Wpłata nie istnieje lub brak uprawnień.');
+            return $this->redirect($this->request->getData('redirect') ?? ['action' => 'index']);
+        }
+
+        $legacyInvoiceId = (string)$payment->legacy_invoice_id;
+        if ($LegacyInvoicePayments->delete($payment)) {
+            $this->_refreshLegacyPaymentState($legacyInvoiceId);
+            $this->Flash->success('Wpłata archiwalna usunięta.');
+        } else {
+            $this->Flash->error('Nie udało się usunąć wpłaty.');
+        }
+
+        return $this->redirect($this->request->getData('redirect') ?? $this->referer(['action' => 'index']));
+    }
+
+    // ── Przelicz stan faktury archiwalnej po zmianie wpłat ───────────────────
+
+    private function _refreshLegacyPaymentState(string $legacyInvoiceId): void
+    {
+        $LegacyInvoices        = $this->fetchTable('LegacyInvoices');
+        $LegacyInvoicePayments = $this->fetchTable('LegacyInvoicePayments');
+
+        $invoice = $LegacyInvoices->find()
+            ->where(['id' => $legacyInvoiceId])
+            ->select(['id', 'total', 'alreadypaid', 'remaining', 'paymentstate'])
+            ->first();
+        if ($invoice === null) {
+            return;
+        }
+
+        $localPaid = (float)($LegacyInvoicePayments->find()
+            ->select(['s' => $LegacyInvoicePayments->find()->func()->sum('amount')])
+            ->where(['legacy_invoice_id' => $legacyInvoiceId])
+            ->first()?->s ?? 0);
+
+        $total = (float)$invoice->total;
+
+        $invoice->alreadypaid  = min($localPaid, $total);
+        $invoice->remaining    = max(0.0, $total - $localPaid);
+        $invoice->paymentstate = match (true) {
+            $localPaid <= 0             => 'unpaid',
+            $localPaid >= $total - 0.01 => 'paid',
+            default                     => 'partial',
+        };
+
+        $LegacyInvoices->save($invoice);
     }
 
     // ── Synchronizacja faktur legacy z zewnętrznego API (AJAX POST) ─────────

@@ -375,9 +375,16 @@ $gtuSelectHtml .= '</select>';
             </div>
 
             <div class="col-lg-2">
+            <?php
+              $__soldDateVal = !empty($invoice->sold_date)
+                  ? ($invoice->sold_date instanceof \DateTimeInterface
+                      ? $invoice->sold_date->format('Y-m-d')
+                      : substr((string)$invoice->sold_date, 0, 10))
+                  : date('Y-m-d');
+            ?>
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => date('Y-m-d')
+              'value' => $__soldDateVal
             ]) ?>
             </div>
 
@@ -451,6 +458,32 @@ $gtuSelectHtml .= '</select>';
                 </small>
               </div>
             </div>
+
+            <!-- Waluta i kurs -->
+            <div class="col-12 d-flex align-items-center gap-2">
+              <?= $this->Form->control('currency', [
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency', 'value' => 'PLN',
+                'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
+              ]) ?>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
+                title="Waluta i kurs"
+                data-bs-content="
+                  <div class='small text-start'>
+                    <p>Po wyborze waluty obcej możesz podać kurs pomocniczy do przeliczeń <em>poglądowo</em> — nie wpływa on na poprawność księgowania.</p>
+                    <p>Na wydruku pojawi się automatycznie średni kurs NBP z ostatniego dnia roboczego poprzedzającego datę wystawienia/sprzedaży (wg typu transakcji).</p>
+                  </div>
+                ">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <div class="col-12" id="fx-rate-group" style="display:none;">
+              <?= $this->Form->control('fx_rate', [
+                'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
+                'class' => 'form-control', 'id' => 'fx-rate'
+              ]) ?>
+            </div>
+            <div class="col-12" id="orig-rate-info-container"></div>
 
           </div>
         </div>
@@ -1852,6 +1885,12 @@ $(function(){
     if (!ok){ e.preventDefault(); e.stopPropagation(); }
   });
 })();
+</script>
+
+<script>
+var originalCurrencyExchange = <?= json_encode((float)($originalCurrencyExchange ?? 0)) ?>;
+var originalCurrency = <?= json_encode((string)($originalCurrency ?? 'PLN')) ?>;
+var originalCurrencyDate = <?= json_encode((string)($originalCurrencyDate ?? '')) ?>;
 </script>
 
 <script>
@@ -3670,6 +3709,81 @@ $('#series-period-create-form').on('submit', function(e){
     console.error('series period add fail', xhr.status, xhr.responseText);
     toast('Błąd komunikacji przy zapisie okresu serii.');
   });
+});
+
+// ── Ostrzeżenie o niezgodności kursu waluty z fakturą korygowaną ─────────────
+$(function(){
+  if (!originalCurrencyExchange || originalCurrencyExchange <= 0) return;
+  if (originalCurrency === 'PLN') return;
+
+  var $fxInput = $('#fx-rate');
+  var $fxGroup = $('#fx-rate-group');
+
+  function checkRateMismatch(){
+    var current = parseFloat($fxInput.val()) || 0;
+    if (!current) return;
+    var diff = Math.abs(current - originalCurrencyExchange);
+    $('#corr-rate-warn').remove();
+    if (diff >= 0.0001) {
+      var sign = (current - originalCurrencyExchange) > 0 ? '+' : '';
+      var msg  = '<div id="corr-rate-warn" class="alert alert-danger py-1 px-2 mt-1 d-flex align-items-center gap-2" style="font-size:.85rem">'
+               + '<i class="ri-error-warning-line flex-shrink-0"></i>'
+               + '<span>Kurs korekty (<strong>' + current.toFixed(4) + '</strong>) jest niezgodny z kursem faktury korygowanej'
+               + ' (<strong>' + originalCurrencyExchange.toFixed(4) + '</strong>).'
+               + ' Różnica: <strong>' + sign + (current - originalCurrencyExchange).toFixed(4) + '</strong>.'
+               + ' Należy poprawić kurs do wartości z faktury pierwotnej.</span>'
+               + ' <button type="button" class="btn btn-sm btn-outline-danger ms-auto py-0 px-2" id="corr-use-original">Popraw kurs</button>'
+               + '</div>';
+      $fxGroup.after(msg);
+      $('#corr-use-original').on('click', function(){
+        $fxInput.val(originalCurrencyExchange.toFixed(4)).trigger('input').trigger('change');
+        $('#corr-rate-warn').remove();
+        $('#correction-reason').val('');
+      });
+      var $reason = $('#correction-reason');
+      if (!$reason.val()) {
+        $reason.val('Korekta kursu waluty ' + originalCurrency + ': kurs faktury korygowanej ' + originalCurrencyExchange.toFixed(4) + ', zastosowany kurs korekty ' + current.toFixed(4) + '.');
+      }
+    }
+  }
+
+  $fxInput.on('change input', checkRateMismatch);
+  setTimeout(checkRateMismatch, 800);
+});
+
+// ── Sprawdzenie kursu NBP vs kurs na fakturze korygowanej ────────────────────
+$(function(){
+  if (!originalCurrencyExchange || originalCurrencyExchange <= 0) return;
+  if (originalCurrency === 'PLN') return;
+
+  var dateToCheck = originalCurrencyDate || $('#issue-date').val() || $('#sold-date').val() || '';
+  console.log('[orig-rate] currency=', originalCurrency, 'exchange=', originalCurrencyExchange, 'date=', dateToCheck);
+  if (!dateToCheck) return;
+
+  var $container = $('#orig-rate-info-container');
+
+  (async function(){
+    try {
+      var params = new URLSearchParams({ currency: originalCurrency, date: dateToCheck, sold_date: dateToCheck });
+      var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+      var json = await res.json();
+      console.log('[orig-rate] NBP response:', json);
+      if (!json || !json.success || !json.rate) return;
+      var nbpRate = parseFloat(json.rate);
+      var diff = Math.abs(nbpRate - originalCurrencyExchange);
+      if (diff < 0.0001) return;
+      var sign = (originalCurrencyExchange - nbpRate) > 0 ? '+' : '';
+      $container.html(
+        '<div class="alert alert-info py-1 px-2 mt-1 d-flex align-items-start gap-2" style="font-size:.82rem">'
+        + '<i class="ri-information-line flex-shrink-0 mt-1"></i>'
+        + '<span>Kurs na fakturze korygowanej (<strong>' + originalCurrencyExchange.toFixed(4) + '</strong>) '
+        + 'różni się od kursu NBP (' + (json.table || '?') + ') z dnia ' + (json.effectiveDate || dateToCheck) + ': '
+        + '<strong>' + nbpRate.toFixed(4) + '</strong>. '
+        + 'Różnica: <strong>' + sign + (originalCurrencyExchange - nbpRate).toFixed(4) + '</strong>.</span>'
+        + '</div>'
+      );
+    } catch(e) { console.warn('[orig-rate] fetch error', e); }
+  })();
 });
 </script>
 

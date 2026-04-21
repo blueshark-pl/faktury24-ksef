@@ -177,9 +177,16 @@ $gtuSelectHtml .= '</select>';
             </div>
 
             <div class="col-lg-2">
+            <?php
+              $__soldDateVal = !empty($invoice->sold_date)
+                  ? ($invoice->sold_date instanceof \DateTimeInterface
+                      ? $invoice->sold_date->format('Y-m-d')
+                      : substr((string)$invoice->sold_date, 0, 10))
+                  : date('Y-m-d');
+            ?>
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => date('Y-m-d')
+              'value' => $__soldDateVal
             ]) ?>
             </div>
 

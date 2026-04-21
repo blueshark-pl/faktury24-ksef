@@ -169,78 +169,82 @@ $gtuSelectHtml .= '</select>';
         var $rs = $('#recipient-snapshot'); if ($rs.length) $rs.slideDown(120);
       }
 
-      // Pozycje – odwzorowanie produktów z oryginału (prostszy wariant jak w add_correct)
+      // Pozycje – odwzorowanie produktów z oryginału
+      // Uwaga: setTimeout(0) wymagany – handler #btn-add-item jest rejestrowany w późniejszym $(function(){}),
+      // więc trigger('click') bez opóźnienia nie działa (brak handlera w tej fazie document.ready).
       var srcItems = Array.isArray(o.invoice_contents) && o.invoice_contents.length ? o.invoice_contents : (Array.isArray(o.items) ? o.items : []);
       if (srcItems.length) {
-        var $body = $('#items-body');
+        setTimeout(function(){
+          var $body = $('#items-body');
 
-        function ensureRow(i){
-          var rows = $body.find('tr');
-          // w tym widoku pierwszy TR to wiersz pozycji, ostatnie to "Dodaj" i sumy
-          var itemRows = rows.filter(function(){ return $(this).find('.item-product-select').length; });
-          if (itemRows.length <= i) {
-            for (var k = itemRows.length; k <= i; k++) {
-              $('#btn-add-item').trigger('click');
-            }
-            itemRows = $body.find('tr').filter(function(){ return $(this).find('.item-product-select').length; });
-          }
-          return itemRows.eq(i);
-        }
-
-        function fillRow($tr, item, idx){
-          try {
-            var name = item.name || item.product_name || '';
-            $tr.find('.item-name-hidden').val(name || '');
-            $tr.find('[name$="[quantity]"]').val(item.quantity ?? item.qty ?? 1);
-            if (item.unit) { $tr.find('.item-unit').val(item.unit); }
-
-            // cena – w tym widoku trzymasz jedną kolumnę ceny, tryb w hidden price_mode
-            var price = item.price;
-            if (price == null) {
-              // spróbuj wziąć netto/brutto jeśli dostępne
-              if (item.price_mode === 'gross' && (item.brutto || item.gross_price || item.price_gross)) {
-                price = item.brutto || item.gross_price || item.price_gross;
-              } else {
-                price = item.netto || item.net_price || item.price_net || 0;
+          function ensureRow(i){
+            var itemRows = $body.find('tr').filter(function(){ return $(this).find('.item-product-select').length; });
+            if (itemRows.length <= i) {
+              for (var k = itemRows.length; k <= i; k++) {
+                $('#btn-add-item').trigger('click');
               }
+              itemRows = $body.find('tr').filter(function(){ return $(this).find('.item-product-select').length; });
             }
-            var pNum = Number(price)||0;
-            $tr.find('.item-price').val(pNum.toFixed(2));
+            return itemRows.eq(i);
+          }
 
-            if (item.price_mode) { $tr.find('.item-price-mode').val(item.price_mode); }
-            if (item.vat_code_id || (item.vat && item.vat.id)) {
-              $tr.find('.item-vatcode').val(String(item.vat_code_id || item.vat.id));
-            }
-            $tr.find('[name$="[discount_percent]"]').val(item.discount_percent ?? 0);
-            if (item.gtu_code !== undefined) { $tr.find('.gtu-cell select, .item-gtu').val(item.gtu_code || ''); }
-            $tr.find('.item-pkwiu').val(item.pkwiu || '');
-            $tr.find('.item-gtin').val(item.gtin || '');
-            $tr.find('.item-cn-code').val(item.cn_code || '');
-            $tr.find('.item-excise').val(item.excise_amount || '');
-            $tr.find('.item-procedure').val(item.procedure_marking || '');
+          function fillRow($tr, item, rowIdx){
+            try {
+              var name = item.name || item.product_name || '';
+              $tr.find('.item-name-hidden').val(name || '');
+              $tr.find('[name$="[quantity]"]').val(item.quantity ?? item.qty ?? 1);
+              if (item.unit) { $tr.find('.item-unit').val(item.unit); }
 
-            // Select produktu z nazwą
-            var $psel = $tr.find('.item-product-select');
-            if ($psel.length) {
-              var pid = item.product_id || ('NEW:'+ (name || ('Pozycja '+(idx+1))));
-              var label = name || ('Pozycja '+(idx+1));
-              var opt = new Option(label, pid, true, true);
-              $psel.find('option').remove();
-              $psel.append(opt).trigger('change');
-            }
+              var price = item.price;
+              if (price == null) {
+                if (item.price_mode === 'gross' && (item.brutto || item.gross_price || item.price_gross)) {
+                  price = item.brutto || item.gross_price || item.price_gross;
+                } else {
+                  price = item.netto || item.net_price || item.price_net || 0;
+                }
+              }
+              var pNum = Number(price)||0;
+              $tr.find('.item-price').val(pNum.toFixed(2));
 
-            if (typeof rowCalc === 'function') { rowCalc($tr); }
-          } catch (e) { console.warn('Prefill row error (currency)', e); }
-        }
+              if (item.price_mode) { $tr.find('.item-price-mode').val(item.price_mode); }
+              if (item.vat_code_id || (item.vat && item.vat.id)) {
+                $tr.find('.item-vatcode').val(String(item.vat_code_id || item.vat.id));
+              }
+              $tr.find('[name$="[discount_percent]"]').val(item.discount_percent ?? 0);
+              if (item.gtu_code !== undefined) { $tr.find('.gtu-cell select, .item-gtu').val(item.gtu_code || ''); }
+              $tr.find('.item-pkwiu').val(item.pkwiu || '');
+              $tr.find('.item-gtin').val(item.gtin || '');
+              $tr.find('.item-cn-code').val(item.cn_code || '');
+              $tr.find('.item-excise').val(item.excise_amount || '');
+              $tr.find('.item-procedure').val(item.procedure_marking || '');
+              // Zachowaj uu_id z oryginału
+              if (item.uu_id) { $tr.find('.item-uu-id').val(item.uu_id); }
 
-        srcItems.forEach(function(it, i){
-          var $tr = ensureRow(i);
-          if (!$tr.length) return;
-          fillRow($tr, it, i);
-        });
+              var $psel = $tr.find('.item-product-select');
+              if ($psel.length) {
+                var pid = item.product_id || ('NEW:'+ (name || ('Pozycja '+(rowIdx+1))));
+                var label = name || ('Pozycja '+(rowIdx+1));
+                var opt = new Option(label, pid, true, true);
+                $psel.find('option').remove();
+                $psel.append(opt).trigger('change');
+              }
+
+              // Wywołaj przeliczenie wiersza przez event listener (rowCalc/allCalc są w closure listenera)
+              $tr.find('.item-price').trigger('input');
+            } catch (e) { console.warn('Prefill row error (currency)', e); }
+          }
+
+          srcItems.forEach(function(it, i){
+            var $tr = ensureRow(i);
+            if (!$tr.length) return;
+            fillRow($tr, it, i);
+          });
+
+          if (typeof window.mirrorSums === 'function') window.mirrorSums();
+        }, 0);
+      } else {
+        if (typeof window.mirrorSums === 'function') window.mirrorSums();
       }
-
-      if (typeof window.mirrorSums === 'function') window.mirrorSums();
     } catch (e) {
       console.warn('Original prefill failed', e);
     }
@@ -369,9 +373,16 @@ $gtuSelectHtml .= '</select>';
             </div>
 
             <div class="col-lg-2">
+            <?php
+              $__soldDateVal = !empty($invoice->sold_date)
+                  ? ($invoice->sold_date instanceof \DateTimeInterface
+                      ? $invoice->sold_date->format('Y-m-d')
+                      : substr((string)$invoice->sold_date, 0, 10))
+                  : date('Y-m-d');
+            ?>
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => date('Y-m-d')
+              'value' => $__soldDateVal
             ]) ?>
             </div>
 
@@ -454,6 +465,7 @@ $gtuSelectHtml .= '</select>';
                 'class' => 'form-control', 'id' => 'fx-rate'
               ]) ?>
             </div>
+            <div class="col-12" id="orig-rate-info-container"></div>
 
           </div>
         </div>
@@ -744,6 +756,7 @@ $gtuSelectHtml .= '</select>';
     <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
     <input type="hidden" name="items[0][name]" class="item-name-hidden">
     <input type="hidden" name="items[0][price_mode]" class="item-price-mode" value="net">
+    <input type="hidden" name="items[0][uu_id]" class="item-uu-id" value="">
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
     <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
     <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
@@ -832,6 +845,27 @@ $gtuSelectHtml .= '</select>';
         <div class="mt-3">
           <?= $this->Form->control('description', ['label' => 'Uwagi', 'type' => 'textarea', 'rows' => 3, 'class' => 'form-control']) ?>
         </div>
+        <?php if (!empty($original)): ?>
+        <div class="mt-3">
+          <?= $this->Form->control('correction_reason', [
+            'label' => 'Powód korekty', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control',
+            'placeholder' => 'Krótko opisz przyczynę korekty (np. błędna ilość/cena, pomyłka w stawce VAT, zwrot towaru)'
+          ]) ?>
+        </div>
+        <div class="mt-2">
+          <?= $this->Form->control('correction_type', [
+            'label' => 'Skutek korekty w ewidencji VAT (TypKorekty)', 'type' => 'select', 'class' => 'form-select',
+            'options' => [
+              '1' => '1 — w dacie ujęcia faktury pierwotnej (błąd pierwotny, korygujemy wstecz)',
+              '2' => '2 — w dacie wystawienia faktury korygującej (rabat, uzgodnienie — bieżący okres)',
+              '3' => '3 — w dacie innej / różne daty dla różnych pozycji',
+            ],
+            'empty' => '— Wybierz skutek —',
+            'value' => in_array((string)($invoice->correction_type ?? ''), ['1','2','3']) ? $invoice->correction_type : ''
+          ]) ?>
+          <small class="text-muted">Wymagane przez KSeF (FA(3)). Typ 1: wina sprzedawcy — cofasz do okresu pierwotnego. Typ 2: uzgodnienie z nabywcą — rozliczasz w bieżącym okresie.</small>
+        </div>
+        <?php endif; ?>
       </div>
 
       <div class="card-footer text-end">
@@ -1676,6 +1710,12 @@ $(function(){
 </script>
 
 <script>
+var originalCurrencyExchange = <?= json_encode((float)($originalCurrencyExchange ?? 0)) ?>;
+var originalCurrency = <?= json_encode((string)($originalCurrency ?? 'PLN')) ?>;
+var originalCurrencyDate = <?= json_encode((string)($originalCurrencyDate ?? '')) ?>;
+</script>
+
+<script>
 $(function () {
   // ====== CONFIG / HELPERS ======
   var csrf = $('meta[name="csrfToken"]').attr('content') || '';
@@ -2400,6 +2440,7 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
           '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][uu_id]" class="item-uu-id" value="">' +
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
           '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
           '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
@@ -3148,6 +3189,80 @@ $('#series-period-create-form').on('submit', function(e){
     console.error('series period add fail', xhr.status, xhr.responseText);
     toast('Błąd komunikacji przy zapisie okresu serii.');
   });
+});
+
+// ── Ostrzeżenie o niezgodności kursu waluty z fakturą korygowaną ─────────────
+$(function(){
+  if (!originalCurrencyExchange || originalCurrencyExchange <= 0) return;
+  if (originalCurrency === 'PLN') return;
+
+  var $fxInput = $('#fx-rate');
+  var $fxGroup = $('#fx-rate-group');
+
+  function checkRateMismatch(){
+    var current = parseFloat($fxInput.val()) || 0;
+    if (!current) return;
+    var diff = Math.abs(current - originalCurrencyExchange);
+    $('#corr-rate-warn').remove();
+    if (diff >= 0.0001) {
+      var sign = (current - originalCurrencyExchange) > 0 ? '+' : '';
+      var msg  = '<div id="corr-rate-warn" class="alert alert-danger py-1 px-2 mt-1 d-flex align-items-center gap-2" style="font-size:.85rem">'
+               + '<i class="ri-error-warning-line flex-shrink-0"></i>'
+               + '<span>Kurs korekty (<strong>' + current.toFixed(4) + '</strong>) jest niezgodny z kursem faktury korygowanej'
+               + ' (<strong>' + originalCurrencyExchange.toFixed(4) + '</strong>).'
+               + ' Różnica: <strong>' + sign + (current - originalCurrencyExchange).toFixed(4) + '</strong>.'
+               + ' Należy poprawić kurs do wartości z faktury pierwotnej.</span>'
+               + ' <button type="button" class="btn btn-sm btn-outline-danger ms-auto py-0 px-2" id="corr-use-original">Popraw kurs</button>'
+               + '</div>';
+      $fxGroup.after(msg);
+      $('#corr-use-original').on('click', function(){
+        $fxInput.val(originalCurrencyExchange.toFixed(4)).trigger('input').trigger('change');
+        $('#corr-rate-warn').remove();
+        $('#correction-reason').val('');
+      });
+      var $reason = $('#correction-reason');
+      if (!$reason.val()) {
+$reason.val('Korekta została wystawiona z uwagi na błędnie zastosowany kurs waluty na fakturze pierwotnej ' + originalCurrency + '. Kurs przyjęty dla faktury korygowanej wynosi ' + originalCurrencyExchange.toFixed(4) + ', natomiast kurs zastosowany w korekcie to ' + current.toFixed(4) + '.');      }
+    }
+  }
+
+  $fxInput.on('change input', checkRateMismatch);
+  setTimeout(checkRateMismatch, 800);
+});
+
+// ── Sprawdzenie kursu NBP vs kurs na fakturze korygowanej ────────────────────
+$(function(){
+  if (!originalCurrencyExchange || originalCurrencyExchange <= 0) return;
+  if (originalCurrency === 'PLN') return;
+
+  var dateToCheck = originalCurrencyDate || $('#issue-date').val() || $('#sold-date').val() || '';
+  console.log('[orig-rate] currency=', originalCurrency, 'exchange=', originalCurrencyExchange, 'date=', dateToCheck);
+  if (!dateToCheck) return;
+
+  var $container = $('#orig-rate-info-container');
+
+  (async function(){
+    try {
+      var params = new URLSearchParams({ currency: originalCurrency, date: dateToCheck, sold_date: dateToCheck });
+      var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+      var json = await res.json();
+      console.log('[orig-rate] NBP response:', json);
+      if (!json || !json.success || !json.rate) return;
+      var nbpRate = parseFloat(json.rate);
+      var diff = Math.abs(nbpRate - originalCurrencyExchange);
+      if (diff < 0.0001) return;
+      var sign = (originalCurrencyExchange - nbpRate) > 0 ? '+' : '';
+      $container.html(
+        '<div class="alert alert-info py-1 px-2 mt-1 d-flex align-items-start gap-2" style="font-size:.82rem">'
+        + '<i class="ri-information-line flex-shrink-0 mt-1"></i>'
+        + '<span>Kurs na fakturze korygowanej (<strong>' + originalCurrencyExchange.toFixed(4) + '</strong>) '
+        + 'różni się od kursu NBP (' + (json.table || '?') + ') z dnia ' + (json.effectiveDate || dateToCheck) + ': '
+        + '<strong>' + nbpRate.toFixed(4) + '</strong>. '
+        + 'Różnica: <strong>' + sign + (originalCurrencyExchange - nbpRate).toFixed(4) + '</strong>.</span>'
+        + '</div>'
+      );
+    } catch(e) { console.warn('[orig-rate] fetch error', e); }
+  })();
 });
 </script>
 

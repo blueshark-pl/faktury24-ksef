@@ -143,6 +143,81 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 .skeleton .sk-body .sk-cell { height: 12px; }
 </style>
 
+<?php
+// Baner bankowy: powiązane transakcje
+if (!empty($bankTransactions)):
+    $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : '—';
+    $fnum  = fn($v)  => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
+    $proposed = array_filter($bankTransactions->toArray(), fn($t) => $t->match_status === 'proposed');
+    $matched  = array_filter($bankTransactions->toArray(), fn($t) => $t->match_status === 'matched');
+?>
+
+<?php if (!empty($proposed)): ?>
+<div class="alert alert-warning border-warning d-flex align-items-start gap-3 mb-3 py-3">
+    <i class="ri-bank-line fs-4 text-warning mt-1 flex-shrink-0"></i>
+    <div class="flex-grow-1">
+        <div class="fw-semibold mb-2">
+            Znaleziono pasujące przelewy bankowe — wymagają potwierdzenia
+        </div>
+        <div class="d-flex flex-column gap-2">
+        <?php foreach ($proposed as $tx): ?>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><?= $fdate($tx->value_date) ?></span>
+                <strong><?= $fnum($tx->amount) ?> <?= h($tx->currency) ?></strong>
+                <?php if ($tx->party_name): ?>
+                    <span class="text-muted small"><?= h($tx->party_name) ?></span>
+                <?php endif; ?>
+                <span class="text-muted small">(pewność: <?= $tx->match_confidence ?>%)</span>
+                <?= $this->Form->postLink(
+                    '<i class="ri-check-line me-1"></i>Potwierdź płatność',
+                    ['controller' => 'BankTransactions', 'action' => 'confirmMatch', $tx->id],
+                    [
+                        'class'   => 'btn btn-sm btn-success ms-auto',
+                        'escape'  => false,
+                        'data'    => ['invoice_id' => $invoice->id, 'redirect' => $this->request->getRequestTarget()],
+                        'confirm' => 'Potwierdzić dopasowanie i oznaczyć fakturę jako opłaconą?',
+                    ]
+                ) ?>
+                <?= $this->Form->postLink(
+                    '<i class="ri-close-line"></i>',
+                    ['controller' => 'BankTransactions', 'action' => 'ignoreTransaction', $tx->id],
+                    [
+                        'class'  => 'btn btn-sm btn-outline-secondary',
+                        'escape' => false,
+                        'data'   => ['redirect' => $this->request->getRequestTarget()],
+                        'title'  => 'Ignoruj — to nie jest płatność tej faktury',
+                    ]
+                ) ?>
+            </div>
+        <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($matched)): ?>
+<div class="alert alert-success border-success d-flex align-items-start gap-3 mb-3 py-3">
+    <i class="ri-bank-line fs-4 text-success mt-1 flex-shrink-0"></i>
+    <div class="flex-grow-1">
+        <div class="fw-semibold mb-1">Faktura opłacona przelewem bankowym</div>
+        <?php foreach ($matched as $tx): ?>
+            <div class="small text-muted">
+                <?= $fdate($tx->value_date) ?> &mdash;
+                <strong class="text-success"><?= $fnum($tx->amount) ?> <?= h($tx->currency) ?></strong>
+                <?php if ($tx->party_name): ?> &mdash; <?= h($tx->party_name) ?><?php endif; ?>
+                <?= $this->Html->link(
+                    '<i class="ri-external-link-line ms-1"></i>',
+                    ['controller' => 'BankTransactions', 'action' => 'transactions', '?' => ['status' => 'matched']],
+                    ['class' => 'text-success', 'escape' => false, 'title' => 'Przejdź do wyciągów']
+                ) ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php endif; ?>
+
 <div class="mt-3" id="invoice-preview">
     <?php if ($isProforma): ?>
         <?= $this->element('Invoices/print_preview', ['invoice' => $invoice]) ?>

@@ -600,6 +600,48 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <!-- Wyciągi bankowe -->
+                            <li class="<?= $liClass(['banktransactions']) ?>">
+                            <a href="javascript:void(0);" class="side-menu__item">
+                                <i class="ri-arrow-right-s-line side-menu__angle"></i>
+                                <i class="ri-bank-line side-menu__icon"></i>
+                                <span class="side-menu__label">Wyciągi bankowe</span>
+                            </a>
+                            <ul class="slide-menu child1">
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Lista importów',
+                                            ['plugin' => false, 'controller' => 'BankTransactions', 'action' => 'index'],
+                                            ['class' => 'side-menu__item ' . $navActive('banktransactions', 'index')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Wszystkie transakcje',
+                                            ['plugin' => false, 'controller' => 'BankTransactions', 'action' => 'transactions'],
+                                            ['class' => 'side-menu__item ' . $navActive('banktransactions', 'transactions')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                            'Importuj MT940',
+                                            ['plugin' => false, 'controller' => 'BankTransactions', 'action' => 'import'],
+                                            ['class' => 'side-menu__item ' . $navActive('banktransactions', 'import')]
+                                    ) ?>
+                                </li>
+                            </ul>
+                            </li>
+
+                            <!-- Rozliczenia -->
+                            <li class="slide <?= $navActive('reconciliations', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-scales-3-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Rozliczenia</span>',
+                                    ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item ' . $navActive('reconciliations', 'index')]
+                                ) ?>
+                            </li>
+
                             <!-- Księgowość -->
                             <li class="slide__category"><span class="category-name">Księgowość</span></li>
                             <li class="<?= $liClass(['ksefauthorizations']) ?>">
@@ -824,8 +866,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
         <footer class="footer mt-auto py-3 bg-white text-center">
             <div class="container">
                 
-                <span class="text-muted"> Copyright © <span id="year"></span> <a href="https://partnersc.com/" target="_blank">
-                        <span class="fw-medium text-primary">Partner S.C.</span>
+                <span class="text-muted"> Copyright © <span id="year"></span> <a href="https://booklio.pl/" target="_blank">
+                        <span class="fw-medium text-primary">Booklio.pl</span>
                     </a> All
                     rights
                     reserved

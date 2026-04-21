@@ -39,6 +39,7 @@ class InvoicesController extends AppController
         $this->defaultSeriesResolver = new InvoiceDefaultSeriesResolver();
     }
 
+
     private const NS_FA3            = 'http://crd.gov.pl/wzor/2025/06/25/13775/';
     private const FORM_CODE         = 'FA';
     private const FORM_CODE_SYSTEM  = 'FA (3)';
@@ -812,6 +813,223 @@ $stats = [
 
     // requireAdmin() jest w AppController
 
+    // -------------------------------------------------------------------------
+    // Batch-check kursów walut dla listy faktur (AJAX z listy faktur)
+    // POST /invoices/check-rates-batch.json
+    // -------------------------------------------------------------------------
+    public function checkRatesBatch(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $items = (array)($this->request->getData('invoices') ?? []);
+        $results = [];
+        $nbpCache = [];
+
+        foreach ($items as $item) {
+            $id        = (string)($item['id'] ?? '');
+            $currency  = strtoupper((string)($item['currency'] ?? ''));
+            $rateDate  = (string)($item['currency_date'] ?? '');
+            $stored    = round((float)($item['stored_rate'] ?? 0), 4);
+
+            if ($currency === '' || $currency === 'PLN' || $stored <= 0 || $rateDate === '') {
+                continue;
+            }
+
+            $cacheKey = $currency . '|' . $rateDate;
+            if (!isset($nbpCache[$cacheKey])) {
+                try {
+                    $baseDate = (new \DateTimeImmutable($rateDate))->modify('+1 day');
+                    $nbpCache[$cacheKey] = $this->computeNbpAvgRate($currency, $baseDate);
+                } catch (\Throwable) {
+                    $nbpCache[$cacheKey] = ['success' => false];
+                }
+            }
+
+            $res = $nbpCache[$cacheKey];
+            if (empty($res['success'])) {
+                $results[$id] = ['status' => 'unknown'];
+                continue;
+            }
+
+            $nbpRate = round((float)$res['rate'], 4);
+            $diff    = round($stored - $nbpRate, 4);
+
+            $results[$id] = [
+                'status'   => abs($diff) >= 0.0001 ? 'mismatch' : 'ok',
+                'nbp_rate' => $nbpRate,
+                'diff'     => $diff,
+                'nbp_date' => $res['effectiveDate'] ?? $rateDate,
+                'table'    => $res['table'] ?? '',
+            ];
+        }
+
+        $this->response = $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode(['results' => $results]));
+    }
+
+    // -------------------------------------------------------------------------
+    // Diagnostyka kursów walut — porównanie zapisanego kursu z NBP
+    // GET /admin/check-currency-rates[?from=YYYY-MM-DD&to=YYYY-MM-DD&currency=EUR]
+    // -------------------------------------------------------------------------
+    public function checkCurrencyRates(): void
+    {
+        if (($r = $this->requireAdmin()) instanceof \Cake\Http\Response) {
+            $this->response = $r;
+            return;
+        }
+
+        $this->disableAutoRender();
+
+        $from     = (string)$this->request->getQuery('from', date('Y-m-01'));
+        $to       = (string)$this->request->getQuery('to',   date('Y-m-d'));
+        $currency = strtoupper((string)$this->request->getQuery('currency', 'EUR'));
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoices = $Invoices->find()
+            ->where([
+                'currency'        => $currency,
+                'date >='         => $from,
+                'date <='         => $to,
+                'currency_exchange >' => 0,
+            ])
+            ->select(['id', 'fullnumber', 'date', 'currency', 'currency_exchange', 'currency_date'])
+            ->orderBy(['date' => 'ASC'])
+            ->limit(200)
+            ->all();
+
+        $rows    = [];
+        $nbpCache = [];
+
+        foreach ($invoices as $inv) {
+            $stored    = round((float)$inv->currency_exchange, 4);
+            $rateDate  = !empty($inv->currency_date)
+                ? (string)($inv->currency_date instanceof \DateTimeInterface
+                    ? $inv->currency_date->format('Y-m-d')
+                    : $inv->currency_date)
+                : null;
+
+            $nbpRate     = null;
+            $nbpDate     = null;
+            $nbpTable    = null;
+            $nbpError    = null;
+
+            if ($rateDate) {
+                $cacheKey = $currency . '|' . $rateDate;
+                if (!isset($nbpCache[$cacheKey])) {
+                    try {
+                        // computeNbpAvgRate szuka kursu z dnia roboczego PRZED baseDate,
+                        // więc przekazujemy rateDate+1 aby dostać kurs z dokładnie tego dnia
+                        $baseDate = (new \DateTimeImmutable($rateDate))->modify('+1 day');
+                        $nbpCache[$cacheKey] = $this->computeNbpAvgRate($currency, $baseDate);
+                    } catch (\Throwable $e) {
+                        $nbpCache[$cacheKey] = ['success' => false, 'error' => $e->getMessage()];
+                    }
+                }
+                $res = $nbpCache[$cacheKey];
+                if (!empty($res['success'])) {
+                    $nbpRate  = round((float)$res['rate'], 4);
+                    $nbpDate  = $res['effectiveDate'] ?? null;
+                    $nbpTable = $res['table'] ?? null;
+                } else {
+                    $nbpError = $res['message'] ?? ($res['error'] ?? 'Błąd NBP');
+                }
+            }
+
+            $diff   = ($nbpRate !== null) ? round($stored - $nbpRate, 4) : null;
+            $match  = ($diff !== null) ? (abs($diff) < 0.0001) : null;
+
+            $rows[] = [
+                'id'             => $inv->id,
+                'fullnumber'     => $inv->fullnumber,
+                'date'           => $inv->date instanceof \DateTimeInterface
+                                        ? $inv->date->format('Y-m-d') : (string)$inv->date,
+                'currency'       => $inv->currency,
+                'stored_rate'    => $stored,
+                'stored_date'    => $rateDate,
+                'nbp_rate'       => $nbpRate,
+                'nbp_date'       => $nbpDate,
+                'nbp_table'      => $nbpTable,
+                'diff'           => $diff,
+                'match'          => $match,
+                'nbp_error'      => $nbpError,
+            ];
+        }
+
+        $total    = count($rows);
+        $ok       = count(array_filter($rows, fn($r) => $r['match'] === true));
+        $mismatch = count(array_filter($rows, fn($r) => $r['match'] === false));
+        $unknown  = $total - $ok - $mismatch;
+
+        // Render HTML
+        $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+        $fromE = $e($from); $toE = $e($to); $curE = $e($currency);
+        $html  = <<<HTML
+<!DOCTYPE html><html lang="pl"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnostyka kursów — {$curE}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<style>
+  body { padding: 2rem; background: #f8fafc; }
+  .match-ok   { background: #d1fae5 }
+  .match-err  { background: #fee2e2 }
+  .match-unk  { background: #f3f4f6 }
+</style>
+</head><body>
+<h4 class="mb-3">Diagnostyka kursów walut <span class="badge bg-primary">{$curE}</span></h4>
+<form class="row g-2 mb-4" method="get">
+  <div class="col-auto"><label class="form-label mb-0 small">Od</label>
+    <input type="date" name="from" class="form-control form-control-sm" value="{$fromE}"></div>
+  <div class="col-auto"><label class="form-label mb-0 small">Do</label>
+    <input type="date" name="to" class="form-control form-control-sm" value="{$toE}"></div>
+  <div class="col-auto"><label class="form-label mb-0 small">Waluta</label>
+    <input type="text" name="currency" class="form-control form-control-sm" value="{$curE}" style="width:80px"></div>
+  <div class="col-auto align-self-end"><button class="btn btn-sm btn-primary">Sprawdź</button></div>
+</form>
+<div class="d-flex gap-3 mb-3">
+  <span class="badge bg-secondary">Razem: {$total}</span>
+  <span class="badge bg-success">Zgodne: {$ok}</span>
+  <span class="badge bg-danger">Niezgodne: {$mismatch}</span>
+  <span class="badge bg-light text-dark border">Brak danych NBP: {$unknown}</span>
+</div>
+<table class="table table-sm table-bordered table-hover bg-white">
+<thead class="table-light">
+  <tr>
+    <th>Numer faktury</th><th>Data faktury</th>
+    <th>Data kursu</th><th>Kurs zapisany</th>
+    <th>Kurs NBP</th><th>Data tabeli NBP</th><th>Tabela</th>
+    <th>Różnica</th><th>Status</th>
+  </tr>
+</thead><tbody>
+HTML;
+
+        foreach ($rows as $r) {
+            $cls  = $r['match'] === true ? 'match-ok' : ($r['match'] === false ? 'match-err' : 'match-unk');
+            $icon = $r['match'] === true ? '✅' : ($r['match'] === false ? '❌' : '—');
+            $nbpRateStr  = $r['nbp_rate']  !== null ? number_format($r['nbp_rate'],  4, '.', '') : ($r['nbp_error'] ? '<span class="text-danger small">' . $e($r['nbp_error']) . '</span>' : '—');
+            $diffStr     = $r['diff']      !== null ? ($r['diff'] > 0 ? '+' : '') . number_format($r['diff'], 4, '.', '') : '—';
+            $storedStr   = number_format($r['stored_rate'], 4, '.', '');
+            $html .= "<tr class=\"{$cls}\">"
+                . "<td><a href=\"/invoices/view/{$r['id']}\">{$e($r['fullnumber'])}</a></td>"
+                . "<td>{$e($r['date'])}</td>"
+                . "<td>{$e($r['stored_date'] ?? '—')}</td>"
+                . "<td><code>{$storedStr}</code></td>"
+                . "<td><code>{$nbpRateStr}</code></td>"
+                . "<td>{$e($r['nbp_date'] ?? '—')}</td>"
+                . "<td>{$e($r['nbp_table'] ?? '—')}</td>"
+                . "<td>{$diffStr}</td>"
+                . "<td class=\"text-center\">{$icon}</td>"
+                . "</tr>\n";
+        }
+
+        $html .= '</tbody></table></body></html>';
+
+        $this->response = $this->response->withType('html');
+        $this->response->getBody()->write($html);
+    }
+
     public function adminInvoices()
     {
         if (($r = $this->requireAdmin()) instanceof \Cake\Http\Response) return $r;
@@ -1114,12 +1332,12 @@ $stats = [
     public function view($id = null)
     {
         $invoice = $this->Invoices->get($id, contain: [
-            'Companies', 
-            'ParentInvoices', 
-            'InvoiceCompanyDetails', 
-            'InvoiceContractors', 
+            'Companies',
+            'ParentInvoices',
+            'InvoiceCompanyDetails',
+            'InvoiceContractors',
             'InvoiceContents' => ['Vats'],
-            'InvoiceVatContents', 
+            'InvoiceVatContents',
             'ChildInvoices',
             'InvoicePayments',
             'InvoiceAdditionalDescriptions',
@@ -1130,7 +1348,18 @@ $stats = [
             'InvoiceAuthorizedEntities',
             'InvoiceOrderLines',
         ]);
-        $this->set(compact('invoice'));
+
+        // Powiązane transakcje bankowe (dopasowane lub proponowane)
+        $BankTransactions = $this->fetchTable('BankTransactions');
+        $bankTransactions = $BankTransactions->find()
+            ->where([
+                'invoice_id'    => $id,
+                'match_status IN' => ['matched', 'proposed'],
+            ])
+            ->orderByDesc('value_date')
+            ->all();
+
+        $this->set(compact('invoice', 'bankTransactions'));
     }
 
     /**
@@ -1251,7 +1480,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $origId = $pass[0] ?? $this->request->getQuery('parent_id') ?? $this->request->getQuery('original_id') ?? $this->request->getQuery('id');
                 if (!empty($origId)) {
                     $original = $Invoices->find()
-                        ->contain(['InvoiceContractors','InvoiceContents' => ['Vats']])
+                        ->contain([
+                            'InvoiceContractors',
+                            'InvoiceContents' => ['Vats'],
+                            'InvoiceAdditionalDescriptions',
+                        ])
                         ->where(['Invoices.company_id' => $companyId, 'Invoices.id' => $origId])
                         ->first();
                     if ($original) {
@@ -1259,6 +1492,91 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         if (empty($invoice->series) && !empty($original->series)) {
                             $invoice->set('series', (string)$original->series);
                         }
+
+                        // ── Prefill pól z faktury korygowanej ─────────────────────────
+
+                        // Data sprzedaży
+                        if (!empty($original->sold_date)) {
+                            $soldDate = $original->sold_date instanceof \DateTimeInterface
+                                ? $original->sold_date->format('Y-m-d')
+                                : substr((string)$original->sold_date, 0, 10);
+                            $invoice->set('sold_date', $soldDate);
+                        }
+
+                        // Termin i metoda płatności
+                        if (!empty($original->paymentmethod)) {
+                            $invoice->set('paymentmethod', (string)$original->paymentmethod);
+                        }
+                        if (!empty($original->paymentdate)) {
+                            $pd = $original->paymentdate instanceof \DateTimeInterface
+                                ? $original->paymentdate->format('Y-m-d')
+                                : substr((string)$original->paymentdate, 0, 10);
+                            $invoice->set('paymentdate', $pd);
+                        }
+
+                        // Waluta i kurs
+                        if (!empty($original->currency) && $original->currency !== 'PLN') {
+                            $invoice->set('currency', (string)$original->currency);
+                            if (!empty($original->currency_exchange) && (float)$original->currency_exchange > 0) {
+                                $invoice->set('currency_exchange', $original->currency_exchange);
+                                $invoice->set('fx_rate', (float)$original->currency_exchange);
+                            }
+                            if (!empty($original->currency_date)) {
+                                $cd = $original->currency_date instanceof \DateTimeInterface
+                                    ? $original->currency_date->format('Y-m-d')
+                                    : substr((string)$original->currency_date, 0, 10);
+                                $invoice->set('currency_date', $cd);
+                            }
+                        }
+
+                        // Język, konto bankowe, wystawca, miejsce wystawienia
+                        if (!empty($original->lang))                 { $invoice->set('lang', (string)$original->lang); }
+                        if (!empty($original->company_bank_account_id)) { $invoice->set('company_bank_account_id', (string)$original->company_bank_account_id); }
+                        if (!empty($original->issuer))               { $invoice->set('issuer', (string)$original->issuer); }
+                        if (!empty($original->place_of_issue))       { $invoice->set('place_of_issue', (string)$original->place_of_issue); }
+                        if (!empty($original->footer_text))          { $invoice->set('footer_text', (string)$original->footer_text); }
+                        if (!empty($original->payment_link))         { $invoice->set('payment_link', (string)$original->payment_link); }
+                        if (!empty($original->wz_number))            { $invoice->set('wz_number', (string)$original->wz_number); }
+
+                        // Opisy i uwagi
+                        if (!empty($original->description))          { $invoice->set('description', (string)$original->description); }
+
+                        // Flagi
+                        if (!empty($original->is_split_payment))     { $invoice->set('is_split_payment', (bool)$original->is_split_payment); }
+                        if (!empty($original->buyer_is_jst))         { $invoice->set('buyer_is_jst', (bool)$original->buyer_is_jst); }
+                        if (!empty($original->buyer_in_vat_group))   { $invoice->set('buyer_in_vat_group', (bool)$original->buyer_in_vat_group); }
+
+                        // Okres rozliczeniowy
+                        if (!empty($original->period_from)) {
+                            $pf = $original->period_from instanceof \DateTimeInterface
+                                ? $original->period_from->format('Y-m-d')
+                                : substr((string)$original->period_from, 0, 10);
+                            $invoice->set('period_from', $pf);
+                        }
+                        if (!empty($original->period_to)) {
+                            $pt = $original->period_to instanceof \DateTimeInterface
+                                ? $original->period_to->format('Y-m-d')
+                                : substr((string)$original->period_to, 0, 10);
+                            $invoice->set('period_to', $pt);
+                        }
+
+                        // Adnotacje podatkowe
+                        if (!empty($original->annotations))          { $invoice->set('annotations', $original->annotations); }
+                        if (!empty($original->annotations_tax_free)) { $invoice->set('annotations_tax_free', (string)$original->annotations_tax_free); }
+                        if (!empty($original->annotations_tax_free_field)) { $invoice->set('annotations_tax_free_field', (string)$original->annotations_tax_free_field); }
+
+                        // Dodatkowe opisy (DodatkowyOpis) — kopiuj z oryginału
+                        $origDescs = $original->invoice_additional_descriptions ?? [];
+                        if (!empty($origDescs)) {
+                            $invoice->set('invoice_additional_descriptions', $origDescs);
+                        }
+
+                        // Przekaż kurs oryginału do widoku (ostrzeżenie o niezgodności)
+                        $this->set('originalCurrencyExchange', (float)($original->currency_exchange ?? 0));
+                        $this->set('originalCurrency', (string)($original->currency ?? 'PLN'));
+                        $__cd = $original->currency_date ?? null;
+                        $this->set('originalCurrencyDate', $__cd instanceof \DateTimeInterface ? $__cd->format('Y-m-d') : (string)($__cd ?? ''));
+
                         // Pass original to the view to prefill form and items
                         $this->set('original', $original);
                     }
@@ -1381,6 +1699,26 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         }
                     }
 
+                    // Rachunek bankowy PLN — prefill stałego rachunku dla faktur VAT PLN
+                    if ($kind === 'vat') {
+                        $plnBankId = 'f78a2653-7e59-416f-87d3-55ac9f7b87e0';
+                        try {
+                            $BankAccounts = $this->fetchTable('CompanyBankAccounts');
+                            $bankAcc = $BankAccounts->find()
+                                ->select(['id', 'iban', 'bank_name', 'label'])
+                                ->where(['id' => $plnBankId, 'company_id' => $companyId])
+                                ->first();
+                            if ($bankAcc) {
+                                $invoice->set('company_bank_account_id', $plnBankId);
+                                $this->set('prefillBankId', $plnBankId);
+                                $this->set('prefillBankIban', (string)($bankAcc->iban ?? ''));
+                                $this->set('prefillBankText',
+                                    $bankAcc->label ?: trim(($bankAcc->bank_name ? $bankAcc->bank_name . ' ' : '') . ($bankAcc->iban ?? ''))
+                                );
+                            }
+                        } catch (\Throwable) { /* ignoruj */ }
+                    }
+
                     $addDescs = [];
                     $addRow = function(string $klucz, string $wartosc) use (&$addDescs): void {
                         $wartosc = trim($wartosc);
@@ -1395,8 +1733,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     // Nasz numer: GLO_POD
                     $addRow('Nasz numer', trim((string)($rawArr['GLO_POD'] ?? '')));
 
-                    // Zlecenie: GLO_TYT1
-                    $addRow('Zlecenie', trim((string)($rawArr['GLO_TYT1'] ?? '')));
+                    // Numer wewnętrzny: GLO_SYMBOL
+                    $addRow('Numer wewnętrzny', trim((string)($rawArr['GLO_SYMBOL'] ?? '')));
+
+                    // Zlecenie: GLO_TYT1 — jeśli kończy się na '+', dopisz GLO_KT
+                    $gloTyt1 = trim((string)($rawArr['GLO_TYT1'] ?? ''));
+                    $gloKt   = trim((string)($rawArr['GLO_KT']   ?? ''));
+                    if ($gloKt !== '' && str_ends_with($gloTyt1, '+')) {
+                        $gloTyt1 .= $gloKt;
+                    }
+                    $addRow('Zlecenie', $gloTyt1);
 
                     // Środek transportu: GLO_MIE_RODZAJ + GLO_KONTO
                     $transportParts = array_filter([
@@ -1520,6 +1866,26 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                             }
                         }
 
+                        // Rachunek bankowy PLN — prefill stałego rachunku dla faktur VAT PLN
+                        if ($kind === 'vat') {
+                            $plnBankId = 'f78a2653-7e59-416f-87d3-55ac9f7b87e0';
+                            try {
+                                $BankAccounts = $this->fetchTable('CompanyBankAccounts');
+                                $bankAcc = $BankAccounts->find()
+                                    ->select(['id', 'iban', 'bank_name', 'label'])
+                                    ->where(['id' => $plnBankId, 'company_id' => $companyId])
+                                    ->first();
+                                if ($bankAcc) {
+                                    $invoice->set('company_bank_account_id', $plnBankId);
+                                    $this->set('prefillBankId', $plnBankId);
+                                    $this->set('prefillBankIban', (string)($bankAcc->iban ?? ''));
+                                    $this->set('prefillBankText',
+                                        $bankAcc->label ?: trim(($bankAcc->bank_name ? $bankAcc->bank_name . ' ' : '') . ($bankAcc->iban ?? ''))
+                                    );
+                                }
+                            } catch (\Throwable) { /* ignoruj */ }
+                        }
+
                         // ── Pozycje — każde zlecenie jako osobna linia ──
                         $lines = [];
                         foreach ($speedOrders as $so) {
@@ -1559,7 +1925,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                             };
 
                             $addRow('Nasz numer', trim((string)($rawArr['GLO_POD'] ?? '')));
-                            $addRow('Zlecenie', trim((string)($rawArr['GLO_TYT1'] ?? '')));
+                            $addRow('Numer wewnętrzny', trim((string)($rawArr['GLO_SYMBOL'] ?? '')));
+
+                            $gloTyt1 = trim((string)($rawArr['GLO_TYT1'] ?? ''));
+                            $gloKt   = trim((string)($rawArr['GLO_KT']   ?? ''));
+                            if ($gloKt !== '' && str_ends_with($gloTyt1, '+')) {
+                                $gloTyt1 .= $gloKt;
+                            }
+                            $addRow('Zlecenie', $gloTyt1);
 
                             $transportParts = array_filter([
                                 trim((string)($rawArr['GLO_MIE_RODZAJ'] ?? '')),
@@ -2549,36 +2922,40 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ->where(['invoice_id' => $invoiceId])
                     ->first()
                     ?? $InvoiceCompanyDetailsTable->newEmptyEntity();
-                // Determine bank account snapshot from CompanyBankAccounts:
-                // 1) by company_bank_account_id (selected in form), 2) default account, 3) fallback
+                // Snapshot WSZYSTKICH rachunków bankowych firmy (kolejność: is_default DESC, created ASC)
                 $snapshotBank       = '';
                 $snapshotBankName   = '';
                 $snapshotBankDesc   = '';
                 $snapshotSwift      = '';
                 $snapshotBankCoresp = '';
+                $allBankAccountsJson = null;
                 try {
                     $Cba = $this->fetchTable('CompanyBankAccounts');
-                    $selectedBankId = !empty($data['company_bank_account_id']) ? (string)$data['company_bank_account_id'] : null;
-                    $cbaRecord = null;
-                    if ($selectedBankId !== null) {
-                        $cbaRecord = $Cba->find()
-                            ->select(['iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent'])
-                            ->where(['id' => $selectedBankId, 'company_id' => $companyId])
-                            ->first();
-                    }
-                    if (!$cbaRecord) {
-                        $cbaRecord = $Cba->find()
-                            ->select(['iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent'])
-                            ->where(['company_id' => $companyId, 'is_default' => 1])
-                            ->order(['is_default' => 'DESC', 'created' => 'DESC'])
-                            ->first();
-                    }
-                    if ($cbaRecord) {
-                        $snapshotBank       = (string)($cbaRecord->iban ?? '');
-                        $snapshotBankName   = (string)($cbaRecord->bank_name ?? '');
-                        $snapshotBankDesc   = (string)($cbaRecord->bank_desc ?? '');
-                        $snapshotSwift      = (string)($cbaRecord->swift ?? '');
-                        $snapshotBankCoresp = (string)($cbaRecord->bank_correspondent ?? '');
+                    $allCbaRecords = $Cba->find()
+                        ->select(['id', 'iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent', 'currency', 'label', 'is_default'])
+                        ->where(['company_id' => $companyId])
+                        ->order(['is_default' => 'DESC', 'created' => 'ASC'])
+                        ->all()
+                        ->toArray();
+                    if (!empty($allCbaRecords)) {
+                        // Pierwszy rekord (domyślny lub najstarszy) jako legacy snapshot
+                        $first = $allCbaRecords[0];
+                        $snapshotBank       = (string)($first->iban ?? '');
+                        $snapshotBankName   = (string)($first->bank_name ?? '');
+                        $snapshotBankDesc   = (string)($first->bank_desc ?? '');
+                        $snapshotSwift      = (string)($first->swift ?? '');
+                        $snapshotBankCoresp = (string)($first->bank_correspondent ?? '');
+                        // JSON snapshot wszystkich rachunków
+                        $allBankAccountsJson = json_encode(array_map(fn($r) => [
+                            'iban'             => (string)($r->iban ?? ''),
+                            'bank_name'        => (string)($r->bank_name ?? ''),
+                            'bank_desc'        => (string)($r->bank_desc ?? ''),
+                            'swift'            => (string)($r->swift ?? ''),
+                            'bank_correspondent' => (string)($r->bank_correspondent ?? ''),
+                            'currency'         => (string)($r->currency ?? ''),
+                            'label'            => (string)($r->label ?? ''),
+                            'is_default'       => (int)($r->is_default ?? 0),
+                        ], $allCbaRecords), JSON_UNESCAPED_UNICODE);
                     }
                 } catch (\Throwable $e) {
                     // ignore, fallback below
@@ -2588,16 +2965,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
                 if ($snapshotBank === '') {
                     $snapshotBank = (string)($company->bank_account ?? '');
-                }
-                // Allow form overrides for bank_name/bank_desc/swift if user typed them manually
-                if ($snapshotBankName === '') {
-                    $snapshotBankName = (string)($data['invoice_company_detail']['bank_name'] ?? '');
-                }
-                if ($snapshotBankDesc === '') {
-                    $snapshotBankDesc = (string)($data['invoice_company_detail']['bank_desc'] ?? '');
-                }
-                if ($snapshotSwift === '') {
-                    $snapshotSwift = (string)($data['invoice_company_detail']['swift'] ?? '');
                 }
                 // Street + local number (if provided) e.g. "Kwiatowa 10/5"
                 $streetLine = trim((string)($company->street ?? ''));
@@ -2626,10 +2993,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'regon'        => '',
                         'bdo'          => '',
                         'registers_json' => $this->buildRegistersJson($company),
-                        'bank_name'         => $snapshotBankName,
-                        'bank_desc'         => $snapshotBankDesc,
-                        'swift'             => $snapshotSwift,
+                        'bank_name'          => $snapshotBankName,
+                        'bank_desc'          => $snapshotBankDesc,
+                        'swift'              => $snapshotSwift,
                         'bank_correspondent' => $snapshotBankCoresp,
+                        'bank_accounts_json' => $allBankAccountsJson,
                         'gln'          => '',
                         'country_code' => 'PL',
                     ];
@@ -2650,10 +3018,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'regon'        => '',
                     'bdo'          => '',
                     'registers_json' => $this->buildRegistersJson($company),
-                    'bank_name'         => $snapshotBankName,
-                    'bank_desc'         => $snapshotBankDesc,
-                    'swift'             => $snapshotSwift,
+                    'bank_name'          => $snapshotBankName,
+                    'bank_desc'          => $snapshotBankDesc,
+                    'swift'              => $snapshotSwift,
                     'bank_correspondent' => $snapshotBankCoresp,
+                    'bank_accounts_json' => $allBankAccountsJson,
                     'gln'          => (string)($company->gln ?? ''),
                     'country_code' => (string)($company->country_code ?? 'PL'),
                 ];
@@ -4809,6 +5178,383 @@ private function makeClient(string $environment): KsefClient
     }
 
     // -------------------------------------------------------------------------
+    // Etykieta pocztowa — pobieranie danych prefill (GET /invoices/{id}/label)
+    // -------------------------------------------------------------------------
+    public function getLabel(string $id): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Invoices = $this->fetchTable('Invoices');
+        try {
+            $invoice = $Invoices->get($id, contain: ['InvoiceCompanyDetails', 'InvoiceContractors']);
+        } catch (\Throwable) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Nie znaleziono faktury']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+        if ((string)$invoice->company_id !== (string)$companyId) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Brak dostępu']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        $seller = $invoice->invoice_company_detail;
+        $buyer  = $invoice->invoice_contractor;
+
+        // Domyślne dane etykiety — nadpisane przez label_data jeśli zapisane
+        $defaults = [
+            'sender_name'    => $seller?->name ?? '',
+            'sender_street'  => $seller?->street ?? '',
+            'sender_zip'     => $seller?->zip ?? '',
+            'sender_city'    => $seller?->city ?? '',
+            'sender_country' => $seller?->country ?? 'Polska',
+            'recipient_name'    => $buyer?->name ?? '',
+            'recipient_street'  => $buyer?->street ?? '',
+            'recipient_zip'     => $buyer?->zip ?? '',
+            'recipient_city'    => $buyer?->city ?? '',
+            'recipient_country' => $buyer?->country ?? 'Polska',
+        ];
+
+        if (!empty($invoice->label_data)) {
+            $saved = (array)(json_decode((string)$invoice->label_data, true) ?? []);
+            $defaults = array_merge($defaults, array_intersect_key($saved, $defaults));
+        }
+
+        // Sprawdź czy powiązane zlecenie ma docs_electronic_only
+        $docsElectronic = false;
+        try {
+            $SpeedOrders = $this->fetchTable('SpeedOrders');
+            $relatedOrder = $SpeedOrders->find()
+                ->select(['docs_electronic_only'])
+                ->where(['invoice_id' => $id])
+                ->first();
+            if ($relatedOrder) {
+                $docsElectronic = (bool)$relatedOrder->docs_electronic_only;
+            }
+        } catch (\Throwable) {}
+
+        $this->response->getBody()->write(json_encode([
+            'ok'              => true,
+            'label'           => $defaults,
+            'fullnumber'      => $invoice->fullnumber,
+            'sent_at'         => $invoice->sent_at ? (string)$invoice->sent_at : null,
+            'sent_by'         => $invoice->sent_by,
+            'label_generated_at' => $invoice->label_generated_at ? (string)$invoice->label_generated_at : null,
+            'docs_electronic_only' => $docsElectronic,
+        ]));
+        $this->response = $this->response->withType('json');
+    }
+
+    // -------------------------------------------------------------------------
+    // Etykieta pocztowa — generowanie PDF A5 + zapis danych (POST /invoices/{id}/label)
+    // -------------------------------------------------------------------------
+    public function generateLabel(string $id): ?\Cake\Http\Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $username  = $identity?->get('username') ?? $identity?->get('email') ?? 'system';
+
+        $Invoices = $this->fetchTable('Invoices');
+        try {
+            $invoice = $Invoices->get($id, contain: ['InvoiceCompanyDetails', 'InvoiceContractors']);
+        } catch (\Throwable) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Nie znaleziono faktury']));
+            return $this->response->withType('json');
+        }
+        if ((string)$invoice->company_id !== (string)$companyId) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Brak dostępu']));
+            return $this->response->withType('json');
+        }
+
+        $data = (array)($this->request->getData('label') ?? []);
+        $allowedKeys = ['sender_name','sender_street','sender_zip','sender_city','sender_country',
+                        'recipient_name','recipient_street','recipient_zip','recipient_city','recipient_country'];
+        $labelData = [];
+        foreach ($allowedKeys as $k) {
+            $labelData[$k] = trim((string)($data[$k] ?? ''));
+        }
+
+        // Zapisz label_data do faktury
+        $invoice->set('label_data', json_encode($labelData));
+        $invoice->set('label_generated_at', date('Y-m-d H:i:s'));
+        $Invoices->save($invoice);
+
+        // Wygeneruj token QR (bezpieczny HMAC)
+        $salt   = \Cake\Core\Configure::read('Security.salt') ?: 'label_qr_secret';
+        $token  = substr(hash_hmac('sha256', $id . '|sent', $salt), 0, 32);
+        $scanUrl = \Cake\Routing\Router::url('/invoices/scan/' . $id . '/' . $token, true);
+        $fullnumber = (string)($invoice->fullnumber ?? $id);
+
+        // Generuj QR code (base64 PNG)
+        $qrBase64 = '';
+        try {
+            $qrCode = \Endroid\QrCode\QrCode::create($scanUrl)
+                ->setSize(160)
+                ->setMargin(2);
+            $writer = new \Endroid\QrCode\Writer\PngWriter();
+            $qrResult = $writer->write($qrCode);
+            $qrBase64 = base64_encode($qrResult->getString());
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('QR generation failed: ' . $e->getMessage());
+        }
+
+        // Pobierz logo jako base64 (unikamy zewnętrznych żądań w mPDF)
+        $logoBase64 = '';
+        try {
+            $logoBytes = @file_get_contents('https://nordlogis.pl/wp-content/uploads/2022/06/Logo-kolor.png');
+            if ($logoBytes !== false) {
+                $logoBase64 = base64_encode($logoBytes);
+            }
+        } catch (\Throwable) {
+        }
+
+        // Generuj PDF przez mPDF
+        $mpdf = new \Mpdf\Mpdf([
+            'format'        => 'A5-L',
+            'margin_top'    => 8,
+            'margin_bottom' => 8,
+            'margin_left'   => 8,
+            'margin_right'  => 8,
+            'default_font'  => 'dejavusans',
+        ]);
+        $mpdf->SetTitle('Etykieta ' . $fullnumber);
+
+        $html = $this->_buildLabelHtml($labelData, $fullnumber, $qrBase64, $scanUrl, $logoBase64);
+        $mpdf->WriteHTML($html);
+
+        $pdfBytes = $mpdf->Output('', 'S');
+        $filename = 'etykieta_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $fullnumber) . '.pdf';
+
+        return $this->response
+            ->withType('application/pdf')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->withStringBody($pdfBytes);
+    }
+
+    /**
+     * Buduje HTML etykiety pocztowej A5 dla mPDF.
+     */
+    private function _buildLabelHtml(array $l, string $fullnumber, string $qrBase64, string $scanUrl, string $logoBase64 = ''): string
+    {
+        $e = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        $senderLines = array_filter([
+            $e($l['sender_name']),
+            $e($l['sender_street']),
+            trim($e($l['sender_zip']) . ' ' . $e($l['sender_city'])),
+            strtoupper((string)$l['sender_country']) !== 'POLSKA' && $l['sender_country'] !== '' ? $e($l['sender_country']) : '',
+        ]);
+
+        $recipientLines = array_filter([
+            $e($l['recipient_name']),
+            $e($l['recipient_street']),
+            trim($e($l['recipient_zip']) . ' ' . $e($l['recipient_city'])),
+            strtoupper((string)$l['recipient_country']) !== 'POLSKA' && $l['recipient_country'] !== '' ? $e($l['recipient_country']) : '',
+        ]);
+
+        $qrImg = $qrBase64
+            ? '<img src="data:image/png;base64,' . $qrBase64 . '" width="72" height="72" />'
+            : '<div style="width:72px;height:72px;border:1px solid #ccc;font-size:7px;text-align:center;padding-top:28px">QR</div>';
+
+        $logoImg = $logoBase64
+            ? '<img src="data:image/png;base64,' . $logoBase64 . '" height="18mm" style="margin-bottom:3mm" />'
+            : '';
+
+        // Pre-oblicz wszystkie wyrażenia przed heredoc (PHP nie wspiera wywołań funkcji w {})
+        // Uwaga: wartości w $senderLines/$recipientLines są już przez $e() — nie escapować ponownie
+        $senderName     = array_shift($senderLines);
+        $senderRest     = implode('<br>', array_values($senderLines));
+        $recipientName  = array_shift($recipientLines);
+        $recipientAddr  = implode('<br>', array_values($recipientLines));
+        $fullnumberSafe = $e($fullnumber);
+
+        return <<<HTML
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; text-decoration: none; }
+  body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 10pt; color: #111; }
+  .sender-box  { padding: 4px 7px; font-size: 8pt; color: #555; line-height: 1.5; }
+  .label-tag   { font-size: 6pt; font-weight: bold; text-transform: uppercase; letter-spacing: .8px; color: #bbb; margin-bottom: 2px; }
+  .sender-name { font-weight: bold; font-size: 9pt; color: #333; }
+  .recipient-box  { padding: 4px 7px; font-size: 9pt; color: #555; line-height: 1.5; }
+  .recipient-name { font-weight: bold; font-size: 11pt; color: #111; margin-bottom: 2px; }
+  .recipient-addr { font-size: 9pt; color: #333; }
+  .invoice-num    { font-size: 7pt; color: #666; margin-bottom: 1px; }
+  .scan-label     { font-size: 6pt; color: #999; text-align: center; margin-top: 1px; }
+</style>
+</head>
+<body>
+<table width="194mm" cellpadding="0" cellspacing="0" border="0">
+
+  <!-- WIERSZ 1 (górny ~65mm): nadawca lewy | pusty prawy -->
+  <tr>
+    <td width="97mm" height="65mm" valign="top" style="padding:4mm">
+      $logoImg
+      <div class="sender-box">
+        <div class="label-tag">Nadawca / From</div>
+        <div class="sender-name">$senderName</div>
+        <div>$senderRest</div>
+        <div style="margin-top:3mm;font-size:7pt;color:#555">Numer dokumentu: <strong>$fullnumberSafe</strong></div>
+      </div>
+    </td>
+    <td width="97mm" height="65mm"></td>
+  </tr>
+
+  <!-- WIERSZ 2 (dolny ~67mm): QR+kod lewy | odbiorca prawy -->
+  <tr>
+    <td width="97mm" height="67mm" valign="bottom" style="padding:4mm">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="20mm" valign="bottom" align="center">
+            $qrImg
+          </td>
+          <td valign="bottom"></td>
+        </tr>
+      </table>
+    </td>
+    <td width="97mm" height="67mm" valign="bottom" style="padding:4mm">
+      <div class="recipient-box">
+        <div class="label-tag">Odbiorca / To</div>
+        <div class="recipient-name">$recipientName</div>
+        <div class="recipient-addr">$recipientAddr</div>
+      </div>
+    </td>
+  </tr>
+
+</table>
+</body>
+</html>
+HTML;
+    }
+
+    // -------------------------------------------------------------------------
+    // Oznacz fakturę jako wysłaną (POST /invoices/{id}/mark-sent)
+    // -------------------------------------------------------------------------
+    public function markSent(string $id): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $username  = $identity?->get('username') ?? $identity?->get('email') ?? 'system';
+
+        $Invoices = $this->fetchTable('Invoices');
+        try {
+            $invoice = $Invoices->get($id);
+        } catch (\Throwable) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Nie znaleziono faktury']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+        if ((string)$invoice->company_id !== (string)$companyId) {
+            $this->response->getBody()->write(json_encode(['ok' => false, 'error' => 'Brak dostępu']));
+            $this->response = $this->response->withType('json');
+            return;
+        }
+
+        $sentDate = trim((string)($this->request->getData('sent_date') ?? ''));
+        $toggle   = (bool)($this->request->getData('toggle') ?? false);
+
+        if ($toggle && !empty($invoice->sent_at)) {
+            // odznaczenie
+            $invoice->set('sent_at', null);
+            $invoice->set('sent_by', null);
+        } else {
+            $invoice->set('sent_at', $sentDate !== '' ? $sentDate . ' 00:00:00' : date('Y-m-d H:i:s'));
+            $invoice->set('sent_by', $username);
+        }
+        $Invoices->save($invoice);
+
+        $this->response->getBody()->write(json_encode([
+            'ok'      => true,
+            'sent_at' => $invoice->sent_at ? (string)$invoice->sent_at : null,
+            'sent_by' => $invoice->sent_by,
+        ]));
+        $this->response = $this->response->withType('json');
+    }
+
+    // -------------------------------------------------------------------------
+    // Skan QR z etykiety — oznacz jako wysłaną (GET /invoices/scan/{id}/{token})
+    // -------------------------------------------------------------------------
+    public function scanLabel(string $id, string $token): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+
+        // Dostęp tylko z dozwolonych IP
+        $allowedIps = ['188.147.249.109', '46.175.236.28'];
+        if (!in_array($this->request->clientIp(), $allowedIps, true)) {
+            $this->response = $this->response->withStatus(302)->withHeader('Location', 'https://www.google.pl/');
+            return;
+        }
+
+        $salt     = \Cake\Core\Configure::read('Security.salt') ?: 'label_qr_secret';
+        $expected = substr(hash_hmac('sha256', $id . '|sent', $salt), 0, 32);
+
+        if (!hash_equals($expected, $token)) {
+            $this->response->getBody()->write($this->_scanPage('Nieprawidłowy token QR.', false, ''));
+            $this->response = $this->response->withType('html');
+            return;
+        }
+
+        $Invoices = $this->fetchTable('Invoices');
+        try {
+            $invoice = $Invoices->get($id);
+        } catch (\Throwable) {
+            $this->response->getBody()->write($this->_scanPage('Nie znaleziono faktury.', false, ''));
+            $this->response = $this->response->withType('html');
+            return;
+        }
+
+        $alreadySent = !empty($invoice->sent_at);
+        if (!$alreadySent) {
+            $invoice->set('sent_at', date('Y-m-d H:i:s'));
+            $invoice->set('sent_by', 'QR scan');
+            $Invoices->save($invoice);
+        }
+
+        $msg = $alreadySent
+            ? 'Faktura ' . $invoice->fullnumber . ' była już oznaczona jako wysłana (' . substr((string)$invoice->sent_at, 0, 10) . ').'
+            : 'Faktura ' . $invoice->fullnumber . ' oznaczona jako wysłana — ' . date('d.m.Y H:i') . '.';
+
+        $this->response->getBody()->write($this->_scanPage($msg, true, (string)($invoice->fullnumber ?? $id)));
+        $this->response = $this->response->withType('html');
+    }
+
+    private function _scanPage(string $msg, bool $ok, string $fullnumber): string
+    {
+        $icon       = $ok ? '✅' : '❌';
+        $color      = $ok ? '#16a34a' : '#dc2626';
+        $msgSafe    = htmlspecialchars($msg, ENT_QUOTES, 'UTF-8');
+        $numBlock   = $fullnumber !== ''
+            ? '<div class="num"><code>' . htmlspecialchars($fullnumber, ENT_QUOTES, 'UTF-8') . '</code></div>'
+            : '';
+        return <<<HTML
+<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Etykieta — status faktury</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f3f4f6}
+.card{background:#fff;border-radius:12px;padding:2.5rem 2rem;max-width:400px;width:90%;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+.icon{font-size:3rem;margin-bottom:1rem}.msg{font-size:1.1rem;color:#374151;line-height:1.5}
+.num{font-size:.9rem;color:#6b7280;margin-top:.5rem}</style>
+</head>
+<body><div class="card">
+<div class="icon">$icon</div>
+<div class="msg" style="color:$color">$msgSafe</div>
+$numBlock
+</div></body></html>
+HTML;
+    }
+
+    // -------------------------------------------------------------------------
     // Custom print — HTML renderowany przez przeglądarkę (window.print())
     // Zawiera: kursy walut, dodatkowe opisy przypisane do pozycji.
     // -------------------------------------------------------------------------
@@ -6948,9 +7694,13 @@ private function enrichInvoiceFromParent(Invoice $inv): Invoice
             $inv->p_15zk = (float)$parent->total;
         }
 
-        // KursWalutyZK – kurs z faktury pierwotnej (jeśli była w walucie)
-        if (!isset($inv->currency_rate_before_corr) && !empty($parent->currency_exchange)) {
-            $inv->currency_rate_before_corr = (float)$parent->currency_exchange;
+        // KursWalutyZK – kurs z faktury pierwotnej, jeśli zmienił się w korekcie
+        $parentRate = (float)($parent->currency_exchange ?? 0);
+        $corrRate   = (float)($inv->currency_exchange ?? 0);
+        if (!isset($inv->currency_rate_before_corr) && $parentRate > 0) {
+            if (abs($parentRate - $corrRate) >= 0.0001) {
+                $inv->currency_rate_before_corr = $parentRate;
+            }
         }
     }
 
@@ -6998,8 +7748,8 @@ private function buildFaXml(
         $xml[] = '    <WZ>' . $this->esc((string)$inv->wz_number) . '</WZ>';
     }
 
-    // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
-    if ($soldDate !== null && $soldDate !== $issueDate) {
+    // P_6 – wspólna data dostawy/usługi (wymagane gdy wypełnione, nawet jeśli równa dacie wystawienia)
+    if ($soldDate !== null && $soldDate !== '') {
         $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
     }
 
@@ -7022,7 +7772,7 @@ private function buildFaXml(
 
     // VAT summary: P_13_1..P_13_3 & P_14_1..P_14_3 liczone z pozycji
     // VAT summary
-[$vatSummaryXml, $sumGross] = $this->buildVatSummaryXml($inv, $items);
+[$vatSummaryXml, $sumGross] = $this->buildVatSummaryXml($inv, $items, $currency);
 $xml = array_merge($xml, $vatSummaryXml);
 
 // P_15
@@ -7289,10 +8039,12 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     // ======================== VAT SUMMARY (P_13_x / P_14_x) ========================
 
-    private function buildVatSummaryXml(Invoice $inv, array $items): array
+    private function buildVatSummaryXml(Invoice $inv, array $items, string $currency = 'PLN'): array
 {
     $xml    = [];
     $rodzaj = $this->resolveRodzajFaktury($inv);
+    $isForeign  = ($currency !== 'PLN');
+    $fxRate     = $isForeign ? max(0.0001, (float)($inv->currency_exchange ?? 1.0)) : 1.0;
 
     // ======================
     // 1) ZWYKŁE FAKTURY
@@ -7357,21 +8109,28 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         if ($grp['23']['net'] !== 0.0) {
             $xml[] = '    <P_13_1>' . $this->fmtAmount($grp['23']['net']) . '</P_13_1>';
             $xml[] = '    <P_14_1>' . $this->fmtAmount($grp['23']['vat']) . '</P_14_1>';
-            // P_14_1W – VAT w PLN przy fakturach walutowych – można dodać osobno.
+            // P_14_1W – VAT przeliczony na PLN (wymagane przy walutach obcych, art. 31a uVAT)
+            if ($isForeign && $grp['23']['vat'] !== 0.0) {
+                $xml[] = '    <P_14_1W>' . $this->fmtAmount(round($grp['23']['vat'] * $fxRate, 2)) . '</P_14_1W>';
+            }
         }
 
         // P_13_2 / P_14_2 – stawka 8/7%
         if ($grp['8']['net'] !== 0.0) {
             $xml[] = '    <P_13_2>' . $this->fmtAmount($grp['8']['net']) . '</P_13_2>';
             $xml[] = '    <P_14_2>' . $this->fmtAmount($grp['8']['vat']) . '</P_14_2>';
-            // P_14_2W – VAT w PLN przy fakturach walutowych – opcja.
+            if ($isForeign && $grp['8']['vat'] !== 0.0) {
+                $xml[] = '    <P_14_2W>' . $this->fmtAmount(round($grp['8']['vat'] * $fxRate, 2)) . '</P_14_2W>';
+            }
         }
 
         // P_13_3 / P_14_3 – stawka 5%
         if ($grp['5']['net'] !== 0.0) {
             $xml[] = '    <P_13_3>' . $this->fmtAmount($grp['5']['net']) . '</P_13_3>';
             $xml[] = '    <P_14_3>' . $this->fmtAmount($grp['5']['vat']) . '</P_14_3>';
-            // P_14_3W – VAT w PLN przy fakturach walutowych – opcja.
+            if ($isForeign && $grp['5']['vat'] !== 0.0) {
+                $xml[] = '    <P_14_3W>' . $this->fmtAmount(round($grp['5']['vat'] * $fxRate, 2)) . '</P_14_3W>';
+            }
         }
 
         // P_13_4 / P_14_4 / P_14_4W – ryczałt dla taksówek osobowych
@@ -7479,7 +8238,14 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     }
 
     // --- po korekcie ---
-    foreach ($items as $it) {
+    // Uzupełnij brakujące pozycje "po" oryginalnymi (niezmienione pozycje w korekcie kursu/ilości)
+    $effectiveItems = array_values($items);
+    foreach (array_values($origItems) as $i => $origIt) {
+        if (!isset($effectiveItems[$i])) {
+            $effectiveItems[$i] = $origIt;
+        }
+    }
+    foreach ($effectiveItems as $it) {
         $rate     = isset($it->vat) ? (float)$it->vat->rate : 0.0;
         $vatName  = strtolower(trim((string)($it->vat->name ?? '')));
         $net      = (float)($it->netto ?? 0.0);
@@ -7526,17 +8292,47 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     $dnpIINet = $grpAfter['np_ii']['net'] - $grpBefore['np_ii']['net'];
     $dooNet   = $grpAfter['oo']['net']    - $grpBefore['oo']['net'];
 
-    if ($d23net !== 0.0) {
+    $corrFxRate   = max(0.0001, (float)($inv->currency_exchange ?? 1.0));
+    $origFxRate   = max(0.0001, (float)($inv->currency_rate_before_corr ?? $corrFxRate));
+    $corrForeign  = (strtoupper(trim((string)($inv->currency ?? 'PLN'))) !== 'PLN');
+    $rateChanged  = $corrForeign && (abs($corrFxRate - $origFxRate) >= 0.0001);
+
+    // Dla każdej stawki: emituj blok gdy EUR-owa różnica ≠ 0 LUB gdy kurs się zmienił i jest VAT.
+    // XSD: sekwencja P_13_x + P_14_x + P_14_xW jest opcjonalna jako całość (minOccurs=0),
+    // ale gdy się pojawia P_13_x i P_14_x są wymagane — P_14_xW opcjonalne.
+    // Różnica PLN = VAT_po × kurs_korekty − VAT_przed × kurs_oryginału.
+    $emit23 = $d23net !== 0.0 || ($rateChanged && $grpAfter['23']['vat'] != 0.0);
+    if ($emit23) {
         $xml[] = '    <P_13_1>' . $this->fmtAmount($d23net) . '</P_13_1>';
         $xml[] = '    <P_14_1>' . $this->fmtAmount($d23vat) . '</P_14_1>';
+        if ($corrForeign) {
+            $d23vatPln = round($grpAfter['23']['vat'] * $corrFxRate, 2) - round($grpBefore['23']['vat'] * $origFxRate, 2);
+            if (abs($d23vatPln) >= 0.01) {
+                $xml[] = '    <P_14_1W>' . $this->fmtAmount($d23vatPln) . '</P_14_1W>';
+            }
+        }
     }
-    if ($d8net !== 0.0) {
+    $emit8 = $d8net !== 0.0 || ($rateChanged && $grpAfter['8']['vat'] != 0.0);
+    if ($emit8) {
         $xml[] = '    <P_13_2>' . $this->fmtAmount($d8net) . '</P_13_2>';
         $xml[] = '    <P_14_2>' . $this->fmtAmount($d8vat) . '</P_14_2>';
+        if ($corrForeign) {
+            $d8vatPln = round($grpAfter['8']['vat'] * $corrFxRate, 2) - round($grpBefore['8']['vat'] * $origFxRate, 2);
+            if (abs($d8vatPln) >= 0.01) {
+                $xml[] = '    <P_14_2W>' . $this->fmtAmount($d8vatPln) . '</P_14_2W>';
+            }
+        }
     }
-    if ($d5net !== 0.0) {
+    $emit5 = $d5net !== 0.0 || ($rateChanged && $grpAfter['5']['vat'] != 0.0);
+    if ($emit5) {
         $xml[] = '    <P_13_3>' . $this->fmtAmount($d5net) . '</P_13_3>';
         $xml[] = '    <P_14_3>' . $this->fmtAmount($d5vat) . '</P_14_3>';
+        if ($corrForeign) {
+            $d5vatPln = round($grpAfter['5']['vat'] * $corrFxRate, 2) - round($grpBefore['5']['vat'] * $origFxRate, 2);
+            if (abs($d5vatPln) >= 0.01) {
+                $xml[] = '    <P_14_3W>' . $this->fmtAmount($d5vatPln) . '</P_14_3W>';
+            }
+        }
     }
 
     $sumGrossDiff = $sumGrossAfter - $sumGrossBefore;
@@ -7549,31 +8345,33 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     $this->emitIfNotNull($xml, 'P_13_5', $inv->p_13_5 ?? null);
     $this->emitIfNotNull($xml, 'P_14_5', $inv->p_14_5 ?? null);
 
-    // P_13_6_1 – 0% KR (diff z pozycji + ew. ręczne)
-    $c13_6_1 = $d0kr    ?: ($inv->p_13_6_1 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_1', $c13_6_1 ?: null);
-    // P_13_6_2 – 0% WDT
-    $c13_6_2 = $d0wdt   ?: ($inv->p_13_6_2 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_2', $c13_6_2 ?: null);
-    // P_13_6_3 – 0% eksport (0 EX)
-    $c13_6_3 = $d0ex    ?: ($inv->p_13_6_3 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_3', $c13_6_3 ?: null);
+    // Emituj P_13_x gdy różnica != 0, LUB gdy dana grupa miała pozycje (różnica 0 jest poprawna
+    // dla korekty kursu walutowego — pole musi być obecne jeśli grupa istnieje).
+    // Fallback na wartość ręczną ($inv->p_13_x) gdy brak pozycji z rachunku.
+    $korEmit = static function(
+        array &$xml, string $tag, float $diff,
+        float $netBefore, float $netAfter,
+        ?float $manual, callable $fmt
+    ): void {
+        $hasGroup = ($netBefore != 0.0 || $netAfter != 0.0);
+        if ($hasGroup) {
+            $xml[] = "    <{$tag}>" . $fmt($diff) . "</{$tag}>";
+        } elseif ($diff != 0.0) {
+            $xml[] = "    <{$tag}>" . $fmt($diff) . "</{$tag}>";
+        } elseif ($manual !== null) {
+            $xml[] = "    <{$tag}>" . $fmt($manual) . "</{$tag}>";
+        }
+    };
+    $fmtA = fn(float $v) => $this->fmtAmount($v);
 
-    // P_13_7 – sprzedaż zwolniona (zw.)
-    $c13_7 = $dzwNet   ?: ($inv->p_13_7 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_7', $c13_7 ?: null);
+    $korEmit($xml, 'P_13_6_1', $d0kr,    $grpBefore['0kr']['net'],   $grpAfter['0kr']['net'],   $inv->p_13_6_1 ?? null, $fmtA);
+    $korEmit($xml, 'P_13_6_2', $d0wdt,   $grpBefore['0wdt']['net'],  $grpAfter['0wdt']['net'],  $inv->p_13_6_2 ?? null, $fmtA);
+    $korEmit($xml, 'P_13_6_3', $d0ex,    $grpBefore['0ex']['net'],   $grpAfter['0ex']['net'],   $inv->p_13_6_3 ?? null, $fmtA);
+    $korEmit($xml, 'P_13_7',   $dzwNet,  $grpBefore['zw']['net'],    $grpAfter['zw']['net'],    $inv->p_13_7   ?? null, $fmtA);
+    $korEmit($xml, 'P_13_8',   $dnpINet, $grpBefore['np_i']['net'],  $grpAfter['np_i']['net'],  $inv->p_13_8   ?? null, $fmtA);
+    $korEmit($xml, 'P_13_9',   $dnpIINet,$grpBefore['np_ii']['net'], $grpAfter['np_ii']['net'], $inv->p_13_9   ?? null, $fmtA);
+    $korEmit($xml, 'P_13_10',  $dooNet,  $grpBefore['oo']['net'],    $grpAfter['oo']['net'],    $inv->p_13_10  ?? null, $fmtA);
 
-    // P_13_8 – dostawa/usługi poza terytorium kraju (np I)
-    $c13_8 = $dnpINet  ?: ($inv->p_13_8 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_8', $c13_8 ?: null);
-
-    // P_13_9 – usługi art. 100 ust. 1 pkt 4 UE (np II)
-    $c13_9 = $dnpIINet ?: ($inv->p_13_9 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_9', $c13_9 ?: null);
-
-    // P_13_10 – odwrotne obciążenie (oo)
-    $c13_10 = $dooNet ?: ($inv->p_13_10 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_10', $c13_10 ?: null);
     $this->emitIfNotNull($xml, 'P_13_11', $inv->p_13_11 ?? null);
 
     return [$xml, $sumGrossDiff];
@@ -7831,9 +8629,11 @@ private function buildLinesXml(Invoice $inv, array $items): array
             $xml = array_merge($xml, $this->buildSingleLineXml($origItems[$i], $rowNo, true));
         }
 
-        // stan po
+        // stan po — jeśli brak pozycji "po", użyj pozycji "przed" (element niezmieniony w korekcie)
         if (isset($items[$i])) {
             $xml = array_merge($xml, $this->buildSingleLineXml($items[$i], $rowNo, false));
+        } elseif (isset($origItems[$i])) {
+            $xml = array_merge($xml, $this->buildSingleLineXml($origItems[$i], $rowNo, false));
         }
     }
 
@@ -8030,18 +8830,40 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <FormaPlatnosci>' . $this->esc($paymentMethod) . '</FormaPlatnosci>';
 
         $seller      = $inv->invoice_company_detail ?? null;
-        $rb          = trim((string)($seller?->bank_account ?? ''));
-        $bankName    = trim((string)($seller?->bank_name ?? ''));
-        $bankDesc    = trim((string)($seller?->bank_desc ?? ''));
-        $swift       = trim((string)($seller?->swift ?? ''));
-        $bankCoresp  = trim((string)($seller?->bank_correspondent ?? ''));
 
-        if ($rb !== '' || $bankName !== '' || $bankDesc !== '' || $swift !== '') {
+        // Wiele rachunków bankowych — z JSON snapshot; fallback na legacy pojedynczy
+        $xmlBankAccounts = [];
+        $rawBankJson = trim((string)($seller?->bank_accounts_json ?? ''));
+        if ($rawBankJson !== '') {
+            $decoded = json_decode($rawBankJson, true);
+            if (is_array($decoded) && !empty($decoded)) {
+                $xmlBankAccounts = $decoded;
+            }
+        }
+        if (empty($xmlBankAccounts)) {
+            // legacy — jeden rachunek z pól bezpośrednich
+            $xmlBankAccounts = [[
+                'iban'               => trim((string)($seller?->bank_account ?? '')),
+                'bank_name'          => trim((string)($seller?->bank_name ?? '')),
+                'bank_desc'          => trim((string)($seller?->bank_desc ?? '')),
+                'swift'              => trim((string)($seller?->swift ?? '')),
+                'bank_correspondent' => trim((string)($seller?->bank_correspondent ?? '')),
+            ]];
+        }
+
+        foreach ($xmlBankAccounts as $__ba) {
+            $rb         = trim((string)($__ba['iban'] ?? ''));
+            $bankName   = trim((string)($__ba['bank_name'] ?? ''));
+            $bankDesc   = trim((string)($__ba['bank_desc'] ?? ''));
+            $swift      = trim((string)($__ba['swift'] ?? ''));
+            $bankCoresp = trim((string)($__ba['bank_correspondent'] ?? ''));
+            if ($rb === '' && $bankName === '' && $bankDesc === '' && $swift === '') {
+                continue;
+            }
             $xml[] = '      <RachunekBankowy>';
             if ($rb !== '') {
                 $xml[] = '        <NrRB>' . $this->esc($rb) . '</NrRB>';
             }
-            // SWIFT — po NrRB, przed NazwaBanku (per XSD order)
             if ($swift !== '') {
                 $xml[] = '        <SWIFT>' . $this->esc($swift) . '</SWIFT>';
             }

@@ -477,6 +477,7 @@ $stateLabels = [
             <th class="col-number"><?= $this->Paginator->sort('fullnumber', 'Numer') ?></th>
             <th class="col-type"><?= $this->Paginator->sort('type', 'Typ') ?></th>
             <th class="col-date"><?= $this->Paginator->sort('date', 'Data wystawienia') ?></th>
+            <th class="col-sent text-center" title="Wysłano do klienta"><i class="ri-mail-check-line"></i></th>
             <th class="text-end col-amount"><?= $this->Paginator->sort('total', 'Kwota') ?></th>
             <th class="col-paystate"><?= $this->Paginator->sort('paymentstate', 'Status płatności') ?></th>
             <th class="col-paydate"><?= $this->Paginator->sort('paymentdate', 'Termin płatności') ?></th>
@@ -494,7 +495,17 @@ $stateLabels = [
             $__invType       = (string)($inv->type ?? '');
             $__ksefExempt    = in_array($__invType, ['proforma','novat','rental'], true);
           ?>
-          <tr class="invoice-list">
+          <?php
+            $__fxRate     = (float)($inv->currency_exchange ?? 0);
+            $__fxCurrency = strtoupper((string)($inv->currency ?? 'PLN'));
+            $__fxDate     = !empty($inv->currency_date)
+                ? ($inv->currency_date instanceof \DateTimeInterface
+                    ? $inv->currency_date->format('Y-m-d')
+                    : substr((string)$inv->currency_date, 0, 10))
+                : '';
+            $__hasFx = $__fxCurrency !== 'PLN' && $__fxRate > 0 && $__fxDate !== '';
+          ?>
+          <tr class="invoice-list"<?= $__hasFx ? ' data-fx-id="' . h($inv->id) . '" data-fx-currency="' . h($__fxCurrency) . '" data-fx-date="' . h($__fxDate) . '" data-fx-rate="' . h($__fxRate) . '"' : '' ?>>
             <td class="col-select">
               <input type="checkbox" class="form-check-input invoice-checkbox"
                 name="selected[]"
@@ -713,6 +724,37 @@ $stateLabels = [
               <?= $inv->date?->format('d.m.Y') ?>
               <br><small class="text-muted">Utworzona: <?= $inv->created?->format('d.m.Y H:i') ?></small>
             </td>
+            <td class="col-sent text-center" style="white-space:nowrap">
+              <?php if (!empty($inv->sent_at)): ?>
+                <span class="badge bg-success-subtle text-success border border-success-subtle sent-badge"
+                      data-id="<?= h($inv->id) ?>"
+                      title="Wysłano: <?= h(substr((string)$inv->sent_at, 0, 10)) ?><?= $inv->sent_by ? ' przez ' . h($inv->sent_by) : '' ?>"
+                      style="cursor:pointer">
+                  <i class="ri-mail-check-line me-1"></i><?= h(substr((string)$inv->sent_at, 0, 10)) ?>
+                </span>
+                <?php
+                  // Termin płatności od daty wysłania = sent_at + (paymentdate - date)
+                  if (!empty($inv->paymentdate) && !empty($inv->date)):
+                    $invDate     = $inv->date instanceof \DateTimeInterface ? $inv->date : new \DateTime((string)$inv->date);
+                    $payDate     = $inv->paymentdate instanceof \DateTimeInterface ? $inv->paymentdate : new \DateTime((string)$inv->paymentdate);
+                    $sentDate    = new \DateTime(substr((string)$inv->sent_at, 0, 10));
+                    $termDays    = (int)$invDate->diff($payDate)->days;
+                    $dueFromSent = (clone $sentDate)->modify("+{$termDays} days");
+                    $isPast      = $dueFromSent < new \DateTime('today');
+                ?>
+                <br><small class="<?= $isPast ? 'text-danger' : 'text-muted' ?>" title="Termin: wysłano + <?= $termDays ?> dni">
+                  <i class="ri-time-line"></i> <?= $dueFromSent->format('d.m.Y') ?>
+                </small>
+                <?php endif; ?>
+              <?php else: ?>
+                <span class="badge bg-light text-muted border sent-badge"
+                      data-id="<?= h($inv->id) ?>"
+                      title="Nie wysłano — kliknij aby oznaczyć"
+                      style="cursor:pointer">
+                  <i class="ri-mail-line"></i>
+                </span>
+              <?php endif; ?>
+            </td>
             <td class="text-end col-amount">
               <strong><?= $money($inv->total, $inv->currency) ?></strong>
               <?php
@@ -877,6 +919,14 @@ $stateLabels = [
                        data-url-pdf-pl="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['render' => 'pdf']]) ?>"
                        data-url-pdf-en="<?= $this->Url->build(['action' => 'printCustom', $inv->id, '?' => ['render' => 'pdf', 'lang' => 'en']]) ?>">
                       <i class="ri-file-pdf-2-line me-2"></i> PDF custom
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" class="dropdown-item btn-label"
+                       data-id="<?= h($inv->id) ?>"
+                       data-number="<?= h($inv->fullnumber ?: $inv->id) ?>"
+                       title="Etykieta pocztowa A5">
+                      <i class="ri-map-pin-2-line me-2"></i> Etykieta pocztowa
                     </a>
                   </li>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
@@ -2304,4 +2354,410 @@ function deletePayment(paymentId) {
     });
   });
 })();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- MODAL: Etykieta pocztowa                                               -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="labelModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2 border-bottom">
+        <h6 class="modal-title flex-grow-1 me-3">
+          <i class="ri-map-pin-2-line me-1"></i>Etykieta pocztowa — <span id="label-modal-number" class="fw-semibold"></span>
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Spinner ładowania -->
+        <div id="label-loading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="text-muted small mt-2">Ładowanie danych…</div>
+        </div>
+
+        <div id="label-form-wrap" class="d-none">
+
+          <!-- Alert: dokumenty tylko elektronicznie -->
+          <div id="label-electronic-alert" class="alert alert-warning d-flex gap-2 align-items-start d-none mb-3" role="alert">
+            <i class="ri-mail-forbid-line fs-5 flex-shrink-0 mt-1"></i>
+            <div>
+              <strong>Dokumenty tylko elektronicznie</strong><br>
+              <span class="small">To zlecenie jest oznaczone jako „dokumenty tylko elektronicznie". Czy na pewno chcesz wysłać dokumenty pocztą?</span>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <!-- Nadawca -->
+            <div class="col-md-6">
+              <div class="card border h-100">
+                <div class="card-header py-2 bg-light">
+                  <span class="fw-semibold small"><i class="ri-user-line me-1"></i>Nadawca</span>
+                </div>
+                <div class="card-body p-3">
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Nazwa / Firma</label>
+                    <input type="text" class="form-control form-control-sm" id="label-sender-name">
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Ulica i nr</label>
+                    <input type="text" class="form-control form-control-sm" id="label-sender-street">
+                  </div>
+                  <div class="row g-2 mb-2">
+                    <div class="col-4">
+                      <label class="form-label form-label-sm mb-1">Kod pocztowy</label>
+                      <input type="text" class="form-control form-control-sm" id="label-sender-zip">
+                    </div>
+                    <div class="col-8">
+                      <label class="form-label form-label-sm mb-1">Miejscowość</label>
+                      <input type="text" class="form-control form-control-sm" id="label-sender-city">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Kraj</label>
+                    <input type="text" class="form-control form-control-sm" id="label-sender-country" value="Polska">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Odbiorca -->
+            <div class="col-md-6">
+              <div class="card border h-100">
+                <div class="card-header py-2 bg-light">
+                  <span class="fw-semibold small"><i class="ri-user-received-line me-1"></i>Odbiorca</span>
+                </div>
+                <div class="card-body p-3">
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Nazwa / Firma</label>
+                    <input type="text" class="form-control form-control-sm" id="label-recipient-name">
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Ulica i nr</label>
+                    <input type="text" class="form-control form-control-sm" id="label-recipient-street">
+                  </div>
+                  <div class="row g-2 mb-2">
+                    <div class="col-4">
+                      <label class="form-label form-label-sm mb-1">Kod pocztowy</label>
+                      <input type="text" class="form-control form-control-sm" id="label-recipient-zip">
+                    </div>
+                    <div class="col-8">
+                      <label class="form-label form-label-sm mb-1">Miejscowość</label>
+                      <input type="text" class="form-control form-control-sm" id="label-recipient-city">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Kraj</label>
+                    <input type="text" class="form-control form-control-sm" id="label-recipient-country" value="Polska">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status wysyłki -->
+          <div class="card border mt-3">
+            <div class="card-header py-2 bg-light">
+              <span class="fw-semibold small"><i class="ri-mail-check-line me-1"></i>Status wysyłki do klienta</span>
+            </div>
+            <div class="card-body p-3">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="form-check mb-0">
+                  <input class="form-check-input" type="checkbox" id="label-sent-check">
+                  <label class="form-check-label fw-medium" for="label-sent-check">Wysłano do klienta</label>
+                </div>
+                <div id="label-sent-date-wrap" class="d-flex align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted">Data wysyłki:</label>
+                  <input type="date" class="form-control form-control-sm" id="label-sent-date" style="width:150px"
+                         value="<?= date('Y-m-d') ?>">
+                </div>
+                <div id="label-sent-by-info" class="text-muted small d-none"></div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /label-form-wrap -->
+      </div>
+      <div class="modal-footer gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-outline-primary btn-sm" id="label-save-sent-btn" disabled>
+          <i class="ri-save-line me-1"></i>Zapisz status wysyłki
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" id="label-generate-btn" disabled>
+          <i class="ri-download-2-line me-1"></i>Generuj i pobierz etykietę PDF
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var labelModalEl = document.getElementById('labelModal');
+  var labelModal   = new bootstrap.Modal(labelModalEl);
+  var currentLabelId = null;
+  var csrfToken = document.querySelector('meta[name="csrfToken"]')?.content ?? '';
+
+  // ── Otwieranie modala przez przycisk "Etykieta pocztowa" ──
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-label');
+    if (!btn) return;
+    e.preventDefault();
+    currentLabelId = btn.dataset.id;
+    document.getElementById('label-modal-number').textContent = btn.dataset.number ?? '';
+    document.getElementById('label-loading').classList.remove('d-none');
+    document.getElementById('label-form-wrap').classList.add('d-none');
+    document.getElementById('label-generate-btn').disabled = true;
+    document.getElementById('label-save-sent-btn').disabled = true;
+    labelModal.show();
+
+    fetch('/invoices/' + currentLabelId + '/label', {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.ok) { alert('Błąd: ' + (data.error || 'Nieznany błąd')); return; }
+      var l = data.label;
+      document.getElementById('label-sender-name').value    = l.sender_name    || '';
+      document.getElementById('label-sender-street').value  = l.sender_street  || '';
+      document.getElementById('label-sender-zip').value     = l.sender_zip     || '';
+      document.getElementById('label-sender-city').value    = l.sender_city    || '';
+      document.getElementById('label-sender-country').value = l.sender_country || 'Polska';
+      document.getElementById('label-recipient-name').value    = l.recipient_name    || '';
+      document.getElementById('label-recipient-street').value  = l.recipient_street  || '';
+      document.getElementById('label-recipient-zip').value     = l.recipient_zip     || '';
+      document.getElementById('label-recipient-city').value    = l.recipient_city    || '';
+      document.getElementById('label-recipient-country').value = l.recipient_country || 'Polska';
+
+      // Status wysyłki
+      var sentCheck = document.getElementById('label-sent-check');
+      sentCheck.checked = !!data.sent_at;
+      if (data.sent_at) {
+        document.getElementById('label-sent-date').value = data.sent_at.substring(0, 10);
+        document.getElementById('label-sent-by-info').textContent = data.sent_by ? 'przez: ' + data.sent_by : '';
+        document.getElementById('label-sent-by-info').classList.remove('d-none');
+      } else {
+        document.getElementById('label-sent-date').value = new Date().toISOString().substring(0, 10);
+        document.getElementById('label-sent-by-info').classList.add('d-none');
+      }
+
+      // Alert: dokumenty tylko elektronicznie
+      var alert = document.getElementById('label-electronic-alert');
+      if (data.docs_electronic_only) {
+        alert.classList.remove('d-none');
+      } else {
+        alert.classList.add('d-none');
+      }
+
+      document.getElementById('label-loading').classList.add('d-none');
+      document.getElementById('label-form-wrap').classList.remove('d-none');
+      document.getElementById('label-generate-btn').disabled = false;
+      document.getElementById('label-save-sent-btn').disabled = false;
+    })
+    .catch(function (err) {
+      alert('Błąd sieci: ' + err.message);
+    });
+  });
+
+  // ── Kliknięcie badge "Wysłano" — szybkie toggle bez otwierania modala ──
+  document.addEventListener('click', function (e) {
+    var badge = e.target.closest('.sent-badge');
+    if (!badge) return;
+    var invId = badge.dataset.id;
+    var alreadySent = badge.classList.contains('bg-success-subtle');
+    if (alreadySent) {
+      if (!confirm('Czy na pewno chcesz cofnąć oznaczenie „Wysłano do klienta"?')) return;
+    }
+    fetch('/invoices/' + invId + '/mark-sent', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: '_csrfToken=' + encodeURIComponent(csrfToken) + '&toggle=1'
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.ok) { alert('Błąd: ' + (data.error || 'Nieznany')); return; }
+      if (data.sent_at) {
+        badge.className = 'badge bg-success-subtle text-success border border-success-subtle sent-badge';
+        badge.style.cursor = 'pointer';
+        badge.title = 'Wysłano: ' + data.sent_at.substring(0, 10) + (data.sent_by ? ' przez ' + data.sent_by : '');
+        badge.innerHTML = '<i class="ri-mail-check-line me-1"></i>' + data.sent_at.substring(0, 10);
+      } else {
+        badge.className = 'badge bg-light text-muted border sent-badge';
+        badge.title = 'Nie wysłano — kliknij aby oznaczyć';
+        badge.innerHTML = '<i class="ri-mail-line"></i>';
+      }
+    })
+    .catch(function (err) { alert('Błąd sieci: ' + err.message); });
+  });
+
+  // ── Zapisz status wysyłki ──
+  document.getElementById('label-save-sent-btn').addEventListener('click', function () {
+    if (!currentLabelId) return;
+    var checked  = document.getElementById('label-sent-check').checked;
+    var sentDate = document.getElementById('label-sent-date').value;
+    var body = '_csrfToken=' + encodeURIComponent(csrfToken)
+             + '&toggle=' + (checked ? '0' : '1')
+             + (checked ? '&sent_date=' + encodeURIComponent(sentDate) : '&toggle=1');
+
+    // Jeśli odznaczamy — toggle, jeśli zaznaczamy — podaj datę
+    var isCurrentlySent = document.getElementById('label-sent-check').checked;
+    body = '_csrfToken=' + encodeURIComponent(csrfToken);
+    if (isCurrentlySent) {
+      body += '&sent_date=' + encodeURIComponent(sentDate);
+    } else {
+      body += '&toggle=1';
+    }
+
+    fetch('/invoices/' + currentLabelId + '/mark-sent', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.ok) { alert('Błąd: ' + (data.error || 'Nieznany')); return; }
+      document.getElementById('label-sent-check').checked = !!data.sent_at;
+      if (data.sent_at) {
+        document.getElementById('label-sent-date').value = data.sent_at.substring(0, 10);
+        document.getElementById('label-sent-by-info').textContent = data.sent_by ? 'przez: ' + data.sent_by : '';
+        document.getElementById('label-sent-by-info').classList.remove('d-none');
+      }
+      // Zaktualizuj badge w tabeli
+      var badge = document.querySelector('.sent-badge[data-id="' + currentLabelId + '"]');
+      if (badge) {
+        if (data.sent_at) {
+          badge.className = 'badge bg-success-subtle text-success border border-success-subtle sent-badge';
+          badge.title = 'Wysłano: ' + data.sent_at.substring(0, 10);
+          badge.innerHTML = '<i class="ri-mail-check-line me-1"></i>' + data.sent_at.substring(0, 10);
+        } else {
+          badge.className = 'badge bg-light text-muted border sent-badge';
+          badge.title = 'Nie wysłano';
+          badge.innerHTML = '<i class="ri-mail-line"></i>';
+        }
+      }
+      labelModal.hide();
+    })
+    .catch(function (err) { alert('Błąd sieci: ' + err.message); });
+  });
+
+  // ── Generuj i pobierz etykietę PDF ──
+  document.getElementById('label-generate-btn').addEventListener('click', function () {
+    if (!currentLabelId) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generowanie…';
+
+    var labelPayload = {
+      sender_name:       document.getElementById('label-sender-name').value,
+      sender_street:     document.getElementById('label-sender-street').value,
+      sender_zip:        document.getElementById('label-sender-zip').value,
+      sender_city:       document.getElementById('label-sender-city').value,
+      sender_country:    document.getElementById('label-sender-country').value,
+      recipient_name:    document.getElementById('label-recipient-name').value,
+      recipient_street:  document.getElementById('label-recipient-street').value,
+      recipient_zip:     document.getElementById('label-recipient-zip').value,
+      recipient_city:    document.getElementById('label-recipient-city').value,
+      recipient_country: document.getElementById('label-recipient-country').value,
+    };
+
+    var formBody = '_csrfToken=' + encodeURIComponent(csrfToken);
+    Object.entries(labelPayload).forEach(function([k, v]) {
+      formBody += '&label[' + encodeURIComponent(k) + ']=' + encodeURIComponent(v);
+    });
+
+    fetch('/invoices/' + currentLabelId + '/label', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: formBody
+    })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.blob();
+    })
+    .then(function (blob) {
+      var url  = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'etykieta_' + (document.getElementById('label-modal-number').textContent || currentLabelId).replace(/[\/\\]/g,'_') + '.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ri-download-2-line me-1"></i>Generuj i pobierz etykietę PDF';
+    })
+    .catch(function (err) {
+      alert('Błąd generowania PDF: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ri-download-2-line me-1"></i>Generuj i pobierz etykietę PDF';
+    });
+  });
+})();
+
+  // ── Sprawdzanie kursów walut w tle ──────────────────────────────────────────
+  (function () {
+    var rows = Array.from(document.querySelectorAll('tr[data-fx-id]'));
+    if (!rows.length) return;
+
+    var payload = rows.map(function (tr) {
+      return {
+        id:            tr.getAttribute('data-fx-id'),
+        currency:      tr.getAttribute('data-fx-currency'),
+        currency_date: tr.getAttribute('data-fx-date'),
+        stored_rate:   parseFloat(tr.getAttribute('data-fx-rate')),
+      };
+    });
+
+    var csrfMeta  = document.querySelector('meta[name="csrfToken"]') || document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+    fetch('/invoices/check-rates-batch', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ invoices: payload }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var results = data.results || {};
+      rows.forEach(function (tr) {
+        var id = tr.getAttribute('data-fx-id');
+        var r  = results[id];
+        if (!r || r.status === 'unknown') return;
+
+        var cell = tr.querySelector('td.col-number');
+        if (!cell) return;
+
+        var rate  = parseFloat(tr.getAttribute('data-fx-rate')).toFixed(4);
+        var nbp   = Number(r.nbp_rate).toFixed(4);
+        var badge = document.createElement('span');
+        badge.style.cssText = 'display:inline-block;margin-left:4px';
+
+        if (r.status === 'mismatch') {
+          var sign = Number(r.diff) > 0 ? '+' : '';
+          badge.innerHTML = '<span class="badge bg-warning text-dark" style="font-size:.65rem;cursor:default"'
+            + ' data-bs-toggle="tooltip"'
+            + ' data-bs-title="Kurs niezgodny z NBP! Zapisany: ' + rate
+            + ', NBP tabela ' + (r.table||'?') + ' (' + (r.nbp_date||'') + '): ' + nbp
+            + ', różnica: ' + (Number(r.diff) > 0 ? '+' : '') + Number(r.diff).toFixed(4) + '">'
+            + '<i class="ri-exchange-funds-line"></i> błędny kurs</span>';
+        } else {
+          badge.innerHTML = '<span class="text-muted" style="font-size:.75rem;cursor:default"'
+            + ' data-bs-toggle="tooltip"'
+            + ' data-bs-title="Kurs zgodny z NBP, tabela ' + (r.table||'?') + ' (' + (r.nbp_date||'') + '): ' + nbp + '">'
+            + '<i class="ri-checkbox-circle-line"></i> ' + nbp + '</span>';
+        }
+
+        cell.appendChild(badge);
+        var tooltipEl = badge.querySelector('[data-bs-toggle="tooltip"]');
+        if (tooltipEl && window.bootstrap) new bootstrap.Tooltip(tooltipEl);
+      });
+    })
+    .catch(function () { /* cicho ignoruj */ });
+  })();
 </script>

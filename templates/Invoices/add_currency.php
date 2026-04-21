@@ -446,13 +446,11 @@ $gtuSelectHtml .= '</select>';
             */ ?>
             <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
-            <label class="form-label">Rachunek na fakturze</label>
-            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"></select>
-            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden']) ?>
-            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden']) ?>
-            <small class="text-muted d-block mt-1">
-              Rachunki firmy dodasz w <em>Ustawienia → Moja firma → Rachunki bankowe</em> lub bezpośrednio tutaj przyciskiem „Dodaj rachunek”.
-            </small>
+            <label class=”form-label”>Rachunki bankowe na fakturze</label>
+            <div class=”alert alert-info py-2 px-3 mb-1” style=”font-size:0.875rem”>
+              <i class=”ri-bank-line me-1”></i>
+              Na fakturze automatycznie pojawią się <strong>wszystkie rachunki bankowe</strong> zdefiniowane w <em>Ustawienia → Moja firma → Rachunki bankowe</em>.
+            </div>
 
             <?= $this->Form->control('issuer', [
               'label' => 'Wystawca (issuer)', 'class' => 'form-control',
@@ -728,7 +726,7 @@ $gtuSelectHtml .= '</select>';
                <tr>
   <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
-    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.45% od brutto">
+    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.22% od brutto">
       <i class="ri-gas-station-line me-1"></i>Fuel surcharge
     </button>
   </td>
@@ -1659,6 +1657,7 @@ $(function () {
   var nbpCurrenciesUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"nbpCurrencies","_ext"=>"json"]) ?>';
   var seriesNextNumberUrl = '<?= $this->Url->build(['controller'=>'InvoiceSeries','action'=>'nextNumber','_ext'=>'json']) ?>';
   var isEdit = <?= json_encode($__isEdit ?? false) ?>;
+  var orderFxRate = <?= json_encode((float)($invoice->fx_rate ?? 0)) ?>;
   var editPrefill = {
     contractor: <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
     items: <?= json_encode($__prefillItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
@@ -2529,14 +2528,14 @@ $('#gus-fetch-btn').on('click', function(){
     idx++;
   });
 
-  // ====== FUEL SURCHARGE (7.45% od brutto, stawka: nie podl. UE) ======
+  // ====== FUEL SURCHARGE (7.22% od brutto, stawka: nie podl. UE) ======
   $('#btn-fuel-surcharge').on('click', function () {
     var grossBase = toNum($('#sum-gross').val(), 0);
     if (grossBase <= 0) {
       alert('Najpierw dodaj pozycje — brutto wynosi 0.');
       return;
     }
-    var surchargeRate = 0.0745;
+    var surchargeRate = 0.0722;
     // Przy "nie podlega" stawka = 0%, więc netto = brutto
     var surchargeNetto = +(grossBase * surchargeRate).toFixed(2);
 
@@ -2561,7 +2560,7 @@ $('#gus-fetch-btn').on('click', function(){
     $('#btn-add-item').trigger('click');
     var $tr = getItemRows().last();
     prefillRow($tr, {
-      name: 'fuel surcharge 7.45%',
+      name: 'fuel surcharge 7.22%',
       quantity: 1,
       unit: 'szt.',
       price: surchargeNetto,
@@ -2949,32 +2948,57 @@ $('#gus-fetch-btn').on('click', function(){
 
   async function fetchNbpRate(forceOverwrite){
     var cur = ($currency.val()||'PLN').toUpperCase();
+    var warnId = 'fx-rate-warn';
+    $('#'+warnId).remove();
     if (cur === 'PLN') { $fxInput.val(''); $fxRateDate.val(''); $fxRateDateHint.text(''); _fxAutoDate = ''; return; }
     // Nie nadpisuj jeśli kurs jest już wpisany (pre-fill ze zlecenia), chyba że forceOverwrite
-    if (!forceOverwrite && $fxInput.val()) return;
+    if (!forceOverwrite && $fxInput.val() && orderFxRate <= 0) return;
     try {
       var params = new URLSearchParams({ currency: cur, date: $issueDate.val()||'', sold_date: $soldDate.val()||'' });
       var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept':'application/json' }});
       var json = await res.json();
       if (json && json.success && json.rate){
-        $fxInput.val(Number(json.rate).toFixed(4));
+        var nbp = Number(json.rate);
         _fxAutoDate = json.effectiveDate || '';
-        // Wstaw datę kursu automatycznie (jeśli pole puste lub auto-refresh)
-        if (!$fxRateDate.val() || forceOverwrite) $fxRateDate.val(_fxAutoDate);
-        $fxRateDateHint.text('');
-        // store meta for preview
-        try { $fxInput.data('rateDate', _fxAutoDate); } catch(_) {}
-        // Optional: show a small hint
         var hintId = 'fx-rate-hint';
         var $hint = $('#'+hintId);
-        var text = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+_fxAutoDate+': 1 '+cur+' = '+Number(json.rate).toFixed(4)+' PLN';
-        if ($hint.length) { $hint.text(text); } else { $fxGroup.after('<small id="'+hintId+'" class="text-muted d-block mt-1">'+text+'</small>'); }
+        var hintText = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+_fxAutoDate+': 1 '+cur+' = '+nbp.toFixed(4)+' PLN';
+        if ($hint.length) { $hint.text(hintText); } else { $fxGroup.after('<small id="'+hintId+'" class="text-muted d-block mt-1">'+hintText+'</small>'); }
+
+        // Kurs ze zlecenia — porównaj, nie nadpisuj
+        if (orderFxRate > 0 && !forceOverwrite) {
+          var stored = Number($fxInput.val()) || orderFxRate;
+          var diff = stored - nbp;
+          if (Math.abs(diff) >= 0.0001) {
+            var warnHtml = '<div id="'+warnId+'" class="alert alert-warning py-1 px-2 mt-1 d-flex align-items-center gap-2" style="font-size:.85rem">'
+              + '<i class="ri-alert-line flex-shrink-0"></i>'
+              + '<span>Kurs ze zlecenia (<strong>'+stored.toFixed(4)+'</strong>) różni się od kursu NBP na ten dzień (<strong>'+nbp.toFixed(4)+'</strong>).'
+              + ' Różnica: <strong>'+(diff>0?'+':'')+diff.toFixed(4)+'</strong>.</span>'
+              + ' <button type="button" class="btn btn-sm btn-outline-warning ms-auto py-0 px-2" id="fx-use-nbp">Użyj NBP</button>'
+              + '</div>';
+            $('#'+hintId).after(warnHtml);
+            $('#fx-use-nbp').on('click', function(){
+              $fxInput.val(nbp.toFixed(4));
+              if (!$fxRateDate.val() || $fxRateDate.val() === _fxAutoDate) $fxRateDate.val(_fxAutoDate);
+              orderFxRate = 0;
+              $('#'+warnId).remove();
+              if (typeof updatePlnPreview === 'function') updatePlnPreview();
+              if (typeof mirrorSums === 'function') mirrorSums();
+            });
+          }
+          return; // nie nadpisuj pola kursu
+        }
+
+        $fxInput.val(nbp.toFixed(4));
+        if (!$fxRateDate.val() || forceOverwrite) $fxRateDate.val(_fxAutoDate);
+        $fxRateDateHint.text('');
+        try { $fxInput.data('rateDate', _fxAutoDate); } catch(_) {}
         if (typeof updatePlnPreview === 'function') updatePlnPreview();
         if (typeof mirrorSums === 'function') mirrorSums();
       }
     } catch (e) { /* ignore */ }
   }
-  $currency.on('change', function(){ fetchNbpRate(true); });
+  $currency.on('change', function(){ orderFxRate = 0; fetchNbpRate(true); });
   $issueDate.on('change', function(){ fetchNbpRate(true); });
   $soldDate.on('change', function(){ fetchNbpRate(true); });
   setTimeout(function(){ fetchNbpRate(false); }, 0);
@@ -3091,79 +3115,6 @@ $('#gus-fetch-btn').on('click', function(){
         $currency.append(opt).trigger('change');
       }
     }
-  }
-
-  // ====== RACHUNEK: Select2 + toolbar + prefill ======
-  if ($.fn && $.fn.select2) {
-    var $bankSel = $('#bank-account-select').select2({
-      placeholder: $('#bank-account-select').data('placeholder') || 'Wybierz rachunek lub wyszukaj',
-      allowClear: true,
-      width: '100%',
-      ajax: {
-        url: bankSearchUrl,
-        dataType: 'json', delay: 200, cache: true,
-        data: function (params) { return { q: (params.term||''), limit: 20, currency: $('#currency').val()||'' }; },
-        processResults: function (data) {
-          var items = $.map((data && data.results) || data || [], function (r) {
-            var label = r.text || (r.bank_name ? (r.bank_name + ' ' + (r.iban||'')) : (r.iban||''));
-            return $.extend({ id: r.id, text: label }, r);
-          });
-          // jeśli brak wyboru – spróbuj zaznaczyć domyślny przy pierwszym załadowaniu wyników
-          setTimeout(function(){
-            var $sel = $('#bank-account-select');
-            if (!$sel.val() && items.length){
-              var def = items.find(function(i){ return i.is_default; });
-              if (def){ 
-                var opt=new Option(def.text, def.id, true, true); 
-                $sel.append(opt).trigger('change');
-                // ustaw hiddeny (snapshot IBAN i ID)
-                $('#bank-account-hidden').val(def.iban || def.text || '').trigger('change');
-                $('#bank-account-id-hidden').val(def.id || '').trigger('change');
-              }
-            }
-          },0);
-          return { results: items };
-        }
-      },
-      minimumInputLength: 0,
-      escapeMarkup: function (m) { return m; },
-      templateResult: function (d) { if(!d.id) return d.text; var meta=[]; if(d.currency) meta.push('<span class="text-muted small">'+d.currency+'</span>'); return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0]; }
-    })
-    .on('select2:open', function(){ injectBankToolbar(); })
-    .on('select2:select', function(e){
-      var d = e.params && e.params.data || {};
-      $('#bank-account-hidden').val(d.iban || d.text || '').trigger('change');
-      $('#bank-account-id-hidden').val(d.id || '').trigger('change');
-    })
-    .on('select2:clear', function(){
-      $('#bank-account-hidden').val('').trigger('change');
-      $('#bank-account-id-hidden').val('').trigger('change');
-    });
-
-    function injectBankToolbar(){
-      var $dd = $('.select2-container--open .select2-dropdown');
-      if (!$dd.length || $dd.find('.bank-toolbar').length) return;
-      var $search = $dd.find('.select2-search--dropdown');
-      var toolbar = $(
-        '<div class="bank-toolbar p-2 border-bottom bg-white d-flex justify-content-between align-items-center">'+
-          '<button type="button" class="btn btn-sm btn-outline-primary s2-add-bank"><i class="ri-add-line"></i> Dodaj rachunek</button>'+
-          '<span class="text-muted small">Brak na liście? Utwórz nowy.</span>'+
-        '</div>'
-      );
-      $search.after(toolbar);
-      $dd.on('mousedown', '.s2-add-bank', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#bank-account-select').select2('close');}catch(_){}; $('#bank-account-create-modal').modal('show'); });
-    }
-
-    // Prefill default on initial load (no search term)
-    // Trigger a silent query to load first results and pick default if available
-    setTimeout(function(){
-      var $sel = $('#bank-account-select');
-      if (!$sel.val()) {
-        // Force an initial fetch by opening and closing programmatically
-        try { $sel.select2('open'); } catch(_){ }
-        setTimeout(function(){ try { $sel.select2('close'); } catch(_){ } }, 0);
-      }
-    }, 0);
   }
 
   // Handlery terminu płatności (połączony preset + data)

@@ -236,6 +236,7 @@ $quickFilters = [
 <!-- Panel filtrów -->
 <form method="get" id="orders-filter-form">
 <input type="hidden" name="limit" value="<?= $limit ?>">
+<input type="hidden" name="currency" id="filter-currency" value="<?= h($currency) ?>">
 <div class="card custom-card mb-3">
   <div class="card-body p-2">
 
@@ -290,8 +291,9 @@ $quickFilters = [
         </label>
         <div class="d-flex gap-1">
           <?php foreach (['EUR', 'PLN'] as $cur): ?>
-          <button type="submit" name="currency" value="<?= $currency === $cur ? '' : $cur ?>"
-                  class="btn btn-sm <?= $currency === $cur ? 'btn-primary' : 'btn-outline-secondary' ?>">
+          <button type="button"
+                  class="btn btn-sm currency-filter-btn <?= $currency === $cur ? 'btn-primary' : 'btn-outline-secondary' ?>"
+                  data-value="<?= $cur ?>">
             <?= $cur ?>
           </button>
           <?php endforeach; ?>
@@ -613,7 +615,8 @@ $quickFilters = [
                 </button>
                 <?php endif; ?>
                 <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>"
-                   class="btn btn-xs btn-outline-secondary py-0 px-1" title="Szczegóły">
+                   class="btn btn-xs btn-outline-secondary py-0 px-1 btn-view-modal" title="Podgląd"
+                   data-order-id="<?= $order->id ?>">
                     <i class="ri-eye-line"></i>
                 </a>
                 <?php if (!empty($order->invoice_id)): ?>
@@ -659,6 +662,22 @@ $quickFilters = [
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    // ===== FILTRY: waluta =====
+    const currencyHidden = document.getElementById('filter-currency');
+    document.querySelectorAll('.currency-filter-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const val = this.dataset.value;
+            // toggle: kliknięcie aktywnego kasuje filtr
+            const newVal = currencyHidden.value === val ? '' : val;
+            currencyHidden.value = newVal;
+            document.querySelectorAll('.currency-filter-btn').forEach(function (b) {
+                b.classList.toggle('btn-primary', b.dataset.value === newVal && newVal !== '');
+                b.classList.toggle('btn-outline-secondary', b.dataset.value !== newVal || newVal === '');
+            });
+            document.getElementById('orders-filter-form').submit();
+        });
+    });
 
     // ===== SYNC =====
     const btnSync   = document.getElementById('btn-sync-orders');
@@ -973,6 +992,98 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- MODAL: Podgląd zlecenia (fullscreen)                                   -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="orderViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header py-2 border-bottom">
+        <h6 class="modal-title flex-grow-1 text-truncate me-3" id="orderViewModalTitle">
+          <i class="ri-eye-line me-1"></i>Podgląd zlecenia
+        </h6>
+        <a href="#" id="orderViewModalLink" class="btn btn-sm btn-outline-primary me-2 flex-shrink-0" target="_blank" title="Otwórz w nowej karcie">
+          <i class="ri-external-link-line me-1"></i>Pełny widok
+        </a>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body p-0" id="orderViewModalBody" style="overflow-y:auto">
+        <div class="d-flex justify-content-center align-items-center" style="min-height:300px">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Ładowanie...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    const viewModalEl = document.getElementById('orderViewModal');
+    const viewModal   = new bootstrap.Modal(viewModalEl);
+    const modalBody   = document.getElementById('orderViewModalBody');
+    const modalTitle  = document.getElementById('orderViewModalTitle');
+    const modalLink   = document.getElementById('orderViewModalLink');
+    const baseViewUrl = '<?= $this->Url->build(['action' => 'viewModal', '__ID__']) ?>'.replace('__ID__', '');
+    const fullViewUrl = '<?= $this->Url->build(['action' => 'view', '__ID__']) ?>'.replace('__ID__', '');
+    let currentOrderId = null;
+
+    // Otwórz modal po kliknięciu przycisku "eye"
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-view-modal');
+        if (!btn) return;
+        e.preventDefault();
+
+        const orderId = btn.dataset.orderId;
+        if (!orderId) return;
+        currentOrderId = orderId;
+
+        // Pokaż spinner
+        modalBody.innerHTML = '<div class="d-flex justify-content-center align-items-center" style="min-height:300px">'
+            + '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Ładowanie...</span></div></div>';
+        modalTitle.innerHTML = '<i class="ri-eye-line me-1"></i>Ładowanie…';
+        modalLink.href = fullViewUrl + orderId;
+        viewModal.show();
+
+        // Fetch content
+        fetch(baseViewUrl + orderId, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.text();
+        })
+        .then(function (html) {
+            modalBody.innerHTML = '<div class="p-3">' + html + '</div>';
+            modalTitle.innerHTML = '<i class="ri-eye-line me-1"></i>Podgląd zlecenia';
+
+            // Uruchom wbudowane skrypty z załadowanego HTML
+            modalBody.querySelectorAll('script').forEach(function (oldScript) {
+                const newScript = document.createElement('script');
+                if (oldScript.src) {
+                    newScript.src = oldScript.src;
+                } else {
+                    newScript.textContent = oldScript.textContent;
+                }
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+        })
+        .catch(function (err) {
+            modalBody.innerHTML = '<div class="alert alert-danger m-4">'
+                + '<i class="ri-error-warning-line me-2"></i>Nie udało się załadować zlecenia: ' + err.message
+                + '</div>';
+        });
+    });
+
+    // Wyczyść zawartość przy zamknięciu
+    viewModalEl.addEventListener('hidden.bs.modal', function () {
+        modalBody.innerHTML = '';
+        currentOrderId = null;
+    });
+})();
+</script>
+
 <!-- GLightbox — CMR na liście zleceń -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 <script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
@@ -990,16 +1101,38 @@ document.addEventListener('DOMContentLoaded', function () {
         const elements = files.map(f => {
             const isImg = (f.mime || '').startsWith('image/');
             const url   = '/' + f.path.replace(/^\//, '');
+
+            if (isImg) {
+                return {
+                    href:        url,
+                    type:        'image',
+                    title:       f.name + (f.label ? ' — ' + f.label : ''),
+                    description: f.label || '',
+                };
+            }
+
+            // PDF — inline <object> tak jak w view
+            const divId = 'pdf-inline-cmr-' + f.id;
+            if (!document.getElementById(divId)) {
+                const div = document.createElement('div');
+                div.id = divId;
+                div.style.display = 'none';
+                div.innerHTML = '<object data="' + url + '" type="application/pdf" style="width:90vw;height:82vh;display:block">'
+                    + '<p class="p-3">Twoja przeglądarka nie obsługuje podglądu PDF. <a href="' + url + '" target="_blank">Pobierz plik</a></p>'
+                    + '</object>';
+                document.body.appendChild(div);
+            }
+
             return {
-                href:        isImg ? url : url,
-                type:        isImg ? 'image' : 'iframe',
+                href:        '#' + divId,
+                type:        'inline',
                 title:       f.name + (f.label ? ' — ' + f.label : ''),
                 description: f.label || '',
             };
         });
 
         if (cmrLightbox) cmrLightbox.destroy();
-        cmrLightbox = GLightbox({ elements, touchNavigation: true, loop: elements.length > 1, zoomable: true });
+        cmrLightbox = GLightbox({ elements, touchNavigation: true, loop: elements.length > 1, zoomable: true, width: '92vw', height: '88vh' });
         cmrLightbox.open();
     });
 })();

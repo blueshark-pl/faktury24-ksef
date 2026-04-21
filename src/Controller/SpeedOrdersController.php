@@ -330,6 +330,72 @@ class SpeedOrdersController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // Szczegóły zlecenia — AJAX (bez layoutu, do modala)
+    // -------------------------------------------------------------------------
+    public function viewModal(int $id): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->get($id);
+        $rawData = null;
+        if (!empty($order->raw_json)) {
+            $rawData = json_decode($order->raw_json, true);
+        }
+
+        $CostInvoiceOrders = $this->fetchTable('CostInvoiceOrders');
+        $pivotRows = $CostInvoiceOrders->find()
+            ->where(['speed_order_id' => $id])
+            ->all()
+            ->map(fn($r) => $r->cost_invoice_id)
+            ->toArray();
+
+        $costInvoices = [];
+        if (!empty($pivotRows)) {
+            $costInvoices = $this->fetchTable('CostInvoices')
+                ->find()
+                ->where(['id IN' => $pivotRows])
+                ->orderByDesc('issue_date')
+                ->all()
+                ->toArray();
+        }
+
+        try {
+            $statusLogs = $this->fetchTable('SpeedOrderStatusLogs')
+                ->find()
+                ->where(['speed_order_id' => $id])
+                ->orderByAsc('created')
+                ->all()
+                ->toArray();
+        } catch (\Throwable) {
+            $statusLogs = [];
+        }
+
+        try {
+            $attachments = $this->fetchTable('SpeedOrderAttachments')
+                ->find()
+                ->contain(['SpeedOrderAttachmentLabels'])
+                ->where(['SpeedOrderAttachments.speed_order_id' => $id])
+                ->orderByAsc('SpeedOrderAttachments.created')
+                ->all()
+                ->toArray();
+            $attachmentLabels = $this->fetchTable('SpeedOrderAttachmentLabels')
+                ->find()
+                ->orderByAsc('sort')
+                ->all()
+                ->toArray();
+        } catch (\Throwable) {
+            $attachments = [];
+            $attachmentLabels = [];
+        }
+
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'attachments', 'attachmentLabels'));
+        $this->set('isModal', true);
+        $this->viewBuilder()->setTemplate('view');
+        $this->viewBuilder()->disableAutoLayout();
+    }
+
+    // -------------------------------------------------------------------------
     // Upload załącznika CMR (AJAX POST)
     // -------------------------------------------------------------------------
     public function uploadAttachment(int $id): void
@@ -393,23 +459,53 @@ class SpeedOrdersController extends AppController
             return;
         }
 
-        // Załaduj etykietę do odpowiedzi
+        // Załaduj etykietę do odpowiedzi i zaktualizuj status POL/POD na zleceniu
         $label = null;
+        $polAt = null;
+        $podAt = null;
+        $nordlogisStatus = null;
         if ($labelId) {
             try {
                 $label = $this->fetchTable('SpeedOrderAttachmentLabels')->get($labelId);
+                $slug  = (string)($label->slug ?? '');
+
+                $SpeedOrders = $this->fetchTable('SpeedOrders');
+                $order = $SpeedOrders->get($id);
+                $now   = date('Y-m-d H:i:s');
+                $changed = false;
+
+                if (in_array($slug, ['pol_photo', 'pol_scan'], true) && empty($order->pol_at)) {
+                    $order->set('pol_at', $now);
+                    $changed = true;
+                }
+                if (in_array($slug, ['pod_photo', 'pod_scan'], true) && empty($order->pod_at)) {
+                    $order->set('pod_at', $now);
+                    $changed = true;
+                }
+
+                if ($changed) {
+                    $this->applyAutoNlStatus($order);
+                    $SpeedOrders->save($order);
+                    $polAt = $order->pol_at ? (string)$order->pol_at : null;
+                    $podAt = $order->pod_at ? (string)$order->pod_at : null;
+                    $nordlogisStatus = (int)($order->nordlogis_status ?? 1);
+                }
             } catch (\Throwable) {}
         }
 
         $this->response->getBody()->write(json_encode([
-            'ok'            => true,
-            'id'            => $entity->id,
-            'file_path'     => $entity->file_path,
-            'original_name' => $entity->original_name,
-            'mime_type'     => $mime,
-            'label'         => $label ? $label->name : null,
-            'uploaded_by'   => $username,
-            'created'       => date('Y-m-d H:i'),
+            'ok'              => true,
+            'id'              => $entity->id,
+            'file_path'       => $entity->file_path,
+            'original_name'   => $entity->original_name,
+            'mime_type'       => $mime,
+            'label'           => $label ? $label->name : null,
+            'label_slug'      => $label ? ($label->slug ?? null) : null,
+            'uploaded_by'     => $username,
+            'created'         => date('Y-m-d H:i'),
+            'pol_at'          => $polAt,
+            'pod_at'          => $podAt,
+            'nordlogis_status' => $nordlogisStatus,
         ]));
         $this->response = $this->response->withType('json');
     }
@@ -758,6 +854,12 @@ class SpeedOrdersController extends AppController
                 }
                 $order->set('nordlogis_status', $ns);
             }
+        }
+
+        // Pole: dokumenty tylko elektronicznie
+        if ($this->request->getData('docs_electronic_only') !== null) {
+            $val = (bool)(int)$this->request->getData('docs_electronic_only');
+            $order->set('docs_electronic_only', $val);
         }
 
         // Checkboxy — ustawiamy datę, pole *_by i null

@@ -68,7 +68,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     </div>
     <div class="auth-footer" role="contentinfo">
         <div class="auth-footer-inner">
-            Copyright © Partner S.C. All rights reserved
+            Copyright © Booklio.pl All rights reserved
             <?php if ($appVersion !== ''): ?>
                 <span class="mx-2">•</span>
                 <span>Wersja: <?= h($appVersion) ?></span>

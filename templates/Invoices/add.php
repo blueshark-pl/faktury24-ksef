@@ -13,7 +13,7 @@ $this->assign('title', $__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę');
 $__paymentDateVal = '';
 $__dueDaysPreset  = 7; // domyślne dla nowej faktury
 $__dueDaysCustom  = false;
-if ($__isEdit && !empty($invoice->paymentdate)) {
+if (!empty($invoice->paymentdate)) {
     $pd = $invoice->paymentdate instanceof \DateTimeInterface
         ? $invoice->paymentdate
         : new \DateTime((string)$invoice->paymentdate);
@@ -569,23 +569,11 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
             */ ?>
             <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
-            <?php
-              $__existingBankId   = $__isEdit ? (string)($invoice->company_bank_account_id ?? '') : '';
-              $__existingBankIban = $__isEdit ? (string)($invoice->invoice_company_detail->bank_account ?? '') : '';
-            ?>
-            <label class="form-label">Rachunek na fakturze</label>
-            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"
-              data-prefill-id="<?= h($__existingBankId) ?>"
-              data-prefill-iban="<?= h($__existingBankIban) ?>">
-              <?php if ($__existingBankId): ?>
-                <option value="<?= h($__existingBankId) ?>" selected><?= h($__existingBankIban) ?></option>
-              <?php endif ?>
-            </select>
-            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden', 'value' => $__existingBankIban]) ?>
-            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden', 'value' => $__existingBankId]) ?>
-            <small class="text-muted d-block mt-1">
-              Rachunki firmy dodasz w <em>Ustawienia → Moja firma → Rachunki bankowe</em> lub bezpośrednio tutaj przyciskiem „Dodaj rachunek”.
-            </small>
+            <label class=”form-label”>Rachunki bankowe na fakturze</label>
+            <div class=”alert alert-info py-2 px-3 mb-1” style=”font-size:0.875rem”>
+              <i class=”ri-bank-line me-1”></i>
+              Na fakturze automatycznie pojawią się <strong>wszystkie rachunki bankowe</strong> zdefiniowane w <em>Ustawienia → Moja firma → Rachunki bankowe</em>.
+            </div>
 
             <?= $this->Form->control('issuer', [
               'label' => 'Wystawca (issuer)', 'class' => 'form-control',
@@ -946,7 +934,7 @@ if (!empty($__prefillItems)) {
                <tr>
   <td colspan="9" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
-    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.45% od brutto">
+    <button type="button" class="btn btn-outline-warning ms-2" id="btn-fuel-surcharge" title="Dodaj wiersz: fuel surcharge 7.22% od brutto">
       <i class="ri-gas-station-line me-1"></i>Fuel surcharge
     </button>
   </td>
@@ -3221,7 +3209,7 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   });
 
-  // ====== FUEL SURCHARGE (7.45% od brutto, VAT 23%, GTU_13) ======
+  // ====== FUEL SURCHARGE (7.22% od brutto, VAT 23%, GTU_13) ======
   $('#btn-fuel-surcharge').on('click', function () {
     // Oblicz brutto z istniejących wierszy (bez ewentualnych wcześniejszych surcharge)
     var grossBase = toNum($('#sum-gross').val(), 0);
@@ -3229,8 +3217,8 @@ $('#gus-fetch-btn').on('click', function(){
       alert('Najpierw dodaj pozycje — brutto wynosi 0.');
       return;
     }
-    var surchargeRate = 0.0745;
-    // Brutto surcharge = 7.45% brutto, potem rozbijamy na netto+VAT 23%
+    var surchargeRate = 0.0722;
+    // Brutto surcharge = 7.22% brutto, potem rozbijamy na netto+VAT 23%
     var surchargeGross = +(grossBase * surchargeRate).toFixed(2);
     var vatRate23 = 23;
     var surchargeNetto = +(surchargeGross / (1 + vatRate23 / 100)).toFixed(2);
@@ -3245,7 +3233,7 @@ $('#gus-fetch-btn').on('click', function(){
 
     var $tr = addItemRow();
     prefillRow($tr, {
-      name: 'fuel surcharge 7.45%',
+      name: 'fuel surcharge 7.22%',
       quantity: 1,
       unit: 'szt.',
       price: surchargeNetto,
@@ -3741,78 +3729,6 @@ $('#gus-fetch-btn').on('click', function(){
         $currency.append(opt).trigger('change');
       }
     }
-  }
-
-  // ====== RACHUNEK: Select2 + toolbar + prefill ======
-  if ($.fn && $.fn.select2) {
-    var $bankSel = $('#bank-account-select').select2({
-      placeholder: $('#bank-account-select').data('placeholder') || 'Wybierz rachunek lub wyszukaj',
-      allowClear: true,
-      width: '100%',
-      ajax: {
-        url: bankSearchUrl,
-        dataType: 'json', delay: 200, cache: true,
-        data: function (params) { return { q: (params.term||''), limit: 20, currency: $('#currency').val()||'' }; },
-        processResults: function (data) {
-          var items = $.map((data && data.results) || data || [], function (r) {
-            var label = r.text || (r.bank_name ? (r.bank_name + ' ' + (r.iban||'')) : (r.iban||''));
-            return $.extend({ id: r.id, text: label }, r);
-          });
-          // jeśli brak wyboru i brak prefilla – spróbuj zaznaczyć domyślny przy pierwszym załadowaniu wyników
-          setTimeout(function(){
-            var $sel = $('#bank-account-select');
-            var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
-            if (!$sel.val() && !hasPrefill && items.length){
-              var def = items.find(function(i){ return i.is_default; });
-              if (def){
-                var opt=new Option(def.text, def.id, true, true);
-                $sel.append(opt).trigger('change');
-                $('#bank-account-hidden').val(def.iban || def.text || '').trigger('change');
-                $('#bank-account-id-hidden').val(def.id || '').trigger('change');
-              }
-            }
-          },0);
-          return { results: items };
-        }
-      },
-      minimumInputLength: 0,
-      escapeMarkup: function (m) { return m; },
-      templateResult: function (d) { if(!d.id) return d.text; var meta=[]; if(d.currency) meta.push('<span class="text-muted small">'+d.currency+'</span>'); return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0]; }
-    })
-    .on('select2:open', function(){ injectBankToolbar(); })
-    .on('select2:select', function(e){
-      var d = e.params && e.params.data || {};
-      $('#bank-account-hidden').val(d.iban || d.text || '').trigger('change');
-      $('#bank-account-id-hidden').val(d.id || '').trigger('change');
-    })
-    .on('select2:clear', function(){
-      $('#bank-account-hidden').val('').trigger('change');
-      $('#bank-account-id-hidden').val('').trigger('change');
-    });
-
-    function injectBankToolbar(){
-      var $dd = $('.select2-container--open .select2-dropdown');
-      if (!$dd.length || $dd.find('.bank-toolbar').length) return;
-      var $search = $dd.find('.select2-search--dropdown');
-      var toolbar = $(
-        '<div class="bank-toolbar p-2 border-bottom bg-white d-flex justify-content-between align-items-center">'+
-          '<button type="button" class="btn btn-sm btn-outline-primary s2-add-bank"><i class="ri-add-line"></i> Dodaj rachunek</button>'+
-          '<span class="text-muted small">Brak na liście? Utwórz nowy.</span>'+
-        '</div>'
-      );
-      $search.after(toolbar);
-      $dd.on('mousedown', '.s2-add-bank', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#bank-account-select').select2('close');}catch(_){}; $('#bank-account-create-modal').modal('show'); });
-    }
-
-    // Prefill default on initial load — tylko jeśli nie ma już wybranego konta (nowa faktura)
-    setTimeout(function(){
-      var $sel = $('#bank-account-select');
-      var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
-      if (!$sel.val() && !hasPrefill) {
-        try { $sel.select2('open'); } catch(_){ }
-        setTimeout(function(){ try { $sel.select2('close'); } catch(_){ } }, 0);
-      }
-    }, 0);
   }
 
   // Handlery terminu płatności (połączony preset + data)

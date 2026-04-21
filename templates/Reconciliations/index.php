@@ -702,6 +702,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <th class="text-end text-nowrap">Pozostało PLN</th>
                     <th style="min-width:140px">Status</th>
                     <th style="min-width:100px">Teczka / ref.</th>
+                    <th class="text-end pe-3" style="width:60px">Akcje</th>
                 </tr>
             </thead>
             <tbody>
@@ -766,7 +767,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <td class="text-end text-nowrap small fw-semibold">
                         <?= number_format($legTotal, 2, ',', ' ') ?> PLN
                     </td>
-                    <!-- Pozostało PLN -->
+                    <!-- Pozostało PLN + lokalne wpłaty -->
+                    <?php $legLocalPayments = $legacyPaymentsByInvoiceId[(string)$leg->id] ?? []; ?>
                     <td class="text-end text-nowrap small">
                         <?php if ($legState === 'paid'): ?>
                             <span class="text-success">0,00 PLN</span>
@@ -778,11 +780,27 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php if ($legPaid > 0 && $legState !== 'paid'): ?>
                             <div class="text-muted" style="font-size:.7rem">wpłacono: <?= number_format($legPaid, 2, ',', ' ') ?></div>
                         <?php endif; ?>
+                        <?php foreach ($legLocalPayments as $lp): ?>
+                            <div class="d-flex align-items-center justify-content-end gap-1 mt-1">
+                                <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.67rem"
+                                      title="Lokalna wpłata z <?= h($lp->payment_date) ?>">
+                                    <i class="ri-money-euro-circle-line"></i>
+                                    <?= number_format((float)$lp->amount, 2, ',', ' ') ?> PLN
+                                </span>
+                                <?= $this->Form->create(null, ['url' => ['action' => 'deleteLegacyPayment', $lp->id], 'method' => 'post', 'style' => 'display:inline']) ?>
+                                <input type="hidden" name="redirect" value="<?= h($this->Url->build($currentUrl())) ?>">
+                                <button type="submit" class="btn btn-link btn-sm p-0 text-danger"
+                                        style="font-size:.8rem;line-height:1"
+                                        onclick="return confirm('Usun\u0105\u0107 t\u0119 wp\u0142at\u0119?')"
+                                        title="Usuń wpłatę">&#x2715;</button>
+                                <?= $this->Form->end() ?>
+                            </div>
+                        <?php endforeach; ?>
                     </td>
                     <!-- Status -->
                     <td><?= $paymentBadge($legState, $legPdate, $todayStr) ?></td>
                     <!-- Teczka / referencja -->
-                    <td class="small text-muted">
+                    <td class="small text-muted" style="min-width:100px">
                         <?php if (!empty($leg->teczka)): ?>
                             <div><i class="ri-folder-user-line me-1"></i><?= h($leg->teczka) ?></div>
                         <?php endif; ?>
@@ -791,6 +809,23 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php endif; ?>
                         <?php if (empty($leg->teczka) && empty($leg->glo_tyt1)): ?>
                             —
+                        <?php endif; ?>
+                    </td>
+                    <!-- Akcje -->
+                    <td class="text-end pe-3">
+                        <?php if ($legState !== 'paid'): ?>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-success"
+                                data-bs-toggle="modal"
+                                data-bs-target="#paymentModal"
+                                data-invoice-source="legacy"
+                                data-invoice-id="<?= h($leg->id) ?>"
+                                data-invoice-number="<?= h($leg->fullnumber) ?>"
+                                data-invoice-remaining="<?= h($legRemain) ?>"
+                                data-invoice-currency="PLN"
+                                title="Dodaj wpłatę archiwalną">
+                            <i class="ri-add-circle-line"></i>
+                        </button>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -1017,6 +1052,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             ]) ?>
             <div class="modal-body pb-2">
                 <input type="hidden" name="invoice_id" id="modalInvoiceId">
+                <input type="hidden" name="legacy_invoice_id" id="modalLegacyInvoiceId">
                 <input type="hidden" name="redirect"   value="<?= h($this->Url->build($currentUrl())) ?>">
 
                 <!-- ── Przelewy bankowe kontrahenta ─────────────────────── -->
@@ -1225,18 +1261,24 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     }
 
     // ── Inicjalizacja modala ──────────────────────────────────────────────────
+    var urlAddPayment       = '<?= $this->Url->build(['action' => 'addPayment']) ?>';
+    var urlAddLegacyPayment = '<?= $this->Url->build(['action' => 'addLegacyPayment']) ?>';
+
     document.addEventListener('DOMContentLoaded', function () {
         var modal = document.getElementById('paymentModal');
         if (!modal) return;
 
         modal.addEventListener('show.bs.modal', function (event) {
             var btn       = event.relatedTarget;
+            var source    = btn.dataset.invoiceSource || 'system';
             currentInvoiceId    = btn.dataset.invoiceId;
             var number    = btn.dataset.invoiceNumber;
             var remaining = parseFloat(btn.dataset.invoiceRemaining || '0');
             var currency  = btn.dataset.invoiceCurrency || 'PLN';
 
-            document.getElementById('modalInvoiceId').value        = currentInvoiceId;
+            var form         = document.getElementById('paymentForm');
+            var bankSection  = document.getElementById('bankTxSection');
+
             document.getElementById('modalInvoiceName').textContent = number || '—';
             document.getElementById('modalAmount').value            = remaining > 0
                 ? remaining.toFixed(2) : '';
@@ -1244,7 +1286,21 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 ? 'Pozostało: ' + fmtAmount(remaining) + ' ' + currency
                 : 'Faktura opłacona w całości';
 
-            loadBankTransactions(currentInvoiceId);
+            if (source === 'legacy') {
+                form.action = urlAddLegacyPayment;
+                document.getElementById('modalInvoiceId').value       = '';
+                document.getElementById('modalLegacyInvoiceId').value = currentInvoiceId;
+                // Ukryj sekcję przelewów bankowych — niedostępna dla archiwalnych
+                bankSection.innerHTML = '<div class="alert alert-secondary small py-2 mb-0">'
+                    + '<i class="ri-archive-line me-2 text-muted"></i>'
+                    + 'Faktura archiwalna — sekcja przelewów bankowych niedostępna. '
+                    + 'Lokalne wpłaty widoczne w tabeli.</div>';
+            } else {
+                form.action = urlAddPayment;
+                document.getElementById('modalInvoiceId').value       = currentInvoiceId;
+                document.getElementById('modalLegacyInvoiceId').value = '';
+                loadBankTransactions(currentInvoiceId);
+            }
         });
     });
 }());

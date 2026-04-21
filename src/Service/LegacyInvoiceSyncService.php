@@ -68,6 +68,25 @@ class LegacyInvoiceSyncService
             }
         }
 
+        // Załaduj lokalne wpłaty (per legacy_invoice.id) — do korekty po API
+        $LegacyInvoicePayments = TableRegistry::getTableLocator()->get('LegacyInvoicePayments');
+        $existingIds = [];
+        foreach ($existing as $r) {
+            $existingIds[] = (string)$r->id;
+        }
+        $localPaidMap = [];
+        if (!empty($existingIds)) {
+            $paymentSums = $LegacyInvoicePayments->find()
+                ->select(['legacy_invoice_id', 'total' => 'SUM(amount)'])
+                ->where(['legacy_invoice_id IN' => $existingIds])
+                ->groupBy('legacy_invoice_id')
+                ->disableHydration()
+                ->all()->toArray();
+            foreach ($paymentSums as $ps) {
+                $localPaidMap[(string)$ps['legacy_invoice_id']] = (float)$ps['total'];
+            }
+        }
+
         $nowStr  = date('Y-m-d H:i:s');
         $upserted = 0;
         $changes  = [];
@@ -86,7 +105,7 @@ class LegacyInvoiceSyncService
                 'rejestr'           => (int)($row['GLO_REJESTR'] ?? $rejestr),
                 'fullnumber'        => (string)($row['GLO_SYMBOL'] ?? ''),
                 'date'              => $this->_parseDate($row['GLO_DATA_DOK'] ?? null),
-                'paymentdate'       => $this->_parseDate($row['TERMIN'] ?? null),
+                'paymentdate'       => $this->_parseDate($row['TERMIN'] ?? $row['GLO_DATA_TER'] ?? null),
                 'glo_tyt1'          => (string)($row['GLO_TYT1'] ?? '') ?: null,
                 'poz_naz7'          => (string)($row['POZ_NAZ7'] ?? '') ?: null,
                 'poz_nazwa'         => (string)($row['POZ_NAZWA'] ?? '') ?: null,
@@ -112,21 +131,31 @@ class LegacyInvoiceSyncService
                 'synced_at'         => $nowStr,
             ];
 
-            // Sprawdź czy paymentstate się zmieniło (legacy = źródło prawdy → nadpisz)
-            if (isset($existing[$gloId])) {
-                $prev = $existing[$gloId];
-                if ((string)$prev->paymentstate !== $paymentstate) {
+            // Jeśli istnieje rekord z lokalnymi wpłatami — koryguj o nie (persistują przez sync)
+            $existingEntity = $existing[$gloId] ?? null;
+            if ($existingEntity !== null) {
+                $localPaid = $localPaidMap[(string)$existingEntity->id] ?? 0.0;
+                if ($localPaid > 0.01) {
+                    $record['alreadypaid'] = min($total, $paid + $localPaid);
+                    $record['remaining']   = max(0.0, $remaining - $localPaid);
+                    $record['paymentstate'] = $this->_computePaymentState($record['remaining'], $total, $record['alreadypaid']);
+                }
+            }
+
+            // Sprawdź czy paymentstate się zmieniło w stosunku do zapisanego stanu (log)
+            if ($existingEntity !== null) {
+                if ((string)$existingEntity->paymentstate !== $record['paymentstate']) {
                     $changes[] = [
                         'glo_id'       => $gloId,
                         'fullnumber'   => $record['fullnumber'],
-                        'from'         => (string)$prev->paymentstate,
-                        'to'           => $paymentstate,
-                        'remaining'    => $remaining,
-                        'alreadypaid'  => $paid,
+                        'from'         => (string)$existingEntity->paymentstate,
+                        'to'           => $record['paymentstate'],
+                        'remaining'    => $record['remaining'],
+                        'alreadypaid'  => $record['alreadypaid'],
                     ];
                 }
 
-                $entity = $LegacyInvoices->patchEntity($prev, $record);
+                $entity = $LegacyInvoices->patchEntity($existingEntity, $record);
             } else {
                 $record['id'] = Text::uuid();
                 $entity = $LegacyInvoices->newEntity($record);
@@ -201,10 +230,16 @@ class LegacyInvoiceSyncService
         if ($v === null || $v === '') {
             return null;
         }
-        $s = (string)$v;
-        // ISO datetime "2026-04-16T00:00:00.000Z" lub "2026-03-02"
+        $s = trim((string)$v);
+        // ISO datetime "2026-04-16T00:00:00.000Z" lub czysty "2026-03-02"
         if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $s, $m)) {
-            return $m[1];
+            $d = $m[1];
+            // Odfiltruj wartości zerowe lub zastępcze
+            return ($d === '0000-00-00' || $d === '1900-01-01' || $d === '1899-12-30') ? null : $d;
+        }
+        // Format d.m.Y (polski)
+        if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $s, $m)) {
+            return $m[3] . '-' . $m[2] . '-' . $m[1];
         }
 
         return null;

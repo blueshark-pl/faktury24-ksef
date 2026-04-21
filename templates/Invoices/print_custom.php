@@ -154,6 +154,27 @@ $seller = $invoice->invoice_company_details ?? $invoice->invoice_company_detail 
 $buyer  = $invoice->invoice_contractor ?? null;
 $bankName    = $seller->bank_name    ?? null;
 $bankAccount = $seller->bank_account ?? null;
+// Wiele rachunków — z JSON snapshot; fallback na legacy pojedynczy
+$allBankAccounts = [];
+$rawBankJson = $seller->bank_accounts_json ?? null;
+if (!empty($rawBankJson)) {
+    $decoded = json_decode((string)$rawBankJson, true);
+    if (is_array($decoded) && !empty($decoded)) {
+        $allBankAccounts = $decoded;
+    }
+}
+if (empty($allBankAccounts) && ($bankAccount || $bankName)) {
+    $allBankAccounts = [[
+        'iban'      => (string)($bankAccount ?? ''),
+        'bank_name' => (string)($bankName ?? ''),
+        'bank_desc' => (string)($seller->bank_desc ?? ''),
+        'swift'     => (string)($seller->swift ?? ''),
+        'bank_correspondent' => (string)($seller->bank_correspondent ?? ''),
+        'currency'  => '',
+        'label'     => '',
+        'is_default'=> 1,
+    ]];
+}
 
 /* ─── typ faktury ─── */
 $typeName = $t['inv_type_suffix'][$invoice->type ?? ''] ?? ($t['inv_type_suffix']['vat']);
@@ -362,8 +383,8 @@ $fontBold   = $fontDir . 'DejaVuSans-Bold.ttf';
     .no-print { display: none !important; }
 }
 @media screen {
-    body { background: #f0f2f5; }
-    .sheet { box-shadow: 0 4px 32px rgba(0,0,0,.12); margin: 24px auto; }
+    body { background: #fff; }
+    .sheet { margin: 0 auto; }
 }
 body { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; line-height: 1.4; }
 table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; }
@@ -864,10 +885,26 @@ if ($bankAccount && strlen($bankAccount) >= 26) {
             <div style="font-family:'DejaVu Sans',sans-serif;font-weight:bold;font-size:9pt;<?= $remaining > 0 ? 'color:#dc2626' : '' ?>"><?= $money($remaining, $cur) ?></div>
         </td>
     </tr></tbody></table>
-    <?php if ($bankName || $bankAccount): ?>
+    <?php if (!empty($allBankAccounts)): ?>
     <div style="padding-top:6px;border-top:1px solid #e5e7eb;font-size:8.5pt">
-        <?php if ($bankName): ?><span class="payment-label"><?= h($t['bank']) ?>: </span><strong><?= h($bankName) ?></strong>&nbsp;&nbsp;<?php endif; ?>
-        <?php if ($bankAccount): ?><span class="payment-label"><?= h($t['account']) ?>: </span><span class="bank-account"><?= h($bankAccFormatted) ?></span><?php endif; ?>
+      <?php foreach ($allBankAccounts as $__ba):
+        $__iban = trim((string)($__ba['iban'] ?? ''));
+        $__bname = trim((string)($__ba['bank_name'] ?? ''));
+        $__label = trim((string)($__ba['label'] ?? ''));
+        $__cur   = trim((string)($__ba['currency'] ?? ''));
+        if ($__iban === '' && $__bname === '') continue;
+        $__ibanFmt = $__iban;
+        if ($__iban && strlen($__iban) >= 26) {
+            $__ibanFmt = trim(chunk_split($__iban, 4, ' '));
+        }
+      ?>
+      <div style="margin-bottom:3px">
+        <?php if ($__bname): ?><span class="payment-label"><?= h($t['bank']) ?>: </span><strong><?= h($__bname) ?></strong>&nbsp;&nbsp;<?php endif; ?>
+        <?php if ($__iban): ?><span class="payment-label"><?= h($t['account']) ?>: </span><span class="bank-account"><?= h($__ibanFmt) ?></span><?php endif; ?>
+        <?php if ($__cur && $__cur !== 'PLN'): ?>&nbsp;<span style="color:#6b7280;font-size:7.8pt">(<?= h($__cur) ?>)</span><?php endif; ?>
+        <?php if ($__label): ?>&nbsp;<span style="color:#6b7280;font-size:7.8pt"><?= h($__label) ?></span><?php endif; ?>
+      </div>
+      <?php endforeach; ?>
     </div>
     <?php endif; ?>
     <div style="margin-top:6px;font-size:8pt;color:#555">

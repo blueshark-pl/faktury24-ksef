@@ -64,6 +64,7 @@ class InvoiceCompanyDetail extends Entity
         'swift' => true,
         'bank_correspondent' => true,
         'registers_json' => true,
+        'bank_accounts_json' => true,
         'gln' => true,
         'country_code' => true,
         'koresp_country_code' => true,

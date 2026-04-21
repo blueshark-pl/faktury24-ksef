@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v 'var \\\\|const \\\\|$fxGroup\\\\|$fxInput\\\\|function\\\\|//')",
+      "Bash(grep -n \"^<script>$\\\\|^\\\\$\\(function\" \"g:/2025/partnersc/faktury24 — kopia/templates/Invoices/add_correct_currency.php\")",
+      "Bash(awk -F: '$2 > 1680 && $2 < 1710')",
+      "Bash(grep -n 'corr-use-original\\\\|correction-reason\\\\|$reason' 'g:/2025/partnersc/faktury24 — kopia/templates/Invoices/add_correct_currency.php')",
+      "Bash(php bin/cake.php migrations migrate)",
+      "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Service/Mt940ParserService.php\")",
+      "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Controller/BankTransactionsController.php\")",
+      "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Model/Table/BankTransactionsTable.php\")",
+      "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Model/Table/BankStatementImportsTable.php\")",
+      "Bash(php bin/cake.php migrations dump)",
+      "Bash(php -r ' *)"
+    ]
+  }
+}

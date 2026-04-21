@@ -7,9 +7,13 @@
  * @var \App\Model\Entity\SpeedOrderStatusLog[] $statusLogs
  * @var \App\Model\Entity\SpeedOrderAttachment[] $attachments
  * @var \App\Model\Entity\SpeedOrderAttachmentLabel[] $attachmentLabels
+ * @var bool $isModal
  */
 
-$this->assign('title', 'Zlecenie ' . h($order->symbol));
+$isModal = $isModal ?? false;
+if (!$isModal) {
+    $this->assign('title', 'Zlecenie ' . h($order->symbol));
+}
 
 $fdate     = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : null;
 $fdatetime = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:i') : substr((string)$v, 0, 16)) : null;
@@ -193,9 +197,15 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <!-- TOPBAR                                                                 -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <div class="order-topbar rounded-3 shadow-sm mb-3">
+    <?php if ($isModal): ?>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('orderViewModal')&&bootstrap.Modal.getInstance(document.getElementById('orderViewModal'))?.hide()">
+        <i class="ri-close-line"></i>
+    </button>
+    <?php else: ?>
     <a href="<?= $this->Url->build(['action'=>'index']) ?>" class="btn btn-sm btn-outline-secondary">
         <i class="ri-arrow-left-line"></i>
     </a>
+    <?php endif; ?>
 
     <div class="d-flex flex-column">
         <span class="fw-bold fs-5 lh-1"><?= h($order->symbol) ?></span>
@@ -366,6 +376,26 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 </span>
             </label>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Dokumenty tylko elektronicznie -->
+        <div class="d-flex justify-content-center mt-2">
+            <label class="check-pill <?= !empty($order->docs_electronic_only) ? 'checked' : 'unchecked' ?>"
+                   style="--pill-color:#0ea5e9"
+                   title="Dokumenty tylko elektronicznie — brak wysyłki papierowej"
+                   for="chk-docs-electronic">
+                <input type="checkbox" class="d-none check-toggle"
+                       id="chk-docs-electronic"
+                       data-field="docs_electronic"
+                       <?= !empty($order->docs_electronic_only) ? 'checked' : '' ?>>
+                <i class="ri-mail-forbid-line"></i>
+                <span class="d-flex flex-column gap-0" style="line-height:1.2">
+                    <span>Dokumenty tylko elektronicznie</span>
+                    <span class="opacity-50" style="font-weight:400;font-size:.65rem">
+                        <?= !empty($order->docs_electronic_only) ? 'Brak wysyłki papierowej' : 'niezaznaczone' ?>
+                    </span>
+                </span>
+            </label>
         </div>
 
         <!-- Alerty -->
@@ -797,9 +827,16 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         $isImg = str_starts_with($att->mime_type ?? '', 'image/');
         $url   = '/' . ltrim(str_replace('\\', '/', $att->file_path), '/');
         $labelName = $att->speed_order_attachment_label->name ?? 'Brak etykiety';
-        $glType    = $isImg ? 'image' : 'iframe';
-        $glHref    = $isImg ? h($url) : h($url) . '?t=' . time();
+        $glType    = $isImg ? 'image' : 'inline';
+        $glHref    = $isImg ? h($url) : '#pdf-inline-' . $att->id;
       ?>
+      <?php if (!$isImg): ?>
+      <div id="pdf-inline-<?= $att->id ?>" style="display:none">
+        <object data="<?= h($url) ?>" type="application/pdf" style="width:90vw;height:82vh;display:block">
+          <p class="p-3">Twoja przeglądarka nie obsługuje podglądu PDF. <a href="<?= h($url) ?>" target="_blank">Pobierz plik</a></p>
+        </object>
+      </div>
+      <?php endif; ?>
       <div class="col-6 col-md-3 col-lg-2" id="cmr-att-<?= $att->id ?>">
         <div class="card h-100 border shadow-sm cmr-thumb position-relative">
           <a href="<?= $glHref ?>"
@@ -871,7 +908,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 
   function initLightbox() {
     if (lightbox) lightbox.destroy();
-    lightbox = GLightbox({ selector: '.cmr-lightbox', touchNavigation: true, loop: true, zoomable: true });
+    lightbox = GLightbox({ selector: '.cmr-lightbox', touchNavigation: true, loop: true, zoomable: true, width: '92vw', height: '88vh' });
   }
   initLightbox();
 
@@ -937,6 +974,13 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         const data = await resp.json();
         if (data.ok) {
           appendThumb(data);
+          if (data.pol_at) updateStatusPill('pol_at', data.pol_at);
+          if (data.pod_at) updateStatusPill('pod_at', data.pod_at);
+          if (data.nordlogis_status) {
+            const nsLabel = nlLabels[data.nordlogis_status] || ('Status ' + data.nordlogis_status);
+            Swal.fire({ icon: 'success', title: 'Status zlecenia: ' + nsLabel, toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, timerProgressBar: true })
+              .then(() => location.reload());
+          }
         } else {
           Swal.fire({ icon: 'error', title: 'Błąd', text: data.error ?? 'Nieznany błąd', toast: true, position: 'top-end', timer: 4000, showConfirmButton: false });
         }
@@ -957,15 +1001,55 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
     }, 600);
   }
 
+  // Aktualizuje wizualnie pill POL/POD po automatycznym ustawieniu statusu przez upload
+  function updateStatusPill(field, dateVal) {
+    const input = document.querySelector('.check-toggle[data-field="' + field + '"]');
+    if (!input) return;
+    const pill = input.closest('.check-pill');
+    if (!pill || pill.classList.contains('checked')) return;
+
+    // Oznacz jako checked
+    pill.classList.remove('unchecked');
+    pill.classList.add('checked');
+    input.checked = true;
+
+    // Zaktualizuj tekst daty w pillecie
+    const spans = pill.querySelectorAll('span.opacity-50, span.opacity-75');
+    const d = new Date(dateVal);
+    const fmt = d.toLocaleDateString('pl-PL', {day:'2-digit', month:'2-digit', year:'numeric'})
+              + ' ' + d.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit'});
+    spans.forEach(s => {
+      if (s.classList.contains('opacity-50')) {
+        s.classList.remove('opacity-50');
+        s.classList.add('opacity-75');
+        s.style.fontSize = '.65rem';
+        s.style.fontWeight = '400';
+        s.textContent = fmt;
+      }
+    });
+
+    // Toast informacyjny
+    const label = field === 'pol_at' ? 'POL' : 'POD';
+    Swal.fire({ icon: 'success', title: 'Status ' + label + ' ustawiony — ' + fmt, toast: true, position: 'top-end', timer: 3000, showConfirmButton: false, timerProgressBar: true });
+  }
+
   function appendThumb(data) {
     if (emptyMsg) emptyMsg.style.display = 'none';
 
     const isImg   = data.mime_type?.startsWith('image/');
     const url     = '/' + data.file_path.replace(/^\//, '');
     const label   = data.label ?? 'Brak etykiety';
-    const glType  = isImg ? 'image' : 'iframe';
-    const glHref  = isImg ? url : url + '?t=' + Date.now();
+    const glType  = isImg ? 'image' : 'inline';
+    const glHref  = isImg ? url : '#pdf-inline-' + data.id;
     const desc    = (data.uploaded_by ? data.uploaded_by + ' · ' : '') + data.created;
+
+    if (!isImg) {
+      const pdfCont = document.createElement('div');
+      pdfCont.id = 'pdf-inline-' + data.id;
+      pdfCont.style.display = 'none';
+      pdfCont.innerHTML = `<object data="${url}" type="application/pdf" style="width:90vw;height:82vh;display:block"><p class="p-3">Twoja przeglądarka nie obsługuje podglądu PDF. <a href="${url}" target="_blank">Pobierz plik</a></p></object>`;
+      document.body.appendChild(pdfCont);
+    }
 
     const col = document.createElement('div');
     col.className = 'col-6 col-md-3 col-lg-2';
@@ -1301,6 +1385,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }).catch(function(e){ self.checked=!val; showToast('Błąd: '+e.message,false); });
         });
     });
+
+    // ── Dokumenty tylko elektronicznie ──
+    var docsElChk = document.getElementById('chk-docs-electronic');
+    if (docsElChk) {
+        docsElChk.addEventListener('change', function() {
+            var self = this;
+            var val  = this.checked;
+            post(updateUrl, { id: orderId, docs_electronic_only: val ? 1 : 0 }).then(function(data) {
+                if (data.success) {
+                    showToast(val ? '✔ Dokumenty tylko elektronicznie' : '✖ Wysyłka papierowa odblokowana', true);
+                    var label = self.closest('label');
+                    if (label) {
+                        label.classList.toggle('checked', val);
+                        label.classList.toggle('unchecked', !val);
+                        var subSpan = label.querySelector('.opacity-50');
+                        if (subSpan) subSpan.textContent = val ? 'Brak wysyłki papierowej' : 'niezaznaczone';
+                    }
+                } else {
+                    self.checked = !val;
+                    showToast(data.error || 'Błąd', false);
+                }
+            }).catch(function(e){ self.checked = !val; showToast('Błąd: ' + e.message, false); });
+        });
+    }
 
     // ── FK: wyszukiwarka ──
     var fkStatusLabels = { received:'Otrzymana', verified:'Zweryfikowana', paid:'Zapłacona' };

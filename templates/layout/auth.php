@@ -78,7 +78,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
       <div class="auth-footer" role="contentinfo">
         <div class="auth-footer-inner">
-          Copyright © Partner S.C. All rights reserved
+          Copyright © Booklio.pl All rights reserved
           <?php if ($appVersion !== ''): ?>
             <span class="mx-2">•</span>
             <span>Wersja: <?= h($appVersion) ?></span>
