@@ -34,6 +34,10 @@ class ReconciliationsController extends AppController
         $today    = date('Y-m-d');
         $Invoices = $this->fetchTable('Invoices');
 
+        // Typy faktur traktowane jako korekty — wykluczane ze statystyk i listy
+        // (pokazywane jako badge na oryginale, nie jako osobne wiersze)
+        $correctionTypes = ['correction', 'zal_korekta', 'roz_korekta'];
+
         // Filtr źródła — '' | 'system' | 'legacy'
         $sourceFilter = $this->request->getQuery('source', '');
 
@@ -71,7 +75,9 @@ class ReconciliationsController extends AppController
         }
 
         // Warunki dla statystyk (kafelki) — BEZ filtra statusu, żeby kafelki były zawsze globalne
+        // Korekty wykluczone — są pokazywane jako badge na oryginale, nie jako osobne rekordy
         $baseStatsConditions = $baseConditions;
+        $baseStatsConditions['Invoices.type NOT IN'] = $correctionTypes;
 
         // Status płatności — dodaj tylko do warunków listy, NIE do statystyk
         if ($status === 'overdue') {
@@ -80,6 +86,9 @@ class ReconciliationsController extends AppController
         } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
             $baseConditions['Invoices.paymentstate'] = $status;
         }
+
+        // Korekty wykluczone z listy — widoczne tylko jako badge na oryginale
+        $baseConditions['Invoices.type NOT IN'] = $correctionTypes;
 
         // ── Statystyki i lista — system (pomijamy gdy source=legacy) ─────────
         $stats    = ['count' => 0, 'totalReceivables' => 0.0, 'totalPaid' => 0.0, 'totalRemaining' => 0.0, 'overdue' => 0.0, 'overdueCount' => 0];
@@ -144,6 +153,30 @@ class ReconciliationsController extends AppController
             // Gdy source=legacy — $sortDir potrzebne dla legacy query
             $allowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
             $sortDir = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
+        }
+
+        // ── Korekty do faktur systemowych (per parent_id) ───────────────────
+        // Doczytaj korekty dla faktur na aktualnej stronie, żeby pokazać badge na oryginale
+        $correctionsByParentId = [];
+        if (!empty($invoices)) {
+            $invIds = array_column($invoices, 'id');
+            $corrRows = $Invoices->find()
+                ->select([
+                    'Invoices.id', 'Invoices.parent_id', 'Invoices.fullnumber',
+                    'Invoices.date', 'Invoices.total', 'Invoices.remaining',
+                    'Invoices.currency', 'Invoices.type', 'Invoices.paymentstate',
+                ])
+                ->where([
+                    'Invoices.company_id'  => $companyId,
+                    'Invoices.parent_id IN' => $invIds,
+                    'Invoices.type IN'      => $correctionTypes,
+                ])
+                ->orderByAsc('Invoices.date')
+                ->all()->toArray();
+            foreach ($corrRows as $corr) {
+                $pid = (string)$corr->parent_id;
+                $correctionsByParentId[$pid][] = $corr;
+            }
         }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
@@ -333,7 +366,7 @@ class ReconciliationsController extends AppController
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
             'search', 'status', 'dateFrom', 'dateTo', 'typeFilter', 'sort', 'dir',
-            'stats', 'bankByInvoice', 'speedByInvoice',
+            'stats', 'bankByInvoice', 'speedByInvoice', 'correctionsByParentId',
             'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
             'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync'
         ));

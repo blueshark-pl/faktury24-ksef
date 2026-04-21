@@ -403,6 +403,12 @@ $typeBadge = function (string $type): string {
                 $bt    = $bankByInvoice[(string)$invoice->id] ?? null;
                 $state = $invoice->paymentstate ?? 'unpaid';
 
+                // Korekty do tej faktury
+                $invCorrs    = $correctionsByParentId[(string)$invoice->id] ?? [];
+                $corrSum     = array_sum(array_map(fn($c) => (float)$c->total, $invCorrs));
+                $netTotal    = (float)$invoice->total - $corrSum;
+                $netRemaining = max(0.0, (float)$invoice->remaining - $corrSum);
+
                 // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
                 $rawPd = $invoice->paymentdate;
                 if ($rawPd instanceof \DateTimeInterface) {
@@ -443,6 +449,15 @@ $typeBadge = function (string $type): string {
                                 <i class="ri-mail-send-line"></i>
                             </span>
                         <?php endif; ?>
+                        <?php foreach ($invCorrs as $corr): ?>
+                            <div class="mt-1">
+                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
+                                      style="font-size:.6rem"
+                                      title="Korekta <?= h($corr->fullnumber) ?> z dn. <?= $fdate($corr->date) ?> · kwota: <?= number_format((float)$corr->total, 2, ',', ' ') ?> <?= h($corr->currency ?? $currency) ?>">
+                                    <i class="ri-arrow-go-back-line me-1"></i>KOR: <?= h($corr->fullnumber) ?>
+                                </span>
+                            </div>
+                        <?php endforeach; ?>
                     </td>
                     <!-- Kontrahent -->
                     <td style="max-width:200px">
@@ -499,15 +514,23 @@ $typeBadge = function (string $type): string {
                     </td>
                     <!-- Brutto -->
                     <td class="text-end text-nowrap small fw-semibold">
-                        <?= number_format((float)$invoice->total, 2, ',', ' ') ?> <?= h($currency) ?>
+                        <?php if (!empty($invCorrs)): ?>
+                            <span class="text-decoration-line-through text-muted" style="font-size:.75em">
+                                <?= number_format((float)$invoice->total, 2, ',', ' ') ?>
+                            </span><br>
+                            <span title="Po korekcie"><?= number_format($netTotal, 2, ',', ' ') ?> <?= h($currency) ?></span>
+                        <?php else: ?>
+                            <?= number_format((float)$invoice->total, 2, ',', ' ') ?> <?= h($currency) ?>
+                        <?php endif; ?>
                     </td>
                     <!-- Pozostało -->
                     <td class="text-end text-nowrap small">
                         <?php if ($state === 'paid'): ?>
                             <span class="text-success">0,00 <?= h($currency) ?></span>
                         <?php else: ?>
-                            <span class="<?= (float)$invoice->remaining > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
-                                <?= number_format((float)$invoice->remaining, 2, ',', ' ') ?> <?= h($currency) ?>
+                            <?php $displayRemaining = !empty($invCorrs) ? $netRemaining : (float)$invoice->remaining; ?>
+                            <span class="<?= $displayRemaining > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
+                                <?= number_format($displayRemaining, 2, ',', ' ') ?> <?= h($currency) ?>
                             </span>
                         <?php endif; ?>
                         <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid'): ?>
@@ -703,8 +726,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <th class="text-center" style="width:70px">Waluta</th>
                     <th class="text-nowrap">Data</th>
                     <th class="text-nowrap">Termin</th>
-                    <th class="text-end text-nowrap">Brutto PLN</th>
-                    <th class="text-end text-nowrap">Pozostało PLN</th>
+                    <th class="text-end text-nowrap">Brutto</th>
+                    <th class="text-end text-nowrap">Pozostało</th>
                     <th style="min-width:140px">Status</th>
                     <th style="min-width:100px">Teczka / ref.</th>
                     <th class="text-end pe-3" style="width:60px">Akcje</th>
@@ -794,22 +817,32 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                             <span class="badge bg-info-subtle text-info border border-info-subtle ms-1" style="font-size:.6rem" title="<?= h($leg->platnosc) ?>">e-dok</span>
                         <?php endif; ?>
                     </td>
-                    <!-- Brutto PLN -->
+                    <!-- Brutto -->
                     <td class="text-end text-nowrap small fw-semibold">
-                        <?= number_format($legTotal, 2, ',', ' ') ?> PLN
+                        <?php if ($legCur !== 'PLN' && ($leg->total_wal ?? 0) > 0): ?>
+                            <div><?= number_format((float)$leg->total_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                            <div class="text-muted" style="font-size:.7rem"><?= number_format($legTotal, 2, ',', ' ') ?> PLN</div>
+                        <?php else: ?>
+                            <?= number_format($legTotal, 2, ',', ' ') ?> PLN
+                        <?php endif; ?>
                     </td>
-                    <!-- Pozostało PLN + lokalne wpłaty -->
+                    <!-- Pozostało + lokalne wpłaty -->
                     <?php $legLocalPayments = $legacyPaymentsByInvoiceId[(string)$leg->id] ?? []; ?>
                     <td class="text-end text-nowrap small">
                         <?php if ($legState === 'paid'): ?>
                             <span class="text-success">0,00 PLN</span>
                         <?php else: ?>
-                            <span class="<?= $legRemain > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
-                                <?= number_format($legRemain, 2, ',', ' ') ?> PLN
-                            </span>
+                            <?php if ($legCur !== 'PLN' && ($leg->remaining_wal ?? 0) > 0): ?>
+                                <div class="fw-semibold text-dark"><?= number_format((float)$leg->remaining_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                                <div class="text-muted" style="font-size:.7rem"><?= number_format($legRemain, 2, ',', ' ') ?> PLN</div>
+                            <?php else: ?>
+                                <span class="<?= $legRemain > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
+                                    <?= number_format($legRemain, 2, ',', ' ') ?> PLN
+                                </span>
+                            <?php endif; ?>
                         <?php endif; ?>
                         <?php if ($legPaid > 0 && $legState !== 'paid'): ?>
-                            <div class="text-muted" style="font-size:.7rem">wpłacono: <?= number_format($legPaid, 2, ',', ' ') ?></div>
+                            <div class="text-muted" style="font-size:.7rem">wpłacono: <?= number_format($legPaid, 2, ',', ' ') ?> PLN</div>
                         <?php endif; ?>
                         <?php foreach ($legLocalPayments as $lp): ?>
                             <div class="d-flex align-items-center justify-content-end gap-1 mt-1">
