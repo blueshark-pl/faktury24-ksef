@@ -299,11 +299,12 @@ class ReconciliationsController extends AppController
 
             // Zapytanie legacyInvoices z paginacją
             $legacyAllowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
-            $legacySortCol = in_array($sort, $legacyAllowedSort, true) ? $sort : 'paymentdate';
+            $legacySortCol = in_array($sort, $legacyAllowedSort, true) ? $sort : 'date';
+            $legacySortDir = in_array($sort, $legacyAllowedSort, true) ? $sortDir : 'DESC';
 
             $legacyQ = $LegacyInvoices->find()
                 ->where($legacyConditions)
-                ->orderBy(['LegacyInvoices.' . $legacySortCol => $sortDir, 'LegacyInvoices.synced_at' => 'DESC']);
+                ->orderBy(['LegacyInvoices.' . $legacySortCol => $legacySortDir, 'LegacyInvoices.synced_at' => 'DESC']);
 
             if ($status === 'overdue') {
                 // Dla "przeterminowane" pobieramy wszystkich nieopłaconych i filtrujemy w PHP,
