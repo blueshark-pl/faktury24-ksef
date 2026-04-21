@@ -201,7 +201,9 @@ class ReconciliationsController extends AppController
 
             if ($status === 'overdue') {
                 $legacyConditions['LegacyInvoices.paymentstate !='] = 'paid';
-                $legacyConditions['LegacyInvoices.paymentdate <']   = $today;
+                // Łapiemy albo te z paymentdate < dziś, albo (po merge) te z platnosc-based terminem
+                // Pobieramy wszystkie nieopłacone i filtrujemy po obliczonym terminie w PHP
+                // (zamiast WHERE paymentdate < today, bo część terminów jest w polu platnosc)
             } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
                 $legacyConditions['LegacyInvoices.paymentstate'] = $status;
             }
@@ -221,11 +223,38 @@ class ReconciliationsController extends AppController
                     'remaining'    => 'LegacyInvoices.remaining',
                     'paymentstate' => 'LegacyInvoices.paymentstate',
                     'paymentdate'  => 'LegacyInvoices.paymentdate',
+                    'date'         => 'LegacyInvoices.date',
+                    'platnosc'     => 'LegacyInvoices.platnosc',
                 ])
                 ->where($legacyConditions)
                 ->disableHydration()
                 ->all()
                 ->toArray();
+
+            // Uzupełnij paymentdate z platnosc dla rekordów z null
+            foreach ($legacyStatsRows as &$srow) {
+                if (empty($srow['paymentdate']) && !empty($srow['platnosc'])) {
+                    if (preg_match('/(\d+)\s*dni/i', (string)$srow['platnosc'], $pm)) {
+                        $days  = (int)$pm[1];
+                        $dStr  = $srow['date'] ? substr((string)$srow['date'], 0, 10) : '';
+                        $dObj  = $dStr ? \DateTime::createFromFormat('Y-m-d', $dStr) : false;
+                        if ($dObj) {
+                            $dObj->modify("+{$days} days");
+                            $srow['paymentdate'] = $dObj->format('Y-m-d');
+                        }
+                    }
+                }
+            }
+            unset($srow);
+
+            // Dla filtra overdue — zawęź do faktycznie przeterminowanych (po obliczonym terminie)
+            if ($status === 'overdue') {
+                $legacyStatsRows = array_filter($legacyStatsRows, static function (array $r) use ($today): bool {
+                    $pdate = $r['paymentdate'] ? substr((string)$r['paymentdate'], 0, 10) : '';
+                    return $pdate !== '' && $pdate < $today;
+                });
+                $legacyStatsRows = array_values($legacyStatsRows);
+            }
 
             $legacyStats = $this->_computeStats($legacyStatsRows, $today);
 
@@ -245,9 +274,36 @@ class ReconciliationsController extends AppController
                 ->where($legacyConditions)
                 ->orderBy(['LegacyInvoices.' . $legacySortCol => $sortDir, 'LegacyInvoices.synced_at' => 'DESC']);
 
-            $legacyTotal = (clone $legacyQ)->count();
-            $legacyPages = (int)ceil($legacyTotal / $limit) ?: 1;
-            $legacyInvoices = $legacyQ->limit($limit)->offset(($legacyPage - 1) * $limit)->all()->toArray();
+            if ($status === 'overdue') {
+                // Dla "przeterminowane" pobieramy wszystkich nieopłaconych i filtrujemy w PHP,
+                // bo część terminów pochodzi z pola platnosc (null paymentdate).
+                $allUnpaid = $legacyQ->all()->toArray();
+                $allUnpaid = array_values(array_filter($allUnpaid, function ($leg) use ($today): bool {
+                    $pdate = null;
+                    if ($leg->paymentdate !== null) {
+                        try { $pdate = $leg->paymentdate->format('Y-m-d'); } catch (\Throwable $e) {
+                            $pdate = substr((string)$leg->paymentdate, 0, 10) ?: null;
+                        }
+                    }
+                    if (!$pdate && !empty($leg->platnosc) && preg_match('/(\d+)\s*dni/i', (string)$leg->platnosc, $m)) {
+                        try { $ds = $leg->date->format('Y-m-d'); } catch (\Throwable $e) {
+                            $ds = substr((string)$leg->date, 0, 10);
+                        }
+                        if (!empty($ds)) {
+                            $c = \DateTime::createFromFormat('Y-m-d', $ds);
+                            if ($c) { $c->modify("+{$m[1]} days"); $pdate = $c->format('Y-m-d'); }
+                        }
+                    }
+                    return $pdate !== null && $pdate < $today;
+                }));
+                $legacyTotal  = count($allUnpaid);
+                $legacyPages  = (int)ceil($legacyTotal / $limit) ?: 1;
+                $legacyInvoices = array_slice($allUnpaid, ($legacyPage - 1) * $limit, $limit);
+            } else {
+                $legacyTotal    = (clone $legacyQ)->count();
+                $legacyPages    = (int)ceil($legacyTotal / $limit) ?: 1;
+                $legacyInvoices = $legacyQ->limit($limit)->offset(($legacyPage - 1) * $limit)->all()->toArray();
+            }
 
             // ── Lokalne wpłaty per faktura legacy ────────────────────────────
             $legacyPaymentsByInvoiceId = [];

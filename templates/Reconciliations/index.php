@@ -720,13 +720,32 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         $legPdate = $s ?: null;
                     }
                 }
+                // Fallback: oblicz termin z pola platnosc gdy paymentdate brak
+                $displayPdate = $legPdate;
+                if (!$displayPdate && !empty($leg->platnosc)) {
+                    if (preg_match('/(\d+)\s*dni/i', $leg->platnosc, $m)) {
+                        $days = (int)$m[1];
+                        try { $dateStr = $leg->date->format('Y-m-d'); } catch (\Throwable $e) {
+                            $dateStr = substr((string)$leg->date, 0, 10);
+                        }
+                        if (!empty($dateStr)) {
+                            $calc = \DateTime::createFromFormat('Y-m-d', $dateStr);
+                            if ($calc) {
+                                $calc->modify("+{$days} days");
+                                $displayPdate = $calc->format('Y-m-d');
+                            }
+                        }
+                    }
+                }
+                $legEdok = !empty($leg->platnosc) && stripos($leg->platnosc, 'elektronicz') !== false;
+
                 $legTotal   = (float)($leg->total ?? 0);
                 $legRemain  = (float)($leg->remaining ?? 0);
                 $legPaid    = (float)($leg->alreadypaid ?? 0);
                 $legCur     = (string)($leg->currency ?? 'PLN');
 
                 $rowClass = '';
-                if ($legState !== 'paid' && $legPdate && $legPdate < $todayStr) {
+                if ($legState !== 'paid' && $displayPdate && $displayPdate < $todayStr) {
                     $rowClass = 'table-danger';
                 }
             ?>
@@ -758,28 +777,6 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <td class="text-nowrap small text-muted"><?= $fdate($leg->date) ?></td>
                     <!-- Termin -->
                     <td class="text-nowrap small">
-                        <?php
-                        // --- Oblicz termin z platnosc jeśli paymentdate brak ---
-                        $displayPdate = $legPdate;
-                        if (!$displayPdate && !empty($leg->platnosc)) {
-                            if (preg_match('/(\d+)\s*dni/i', $leg->platnosc, $m)) {
-                                $days = (int)$m[1];
-                                try { $dateStr = $leg->date->format('Y-m-d'); } catch (\Throwable $e) {
-                                    $dateStr = substr((string)$leg->date, 0, 10);
-                                }
-                                if ($dateStr) {
-                                    $calc = \DateTime::createFromFormat('Y-m-d', $dateStr);
-                                    if ($calc) {
-                                        $calc->modify("+{$days} days");
-                                        $displayPdate = $calc->format('Y-m-d');
-                                    }
-                                }
-                            }
-                        }
-                        // --- Czy dokument tylko elektroniczny ---
-                        $legEdok = !empty($leg->platnosc)
-                            && stripos($leg->platnosc, 'elektronicz') !== false;
-                        ?>
                         <?php if ($displayPdate): ?>
                             <?php
                             $legPast  = $displayPdate < $todayStr && $legState !== 'paid';
@@ -832,7 +829,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php endforeach; ?>
                     </td>
                     <!-- Status -->
-                    <td><?= $paymentBadge($legState, $legPdate, $todayStr) ?></td>
+                    <td><?= $paymentBadge($legState, $displayPdate, $todayStr) ?></td>
                     <!-- Teczka / referencja -->
                     <td class="small text-muted" style="min-width:100px">
                         <?php if (!empty($leg->teczka)): ?>
