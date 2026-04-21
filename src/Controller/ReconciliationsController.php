@@ -23,7 +23,7 @@ class ReconciliationsController extends AppController
         $dateFrom  = $this->request->getQuery('date_from', '');
         $dateTo    = $this->request->getQuery('date_to', '');
         $typeFilter = $this->request->getQuery('type', '');
-        $sort      = $this->request->getQuery('sort', 'paymentdate');
+        $sort      = (string)$this->request->getQuery('sort', '');
         $dir       = $this->request->getQuery('dir', 'asc');
         $page      = max(1, (int)$this->request->getQuery('page', 1));
         $limit     = (int)$this->request->getQuery('limit', 50);
