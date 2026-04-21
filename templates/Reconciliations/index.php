@@ -32,8 +32,13 @@ $today = new \DateTime('today');
 $fdate = function ($v): string {
     if (!$v) return '—';
     if ($v instanceof \DateTimeInterface) return $v->format('d.m.Y');
+    // Cake\I18n\Date też ma format()
+    if (is_object($v) && method_exists($v, 'format')) return $v->format('d.m.Y');
     $s = substr((string)$v, 0, 10);
-    return $s ?: '—';
+    if (!$s) return '—';
+    // Zamień Y-m-d → d.m.Y
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) return $m[3] . '.' . $m[2] . '.' . $m[1];
+    return $s;
 };
 
 $fnum = function ($v, string $currency = 'PLN'): string {
