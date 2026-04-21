@@ -1540,19 +1540,23 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             var bankSection  = document.getElementById('bankTxSection');
 
             document.getElementById('modalInvoiceName').textContent = number || '—';
-            // Pre-fill kwoty: dla walut obcych wstępnie wpisz kwotę PLN (backend zapisuje PLN)
-            document.getElementById('modalAmount').value = remaining > 0 ? remaining.toFixed(2) : '';
+            document.getElementById('modalInvoiceName').textContent = number || 'u2014';
 
-            // Tekst pomocniczy "Pozostało" — pokaż waluty obcej jako głównej, PLN jako pomocnicze
+            // Tekst pomocniczy "Pozostało" + pre-fill kwoty
             var remainingEl = document.getElementById('modalRemaining');
+            var amountField = document.getElementById('modalAmount');
+
             if (remaining <= 0 && remainingWal <= 0) {
                 remainingEl.textContent = 'Faktura opłacona w całości';
+                amountField.value = '';
             } else if (currency !== 'PLN' && remainingWal > 0) {
-                remainingEl.innerHTML = 'Pozostało: <strong>' + fmtAmount(remainingWal) + ' ' + currency
-                    + '</strong> <span class="text-muted">(\u2248 ' + fmtAmount(remaining) + ' PLN)</span>'
-                    + '<br><small class="text-muted">Kwotę w PLN wpisz w pole poniżej.</small>';
+                // Dla faktur walutowych: pokazuj kwotę w walucie faktury.
+                // Pola remaining/total w legacy nie są wiarygodnymi wartościami PLN.
+                remainingEl.innerHTML = 'Pozostało: <strong>' + fmtAmount(remainingWal) + '\u00a0' + currency + '</strong>';
+                amountField.value = remainingWal.toFixed(2);
             } else {
-                remainingEl.textContent = 'Pozostało: ' + fmtAmount(remaining) + ' PLN';
+                remainingEl.textContent = 'Pozostało: ' + fmtAmount(remaining) + '\u00a0PLN';
+                amountField.value = remaining > 0 ? remaining.toFixed(2) : '';
             }
 
             if (source === 'legacy') {
