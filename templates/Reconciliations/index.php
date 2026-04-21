@@ -1277,6 +1277,17 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 if (amtField)  amtField.focus();
             });
         });
+    }
+
+    // ── Pobieranie przelewów po otwarciu modala ───────────────────────────────
+    function loadBankTransactions(invoiceId) {
+        var container = document.getElementById('bankTxSection');
+        var spinner   = document.getElementById('bankTxSpinner');
+        container.innerHTML = '<div class="text-muted small fst-italic">Ładowanie przelewów…</div>';
+        if (spinner) spinner.style.removeProperty('display');
+
+        fetch('/rozliczenia/bank-transactions/' + invoiceId, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function (r) { return r.json(); })
         .then(renderBankTransactions)
