@@ -1241,9 +1241,16 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         linked.forEach(function (tx) { rows += renderTxRow(tx, true, isLegacy); });
         candidates.forEach(function (tx) { rows += renderTxRow(tx, false, isLegacy); });
 
+        var totalCount = linked.length + candidates.length;
+
         container.innerHTML = note
+            + '<div class="input-group input-group-sm mb-2">'
+            + '<span class="input-group-text bg-white border-end-0"><i class="ri-search-line text-muted"></i></span>'
+            + '<input type="text" id="bankTxFilter" class="form-control border-start-0 ps-0" placeholder="Filtruj po nadawcy, tytule, dacie…" autocomplete="off">'
+            + '<span class="input-group-text bg-white text-muted small" id="bankTxCount">' + totalCount + '</span>'
+            + '</div>'
             + '<div class="table-responsive">'
-            + '<table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem">'
+            + '<table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem" id="bankTxTable">'
             + '<thead class="table-light">'
             + '<tr>'
             + '<th>Data</th>'
@@ -1254,7 +1261,32 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             + '</tr>'
             + '</thead>'
             + '<tbody>' + rows + '</tbody>'
-            + '</table></div>';
+            + '</table></div>'
+            + '<div id="bankTxNoResults" class="text-muted small fst-italic py-1" style="display:none">'
+            + '<i class="ri-search-line me-1"></i>Brak wyników dla podanej frazy.</div>';
+
+        // ── Filtrowanie wierszy ───────────────────────────────────────────────
+        var filterInput  = document.getElementById('bankTxFilter');
+        var countBadge   = document.getElementById('bankTxCount');
+        var noResults    = document.getElementById('bankTxNoResults');
+        var txTable      = document.getElementById('bankTxTable');
+
+        if (filterInput && txTable) {
+            filterInput.addEventListener('input', function () {
+                var q = this.value.toLowerCase().trim();
+                var trs = txTable.querySelectorAll('tbody tr');
+                var visible = 0;
+                trs.forEach(function (tr) {
+                    var text = tr.textContent.toLowerCase();
+                    var show = !q || text.indexOf(q) !== -1;
+                    tr.style.display = show ? '' : 'none';
+                    if (show) visible++;
+                });
+                if (countBadge) countBadge.textContent = visible;
+                if (noResults)  noResults.style.display = (visible === 0) ? '' : 'none';
+            });
+            filterInput.focus();
+        }
 
         if (!isLegacy) {
             container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
