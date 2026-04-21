@@ -749,18 +749,41 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     <td class="text-nowrap small text-muted"><?= $fdate($leg->date) ?></td>
                     <!-- Termin -->
                     <td class="text-nowrap small">
-                        <?php if ($legPdate): ?>
+                        <?php
+                        // --- Oblicz termin z platnosc jeśli paymentdate brak ---
+                        $displayPdate = $legPdate;
+                        if (!$displayPdate && !empty($leg->platnosc)) {
+                            if (preg_match('/(\d+)\s*dni/i', $leg->platnosc, $m)) {
+                                $days = (int)$m[1];
+                                $docDate = $leg->date instanceof \DateTimeInterface
+                                    ? $leg->date
+                                    : (\DateTime::createFromFormat('Y-m-d', substr((string)$leg->date, 0, 10)) ?: null);
+                                if ($docDate) {
+                                    $calc = clone $docDate;
+                                    $calc->modify("+{$days} days");
+                                    $displayPdate = $calc->format('Y-m-d');
+                                }
+                            }
+                        }
+                        // --- Czy dokument tylko elektroniczny ---
+                        $legEdok = !empty($leg->platnosc)
+                            && stripos($leg->platnosc, 'elektronicz') !== false;
+                        ?>
+                        <?php if ($displayPdate): ?>
                             <?php
-                            $legPast  = $legPdate < $todayStr && $legState !== 'paid';
-                            $legToday = $legPdate === $todayStr && $legState !== 'paid';
+                            $legPast  = $displayPdate < $todayStr && $legState !== 'paid';
+                            $legToday = $displayPdate === $todayStr && $legState !== 'paid';
                             $cls      = $legPast ? 'text-danger fw-semibold' : ($legToday ? 'text-warning fw-semibold' : 'text-muted');
                             ?>
-                            <span class="<?= $cls ?>"><?= $fdate($leg->paymentdate) ?></span>
+                            <span class="<?= $cls ?>"><?= h(date('d.m.Y', strtotime($displayPdate))) ?></span>
                             <?php if ($legPast): ?>
-                                <span class="ms-1 small text-danger">(<?= (int)(new \DateTime($legPdate))->diff($today)->days ?> dni)</span>
+                                <span class="ms-1 small text-danger">(<?= (int)(new \DateTime($displayPdate))->diff($today)->days ?> dni)</span>
                             <?php endif; ?>
                         <?php else: ?>
                             <span class="text-muted">—</span>
+                        <?php endif; ?>
+                        <?php if ($legEdok): ?>
+                            <span class="badge bg-info-subtle text-info border border-info-subtle ms-1" style="font-size:.6rem" title="<?= h($leg->platnosc) ?>">e-dok</span>
                         <?php endif; ?>
                     </td>
                     <!-- Brutto PLN -->
