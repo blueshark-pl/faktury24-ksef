@@ -708,9 +708,13 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             <tbody>
             <?php foreach ($legacyInvoices as $leg):
                 $legState   = (string)($leg->paymentstate ?? 'unpaid');
-                $legPdate   = $leg->paymentdate instanceof \DateTimeInterface
-                    ? $leg->paymentdate->format('Y-m-d')
-                    : (is_string($leg->paymentdate) ? substr($leg->paymentdate, 0, 10) : null);
+                $legPdate   = null;
+                if ($leg->paymentdate !== null) {
+                    try { $legPdate = $leg->paymentdate->format('Y-m-d'); } catch (\Throwable $e) {
+                        $s = substr((string)$leg->paymentdate, 0, 10);
+                        $legPdate = $s ?: null;
+                    }
+                }
                 $legTotal   = (float)($leg->total ?? 0);
                 $legRemain  = (float)($leg->remaining ?? 0);
                 $legPaid    = (float)($leg->alreadypaid ?? 0);
@@ -755,9 +759,9 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         if (!$displayPdate && !empty($leg->platnosc)) {
                             if (preg_match('/(\d+)\s*dni/i', $leg->platnosc, $m)) {
                                 $days = (int)$m[1];
-                                $dateStr = $leg->date instanceof \DateTimeInterface
-                                    ? $leg->date->format('Y-m-d')
-                                    : substr((string)$leg->date, 0, 10);
+                                try { $dateStr = $leg->date->format('Y-m-d'); } catch (\Throwable $e) {
+                                    $dateStr = substr((string)$leg->date, 0, 10);
+                                }
                                 if ($dateStr) {
                                     $calc = \DateTime::createFromFormat('Y-m-d', $dateStr);
                                     if ($calc) {
