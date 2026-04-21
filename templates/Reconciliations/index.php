@@ -990,7 +990,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                                 data-invoice-id="<?= h($leg->id) ?>"
                                 data-invoice-number="<?= h($leg->fullnumber) ?>"
                                 data-invoice-remaining="<?= h($legRemain) ?>"
-                                data-invoice-currency="PLN"
+                                data-invoice-remaining-wal="<?= h((float)($leg->remaining_wal ?? 0)) ?>"
+                                data-invoice-currency="<?= h($legCur) ?>"
                                 title="Dodaj wpłatę archiwalną">
                             <i class="ri-add-circle-line"></i>
                         </button>
@@ -1530,19 +1531,29 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             var btn       = event.relatedTarget;
             var source    = btn.dataset.invoiceSource || 'system';
             currentInvoiceId    = btn.dataset.invoiceId;
-            var number    = btn.dataset.invoiceNumber;
-            var remaining = parseFloat(btn.dataset.invoiceRemaining || '0');
-            var currency  = btn.dataset.invoiceCurrency || 'PLN';
+            var number         = btn.dataset.invoiceNumber;
+            var remaining      = parseFloat(btn.dataset.invoiceRemaining || '0');    // zawsze PLN
+            var remainingWal   = parseFloat(btn.dataset.invoiceRemainingWal || '0'); // waluta obca
+            var currency       = btn.dataset.invoiceCurrency || 'PLN';
 
             var form         = document.getElementById('paymentForm');
             var bankSection  = document.getElementById('bankTxSection');
 
             document.getElementById('modalInvoiceName').textContent = number || '—';
-            document.getElementById('modalAmount').value            = remaining > 0
-                ? remaining.toFixed(2) : '';
-            document.getElementById('modalRemaining').textContent   = remaining > 0
-                ? 'Pozostało: ' + fmtAmount(remaining) + ' ' + currency
-                : 'Faktura opłacona w całości';
+            // Pre-fill kwoty: dla walut obcych wstępnie wpisz kwotę PLN (backend zapisuje PLN)
+            document.getElementById('modalAmount').value = remaining > 0 ? remaining.toFixed(2) : '';
+
+            // Tekst pomocniczy "Pozostało" — pokaż waluty obcej jako głównej, PLN jako pomocnicze
+            var remainingEl = document.getElementById('modalRemaining');
+            if (remaining <= 0 && remainingWal <= 0) {
+                remainingEl.textContent = 'Faktura opłacona w całości';
+            } else if (currency !== 'PLN' && remainingWal > 0) {
+                remainingEl.innerHTML = 'Pozostało: <strong>' + fmtAmount(remainingWal) + ' ' + currency
+                    + '</strong> <span class="text-muted">(\u2248 ' + fmtAmount(remaining) + ' PLN)</span>'
+                    + '<br><small class="text-muted">Kwotę w PLN wpisz w pole poniżej.</small>';
+            } else {
+                remainingEl.textContent = 'Pozostało: ' + fmtAmount(remaining) + ' PLN';
+            }
 
             if (source === 'legacy') {
                 form.action = urlAddLegacyPayment;
