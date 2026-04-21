@@ -56,14 +56,6 @@ class ReconciliationsController extends AppController
             $baseConditions['OR'] = $orCond;
         }
 
-        // Status płatności
-        if ($status === 'overdue') {
-            $baseConditions['Invoices.paymentstate !='] = 'paid';
-            $baseConditions['Invoices.paymentdate <']   = $today;
-        } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
-            $baseConditions['Invoices.paymentstate'] = $status;
-        }
-
         // Zakres dat
         if ($dateFrom !== '') {
             $baseConditions['Invoices.date >='] = $dateFrom;
@@ -78,6 +70,17 @@ class ReconciliationsController extends AppController
             $baseConditions['Invoices.type'] = $typeFilter;
         }
 
+        // Warunki dla statystyk (kafelki) — BEZ filtra statusu, żeby kafelki były zawsze globalne
+        $baseStatsConditions = $baseConditions;
+
+        // Status płatności — dodaj tylko do warunków listy, NIE do statystyk
+        if ($status === 'overdue') {
+            $baseConditions['Invoices.paymentstate !='] = 'paid';
+            $baseConditions['Invoices.paymentdate <']   = $today;
+        } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
+            $baseConditions['Invoices.paymentstate'] = $status;
+        }
+
         // ── Statystyki i lista — system (pomijamy gdy source=legacy) ─────────
         $stats    = ['count' => 0, 'totalReceivables' => 0.0, 'totalPaid' => 0.0, 'totalRemaining' => 0.0, 'overdue' => 0.0, 'overdueCount' => 0];
         $total    = 0;
@@ -85,7 +88,7 @@ class ReconciliationsController extends AppController
         $pages    = 1;
 
         if ($sourceFilter !== 'legacy') {
-            // ── Statystyki (prosta agregacja SQL bez contain) ─────────────────
+            // ── Statystyki (prosta agregacja SQL bez contain) — globalne, bez filtra statusu ──
             $statsRows = $Invoices->find()
                 ->select([
                     'total'        => 'Invoices.total',
@@ -94,7 +97,7 @@ class ReconciliationsController extends AppController
                     'paymentstate' => 'Invoices.paymentstate',
                     'paymentdate'  => 'Invoices.paymentdate',
                 ])
-                ->where($baseConditions)
+                ->where($baseStatsConditions)
                 ->where([
                     'OR' => [
                         ['Invoices.workflow_status IS'  => null],
@@ -199,23 +202,27 @@ class ReconciliationsController extends AppController
                 ];
             }
 
+            // Warunki dla statystyk (kafelki) — BEZ filtra statusu, żeby kafelki były zawsze globalne
+            $legacyStatsConditions = $legacyConditions;
+
             if ($status === 'overdue') {
                 $legacyConditions['LegacyInvoices.paymentstate !='] = 'paid';
-                // Łapiemy albo te z paymentdate < dziś, albo (po merge) te z platnosc-based terminem
+                // Łapiemy albo te z paymentdate < dziś, albo te z platnosc-based terminem
                 // Pobieramy wszystkie nieopłacone i filtrujemy po obliczonym terminie w PHP
-                // (zamiast WHERE paymentdate < today, bo część terminów jest w polu platnosc)
             } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
                 $legacyConditions['LegacyInvoices.paymentstate'] = $status;
             }
 
             if ($dateFrom !== '') {
                 $legacyConditions['LegacyInvoices.date >='] = $dateFrom;
+                $legacyStatsConditions['LegacyInvoices.date >='] = $dateFrom;
             }
             if ($dateTo !== '') {
                 $legacyConditions['LegacyInvoices.date <='] = $dateTo;
+                $legacyStatsConditions['LegacyInvoices.date <='] = $dateTo;
             }
 
-            // Statystyki legacy
+            // Statystyki legacy — używamy $legacyStatsConditions (bez filtra statusu)
             $legacyStatsRows = $LegacyInvoices->find()
                 ->select([
                     'total'        => 'LegacyInvoices.total',
@@ -226,7 +233,7 @@ class ReconciliationsController extends AppController
                     'date'         => 'LegacyInvoices.date',
                     'platnosc'     => 'LegacyInvoices.platnosc',
                 ])
-                ->where($legacyConditions)
+                ->where($legacyStatsConditions)
                 ->disableHydration()
                 ->all()
                 ->toArray();
@@ -246,16 +253,7 @@ class ReconciliationsController extends AppController
                 }
             }
             unset($srow);
-
-            // Dla filtra overdue — zawęź do faktycznie przeterminowanych (po obliczonym terminie)
-            if ($status === 'overdue') {
-                $legacyStatsRows = array_filter($legacyStatsRows, static function (array $r) use ($today): bool {
-                    $pdate = $r['paymentdate'] ? substr((string)$r['paymentdate'], 0, 10) : '';
-                    return $pdate !== '' && $pdate < $today;
-                });
-                $legacyStatsRows = array_values($legacyStatsRows);
-            }
-
+            // _computeStats już wewnętrznie filtruje: state !== 'paid' && pdate < today
             $legacyStats = $this->_computeStats($legacyStatsRows, $today);
 
             // Merge statystyk
