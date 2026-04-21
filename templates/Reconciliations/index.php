@@ -2,6 +2,12 @@
 /**
  * @var \App\View\AppView $this
  * @var \App\Model\Entity\Invoice[] $invoices
+ * @var object[] $legacyInvoices
+ * @var int $legacyTotal
+ * @var int $legacyPages
+ * @var int $legacyPage
+ * @var string $sourceFilter
+ * @var object|null $lastSync
  * @var array $bankByInvoice
  * @var array $speedByInvoice
  * @var array $stats
@@ -119,13 +125,14 @@ $bankBadge = function (?object $bt): string {
 };
 
 // Pomocnik URL z aktualnymi filtrami
-$currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $typeFilter, $sort, $dir, $limit, $page): array {
+$currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
     $base = [
         'q'         => $search,
         'status'    => $status,
         'date_from' => $dateFrom,
         'date_to'   => $dateTo,
         'type'      => $typeFilter,
+        'source'    => $sourceFilter,
         'sort'      => $sort,
         'dir'       => $dir,
         'limit'     => $limit,
@@ -176,7 +183,21 @@ $typeBadge = function (string $type): string {
 <!-- Nagłówek -->
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0 fw-semibold">Rozliczenia <span class="text-muted fs-6 fw-normal">faktury · wpłaty · przelewy</span></h4>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-warning"
+                data-bs-toggle="modal" data-bs-target="#legacySyncModal"
+                title="Synchronizuj faktury z zewnętrznego systemu">
+            <i class="ri-refresh-line me-1"></i>Arch. legacy
+            <?php if ($lastSync !== null): ?>
+                <span class="ms-1 text-muted" style="font-size:.7rem">
+                    <?php
+                    $ls = $lastSync->synced_at;
+                    $lsStr = $ls instanceof \DateTimeInterface ? $ls->format('d.m.Y H:i') : substr((string)$ls, 0, 16);
+                    echo h($lsStr);
+                    ?>
+                </span>
+            <?php endif; ?>
+        </button>
         <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Invoices', 'action' => 'index']) ?>"
            class="btn btn-sm btn-outline-secondary">
             <i class="ri-file-list-line me-1"></i> Lista faktur
@@ -297,6 +318,14 @@ $typeBadge = function (string $type): string {
                     <?php foreach ([25, 50, 100, 200] as $l): ?>
                         <option value="<?= $l ?>" <?= $limit == $l ? 'selected' : '' ?>><?= $l ?></option>
                     <?php endforeach; ?>
+                </select>
+            </div>
+            <!-- Źródło -->
+            <div class="col-auto">
+                <select name="source" class="form-select form-select-sm" title="Źródło">
+                    <option value=""      <?= $sourceFilter === ''       ? 'selected' : '' ?>>Wszystkie źródła</option>
+                    <option value="system"<?= $sourceFilter === 'system' ? 'selected' : '' ?>>Tylko system</option>
+                    <option value="legacy"<?= $sourceFilter === 'legacy' ? 'selected' : '' ?>>Tylko archiwum</option>
                 </select>
             </div>
             <input type="hidden" name="sort" value="<?= h($sort) ?>">
@@ -608,6 +637,364 @@ $typeBadge = function (string $type): string {
     </div>
 </div>
 <?php endif; ?>
+
+<?php
+// ── Sekcja faktur archiwalnych (legacy) ─────────────────────────────────────
+if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
+    $legacyCurrentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $legacyPage): array {
+        $base = [
+            'q'         => $search,
+            'status'    => $status,
+            'date_from' => $dateFrom,
+            'date_to'   => $dateTo,
+            'type'      => $typeFilter,
+            'source'    => $sourceFilter,
+            'sort'      => $sort,
+            'dir'       => $dir,
+            'limit'     => $limit,
+            'lpage'     => $legacyPage,
+        ];
+        $merged = array_merge($base, $extra);
+        $params = array_filter($merged, fn($v) => $v !== '' && $v !== null);
+        return ['action' => 'index', '?' => $params];
+    };
+?>
+<div class="mt-4">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <h6 class="mb-0 fw-semibold text-secondary">
+            <i class="ri-archive-line me-1"></i>Faktury archiwalne
+            <span class="badge bg-secondary ms-1"><?= $legacyTotal ?></span>
+        </h6>
+        <span class="text-muted small">— ze starego systemu (rejestr <?= !empty($lastSync) ? h($lastSync->rejestr) : '130' ?>)</span>
+        <?php if ($lastSync !== null): ?>
+            <span class="small text-muted fst-italic ms-auto">
+                <i class="ri-time-line me-1"></i>Ostatnia sync:
+                <?php
+                $ls = $lastSync->synced_at;
+                echo h($ls instanceof \DateTimeInterface ? $ls->format('d.m.Y H:i') : substr((string)$ls, 0, 16));
+                ?>
+            </span>
+        <?php endif; ?>
+    </div>
+
+<?php if (empty($legacyInvoices)): ?>
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-4">
+            <i class="ri-archive-line fs-2 text-muted mb-2 d-block"></i>
+            <p class="text-muted mb-2">Brak faktur archiwalnych w wybranym zakresie.</p>
+            <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#legacySyncModal">
+                <i class="ri-refresh-line me-1"></i>Synchronizuj archiwum
+            </button>
+        </div>
+    </div>
+<?php else: ?>
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle" id="legacy-rec-table">
+            <thead class="table-secondary">
+                <tr>
+                    <th class="ps-3" style="min-width:140px">Nr faktury</th>
+                    <th style="min-width:160px">Kontrahent</th>
+                    <th class="text-center" style="width:70px">Waluta</th>
+                    <th class="text-nowrap">Data</th>
+                    <th class="text-nowrap">Termin</th>
+                    <th class="text-end text-nowrap">Brutto PLN</th>
+                    <th class="text-end text-nowrap">Pozostało PLN</th>
+                    <th style="min-width:140px">Status</th>
+                    <th style="min-width:100px">Teczka / ref.</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($legacyInvoices as $leg):
+                $legState   = (string)($leg->paymentstate ?? 'unpaid');
+                $legPdate   = $leg->paymentdate instanceof \DateTimeInterface
+                    ? $leg->paymentdate->format('Y-m-d')
+                    : (is_string($leg->paymentdate) ? substr($leg->paymentdate, 0, 10) : null);
+                $legTotal   = (float)($leg->total ?? 0);
+                $legRemain  = (float)($leg->remaining ?? 0);
+                $legPaid    = (float)($leg->alreadypaid ?? 0);
+                $legCur     = (string)($leg->currency ?? 'PLN');
+
+                $rowClass = '';
+                if ($legState !== 'paid' && $legPdate && $legPdate < $todayStr) {
+                    $rowClass = 'table-danger';
+                }
+            ?>
+                <tr class="<?= $rowClass ?>">
+                    <!-- Nr faktury -->
+                    <td class="ps-3">
+                        <span class="fw-semibold text-dark">
+                            <?= h($leg->fullnumber ?? '—') ?>
+                        </span>
+                        <span class="ms-1 badge bg-secondary" style="font-size:.65rem">Arch.</span>
+                    </td>
+                    <!-- Kontrahent -->
+                    <td style="max-width:200px">
+                        <div class="text-truncate small" title="<?= h($leg->contractor_name ?? '') ?>">
+                            <?= h($leg->contractor_name ?? '—') ?>
+                        </div>
+                        <?php if (!empty($leg->contractor_nip)): ?>
+                            <div class="text-muted" style="font-size:.7rem">NIP: <?= h($leg->contractor_nip) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <!-- Waluta -->
+                    <td class="text-center">
+                        <span class="badge <?= $legCur !== 'PLN' ? 'bg-info' : 'bg-light text-dark border' ?>"><?= h($legCur) ?></span>
+                        <?php if ($legCur !== 'PLN' && ($leg->total_wal ?? 0) > 0): ?>
+                            <div class="text-muted" style="font-size:.65rem"><?= number_format((float)$leg->total_wal, 2, ',', ' ') ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <!-- Data -->
+                    <td class="text-nowrap small text-muted"><?= $fdate($leg->date) ?></td>
+                    <!-- Termin -->
+                    <td class="text-nowrap small">
+                        <?php if ($legPdate): ?>
+                            <?php
+                            $legPast  = $legPdate < $todayStr && $legState !== 'paid';
+                            $legToday = $legPdate === $todayStr && $legState !== 'paid';
+                            $cls      = $legPast ? 'text-danger fw-semibold' : ($legToday ? 'text-warning fw-semibold' : 'text-muted');
+                            ?>
+                            <span class="<?= $cls ?>"><?= $fdate($leg->paymentdate) ?></span>
+                            <?php if ($legPast): ?>
+                                <span class="ms-1 small text-danger">(<?= (int)(new \DateTime($legPdate))->diff($today)->days ?> dni)</span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="text-muted">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <!-- Brutto PLN -->
+                    <td class="text-end text-nowrap small fw-semibold">
+                        <?= number_format($legTotal, 2, ',', ' ') ?> PLN
+                    </td>
+                    <!-- Pozostało PLN -->
+                    <td class="text-end text-nowrap small">
+                        <?php if ($legState === 'paid'): ?>
+                            <span class="text-success">0,00 PLN</span>
+                        <?php else: ?>
+                            <span class="<?= $legRemain > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
+                                <?= number_format($legRemain, 2, ',', ' ') ?> PLN
+                            </span>
+                        <?php endif; ?>
+                        <?php if ($legPaid > 0 && $legState !== 'paid'): ?>
+                            <div class="text-muted" style="font-size:.7rem">wpłacono: <?= number_format($legPaid, 2, ',', ' ') ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <!-- Status -->
+                    <td><?= $paymentBadge($legState, $legPdate, $todayStr) ?></td>
+                    <!-- Teczka / referencja -->
+                    <td class="small text-muted">
+                        <?php if (!empty($leg->teczka)): ?>
+                            <div><i class="ri-folder-user-line me-1"></i><?= h($leg->teczka) ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($leg->glo_tyt1)): ?>
+                            <div style="font-size:.7rem"><?= h($leg->glo_tyt1) ?></div>
+                        <?php endif; ?>
+                        <?php if (empty($leg->teczka) && empty($leg->glo_tyt1)): ?>
+                            —
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Stopka: info + paginacja legacy -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between px-3 py-2 border-top gap-2">
+        <div class="text-muted small">
+            Archiwum: wyświetlono <?= count($legacyInvoices) ?> z <?= $legacyTotal ?> dokumentów
+        </div>
+        <?php if ($legacyPages > 1): ?>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item <?= $legacyPage <= 1 ? 'disabled' : '' ?>">
+                    <a class="page-link" href="<?= $this->Url->build($legacyCurrentUrl(['lpage' => max(1, $legacyPage - 1)])) ?>">‹</a>
+                </li>
+                <?php
+                $lStart = max(1, $legacyPage - 2);
+                $lEnd   = min($legacyPages, $legacyPage + 2);
+                for ($i = $lStart; $i <= $lEnd; $i++):
+                ?>
+                    <li class="page-item <?= $i === $legacyPage ? 'active' : '' ?>">
+                        <a class="page-link" href="<?= $this->Url->build($legacyCurrentUrl(['lpage' => $i])) ?>"><?= $i ?></a>
+                    </li>
+                <?php endfor; ?>
+                <li class="page-item <?= $legacyPage >= $legacyPages ? 'disabled' : '' ?>">
+                    <a class="page-link" href="<?= $this->Url->build($legacyCurrentUrl(['lpage' => min($legacyPages, $legacyPage + 1)])) ?>">›</a>
+                </li>
+            </ul>
+        </nav>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     Modal: Synchronizacja faktur archiwalnych (legacy API)
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="legacySyncModal" tabindex="-1" aria-labelledby="legacySyncModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="legacySyncModalLabel">
+          <i class="ri-refresh-line me-2 text-warning"></i>Synchronizacja archiwum legacy
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Pobiera faktury z zewnętrznego systemu (api nordlogis) i zapisuje je lokalnie.
+          Dane z API są <strong>źródłem prawdy</strong> — nadpisują istniejące rekordy.
+          Zmiany stanu płatności są logowane.
+        </p>
+
+        <div class="row g-2">
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Rejestr</label>
+            <select id="syncRejestr" class="form-select form-select-sm">
+              <option value="130">130 — FSK</option>
+              <option value="131">131</option>
+              <option value="132">132</option>
+              <option value="133">133</option>
+              <option value="134">134</option>
+            </select>
+          </div>
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Rok</label>
+            <select id="syncRok" class="form-select form-select-sm">
+              <?php for ($y = (int)date('Y'); $y >= 2020; $y--): ?>
+                <option value="<?= $y ?>" <?= $y === (int)date('Y') ? 'selected' : '' ?>><?= $y ?></option>
+              <?php endfor; ?>
+            </select>
+          </div>
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Miesiąc</label>
+            <select id="syncMc" class="form-select form-select-sm">
+              <option value="">— cały rok —</option>
+              <?php
+              $miesice = ['01'=>'Styczeń','02'=>'Luty','03'=>'Marzec','04'=>'Kwiecień','05'=>'Maj','06'=>'Czerwiec',
+                          '07'=>'Lipiec','08'=>'Sierpień','09'=>'Wrzesień','10'=>'Październik','11'=>'Listopad','12'=>'Grudzień'];
+              foreach ($miesice as $num => $name):
+              ?>
+                <option value="<?= $num ?>" <?= $num == date('m') ? 'selected' : '' ?>>
+                  <?= $num ?> — <?= $name ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+
+        <!-- Wynik synchronizacji -->
+        <div id="syncResult" class="mt-3" style="display:none"></div>
+
+        <?php if ($lastSync !== null): ?>
+        <div class="mt-3 p-2 bg-light rounded border small">
+          <strong>Ostatnia synchronizacja:</strong>
+          <?php
+          $ls    = $lastSync->synced_at;
+          $lsStr = $ls instanceof \DateTimeInterface ? $ls->format('d.m.Y H:i') : substr((string)$ls, 0, 16);
+          ?>
+          <?= h($lsStr) ?> —
+          rejestr <?= h($lastSync->rejestr) ?>,
+          <?= $lastSync->rok ?>/<?= $lastSync->mc ? str_pad($lastSync->mc, 2, '0', STR_PAD_LEFT) : 'cały rok' ?>,
+          pobrano <?= (int)$lastSync->records_fetched ?> dok.,
+          <?php if ($lastSync->status === 'error'): ?>
+            <span class="text-danger"><i class="ri-error-warning-line me-1"></i>Błąd: <?= h($lastSync->error_message ?? '') ?></span>
+          <?php else: ?>
+            <span class="text-success"><i class="ri-checkbox-circle-line me-1"></i>OK</span>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" id="btnRunSync" class="btn btn-warning btn-sm">
+          <i class="ri-refresh-line me-1"></i>Synchronizuj
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var btn     = document.getElementById('btnRunSync');
+    var result  = document.getElementById('syncResult');
+    var csrfMeta = document.querySelector('meta[name="csrfToken"]');
+    var csrfInput = document.querySelector('input[name="_csrfToken"]');
+    var csrf    = (csrfMeta && csrfMeta.content) || (csrfInput && csrfInput.value) || '';
+
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Synchronizuję…';
+        result.style.display = 'none';
+
+        var rejestr = document.getElementById('syncRejestr').value;
+        var rok     = document.getElementById('syncRok').value;
+        var mc      = document.getElementById('syncMc').value;
+
+        var body    = new URLSearchParams();
+        body.append('rejestr', rejestr);
+        body.append('rok', rok);
+        body.append('mc', mc);
+
+        fetch('<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'syncLegacy']) ?>', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-Token': csrf,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-refresh-line me-1"></i>Synchronizuj';
+            result.style.display = '';
+
+            if (data.error) {
+                result.innerHTML = '<div class="alert alert-danger small py-2">'
+                    + '<i class="ri-error-warning-line me-2"></i>' + data.error + '</div>';
+                return;
+            }
+
+            var changesHtml = '';
+            if (data.changed > 0) {
+                changesHtml = '<div class="mt-2"><strong class="small">Zmiany stanu płatności (' + data.changed + '):</strong>'
+                    + '<ul class="mb-0 small">';
+                (data.changes || []).forEach(function (c) {
+                    changesHtml += '<li><code>' + c.fullnumber + '</code>: '
+                        + '<span class="badge bg-secondary me-1">' + c.from + '</span>'
+                        + '→ <span class="badge bg-primary">' + c.to + '</span>'
+                        + ' (pozostało: ' + parseFloat(c.remaining || 0).toFixed(2) + ' PLN)</li>';
+                });
+                changesHtml += '</ul></div>';
+            }
+
+            result.innerHTML = '<div class="alert alert-success small py-2">'
+                + '<i class="ri-checkbox-circle-line me-2"></i>' + data.message
+                + changesHtml
+                + '</div>';
+
+            // Odśwież stronę po 2s
+            setTimeout(function () { location.reload(); }, 2000);
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-refresh-line me-1"></i>Synchronizuj';
+            result.style.display = '';
+            result.innerHTML = '<div class="alert alert-danger small py-2">'
+                + '<i class="ri-error-warning-line me-2"></i>Błąd połączenia: ' + err.message + '</div>';
+        });
+    });
+}());
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      Modal: Rozlicz fakturę (przelewy + ręczna wpłata)

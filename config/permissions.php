@@ -222,6 +222,11 @@ return [
                 'generatePdfInternal',
                 'processEmailQueue',
                 'debugKsefXml',
+                'checkRatesBatch',
+                'getLabel',
+                'generateLabel',
+                'markSent',
+                'printCustom',
             ],
 
         ],
@@ -365,6 +370,13 @@ return [
             'action' => ['index', 'add', 'delete'],
         ],
 
+        // Rozliczenia — moduł + synchronizacja legacy
+        [
+            'role' => 'user',
+            'controller' => 'Reconciliations',
+            'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy'],
+        ],
+
         // odbiorcy e-mail faktur (panel kontrahenta)
         [
             'role' => 'user',
@@ -442,6 +454,15 @@ return [
             'role' => '*',
             'controller' => 'Sso',
             'action' => ['login'],
+            'bypassAuth' => true,
+        ],
+        // Skan QR z etykiety pocztowej — oznaczenie faktury jako wysłanej (bez logowania)
+        [
+            'role' => '*',
+            'prefix' => false,
+            'plugin' => false,
+            'controller' => 'Invoices',
+            'action' => ['scanLabel'],
             'bypassAuth' => true,
         ],
     ]

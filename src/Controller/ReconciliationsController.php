@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\LegacyInvoiceSyncService;
 use Cake\Http\Response;
 use Cake\Utility\Text;
 
@@ -32,6 +33,9 @@ class ReconciliationsController extends AppController
 
         $today    = date('Y-m-d');
         $Invoices = $this->fetchTable('Invoices');
+
+        // Filtr źródła — '' | 'system' | 'legacy'
+        $sourceFilter = $this->request->getQuery('source', '');
 
         // ── Warunki WHERE wspólne dla głównego zapytania i statystyk ─────────
         $baseConditions = ['Invoices.company_id' => $companyId];
@@ -74,58 +78,70 @@ class ReconciliationsController extends AppController
             $baseConditions['Invoices.type'] = $typeFilter;
         }
 
-        // ── Statystyki (prosta agregacja SQL bez contain) ────────────────────
-        $statsRows = $Invoices->find()
-            ->select([
-                'total'        => 'Invoices.total',
-                'alreadypaid'  => 'Invoices.alreadypaid',
-                'remaining'    => 'Invoices.remaining',
-                'paymentstate' => 'Invoices.paymentstate',
-                'paymentdate'  => 'Invoices.paymentdate',
-            ])
-            ->where($baseConditions)
-            ->where([
-                'OR' => [
-                    ['Invoices.workflow_status IS'  => null],
-                    ['Invoices.workflow_status !=' => 'draft'],
-                ],
-            ])
-            ->disableHydration()
-            ->all()
-            ->toArray();
+        // ── Statystyki i lista — system (pomijamy gdy source=legacy) ─────────
+        $stats    = ['count' => 0, 'totalReceivables' => 0.0, 'totalPaid' => 0.0, 'totalRemaining' => 0.0, 'overdue' => 0.0, 'overdueCount' => 0];
+        $total    = 0;
+        $invoices = [];
+        $pages    = 1;
 
-        $stats = $this->_computeStats($statsRows, $today);
+        if ($sourceFilter !== 'legacy') {
+            // ── Statystyki (prosta agregacja SQL bez contain) ─────────────────
+            $statsRows = $Invoices->find()
+                ->select([
+                    'total'        => 'Invoices.total',
+                    'alreadypaid'  => 'Invoices.alreadypaid',
+                    'remaining'    => 'Invoices.remaining',
+                    'paymentstate' => 'Invoices.paymentstate',
+                    'paymentdate'  => 'Invoices.paymentdate',
+                ])
+                ->where($baseConditions)
+                ->where([
+                    'OR' => [
+                        ['Invoices.workflow_status IS'  => null],
+                        ['Invoices.workflow_status !=' => 'draft'],
+                    ],
+                ])
+                ->disableHydration()
+                ->all()
+                ->toArray();
 
-        // ── Główne zapytanie z kontrahentem ───────────────────────────────────
-        $allowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
-        $sortCol = in_array($sort, $allowedSort, true) ? $sort : 'paymentdate';
-        $sortDir = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
+            $stats = $this->_computeStats($statsRows, $today);
 
-        $invoiceQuery = $Invoices->find()
-            ->contain([
-                'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q) {
-                    return $q->select(['id', 'invoice_id', 'name', 'nip']);
-                },
-            ])
-            ->select([
-                'Invoices.id', 'Invoices.fullnumber', 'Invoices.date',
-                'Invoices.paymentdate', 'Invoices.paymentstate', 'Invoices.paymentmethod',
-                'Invoices.total', 'Invoices.alreadypaid', 'Invoices.remaining',
-                'Invoices.currency', 'Invoices.type', 'Invoices.created',
-                'Invoices.sent_at',
-            ])
-            ->where($baseConditions)
-            ->where([
-                'OR' => [
-                    ['Invoices.workflow_status IS'  => null],
-                    ['Invoices.workflow_status !=' => 'draft'],
-                ],
-            ])
-            ->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
+            // ── Główne zapytanie z kontrahentem ───────────────────────────────
+            $allowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
+            $sortCol = in_array($sort, $allowedSort, true) ? $sort : 'paymentdate';
+            $sortDir = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
 
-        $total    = (clone $invoiceQuery)->count();
-        $invoices = $invoiceQuery->limit($limit)->offset(($page - 1) * $limit)->all()->toArray();
-        $pages    = (int)ceil($total / $limit);
+            $invoiceQuery = $Invoices->find()
+                ->contain([
+                    'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q) {
+                        return $q->select(['id', 'invoice_id', 'name', 'nip']);
+                    },
+                ])
+                ->select([
+                    'Invoices.id', 'Invoices.fullnumber', 'Invoices.date',
+                    'Invoices.paymentdate', 'Invoices.paymentstate', 'Invoices.paymentmethod',
+                    'Invoices.total', 'Invoices.alreadypaid', 'Invoices.remaining',
+                    'Invoices.currency', 'Invoices.type', 'Invoices.created',
+                    'Invoices.sent_at',
+                ])
+                ->where($baseConditions)
+                ->where([
+                    'OR' => [
+                        ['Invoices.workflow_status IS'  => null],
+                        ['Invoices.workflow_status !=' => 'draft'],
+                    ],
+                ])
+                ->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
+
+            $total    = (clone $invoiceQuery)->count();
+            $invoices = $invoiceQuery->limit($limit)->offset(($page - 1) * $limit)->all()->toArray();
+            $pages    = (int)ceil($total / $limit);
+        } else {
+            // Gdy source=legacy — $sortDir potrzebne dla legacy query
+            $allowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
+            $sortDir = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
+        }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
         $bankByInvoice = [];
@@ -163,12 +179,190 @@ class ReconciliationsController extends AppController
             $speedByInvoice = [];
         }
 
+        // ── Faktury archiwalne (legacy) ───────────────────────────────────────
+        $legacyInvoices = [];
+        $legacyTotal    = 0;
+        $legacyPages    = 1;
+        $legacyPage     = max(1, (int)$this->request->getQuery('lpage', 1));
+
+        if ($sourceFilter !== 'system' && $typeFilter === '') {
+            $LegacyInvoices = $this->fetchTable('LegacyInvoices');
+
+            $legacyConditions = ['LegacyInvoices.company_id' => $companyId];
+
+            if ($search !== '') {
+                $like = '%' . $search . '%';
+                $legacyConditions['OR'] = [
+                    'LegacyInvoices.fullnumber LIKE'      => $like,
+                    'LegacyInvoices.contractor_name LIKE' => $like,
+                    'LegacyInvoices.contractor_nip LIKE'  => $like,
+                ];
+            }
+
+            if ($status === 'overdue') {
+                $legacyConditions['LegacyInvoices.paymentstate !='] = 'paid';
+                $legacyConditions['LegacyInvoices.paymentdate <']   = $today;
+            } elseif (in_array($status, ['unpaid', 'partial', 'paid'], true)) {
+                $legacyConditions['LegacyInvoices.paymentstate'] = $status;
+            }
+
+            if ($dateFrom !== '') {
+                $legacyConditions['LegacyInvoices.date >='] = $dateFrom;
+            }
+            if ($dateTo !== '') {
+                $legacyConditions['LegacyInvoices.date <='] = $dateTo;
+            }
+
+            // Statystyki legacy
+            $legacyStatsRows = $LegacyInvoices->find()
+                ->select([
+                    'total'        => 'LegacyInvoices.total',
+                    'alreadypaid'  => 'LegacyInvoices.alreadypaid',
+                    'remaining'    => 'LegacyInvoices.remaining',
+                    'paymentstate' => 'LegacyInvoices.paymentstate',
+                    'paymentdate'  => 'LegacyInvoices.paymentdate',
+                ])
+                ->where($legacyConditions)
+                ->disableHydration()
+                ->all()
+                ->toArray();
+
+            $legacyStats = $this->_computeStats($legacyStatsRows, $today);
+
+            // Merge statystyk
+            $stats['count']            += $legacyStats['count'];
+            $stats['totalReceivables'] += $legacyStats['totalReceivables'];
+            $stats['totalPaid']        += $legacyStats['totalPaid'];
+            $stats['totalRemaining']   += $legacyStats['totalRemaining'];
+            $stats['overdue']          += $legacyStats['overdue'];
+            $stats['overdueCount']     += $legacyStats['overdueCount'];
+
+            // Zapytanie legacyInvoices z paginacją
+            $legacyAllowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
+            $legacySortCol = in_array($sort, $legacyAllowedSort, true) ? $sort : 'paymentdate';
+
+            $legacyQ = $LegacyInvoices->find()
+                ->where($legacyConditions)
+                ->orderBy(['LegacyInvoices.' . $legacySortCol => $sortDir, 'LegacyInvoices.synced_at' => 'DESC']);
+
+            $legacyTotal = (clone $legacyQ)->count();
+            $legacyPages = (int)ceil($legacyTotal / $limit) ?: 1;
+            $legacyInvoices = $legacyQ->limit($limit)->offset(($legacyPage - 1) * $limit)->all()->toArray();
+        }
+
+        // Ostatnia synchronizacja legacy — dla UI
+        $lastSync = null;
+        if ($typeFilter === '') {
+            $lastSync = $this->fetchTable('LegacySyncLogs')->find()
+                ->where(['company_id' => $companyId])
+                ->select(['rejestr', 'rok', 'mc', 'records_fetched', 'records_upserted', 'synced_at', 'status'])
+                ->orderByDesc('synced_at')
+                ->first();
+        }
+
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
             'search', 'status', 'dateFrom', 'dateTo', 'typeFilter', 'sort', 'dir',
-            'stats', 'bankByInvoice', 'speedByInvoice'
+            'stats', 'bankByInvoice', 'speedByInvoice',
+            'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
+            'sourceFilter', 'lastSync'
         ));
         $this->set('title', 'Rozliczenia');
+    }
+
+    // ── Synchronizacja faktur legacy z zewnętrznego API (AJAX POST) ─────────
+
+    public function syncLegacy(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+        $userName  = $this->request->getAttribute('identity')?->get('username') ?? '';
+
+        $rejestr = (int)($this->request->getData('rejestr', 130));
+        $rok     = (int)($this->request->getData('rok', (int)date('Y')));
+        $mc      = $this->request->getData('mc');
+        $mc      = ($mc !== '' && $mc !== null) ? (int)$mc : null;
+
+        // Walidacja wejścia
+        if ($rejestr <= 0 || $rok < 2010 || $rok > (int)date('Y') + 1) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Nieprawidłowe parametry synchronizacji.']));
+        }
+        if ($mc !== null && ($mc < 1 || $mc > 12)) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Nieprawidłowy miesiąc (1-12).']));
+        }
+
+        $LegacySyncLogs = $this->fetchTable('LegacySyncLogs');
+        $nowStr = date('Y-m-d H:i:s');
+
+        try {
+            $service = new LegacyInvoiceSyncService();
+            $result  = $service->syncMonth($rejestr, $rok, $mc, $companyId);
+
+            // Zapisz log sukcesu
+            $log = $LegacySyncLogs->newEntity([
+                'id'                => Text::uuid(),
+                'company_id'        => $companyId,
+                'rejestr'           => $rejestr,
+                'rok'               => $rok,
+                'mc'                => $mc,
+                'synced_by_user_id' => $userId,
+                'synced_by_name'    => $userName,
+                'status'            => 'success',
+                'records_fetched'   => $result['fetched'],
+                'records_upserted'  => $result['upserted'],
+                'records_changed'   => $result['changed'],
+                'changes_detail'    => !empty($result['changes']) ? json_encode($result['changes']) : null,
+                'error_message'     => null,
+                'synced_at'         => $nowStr,
+            ]);
+            $LegacySyncLogs->save($log);
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success'   => true,
+                    'fetched'   => $result['fetched'],
+                    'upserted'  => $result['upserted'],
+                    'changed'   => $result['changed'],
+                    'changes'   => $result['changes'],
+                    'synced_at' => $nowStr,
+                    'message'   => sprintf(
+                        'Pobrano %d dokumentów, zapisano %d, zmienił stan: %d.',
+                        $result['fetched'],
+                        $result['upserted'],
+                        $result['changed']
+                    ),
+                ]));
+        } catch (\Throwable $e) {
+            // Zapisz log błędu
+            $log = $LegacySyncLogs->newEntity([
+                'id'                => Text::uuid(),
+                'company_id'        => $companyId,
+                'rejestr'           => $rejestr,
+                'rok'               => $rok,
+                'mc'                => $mc,
+                'synced_by_user_id' => $userId,
+                'synced_by_name'    => $userName,
+                'status'            => 'error',
+                'records_fetched'   => 0,
+                'records_upserted'  => 0,
+                'records_changed'   => 0,
+                'changes_detail'    => null,
+                'error_message'     => $e->getMessage(),
+                'synced_at'         => $nowStr,
+            ]);
+            $LegacySyncLogs->save($log);
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'error'   => 'Błąd synchronizacji: ' . $e->getMessage(),
+                    'success' => false,
+                ]));
+        }
     }
 
     // ── Przelewy bankowe dla kontrahenta faktury (AJAX) ──────────────────────
