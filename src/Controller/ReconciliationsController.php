@@ -18,15 +18,20 @@ class ReconciliationsController extends AppController
 
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
 
-        $search    = trim((string)$this->request->getQuery('q', ''));
-        $status    = $this->request->getQuery('status', '');
-        $dateFrom  = $this->request->getQuery('date_from', '');
-        $dateTo    = $this->request->getQuery('date_to', '');
-        $typeFilter = $this->request->getQuery('type', '');
-        $sort      = (string)$this->request->getQuery('sort', '');
-        $dir       = $this->request->getQuery('dir', 'asc');
-        $page      = max(1, (int)$this->request->getQuery('page', 1));
-        $limit     = (int)$this->request->getQuery('limit', 50);
+        $search         = trim((string)$this->request->getQuery('q', ''));
+        $status         = $this->request->getQuery('status', '');
+        $dateFrom       = $this->request->getQuery('date_from', '');
+        $dateTo         = $this->request->getQuery('date_to', '');
+        $dueDateFrom    = $this->request->getQuery('due_from', '');
+        $dueDateTo      = $this->request->getQuery('due_to', '');
+        $currencyFilter = $this->request->getQuery('currency', '');
+        $amountFrom     = $this->request->getQuery('amount_from', '');
+        $amountTo       = $this->request->getQuery('amount_to', '');
+        $typeFilter     = $this->request->getQuery('type', '');
+        $sort           = (string)$this->request->getQuery('sort', '');
+        $dir            = $this->request->getQuery('dir', 'asc');
+        $page           = max(1, (int)$this->request->getQuery('page', 1));
+        $limit          = (int)$this->request->getQuery('limit', 50);
         if (!in_array($limit, [25, 50, 100, 200], true)) {
             $limit = 50;
         }
@@ -60,12 +65,34 @@ class ReconciliationsController extends AppController
             $baseConditions['OR'] = $orCond;
         }
 
-        // Zakres dat
+        // Zakres dat wystawienia
         if ($dateFrom !== '') {
             $baseConditions['Invoices.date >='] = $dateFrom;
         }
         if ($dateTo !== '') {
             $baseConditions['Invoices.date <='] = $dateTo;
+        }
+
+        // Zakres terminu płatności
+        if ($dueDateFrom !== '') {
+            $baseConditions['Invoices.paymentdate >='] = $dueDateFrom;
+        }
+        if ($dueDateTo !== '') {
+            $baseConditions['Invoices.paymentdate <='] = $dueDateTo;
+        }
+
+        // Waluta
+        $validCurrencies = ['PLN', 'EUR', 'USD', 'GBP', 'CHF', 'CZK', 'DKK', 'SEK', 'NOK'];
+        if (in_array($currencyFilter, $validCurrencies, true)) {
+            $baseConditions['Invoices.currency'] = $currencyFilter;
+        }
+
+        // Zakres kwoty brutto
+        if ($amountFrom !== '' && is_numeric($amountFrom)) {
+            $baseConditions['Invoices.total >='] = (float)$amountFrom;
+        }
+        if ($amountTo !== '' && is_numeric($amountTo)) {
+            $baseConditions['Invoices.total <='] = (float)$amountTo;
         }
 
         // Typ faktury
@@ -255,6 +282,27 @@ class ReconciliationsController extends AppController
                 $legacyStatsConditions['LegacyInvoices.date <='] = $dateTo;
             }
 
+            // Termin płatności (legacy — kolumna paymentdate)
+            if ($dueDateFrom !== '') {
+                $legacyConditions['LegacyInvoices.paymentdate >='] = $dueDateFrom;
+            }
+            if ($dueDateTo !== '') {
+                $legacyConditions['LegacyInvoices.paymentdate <='] = $dueDateTo;
+            }
+
+            // Waluta (legacy)
+            if (in_array($currencyFilter, $validCurrencies, true)) {
+                $legacyConditions['LegacyInvoices.currency'] = $currencyFilter;
+            }
+
+            // Zakres kwoty brutto (legacy)
+            if ($amountFrom !== '' && is_numeric($amountFrom)) {
+                $legacyConditions['LegacyInvoices.total >='] = (float)$amountFrom;
+            }
+            if ($amountTo !== '' && is_numeric($amountTo)) {
+                $legacyConditions['LegacyInvoices.total <='] = (float)$amountTo;
+            }
+
             // Statystyki legacy — używamy $legacyStatsConditions (bez filtra statusu)
             $legacyStatsRows = $LegacyInvoices->find()
                 ->select([
@@ -366,7 +414,9 @@ class ReconciliationsController extends AppController
 
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
-            'search', 'status', 'dateFrom', 'dateTo', 'typeFilter', 'sort', 'dir',
+            'search', 'status', 'dateFrom', 'dateTo', 'dueDateFrom', 'dueDateTo',
+            'currencyFilter', 'amountFrom', 'amountTo',
+            'typeFilter', 'sort', 'dir',
             'stats', 'bankByInvoice', 'speedByInvoice', 'correctionsByParentId',
             'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
             'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync'

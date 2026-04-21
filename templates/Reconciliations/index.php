@@ -130,18 +130,23 @@ $bankBadge = function (?object $bt): string {
 };
 
 // Pomocnik URL z aktualnymi filtrami
-$currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
+$currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
     $base = [
-        'q'         => $search,
-        'status'    => $status,
-        'date_from' => $dateFrom,
-        'date_to'   => $dateTo,
-        'type'      => $typeFilter,
-        'source'    => $sourceFilter,
-        'sort'      => $sort,
-        'dir'       => $dir,
-        'limit'     => $limit,
-        'page'      => $page,
+        'q'           => $search,
+        'status'      => $status,
+        'date_from'   => $dateFrom,
+        'date_to'     => $dateTo,
+        'due_from'    => $dueDateFrom,
+        'due_to'      => $dueDateTo,
+        'currency'    => $currencyFilter,
+        'amount_from' => $amountFrom,
+        'amount_to'   => $amountTo,
+        'type'        => $typeFilter,
+        'source'      => $sourceFilter,
+        'sort'        => $sort,
+        'dir'         => $dir,
+        'limit'       => $limit,
+        'page'        => $page,
     ];
     $merged = array_merge($base, $extra);
     $params = array_filter($merged, fn($v) => $v !== '' && $v !== null);
@@ -286,64 +291,154 @@ $typeBadge = function (string $type): string {
 </div>
 <?php endif; ?>
 
+<?php
+// Liczba aktywnych filtrów (dla badge)
+$activeFilterCount = 0;
+if ($search !== '')         $activeFilterCount++;
+if ($dateFrom !== '')       $activeFilterCount++;
+if ($dateTo !== '')         $activeFilterCount++;
+if ($dueDateFrom !== '')    $activeFilterCount++;
+if ($dueDateTo !== '')      $activeFilterCount++;
+if ($currencyFilter !== '') $activeFilterCount++;
+if ($amountFrom !== '')     $activeFilterCount++;
+if ($amountTo !== '')       $activeFilterCount++;
+if ($typeFilter !== '')     $activeFilterCount++;
+if ($sourceFilter !== '')   $activeFilterCount++;
+if ($status !== '')         $activeFilterCount++;
+?>
+
 <!-- Filtry -->
-<div class="card shadow-sm mb-3">
-    <div class="card-body py-2">
-        <form method="get" action="<?= $this->Url->build(['action' => 'index']) ?>" class="row g-2 align-items-end">
-            <!-- Szukaj -->
-            <div class="col-12 col-md-4">
-                <input type="text" name="q" value="<?= h($search) ?>" class="form-control form-control-sm"
-                       placeholder="Szukaj: numer faktury, kontrahent, NIP…">
+<div class="card shadow-sm mb-3" id="rec-filter-card">
+    <div class="card-header py-2 d-flex align-items-center gap-2 bg-white border-bottom">
+        <i class="ri-filter-3-line text-primary"></i>
+        <span class="fw-semibold small">Filtry</span>
+        <?php if ($activeFilterCount > 0): ?>
+            <span class="badge bg-primary rounded-pill ms-1"><?= $activeFilterCount ?></span>
+        <?php endif; ?>
+        <button class="btn btn-link btn-sm text-muted ms-auto p-0 pe-1" type="button"
+                data-bs-toggle="collapse" data-bs-target="#rec-filter-body" aria-expanded="true">
+            <i class="ri-arrow-up-s-line" id="rec-filter-chevron"></i>
+        </button>
+    </div>
+    <div class="collapse show" id="rec-filter-body">
+    <div class="card-body py-2 px-3">
+        <!-- Presety daty -->
+        <div class="d-flex flex-wrap gap-1 mb-2">
+            <span class="small text-muted me-1 align-self-center">Okres:</span>
+            <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
+                    data-preset="this_month">Ten miesiąc</button>
+            <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
+                    data-preset="prev_month">Poprzedni miesiąc</button>
+            <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
+                    data-preset="this_quarter">Ten kwartał</button>
+            <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
+                    data-preset="prev_quarter">Poprzedni kwartał</button>
+            <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
+                    data-preset="this_year">Ten rok</button>
+        </div>
+        <form id="rec-filter-form" method="get" action="<?= $this->Url->build(['action' => 'index']) ?>">
+            <div class="row g-2 align-items-end">
+                <!-- Szukaj -->
+                <div class="col-12 col-md-4">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Szukaj</label>
+                    <input type="text" name="q" id="rec-q" value="<?= h($search) ?>" class="form-control form-control-sm"
+                           placeholder="Numer faktury, kontrahent, NIP…">
+                </div>
+                <!-- Waluta -->
+                <div class="col-6 col-md-1">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Waluta</label>
+                    <select name="currency" class="form-select form-select-sm">
+                        <option value="">Wszystkie</option>
+                        <option value="PLN" <?= $currencyFilter === 'PLN' ? 'selected' : '' ?>>PLN</option>
+                        <option value="EUR" <?= $currencyFilter === 'EUR' ? 'selected' : '' ?>>EUR</option>
+                        <option value="USD" <?= $currencyFilter === 'USD' ? 'selected' : '' ?>>USD</option>
+                        <option value="GBP" <?= $currencyFilter === 'GBP' ? 'selected' : '' ?>>GBP</option>
+                        <option value="CHF" <?= $currencyFilter === 'CHF' ? 'selected' : '' ?>>CHF</option>
+                        <option value="CZK" <?= $currencyFilter === 'CZK' ? 'selected' : '' ?>>CZK</option>
+                    </select>
+                </div>
+                <!-- Typ -->
+                <div class="col-6 col-md-1">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Typ</label>
+                    <select name="type" class="form-select form-select-sm">
+                        <option value="">Wszystkie</option>
+                        <option value="vat"        <?= $typeFilter === 'vat'        ? 'selected' : '' ?>>FV VAT</option>
+                        <option value="novat"      <?= $typeFilter === 'novat'      ? 'selected' : '' ?>>FV bez VAT</option>
+                        <option value="currency"   <?= $typeFilter === 'currency'   ? 'selected' : '' ?>>Walutowa</option>
+                        <option value="proforma"   <?= $typeFilter === 'proforma'   ? 'selected' : '' ?>>Proforma</option>
+                        <option value="advance"    <?= $typeFilter === 'advance'    ? 'selected' : '' ?>>Zaliczkowa</option>
+                        <option value="final"      <?= $typeFilter === 'final'      ? 'selected' : '' ?>>Końcowa</option>
+                        <option value="correction" <?= $typeFilter === 'correction' ? 'selected' : '' ?>>Korekta</option>
+                        <option value="margin"     <?= $typeFilter === 'margin'     ? 'selected' : '' ?>>Marża</option>
+                        <option value="rental"     <?= $typeFilter === 'rental'     ? 'selected' : '' ?>>Najem</option>
+                    </select>
+                </div>
+                <!-- Źródło -->
+                <div class="col-6 col-md-1">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Źródło</label>
+                    <select name="source" class="form-select form-select-sm">
+                        <option value=""       <?= $sourceFilter === ''       ? 'selected' : '' ?>>Wszystkie</option>
+                        <option value="system" <?= $sourceFilter === 'system' ? 'selected' : '' ?>>System</option>
+                        <option value="legacy" <?= $sourceFilter === 'legacy' ? 'selected' : '' ?>>Archiwum</option>
+                    </select>
+                </div>
             </div>
-            <!-- Data od–do -->
-            <div class="col-6 col-md-2">
-                <input type="date" name="date_from" value="<?= h($dateFrom) ?>" class="form-control form-control-sm" title="Data wystawienia od">
-            </div>
-            <div class="col-6 col-md-2">
-                <input type="date" name="date_to" value="<?= h($dateTo) ?>" class="form-control form-control-sm" title="Data wystawienia do">
-            </div>
-            <!-- Typ -->
-            <div class="col-6 col-md-1">
-                <select name="type" class="form-select form-select-sm">
-                    <option value="">Typ</option>
-                    <option value="vat"        <?= $typeFilter === 'vat'        ? 'selected' : '' ?>>FV VAT</option>
-                    <option value="novat"      <?= $typeFilter === 'novat'      ? 'selected' : '' ?>>FV bez VAT</option>
-                    <option value="currency"   <?= $typeFilter === 'currency'   ? 'selected' : '' ?>>Walutowa</option>
-                    <option value="proforma"   <?= $typeFilter === 'proforma'   ? 'selected' : '' ?>>Proforma</option>
-                    <option value="advance"    <?= $typeFilter === 'advance'    ? 'selected' : '' ?>>Zaliczkowa</option>
-                    <option value="final"      <?= $typeFilter === 'final'      ? 'selected' : '' ?>>Końcowa</option>
-                    <option value="correction" <?= $typeFilter === 'correction' ? 'selected' : '' ?>>Korekta</option>
-                    <option value="margin"     <?= $typeFilter === 'margin'     ? 'selected' : '' ?>>Marża</option>
-                    <option value="rental"     <?= $typeFilter === 'rental'     ? 'selected' : '' ?>>Najem</option>
-                </select>
-            </div>
-            <!-- Limit -->
-            <div class="col-4 col-md-1">
-                <select name="limit" class="form-select form-select-sm">
-                    <?php foreach ([25, 50, 100, 200] as $l): ?>
-                        <option value="<?= $l ?>" <?= $limit == $l ? 'selected' : '' ?>><?= $l ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <!-- Źródło -->
-            <div class="col-auto">
-                <select name="source" class="form-select form-select-sm" title="Źródło">
-                    <option value=""      <?= $sourceFilter === ''       ? 'selected' : '' ?>>Wszystkie źródła</option>
-                    <option value="system"<?= $sourceFilter === 'system' ? 'selected' : '' ?>>Tylko system</option>
-                    <option value="legacy"<?= $sourceFilter === 'legacy' ? 'selected' : '' ?>>Tylko archiwum</option>
-                </select>
-            </div>
-            <input type="hidden" name="sort" value="<?= h($sort) ?>">
-            <input type="hidden" name="dir"  value="<?= h($dir) ?>">
-            <div class="col-auto">
-                <button type="submit" class="btn btn-sm btn-primary"><i class="ri-search-line me-1"></i>Szukaj</button>
-                <?php if ($search !== '' || $status !== '' || $dateFrom !== '' || $dateTo !== '' || $typeFilter !== ''): ?>
-                    <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-sm btn-outline-secondary ms-1">
-                        <i class="ri-close-line"></i>
-                    </a>
-                <?php endif; ?>
+            <div class="row g-2 align-items-end mt-0">
+                <!-- Data wystawienia od–do -->
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Wystawiona od</label>
+                    <input type="date" name="date_from" id="rec-date-from" value="<?= h($dateFrom) ?>" class="form-control form-control-sm" style="min-width:130px">
+                </div>
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">do</label>
+                    <input type="date" name="date_to" id="rec-date-to" value="<?= h($dateTo) ?>" class="form-control form-control-sm" style="min-width:130px">
+                </div>
+                <!-- Termin płatności od–do -->
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Termin od</label>
+                    <input type="date" name="due_from" value="<?= h($dueDateFrom) ?>" class="form-control form-control-sm" style="min-width:130px">
+                </div>
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">do</label>
+                    <input type="date" name="due_to" value="<?= h($dueDateTo) ?>" class="form-control form-control-sm" style="min-width:130px">
+                </div>
+                <!-- Kwota brutto od–do -->
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Kwota od</label>
+                    <input type="number" name="amount_from" value="<?= h($amountFrom) ?>" min="0" step="0.01"
+                           class="form-control form-control-sm" placeholder="0,00" style="min-width:90px">
+                </div>
+                <div class="col-6 col-md-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">do</label>
+                    <input type="number" name="amount_to" value="<?= h($amountTo) ?>" min="0" step="0.01"
+                           class="form-control form-control-sm" placeholder="999 999" style="min-width:90px">
+                </div>
+                <!-- Limit -->
+                <div class="col-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Na str.</label>
+                    <select name="limit" class="form-select form-select-sm" style="min-width:65px">
+                        <?php foreach ([25, 50, 100, 200] as $l): ?>
+                            <option value="<?= $l ?>" <?= $limit == $l ? 'selected' : '' ?>><?= $l ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <input type="hidden" name="sort" value="<?= h($sort) ?>">
+                <input type="hidden" name="dir"  value="<?= h($dir) ?>">
+                <!-- Przyciski -->
+                <div class="col-auto ms-auto d-flex gap-1 align-items-end">
+                    <?php if ($activeFilterCount > 0): ?>
+                        <a href="<?= $this->Url->build(['action' => 'index']) ?>"
+                           class="btn btn-sm btn-outline-danger" title="Wyczyść wszystkie filtry">
+                            <i class="ri-close-circle-line me-1"></i>Wyczyść (<?= $activeFilterCount ?>)
+                        </a>
+                    <?php endif; ?>
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="ri-search-line me-1"></i>Szukaj
+                    </button>
+                </div>
             </div>
         </form>
+    </div>
     </div>
 </div>
 
@@ -1681,6 +1776,125 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         body.innerHTML = '';
         footer.style.display = 'none';
         footer.innerHTML = '';
+    });
+}());
+</script>
+
+<script>
+/* ── Rozliczenia: presety daty + localStorage ──────────────────────────── */
+(function () {
+    'use strict';
+
+    // Presety daty — wypełniają pola date_from / date_to
+    var dateFrom = document.getElementById('rec-date-from');
+    var dateTo   = document.getElementById('rec-date-to');
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+
+    function applyPreset(preset) {
+        var now   = new Date();
+        var y     = now.getFullYear();
+        var m     = now.getMonth(); // 0-based
+        var from, to;
+
+        switch (preset) {
+            case 'this_month':
+                from = new Date(y, m, 1);
+                to   = new Date(y, m + 1, 0);
+                break;
+            case 'prev_month':
+                from = new Date(y, m - 1, 1);
+                to   = new Date(y, m, 0);
+                break;
+            case 'this_quarter':
+                var q = Math.floor(m / 3);
+                from  = new Date(y, q * 3, 1);
+                to    = new Date(y, q * 3 + 3, 0);
+                break;
+            case 'prev_quarter':
+                var pq = Math.floor(m / 3) - 1;
+                var py = y;
+                if (pq < 0) { pq = 3; py = y - 1; }
+                from  = new Date(py, pq * 3, 1);
+                to    = new Date(py, pq * 3 + 3, 0);
+                break;
+            case 'this_year':
+                from = new Date(y, 0, 1);
+                to   = new Date(y, 11, 31);
+                break;
+            default: return;
+        }
+        if (dateFrom) dateFrom.value = ymd(from);
+        if (dateTo)   dateTo.value   = ymd(to);
+    }
+
+    document.querySelectorAll('.date-preset').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            applyPreset(this.dataset.preset);
+            // Highlight active preset
+            document.querySelectorAll('.date-preset').forEach(function (b) {
+                b.classList.remove('btn-secondary');
+                b.classList.add('btn-outline-secondary');
+            });
+            this.classList.remove('btn-outline-secondary');
+            this.classList.add('btn-secondary');
+        });
+    });
+
+    // Collapse chevron
+    var filterBody = document.getElementById('rec-filter-body');
+    var chevron    = document.getElementById('rec-filter-chevron');
+    if (filterBody && chevron) {
+        filterBody.addEventListener('hide.bs.collapse', function () {
+            chevron.className = 'ri-arrow-down-s-line';
+        });
+        filterBody.addEventListener('show.bs.collapse', function () {
+            chevron.className = 'ri-arrow-up-s-line';
+        });
+    }
+
+    // ── localStorage: zapamiętaj i przywróć stan formularza ──────────────
+    var LS_KEY    = 'rec_filters_v1';
+    var form      = document.getElementById('rec-filter-form');
+    var hasParams = window.location.search.length > 1; // czy są params w URL
+
+    function saveFilters() {
+        if (!form) return;
+        var data = {};
+        form.querySelectorAll('input[name]:not([type=hidden]), select[name]').forEach(function (el) {
+            data[el.name] = el.value;
+        });
+        try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) {}
+    }
+
+    function restoreFilters() {
+        if (!form || hasParams) return; // URL już zawiera filtry — nie nadpisuj
+        var raw  = null;
+        try { raw = localStorage.getItem(LS_KEY); } catch (e) {}
+        if (!raw) return;
+        var data;
+        try { data = JSON.parse(raw); } catch (e) { return; }
+        form.querySelectorAll('input[name]:not([type=hidden]), select[name]').forEach(function (el) {
+            if (data[el.name] !== undefined && data[el.name] !== '') {
+                el.value = data[el.name];
+            }
+        });
+    }
+
+    // Przywróć przy ładowaniu (tylko gdy brak params w URL)
+    restoreFilters();
+
+    // Zapisz przy submit
+    if (form) {
+        form.addEventListener('submit', function () { saveFilters(); });
+    }
+
+    // Wyczyść localStorage gdy kliknięto "Wyczyść"
+    document.querySelectorAll('a[href="<?= $this->Url->build(['action' => 'index']) ?>"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            try { localStorage.removeItem(LS_KEY); } catch (e) {}
+        });
     });
 }());
 </script>
