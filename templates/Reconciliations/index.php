@@ -923,10 +923,18 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                     </td>
                     <!-- Brutto -->
                     <td class="text-end text-nowrap small fw-semibold">
-                        <?php if ($legCur !== 'PLN' && ($leg->total_wal ?? 0) > 0): ?>
-                            <div><?= number_format((float)$leg->total_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
-                            <?php if (($leg->exchange_rate ?? 0) > 0): ?>
-                                <div class="text-muted" style="font-size:.7rem"><?= number_format((float)$leg->total_wal * (float)$leg->exchange_rate, 2, ',', ' ') ?> PLN</div>
+                        <?php if ($legCur !== 'PLN' && $legTotal > 0): ?>
+                            <div><?= number_format($legTotal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                            <?php
+                                $legRate    = (float)($leg->exchange_rate ?? 0);
+                                $legNetto   = (float)($leg->netto ?? 0);
+                                $legVatPln  = ($legTotal - $legNetto) * $legRate;
+                            ?>
+                            <?php if ($legRate > 0): ?>
+                                <div class="text-muted" style="font-size:.7rem"><?= number_format($legTotal * $legRate, 2, ',', ' ') ?> PLN</div>
+                                <?php if ($legVatPln > 0.001): ?>
+                                    <div class="text-muted" style="font-size:.7rem">VAT: <?= number_format($legVatPln, 2, ',', ' ') ?> PLN</div>
+                                <?php endif; ?>
                             <?php endif; ?>
                         <?php else: ?>
                             <?= number_format($legTotal, 2, ',', ' ') ?> PLN
