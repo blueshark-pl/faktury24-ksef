@@ -304,7 +304,7 @@ class ReconciliationsController extends AppController
 
             $legacyQ = $LegacyInvoices->find()
                 ->where($legacyConditions)
-                ->orderBy(['LegacyInvoices.' . $legacySortCol => $legacySortDir, 'LegacyInvoices.synced_at' => 'DESC']);
+                ->orderBy(['LegacyInvoices.' . $legacySortCol => $legacySortDir]);
 
             if ($status === 'overdue') {
                 // Dla "przeterminowane" pobieramy wszystkich nieopłaconych i filtrujemy w PHP,
