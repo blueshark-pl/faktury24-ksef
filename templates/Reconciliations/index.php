@@ -404,10 +404,12 @@ $typeBadge = function (string $type): string {
                 $state = $invoice->paymentstate ?? 'unpaid';
 
                 // Korekty do tej faktury
-                $invCorrs    = $correctionsByParentId[(string)$invoice->id] ?? [];
-                $corrSum     = array_sum(array_map(fn($c) => (float)$c->total, $invCorrs));
-                $netTotal    = (float)$invoice->total - $corrSum;
-                $netRemaining = max(0.0, (float)$invoice->remaining - $corrSum);
+                $invCorrs = $correctionsByParentId[(string)$invoice->id] ?? [];
+                $corrSum  = array_sum(array_map(fn($c) => (float)$c->total, $invCorrs));
+                // Różnica: > 0 = dopłata, < 0 = redukcja, = 0 = zeruje fakturę
+                $corrDiff = !empty($invCorrs) ? round($corrSum - (float)$invoice->total, 2) : 0.0;
+                // Efektywne remaining po korekcie
+                $netRemaining = !empty($invCorrs) ? max(0.0, (float)$invoice->remaining + $corrDiff) : (float)$invoice->remaining;
 
                 // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
                 $rawPd = $invoice->paymentdate;
@@ -514,13 +516,21 @@ $typeBadge = function (string $type): string {
                     </td>
                     <!-- Brutto -->
                     <td class="text-end text-nowrap small fw-semibold">
+                        <?= number_format((float)$invoice->total, 2, ',', ' ') ?> <?= h($currency) ?>
                         <?php if (!empty($invCorrs)): ?>
-                            <span class="text-decoration-line-through text-muted" style="font-size:.75em">
-                                <?= number_format((float)$invoice->total, 2, ',', ' ') ?>
-                            </span><br>
-                            <span title="Po korekcie"><?= number_format($netTotal, 2, ',', ' ') ?> <?= h($currency) ?></span>
-                        <?php else: ?>
-                            <?= number_format((float)$invoice->total, 2, ',', ' ') ?> <?= h($currency) ?>
+                            <?php if (abs($corrDiff) < 0.01): ?>
+                                <?php /* różnica = 0, korekta zeruje fakturę — sam badge wystarczy */ ?>
+                            <?php elseif ($corrDiff > 0): ?>
+                                <div class="text-success fw-normal" style="font-size:.75em"
+                                     title="Korekta zwiększa kwotę">
+                                    +<?= number_format($corrDiff, 2, ',', ' ') ?> <?= h($currency) ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="text-danger fw-normal" style="font-size:.75em"
+                                     title="Korekta zmniejsza kwotę">
+                                    <?= number_format($corrDiff, 2, ',', ' ') ?> <?= h($currency) ?>
+                                </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <!-- Pozostało -->
@@ -528,9 +538,8 @@ $typeBadge = function (string $type): string {
                         <?php if ($state === 'paid'): ?>
                             <span class="text-success">0,00 <?= h($currency) ?></span>
                         <?php else: ?>
-                            <?php $displayRemaining = !empty($invCorrs) ? $netRemaining : (float)$invoice->remaining; ?>
-                            <span class="<?= $displayRemaining > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
-                                <?= number_format($displayRemaining, 2, ',', ' ') ?> <?= h($currency) ?>
+                            <span class="<?= $netRemaining > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
+                                <?= number_format($netRemaining, 2, ',', ' ') ?> <?= h($currency) ?>
                             </span>
                         <?php endif; ?>
                         <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid'): ?>
