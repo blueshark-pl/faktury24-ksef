@@ -518,6 +518,111 @@ class ReconciliationsController extends AppController
         }
     }
 
+    // ── Przelewy bankowe dla faktury archiwalnej (AJAX, GET) ─────────────────
+
+    public function legacyBankTransactions(string $legacyInvoiceId): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $LegacyInvoices = $this->fetchTable('LegacyInvoices');
+        $invoice = $LegacyInvoices->find()
+            ->where(['id' => $legacyInvoiceId, 'company_id' => $companyId])
+            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date'])
+            ->first();
+
+        if ($invoice === null) {
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Faktura nie istnieje lub brak uprawnień']));
+        }
+
+        $nip            = $invoice->contractor_nip ?? null;
+        $contractorName = $invoice->contractor_name ?? null;
+
+        $BankTransactions = $this->fetchTable('BankTransactions');
+
+        $fmtDate = static function ($v): string {
+            if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            return $v ? substr((string)$v, 0, 10) : '';
+        };
+
+        $mapTx = static function ($tx) use ($fmtDate): array {
+            return [
+                'id'               => (string)$tx->id,
+                'value_date'       => $fmtDate($tx->value_date),
+                'amount'           => (float)$tx->amount,
+                'direction'        => (string)($tx->direction ?? 'C'),
+                'party_name'       => (string)($tx->party_name ?? ''),
+                'title'            => (string)($tx->title ?? ''),
+                'match_status'     => (string)($tx->match_status ?? 'unmatched'),
+                'match_confidence' => (int)($tx->match_confidence ?? 0),
+                'match_reason'     => (string)($tx->match_reason ?? ''),
+                'parsed_inv'       => (string)($tx->parsed_inv ?? ''),
+                'legacy'           => true,  // Informuje frontend: brak przycisku Powiąż
+            ];
+        };
+
+        // Kandydaci: przelewy pasujące do nazwy/NIP kontrahenta
+        $nameOrConditions = [];
+
+        if ($contractorName !== null && $contractorName !== '') {
+            $stopWords   = ['sp', 'zoo', 'o.o', 'ltd', 'gmbh', 's.a', 'z', 'i', 'oraz', 'the'];
+            $words       = preg_split('/[\s\.,]+/', mb_strtolower($contractorName));
+            $significant = array_values(array_filter($words, fn($w) => strlen($w) >= 3 && !in_array($w, $stopWords, true)));
+            foreach (array_slice($significant, 0, 3) as $word) {
+                $nameOrConditions[] = ['BankTransactions.party_name LIKE' => '%' . $word . '%'];
+            }
+        }
+
+        if (empty($nameOrConditions) && $nip !== null && $nip !== '') {
+            $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
+        } elseif ($nip !== null && $nip !== '') {
+            $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
+        }
+
+        $rawDate = $invoice->date;
+        if ($rawDate instanceof \DateTimeInterface) {
+            $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif ($rawDate) {
+            $s  = substr((string)$rawDate, 0, 10);
+            $dt = \DateTime::createFromFormat('d.m.Y', $s) ?: \DateTime::createFromFormat('Y-m-d', $s);
+            $invoiceDateStr = $dt ? $dt->format('Y-m-d') : '';
+        } else {
+            $invoiceDateStr = '';
+        }
+
+        $candidates = [];
+        if (!empty($nameOrConditions)) {
+            $conditions = [
+                'BankTransactions.company_id' => $companyId,
+                'OR'                          => $nameOrConditions,
+            ];
+            if ($invoiceDateStr !== '') {
+                $conditions['BankTransactions.value_date >='] = $invoiceDateStr;
+            }
+            $candidates = $BankTransactions->find()
+                ->where($conditions)
+                ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
+                          'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                ->orderByDesc('value_date')
+                ->limit(30)
+                ->all()->toArray();
+        }
+
+        return $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode([
+                'nip'        => $nip,
+                'contractor' => $contractorName,
+                'legacy'     => true,
+                'linked'     => [],
+                'candidates' => array_map($mapTx, $candidates),
+            ]));
+    }
+
     // ── Przelewy bankowe dla kontrahenta faktury (AJAX) ──────────────────────
 
     public function bankTransactions(string $invoiceId): Response

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * @var \App\View\AppView $this
  * @var \App\Model\Entity\Invoice[] $invoices
@@ -1146,13 +1146,18 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     }
 
     // ── Renderowanie jednego wiersza transakcji ───────────────────────────────
-    function renderTxRow(tx, isLinked) {
+    function renderTxRow(tx, isLinked, isLegacy) {
         var statusBadge, actionCol;
 
         if (isLinked) {
             statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle">'
                         + '<i class="ri-check-line me-1"></i>Powiązany</span>';
             actionCol   = '<span class="text-success"><i class="ri-checkbox-circle-line"></i></span>';
+        } else if (isLegacy) {
+            statusBadge = tx.match_status === 'matched'
+                ? '<span class="badge bg-success-subtle text-success border">Dopasowany</span>'
+                : '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>';
+            actionCol   = '';
         } else if (tx.match_status === 'proposed') {
             statusBadge = '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">'
                         + '<i class="ri-alert-line me-1"></i>Sugerowany</span>';
@@ -1191,6 +1196,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var spinner   = document.getElementById('bankTxSpinner');
         if (spinner) spinner.style.display = 'none';
 
+        var isLegacy = !!data.legacy;
+
         if (!data.nip) {
             container.innerHTML = '<div class="alert alert-light py-2 small mb-0">'
                 + '<i class="ri-information-line me-1 text-muted"></i>'
@@ -1211,10 +1218,15 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         }
 
         var rows = '';
-        linked.forEach(function (tx) { rows += renderTxRow(tx, true); });
-        candidates.forEach(function (tx) { rows += renderTxRow(tx, false); });
+        var note = isLegacy
+            ? '<div class="alert alert-info py-1 px-2 small mb-2 border"><i class="ri-archive-line me-1"></i>Faktura archiwalna — przelewy widoczne informacyjnie. Rozlicz przez lokalne wpłaty (przycisk + w tabeli).</div>'
+            : '';
 
-        container.innerHTML = '<div class="table-responsive">'
+        linked.forEach(function (tx) { rows += renderTxRow(tx, true, isLegacy); });
+        candidates.forEach(function (tx) { rows += renderTxRow(tx, false, isLegacy); });
+
+        container.innerHTML = note
+            + '<div class="table-responsive">'
             + '<table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem">'
             + '<thead class="table-light">'
             + '<tr>'
@@ -1222,22 +1234,23 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             + '<th class="text-end">Kwota</th>'
             + '<th>Nadawca</th>'
             + '<th>Status</th>'
-            + '<th></th>'
+            + (isLegacy ? '' : '<th></th>')
             + '</tr>'
             + '</thead>'
             + '<tbody>' + rows + '</tbody>'
             + '</table></div>';
 
-        // Obsługa przycisku Powiąż
-        container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var txId   = this.dataset.txId;
-                var form   = document.getElementById('linkTxForm');
-                document.getElementById('linkTxInvoiceId').value = currentInvoiceId;
-                form.action = '/wyciagi/confirm-match/' + txId;
-                form.submit();
+        if (!isLegacy) {
+            container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var txId   = this.dataset.txId;
+                    var form   = document.getElementById('linkTxForm');
+                    document.getElementById('linkTxInvoiceId').value = currentInvoiceId;
+                    form.action = '/wyciagi/confirm-match/' + txId;
+                    form.submit();
+                });
             });
-        });
+        }
     }
 
     // ── Pobieranie przelewów po otwarciu modala ───────────────────────────────
@@ -1248,6 +1261,25 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         if (spinner) spinner.style.removeProperty('display');
 
         fetch('/rozliczenia/bank-transactions/' + invoiceId, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(renderBankTransactions)
+        .catch(function () {
+            if (spinner) spinner.style.display = 'none';
+            document.getElementById('bankTxSection').innerHTML =
+                '<div class="text-danger small"><i class="ri-error-warning-line me-1"></i>'
+                + 'Nie udało się załadować przelewów.</div>';
+        });
+    }
+
+    function loadLegacyBankTransactions(legacyInvoiceId) {
+        var container = document.getElementById('bankTxSection');
+        var spinner   = document.getElementById('bankTxSpinner');
+        container.innerHTML = '<div class="text-muted small fst-italic">Ładowanie przelewów kontrahenta…</div>';
+        if (spinner) spinner.style.removeProperty('display');
+
+        fetch('/rozliczenia/legacy-bank-transactions/' + legacyInvoiceId, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function (r) { return r.json(); })
@@ -1290,11 +1322,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 form.action = urlAddLegacyPayment;
                 document.getElementById('modalInvoiceId').value       = '';
                 document.getElementById('modalLegacyInvoiceId').value = currentInvoiceId;
-                // Ukryj sekcję przelewów bankowych — niedostępna dla archiwalnych
-                bankSection.innerHTML = '<div class="alert alert-secondary small py-2 mb-0">'
-                    + '<i class="ri-archive-line me-2 text-muted"></i>'
-                    + 'Faktura archiwalna — sekcja przelewów bankowych niedostępna. '
-                    + 'Lokalne wpłaty widoczne w tabeli.</div>';
+                loadLegacyBankTransactions(currentInvoiceId);
             } else {
                 form.action = urlAddPayment;
                 document.getElementById('modalInvoiceId').value       = currentInvoiceId;

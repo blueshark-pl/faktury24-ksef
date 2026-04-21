@@ -374,7 +374,7 @@ return [
         [
             'role' => 'user',
             'controller' => 'Reconciliations',
-            'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment'],
+            'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions'],
         ],
 
         // odbiorcy e-mail faktur (panel kontrahenta)
