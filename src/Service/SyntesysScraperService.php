@@ -8,154 +8,86 @@ use Cake\Log\Log;
 use Cake\ORM\TableRegistry;
 
 /**
- * Serwis scrapowania danych kredytu kupieckiego z Syntesys (Allianz Trade).
+ * Serwis kredytu kupieckiego (Allianz Trade / Syntesys).
  *
- * Wywołuje skrypt Node.js bin/syntesys-scraper.js przez proc_open
+ * Wywołuje standalone mikroserwis Node.js (services/syntesys/) przez HTTP
  * i zapisuje pobrane dane do tabeli credit_checks.
  *
  * Konfiguracja (config/app_local.php):
  *   'Syntesys' => [
- *       'username'    => 'login@firma.pl',
- *       'password'    => 'haslo',
- *       'node_path'   => 'node',   // ścieżka do node (domyślnie `node`)
+ *       'service_url' => 'http://localhost:3400',  // URL mikroserwisu
+ *       'api_key'     => 'sekretny-klucz',          // musi pasować do env API_KEY
  *   ],
  */
 class SyntesysScraperService
 {
-    private const SCRIPT_PATH = ROOT . DS . 'bin' . DS . 'syntesys-scraper.js';
-    private const TIMEOUT     = 120; // sekund
+    private const TIMEOUT = 120; // sekund na wywołanie HTTP
 
     /**
-     * Uruchamia scraper i zapisuje wyniki do DB.
+     * Pobiera dane z mikroserwisu i zapisuje do bazy MySQL.
      *
      * @param string $list  'all' | 'done' | 'waiting' | 'no-advice' | 'error'
      * @return array{success: bool, message: string, inserted: int, updated: int, errors: int}
      */
     public function sync(string $list = 'all'): array
     {
-        $username = (string)(Configure::read('Syntesys.username') ?? '');
-        $password = (string)(Configure::read('Syntesys.password') ?? '');
-        $nodePath = (string)(Configure::read('Syntesys.node_path') ?? 'node');
+        $serviceUrl = rtrim((string)(Configure::read('Syntesys.service_url') ?? ''), '/');
+        $apiKey     = (string)(Configure::read('Syntesys.api_key')     ?? '');
 
-        if ($username === '' || $password === '') {
-            return [
-                'success' => false,
-                'message' => 'Brak konfiguracji Syntesys.username / Syntesys.password w config/app_local.php',
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
+        if ($serviceUrl === '') {
+            return $this->err('Brak konfiguracji Syntesys.service_url w config/app_local.php');
         }
 
-        if (!file_exists(self::SCRIPT_PATH)) {
-            return [
-                'success' => false,
-                'message' => 'Skrypt scrapera nie istnieje: ' . self::SCRIPT_PATH,
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
-        }
+        $url = $serviceUrl . '/fetch';
 
-        // Zbuduj komendę
-        $cmd = escapeshellcmd($nodePath) . ' ' . escapeshellarg(self::SCRIPT_PATH) . ' ' . escapeshellarg($list);
+        Log::info("SyntesysScraperService: POST {$url} list={$list}", ['scope' => 'syntesys']);
 
-        Log::info("SyntesysScraperService: uruchamiam scraper: {$cmd}", ['scope' => 'syntesys']);
-
-        // Zmienne środowiskowe z credentials (nie podajemy przez CLI args — bezpieczniejsze)
-        $env = array_merge(getenv() ?: [], [
-            'SYNTESYS_USER' => $username,
-            'SYNTESYS_PASS' => $password,
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(['list' => $list]),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT,
+            CURLOPT_HTTPHEADER     => array_filter([
+                'Content-Type: application/json',
+                'Accept: application/json',
+                $apiKey !== '' ? "X-Api-Key: {$apiKey}" : null,
+            ]),
         ]);
 
-        $descriptors = [
-            0 => ['pipe', 'r'],  // stdin
-            1 => ['pipe', 'w'],  // stdout
-            2 => ['pipe', 'w'],  // stderr
-        ];
+        $body     = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
 
-        $proc = proc_open($cmd, $descriptors, $pipes, ROOT, $env);
-        if (!is_resource($proc)) {
-            return [
-                'success' => false,
-                'message' => 'Nie udało się uruchomić procesu Node.js',
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
+        if ($curlErr !== '') {
+            Log::error("SyntesysScraperService: cURL error: {$curlErr}", ['scope' => 'syntesys']);
+            return $this->err("Błąd połączenia z mikroserwisem: {$curlErr}");
         }
 
-        fclose($pipes[0]);
-
-        // Czytaj output z timeoutem
-        $stdout = '';
-        $stderr = '';
-        $start  = time();
-
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        while (true) {
-            $chunk  = fread($pipes[1], 8192);
-            $errChunk = fread($pipes[2], 8192);
-            if ($chunk !== false)    $stdout  .= $chunk;
-            if ($errChunk !== false) $stderr  .= $errChunk;
-
-            $status = proc_get_status($proc);
-            if (!$status['running']) break;
-
-            if (time() - $start > self::TIMEOUT) {
-                proc_terminate($proc);
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                proc_close($proc);
-                Log::warning('SyntesysScraperService: timeout po ' . self::TIMEOUT . 's', ['scope' => 'syntesys']);
-                return [
-                    'success' => false,
-                    'message' => 'Timeout scrapera po ' . self::TIMEOUT . ' sekundach',
-                    'inserted' => 0, 'updated' => 0, 'errors' => 0,
-                ];
-            }
-
-            usleep(100000); // 100ms
+        if ($httpCode === 409) {
+            return $this->err('Synchronizacja już trwa — spróbuj za chwilę');
         }
 
-        // Odczytaj resztę buforów
-        $stdout .= stream_get_contents($pipes[1]);
-        $stderr .= stream_get_contents($pipes[2]);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $exitCode = proc_close($proc);
-
-        if ($stderr !== '') {
-            Log::debug('SyntesysScraperService stderr: ' . $stderr, ['scope' => 'syntesys']);
+        if ($httpCode !== 200) {
+            Log::error("SyntesysScraperService: HTTP {$httpCode}", ['scope' => 'syntesys']);
+            return $this->err("Mikroserwis zwrócił HTTP {$httpCode}");
         }
 
-        if ($stdout === '') {
-            Log::error('SyntesysScraperService: pusty stdout (exit=' . $exitCode . ')', ['scope' => 'syntesys']);
-            return [
-                'success' => false,
-                'message' => 'Scraper nie zwrócił danych (exit code: ' . $exitCode . ')',
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
-        }
-
-        $result = json_decode($stdout, true);
+        $result = json_decode((string)$body, true);
         if (!is_array($result)) {
-            Log::error('SyntesysScraperService: nieprawidłowy JSON: ' . substr($stdout, 0, 500), ['scope' => 'syntesys']);
-            return [
-                'success' => false,
-                'message' => 'Scraper zwrócił nieprawidłowy JSON',
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
+            Log::error('SyntesysScraperService: nieprawidłowy JSON', ['scope' => 'syntesys']);
+            return $this->err('Mikroserwis zwrócił nieprawidłowy JSON');
         }
 
         if (!($result['success'] ?? false)) {
-            $errMsg = $result['error'] ?? 'Nieznany błąd scrapera';
-            Log::error('SyntesysScraperService: błąd scrapera: ' . $errMsg, ['scope' => 'syntesys']);
-            return [
-                'success' => false,
-                'message' => $errMsg,
-                'inserted' => 0, 'updated' => 0, 'errors' => 0,
-            ];
+            $errMsg = $result['error'] ?? 'Nieznany błąd mikroserwisu';
+            Log::error("SyntesysScraperService: błąd: {$errMsg}", ['scope' => 'syntesys']);
+            return $this->err($errMsg);
         }
 
-        // Zapisz do bazy
+        // Zapisz do MySQL via ORM
         $data         = $result['data'] ?? [];
         $CreditChecks = TableRegistry::getTableLocator()->get('CreditChecks');
 
@@ -190,4 +122,11 @@ class SyntesysScraperService
             'errors'   => $totalErrors,
         ];
     }
+
+    /** @return array{success: bool, message: string, inserted: int, updated: int, errors: int} */
+    private function err(string $msg): array
+    {
+        return ['success' => false, 'message' => $msg, 'inserted' => 0, 'updated' => 0, 'errors' => 0];
+    }
 }
+
