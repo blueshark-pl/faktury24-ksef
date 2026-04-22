@@ -113,6 +113,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <th>Kontrahent</th>
                         <?php if ($tab === 'done'): ?>
                             <th>Opinia</th>
+                            <th>Ważna do</th>
                             <th>Najnowsza</th>
                         <?php elseif ($tab === 'error'): ?>
                             <th>Błąd</th>
@@ -144,7 +145,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
                             <!-- NIP -->
                             <td>
-                                <span class="font-monospace"><?= h($rec->identifier ?? '—') ?></span>
+                                <?php if ($rec->client_vat_eu && !$rec->identifier): ?>
+                                    <span class="font-monospace text-muted" title="VAT EU"><?= h($rec->client_vat_eu) ?></span>
+                                <?php elseif ($rec->identifier): ?>
+                                    <span class="font-monospace"><?= h($rec->identifier) ?></span>
+                                    <?php if ($rec->client_vat_eu): ?>
+                                        <br><small class="text-muted font-monospace"><?= h($rec->client_vat_eu) ?></small>
+                                    <?php endif ?>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif ?>
                                 <?php if ($rec->country): ?>
                                     <small class="text-muted">(<?= h($rec->country) ?>)</small>
                                 <?php endif ?>
@@ -188,6 +198,18 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                                 <?= h($rec->advice_reason_code) ?>
                                             </small>
                                         <?php endif ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif ?>
+                                </td>
+                                <!-- Ważna do -->
+                                <td class="text-nowrap">
+                                    <?php if ($rec->advice_valid_to): ?>
+                                        <?php $isExpired = $rec->advice_valid_to->isPast() ?>
+                                        <span class="<?= $isExpired ? 'text-danger fw-semibold' : 'text-success' ?>">
+                                            <?php if ($isExpired): ?><i class="ri-error-warning-line me-1"></i><?php endif ?>
+                                            <?= $rec->advice_valid_to->format('d.m.Y') ?>
+                                        </span>
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif ?>

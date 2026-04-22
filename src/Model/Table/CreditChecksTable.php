@@ -78,8 +78,10 @@ class CreditChecksTable extends Table
             $advice = $item['advice'] ?? null;
             $client = is_array($item['client'] ?? null) ? $item['client'] : null;
 
-            // NIP: z request.identifier, fallback na client.taxNumber
-            $identifier = $req['identifier'] ?? ($client['taxNumber'] ?? null);
+            // NIP: z request.identifier, fallback na client.taxNumber, fallback na client.vatEu
+            $identifier = $req['identifier']
+                ?? ($client['taxNumber'] ?? null)
+                ?? ($client['vatEu'] ?? null);
             // Kraj: z request.country, fallback na client.address.country
             $country = $req['country']
                 ?? (is_array($client['address'] ?? null) ? ($client['address']['country'] ?? null) : null);
@@ -92,8 +94,10 @@ class CreditChecksTable extends Table
                 'country'                      => $country,
                 'advice_type_code'             => is_array($advice) ? ($advice['typeCode'] ?? null) : null,
                 'advice_reason_code'           => is_array($advice) ? ($advice['reasonCode'] ?? null) : null,
+                'advice_valid_to'              => is_array($advice) && !empty($advice['validTo']) ? new \Cake\I18n\Date($advice['validTo']) : null,
                 'advice_json'                  => $advice !== null ? json_encode($advice) : null,
                 'client_json'                  => $client !== null ? json_encode($client) : null,
+                'client_eh_id'                 => $client['ehId'] ?? null,
                 'client_name'                  => $client['name'] ?? null,
                 'client_vat_eu'                => $client['vatEu'] ?? null,
                 'client_city'                  => is_array($client['address'] ?? null) ? ($client['address']['city'] ?? null) : null,
