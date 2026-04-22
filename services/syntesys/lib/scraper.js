@@ -48,10 +48,25 @@ async function launchBrowser() {
 
 // ─── Login ───────────────────────────────────────────────────────────────────
 
+async function acceptCookies(page) {
+    try {
+        await page.waitForSelector('button.cc_btn[name="cookies"]', { timeout: 5000 });
+        await page.click('button.cc_btn[name="cookies"]');
+        log('Cookie consent accepted');
+        // Krótka pauza po kliknięciu (animacja / JS handler)
+        await new Promise(r => setTimeout(r, 600));
+    } catch {
+        log('No cookie consent dialog (or already accepted)');
+    }
+}
+
 async function login(page) {
     const loginUrl = `${BASE_URL}/syntesys-oauth/login`;
     log(`Navigating to login: ${loginUrl}`);
     await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+
+    // Zaakceptuj cookies jeśli dialog się pojawi
+    await acceptCookies(page);
 
     // Czekaj na formularz (Angular może renderować asynchronicznie)
     await page.waitForSelector('input#username', { timeout: 15000 });
@@ -74,7 +89,13 @@ async function login(page) {
     if (currentUrl.includes('/login') || currentUrl.includes('error')) {
         throw new Error(`Login failed — still on: ${currentUrl}`);
     }
-    log(`Logged in. URL: ${currentUrl}`);
+
+    // Przejdź do widoku list żeby zainicjować sesję API (cookies/XSRF)
+    const appUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`;
+    log(`Navigating to app: ${appUrl}`);
+    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    log(`Login complete. URL: ${page.url()}`);
 }
 
 // ─── Fetch one list (all pages) ───────────────────────────────────────────────
@@ -162,12 +183,14 @@ async function scrape(statusCodes) {
         const savedCookies = session.load();
 
         if (savedCookies?.length > 0) {
-            // Szybkie przywrócenie sesji bez weryfikacji przez pełne ładowanie aplikacji.
-            // Nawigujemy do strony logowania (domcontentloaded = szybko) żeby ustawić origin,
-            // a potem setCookie — żądania fetch() będą miały credentials:include.
-            // Jeśli sesja wygasła na serwerze, fetchList() rzuci SESSION_EXPIRED → re-login.
+            // Przywróć sesję: wejdź na stronę app (nie login) żeby mieć właściwy origin
+            // dla fetch() z credentials:include. Jeśli sesja wygasła na serwerze,
+            // fetchList() rzuci SESSION_EXPIRED → re-login.
             log(`Restoring session (${savedCookies.length} cookies, TTL ok)...`);
-            await page.goto(`${BASE_URL}/syntesys-oauth/login`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await page.goto(
+                `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`,
+                { waitUntil: 'domcontentloaded', timeout: 20000 }
+            );
             await page.setCookie(...savedCookies);
             log('Session restored — skipping login');
         } else {
