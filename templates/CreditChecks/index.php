@@ -47,6 +47,14 @@ $reasonShortLabels = [
 
 $activeFilterCount = ($search !== '') ? 1 : 0;
 if ($tab !== 'done') $activeFilterCount++;
+
+// Etykiety tabów do tytułów przycisków (bez odwołania do prywatnej stałej controllera)
+$tabLabels = [
+    'done'      => 'Opinie wydane',
+    'waiting'   => 'Oczekujące',
+    'no-advice' => 'Brak opinii',
+    'error'     => 'Błędy',
+];
 ?>
 
 <!-- Nagłówek -->
@@ -196,7 +204,7 @@ if ($tab !== 'done') $activeFilterCount++;
                             <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => $t, 'search' => $search ?: null]]) ?>"
                                class="btn btn-xs btn-<?= $tab === $t ? $color : 'outline-' . $color ?>"
                                style="font-size:.73rem;padding:2px 8px"
-                               title="<?= h($statusLabels[array_values(array_filter(\App\Controller\CreditChecksController::STATUS_MAP, fn($k) => $k === $t, ARRAY_FILTER_USE_KEY))[0] ?? ''] ?? $t) ?>">
+                               title="<?= h($tabLabels[$t] ?? $t) ?>">
                                 <i class="<?= $icon ?>"></i>
                                 <span class="badge <?= $tab === $t ? 'bg-white text-' . $color : 'bg-' . $color ?> ms-1" style="font-size:.65rem"><?= $counts[$t] ?></span>
                             </a>
