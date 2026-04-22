@@ -419,6 +419,13 @@ async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchM
         log(`checkOpinion: nawigacja do ${createUrl}`);
         await page.goto(createUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
+        // Przygotuj przechwycenie odpowiedzi POST PRZED kliknięciem (żeby nie przegapić szybkich odpowiedzi)
+        const postPromise = page.waitForResponse(
+            r => r.url().includes('/syntesys-api/insurance/credit-check-advices')
+                  && r.request().method() === 'POST',
+            { timeout: 30000 }
+        );
+
         if (type === 'pl') {
             // ── Klient polski (NIP) ──
             const nipSelector = 'sn-input#identifier-value-nip input';
@@ -429,25 +436,30 @@ async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchM
             await page.click(nipSelector, { clickCount: 3 });
             await page.type(nipSelector, nip, { delay: 60 });
             log(`checkOpinion: wpisano NIP "${nip}"`);
+
+            // Kliknij przycisk "Zamów opinię"
+            await page.evaluate(() => {
+                const btn = document.querySelector('button[data-test="form-submit-button"]');
+                if (btn) btn.click();
+            });
+            log('checkOpinion: kliknięto "Zamów opinię" (PL)');
         } else {
             // ── Klient zagraniczny ──
             log(`checkOpinion: tryb zagraniczny kraju=${countryIso} (${countryName}), searchMode=${searchMode}`);
             await fillForeignForm(page, { countryIso, countryName, searchMode, identifierValue, companyName, city, street, streetNo });
+
+            // Kliknij przycisk "Szukaj" (submit formularza zagranicznego)
+            await page.evaluate(() => {
+                const btns = document.querySelectorAll('button[type="submit"].btn.btn-primary');
+                for (const btn of btns) {
+                    if (btn.textContent.includes('Szukaj')) { btn.click(); return; }
+                }
+                // fallback: kliknij pierwszy btn-primary submit
+                const fb = document.querySelector('button[type="submit"].btn.btn-primary');
+                if (fb) fb.click();
+            });
+            log('checkOpinion: kliknięto "Szukaj" (foreign)');
         }
-
-        // Przygotuj przechwycenie odpowiedzi POST zanim klikniemy
-        const postPromise = page.waitForResponse(
-            r => r.url().includes('/syntesys-api/insurance/credit-check-advices')
-                  && r.request().method() === 'POST',
-            { timeout: 20000 }
-        );
-
-        // Kliknij przycisk "Zamów opinię"
-        await page.evaluate(() => {
-            const btn = document.querySelector('button[data-test="form-submit-button"]');
-            if (btn) btn.click();
-        });
-        log('checkOpinion: kliknięto submit');
 
         // Poczekaj na odpowiedź POST z ID wniosku
         const postResp = await postPromise;
