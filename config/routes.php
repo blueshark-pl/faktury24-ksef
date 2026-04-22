@@ -166,6 +166,25 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/wyciagi/ignore/{id}', ['controller' => 'BankTransactions', 'action' => 'ignoreTransaction'])
             ->setPass(['id']);
 
+        // Karty paliwowe E100
+        $builder->get('/karty-paliwowe', ['controller' => 'FuelCards', 'action' => 'index']);
+        $builder->get('/karty-paliwowe/export-csv', ['controller' => 'FuelCards', 'action' => 'exportCsv']);
+        $builder->post('/karty-paliwowe/sync', ['controller' => 'FuelCards', 'action' => 'sync']);
+        $builder->get('/karty-paliwowe/konta', ['controller' => 'FuelCards', 'action' => 'accounts']);
+        $builder->connect('/karty-paliwowe/konta/dodaj', ['controller' => 'FuelCards', 'action' => 'addAccount']);
+        $builder->connect('/karty-paliwowe/konta/edytuj/{id}', ['controller' => 'FuelCards', 'action' => 'editAccount'])
+            ->setPass(['id']);
+        $builder->post('/karty-paliwowe/konta/usun/{id}', ['controller' => 'FuelCards', 'action' => 'deleteAccount'])
+            ->setPass(['id']);
+        $builder->get('/karty-paliwowe/karty', ['controller' => 'FuelCards', 'action' => 'cards']);
+        $builder->get('/karty-paliwowe/karty/info', ['controller' => 'FuelCards', 'action' => 'cardInfo']);
+        $builder->post('/karty-paliwowe/karty/blokuj', ['controller' => 'FuelCards', 'action' => 'blockCard']);
+        $builder->get('/karty-paliwowe/saldo', ['controller' => 'FuelCards', 'action' => 'balance']);
+        $builder->get('/karty-paliwowe/limity', ['controller' => 'FuelCards', 'action' => 'limits']);
+        $builder->get('/karty-paliwowe/limity/pobierz', ['controller' => 'FuelCards', 'action' => 'getLimit']);
+        $builder->post('/karty-paliwowe/limity/ustaw', ['controller' => 'FuelCards', 'action' => 'setLimit']);
+        $builder->connect('/karty-paliwowe/stacje', ['controller' => 'FuelCards', 'action' => 'stations']);
+
         // Fallbacks (na końcu)
         $builder->fallbacks();
     });

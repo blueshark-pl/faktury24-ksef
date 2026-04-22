@@ -377,6 +377,20 @@ return [
             'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions'],
         ],
 
+        // Karty paliwowe E100
+        [
+            'role' => 'user',
+            'controller' => 'FuelCards',
+            'action' => [
+                'index', 'exportCsv', 'sync',
+                'accounts', 'addAccount', 'editAccount', 'deleteAccount',
+                'cards', 'cardInfo', 'blockCard',
+                'balance',
+                'limits', 'getLimit', 'setLimit',
+                'stations',
+            ],
+        ],
+
         // odbiorcy e-mail faktur (panel kontrahenta)
         [
             'role' => 'user',
