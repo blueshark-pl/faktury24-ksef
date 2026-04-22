@@ -137,6 +137,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
 
         // Rozliczenia
         $builder->get('/rozliczenia', ['controller' => 'Reconciliations', 'action' => 'index']);
+        $builder->get('/rozliczenia/ksef', ['controller' => 'Reconciliations', 'action' => 'indexKsef']);
+        $builder->get('/rozliczenia/speed', ['controller' => 'Reconciliations', 'action' => 'indexSpeed']);
         $builder->post('/rozliczenia/add-payment', ['controller' => 'Reconciliations', 'action' => 'addPayment']);
         $builder->post('/rozliczenia/delete-payment/{id}', ['controller' => 'Reconciliations', 'action' => 'deletePayment'])
             ->setPass(['id']);

@@ -24,7 +24,12 @@
  * @var int $limit
  * @var string $title
  */
-$this->assign('title', 'Rozliczenia');
+$this->assign('title', $title ?? 'Rozliczenia');
+
+/** @var string $baseAction */
+$baseAction ??= 'index';
+/** @var string $lockSource */
+$lockSource ??= '';
 
 $today = new \DateTime('today');
 
@@ -150,7 +155,7 @@ $currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $da
     ];
     $merged = array_merge($base, $extra);
     $params = array_filter($merged, fn($v) => $v !== '' && $v !== null);
-    return ['action' => 'index', '?' => $params];
+    return ['action' => $baseAction, '?' => $params];
 };
 
 // Pomocnik sortowania (link z odwróconym kierunkiem)
@@ -303,7 +308,7 @@ if ($currencyFilter !== '') $activeFilterCount++;
 if ($amountFrom !== '')     $activeFilterCount++;
 if ($amountTo !== '')       $activeFilterCount++;
 if ($typeFilter !== '')     $activeFilterCount++;
-if ($sourceFilter !== '')   $activeFilterCount++;
+if ($sourceFilter !== '' && $lockSource === '') $activeFilterCount++;
 if ($status !== '')         $activeFilterCount++;
 ?>
 
@@ -336,7 +341,7 @@ if ($status !== '')         $activeFilterCount++;
             <button type="button" class="btn btn-xs btn-outline-secondary date-preset" style="font-size:.73rem;padding:1px 8px"
                     data-preset="this_year">Ten rok</button>
         </div>
-        <form id="rec-filter-form" method="get" action="<?= $this->Url->build(['action' => 'index']) ?>">
+        <form id="rec-filter-form" method="get" action="<?= $this->Url->build(['action' => $baseAction]) ?>">
             <div class="row g-2 align-items-end">
                 <!-- Szukaj -->
                 <div class="col-12 col-md-4">
@@ -374,6 +379,7 @@ if ($status !== '')         $activeFilterCount++;
                     </select>
                 </div>
                 <!-- Źródło -->
+                <?php if ($lockSource === ''): ?>
                 <div class="col-6 col-md-1">
                     <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Źródło</label>
                     <select name="source" class="form-select form-select-sm">
@@ -382,6 +388,9 @@ if ($status !== '')         $activeFilterCount++;
                         <option value="legacy" <?= $sourceFilter === 'legacy' ? 'selected' : '' ?>>Archiwum</option>
                     </select>
                 </div>
+                <?php else: ?>
+                <input type="hidden" name="source" value="<?= h($lockSource) ?>">
+                <?php endif; ?>
             </div>
             <div class="row g-2 align-items-end mt-0">
                 <!-- Data wystawienia od–do -->
@@ -788,7 +797,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         ];
         $merged = array_merge($base, $extra);
         $params = array_filter($merged, fn($v) => $v !== '' && $v !== null);
-        return ['action' => 'index', '?' => $params];
+        return ['action' => $baseAction, '?' => $params];
     };
 ?>
 <div class="mt-4">

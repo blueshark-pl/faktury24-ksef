@@ -374,7 +374,7 @@ return [
         [
             'role' => 'user',
             'controller' => 'Reconciliations',
-            'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions'],
+            'action' => ['index', 'indexKsef', 'indexSpeed', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions'],
         ],
 
         // Kredyt kupiecki

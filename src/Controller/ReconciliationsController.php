@@ -12,6 +12,34 @@ use Cake\Utility\Text;
  */
 class ReconciliationsController extends AppController
 {
+    /**
+     * Widok: tylko faktury z nowego systemu (KSeF / faktury24).
+     */
+    public function indexKsef(): void
+    {
+        $this->request = $this->request->withQueryParams(
+            array_merge($this->request->getQueryParams(), ['source' => 'system'])
+        );
+        $this->index();
+        $this->set('baseAction', 'indexKsef');
+        $this->set('lockSource', 'system');
+        $this->set('title', 'Rozliczenia — KSeF (nowe)');
+    }
+
+    /**
+     * Widok: tylko faktury archiwalne ze Speed (legacy).
+     */
+    public function indexSpeed(): void
+    {
+        $this->request = $this->request->withQueryParams(
+            array_merge($this->request->getQueryParams(), ['source' => 'legacy'])
+        );
+        $this->index();
+        $this->set('baseAction', 'indexSpeed');
+        $this->set('lockSource', 'legacy');
+        $this->set('title', 'Rozliczenia — Speed (archiwalne)');
+    }
+
     public function index(): void
     {
         $this->request->allowMethod(['get']);

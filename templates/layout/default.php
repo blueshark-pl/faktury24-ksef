@@ -633,13 +633,28 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </li>
 
                             <!-- Rozliczenia -->
-                            <li class="slide <?= $navActive('reconciliations', 'index') ?>">
-                                <?= $this->Html->link(
-                                    '<i class="ri-scales-3-line side-menu__icon"></i>
-                                    <span class="side-menu__label">Rozliczenia</span>',
-                                    ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'index'],
-                                    ['escape' => false, 'class' => 'side-menu__item ' . $navActive('reconciliations', 'index')]
-                                ) ?>
+                            <li class="<?= $liClass(['reconciliations']) ?>">
+                            <a href="javascript:void(0);" class="side-menu__item">
+                                <i class="ri-arrow-right-s-line side-menu__angle"></i>
+                                <i class="ri-scales-3-line side-menu__icon"></i>
+                                <span class="side-menu__label">Rozliczenia</span>
+                            </a>
+                            <ul class="slide-menu child1">
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        'KSeF (nowe)',
+                                        ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'indexKsef'],
+                                        ['class' => 'side-menu__item ' . $navActive('reconciliations', 'indexKsef')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        'Speed (archiwalne)',
+                                        ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'indexSpeed'],
+                                        ['class' => 'side-menu__item ' . $navActive('reconciliations', 'indexSpeed')]
+                                    ) ?>
+                                </li>
+                            </ul>
                             </li>
 
                             <!-- Kredyt kupiecki -->
