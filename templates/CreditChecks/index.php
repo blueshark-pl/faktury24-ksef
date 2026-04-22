@@ -29,7 +29,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             </small>
         <?php endif ?>
     </div>
-    <div class="page-rightheader">
+    <div class="page-rightheader d-flex gap-2">
+        <button id="btn-check-opinion" class="btn btn-success btn-sm">
+            <i class="ri-search-eye-line me-1"></i>Sprawdź opinię
+        </button>
         <button id="btn-sync" class="btn btn-primary btn-sm" data-list="all">
             <i class="ri-refresh-line me-1"></i>Synchronizuj wszystko
         </button>
@@ -311,12 +314,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 <script>
 (function () {
     'use strict';
 
-    const syncUrl  = <?= json_encode($this->Url->build(['action' => 'sync'])) ?>;
-    const csrfToken = <?= json_encode($csrf) ?>;
+    const syncUrl         = <?= json_encode($this->Url->build(['action' => 'sync'])) ?>;
+    const checkOpinionUrl = <?= json_encode($this->Url->build(['action' => 'checkOpinion'])) ?>;
+    const csrfToken       = <?= json_encode($csrf) ?>;
 
     function showAlert(type, html) {
         const el = document.getElementById('sync-alert');
@@ -378,6 +383,107 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     const btnTab = document.getElementById('btn-sync-tab');
     if (btnTab) {
         btnTab.addEventListener('click', () => runSync(btnTab.dataset.list || 'all', btnTab));
+    }
+
+    // ── Sprawdź opinię ──────────────────────────────────────────
+    const btnCheckOpinion = document.getElementById('btn-check-opinion');
+    if (btnCheckOpinion) {
+        btnCheckOpinion.addEventListener('click', async () => {
+            // Krok 1: zapytaj o NIP
+            const { value: nip, isConfirmed } = await Swal.fire({
+                title: 'Sprawdź opinię Allianz Trade',
+                input: 'text',
+                inputLabel: 'NIP kontrahenta',
+                inputPlaceholder: 'np. 1234567890',
+                inputAttributes: { maxlength: 15, autocomplete: 'off' },
+                showCancelButton: true,
+                confirmButtonText: 'Sprawdź',
+                cancelButtonText: 'Anuluj',
+                confirmButtonColor: '#198754',
+                inputValidator: v => {
+                    const digits = v.replace(/\D/g, '');
+                    if (digits.length < 9 || digits.length > 15) return 'Podaj NIP (9–15 cyfr)';
+                },
+            });
+            if (!isConfirmed || !nip) return;
+
+            // Krok 2: loading
+            Swal.fire({
+                title: 'Trwa sprawdzanie…',
+                html: '<p class="text-muted mb-0">Logowanie do Syntesys i wypełnianie formularza.<br>Może potrwać do 90 sekund.</p>',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                didOpen: () => Swal.showLoading(),
+            });
+
+            // Krok 3: wywołaj endpoint
+            let data;
+            try {
+                const resp = await fetch(checkOpinionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-Token': csrfToken,
+                    },
+                    body: 'nip=' + encodeURIComponent(nip.replace(/\D/g, '')),
+                });
+                data = await resp.json();
+            } catch (err) {
+                Swal.fire('Błąd połączenia', err.message, 'error');
+                return;
+            }
+
+            if (!data.success) {
+                Swal.fire('Błąd', data.message || 'Nieznany błąd', 'error');
+                return;
+            }
+
+            // Krok 4: pokaż wynik
+            const r = data.result || {};
+            const advice = r.advice || {};
+            const typeCode   = advice.typeCode   || r.typeCode   || '—';
+            const reasonCode = advice.reasonCode || r.reasonCode || '—';
+            const validTo    = advice.validTo    || r.validTo    || null;
+            const company    = r.companyName || r.identifier || '—';
+            const status     = r.status || advice.status || '—';
+
+            const validToHtml = validTo
+                ? '<tr><td class="text-muted pe-3">Ważna do</td><td><strong>' + validTo.replace('T', ' ').slice(0, 10) + '</strong></td></tr>'
+                : '';
+
+            const typeBadgeClass = typeCode === 'CCAT_1' ? 'bg-success'
+                : typeCode === 'CCAT_2' ? 'bg-warning text-dark'
+                : typeCode === 'CCAT_3' ? 'bg-danger'
+                : 'bg-secondary';
+
+            const resultHtml = `
+                <table class="table table-sm table-borderless text-start mx-auto" style="width:auto">
+                    <tr><td class="text-muted pe-3">Firma</td><td><strong>${company}</strong></td></tr>
+                    <tr><td class="text-muted pe-3">Status</td><td>${status}</td></tr>
+                    <tr><td class="text-muted pe-3">Opinia</td>
+                        <td><span class="badge ${typeBadgeClass}">${typeCode}</span></td></tr>
+                    <tr><td class="text-muted pe-3">Kod powodu</td><td>${reasonCode}</td></tr>
+                    ${validToHtml}
+                </table>`;
+
+            const { isConfirmed: doSync } = await Swal.fire({
+                title: 'Wynik opinii',
+                html: resultHtml,
+                icon: 'success',
+                confirmButtonText: 'OK i synchronizuj',
+                cancelButtonText: 'Zamknij',
+                showCancelButton: true,
+                confirmButtonColor: '#0d6efd',
+            });
+
+            // Krok 5: opcjonalny sync po zamknięciu
+            if (doSync) {
+                const fakeBtn = document.createElement('button');
+                fakeBtn.innerHTML = '';
+                runSync('done', fakeBtn);
+            }
+        });
     }
 
     // Modal szczegółów opinii

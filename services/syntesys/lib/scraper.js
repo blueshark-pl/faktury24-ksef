@@ -365,4 +365,114 @@ async function scrape(statusCodes) {
     }
 }
 
-module.exports = { scrape, toStatusCode, LIST_MAP };
+// ─── Check single opinion ─────────────────────────────────────────────────────
+
+/**
+ * Sprawdza opinię kredytową dla podanego NIP (lub VAT EU).
+ * Loguje do Syntesys, wypełnia formularz, czeka na wynik.
+ *
+ * @param {string} nip  Numer identyfikacyjny (tylko cyfry)
+ * @returns {Promise<object>}  Surowy obiekt odpowiedzi API z advice
+ */
+async function checkOpinion(nip) {
+    if (!process.env.SYNTESYS_USER || !process.env.SYNTESYS_PASS) {
+        throw new Error('Missing SYNTESYS_USER / SYNTESYS_PASS env vars');
+    }
+
+    const browser = await launchBrowser();
+    try {
+        const page = await browser.newPage();
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        );
+
+        // Login — przechwytuje token z pierwszego XHR Angulara
+        enableXhrLogging(page);
+        const { token } = await login(page);
+
+        // Nawiguj do formularza zlecenia opinii
+        const createUrl = `${BASE_URL}/insurance/credit-check/create/(type:single)`;
+        log(`checkOpinion: nawigacja do ${createUrl}`);
+        await page.goto(createUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+        // Poczekaj na pole NIP
+        const nipSelector = 'sn-input#identifier-value-nip input';
+        log('checkOpinion: czekam na pole NIP...');
+        await page.waitForSelector(nipSelector, { timeout: 15000 });
+        await sleep(500);
+
+        // Wpisz NIP
+        await page.click(nipSelector, { clickCount: 3 });
+        await page.type(nipSelector, nip, { delay: 60 });
+        log(`checkOpinion: wpisano NIP "${nip}"`);
+
+        // Przygotuj przechwycenie odpowiedzi POST zanim klikniemy
+        const postPromise = page.waitForResponse(
+            r => r.url().includes('/syntesys-api/insurance/credit-check-advices')
+                  && r.request().method() === 'POST',
+            { timeout: 20000 }
+        );
+
+        // Kliknij przycisk "Zamów opinię"
+        await page.evaluate(() => {
+            const btn = document.querySelector('button[data-test="form-submit-button"]');
+            if (btn) btn.click();
+        });
+        log('checkOpinion: kliknięto submit');
+
+        // Poczekaj na odpowiedź POST z ID wniosku
+        const postResp  = await postPromise;
+        const postBody  = await postResp.text();
+        log(`checkOpinion: POST HTTP ${postResp.status()} — ${postBody.slice(0, 200)}`);
+
+        let postJson;
+        try { postJson = JSON.parse(postBody); } catch {
+            throw new Error(`Nieprawidłowy JSON po złożeniu wniosku: ${postBody.slice(0, 300)}`);
+        }
+
+        const adviceId = postJson.id ?? null;
+        if (!adviceId) {
+            throw new Error(`Nie można uzyskać ID wniosku. Odpowiedź: ${JSON.stringify(postJson).slice(0, 300)}`);
+        }
+        log(`checkOpinion: adviceId=${adviceId}, polling...`);
+
+        // Polling GET /credit-check-advices/{id} co 3s, max 30 prób (90s)
+        const pollUrl    = `${API_BASE}/insurance/credit-check-advices/${adviceId}`;
+        const maxAttempts = 30;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            await sleep(3000);
+
+            const poll = await page.evaluate(async (url, tok) => {
+                try {
+                    const r = await fetch(url, { headers: { Authorization: tok } });
+                    return { ok: r.ok, status: r.status, body: await r.text() };
+                } catch (e) {
+                    return { ok: false, status: 0, body: e.message };
+                }
+            }, pollUrl, token);
+
+            log(`checkOpinion: próba ${attempt} — HTTP ${poll.status} — ${poll.body.slice(0, 80)}`);
+
+            if (!poll.ok) {
+                throw new Error(`Błąd polling HTTP ${poll.status}: ${poll.body.slice(0, 200)}`);
+            }
+
+            let result;
+            try { result = JSON.parse(poll.body); } catch {
+                throw new Error(`Nieprawidłowy JSON polling: ${poll.body.slice(0, 200)}`);
+            }
+
+            if (result.status !== 'PROCESSING') {
+                log(`checkOpinion: gotowe! status=${result.status}`);
+                return result;
+            }
+        }
+
+        throw new Error('Timeout: opinia nie jest gotowa po 90 sekundach');
+    } finally {
+        await browser.close();
+    }
+}
+
+module.exports = { scrape, checkOpinion, toStatusCode, LIST_MAP };

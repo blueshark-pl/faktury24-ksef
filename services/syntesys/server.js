@@ -240,6 +240,29 @@ app.post('/fetch', async (req, res) => {
 });
 
 /**
+ * POST /check-opinion
+ * Sprawdza opinię kredytową dla podanego NIP przez Puppeteer.
+ * Loguje do Syntesys, wypełnia formularz, czeka na wynik (do 90s).
+ *
+ * Body: { nip: "6572944171" }
+ * Response: { success, result: { id, status, advice, companyName, ... } }
+ */
+app.post('/check-opinion', async (req, res) => {
+    const nip = (req.body.nip || req.query.nip || '').replace(/\D/g, '');
+    if (!nip || nip.length < 9 || nip.length > 15) {
+        return res.status(400).json({ success: false, error: 'Nieprawidłowy NIP (9–15 cyfr)' });
+    }
+
+    const startedAt = Date.now();
+    try {
+        const result = await scraper.checkOpinion(nip);
+        res.json({ success: true, result, durationMs: Date.now() - startedAt });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message, durationMs: Date.now() - startedAt });
+    }
+});
+
+/**
  * DELETE /session
  * Usuwa plik sesji Puppeteer — wymusza ponowne logowanie przy kolejnym /sync.
  */

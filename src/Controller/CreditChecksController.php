@@ -180,6 +180,52 @@ class CreditChecksController extends AppController
     }
 
     // =========================================================================
+    // Sprawdź opinię kredytową dla podanego NIP (AJAX POST)
+    // =========================================================================
+
+    public function checkOpinion(): Response
+    {
+        $this->request->allowMethod('post');
+
+        // Mikroserwis potrzebuje do 90s + narzut — dajemy 150s
+        set_time_limit(150);
+
+        try {
+            $nip = preg_replace('/\D/', '', (string)($this->request->getData('nip') ?? ''));
+
+            if (strlen($nip) < 9 || strlen($nip) > 15) {
+                return $this->response
+                    ->withType('application/json')
+                    ->withStringBody((string)json_encode([
+                        'success' => false,
+                        'message' => 'Nieprawidłowy NIP (9–15 cyfr)',
+                        'result'  => null,
+                    ]));
+            }
+
+            $scraper = new SyntesysScraperService();
+            $data    = $scraper->checkOpinion($nip);
+
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success' => $data['success'],
+                    'message' => $data['message'],
+                    'result'  => $data['result'],
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response
+                ->withStatus(500)
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success' => false,
+                    'message' => 'Wewnętrzny błąd serwera: ' . $e->getMessage(),
+                    'result'  => null,
+                ]));
+        }
+    }
+
+    // =========================================================================
     // Usuń rekord
     // =========================================================================
 

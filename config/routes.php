@@ -169,6 +169,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Kredyt kupiecki (Allianz Trade / Syntesys)
         $builder->get('/kredyt-kupiecki', ['controller' => 'CreditChecks', 'action' => 'index']);
         $builder->post('/kredyt-kupiecki/sync', ['controller' => 'CreditChecks', 'action' => 'sync']);
+        $builder->post('/kredyt-kupiecki/sprawdz-opinie', ['controller' => 'CreditChecks', 'action' => 'checkOpinion']);
         $builder->post('/kredyt-kupiecki/usun/{id}', ['controller' => 'CreditChecks', 'action' => 'delete'])
             ->setPass(['id']);
 

@@ -128,5 +128,65 @@ class SyntesysScraperService
     {
         return ['success' => false, 'message' => $msg, 'inserted' => 0, 'updated' => 0, 'errors' => 0];
     }
+
+    /**
+     * Sprawdza opinię kredytową dla podanego NIP.
+     * Wywołuje mikroserwis /check-opinion, czeka na wynik (maks. 120s).
+     *
+     * @param string $nip  Numer NIP (tylko cyfry)
+     * @return array{success: bool, message: string, result: array|null}
+     */
+    public function checkOpinion(string $nip): array
+    {
+        $serviceUrl = rtrim((string)(Configure::read('Syntesys.service_url') ?? ''), '/');
+        $apiKey     = (string)(Configure::read('Syntesys.api_key') ?? '');
+
+        if ($serviceUrl === '') {
+            return ['success' => false, 'message' => 'Brak konfiguracji Syntesys.service_url', 'result' => null];
+        }
+
+        $url = $serviceUrl . '/check-opinion';
+        Log::info("SyntesysScraperService: POST {$url} nip={$nip}", ['scope' => 'syntesys']);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(['nip' => $nip]),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT,
+            CURLOPT_HTTPHEADER     => array_filter([
+                'Content-Type: application/json',
+                'Accept: application/json',
+                $apiKey !== '' ? "X-Api-Key: {$apiKey}" : null,
+            ]),
+        ]);
+
+        $body     = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            return ['success' => false, 'message' => "Błąd połączenia: {$curlErr}", 'result' => null];
+        }
+
+        if ($httpCode !== 200) {
+            $decoded = json_decode((string)$body, true);
+            $errMsg  = is_array($decoded) ? ($decoded['error'] ?? "HTTP {$httpCode}") : "HTTP {$httpCode}";
+            return ['success' => false, 'message' => $errMsg, 'result' => null];
+        }
+
+        $data = json_decode((string)$body, true);
+        if (!is_array($data)) {
+            return ['success' => false, 'message' => 'Nieprawidłowy JSON z mikroserwisu', 'result' => null];
+        }
+
+        if (!($data['success'] ?? false)) {
+            return ['success' => false, 'message' => $data['error'] ?? 'Nieznany błąd mikroserwisu', 'result' => null];
+        }
+
+        return ['success' => true, 'message' => 'OK', 'result' => $data['result'] ?? null];
+    }
 }
 
