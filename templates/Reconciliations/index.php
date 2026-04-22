@@ -1540,107 +1540,180 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                   + ' — podświetlam przelewy z pasującą kwotą.</div>';
         }
 
-        linked.forEach(function (tx) { rows += renderTxRow(tx, true, isLegacy); });
-        candidates.forEach(function (tx) { rows += renderTxRow(tx, false, isLegacy); });
+        // ── Dane do filtrowania / sortowania ─────────────────────────────────
+        var allTxsData = [];
+        linked.forEach(function (tx)    { allTxsData.push({ tx: tx, isLinked: true,  isLegacy: isLegacy }); });
+        candidates.forEach(function (tx){ allTxsData.push({ tx: tx, isLinked: false, isLegacy: isLegacy }); });
 
-        var totalCount = linked.length + candidates.length;
+        var totalCount = allTxsData.length;
 
-        // Zbierz unikalne numery kont z transakcji (do selecta filtru)
-        var allTxs = linked.concat(candidates);
+        // Unikalne konta
         var uniqueAccounts = [];
-        var seenAccounts = {};
-        allTxs.forEach(function (tx) {
-            var clean = (tx.account_number || '').replace(/[\s\-]/g, '');
+        var seenAccounts   = {};
+        allTxsData.forEach(function (item) {
+            var clean = (item.tx.account_number || '').replace(/[\s\-]/g, '');
             if (clean && !seenAccounts[clean]) {
                 seenAccounts[clean] = true;
-                uniqueAccounts.push({ clean: clean, raw: tx.account_number });
+                uniqueAccounts.push({ clean: clean, raw: item.tx.account_number });
             }
         });
 
-        // Select rachunku — tylko gdy jest > 1 unikalny rachunek lub skonfigurowane konta firmy
-        var accountSelectHtml = '';
-        if (uniqueAccounts.length > 1 || companyBankAccounts.length > 0) {
-            var opts = '<option value="">— wszystkie rachunki —</option>';
-            uniqueAccounts.forEach(function (acc) {
-                opts += '<option value="' + esc(acc.clean) + '">' + esc(getBankLabel(acc.raw) || ('…' + acc.clean.slice(-8))) + '</option>';
-            });
-            accountSelectHtml = '<div class="d-flex gap-2 mb-2 align-items-center">'
-                + '<i class="ri-bank-line text-muted flex-shrink-0" style="font-size:.9rem"></i>'
-                + '<select id="bankTxAccountFilter" class="form-select form-select-sm">' + opts + '</select>'
-                + '</div>';
-        }
+        // Stan sortowania (domyślnie: data desc)
+        var sortCol = 'date';
+        var sortAsc = false;
+
+        // ── Buduj szkielet HTML (kontrolki + tabela) ──────────────────────────
+        var accountOpts = '<option value="">— wszystkie rachunki —</option>';
+        uniqueAccounts.forEach(function (acc) {
+            accountOpts += '<option value="' + esc(acc.clean) + '">'
+                + esc(getBankLabel(acc.raw) || ('…' + acc.clean.slice(-8))) + '</option>';
+        });
+        var accountSelectHtml = (uniqueAccounts.length > 1 || companyBankAccounts.length > 0)
+            ? '<div class="d-flex gap-2 mb-2 align-items-center">'
+              + '<i class="ri-bank-line text-muted flex-shrink-0" style="font-size:.85rem" title="Rachunek"></i>'
+              + '<select id="bankTxAccountFilter" class="form-select form-select-sm">' + accountOpts + '</select>'
+              + '</div>'
+            : '';
 
         container.innerHTML = note
             + accountSelectHtml
-            + '<div class="input-group input-group-sm mb-2">'
-            + '<span class="input-group-text bg-white border-end-0"><i class="ri-search-line text-muted"></i></span>'
-            + '<input type="text" id="bankTxFilter" class="form-control border-start-0 ps-0" placeholder="Filtruj po nadawcy, tytule, dacie…" autocomplete="off">'
-            + '<span class="input-group-text bg-white text-muted small" id="bankTxCount">' + totalCount + '</span>'
+            + '<div class="row g-1 mb-2 align-items-center">'
+            +   '<div class="col">'
+            +     '<div class="input-group input-group-sm">'
+            +       '<span class="input-group-text bg-white border-end-0"><i class="ri-search-line text-muted"></i></span>'
+            +       '<input type="text" id="bankTxFilter" class="form-control border-start-0 ps-0" placeholder="Nadawca, tytuł, data…" autocomplete="off">'
+            +     '</div>'
+            +   '</div>'
+            +   '<div class="col-auto d-flex gap-1 align-items-center">'
+            +     '<input type="number" id="bankTxAmtFrom" class="form-control form-control-sm" placeholder="Kwota od" min="0" step="0.01" style="width:90px" title="Kwota od">'
+            +     '<span class="text-muted small">–</span>'
+            +     '<input type="number" id="bankTxAmtTo" class="form-control form-control-sm" placeholder="do" min="0" step="0.01" style="width:90px" title="Kwota do">'
+            +   '</div>'
+            +   '<div class="col-auto">'
+            +     '<span class="input-group-text bg-white text-muted small border" id="bankTxCount">' + totalCount + '</span>'
+            +   '</div>'
             + '</div>'
             + '<div class="table-responsive">'
             + '<table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem" id="bankTxTable">'
             + '<thead class="table-light">'
             + '<tr>'
-            + '<th>Data</th>'
-            + '<th class="text-end">Kwota</th>'
+            + '<th class="text-nowrap" style="cursor:pointer;user-select:none" id="bth-date">'
+            +   '<i class="ri-calendar-line me-1 opacity-50"></i>Data <span id="bth-date-icon" class="text-primary">↓</span>'
+            + '</th>'
+            + '<th class="text-end text-nowrap" style="cursor:pointer;user-select:none" id="bth-amount">'
+            +   'Kwota <span id="bth-amount-icon" class="text-muted opacity-50">⇅</span>'
+            + '</th>'
             + '<th>Nadawca / Tytuł</th>'
             + '<th>Status</th>'
             + '<th></th>'
             + '</tr>'
             + '</thead>'
-            + '<tbody>' + rows + '</tbody>'
+            + '<tbody id="bankTxTbody"></tbody>'
             + '</table></div>'
             + '<div id="bankTxNoResults" class="text-muted small fst-italic py-1" style="display:none">'
             + '<i class="ri-search-line me-1"></i>Brak wyników dla wybranych filtrów.</div>';
 
-        // ── Filtrowanie wierszy (tekst + konto) ───────────────────────────────
-        var filterInput     = document.getElementById('bankTxFilter');
-        var accountFilter   = document.getElementById('bankTxAccountFilter');
-        var countBadge      = document.getElementById('bankTxCount');
-        var noResults       = document.getElementById('bankTxNoResults');
-        var txTable         = document.getElementById('bankTxTable');
+        // ── Funkcja filtrowania + sortowania → re-render tbody ────────────────
+        var filterInput   = document.getElementById('bankTxFilter');
+        var accountFilter = document.getElementById('bankTxAccountFilter');
+        var amtFrom       = document.getElementById('bankTxAmtFrom');
+        var amtTo         = document.getElementById('bankTxAmtTo');
+        var countBadge    = document.getElementById('bankTxCount');
+        var noResults     = document.getElementById('bankTxNoResults');
+        var tbody         = document.getElementById('bankTxTbody');
+
+        function updateSortIcons() {
+            var dateIcon   = document.getElementById('bth-date-icon');
+            var amountIcon = document.getElementById('bth-amount-icon');
+            if (dateIcon)   dateIcon.textContent   = sortCol === 'date'   ? (sortAsc ? '↑' : '↓') : '⇅';
+            if (amountIcon) amountIcon.textContent = sortCol === 'amount' ? (sortAsc ? '↑' : '↓') : '⇅';
+            if (dateIcon)   dateIcon.className   = sortCol === 'date'   ? 'text-primary' : 'text-muted opacity-50';
+            if (amountIcon) amountIcon.className = sortCol === 'amount' ? 'text-primary' : 'text-muted opacity-50';
+        }
 
         function applyTxFilters() {
-            var q       = filterInput ? filterInput.value.toLowerCase().trim() : '';
+            var q       = filterInput   ? filterInput.value.toLowerCase().trim() : '';
             var account = accountFilter ? accountFilter.value : '';
-            var trs     = txTable ? txTable.querySelectorAll('tbody tr') : [];
-            var visible = 0;
-            trs.forEach(function (tr) {
-                var textMatch    = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
-                var accountMatch = !account || tr.dataset.account === account;
-                var show = textMatch && accountMatch;
-                tr.style.display = show ? '' : 'none';
-                if (show) visible++;
+            var minAmt  = amtFrom && amtFrom.value !== '' ? parseFloat(amtFrom.value) : null;
+            var maxAmt  = amtTo   && amtTo.value   !== '' ? parseFloat(amtTo.value)   : null;
+
+            // Filtruj
+            var filtered = allTxsData.filter(function (item) {
+                var tx = item.tx;
+                var cleanAcc = (tx.account_number || '').replace(/[\s\-]/g, '');
+                var searchText = [tx.value_date, tx.party_name, tx.title, tx.parsed_inv, cleanAcc].join(' ').toLowerCase();
+                return (!q       || searchText.indexOf(q) !== -1)
+                    && (!account || cleanAcc === account)
+                    && (minAmt === null || tx.amount >= minAmt)
+                    && (maxAmt === null || tx.amount <= maxAmt);
             });
-            if (countBadge) countBadge.textContent = visible;
-            if (noResults)  noResults.style.display = (visible === 0) ? '' : 'none';
+
+            // Sortuj
+            filtered.sort(function (a, b) {
+                var va = sortCol === 'amount' ? a.tx.amount : a.tx.value_date;
+                var vb = sortCol === 'amount' ? b.tx.amount : b.tx.value_date;
+                if (va < vb) return sortAsc ? -1 : 1;
+                if (va > vb) return sortAsc ?  1 : -1;
+                return 0;
+            });
+
+            // Re-render
+            var html = '';
+            filtered.forEach(function (item) {
+                html += renderTxRow(item.tx, item.isLinked, item.isLegacy);
+            });
+            if (tbody) tbody.innerHTML = html || '';
+
+            if (countBadge) countBadge.textContent = filtered.length;
+            if (noResults)  noResults.style.display = (filtered.length === 0) ? '' : 'none';
+
+            // Re-wire przyciski po re-renderze
+            wireTxButtons();
         }
+
+        // Sortowanie po nagłówku
+        var thDate   = document.getElementById('bth-date');
+        var thAmount = document.getElementById('bth-amount');
+        if (thDate) thDate.addEventListener('click', function () {
+            if (sortCol === 'date') { sortAsc = !sortAsc; } else { sortCol = 'date'; sortAsc = false; }
+            updateSortIcons(); applyTxFilters();
+        });
+        if (thAmount) thAmount.addEventListener('click', function () {
+            if (sortCol === 'amount') { sortAsc = !sortAsc; } else { sortCol = 'amount'; sortAsc = false; }
+            updateSortIcons(); applyTxFilters();
+        });
 
         if (filterInput)   filterInput.addEventListener('input', applyTxFilters);
         if (accountFilter) accountFilter.addEventListener('change', applyTxFilters);
-        if (filterInput)   filterInput.focus();
+        if (amtFrom)       amtFrom.addEventListener('input', applyTxFilters);
+        if (amtTo)         amtTo.addEventListener('input', applyTxFilters);
 
-        if (!isLegacy) {
-            container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
+        // Pierwszy render
+        applyTxFilters();
+        if (filterInput) filterInput.focus();
+
+        function wireTxButtons() {
+            if (!isLegacy) {
+                container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var txId = this.dataset.txId;
+                        var form = document.getElementById('linkTxForm');
+                        document.getElementById('linkTxInvoiceId').value = currentInvoiceId;
+                        form.action = '/wyciagi/confirm-match/' + txId;
+                        form.submit();
+                    });
+                });
+            }
+            container.querySelectorAll('.btn-use-tx').forEach(function (btn) {
                 btn.addEventListener('click', function () {
-                    var txId   = this.dataset.txId;
-                    var form   = document.getElementById('linkTxForm');
-                    document.getElementById('linkTxInvoiceId').value = currentInvoiceId;
-                    form.action = '/wyciagi/confirm-match/' + txId;
-                    form.submit();
+                    var amtField  = document.getElementById('modalAmount');
+                    var dateField = document.getElementById('modalPaymentDate');
+                    if (amtField)  amtField.value  = parseFloat(this.dataset.txAmount).toFixed(2);
+                    if (dateField) dateField.value  = this.dataset.txDate;
+                    if (amtField)  amtField.focus();
                 });
             });
         }
-
-        container.querySelectorAll('.btn-use-tx').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var amtField  = document.getElementById('modalAmount');
-                var dateField = document.getElementById('modalPaymentDate');
-                if (amtField)  amtField.value  = parseFloat(this.dataset.txAmount).toFixed(2);
-                if (dateField) dateField.value  = this.dataset.txDate;
-                if (amtField)  amtField.focus();
-            });
-        });
     }
 
     // ── Pobieranie przelewów po otwarciu modala ───────────────────────────────
