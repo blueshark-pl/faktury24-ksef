@@ -452,6 +452,7 @@ if ($status !== '')         $activeFilterCount++;
 </div>
 
 <!-- Szybkie filtry statusu -->
+<?php if ($lockSource !== 'legacy'): ?>
 <div class="d-flex flex-wrap gap-1 mb-3">
     <?php
     $statusFilters = [
@@ -778,6 +779,7 @@ if ($status !== '')         $activeFilterCount++;
     </div>
 </div>
 <?php endif; ?>
+<?php endif; // lockSource !== 'legacy' ?>
 
 <?php
 // ── Sekcja faktur archiwalnych (legacy) ─────────────────────────────────────
