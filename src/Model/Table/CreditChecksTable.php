@@ -112,7 +112,7 @@ class CreditChecksTable extends Table
                 $nip = preg_replace('/\D/', '', (string)$data['identifier']);
                 if (strlen($nip) >= 9) {
                     $contractor = $this->Contractors->find()
-                        ->where(['REPLACE(tax_id, \'-\', \'\') LIKE' => $nip])
+                        ->where(['REPLACE(Contractors.nip, \'-\', \'\') LIKE' => $nip])
                         ->select(['id'])
                         ->first();
                     if ($contractor !== null) {
