@@ -1,8 +1,8 @@
 'use strict';
 
-const BetterSQLite = require('better-sqlite3');
-const fs           = require('fs');
-const path         = require('path');
+const Database = require('node-sqlite3-wasm');
+const fs        = require('fs');
+const path      = require('path');
 
 const DB_PATH = process.env.DB_PATH || './data/credit_checks.db';
 
@@ -10,11 +10,11 @@ const DB_PATH = process.env.DB_PATH || './data/credit_checks.db';
 const dir = path.dirname(DB_PATH);
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-const db = new BetterSQLite(DB_PATH);
+const db = new Database(DB_PATH);
 
 // WAL dla lepszej wydajności przy równoległych odczytach
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 // ─── Schema ────────────────────────────────────────────────────────────────────
 

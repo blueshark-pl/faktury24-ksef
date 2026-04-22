@@ -2,6 +2,7 @@
 FROM node:20-slim
 
 # Chromium dependencies required by Puppeteer
+# (node-sqlite3-wasm is pure WASM — no build tools needed)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
         fonts-liberation \
