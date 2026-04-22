@@ -49,60 +49,26 @@ async function launchBrowser() {
 // ─── Login ───────────────────────────────────────────────────────────────────
 
 async function login(page) {
-    const loginUrl = `${BASE_URL}/login`;
+    const loginUrl = `${BASE_URL}/syntesys-oauth/login`;
     log(`Navigating to login: ${loginUrl}`);
-    await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: TIMEOUT_MS });
+    await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
 
-    // Czekaj na pole loginu — Angular SSR może renderować asynchronicznie
-    const userSelectors = [
-        'input[name="username"]',
-        'input[type="email"]',
-        'input[type="text"]',
-        'input[id*="login"]',
-        'input[id*="user"]',
-        'input[placeholder*="l" i]',   // placeholder zawierający "l" (login/Login)
-    ];
-
-    let userSel = null;
-    for (const sel of userSelectors) {
-        try { await page.waitForSelector(sel, { timeout: 4000 }); userSel = sel; break; } catch { /* next */ }
-    }
-    if (!userSel) throw new Error(`Cannot find username field on ${loginUrl}`);
-
-    let passSel = null;
-    for (const sel of ['input[name="password"]', 'input[type="password"]']) {
-        try { await page.waitForSelector(sel, { timeout: 2000 }); passSel = sel; break; } catch { /* next */ }
-    }
-    if (!passSel) throw new Error('Cannot find password field');
+    // Czekaj na formularz (Angular może renderować asynchronicznie)
+    await page.waitForSelector('input#username', { timeout: 15000 });
+    await page.waitForSelector('input#password', { timeout: 5000 });
 
     log('Filling login form...');
-    await page.click(userSel, { clickCount: 3 });
-    await page.type(userSel, process.env.SYNTESYS_USER || '', { delay: 25 });
-    await page.click(passSel, { clickCount: 3 });
-    await page.type(passSel, process.env.SYNTESYS_PASS || '', { delay: 25 });
+    await page.$eval('input#username', el => el.value = '');
+    await page.type('input#username', process.env.SYNTESYS_USER || '', { delay: 30 });
 
-    // Submit
-    let submitted = false;
-    for (const sel of ['button[type="submit"]', 'input[type="submit"]', 'button.btn-primary']) {
-        try {
-            const btn = await page.$(sel);
-            if (btn) {
-                await Promise.all([
-                    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-                    btn.click(),
-                ]);
-                submitted = true;
-                break;
-            }
-        } catch { /* try next */ }
-    }
+    await page.$eval('input#password', el => el.value = '');
+    await page.type('input#password', process.env.SYNTESYS_PASS || '', { delay: 30 });
 
-    if (!submitted) {
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-            page.keyboard.press('Enter'),
-        ]);
-    }
+    log('Submitting...');
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+        page.click('input[name="login"][type="submit"]'),
+    ]);
 
     const currentUrl = page.url();
     if (currentUrl.includes('/login') || currentUrl.includes('error')) {
@@ -197,11 +163,11 @@ async function scrape(statusCodes) {
 
         if (savedCookies?.length > 0) {
             // Szybkie przywrócenie sesji bez weryfikacji przez pełne ładowanie aplikacji.
-            // Nawigujemy do domeny głównej (domcontentloaded = szybko) żeby page.evaluate
-            // fetch() działało z credentials:include w kontekście tej domeny.
+            // Nawigujemy do strony logowania (domcontentloaded = szybko) żeby ustawić origin,
+            // a potem setCookie — żądania fetch() będą miały credentials:include.
             // Jeśli sesja wygasła na serwerze, fetchList() rzuci SESSION_EXPIRED → re-login.
             log(`Restoring session (${savedCookies.length} cookies, TTL ok)...`);
-            await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await page.goto(`${BASE_URL}/syntesys-oauth/login`, { waitUntil: 'domcontentloaded', timeout: 15000 });
             await page.setCookie(...savedCookies);
             log('Session restored — skipping login');
         } else {
