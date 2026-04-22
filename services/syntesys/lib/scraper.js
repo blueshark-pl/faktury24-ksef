@@ -50,6 +50,36 @@ async function launchBrowser() {
     return puppeteer.launch(opts);
 }
 
+// ─── Token capture ───────────────────────────────────────────────────────────
+
+/**
+ * Czeka na pierwsze żądanie XHR do syntesys-api i wyciąga Bearer token
+ * z nagłówka Authorization. MUSI być wywołane PRZED page.goto().
+ * @returns {Promise<string>}  pełny nagłówek np. "Bearer eyJ..."
+ */
+function captureToken(page) {
+    const apiPattern = /syntesys-api\/insurance\/credit-check/;
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            page.off('request', onReq);
+            reject(new Error('Timeout: Angular nie wysłał żądania API w ciągu 30s'));
+        }, 30000);
+
+        function onReq(req) {
+            if (!apiPattern.test(req.url())) return;
+            const auth = req.headers()['authorization'];
+            if (auth && auth.startsWith('Bearer ')) {
+                clearTimeout(timer);
+                page.off('request', onReq);
+                log(`XHR przechwycony: ${req.url()}`);
+                resolve(auth);
+            }
+        }
+
+        page.on('request', onReq);
+    });
+}
+
 // ─── Login ───────────────────────────────────────────────────────────────────
 
 async function acceptCookies(page) {
@@ -101,19 +131,30 @@ async function login(page) {
     }
     log(`Login success. URL: ${currentUrl}`);
 
-    // 5. Nawiguj do widoku list — Angular musi się załadować żeby ustawić XSRF/session cookies
+    // 5. Ustaw interceptor PRZED nawigacją — Angular wyśle XHR zaraz po załadowaniu strony
     const appUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`;
+    log('Ustawiam interceptor tokenu Bearer...');
+    const tokenPromise = captureToken(page);
+
     log(`Navigating to app: ${appUrl}`);
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
-    // 6. Poczekaj aż Angular zainicjuje się i ustawi cookies sesji XHR
-    await sleep(3000);
-    log(`App ready. URL: ${page.url()}`);
+    // 6. Czekamy aż Angular wystrzeli pierwsze żądanie API i przechwycimy token
+    log('Czekam na pierwsze żądanie API od Angulara...');
+    const token = await tokenPromise;
+    log(`Token Bearer przechwycony (${token.length} znaków)`);
+
+    return token;
 }
 
 // ─── Fetch one list (all pages) ───────────────────────────────────────────────
 
-async function fetchList(page, statusCode) {
+/**
+ * @param {object} page
+ * @param {string} statusCode  np. 'WITH_OPINION'
+ * @param {string} token       nagłówek Authorization np. 'Bearer eyJ...'
+ */
+async function fetchList(page, statusCode, token) {
     const items  = [];
     let   pageNo = 1;
 
@@ -131,22 +172,23 @@ async function fetchList(page, statusCode) {
 
         log(`  page ${pageNo}: ${url}`);
 
-        const result = await page.evaluate(async (fetchUrl) => {
+        const result = await page.evaluate(async (fetchUrl, authToken) => {
             const resp = await fetch(fetchUrl, {
-                method:      'GET',
-                credentials: 'include',
-                headers:     { 'Accept': 'application/json' },
+                method:  'GET',
+                headers: {
+                    'Accept':        'application/json',
+                    'Authorization': authToken,
+                },
             });
             const body = await resp.text();
-            // zbierz nagłówki do debugowania
             const headers = {};
             resp.headers.forEach((v, k) => { headers[k] = v; });
             return { status: resp.status, body, headers };
-        }, url);
+        }, url, token);
 
         log(`  → HTTP ${result.status}`);
-        log(`  → Headers: ${JSON.stringify(result.headers)}`);
-        if (result.body) {
+        if (result.status !== 200) {
+            log(`  → Headers: ${JSON.stringify(result.headers)}`);
             log(`  → Body: ${result.body.slice(0, 1000)}`);
         }
 
@@ -202,39 +244,39 @@ async function scrape(statusCodes) {
         );
 
         // Wczytaj zachowaną sesję
-        const savedCookies = session.load();
+        const savedSession = session.load();
+        const savedToken   = savedSession?.token;
+        let   token;
 
-        if (savedCookies?.length > 0) {
-            // Przywróć sesję: wejdź na stronę app (nie login) żeby mieć właściwy origin
-            // dla fetch() z credentials:include. Jeśli sesja wygasła na serwerze,
-            // fetchList() rzuci SESSION_EXPIRED → re-login.
-            log(`Restoring session (${savedCookies.length} cookies, TTL ok)...`);
+        if (savedToken) {
+            // Mamy token — nawiguj do app żeby mieć właściwy origin dla fetch()
+            log('Restoring session (token cached, TTL ok)...');
             await page.goto(
                 `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`,
                 { waitUntil: 'domcontentloaded', timeout: 20000 }
             );
-            await page.setCookie(...savedCookies);
-            await sleep(1500); // poczekaj aż strona przetworzy przywrócone cookies
+            await sleep(1500);
+            token = savedToken;
             log('Session restored — skipping login');
         } else {
             log('No valid session — logging in...');
-            await login(page);
-            session.save(await page.cookies());
+            token = await login(page);
+            session.save({ token });
         }
 
         // Pobierz wszystkie żądane statusy
         const output = {};
         for (const statusCode of statusCodes) {
             try {
-                output[statusCode] = await fetchList(page, statusCode);
+                output[statusCode] = await fetchList(page, statusCode, token);
             } catch (e) {
                 if (e.code === 'SESSION_EXPIRED') {
                     log('Session expired during fetch — re-login...');
                     session.clear();
-                    await login(page);
-                    session.save(await page.cookies());
+                    token = await login(page);
+                    session.save({ token });
                     // retry once
-                    output[statusCode] = await fetchList(page, statusCode);
+                    output[statusCode] = await fetchList(page, statusCode, token);
                 } else {
                     log(`ERROR for ${statusCode}: ${e.message}`);
                     output[statusCode] = [];

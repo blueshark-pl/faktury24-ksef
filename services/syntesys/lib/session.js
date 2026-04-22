@@ -12,29 +12,31 @@ function _ensureDir() {
 }
 
 /**
- * Load cookies from file. Returns null if not found or expired.
+ * Load session data from file. Returns null if not found or expired.
+ * @returns {{ token?: string }|null}
  */
 function load() {
     try {
         if (!fs.existsSync(SESSION_PATH)) return null;
-        const data = JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
-        if (!data.savedAt) return null;
-        if (Date.now() - data.savedAt > SESSION_TTL_MS) {
+        const { savedAt, ...data } = JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
+        if (!savedAt) return null;
+        if (Date.now() - savedAt > SESSION_TTL_MS) {
             clear();
             return null;
         }
-        return data.cookies || null;
+        return data;
     } catch {
         return null;
     }
 }
 
 /**
- * Save cookies to file.
+ * Save session data to file.
+ * @param {{ token?: string }} data
  */
-function save(cookies) {
+function save(data) {
     _ensureDir();
-    fs.writeFileSync(SESSION_PATH, JSON.stringify({ savedAt: Date.now(), cookies }), 'utf8');
+    fs.writeFileSync(SESSION_PATH, JSON.stringify({ savedAt: Date.now(), ...data }), 'utf8');
 }
 
 /**
@@ -58,11 +60,11 @@ function info() {
         const remaining = SESSION_TTL_MS - ageMs;
         if (remaining <= 0) return { active: false };
         return {
-            active:          true,
-            savedAt:         new Date(data.savedAt).toISOString(),
-            expiresAt:       new Date(data.savedAt + SESSION_TTL_MS).toISOString(),
+            active:           true,
+            savedAt:          new Date(data.savedAt).toISOString(),
+            expiresAt:        new Date(data.savedAt + SESSION_TTL_MS).toISOString(),
             remainingMinutes: Math.floor(remaining / 60000),
-            cookieCount:     Array.isArray(data.cookies) ? data.cookies.length : 0,
+            hasToken:         !!data.token,
         };
     } catch {
         return { active: false };
