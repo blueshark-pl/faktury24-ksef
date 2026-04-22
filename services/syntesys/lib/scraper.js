@@ -5,7 +5,7 @@ const session   = require('./session');
 
 const BASE_URL  = 'https://syntesys.pl';
 const API_BASE  = 'https://syntesys.pl/syntesys-api';
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 15;
 
 const TIMEOUT_MS = parseInt(process.env.SCRAPER_TIMEOUT_MS || '90000', 10);
 
@@ -130,6 +130,11 @@ async function login(page) {
         throw new Error(`Login failed — still on: ${currentUrl}`);
     }
     log(`Login success. URL: ${currentUrl}`);
+
+    // Poczekaj aż strona główna w pełni się załaduje (Angular inicjalizuje sesję)
+    log('Waiting for main page to fully load...');
+    await page.waitForNetworkIdle({ idleTime: 1000, timeout: 20000 }).catch(() => {});
+    await sleep(1000);
 
     // 5. Ustaw interceptor PRZED nawigacją — Angular wyśle XHR zaraz po załadowaniu strony
     const appUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`;
