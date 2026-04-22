@@ -251,7 +251,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         </div>
 
         <!-- Paginacja -->
-        <?= $this->element('common/pagination') ?>
+        <?= $this->element('pagination') ?>
 
     </div>
 </div>
