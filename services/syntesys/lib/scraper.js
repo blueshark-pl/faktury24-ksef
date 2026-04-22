@@ -243,11 +243,18 @@ async function fetchList(page, statusCode, token, firstPage = null) {
         throw new Error(`Invalid JSON from API: ${result.body.slice(0, 200)}`);
     }
 
-    const extractBatch = p => Array.isArray(p) ? p : (Array.isArray(p?.items) ? p.items : []);
-    const getTotal     = p => p?.totalCount ?? p?.totalItems ?? null;
+    const extractBatch = p => {
+        if (Array.isArray(p)) return p;
+        if (Array.isArray(p?.items)) return p.items;
+        if (Array.isArray(p?.data)) return p.data;
+        if (Array.isArray(p?.content)) return p.content;
+        return [];
+    };
+    const getTotal = p => p?.totalCount ?? p?.totalItems ?? p?.total ?? p?.totalElements ?? null;
 
     items.push(...extractBatch(parsed));
     log(`  strona 1: ${items.length} / ${getTotal(parsed) ?? '?'} elementów`);
+    log(`  JSON keys: ${Object.keys(parsed || {}).join(', ')}`);
 
     // ── Kolejne strony — klikanie #nextPage ───────────────────────────────────
     const total = getTotal(parsed);
@@ -257,20 +264,31 @@ async function fetchList(page, statusCode, token, firstPage = null) {
         if (total !== null && items.length >= total) break;
         if (extractBatch(parsed).length < PAGE_SIZE) break;
 
-        // Sprawdź czy przycisk następnej strony istnieje i nie jest wyłączony
-        const canNext = await page.$eval(
-            '#nextPage',
-            btn => btn && !btn.disabled && !btn.classList.contains('disabled')
-        ).catch(() => false);
+        // Poczekaj aż Angular wygeneruje paginację, potem sprawdź stan przycisku
+        await sleep(800);
+
+        const canNext = await page.evaluate(() => {
+            const btn = document.querySelector('#nextPage');
+            if (!btn) return false;
+            if (btn.disabled) return false;
+            if (btn.classList.contains('disabled')) return false;
+            if (btn.hasAttribute('disabled')) return false;
+            return true;
+        }).catch(() => false);
 
         if (!canNext) {
-            log(`  brak przycisku #nextPage — koniec stronicowania`);
+            log(`  #nextPage niedostępny — koniec stronicowania`);
             break;
         }
 
         log(`  strona ${page2}: klikam #nextPage...`);
         const respPromise = waitForListResponse(page);
-        await page.click('#nextPage');
+
+        // Kliknij przez evaluate (bardziej niezawodne niż page.click gdy Angular re-renderuje)
+        await page.evaluate(() => {
+            document.querySelector('#nextPage').click();
+        });
+
         result = await respPromise;
 
         if (result.token) token = result.token;
