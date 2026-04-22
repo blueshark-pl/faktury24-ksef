@@ -16,7 +16,6 @@ class E100TransactionsTable extends Table
         $this->setPrimaryKey('id');
 
         $this->addBehavior('Timestamp');
-        $this->addBehavior('Cake/ORM.Uuid');
 
         $this->belongsTo('E100Accounts', [
             'foreignKey' => 'e100_account_id',
