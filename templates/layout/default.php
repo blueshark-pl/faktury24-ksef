@@ -642,6 +642,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Karty paliwowe E100 -->
+                            <li class="slide <?= $navActive('fuelcards', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-gas-station-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Karty paliwowe</span>',
+                                    ['plugin' => false, 'controller' => 'FuelCards', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item ' . $navActive('fuelcards', 'index')]
+                                ) ?>
+                            </li>
+
                             <!-- Księgowość -->
                             <li class="slide__category"><span class="category-name">Księgowość</span></li>
                             <li class="<?= $liClass(['ksefauthorizations']) ?>">
