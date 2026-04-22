@@ -329,9 +329,11 @@ $tabLabels = [
                                     <?php if ($rec->advice_valid_to): ?>
                                         <?php $isExpired = $rec->advice_valid_to->isPast() ?>
                                         <?php
-                                            $validToDate = $rec->advice_valid_to;
-                                            $daysLeft = (int)(new \DateTime())->diff($validToDate)->days;
-                                            $isSoon = !$isExpired && $daysLeft <= 30;
+                                            $validToStr = $rec->advice_valid_to->format('Y-m-d');
+                                            $todayTs    = mktime(0, 0, 0);
+                                            $validToTs  = (int)strtotime($validToStr);
+                                            $daysLeft   = (int)round(($validToTs - $todayTs) / 86400);
+                                            $isSoon     = !$isExpired && $daysLeft <= 30;
                                         ?>
                                         <span class="<?= $isExpired ? 'text-danger fw-semibold' : ($isSoon ? 'text-warning fw-semibold' : 'text-success') ?>">
                                             <?php if ($isExpired): ?><i class="ri-error-warning-line me-1"></i><?php elseif ($isSoon): ?><i class="ri-alarm-warning-line me-1"></i><?php endif ?>
