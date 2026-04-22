@@ -1525,10 +1525,18 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             ? '<div class="alert alert-info py-1 px-2 small mb-2 border"><i class="ri-archive-line me-1"></i>Faktura archiwalna — przelewy widoczne informacyjnie. Rozlicz przez lokalne wpłaty (przycisk + w tabeli).</div>'
             : '';
 
-        if (isLegacy && data.ref_amount > 0) {
+        if (isLegacy && (data.ref_amount > 0 || data.ref_amount_wal > 0)) {
+            var refCur = data.ref_currency || 'PLN';
+            var refDisplay;
+            if (refCur !== 'PLN' && data.ref_amount_wal > 0) {
+                refDisplay = '<strong class="text-dark">' + fmtAmount(data.ref_amount_wal) + '\u202f' + esc(refCur) + '</strong>'
+                           + ' <span class="opacity-75">(' + fmtAmount(data.ref_amount) + '\u202fPLN)</span>';
+            } else {
+                refDisplay = '<strong class="text-dark">' + fmtAmount(data.ref_amount) + '\u202fPLN</strong>';
+            }
             note += '<div class="d-flex align-items-center gap-2 small text-muted mb-2 px-1 border-start border-primary ps-2">'
                   + '<i class="ri-scales-line text-primary"></i>'
-                  + 'Kwota referencyjna: <strong class="text-dark">' + fmtAmount(data.ref_amount) + '\u202fPLN</strong>'
+                  + 'Kwota referencyjna: ' + refDisplay
                   + ' — podświetlam przelewy z pasującą kwotą.</div>';
         }
 

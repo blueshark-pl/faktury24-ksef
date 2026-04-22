@@ -729,7 +729,8 @@ class ReconciliationsController extends AppController
         $LegacyInvoices = $this->fetchTable('LegacyInvoices');
         $invoice = $LegacyInvoices->find()
             ->where(['id' => $legacyInvoiceId, 'company_id' => $companyId])
-            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date', 'remaining', 'total'])
+            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date',
+                      'remaining', 'total', 'netto', 'remaining_wal', 'total_wal', 'currency'])
             ->first();
 
         if ($invoice === null) {
@@ -742,8 +743,23 @@ class ReconciliationsController extends AppController
         $contractorName = $invoice->contractor_name ?? null;
         $invoiceRemaining = (float)($invoice->remaining ?? 0);
         $invoiceTotal     = (float)($invoice->total ?? 0);
-        // Kwota referencyjna: jeśli coś już zapłacono — porównujemy do remaining, wpp do total
+        $invoiceCurrency  = (string)($invoice->currency ?? 'PLN');
+        $invoiceNetto     = (float)($invoice->netto ?? 0);
+        $invoiceRemainWal = (float)($invoice->remaining_wal ?? 0);
+        $invoiceTotalWal  = (float)($invoice->total_wal ?? 0);
+
+        // Kwota referencyjna PLN: jeśli coś już zapłacono — remaining, wpp total
         $refAmount = $invoiceRemaining > 0.01 ? $invoiceRemaining : $invoiceTotal;
+
+        // Kwota referencyjna w walucie obcej (brutto): dla faktur walutowych
+        // W legacy: total = EUR brutto, netto = EUR netto, remaining_wal = EUR netto remaining
+        // Gross EUR remaining = remaining_wal * total / netto (skalowanie przez współczynnik VAT)
+        $refAmountWal = 0.0;
+        if ($invoiceCurrency !== 'PLN' && $invoiceNetto > 0.001) {
+            $remainBruttoWal = $invoiceRemainWal * $invoiceTotal / $invoiceNetto;
+            // Gdy faktura nieopłacona → brutto remaining; gdy brak remaining → brutto total (= $invoiceTotal)
+            $refAmountWal = $invoiceRemaining > 0.01 ? $remainBruttoWal : $invoiceTotal;
+        }
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
@@ -836,12 +852,14 @@ class ReconciliationsController extends AppController
         return $this->response
             ->withType('application/json')
             ->withStringBody(json_encode([
-                'nip'        => $nip,
-                'contractor' => $contractorName,
-                'legacy'     => true,
-                'ref_amount' => $refAmount,
-                'linked'     => [],
-                'candidates' => $mappedCandidates,
+                'nip'             => $nip,
+                'contractor'      => $contractorName,
+                'legacy'          => true,
+                'ref_amount'      => $refAmount,
+                'ref_amount_wal'  => round($refAmountWal, 2),
+                'ref_currency'    => $invoiceCurrency,
+                'linked'          => [],
+                'candidates'      => $mappedCandidates,
             ]));
     }
 
