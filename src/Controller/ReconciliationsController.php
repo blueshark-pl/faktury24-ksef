@@ -24,7 +24,7 @@ class ReconciliationsController extends AppController
         $this->set('baseAction', 'indexKsef');
         $this->set('lockSource', 'system');
         $this->set('title', 'Rozliczenia — KSeF (nowe)');
-        $this->render('index');
+        $this->viewBuilder()->setTemplate('index');
     }
 
     /**
@@ -39,7 +39,7 @@ class ReconciliationsController extends AppController
         $this->set('baseAction', 'indexSpeed');
         $this->set('lockSource', 'legacy');
         $this->set('title', 'Rozliczenia — Speed (archiwalne)');
-        $this->render('index');
+        $this->viewBuilder()->setTemplate('index');
     }
 
     public function index(): void

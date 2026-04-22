@@ -881,9 +881,19 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 $legRemain  = (float)($leg->remaining ?? 0);
                 $legPaid    = (float)($leg->alreadypaid ?? 0);
                 $legCur     = (string)($leg->currency ?? 'PLN');
+                $legRate    = (float)($leg->exchange_rate ?? 0);
+                $legNetto   = (float)($leg->netto ?? 0);
+                $legRemainWal = (float)($leg->remaining_wal ?? 0);
+
+                // Nadpłata: pozostające saldo ujemne
+                $legIsOverpaid = $legCur !== 'PLN'
+                    ? ($legRemainWal < -0.01)
+                    : ($legRemain < -0.01);
 
                 $rowClass = '';
-                if ($legState !== 'paid' && $displayPdate && $displayPdate < $todayStr) {
+                if ($legIsOverpaid) {
+                    $rowClass = 'table-warning';
+                } elseif ($legState !== 'paid' && $displayPdate && $displayPdate < $todayStr) {
                     $rowClass = 'table-danger';
                 }
             ?>
@@ -937,8 +947,6 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php if ($legCur !== 'PLN' && $legTotal > 0): ?>
                             <div><?= number_format($legTotal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
                             <?php
-                                $legRate    = (float)($leg->exchange_rate ?? 0);
-                                $legNetto   = (float)($leg->netto ?? 0);
                                 $legVatPln  = ($legTotal - $legNetto) * $legRate;
                             ?>
                             <?php if ($legRate > 0): ?>
@@ -952,15 +960,39 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php endif; ?>
                     </td>
                     <!-- Pozostało + lokalne wpłaty -->
-                    <?php $legLocalPayments = $legacyPaymentsByInvoiceId[(string)$leg->id] ?? []; ?>
+                    <?php
+                        $legLocalPayments = $legacyPaymentsByInvoiceId[(string)$leg->id] ?? [];
+                        // VAT w walucie obcej (proporcja: legRemainWal jest netto, skalujemy do brutto)
+                        $legVatWal = ($legCur !== 'PLN' && $legTotal > 0 && $legNetto > 0.001)
+                            ? $legRemainWal * ($legTotal - $legNetto) / $legTotal
+                            : 0.0;
+                        // Gross EUR remaining = net_remaining * total / netto
+                        // (legRemainWal to NET w walucie, legTotal/legNetto = gross/net dla pełnej faktury)
+                        $legRemainBruttoWal = ($legCur !== 'PLN' && $legNetto > 0.001)
+                            ? $legRemainWal * $legTotal / $legNetto
+                            : 0.0;
+                    ?>
                     <td class="text-end text-nowrap small">
-                        <?php if ($legState === 'paid'): ?>
-                            <span class="text-success">0,00 PLN</span>
+                        <?php if ($legIsOverpaid): ?>
+                            <span class="badge bg-danger text-white">Nadpłata</span>
+                            <?php if ($legCur !== 'PLN'): ?>
+                                <div class="text-danger fw-semibold" style="font-size:.8rem"><?= number_format(abs($legRemainBruttoWal ?: $legRemainWal), 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                            <?php else: ?>
+                                <div class="text-danger fw-semibold" style="font-size:.8rem"><?= number_format(abs($legRemain), 2, ',', ' ') ?> PLN</div>
+                            <?php endif; ?>
+                        <?php elseif ($legState === 'paid'): ?>
+                            <span class="text-success">0,00 <?= h($legCur !== 'PLN' ? $legCur : 'PLN') ?></span>
                         <?php else: ?>
-                            <?php if ($legCur !== 'PLN' && ($leg->remaining_wal ?? 0) > 0): ?>
-                                <div class="fw-semibold text-dark"><?= number_format((float)$leg->remaining_wal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
-                                <?php if (($leg->exchange_rate ?? 0) > 0): ?>
-                                    <div class="text-muted" style="font-size:.7rem"><?= number_format((float)$leg->remaining_wal * (float)$leg->exchange_rate, 2, ',', ' ') ?> PLN</div>
+                            <?php if ($legCur !== 'PLN' && $legRemainWal > 0): ?>
+                                <div class="fw-semibold text-dark"><?= number_format($legRemainBruttoWal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                                <?php if ($legRemainWal > 0.001): ?>
+                                    <div class="text-muted" style="font-size:.7rem">netto: <?= number_format($legRemainWal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                                <?php endif; ?>
+                                <?php if ($legVatWal > 0.001): ?>
+                                    <div class="text-muted" style="font-size:.7rem">VAT: <?= number_format($legVatWal, 2, ',', ' ') ?> <?= h($legCur) ?></div>
+                                <?php endif; ?>
+                                <?php if ($legRate > 0): ?>
+                                    <div class="text-muted" style="font-size:.7rem"><?= number_format($legRemainWal * $legRate, 2, ',', ' ') ?> PLN</div>
                                 <?php endif; ?>
                             <?php else: ?>
                                 <span class="<?= $legRemain > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
@@ -968,7 +1000,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                                 </span>
                             <?php endif; ?>
                         <?php endif; ?>
-                        <?php if ($legPaid > 0 && $legState !== 'paid'): ?>
+                        <?php if ($legPaid > 0 && !$legIsOverpaid && $legState !== 'paid'): ?>
                             <div class="text-muted" style="font-size:.7rem">wpłacono: <?= number_format($legPaid, 2, ',', ' ') ?> PLN</div>
                         <?php endif; ?>
                         <?php foreach ($legLocalPayments as $lp): ?>
