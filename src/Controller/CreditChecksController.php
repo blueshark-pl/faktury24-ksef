@@ -237,6 +237,11 @@ class CreditChecksController extends AppController
             $scraper = new SyntesysScraperService();
             $data    = $scraper->checkOpinion($nip);
 
+            // Zapisz wynik natychmiast do bazy (sync pojedynczego rekordu — bez potrzeby full-sync)
+            if ($data['success'] && $data['result'] !== null) {
+                $this->saveCheckOpinionResult($nip, $data['result']);
+            }
+
             return $this->response
                 ->withType('application/json')
                 ->withStringBody((string)json_encode([
@@ -274,5 +279,62 @@ class CreditChecksController extends AppController
         }
 
         return $this->redirect(['action' => 'index']);
+    }
+
+    // =========================================================================
+    // Pomocnicze — zapis wyniku pojedynczego zapytania opinii do bazy
+    // =========================================================================
+
+    /**
+     * Upsert pojedynczego rekordu z wyniku checkOpinion.
+     * Nie wymaga potrzeby wywoływania pełnego sync po sprawdzeniu NIP.
+     */
+    private function saveCheckOpinionResult(string $nip, array $result): void
+    {
+        $externalId = (int)($result['id'] ?? 0);
+        if ($externalId <= 0) {
+            return;
+        }
+
+        $CreditChecks = $this->fetchTable('CreditChecks');
+        $advice       = is_array($result['advice'] ?? null) ? $result['advice'] : [];
+        $status       = (string)($result['status'] ?? 'WITH_OPINION');
+        $now          = new \Cake\I18n\DateTime();
+
+        $data = [
+            'external_id'        => $externalId,
+            'list_status'        => $status,
+            'identifier'         => $nip,
+            'advice_type_code'   => $advice['typeCode']    ?? null,
+            'advice_reason_code' => $advice['reasonCode']  ?? null,
+            'advice_valid_to'    => !empty($advice['validTo'])
+                ? new \Cake\I18n\Date($advice['validTo']) : null,
+            'advice_json'        => json_encode($result),
+            'error_type_code'    => $result['errorTypeCode'] ?? null,
+            'advice_created_at'  => !empty($advice['created'])
+                ? new \Cake\I18n\DateTime($advice['created'])
+                : (!empty($result['created']) ? new \Cake\I18n\DateTime($result['created']) : null),
+            'client_name'        => $result['companyName'] ?? null,
+            'synced_at'          => $now,
+        ];
+
+        // Spróbuj powiązać z kontrahentem po NIP
+        $nipClean = preg_replace('/\D/', '', $nip);
+        if (strlen($nipClean) >= 9) {
+            $contractor = $this->fetchTable('Contractors')->find()
+                ->where(['REPLACE(Contractors.nip, \'-\', \'\') LIKE' => $nipClean])
+                ->select(['id'])
+                ->first();
+            if ($contractor !== null) {
+                $data['contractor_id'] = $contractor->id;
+            }
+        }
+
+        $existing = $CreditChecks->find()->where(['external_id' => $externalId])->first();
+        $entity   = $existing
+            ? $CreditChecks->patchEntity($existing, $data)
+            : $CreditChecks->newEntity($data);
+
+        $CreditChecks->save($entity);
     }
 }

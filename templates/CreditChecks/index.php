@@ -407,6 +407,8 @@ $tabLabels = [
                                 <?php if ($tab === 'done' && $rec->advice_json): ?>
                                     <button class="btn btn-xs btn-outline-secondary btn-advice-details"
                                             data-json="<?= h($rec->advice_json) ?>"
+                                            data-company="<?= h($rec->client_name ?? '') ?>"
+                                            data-nip="<?= h($rec->identifier ?? '') ?>"
                                             title="Szczegóły opinii"
                                             data-bs-toggle="tooltip">
                                         <i class="ri-eye-line"></i>
@@ -434,11 +436,11 @@ $tabLabels = [
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Szczegóły opinii</h5>
+                <h5 class="modal-title"><i class="ri-shield-check-line me-2 text-primary"></i>Szczegóły opinii</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <pre id="advice-json-pre" class="bg-light rounded p-3 small" style="white-space:pre-wrap;word-break:break-all;"></pre>
+            <div class="modal-body py-3" id="advice-modal-body">
+                <!-- wypełniany przez JS -->
             </div>
         </div>
     </div>
@@ -452,6 +454,102 @@ $tabLabels = [
     const syncUrl         = <?= json_encode($this->Url->build(['action' => 'sync'])) ?>;
     const checkOpinionUrl = <?= json_encode($this->Url->build(['action' => 'checkOpinion'])) ?>;
     const csrfToken       = <?= json_encode($csrf) ?>;
+
+    // ── Mapy pomocnicze kodów Syntesys (PL) ─────────────────────────────────
+    const STATUS_PL = {
+        'WITH_OPINION':   'Opinia wydana',
+        'PROCESSING':     'W trakcie przetwarzania',
+        'NO_OPINION':     'Brak opinii',
+        'BUSINESS_ERROR': 'Błąd biznesowy',
+    };
+    const CCAT_LABEL = { 'CCAT1': 'TAK', 'CCAT2': 'NIE', 'CCAT3': 'Brak opinii' };
+    const CCAT_BADGE = { 'CCAT1': 'success', 'CCAT2': 'danger', 'CCAT3': 'secondary' };
+    const CCAT_DESC  = {
+        'CCAT1': 'Ubezpieczyciel wyraża zgodę na współpracę z danym klientem (limit automatyczny).',
+        'CCAT2': 'Ubezpieczyciel nie wyraża zgody na współpracę z danym klientem (limit automatyczny).',
+    };
+    const CCCR_SHORT = {
+        'CCCR1':  'Sprzeciw RODO',          'CCCR2':  'Oddział zagraniczny',
+        'CCCR3':  'Nowa firma',              'CCCR4':  'Zakończona działalność',
+        'CCCR5':  'Dane płatnicze',          'CCCR6':  'Dane finansowe',
+        'CCCR7':  'Wcześniejszy raport',     'CCCR9':  'Brak dok. finansowych',
+        'CCCR10': 'Kraj poza zakresem',      'CCCR11': 'Brak wystarczających danych',
+        'CCCR12': 'Zdarzenie prawne',        'CCCR13': 'Ryzyko upadłości',
+        'CCCR14': 'Prawna niewypłacalność',  'CCCR15': 'Postęp. układowe',
+        'CCCR16': 'Zawarcie układu',         'CCCR17': 'Upadłość z układem',
+        'CCCR18': 'Zatwierdzenie układu',    'CCCR19': 'Sanacja',
+        'CCCR20': 'Postęp. upadłościowe',    'CCCR21': 'Zatw. układu',
+        'CCCR22': 'Przysp. postęp. układowe','CCCR23': 'Restrukturyzacja',
+        'CCCR24': 'Upadłość',                'CCCR25': 'Sytuacja gospodarcza',
+    };
+
+    function htmlEsc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function fmtDate(s) {
+        return s ? s.slice(0,10).split('-').reverse().join('.') : null;
+    }
+    function fmtDateTime(s) {
+        if (!s) return null;
+        return s.slice(0,10).split('-').reverse().join('.') + (s.length > 10 ? ' ' + s.slice(11,16) : '');
+    }
+    function tdRow(label, val) {
+        return `<tr><td class="text-muted pe-3 text-nowrap align-top" style="min-width:110px">${label}</td><td>${val}</td></tr>`;
+    }
+
+    /** Buduje HTML szczegółów opinii z obiektu JSON (obsługuje oba formaty). */
+    function buildAdviceHtml(json, company, nip) {
+        if (!json) return '<p class="text-muted">Brak danych.</p>';
+
+        let status, typeCode, reasonCode, validTo, advCreated, errorTypeCode;
+        if (json.status && json.advice) {
+            // Pełny format z checkOpinion
+            status        = json.status;
+            const adv     = json.advice || {};
+            typeCode      = adv.typeCode    || null;
+            reasonCode    = adv.reasonCode  || null;
+            validTo       = adv.validTo     || null;
+            advCreated    = adv.created     || json.created || null;
+            errorTypeCode = json.errorTypeCode || null;
+            company       = company || json.companyName || '—';
+        } else {
+            // Stary format (tylko advice sub-object z sync)
+            typeCode      = json.typeCode   || null;
+            reasonCode    = json.reasonCode || null;
+            validTo       = json.validTo    || null;
+            advCreated    = json.created    || null;
+            status        = null;
+            errorTypeCode = null;
+        }
+
+        const badge    = CCAT_BADGE[typeCode]  || 'secondary';
+        const label    = CCAT_LABEL[typeCode]  || typeCode  || '—';
+        const desc     = CCAT_DESC[typeCode]   || '';
+        const iconCls  = badge === 'success' ? 'ri-checkbox-circle-fill' :
+                         badge === 'danger'  ? 'ri-close-circle-fill' : 'ri-question-line';
+
+        let html = `<div class="text-center mb-3">
+            <span class="badge bg-${badge} px-3 py-2 rounded-3" style="font-size:1.15rem">
+                <i class="${iconCls} me-1"></i>${htmlEsc(label)}
+            </span>
+            <div class="text-muted small mt-1"><code>${htmlEsc(typeCode || '—')}</code></div>
+            ${desc ? `<div class="text-muted small mt-1 fst-italic" style="max-width:320px;margin:0 auto">${htmlEsc(desc)}</div>` : ''}
+        </div>`;
+
+        let rows = '';
+        if (company)      rows += tdRow('Firma',         `<strong>${htmlEsc(company)}</strong>`);
+        if (nip)          rows += tdRow('NIP',           `<code>${htmlEsc(nip)}</code>`);
+        if (status)       rows += tdRow('Status',        htmlEsc(STATUS_PL[status] || status));
+        if (reasonCode)   rows += tdRow('Powód odmowy',  `<span class="badge bg-warning text-dark me-1">${htmlEsc(reasonCode)}</span>${htmlEsc(CCCR_SHORT[reasonCode] || reasonCode)}`);
+        if (advCreated)   rows += tdRow('Data wydania',  htmlEsc(fmtDateTime(advCreated) || ''));
+        if (validTo)      rows += tdRow('Ważna do',      `<strong class="text-${badge === 'danger' ? 'danger' : 'success'}">${htmlEsc(fmtDate(validTo) || validTo)}</strong>`);
+        if (errorTypeCode)rows += tdRow('Kod błędu',     `<span class="badge bg-danger">${htmlEsc(errorTypeCode)}</span>`);
+
+        if (rows) {
+            html += `<table class="table table-sm table-borderless mb-0 mx-auto" style="max-width:380px">${rows}</table>`;
+        }
+        return html;
+    }
 
     function showAlert(type, html) {
         const el = document.getElementById('sync-alert');
@@ -571,47 +669,57 @@ $tabLabels = [
 
             // Krok 4: pokaż wynik
             const r = data.result || {};
-            const advice = r.advice || {};
-            const typeCode   = advice.typeCode   || r.typeCode   || '—';
-            const reasonCode = advice.reasonCode || r.reasonCode || '—';
-            const validTo    = advice.validTo    || r.validTo    || null;
-            const company    = r.companyName || r.identifier || '—';
-            const status     = r.status || advice.status || '—';
+            const adv = r.advice || {};
+            const typeCode   = adv.typeCode   || r.typeCode   || '—';
+            const reasonCode = adv.reasonCode || r.reasonCode || null;
+            const validTo    = adv.validTo    || r.validTo    || null;
+            const advCreated = adv.created    || r.created    || null;
+            const company    = r.companyName  || r.identifier || '—';
+            const status     = r.status       || '—';
 
-            const validToHtml = validTo
-                ? '<tr><td class="text-muted pe-3">Ważna do</td><td><strong>' + validTo.replace('T', ' ').slice(0, 10) + '</strong></td></tr>'
-                : '';
+            const badge   = CCAT_BADGE[typeCode]  || 'secondary';
+            const label   = CCAT_LABEL[typeCode]  || typeCode;
+            const desc    = CCAT_DESC[typeCode]   || '';
+            const iconCls = badge === 'success' ? 'ri-checkbox-circle-fill' :
+                            badge === 'danger'  ? 'ri-close-circle-fill' : 'ri-question-line';
 
-            const typeBadgeClass = typeCode === 'CCAT_1' ? 'bg-success'
-                : typeCode === 'CCAT_2' ? 'bg-warning text-dark'
-                : typeCode === 'CCAT_3' ? 'bg-danger'
-                : 'bg-secondary';
+            let reasonRow = '';
+            if (reasonCode) {
+                reasonRow = tdRow('Powód odmowy', `<span class="badge bg-warning text-dark me-1">${htmlEsc(reasonCode)}</span>${htmlEsc(CCCR_SHORT[reasonCode] || reasonCode)}`);
+            }
 
             const resultHtml = `
-                <table class="table table-sm table-borderless text-start mx-auto" style="width:auto">
-                    <tr><td class="text-muted pe-3">Firma</td><td><strong>${company}</strong></td></tr>
-                    <tr><td class="text-muted pe-3">Status</td><td>${status}</td></tr>
-                    <tr><td class="text-muted pe-3">Opinia</td>
-                        <td><span class="badge ${typeBadgeClass}">${typeCode}</span></td></tr>
-                    <tr><td class="text-muted pe-3">Kod powodu</td><td>${reasonCode}</td></tr>
-                    ${validToHtml}
+                <div class="text-center mb-3">
+                    <span class="badge bg-${badge} px-3 py-2 rounded-3" style="font-size:1.15rem">
+                        <i class="${iconCls} me-1"></i>${htmlEsc(label)}
+                    </span>
+                    <div class="text-muted small mt-1"><code>${htmlEsc(typeCode)}</code></div>
+                    ${desc ? `<div class="text-muted small mt-1 fst-italic" style="max-width:320px;margin:0 auto">${htmlEsc(desc)}</div>` : ''}
+                </div>
+                <table class="table table-sm table-borderless text-start mx-auto mb-0" style="max-width:380px">
+                    ${tdRow('Firma',       `<strong>${htmlEsc(company)}</strong>`)}
+                    ${tdRow('Status',      htmlEsc(STATUS_PL[status] || status))}
+                    ${reasonRow}
+                    ${validTo    ? tdRow('Ważna do',     `<strong class="text-${badge === 'danger' ? 'danger' : 'success'}">${htmlEsc(fmtDate(validTo) || validTo)}</strong>`) : ''}
+                    ${advCreated ? tdRow('Data wydania', htmlEsc(fmtDateTime(advCreated) || '')) : ''}
                 </table>`;
 
-            const { isConfirmed: doSync } = await Swal.fire({
-                title: 'Wynik opinii',
+            const swalIcon = badge === 'success' ? 'success' : badge === 'danger' ? 'error' : 'info';
+
+            const { isConfirmed: doRefresh } = await Swal.fire({
+                title: 'Wynik zapytania kredytowego',
                 html: resultHtml,
-                icon: 'success',
-                confirmButtonText: 'OK i synchronizuj',
+                icon: swalIcon,
+                confirmButtonText: '<i class="ri-refresh-line me-1"></i>OK i odśwież stronę',
                 cancelButtonText: 'Zamknij',
                 showCancelButton: true,
                 confirmButtonColor: '#0d6efd',
+                width: '500px',
             });
 
-            // Krok 5: opcjonalny sync po zamknięciu
-            if (doSync) {
-                const fakeBtn = document.createElement('button');
-                fakeBtn.innerHTML = '';
-                runSync('done', fakeBtn);
+            // Krok 5: opcjonalne odświeżenie po zamknięciu (dane już zapisane przez PHP)
+            if (doRefresh) {
+                location.reload();
             }
         });
     }
@@ -619,11 +727,14 @@ $tabLabels = [
     // Modal szczegółów opinii
     document.querySelectorAll('.btn-advice-details').forEach(btn => {
         btn.addEventListener('click', () => {
+            const bodyEl = document.getElementById('advice-modal-body');
             try {
-                const json = JSON.parse(btn.dataset.json);
-                document.getElementById('advice-json-pre').textContent = JSON.stringify(json, null, 2);
+                const json    = JSON.parse(btn.dataset.json || '{}');
+                const company = btn.dataset.company || '';
+                const nip     = btn.dataset.nip     || '';
+                bodyEl.innerHTML = buildAdviceHtml(json, company, nip);
             } catch (_) {
-                document.getElementById('advice-json-pre').textContent = btn.dataset.json;
+                bodyEl.innerHTML = '<pre class="bg-light rounded p-3 small" style="white-space:pre-wrap;word-break:break-all">' + htmlEsc(btn.dataset.json || '') + '</pre>';
             }
             new bootstrap.Modal(document.getElementById('adviceModal')).show();
         });
