@@ -5,6 +5,7 @@
  * @var string $tab
  * @var string $search
  * @var array $counts
+ * @var array $stats
  * @var array $statusLabels
  * @var array $adviceTypes
  * @var array $adviceTypeDescriptions
@@ -15,25 +16,56 @@
 
 $this->assign('title', 'Kredyt kupiecki');
 $csrf = (string)$this->request->getAttribute('csrfToken');
+
+// Krótkie etykiety kodów CCCR*
+$reasonShortLabels = [
+    'CCCR1'  => 'Sprzeciw RODO',
+    'CCCR2'  => 'Oddział zagr.',
+    'CCCR3'  => 'Nowa firma',
+    'CCCR4'  => 'Zakończona dz.',
+    'CCCR5'  => 'Dane płatnicze',
+    'CCCR6'  => 'Dane finansowe',
+    'CCCR7'  => 'Wcześniejszy raport',
+    'CCCR9'  => 'Brak dok. fin.',
+    'CCCR10' => 'Kraj poza zakresem',
+    'CCCR11' => 'Brak danych',
+    'CCCR12' => 'Zdarzenie prawne',
+    'CCCR13' => 'Ryzyko upadłości',
+    'CCCR14' => 'Prawna niewypłac.',
+    'CCCR15' => 'Postęp. układowe',
+    'CCCR16' => 'Zawarcie układu',
+    'CCCR17' => 'Upadłość z układem',
+    'CCCR18' => 'Zatwierdzenie',
+    'CCCR19' => 'Sanacja',
+    'CCCR20' => 'Postęp. upadłościowe',
+    'CCCR21' => 'Zatw. układu',
+    'CCCR22' => 'Przysp. postęp. układowe',
+    'CCCR23' => 'Restrukturyzacja',
+    'CCCR24' => 'Upadłość',
+    'CCCR25' => 'Sytuacja gospodarcza',
+];
+
+$activeFilterCount = ($search !== '') ? 1 : 0;
+if ($tab !== 'done') $activeFilterCount++;
 ?>
 
-<div class="page-header">
-    <div class="page-leftheader">
-        <h4 class="page-title mb-0">
+<!-- Nagłówek -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 fw-semibold">
             <i class="ri-shield-check-line me-1 text-primary"></i>
-            Kredyt kupiecki (Allianz Trade)
+            Kredyt kupiecki
+            <span class="text-muted fs-6 fw-normal">Allianz Trade / Syntesys</span>
         </h4>
         <?php if ($lastSync): ?>
-            <small class="text-muted ms-2">
-                Ostatni sync: <?= $lastSync->synced_at->format('d.m.Y H:i') ?>
-            </small>
+            <small class="text-muted">Ostatni sync: <?= $lastSync->synced_at->format('d.m.Y H:i') ?></small>
         <?php endif ?>
     </div>
-    <div class="page-rightheader d-flex gap-2">
-        <button id="btn-check-opinion" class="btn btn-success btn-sm">
+    <div class="d-flex gap-2 flex-wrap">
+        <button id="btn-check-opinion" class="btn btn-sm btn-success">
             <i class="ri-search-eye-line me-1"></i>Sprawdź opinię
         </button>
-        <button id="btn-sync" class="btn btn-primary btn-sm" data-list="all">
+        <button id="btn-sync" class="btn btn-sm btn-primary" data-list="all">
             <i class="ri-refresh-line me-1"></i>Synchronizuj wszystko
         </button>
     </div>
@@ -42,100 +74,174 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 <!-- Alerty sync -->
 <div id="sync-alert" class="d-none mb-3"></div>
 
-<!-- Taby -->
-<div class="card">
-    <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="creditTabs">
-
-            <li class="nav-item">
-                <?= $this->Html->link(
-                    '<i class="ri-checkbox-circle-line me-1"></i>Opinie wydane'
-                    . ' <span class="badge bg-success ms-1">' . $counts['done'] . '</span>',
-                    ['action' => 'index', '?' => ['tab' => 'done', 'search' => $search ?: null]],
-                    ['escape' => false, 'class' => 'nav-link ' . ($tab === 'done' ? 'active' : '')]
-                ) ?>
-            </li>
-
-            <li class="nav-item">
-                <?= $this->Html->link(
-                    '<i class="ri-time-line me-1"></i>Oczekujące'
-                    . ' <span class="badge bg-warning text-dark ms-1">' . $counts['waiting'] . '</span>',
-                    ['action' => 'index', '?' => ['tab' => 'waiting', 'search' => $search ?: null]],
-                    ['escape' => false, 'class' => 'nav-link ' . ($tab === 'waiting' ? 'active' : '')]
-                ) ?>
-            </li>
-
-            <li class="nav-item">
-                <?= $this->Html->link(
-                    '<i class="ri-question-line me-1"></i>Brak opinii'
-                    . ' <span class="badge bg-secondary ms-1">' . $counts['no-advice'] . '</span>',
-                    ['action' => 'index', '?' => ['tab' => 'no-advice', 'search' => $search ?: null]],
-                    ['escape' => false, 'class' => 'nav-link ' . ($tab === 'no-advice' ? 'active' : '')]
-                ) ?>
-            </li>
-
-            <li class="nav-item">
-                <?= $this->Html->link(
-                    '<i class="ri-error-warning-line me-1"></i>Błędy'
-                    . ' <span class="badge bg-danger ms-1">' . $counts['error'] . '</span>',
-                    ['action' => 'index', '?' => ['tab' => 'error', 'search' => $search ?: null]],
-                    ['escape' => false, 'class' => 'nav-link ' . ($tab === 'error' ? 'active' : '')]
-                ) ?>
-            </li>
-
-        </ul>
+<!-- Kafelki statystyk -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px">
+                    <i class="ri-shield-check-line fs-5 text-primary"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold lh-1"><?= $stats['total'] ?></div>
+                    <div class="text-muted small">Rekordów łącznie</div>
+                </div>
+            </div>
+        </div>
     </div>
+    <div class="col-6 col-md-3">
+        <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => 'done', 'search' => $search ?: null]]) ?>" class="text-decoration-none">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-success-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px">
+                    <i class="ri-checkbox-circle-line fs-5 text-success"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold lh-1 text-success"><?= $stats['done'] ?></div>
+                    <div class="text-muted small">Opinie wydane</div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => 'done', 'search' => $search ?: null]]) ?>" class="text-decoration-none">
+        <div class="card border-0 shadow-sm h-100 <?= $stats['expired'] > 0 ? 'border border-danger-subtle' : '' ?>">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-warning-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px">
+                    <i class="ri-time-line fs-5 text-warning"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold lh-1 <?= $stats['expiringSoon'] > 0 ? 'text-warning' : '' ?>">
+                        <?= $stats['expiringSoon'] ?>
+                    </div>
+                    <div class="text-muted small">
+                        Wygasa &lt;30 dni
+                        <?php if ($stats['expired'] > 0): ?>
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1"><?= $stats['expired'] ?> wygasłe</span>
+                        <?php endif ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => 'error', 'search' => $search ?: null]]) ?>" class="text-decoration-none">
+        <div class="card border-0 shadow-sm h-100 <?= $stats['errors'] > 0 ? 'border border-danger-subtle' : '' ?>">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-danger-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px">
+                    <i class="ri-error-warning-line fs-5 text-danger"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold lh-1 <?= $stats['errors'] > 0 ? 'text-danger' : '' ?>"><?= $stats['errors'] ?></div>
+                    <div class="text-muted small">Błędy</div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+</div>
 
-    <div class="card-body">
-
-        <!-- Wyszukiwarka -->
-        <form method="get" action="<?= $this->Url->build(['action' => 'index']) ?>" class="mb-3">
-            <input type="hidden" name="tab" value="<?= h($tab) ?>">
-            <div class="input-group" style="max-width: 380px">
-                <input type="text" name="search" value="<?= h($search) ?>"
-                       class="form-control form-control-sm" placeholder="Szukaj po NIP…">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">
-                    <i class="ri-search-line"></i>
-                </button>
-                <?php if ($search): ?>
-                    <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => $tab]]) ?>"
-                       class="btn btn-sm btn-outline-danger">
-                        <i class="ri-close-line"></i>
-                    </a>
-                <?php endif ?>
+<!-- Filtry -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header py-2 d-flex align-items-center gap-2 bg-white border-bottom">
+        <i class="ri-filter-3-line text-primary"></i>
+        <span class="fw-semibold small">Filtry</span>
+        <?php if ($activeFilterCount > 0): ?>
+            <span class="badge bg-primary rounded-pill ms-1"><?= $activeFilterCount ?></span>
+        <?php endif ?>
+        <button class="btn btn-link btn-sm text-muted ms-auto p-0 pe-1" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cc-filter-body" aria-expanded="true">
+            <i class="ri-arrow-up-s-line" id="cc-filter-chevron"></i>
+        </button>
+    </div>
+    <div class="collapse show" id="cc-filter-body">
+    <div class="card-body py-2 px-3">
+        <form id="cc-filter-form" method="get" action="<?= $this->Url->build(['action' => 'index']) ?>">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-5">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Szukaj</label>
+                    <input type="text" name="search" value="<?= h($search) ?>"
+                           class="form-control form-control-sm"
+                           placeholder="NIP, VAT EU, nazwa kontrahenta…">
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Status</label>
+                    <select name="tab" class="form-select form-select-sm">
+                        <option value="done"      <?= $tab === 'done'      ? 'selected' : '' ?>>Opinie wydane (<?= $counts['done'] ?>)</option>
+                        <option value="waiting"   <?= $tab === 'waiting'   ? 'selected' : '' ?>>Oczekujące (<?= $counts['waiting'] ?>)</option>
+                        <option value="no-advice" <?= $tab === 'no-advice' ? 'selected' : '' ?>>Brak opinii (<?= $counts['no-advice'] ?>)</option>
+                        <option value="error"     <?= $tab === 'error'     ? 'selected' : '' ?>>Błędy (<?= $counts['error'] ?>)</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="ri-search-line me-1"></i>Filtruj
+                    </button>
+                    <?php if ($activeFilterCount > 0): ?>
+                        <a href="<?= $this->Url->build(['action' => 'index']) ?>"
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="ri-close-line me-1"></i>Wyczyść
+                        </a>
+                    <?php endif ?>
+                    <!-- Przyciski szybkiego przełączania tabów -->
+                    <div class="ms-auto d-flex gap-1 flex-wrap">
+                        <?php foreach ([
+                            'done'      => ['success', 'ri-checkbox-circle-line'],
+                            'waiting'   => ['warning',   'ri-time-line'],
+                            'no-advice' => ['secondary', 'ri-question-line'],
+                            'error'     => ['danger',    'ri-error-warning-line'],
+                        ] as $t => [$color, $icon]): ?>
+                            <a href="<?= $this->Url->build(['action' => 'index', '?' => ['tab' => $t, 'search' => $search ?: null]]) ?>"
+                               class="btn btn-xs btn-<?= $tab === $t ? $color : 'outline-' . $color ?>"
+                               style="font-size:.73rem;padding:2px 8px"
+                               title="<?= h($statusLabels[array_values(array_filter(\App\Controller\CreditChecksController::STATUS_MAP, fn($k) => $k === $t, ARRAY_FILTER_USE_KEY))[0] ?? ''] ?? $t) ?>">
+                                <i class="<?= $icon ?>"></i>
+                                <span class="badge <?= $tab === $t ? 'bg-white text-' . $color : 'bg-' . $color ?> ms-1" style="font-size:.65rem"><?= $counts[$t] ?></span>
+                            </a>
+                        <?php endforeach ?>
+                    </div>
+                </div>
             </div>
         </form>
+    </div>
+    </div>
+</div>
 
-        <!-- Tabela -->
+<!-- Tabela -->
+<div class="card shadow-sm">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle">
+            <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>#</th>
-                        <th>NIP</th>
+                        <th class="ps-3 text-muted fw-normal" style="width:80px">ID</th>
+                        <th>NIP / VAT EU</th>
                         <th>Kontrahent</th>
                         <?php if ($tab === 'done'): ?>
                             <th>Opinia</th>
                             <th>Ważna do</th>
-                            <th>Najnowsza</th>
                         <?php elseif ($tab === 'error'): ?>
                             <th>Błąd</th>
                         <?php elseif ($tab === 'no-advice'): ?>
                             <th>Status</th>
+                        <?php elseif ($tab === 'waiting'): ?>
+                            <th>Status</th>
                         <?php endif ?>
                         <th>Złożono</th>
                         <th>Przez</th>
-                        <th class="text-end">Akcje</th>
+                        <th class="text-end pe-3" style="width:60px">Szczeg.</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if ($records->isEmpty()): ?>
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-4">
-                            <i class="ri-inbox-line fs-3 d-block mb-1"></i>
-                            Brak rekordów<?= $search ? ' dla zapytania <strong>' . h($search) . '</strong>' : '' ?>.
+                        <td colspan="10" class="text-center text-muted py-5">
+                            <i class="ri-inbox-line fs-2 d-block mb-2 opacity-50"></i>
+                            Brak rekordów<?= $search ? ' dla <strong>' . h($search) . '</strong>' : '' ?>.
                             <br>
-                            <button class="btn btn-sm btn-primary mt-2" id="btn-sync-tab"
+                            <button class="btn btn-sm btn-outline-primary mt-3" id="btn-sync-tab"
                                     data-list="<?= h($tab) ?>">
                                 <i class="ri-refresh-line me-1"></i>Synchronizuj teraz
                             </button>
@@ -144,22 +250,21 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <?php else: ?>
                     <?php foreach ($records as $rec): ?>
                         <tr>
-                            <td class="text-muted small"><?= $rec->external_id ?></td>
+                            <td class="ps-3 text-muted" style="font-size:.75rem"><?= h($rec->external_id) ?></td>
 
                             <!-- NIP -->
                             <td>
-                                <?php if ($rec->client_vat_eu && !$rec->identifier): ?>
-                                    <span class="font-monospace text-muted" title="VAT EU"><?= h($rec->client_vat_eu) ?></span>
-                                <?php elseif ($rec->identifier): ?>
-                                    <span class="font-monospace"><?= h($rec->identifier) ?></span>
-                                    <?php if ($rec->client_vat_eu): ?>
+                                <?php $nip = $rec->identifier ?: $rec->client_vat_eu ?: null ?>
+                                <?php if ($nip): ?>
+                                    <span class="font-monospace small fw-semibold"><?= h($nip) ?></span>
+                                    <?php if ($rec->identifier && $rec->client_vat_eu && $rec->client_vat_eu !== $rec->identifier): ?>
                                         <br><small class="text-muted font-monospace"><?= h($rec->client_vat_eu) ?></small>
                                     <?php endif ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif ?>
-                                <?php if ($rec->country): ?>
-                                    <small class="text-muted">(<?= h($rec->country) ?>)</small>
+                                <?php if ($rec->country && $rec->country !== 'PL'): ?>
+                                    <span class="badge bg-light text-secondary border ms-1" style="font-size:.65rem"><?= h($rec->country) ?></span>
                                 <?php endif ?>
                             </td>
 
@@ -169,15 +274,15 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                     <?= $this->Html->link(
                                         h($rec->contractor->name ?? $rec->contractor_id),
                                         ['controller' => 'Contractors', 'action' => 'view', $rec->contractor_id],
-                                        ['class' => 'text-decoration-none']
+                                        ['class' => 'text-decoration-none fw-semibold']
                                     ) ?>
-                                <?php elseif (!empty($rec->client_name)): ?>
-                                    <span class="text-muted"><?= h($rec->client_name) ?></span>
                                     <?php if (!empty($rec->client_city)): ?>
                                         <br><small class="text-muted"><?= h($rec->client_city) ?></small>
                                     <?php endif ?>
-                                    <?php if (!empty($rec->client_vat_eu)): ?>
-                                        <br><small class="text-muted font-monospace"><?= h($rec->client_vat_eu) ?></small>
+                                <?php elseif (!empty($rec->client_name)): ?>
+                                    <span><?= h($rec->client_name) ?></span>
+                                    <?php if (!empty($rec->client_city)): ?>
+                                        <br><small class="text-muted"><?= h($rec->client_city) ?></small>
                                     <?php endif ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
@@ -192,13 +297,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                         <?php $atDesc = $adviceTypeDescriptions[$rec->advice_type_code] ?? null ?>
                                         <span class="badge bg-<?= $at['badge'] ?>"
                                             <?= $atDesc ? 'title="' . h($atDesc) . '" data-bs-toggle="tooltip"' : '' ?>>
-                                            <?= $at['label'] ?>
+                                            <?= h($at['label']) ?>
                                         </span>
                                         <?php if ($rec->advice_reason_code): ?>
-                                            <?php $crDesc = $adviceReasonDescriptions[$rec->advice_reason_code] ?? null ?>
-                                            <br><small class="text-muted fs-10"
-                                                <?= $crDesc ? 'title="' . h($crDesc) . '" data-bs-toggle="tooltip"' : '' ?>>
-                                                <?= h($rec->advice_reason_code) ?>
+                                            <?php
+                                                $crCode  = $rec->advice_reason_code;
+                                                $crShort = $reasonShortLabels[$crCode] ?? $crCode;
+                                                $crDesc  = $adviceReasonDescriptions[$crCode] ?? null;
+                                            ?>
+                                            <br>
+                                            <small class="text-muted"
+                                                style="font-size:.72rem"
+                                                <?= $crDesc ? 'title="[' . h($crCode) . '] ' . h($crDesc) . '" data-bs-toggle="tooltip"' : '' ?>>
+                                                <?= h($crShort) ?>
                                             </small>
                                         <?php endif ?>
                                     <?php else: ?>
@@ -209,42 +320,44 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 <td class="text-nowrap">
                                     <?php if ($rec->advice_valid_to): ?>
                                         <?php $isExpired = $rec->advice_valid_to->isPast() ?>
-                                        <span class="<?= $isExpired ? 'text-danger fw-semibold' : 'text-success' ?>">
-                                            <?php if ($isExpired): ?><i class="ri-error-warning-line me-1"></i><?php endif ?>
+                                        <?php
+                                            $validToDate = $rec->advice_valid_to;
+                                            $daysLeft = (int)(new \DateTime())->diff($validToDate)->days;
+                                            $isSoon = !$isExpired && $daysLeft <= 30;
+                                        ?>
+                                        <span class="<?= $isExpired ? 'text-danger fw-semibold' : ($isSoon ? 'text-warning fw-semibold' : 'text-success') ?>">
+                                            <?php if ($isExpired): ?><i class="ri-error-warning-line me-1"></i><?php elseif ($isSoon): ?><i class="ri-alarm-warning-line me-1"></i><?php endif ?>
                                             <?= $rec->advice_valid_to->format('d.m.Y') ?>
                                         </span>
-                                    <?php else: ?>
-                                        <span class="text-muted">—</span>
-                                    <?php endif ?>
-                                </td>
-                                <!-- Najnowsza -->
-                                <td class="text-center">
-                                    <?php if ($rec->latest_advice_with_opinion): ?>
-                                        <i class="ri-check-line text-success" title="Najnowsza opinia z limitem"></i>
+                                        <?php if ($isSoon && !$isExpired): ?>
+                                            <br><small class="text-muted" style="font-size:.7rem">za <?= $daysLeft ?> dni</small>
+                                        <?php endif ?>
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif ?>
                                 </td>
 
                             <?php elseif ($tab === 'error'): ?>
-                                <!-- Błąd -->
                                 <td>
                                     <?php if ($rec->error_type_code): ?>
-                                        <code class="text-danger small"><?= h($rec->error_type_code) ?></code>
-                                        <br>
-                                        <small class="text-muted">
-                                            <?= h($errorTypes[$rec->error_type_code] ?? $rec->error_type_code) ?>
-                                        </small>
+                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
+                                              <?php if (!empty($errorTypes[$rec->error_type_code])): ?>
+                                                  title="<?= h($errorTypes[$rec->error_type_code]) ?>" data-bs-toggle="tooltip"
+                                              <?php endif ?>>
+                                            <?= h($rec->error_type_code) ?>
+                                        </span>
+                                        <?php if (!empty($errorTypes[$rec->error_type_code])): ?>
+                                            <br><small class="text-muted" style="font-size:.72rem"><?= h($errorTypes[$rec->error_type_code]) ?></small>
+                                        <?php endif ?>
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif ?>
                                 </td>
 
-                            <?php elseif ($tab === 'no-advice'): ?>
-                                <!-- Status -->
+                            <?php elseif ($tab === 'no-advice' || $tab === 'waiting'): ?>
                                 <td>
                                     <?php if ($rec->status_code): ?>
-                                        <code class="small"><?= h($rec->status_code) ?></code>
+                                        <code class="small text-muted"><?= h($rec->status_code) ?></code>
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif ?>
@@ -252,39 +365,32 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                             <?php endif ?>
 
                             <!-- Data -->
-                            <td class="text-nowrap">
+                            <td class="text-nowrap" style="font-size:.82rem">
                                 <?php if ($rec->advice_created_at): ?>
                                     <?= $rec->advice_created_at->format('d.m.Y') ?>
                                     <br><small class="text-muted"><?= $rec->advice_created_at->format('H:i') ?></small>
                                 <?php else: ?>
-                                    —
+                                    <span class="text-muted">—</span>
                                 <?php endif ?>
                             </td>
 
                             <!-- Przez -->
                             <td>
-                                <small class="text-muted"><?= h($rec->created_by ?? '—') ?></small>
+                                <small class="text-muted" style="font-size:.75rem"><?= h($rec->created_by ?? '—') ?></small>
                             </td>
 
-                            <!-- Akcje -->
-                            <td class="text-end text-nowrap">
+                            <!-- Akcje (tylko szczegóły — bez usuwania) -->
+                            <td class="text-end pe-3">
                                 <?php if ($tab === 'done' && $rec->advice_json): ?>
                                     <button class="btn btn-xs btn-outline-secondary btn-advice-details"
                                             data-json="<?= h($rec->advice_json) ?>"
-                                            title="Szczegóły opinii">
+                                            title="Szczegóły opinii"
+                                            data-bs-toggle="tooltip">
                                         <i class="ri-eye-line"></i>
                                     </button>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
                                 <?php endif ?>
-                                <?= $this->Form->postLink(
-                                    '<i class="ri-delete-bin-line"></i>',
-                                    ['action' => 'delete', $rec->id],
-                                    [
-                                        'escape'  => false,
-                                        'class'   => 'btn btn-xs btn-outline-danger',
-                                        'confirm' => 'Usunąć ten rekord?',
-                                        'title'   => 'Usuń',
-                                    ]
-                                ) ?>
                             </td>
                         </tr>
                     <?php endforeach ?>
@@ -294,8 +400,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         </div>
 
         <!-- Paginacja -->
-        <?= $this->element('pagination') ?>
-
+        <div class="px-3 py-2">
+            <?= $this->element('pagination') ?>
+        </div>
     </div>
 </div>
 

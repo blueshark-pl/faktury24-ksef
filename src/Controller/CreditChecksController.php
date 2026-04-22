@@ -123,13 +123,36 @@ class CreditChecksController extends AppController
             $counts[$key] = $CreditChecks->find()->where(['list_status' => $st])->count();
         }
 
+        // Statystyki do kafelków
+        $today30 = (new \DateTime('+30 days'))->format('Y-m-d');
+        $todayStr = (new \DateTime())->format('Y-m-d');
+        $stats = [
+            'total'          => array_sum($counts),
+            'done'           => $counts['done'],
+            'expiringSoon'   => $CreditChecks->find()
+                ->where([
+                    'list_status'       => 'WITH_OPINION',
+                    'advice_valid_to >=' => $todayStr,
+                    'advice_valid_to <=' => $today30,
+                ])
+                ->count(),
+            'expired'        => $CreditChecks->find()
+                ->where([
+                    'list_status'      => 'WITH_OPINION',
+                    'advice_valid_to <' => $todayStr,
+                    'advice_valid_to IS NOT' => null,
+                ])
+                ->count(),
+            'errors'         => $counts['error'],
+        ];
+
         // Data ostatniej sync
         $lastSync = $CreditChecks->find()
             ->select(['synced_at'])
             ->order(['synced_at' => 'DESC'])
             ->first();
 
-        $this->set(compact('records', 'tab', 'search', 'counts', 'lastSync'));
+        $this->set(compact('records', 'tab', 'search', 'counts', 'lastSync', 'stats'));
         $this->set('statusLabels',             self::STATUS_LABELS);
         $this->set('adviceTypes',              self::ADVICE_TYPES);
         $this->set('adviceTypeDescriptions',   self::ADVICE_TYPE_DESCRIPTIONS);
