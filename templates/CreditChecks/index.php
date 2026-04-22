@@ -653,9 +653,13 @@ $tabLabels = [
                 </div>
                 <div id="swal-sec-f" style="display:none">
                     <div class="mb-2">
-                        <label class="form-label small fw-semibold mb-1">Kraj</label>
+                        <label class="form-label small fw-semibold mb-1">Kraj <span class="text-danger">*</span></label>
                         <select id="swal-country" class="form-select form-select-sm">${countryOpts}</select>
                     </div>
+                    <div id="swal-country-hint" class="text-center text-muted small fst-italic py-2">
+                        <i class="ri-arrow-up-line me-1"></i>Wybierz najpierw kraj
+                    </div>
+                    <div id="swal-search-sections" style="display:none">
                     <div class="btn-group w-100 mb-2" role="group">
                         <button type="button" id="swal-tab-id" class="btn btn-sm btn-primary">Po identyfikatorze</button>
                         <button type="button" id="swal-tab-nm" class="btn btn-sm btn-outline-secondary">Po nazwie i adresie</button>
@@ -685,6 +689,7 @@ $tabLabels = [
                             </div>
                         </div>
                     </div>
+                    </div><!-- /swal-search-sections -->
                 </div>
             </div>`;
 
@@ -697,6 +702,7 @@ $tabLabels = [
                 confirmButtonColor: '#198754',
                 width: '480px',
                 didOpen: () => {
+                    // Przełącznik polski/zagraniczny
                     document.querySelectorAll('input[name="swalCT"]').forEach(r => {
                         r.addEventListener('change', () => {
                             const f = document.getElementById('swal-ct-f').checked;
@@ -704,6 +710,14 @@ $tabLabels = [
                             document.getElementById('swal-sec-f').style.display  = f ? ''     : 'none';
                         });
                     });
+                    // Wybór kraju → pokazuj sekcje wyszukiwania
+                    document.getElementById('swal-country')?.addEventListener('change', function () {
+                        const hasCo = this.value !== '';
+                        document.getElementById('swal-country-hint').style.display    = hasCo ? 'none' : '';
+                        document.getElementById('swal-search-sections').style.display = hasCo ? ''     : 'none';
+                        if (hasCo) document.getElementById('swal-identifier')?.focus();
+                    });
+                    // Przełącznik trybu identyfikator / nazwa
                     document.getElementById('swal-tab-id')?.addEventListener('click', () => {
                         document.getElementById('swal-tab-id').className = 'btn btn-sm btn-primary';
                         document.getElementById('swal-tab-nm').className = 'btn btn-sm btn-outline-secondary';
