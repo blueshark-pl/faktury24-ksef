@@ -277,7 +277,7 @@ class CreditChecksController extends AppController
                 }
 
                 $identifier = $nip;
-                $params     = ['type' => 'pl', 'nip' => $nip];
+                $params     = ['client_type' => 'pl', 'nip' => $nip];
             } else {
                 // ── Klient zagraniczny ──────────────────────────────
                 if ($countryIso === '') {
@@ -301,15 +301,15 @@ class CreditChecksController extends AppController
 
                 $identifier = $identifierValue ?: $companyName;
                 $params     = [
-                    'type'            => 'foreign',
-                    'countryIso'      => strtoupper($countryIso),
-                    'countryName'     => $countryName,
-                    'searchMode'      => in_array($searchMode, ['id', 'name'], true) ? $searchMode : 'id',
-                    'identifierValue' => $identifierValue,
-                    'companyName'     => $companyName,
-                    'city'            => $city,
-                    'street'          => $street,
-                    'streetNo'        => $streetNo,
+                    'client_type'      => 'foreign',
+                    'country_iso'      => strtoupper($countryIso),
+                    'country_name'     => $countryName,
+                    'search_mode'      => in_array($searchMode, ['id', 'name'], true) ? $searchMode : 'id',
+                    'identifier_value' => $identifierValue,
+                    'company_name'     => $companyName,
+                    'city'             => $city,
+                    'street'           => $street,
+                    'street_no'        => $streetNo,
                 ];
             }
 
