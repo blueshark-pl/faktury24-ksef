@@ -458,73 +458,59 @@ async function checkOpinion(nip) {
         if (!adviceId) {
             throw new Error(`Nie można uzyskać ID wniosku. Odpowiedź: ${JSON.stringify(postJson).slice(0, 300)}`);
         }
-        log(`checkOpinion: adviceId=${adviceId}, polling...`);
+        log(`checkOpinion: adviceId=${adviceId}, czekam na XHR Angulara...`);
 
-        const pollUrl = `${API_BASE}/insurance/credit-check-advices/${adviceId}`;
+        // Czekamy aż Angular sam (co kilka sekund) odpyta GET i zwróci status != PROCESSING.
+        // Nie robimy własnych fetch — nasłuchujemy tylko odpowiedzi przeglądarki.
+        const result = await new Promise((resolve, reject) => {
+            const TIMEOUT_MS = 120_000;
+            const timer = setTimeout(() => {
+                page.off('response', onResponse);
+                reject(new Error('Timeout: opinia nie jest gotowa po 120 sekundach'));
+            }, TIMEOUT_MS);
 
-        // Sprawdź czy Angular już przechwycił gotową odpowiedź
-        const findCaptured = () => {
+            // Najpierw sprawdź co już zostało przechwycone przed przysięgą
             for (const { adviceId: id, body } of capturedAdviceResponses) {
                 if (id === String(adviceId)) {
                     try {
                         const j = JSON.parse(body);
-                        if (j.status && j.status !== 'PROCESSING') return j;
+                        if (j.status && j.status !== 'PROCESSING') {
+                            clearTimeout(timer);
+                            log(`checkOpinion: gotowe (już przechwycone) — status=${j.status}`);
+                            page.off('response', captureHandler);
+                            resolve(j);
+                            return;
+                        }
                     } catch (_) {}
                 }
             }
-            return null;
-        };
 
-        const immediate = findCaptured();
-        if (immediate) {
-            log(`checkOpinion: wynik z przechwycone GET — status=${immediate.status}`);
-            page.off('response', captureHandler);
-            return immediate;
-        }
+            async function onResponse(response) {
+                const m = response.url().match(/\/credit-check-advices\/(\d+)(?:[/?]|$)/);
+                if (!m || m[1] !== String(adviceId) || response.request().method() !== 'GET') return;
+                if (response.status() !== 200) return;
 
-        // Polling GET /credit-check-advices/{id} co 3s, max 40 prób (120s)
-        for (let attempt = 1; attempt <= 40; attempt++) {
-            // Pierwsze sprawdzenie po krótszym czasie, kolejne co 3s
-            await sleep(attempt === 1 ? 2000 : 3000);
-
-            // Najpierw sprawdź przechwycone odpowiedzi Angulara
-            const captured = findCaptured();
-            if (captured) {
-                log(`checkOpinion: wynik z przechwycony GET — status=${captured.status}`);
-                page.off('response', captureHandler);
-                return captured;
-            }
-
-            // Ręczny fetch
-            const poll = await page.evaluate(async (url, tok) => {
                 try {
-                    const r = await fetch(url, { headers: { Authorization: tok } });
-                    return { ok: r.ok, status: r.status, body: await r.text() };
+                    const text = await response.text();
+                    log(`checkOpinion: Angular GET /${adviceId} — ${text.slice(0, 120)}`);
+                    const j = JSON.parse(text);
+                    if (j.status && j.status !== 'PROCESSING') {
+                        clearTimeout(timer);
+                        page.off('response', onResponse);
+                        log(`checkOpinion: gotowe! status=${j.status}`);
+                        resolve(j);
+                    }
+                    // jeśli PROCESSING — czekamy na następny XHR
                 } catch (e) {
-                    return { ok: false, status: 0, body: e.message };
+                    log(`checkOpinion: błąd parsowania odpowiedzi — ${e.message}`);
                 }
-            }, pollUrl, token);
-
-            log(`checkOpinion: próba ${attempt} — HTTP ${poll.status} — ${poll.body.slice(0, 80)}`);
-
-            if (!poll.ok) {
-                throw new Error(`Błąd polling HTTP ${poll.status}: ${poll.body.slice(0, 200)}`);
             }
 
-            let result;
-            try { result = JSON.parse(poll.body); } catch {
-                throw new Error(`Nieprawidłowy JSON polling: ${poll.body.slice(0, 200)}`);
-            }
-
-            if (result.status !== 'PROCESSING') {
-                log(`checkOpinion: gotowe! status=${result.status}`);
-                page.off('response', captureHandler);
-                return result;
-            }
-        }
+            page.on('response', onResponse);
+        });
 
         page.off('response', captureHandler);
-        throw new Error('Timeout: opinia nie jest gotowa po 120 sekundach');
+        return result;
     } finally {
         await browser.close();
     }
