@@ -7,6 +7,8 @@
  * @var array $counts
  * @var array $statusLabels
  * @var array $adviceTypes
+ * @var array $adviceTypeDescriptions
+ * @var array $adviceReasonDescriptions
  * @var array $errorTypes
  * @var \App\Model\Entity\CreditCheck|null $lastSync
  */
@@ -156,6 +158,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                         ['controller' => 'Contractors', 'action' => 'view', $rec->contractor_id],
                                         ['class' => 'text-decoration-none']
                                     ) ?>
+                                <?php elseif (!empty($rec->client_name)): ?>
+                                    <span class="text-muted"><?= h($rec->client_name) ?></span>
+                                    <?php if (!empty($rec->client_city)): ?>
+                                        <br><small class="text-muted"><?= h($rec->client_city) ?></small>
+                                    <?php endif ?>
+                                    <?php if (!empty($rec->client_vat_eu)): ?>
+                                        <br><small class="text-muted font-monospace"><?= h($rec->client_vat_eu) ?></small>
+                                    <?php endif ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif ?>
@@ -166,9 +176,17 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 <td>
                                     <?php if ($rec->advice_type_code): ?>
                                         <?php $at = $adviceTypes[$rec->advice_type_code] ?? ['label' => $rec->advice_type_code, 'badge' => 'secondary'] ?>
-                                        <span class="badge bg-<?= $at['badge'] ?>"><?= $at['label'] ?></span>
+                                        <?php $atDesc = $adviceTypeDescriptions[$rec->advice_type_code] ?? null ?>
+                                        <span class="badge bg-<?= $at['badge'] ?>"
+                                            <?= $atDesc ? 'title="' . h($atDesc) . '" data-bs-toggle="tooltip"' : '' ?>>
+                                            <?= $at['label'] ?>
+                                        </span>
                                         <?php if ($rec->advice_reason_code): ?>
-                                            <br><small class="text-muted fs-10"><?= h($rec->advice_reason_code) ?></small>
+                                            <?php $crDesc = $adviceReasonDescriptions[$rec->advice_reason_code] ?? null ?>
+                                            <br><small class="text-muted fs-10"
+                                                <?= $crDesc ? 'title="' . h($crDesc) . '" data-bs-toggle="tooltip"' : '' ?>>
+                                                <?= h($rec->advice_reason_code) ?>
+                                            </small>
                                         <?php endif ?>
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
@@ -300,7 +318,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             },
             body: 'list=' + encodeURIComponent(list),
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 showAlert('success',
@@ -348,6 +369,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             }
             new bootstrap.Modal(document.getElementById('adviceModal')).show();
         });
+    });
+
+    // Tooltips Bootstrap
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { placement: 'top', trigger: 'hover' });
     });
 })();
 </script>

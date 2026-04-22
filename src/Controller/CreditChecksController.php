@@ -39,6 +39,41 @@ class CreditChecksController extends AppController
         'CCAT3' => ['label' => 'Brak opinii', 'badge' => 'secondary'],
     ];
 
+    // Opisy kodów CCAT*
+    public const ADVICE_TYPE_DESCRIPTIONS = [
+        'CCAT1' => 'Ubezpieczyciel wyraża zgodę na współpracę z danym klientem na warunkach Umowy Ubezpieczenia („Limit automatyczny").',
+        'CCAT2' => 'Ubezpieczyciel nie wyraża zgody na współpracę z danym klientem na warunkach Umowy Ubezpieczenia („Limit automatyczny").',
+        'CCAT3' => null,
+    ];
+
+    // Opisy kodów CCCR* (przyczyny opinii)
+    public const ADVICE_REASON_DESCRIPTIONS = [
+        'CCCR1'  => 'Brak możliwości wydania opinii z uwagi na sprzeciw wobec przetwarzania danych osobowych (RODO).',
+        'CCCR2'  => 'Na ocenę miało wpływ: oddział zagranicznego przedsiębiorcy / firma niepodlegająca ocenie / odbiorca publiczno-prawny.',
+        'CCCR3'  => 'Firma znajduje się w początkowej fazie działalności.',
+        'CCCR4'  => 'Firma zakończyła lub zawiesiła działalność.',
+        'CCCR5'  => 'Opinia wydana w oparciu o informacje dotyczące zachowań płatniczych firmy.',
+        'CCCR6'  => 'Opinia wydana w oparciu o informacje z bazy Allianz Trade i sprawozdania finansowe.',
+        'CCCR7'  => 'Opinia wydana w oparciu o wcześniejsze raporty. Można złożyć wniosek o limit kredytowy na bazie aktualnych danych.',
+        'CCCR9'  => 'Brak aktualnych dokumentów finansowych. Można złożyć wniosek o limit kredytowy z załączonymi sprawozdaniami.',
+        'CCCR10' => 'Kraj odbiorcy aktualnie nie jest ubezpieczany w ramach limitu automatycznego.',
+        'CCCR11' => 'Brak wystarczających informacji — rekomendowane złożenie wniosku o limit kredytowy.',
+        'CCCR12' => 'Firma zakończyła/zawiesiła działalność lub zaszło zdarzenie prawne uniemożliwiające objęcie ochroną.',
+        'CCCR13' => 'Zdarzenie prawne mogące doprowadzić do prawnie potwierdzonej niewypłacalności.',
+        'CCCR14' => 'Zdarzenie prawne stanowiące prawnie potwierdzoną niewypłacalność.',
+        'CCCR15' => 'Postępowanie układowe.',
+        'CCCR16' => 'Postanowienie o zawarciu układu.',
+        'CCCR17' => 'Ogłoszenie upadłości z możliwością zawarcia układu.',
+        'CCCR18' => 'Postanowienie o przedmiocie zatwierdzenia.',
+        'CCCR19' => 'Postępowanie sanacyjne.',
+        'CCCR20' => 'Postępowanie upadłościowe.',
+        'CCCR21' => 'Postępowanie o zatwierdzeniu układu.',
+        'CCCR22' => 'Przyspieszone postępowanie układowe.',
+        'CCCR23' => 'Postępowanie restrukturyzacyjne.',
+        'CCCR24' => 'Upadłość.',
+        'CCCR25' => 'Podczas oceny uwzględniono aktualnie dostępne informacje oraz ogólną sytuację gospodarczą i branżową.',
+    ];
+
     // Mapowanie błędów CCAN*
     public const ERROR_TYPES = [
         'CCAN1'  => 'Nie odnaleziono klienta o podanym identyfikatorze',
@@ -95,9 +130,11 @@ class CreditChecksController extends AppController
             ->first();
 
         $this->set(compact('records', 'tab', 'search', 'counts', 'lastSync'));
-        $this->set('statusLabels', self::STATUS_LABELS);
-        $this->set('adviceTypes',  self::ADVICE_TYPES);
-        $this->set('errorTypes',   self::ERROR_TYPES);
+        $this->set('statusLabels',             self::STATUS_LABELS);
+        $this->set('adviceTypes',              self::ADVICE_TYPES);
+        $this->set('adviceTypeDescriptions',   self::ADVICE_TYPE_DESCRIPTIONS);
+        $this->set('adviceReasonDescriptions', self::ADVICE_REASON_DESCRIPTIONS);
+        $this->set('errorTypes',               self::ERROR_TYPES);
     }
 
     // =========================================================================
@@ -111,24 +148,35 @@ class CreditChecksController extends AppController
         // Zwiększ limit czasu — Puppeteer może potrzebować do 2 minut
         set_time_limit(150);
 
-        $list    = (string)($this->request->getData('list') ?? 'all');
-        $allowed = ['all', 'done', 'waiting', 'no-advice', 'error'];
-        if (!in_array($list, $allowed, true)) {
-            $list = 'all';
+        try {
+            $list    = (string)($this->request->getData('list') ?? 'all');
+            $allowed = ['all', 'done', 'waiting', 'no-advice', 'error'];
+            if (!in_array($list, $allowed, true)) {
+                $list = 'all';
+            }
+
+            $scraper = new SyntesysScraperService();
+            $result  = $scraper->sync($list);
+
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success'  => $result['success'],
+                    'message'  => $result['message'],
+                    'inserted' => $result['inserted'],
+                    'updated'  => $result['updated'],
+                    'errors'   => $result['errors'],
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response
+                ->withStatus(500)
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success' => false,
+                    'message' => 'Wewnętrzny błąd serwera: ' . $e->getMessage(),
+                    'inserted' => 0, 'updated' => 0, 'errors' => 0,
+                ]));
         }
-
-        $scraper = new SyntesysScraperService();
-        $result  = $scraper->sync($list);
-
-        return $this->response
-            ->withType('application/json')
-            ->withStringBody((string)json_encode([
-                'success'  => $result['success'],
-                'message'  => $result['message'],
-                'inserted' => $result['inserted'],
-                'updated'  => $result['updated'],
-                'errors'   => $result['errors'],
-            ]));
     }
 
     // =========================================================================
