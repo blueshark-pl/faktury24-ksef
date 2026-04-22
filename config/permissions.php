@@ -377,6 +377,13 @@ return [
             'action' => ['index', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions'],
         ],
 
+        // Kredyt kupiecki
+        [
+            'role'       => 'user',
+            'controller' => 'CreditChecks',
+            'action'     => ['index', 'sync', 'delete'],
+        ],
+
         // Karty paliwowe E100
         [
             'role' => 'user',

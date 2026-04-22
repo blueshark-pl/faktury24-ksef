@@ -642,6 +642,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Kredyt kupiecki -->
+                            <li class="slide <?= $navActive('creditchecks', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-shield-check-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Kredyt kupiecki</span>',
+                                    ['plugin' => false, 'controller' => 'CreditChecks', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item ' . $navActive('creditchecks', 'index')]
+                                ) ?>
+                            </li>
+
                             <!-- Karty paliwowe E100 -->
                             <li class="slide <?= $navActive('fuelcards', 'index') ?>">
                                 <?= $this->Html->link(
