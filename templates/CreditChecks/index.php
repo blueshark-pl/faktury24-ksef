@@ -4,6 +4,8 @@
  * @var \Cake\Datasource\ResultSetInterface $records
  * @var string $tab
  * @var string $search
+ * @var string $dateFrom
+ * @var string $dateTo
  * @var array $counts
  * @var array $stats
  * @var array $statusLabels
@@ -47,6 +49,8 @@ $reasonShortLabels = [
 
 $activeFilterCount = ($search !== '') ? 1 : 0;
 if ($tab !== 'done') $activeFilterCount++;
+if (!empty($dateFrom)) $activeFilterCount++;
+if (!empty($dateTo)) $activeFilterCount++;
 
 // Etykiety tabów do tytułów przycisków (bez odwołania do prywatnej stałej controllera)
 $tabLabels = [
@@ -168,13 +172,21 @@ $tabLabels = [
     <div class="card-body py-2 px-3">
         <form id="cc-filter-form" method="get" action="<?= $this->Url->build(['action' => 'index']) ?>">
             <div class="row g-2 align-items-end">
-                <div class="col-12 col-md-5">
+                <div class="col-12 col-md-4">
                     <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Szukaj</label>
                     <input type="text" name="search" value="<?= h($search) ?>"
                            class="form-control form-control-sm"
                            placeholder="NIP, VAT EU, nazwa kontrahenta…">
                 </div>
-                <div class="col-12 col-md-3">
+                <div class="col-6 col-md-2">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Data od</label>
+                    <input type="date" name="date_from" value="<?= h($dateFrom ?? '') ?>" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Data do</label>
+                    <input type="date" name="date_to" value="<?= h($dateTo ?? '') ?>" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-md-2">
                     <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Status</label>
                     <select name="tab" class="form-select form-select-sm">
                         <option value="done"      <?= $tab === 'done'      ? 'selected' : '' ?>>Opinie wydane (<?= $counts['done'] ?>)</option>
@@ -206,6 +218,7 @@ $tabLabels = [
                                style="font-size:.73rem;padding:2px 8px"
                                title="<?= h($tabLabels[$t] ?? $t) ?>">
                                 <i class="<?= $icon ?>"></i>
+                                <span class="ms-1" style="font-size:.72rem"><?= h($tabLabels[$t] ?? $t) ?></span>
                                 <span class="badge <?= $tab === $t ? 'bg-white text-' . $color : 'bg-' . $color ?> ms-1" style="font-size:.65rem"><?= $counts[$t] ?></span>
                             </a>
                         <?php endforeach ?>

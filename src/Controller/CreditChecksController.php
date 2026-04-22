@@ -97,7 +97,9 @@ class CreditChecksController extends AppController
         $status = self::STATUS_MAP[$tab] ?? 'WITH_OPINION';
 
         // Wyszukiwanie
-        $search = trim((string)($this->request->getQuery('search') ?? ''));
+        $search   = trim((string)($this->request->getQuery('search')    ?? ''));
+        $dateFrom = trim((string)($this->request->getQuery('date_from') ?? ''));
+        $dateTo   = trim((string)($this->request->getQuery('date_to')   ?? ''));
 
         // Buduj zapytanie
         $query = $CreditChecks->find()
@@ -106,6 +108,12 @@ class CreditChecksController extends AppController
 
         if ($search !== '') {
             $query->where(['identifier LIKE' => '%' . $search . '%']);
+        }
+        if ($dateFrom !== '') {
+            $query->where(['advice_created_at >=' => $dateFrom . ' 00:00:00']);
+        }
+        if ($dateTo !== '') {
+            $query->where(['advice_created_at <=' => $dateTo . ' 23:59:59']);
         }
 
         // Paginate
@@ -152,7 +160,7 @@ class CreditChecksController extends AppController
             ->order(['synced_at' => 'DESC'])
             ->first();
 
-        $this->set(compact('records', 'tab', 'search', 'counts', 'lastSync', 'stats'));
+        $this->set(compact('records', 'tab', 'search', 'dateFrom', 'dateTo', 'counts', 'lastSync', 'stats'));
         $this->set('statusLabels',             self::STATUS_LABELS);
         $this->set('adviceTypes',              self::ADVICE_TYPES);
         $this->set('adviceTypeDescriptions',   self::ADVICE_TYPE_DESCRIPTIONS);
