@@ -1,6 +1,6 @@
 'use strict';
 
-const Database = require('node-sqlite3-wasm');
+const { Database } = require('node-sqlite3-wasm');
 const fs        = require('fs');
 const path      = require('path');
 
