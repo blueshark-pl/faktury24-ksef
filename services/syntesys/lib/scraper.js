@@ -138,8 +138,17 @@ async function fetchList(page, statusCode) {
                 headers:     { 'Accept': 'application/json' },
             });
             const body = await resp.text();
-            return { status: resp.status, body };
+            // zbierz nagłówki do debugowania
+            const headers = {};
+            resp.headers.forEach((v, k) => { headers[k] = v; });
+            return { status: resp.status, body, headers };
         }, url);
+
+        log(`  → HTTP ${result.status}`);
+        log(`  → Headers: ${JSON.stringify(result.headers)}`);
+        if (result.body) {
+            log(`  → Body: ${result.body.slice(0, 1000)}`);
+        }
 
         if (result.status === 401) {
             // Sesja wygasła — rzuć błąd żeby caller mógł zalogować ponownie
@@ -147,7 +156,7 @@ async function fetchList(page, statusCode) {
         }
 
         if (result.status < 200 || result.status >= 300) {
-            throw new Error(`HTTP ${result.status} for ${statusCode}: ${result.body.slice(0, 200)}`);
+            throw new Error(`HTTP ${result.status} for ${statusCode}: ${result.body.slice(0, 400)}`);
         }
 
         let parsed;
