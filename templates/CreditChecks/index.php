@@ -831,8 +831,8 @@ $tabLabels = [
                             <strong>${esc(item.name)}</strong><br>
                             <small class="text-muted">${ids}${addr ? ' &bull; ' + addr : ''}</small>
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm flex-shrink-0 ms-2"
-                            onclick="document.getElementById('swal-picked-ehid').value=${JSON.stringify(String(item.ehid || ''))};Swal.clickConfirm()">
+                        <button type="button" class="btn btn-primary btn-sm flex-shrink-0 ms-2 btn-pick-company"
+                            data-ehid="${esc(String(item.ehid || ''))}">
                             Zam\u00f3w opini\u0119
                         </button>
                     </div>`;
@@ -846,6 +846,14 @@ $tabLabels = [
                     showCancelButton: true,
                     cancelButtonText: 'Anuluj',
                     width: 640,
+                    didOpen: () => {
+                        document.querySelectorAll('.btn-pick-company').forEach(btn => {
+                            btn.addEventListener('click', () => {
+                                document.getElementById('swal-picked-ehid').value = btn.dataset.ehid;
+                                Swal.clickConfirm();
+                            });
+                        });
+                    },
                     preConfirm: () => {
                         const v = document.getElementById('swal-picked-ehid')?.value || '';
                         if (!v) { Swal.showValidationMessage('Wybierz firm\u0119 z listy'); return false; }
