@@ -18,6 +18,14 @@ const LIST_MAP = {
     'error':     'BUSINESS_ERROR',
 };
 
+// Odwrotne mapowanie statusCode → typ zakładki w URL Angulara
+const STATUS_TO_TAB = {
+    'WITH_OPINION':   'done',
+    'PROCESSING':     'waiting',
+    'NO_OPINION':     'no-advice',
+    'BUSINESS_ERROR': 'error',
+};
+
 function toStatusCode(list) {
     return LIST_MAP[list] ?? list;
 }
@@ -168,86 +176,125 @@ async function login(page) {
 // ─── Fetch one list (all pages) ───────────────────────────────────────────────
 
 /**
+ * Czeka na odpowiedź XHR do credit-check-advices (dowolna strona).
+ * Przechwytuje body — bez własnego fetch().
+ * @returns {Promise<{ status: number, body: string, token: string }>}
+ */
+function waitForListResponse(page) {
+    return page
+        .waitForResponse(
+            resp => resp.url().includes('/syntesys-api/insurance/credit-check-advices'),
+            { timeout: 30000 }
+        )
+        .then(async resp => {
+            const status = resp.status();
+            const body   = await resp.text();
+            const token  = resp.request().headers()['authorization'] ?? '';
+            log(`[XHR ←] Przechwycono: HTTP ${status} ${resp.url()}`);
+            return { status, body, token };
+        });
+}
+
+/**
+ * Pobiera jedną listę (wszystkie strony) przez nawigację Angulara + przechwycenie XHR.
+ * NIE robi własnych fetch() — Angular sam wysyła żądania przy goto i kliknięciu #nextPage.
+ *
  * @param {object} page
  * @param {string} statusCode    np. 'WITH_OPINION'
- * @param {string} token         nagłówek Authorization np. 'Bearer eyJ...'
- * @param {object|null} firstPage  opcjonalny { status, body } z przechwyconego XHR strony 1
+ * @param {string|null} token    aktualny token (używany do zapisu sesji po re-login)
+ * @param {{ status, body }|null} firstPage  opcjonalne — body strony 1 już przechwycone
+ * @returns {Promise<{ items: object[], token: string }>}
  */
 async function fetchList(page, statusCode, token, firstPage = null) {
     const items  = [];
-    let   pageNo = 1;
+    const tabType = STATUS_TO_TAB[statusCode] ?? 'done';
 
-    log(`Fetching list: ${statusCode}`);
+    log(`Fetching list: ${statusCode} (tab: ${tabType})`);
 
-    while (true) {
-        // Zbuduj URL — base + podmieniona query string
-        const params = new URLSearchParams({
-            'filter.listStatus': statusCode,
-            'page.no':           pageNo,
-            'page.size':         PAGE_SIZE,
-            'sortDirection':     'DESC',
-            'sortBy':            'sendDate',
-        });
-        if (statusCode === 'WITH_OPINION') {
-            params.set('filter.activeOnly', 'true');
-        }
-        const url = `${API_CREDIT_BASE}?${params}`;
-        log(`  page ${pageNo}: ${url}`);
+    // ── Strona 1 ─────────────────────────────────────────────────────────────
+    let result;
 
-        let result;
-
-        // Strona 1 — użyj przechwyconego body jeśli dostępne (oszczędza jeden request)
-        if (pageNo === 1 && firstPage) {
-            log(`  → używam przechwyconą odpowiedź Angulara (HTTP ${firstPage.status})`);
-            result = firstPage;
-        } else {
-            result = await page.evaluate(async (fetchUrl, authToken) => {
-                const resp = await fetch(fetchUrl, {
-                    method:  'GET',
-                    headers: {
-                        'Accept':        'application/json',
-                        'Authorization': authToken,
-                    },
-                });
-                const body = await resp.text();
-                return { status: resp.status, body };
-            }, url, token);
-            log(`  → HTTP ${result.status}`);
-        }
-
-        if (result.status !== 200) {
-            log(`  → Body: ${result.body.slice(0, 1000)}`);
-        }
-
-        if (result.status === 401) {
-            // Sesja wygasła — rzuć błąd żeby caller mógł zalogować ponownie
-            throw Object.assign(new Error('HTTP 401 — session expired'), { code: 'SESSION_EXPIRED' });
-        }
-
-        if (result.status < 200 || result.status >= 300) {
-            throw new Error(`HTTP ${result.status} for ${statusCode}: ${result.body.slice(0, 400)}`);
-        }
-
-        let parsed;
-        try { parsed = JSON.parse(result.body); } catch {
-            throw new Error(`Invalid JSON from API: ${result.body.slice(0, 200)}`);
-        }
-
-        const batch = Array.isArray(parsed)
-            ? parsed
-            : (Array.isArray(parsed?.items) ? parsed.items : []);
-
-        if (batch.length === 0) break;
-        items.push(...batch);
-
-        const total = parsed?.totalCount ?? parsed?.totalItems ?? null;
-        if (total !== null && items.length >= total) break;
-        if (batch.length < PAGE_SIZE) break;
-        pageNo++;
+    if (firstPage) {
+        // Strona 1 już przechwycona przez Angular przy logowaniu/nawigacji
+        log(`  strona 1: używam przechwycony XHR (HTTP ${firstPage.status})`);
+        result = firstPage;
+    } else {
+        // Nawiguj do właściwej zakładki i poczekaj aż Angular wyśle XHR
+        const tabUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:${tabType})`;
+        log(`  strona 1: nawigacja do ${tabUrl}`);
+        const respPromise = waitForListResponse(page);
+        await page.goto(tabUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        result = await respPromise;
     }
 
-    log(`  fetched ${items.length} items for ${statusCode}`);
-    return items;
+    // ── Przetwarzaj stronę ───────────────────────────────────────────────────
+    // Aktualizuj token z odpowiedzi (jest świeży)
+    if (result.token) token = result.token;
+
+    if (result.status === 401) {
+        throw Object.assign(new Error('HTTP 401 — session expired'), { code: 'SESSION_EXPIRED' });
+    }
+    if (result.status < 200 || result.status >= 300) {
+        throw new Error(`HTTP ${result.status} for ${statusCode}: ${result.body.slice(0, 400)}`);
+    }
+
+    let parsed;
+    try { parsed = JSON.parse(result.body); } catch {
+        throw new Error(`Invalid JSON from API: ${result.body.slice(0, 200)}`);
+    }
+
+    const extractBatch = p => Array.isArray(p) ? p : (Array.isArray(p?.items) ? p.items : []);
+    const getTotal     = p => p?.totalCount ?? p?.totalItems ?? null;
+
+    items.push(...extractBatch(parsed));
+    log(`  strona 1: ${items.length} / ${getTotal(parsed) ?? '?'} elementów`);
+
+    // ── Kolejne strony — klikanie #nextPage ───────────────────────────────────
+    const total = getTotal(parsed);
+    let   page2 = 2;
+
+    while (true) {
+        if (total !== null && items.length >= total) break;
+        if (extractBatch(parsed).length < PAGE_SIZE) break;
+
+        // Sprawdź czy przycisk następnej strony istnieje i nie jest wyłączony
+        const canNext = await page.$eval(
+            '#nextPage',
+            btn => btn && !btn.disabled && !btn.classList.contains('disabled')
+        ).catch(() => false);
+
+        if (!canNext) {
+            log(`  brak przycisku #nextPage — koniec stronicowania`);
+            break;
+        }
+
+        log(`  strona ${page2}: klikam #nextPage...`);
+        const respPromise = waitForListResponse(page);
+        await page.click('#nextPage');
+        result = await respPromise;
+
+        if (result.token) token = result.token;
+
+        if (result.status === 401) {
+            throw Object.assign(new Error('HTTP 401 — session expired'), { code: 'SESSION_EXPIRED' });
+        }
+        if (result.status < 200 || result.status >= 300) {
+            throw new Error(`HTTP ${result.status} strona ${page2}: ${result.body.slice(0, 400)}`);
+        }
+
+        try { parsed = JSON.parse(result.body); } catch {
+            throw new Error(`Invalid JSON strona ${page2}: ${result.body.slice(0, 200)}`);
+        }
+
+        const batch = extractBatch(parsed);
+        if (batch.length === 0) break;
+        items.push(...batch);
+        log(`  strona ${page2}: ${items.length} / ${getTotal(parsed) ?? '?'} elementów`);
+        page2++;
+    }
+
+    log(`Fetched ${items.length} items for ${statusCode}`);
+    return { items, token };
 }
 
 // ─── Main scraper function ────────────────────────────────────────────────────
@@ -299,11 +346,13 @@ async function scrape(statusCodes) {
         const output = {};
         let   isFirst = true;
         for (const statusCode of statusCodes) {
-            // Dla pierwszego statusu (WITH_OPINION) użyj przechwyconego body z logowania
+            // Dla pierwszego statusu użyj przechwyconego body z logowania (strona 1 za darmo)
             const firstPage = (isFirst && loginFirstBody) ? loginFirstBody : null;
             isFirst = false;
             try {
-                output[statusCode] = await fetchList(page, statusCode, token, firstPage);
+                const result = await fetchList(page, statusCode, token, firstPage);
+                output[statusCode] = result.items;
+                token = result.token; // odśwież token (może być świeższy)
             } catch (e) {
                 if (e.code === 'SESSION_EXPIRED') {
                     log('Session expired during fetch — re-login...');
@@ -312,7 +361,9 @@ async function scrape(statusCodes) {
                     token = loginResult.token;
                     session.save({ token });
                     // retry once
-                    output[statusCode] = await fetchList(page, statusCode, token);
+                    const retryResult = await fetchList(page, statusCode, token);
+                    output[statusCode] = retryResult.items;
+                    token = retryResult.token;
                 } else {
                     log(`ERROR for ${statusCode}: ${e.message}`);
                     output[statusCode] = [];
