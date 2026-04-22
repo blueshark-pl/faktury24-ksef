@@ -764,6 +764,7 @@ class ReconciliationsController extends AppController
                 'direction'        => (string)($tx->direction ?? 'C'),
                 'party_name'       => (string)($tx->party_name ?? ''),
                 'title'            => (string)($tx->title ?? ''),
+                'account_number'   => (string)($tx->account_number ?? ''),
                 'match_status'     => (string)($tx->match_status ?? 'unmatched'),
                 'match_confidence' => (int)($tx->match_confidence ?? 0),
                 'match_reason'     => (string)($tx->match_reason ?? ''),
@@ -816,7 +817,7 @@ class ReconciliationsController extends AppController
                 ->where($conditions)
                 ->where(['BankTransactions.direction' => 'C'])
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
-                          'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                          'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
                 ->limit(50)
                 ->all()->toArray();
@@ -889,6 +890,7 @@ class ReconciliationsController extends AppController
                 'direction'        => (string)($tx->direction ?? 'C'),
                 'party_name'       => (string)($tx->party_name ?? ''),
                 'title'            => (string)($tx->title ?? ''),
+                'account_number'   => (string)($tx->account_number ?? ''),
                 'match_status'     => (string)($tx->match_status ?? 'unmatched'),
                 'match_confidence' => (int)($tx->match_confidence ?? 0),
                 'match_reason'     => (string)($tx->match_reason ?? ''),
@@ -900,7 +902,7 @@ class ReconciliationsController extends AppController
         $linked = $BankTransactions->find()
             ->where(['company_id' => $companyId, 'invoice_id' => $invoiceId])
             ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
-                      'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                      'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
             ->orderByDesc('value_date')
             ->all()->toArray();
 
@@ -955,7 +957,7 @@ class ReconciliationsController extends AppController
                 ->where($conditions)
                 ->where(['BankTransactions.direction' => 'C'])
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
-                          'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                          'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
                 ->limit(30)
                 ->all()->toArray();

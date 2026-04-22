@@ -1386,6 +1386,30 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 
     var currentInvoiceId = null;
 
+    // Rachunki bankowe firmy — do etykiet w filtrze konta
+    var companyBankAccounts = <?= json_encode(array_map(function ($cba) {
+        $iban = preg_replace('/[\s\-]/', '', $cba->iban ?? '');
+        return [
+            'iban'      => $iban,
+            'raw_iban'  => $cba->iban ?? '',
+            'label'     => $cba->label ?: ($cba->bank_name ?: ''),
+            'currency'  => $cba->currency ?? 'PLN',
+            'is_default'=> (bool)$cba->is_default,
+        ];
+    }, $companyBankAccounts ?? []), JSON_UNESCAPED_UNICODE) ?>;
+
+    function getBankLabel(accountNumber) {
+        if (!accountNumber) return '';
+        var clean = accountNumber.replace(/[\s\-]/g, '');
+        for (var i = 0; i < companyBankAccounts.length; i++) {
+            var cba = companyBankAccounts[i];
+            if (cba.iban === clean || cba.raw_iban === accountNumber) {
+                return (cba.label || '') + (cba.label ? ' · ' : '') + clean.slice(-8) + ' · ' + cba.currency;
+            }
+        }
+        return clean ? ('…' + clean.slice(-8)) : '';
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
     function esc(s) {
         return String(s)
@@ -1443,11 +1467,26 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
               + esc(tx.parsed_inv) + '</span>'
             : '';
 
-        return '<tr>'
+        var titleHtml = tx.title
+            ? '<div class="text-muted text-truncate" style="font-size:.72em;max-width:200px" title="' + esc(tx.title) + '">'
+              + '<i class="ri-file-text-line me-1 opacity-50"></i>' + esc(tx.title) + '</div>'
+            : '';
+
+        var accountHtml = tx.account_number
+            ? '<div class="text-muted" style="font-size:.72em" title="Rachunek: ' + esc(tx.account_number) + '">'
+              + '<i class="ri-bank-line me-1 opacity-50"></i>' + esc(getBankLabel(tx.account_number) || ('…' + tx.account_number.replace(/[\s\-]/g,'').slice(-8))) + '</div>'
+            : '';
+
+        var cleanAccount = (tx.account_number || '').replace(/[\s\-]/g, '');
+
+        return '<tr data-account="' + esc(cleanAccount) + '">'
             + '<td class="text-nowrap small">' + esc(tx.value_date || '—') + '</td>'
             + '<td class="text-end text-nowrap small fw-semibold">' + fmtAmount(tx.amount) + '</td>'
-            + '<td class="small text-truncate" style="max-width:160px" title="' + esc(tx.party_name) + '">'
-            +   esc(tx.party_name || '—') + '</td>'
+            + '<td class="small" style="max-width:200px">'
+            +   '<div class="text-truncate" title="' + esc(tx.party_name) + '">' + esc(tx.party_name || '—') + '</div>'
+            +   titleHtml
+            +   accountHtml
+            + '</td>'
             + '<td class="small">' + invTag + statusBadge + '</td>'
             + '<td class="text-end">' + actionCol + '</td>'
             + '</tr>';
@@ -1498,7 +1537,33 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 
         var totalCount = linked.length + candidates.length;
 
+        // Zbierz unikalne numery kont z transakcji (do selecta filtru)
+        var allTxs = linked.concat(candidates);
+        var uniqueAccounts = [];
+        var seenAccounts = {};
+        allTxs.forEach(function (tx) {
+            var clean = (tx.account_number || '').replace(/[\s\-]/g, '');
+            if (clean && !seenAccounts[clean]) {
+                seenAccounts[clean] = true;
+                uniqueAccounts.push({ clean: clean, raw: tx.account_number });
+            }
+        });
+
+        // Select rachunku — tylko gdy jest > 1 unikalny rachunek lub skonfigurowane konta firmy
+        var accountSelectHtml = '';
+        if (uniqueAccounts.length > 1 || companyBankAccounts.length > 0) {
+            var opts = '<option value="">— wszystkie rachunki —</option>';
+            uniqueAccounts.forEach(function (acc) {
+                opts += '<option value="' + esc(acc.clean) + '">' + esc(getBankLabel(acc.raw) || ('…' + acc.clean.slice(-8))) + '</option>';
+            });
+            accountSelectHtml = '<div class="d-flex gap-2 mb-2 align-items-center">'
+                + '<i class="ri-bank-line text-muted flex-shrink-0" style="font-size:.9rem"></i>'
+                + '<select id="bankTxAccountFilter" class="form-select form-select-sm">' + opts + '</select>'
+                + '</div>';
+        }
+
         container.innerHTML = note
+            + accountSelectHtml
             + '<div class="input-group input-group-sm mb-2">'
             + '<span class="input-group-text bg-white border-end-0"><i class="ri-search-line text-muted"></i></span>'
             + '<input type="text" id="bankTxFilter" class="form-control border-start-0 ps-0" placeholder="Filtruj po nadawcy, tytule, dacie…" autocomplete="off">'
@@ -1510,7 +1575,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             + '<tr>'
             + '<th>Data</th>'
             + '<th class="text-end">Kwota</th>'
-            + '<th>Nadawca</th>'
+            + '<th>Nadawca / Tytuł</th>'
             + '<th>Status</th>'
             + '<th></th>'
             + '</tr>'
@@ -1518,30 +1583,34 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             + '<tbody>' + rows + '</tbody>'
             + '</table></div>'
             + '<div id="bankTxNoResults" class="text-muted small fst-italic py-1" style="display:none">'
-            + '<i class="ri-search-line me-1"></i>Brak wyników dla podanej frazy.</div>';
+            + '<i class="ri-search-line me-1"></i>Brak wyników dla wybranych filtrów.</div>';
 
-        // ── Filtrowanie wierszy ───────────────────────────────────────────────
-        var filterInput  = document.getElementById('bankTxFilter');
-        var countBadge   = document.getElementById('bankTxCount');
-        var noResults    = document.getElementById('bankTxNoResults');
-        var txTable      = document.getElementById('bankTxTable');
+        // ── Filtrowanie wierszy (tekst + konto) ───────────────────────────────
+        var filterInput     = document.getElementById('bankTxFilter');
+        var accountFilter   = document.getElementById('bankTxAccountFilter');
+        var countBadge      = document.getElementById('bankTxCount');
+        var noResults       = document.getElementById('bankTxNoResults');
+        var txTable         = document.getElementById('bankTxTable');
 
-        if (filterInput && txTable) {
-            filterInput.addEventListener('input', function () {
-                var q = this.value.toLowerCase().trim();
-                var trs = txTable.querySelectorAll('tbody tr');
-                var visible = 0;
-                trs.forEach(function (tr) {
-                    var text = tr.textContent.toLowerCase();
-                    var show = !q || text.indexOf(q) !== -1;
-                    tr.style.display = show ? '' : 'none';
-                    if (show) visible++;
-                });
-                if (countBadge) countBadge.textContent = visible;
-                if (noResults)  noResults.style.display = (visible === 0) ? '' : 'none';
+        function applyTxFilters() {
+            var q       = filterInput ? filterInput.value.toLowerCase().trim() : '';
+            var account = accountFilter ? accountFilter.value : '';
+            var trs     = txTable ? txTable.querySelectorAll('tbody tr') : [];
+            var visible = 0;
+            trs.forEach(function (tr) {
+                var textMatch    = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+                var accountMatch = !account || tr.dataset.account === account;
+                var show = textMatch && accountMatch;
+                tr.style.display = show ? '' : 'none';
+                if (show) visible++;
             });
-            filterInput.focus();
+            if (countBadge) countBadge.textContent = visible;
+            if (noResults)  noResults.style.display = (visible === 0) ? '' : 'none';
         }
+
+        if (filterInput)   filterInput.addEventListener('input', applyTxFilters);
+        if (accountFilter) accountFilter.addEventListener('change', applyTxFilters);
+        if (filterInput)   filterInput.focus();
 
         if (!isLegacy) {
             container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
