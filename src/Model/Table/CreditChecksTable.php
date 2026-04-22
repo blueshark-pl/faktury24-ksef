@@ -74,16 +74,22 @@ class CreditChecksTable extends Table
             }
 
             // Parsuj pola zagnieżdżone
-            $req    = $item['request'] ?? [];
+            $req    = is_array($item['request'] ?? null) ? $item['request'] : [];
             $advice = $item['advice'] ?? null;
-            $client = $item['client'] ?? null;
+            $client = is_array($item['client'] ?? null) ? $item['client'] : null;
+
+            // NIP: z request.identifier, fallback na client.taxNumber
+            $identifier = $req['identifier'] ?? ($client['taxNumber'] ?? null);
+            // Kraj: z request.country, fallback na client.address.country
+            $country = $req['country']
+                ?? (is_array($client['address'] ?? null) ? ($client['address']['country'] ?? null) : null);
 
             $data = [
                 'external_id'                  => $externalId,
                 'list_status'                  => $listStatus,
-                'identifier'                   => $req['identifier'] ?? null,
+                'identifier'                   => $identifier,
                 'identifier_type_code'         => $req['identifierTypeCode'] ?? null,
-                'country'                      => $req['country'] ?? null,
+                'country'                      => $country,
                 'advice_type_code'             => is_array($advice) ? ($advice['typeCode'] ?? null) : null,
                 'advice_reason_code'           => is_array($advice) ? ($advice['reasonCode'] ?? null) : null,
                 'advice_json'                  => $advice !== null ? json_encode($advice) : null,
