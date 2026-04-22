@@ -28,6 +28,10 @@ function log(msg) {
     process.stderr.write(`[scraper] ${new Date().toISOString()} ${msg}\n`);
 }
 
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
 async function launchBrowser() {
     const args = [
         '--no-sandbox',
@@ -50,11 +54,11 @@ async function launchBrowser() {
 
 async function acceptCookies(page) {
     try {
-        await page.waitForSelector('button.cc_btn[name="cookies"]', { timeout: 5000 });
+        await page.waitForSelector('button.cc_btn[name="cookies"]', { timeout: 8000 });
         await page.click('button.cc_btn[name="cookies"]');
-        log('Cookie consent accepted');
-        // Krótka pauza po kliknięciu (animacja / JS handler)
-        await new Promise(r => setTimeout(r, 600));
+        log('Cookie consent accepted — waiting for dialog close...');
+        // Poczekaj na zamknięcie dialogu i stabilizację strony
+        await sleep(2000);
     } catch {
         log('No cookie consent dialog (or already accepted)');
     }
@@ -65,21 +69,27 @@ async function login(page) {
     log(`Navigating to login: ${loginUrl}`);
     await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
 
-    // Zaakceptuj cookies jeśli dialog się pojawi
+    // 1. Zaakceptuj cookies — NAJPIERW, zanim cokolwiek inne
     await acceptCookies(page);
 
-    // Czekaj na formularz (Angular może renderować asynchronicznie)
-    await page.waitForSelector('input#username', { timeout: 15000 });
-    await page.waitForSelector('input#password', { timeout: 5000 });
+    // 2. Poczekaj na formularz (Angular może renderować asynchronicznie)
+    log('Waiting for login form...');
+    await page.waitForSelector('input#username', { timeout: 20000 });
+    await page.waitForSelector('input#password', { timeout: 10000 });
+    await sleep(800); // dodatkowa pauza: Angular może nie być gotowy mimo widoczności pola
 
+    // 3. Wypełnij formularz
     log('Filling login form...');
     await page.$eval('input#username', el => el.value = '');
-    await page.type('input#username', process.env.SYNTESYS_USER || '', { delay: 30 });
+    await page.type('input#username', process.env.SYNTESYS_USER || '', { delay: 60 });
+    await sleep(400);
 
     await page.$eval('input#password', el => el.value = '');
-    await page.type('input#password', process.env.SYNTESYS_PASS || '', { delay: 30 });
+    await page.type('input#password', process.env.SYNTESYS_PASS || '', { delay: 60 });
+    await sleep(500);
 
-    log('Submitting...');
+    // 4. Wyślij formularz
+    log('Submitting login form...');
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
         page.click('input[name="login"][type="submit"]'),
@@ -89,13 +99,16 @@ async function login(page) {
     if (currentUrl.includes('/login') || currentUrl.includes('error')) {
         throw new Error(`Login failed — still on: ${currentUrl}`);
     }
+    log(`Login success. URL: ${currentUrl}`);
 
-    // Przejdź do widoku list żeby zainicjować sesję API (cookies/XSRF)
+    // 5. Nawiguj do widoku list — Angular musi się załadować żeby ustawić XSRF/session cookies
     const appUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`;
     log(`Navigating to app: ${appUrl}`);
-    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
-    log(`Login complete. URL: ${page.url()}`);
+    // 6. Poczekaj aż Angular zainicjuje się i ustawi cookies sesji XHR
+    await sleep(3000);
+    log(`App ready. URL: ${page.url()}`);
 }
 
 // ─── Fetch one list (all pages) ───────────────────────────────────────────────
@@ -192,6 +205,7 @@ async function scrape(statusCodes) {
                 { waitUntil: 'domcontentloaded', timeout: 20000 }
             );
             await page.setCookie(...savedCookies);
+            await sleep(1500); // poczekaj aż strona przetworzy przywrócone cookies
             log('Session restored — skipping login');
         } else {
             log('No valid session — logging in...');
