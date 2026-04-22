@@ -130,13 +130,15 @@ class SyntesysScraperService
     }
 
     /**
-     * Sprawdza opinię kredytową dla podanego NIP.
-     * Wywołuje mikroserwis /check-opinion, czeka na wynik (maks. 120s).
+     * Sprawdza opinię kredytową.
+     * Dla klienta polskiego: ['type' => 'pl', 'nip' => '...']
+     * Dla zagranicznego:     ['type' => 'foreign', 'countryIso' => 'DE', 'countryName' => 'Niemcy',
+     *                          'searchMode' => 'id'|'name', 'identifierValue' => '...', ...]
      *
-     * @param string $nip  Numer NIP (tylko cyfry)
+     * @param array $params
      * @return array{success: bool, message: string, result: array|null}
      */
-    public function checkOpinion(string $nip): array
+    public function checkOpinion(array $params): array
     {
         $serviceUrl = rtrim((string)(Configure::read('Syntesys.service_url') ?? ''), '/');
         $apiKey     = (string)(Configure::read('Syntesys.api_key') ?? '');
@@ -146,13 +148,13 @@ class SyntesysScraperService
         }
 
         $url = $serviceUrl . '/check-opinion';
-        Log::info("SyntesysScraperService: POST {$url} nip={$nip}", ['scope' => 'syntesys']);
+        Log::info("SyntesysScraperService: POST {$url} type=" . ($params['type'] ?? 'pl'), ['scope' => 'syntesys']);
 
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
             CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode(['nip' => $nip]),
+            CURLOPT_POSTFIELDS     => json_encode($params),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => self::TIMEOUT,
             CURLOPT_HTTPHEADER     => array_filter([

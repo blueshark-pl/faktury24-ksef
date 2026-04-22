@@ -222,24 +222,102 @@ class CreditChecksController extends AppController
         set_time_limit(150);
 
         try {
-            $nip = preg_replace('/\D/', '', (string)($this->request->getData('nip') ?? ''));
+            $clientType      = trim((string)($this->request->getData('client_type')      ?? 'pl'));
+            $countryIso      = trim((string)($this->request->getData('country_iso')      ?? ''));
+            $countryName     = trim((string)($this->request->getData('country_name')     ?? ''));
+            $searchMode      = trim((string)($this->request->getData('search_mode')      ?? 'id'));
+            $identifierValue = trim((string)($this->request->getData('identifier_value') ?? ''));
+            $companyName     = trim((string)($this->request->getData('company_name')     ?? ''));
+            $city            = trim((string)($this->request->getData('city')             ?? ''));
+            $street          = trim((string)($this->request->getData('street')           ?? ''));
+            $streetNo        = trim((string)($this->request->getData('street_no')        ?? ''));
 
-            if (strlen($nip) < 9 || strlen($nip) > 15) {
-                return $this->response
-                    ->withType('application/json')
-                    ->withStringBody((string)json_encode([
-                        'success' => false,
-                        'message' => 'Nieprawidłowy NIP (9–15 cyfr)',
-                        'result'  => null,
-                    ]));
+            $scraper      = new SyntesysScraperService();
+            $CreditChecks = $this->fetchTable('CreditChecks');
+
+            if ($clientType === 'pl') {
+                // ── Polski NIP ──────────────────────────────────────
+                $nip = preg_replace('/\D/', '', (string)($this->request->getData('nip') ?? ''));
+                if (strlen($nip) < 9 || strlen($nip) > 15) {
+                    return $this->response
+                        ->withType('application/json')
+                        ->withStringBody((string)json_encode([
+                            'success' => false,
+                            'message' => 'Nieprawidłowy NIP (9–15 cyfr)',
+                            'result'  => null,
+                        ]));
+                }
+
+                // Sprawdź duplikat
+                $existing = $CreditChecks->find()
+                    ->where(['identifier' => $nip, 'list_status' => 'WITH_OPINION'])
+                    ->order(['advice_created_at' => 'DESC'])
+                    ->select(['id', 'identifier', 'advice_type_code', 'advice_valid_to', 'advice_created_at', 'client_name', 'advice_json'])
+                    ->first();
+
+                if ($existing !== null) {
+                    $adviceJson = $existing->advice_json ? json_decode((string)$existing->advice_json, true) : null;
+                    return $this->response
+                        ->withType('application/json')
+                        ->withStringBody((string)json_encode([
+                            'success'        => true,
+                            'already_exists' => true,
+                            'message'        => 'Opinia dla tego NIP już istnieje w bazie.',
+                            'result'         => [
+                                'id'                => $existing->id,
+                                'companyName'       => $existing->client_name,
+                                'identifier'        => $existing->identifier,
+                                'status'            => 'WITH_OPINION',
+                                'advice'            => $adviceJson['advice'] ?? $adviceJson ?? null,
+                                'advice_type_code'  => $existing->advice_type_code,
+                                'advice_valid_to'   => $existing->advice_valid_to ? $existing->advice_valid_to->format('Y-m-d') : null,
+                                'advice_created_at' => $existing->advice_created_at ? $existing->advice_created_at->format('Y-m-d H:i') : null,
+                            ],
+                        ]));
+                }
+
+                $identifier = $nip;
+                $params     = ['type' => 'pl', 'nip' => $nip];
+            } else {
+                // ── Klient zagraniczny ──────────────────────────────
+                if ($countryIso === '') {
+                    return $this->response
+                        ->withType('application/json')
+                        ->withStringBody((string)json_encode([
+                            'success' => false,
+                            'message' => 'Wymagany kod kraju.',
+                            'result'  => null,
+                        ]));
+                }
+                if ($identifierValue === '' && $companyName === '') {
+                    return $this->response
+                        ->withType('application/json')
+                        ->withStringBody((string)json_encode([
+                            'success' => false,
+                            'message' => 'Wymagany identyfikator lub nazwa firmy.',
+                            'result'  => null,
+                        ]));
+                }
+
+                $identifier = $identifierValue ?: $companyName;
+                $params     = [
+                    'type'            => 'foreign',
+                    'countryIso'      => strtoupper($countryIso),
+                    'countryName'     => $countryName,
+                    'searchMode'      => in_array($searchMode, ['id', 'name'], true) ? $searchMode : 'id',
+                    'identifierValue' => $identifierValue,
+                    'companyName'     => $companyName,
+                    'city'            => $city,
+                    'street'          => $street,
+                    'streetNo'        => $streetNo,
+                ];
             }
 
-            $scraper = new SyntesysScraperService();
-            $data    = $scraper->checkOpinion($nip);
+            $data = $scraper->checkOpinion($params);
 
             // Zapisz wynik natychmiast do bazy (sync pojedynczego rekordu — bez potrzeby full-sync)
             if ($data['success'] && $data['result'] !== null) {
-                $this->saveCheckOpinionResult($nip, $data['result']);
+                $this->saveCheckOpinionResult($identifier, $data['result']);
             }
 
             return $this->response

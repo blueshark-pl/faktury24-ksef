@@ -617,23 +617,139 @@ $tabLabels = [
     const btnCheckOpinion = document.getElementById('btn-check-opinion');
     if (btnCheckOpinion) {
         btnCheckOpinion.addEventListener('click', async () => {
-            // Krok 1: zapytaj o NIP
-            const { value: nip, isConfirmed } = await Swal.fire({
+            // Krok 1: formularz — polski NIP lub klient zagraniczny
+            const COUNTRIES_SWAL = [
+                {iso:'AD',n:'Andora'},{iso:'AU',n:'Australia'},{iso:'AT',n:'Austria'},
+                {iso:'BE',n:'Belgia'},{iso:'BG',n:'Bu\u0142garia'},{iso:'HR',n:'Chorwacja'},
+                {iso:'CY',n:'Cypr'},{iso:'CZ',n:'Czechy'},{iso:'DK',n:'Dania'},
+                {iso:'EE',n:'Estonia'},{iso:'FI',n:'Finlandia'},{iso:'FR',n:'Francja'},
+                {iso:'GR',n:'Grecja'},{iso:'ES',n:'Hiszpania'},{iso:'NL',n:'Holandia'},
+                {iso:'IE',n:'Irlandia'},{iso:'IS',n:'Islandia'},{iso:'JP',n:'Japonia'},
+                {iso:'CA',n:'Kanada'},{iso:'LI',n:'Liechtenstein'},{iso:'LT',n:'Litwa'},
+                {iso:'LU',n:'Luksemburg'},{iso:'LV',n:'\u0141otwa'},{iso:'MT',n:'Malta'},
+                {iso:'MC',n:'Monako'},{iso:'DE',n:'Niemcy'},{iso:'NO',n:'Norwegia'},
+                {iso:'NZ',n:'Nowa Zelandia'},{iso:'PT',n:'Portugalia'},{iso:'RO',n:'Rumunia'},
+                {iso:'SK',n:'S\u0142owacja'},{iso:'SI',n:'S\u0142owenia'},{iso:'US',n:'Stany Zjednoczone'},
+                {iso:'CH',n:'Szwajcaria'},{iso:'SE',n:'Szwecja'},{iso:'HU',n:'W\u0119gry'},
+                {iso:'GB',n:'Wielka Brytania'},{iso:'IT',n:'W\u0142ochy'},
+            ];
+            const countryOpts = '<option value="">-- wybierz kraj --</option>' +
+                COUNTRIES_SWAL.map(c => `<option value="${c.iso}">${c.n}</option>`).join('');
+            const checkFormHtml = `<div class="text-start" style="font-size:.9rem">
+                <div class="d-flex gap-4 justify-content-center mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="swalCT" id="swal-ct-pl" value="pl" checked>
+                        <label class="form-check-label" for="swal-ct-pl">&#127477;&#127473; Klient polski</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="swalCT" id="swal-ct-f" value="foreign">
+                        <label class="form-check-label" for="swal-ct-f">&#127758; Klient zagraniczny</label>
+                    </div>
+                </div>
+                <div id="swal-sec-pl">
+                    <label class="form-label small fw-semibold mb-1">NIP kontrahenta</label>
+                    <input id="swal-nip" type="text" class="form-control form-control-sm"
+                           placeholder="np. 1234567890" maxlength="15" autocomplete="off">
+                </div>
+                <div id="swal-sec-f" style="display:none">
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold mb-1">Kraj</label>
+                        <select id="swal-country" class="form-select form-select-sm">${countryOpts}</select>
+                    </div>
+                    <div class="btn-group w-100 mb-2" role="group">
+                        <button type="button" id="swal-tab-id" class="btn btn-sm btn-primary">Po identyfikatorze</button>
+                        <button type="button" id="swal-tab-nm" class="btn btn-sm btn-outline-secondary">Po nazwie i adresie</button>
+                    </div>
+                    <div id="swal-f-id">
+                        <label class="form-label small fw-semibold mb-1">NIP / VAT EU / numer rejestracyjny</label>
+                        <input id="swal-identifier" type="text" class="form-control form-control-sm"
+                               placeholder="np. BE0123456789" autocomplete="off">
+                    </div>
+                    <div id="swal-f-nm" style="display:none">
+                        <div class="mb-1">
+                            <label class="form-label small fw-semibold mb-1">Nazwa firmy</label>
+                            <input id="swal-co-name" type="text" class="form-control form-control-sm">
+                        </div>
+                        <div class="mb-1">
+                            <label class="form-label small fw-semibold mb-1">Miejscowo\u015b\u0107</label>
+                            <input id="swal-city" type="text" class="form-control form-control-sm">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <div class="flex-grow-1">
+                                <label class="form-label small fw-semibold mb-1">Ulica</label>
+                                <input id="swal-street" type="text" class="form-control form-control-sm">
+                            </div>
+                            <div style="width:80px">
+                                <label class="form-label small fw-semibold mb-1">Nr</label>
+                                <input id="swal-street-no" type="text" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+            const { value: formData, isConfirmed } = await Swal.fire({
                 title: 'Sprawdź opinię Allianz Trade',
-                input: 'text',
-                inputLabel: 'NIP kontrahenta',
-                inputPlaceholder: 'np. 1234567890',
-                inputAttributes: { maxlength: 15, autocomplete: 'off' },
+                html: checkFormHtml,
                 showCancelButton: true,
                 confirmButtonText: 'Sprawdź',
                 cancelButtonText: 'Anuluj',
                 confirmButtonColor: '#198754',
-                inputValidator: v => {
-                    const digits = v.replace(/\D/g, '');
-                    if (digits.length < 9 || digits.length > 15) return 'Podaj NIP (9–15 cyfr)';
+                width: '480px',
+                didOpen: () => {
+                    document.querySelectorAll('input[name="swalCT"]').forEach(r => {
+                        r.addEventListener('change', () => {
+                            const f = document.getElementById('swal-ct-f').checked;
+                            document.getElementById('swal-sec-pl').style.display = f ? 'none' : '';
+                            document.getElementById('swal-sec-f').style.display  = f ? ''     : 'none';
+                        });
+                    });
+                    document.getElementById('swal-tab-id')?.addEventListener('click', () => {
+                        document.getElementById('swal-tab-id').className = 'btn btn-sm btn-primary';
+                        document.getElementById('swal-tab-nm').className = 'btn btn-sm btn-outline-secondary';
+                        document.getElementById('swal-f-id').style.display = '';
+                        document.getElementById('swal-f-nm').style.display = 'none';
+                    });
+                    document.getElementById('swal-tab-nm')?.addEventListener('click', () => {
+                        document.getElementById('swal-tab-id').className = 'btn btn-sm btn-outline-secondary';
+                        document.getElementById('swal-tab-nm').className = 'btn btn-sm btn-primary';
+                        document.getElementById('swal-f-id').style.display = 'none';
+                        document.getElementById('swal-f-nm').style.display = '';
+                    });
+                },
+                preConfirm: () => {
+                    const isForeign = document.getElementById('swal-ct-f')?.checked;
+                    if (!isForeign) {
+                        const nip = (document.getElementById('swal-nip')?.value || '').replace(/\D/g, '');
+                        if (nip.length < 9 || nip.length > 15) {
+                            Swal.showValidationMessage('Podaj NIP (9\u201315 cyfr)');
+                            return false;
+                        }
+                        return { type: 'pl', nip };
+                    }
+                    const csel       = document.getElementById('swal-country');
+                    const countryIso  = csel?.value  || '';
+                    const countryName = csel?.selectedOptions[0]?.text || '';
+                    if (!countryIso) { Swal.showValidationMessage('Wybierz kraj'); return false; }
+                    const isIdMode = document.getElementById('swal-tab-id')?.classList.contains('btn-primary');
+                    if (isIdMode) {
+                        const identVal = (document.getElementById('swal-identifier')?.value || '').trim();
+                        if (!identVal) { Swal.showValidationMessage('Podaj identyfikator (NIP / VAT EU)'); return false; }
+                        return { type: 'foreign', countryIso, countryName, searchMode: 'id', identifierValue: identVal };
+                    } else {
+                        const coName = (document.getElementById('swal-co-name')?.value || '').trim();
+                        if (!coName) { Swal.showValidationMessage('Podaj co najmniej nazw\u0119 firmy'); return false; }
+                        return {
+                            type: 'foreign', countryIso, countryName, searchMode: 'name',
+                            companyName: coName,
+                            city:     (document.getElementById('swal-city')?.value      || '').trim(),
+                            street:   (document.getElementById('swal-street')?.value    || '').trim(),
+                            streetNo: (document.getElementById('swal-street-no')?.value || '').trim(),
+                        };
+                    }
                 },
             });
-            if (!isConfirmed || !nip) return;
+            if (!isConfirmed || !formData) return;
 
             // Krok 2: loading
             Swal.fire({
@@ -654,7 +770,18 @@ $tabLabels = [
                         'Content-Type': 'application/x-www-form-urlencoded',
                         'X-CSRF-Token': csrfToken,
                     },
-                    body: 'nip=' + encodeURIComponent(nip.replace(/\D/g, '')),
+                    body: Object.entries({
+                        client_type:      formData.type,
+                        nip:              formData.nip              || '',
+                        country_iso:      formData.countryIso       || '',
+                        country_name:     formData.countryName      || '',
+                        search_mode:      formData.searchMode       || 'id',
+                        identifier_value: formData.identifierValue  || '',
+                        company_name:     formData.companyName      || '',
+                        city:             formData.city             || '',
+                        street:           formData.street           || '',
+                        street_no:        formData.streetNo         || '',
+                    }).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'),
                 });
                 data = await resp.json();
             } catch (err) {
@@ -664,6 +791,54 @@ $tabLabels = [
 
             if (!data.success) {
                 Swal.fire('Błąd', data.message || 'Nieznany błąd', 'error');
+                return;
+            }
+
+            // NIP już istnieje w bazie — pokaż istniejącą opinię
+            if (data.already_exists) {
+                const r2       = data.result || {};
+                const adv2     = r2.advice   || {};
+                const tc2      = r2.advice_type_code || adv2.typeCode || null;
+                const vt2      = r2.advice_valid_to  || adv2.validTo  || null;
+                const ac2      = r2.advice_created_at|| adv2.created  || null;
+                const co2      = r2.companyName || r2.identifier || '—';
+                const b2       = CCAT_BADGE[tc2] || 'success';
+                const l2       = CCAT_LABEL[tc2] || tc2 || '—';
+                const d2       = CCAT_DESC[tc2]  || '';
+                const i2       = b2 === 'success' ? 'ri-checkbox-circle-fill' : b2 === 'danger' ? 'ri-close-circle-fill' : 'ri-question-line';
+                const listUrl  = <?= json_encode($this->Url->build(['action' => 'index', '?' => ['tab' => 'done']])) ?>;
+
+                const existHtml = `
+                    <div class="alert alert-warning small mb-3 text-start">
+                        <i class="ri-information-line me-1"></i>
+                        Opinia dla tego NIP jest już zapisana w bazie. Możesz ją zobaczyć na liście opinii.
+                    </div>
+                    <div class="text-center mb-3">
+                        <span class="badge bg-${b2} px-3 py-2 rounded-3" style="font-size:1.1rem">
+                            <i class="${i2} me-1"></i>${htmlEsc(l2)}
+                        </span>
+                        <div class="text-muted small mt-1"><code>${htmlEsc(tc2 || '—')}</code></div>
+                        ${d2 ? `<div class="text-muted small mt-1 fst-italic">${htmlEsc(d2)}</div>` : ''}
+                    </div>
+                    <table class="table table-sm table-borderless text-start mx-auto mb-0" style="max-width:370px">
+                        ${tdRow('Firma',         `<strong>${htmlEsc(co2)}</strong>`)}
+                        ${tdRow('NIP',           `<code>${htmlEsc(r2.identifier || '')}</code>`)}
+                        ${vt2 ? tdRow('Ważna do',  `<strong class="text-${b2 === 'danger' ? 'danger' : 'success'}">${htmlEsc(fmtDate(vt2) || vt2)}</strong>`) : ''}
+                        ${ac2 ? tdRow('Wydana',    htmlEsc(ac2)) : ''}
+                    </table>`;
+
+                await Swal.fire({
+                    title: 'Opinia już istnieje',
+                    html: existHtml,
+                    icon: 'info',
+                    confirmButtonText: '<i class="ri-list-check me-1"></i>Przejdź do listy opinii',
+                    cancelButtonText: 'Zamknij',
+                    showCancelButton: true,
+                    confirmButtonColor: '#0d6efd',
+                    width: '500px',
+                }).then(res => {
+                    if (res.isConfirmed) location.href = listUrl;
+                });
                 return;
             }
 

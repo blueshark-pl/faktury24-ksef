@@ -248,14 +248,36 @@ app.post('/fetch', async (req, res) => {
  * Response: { success, result: { id, status, advice, companyName, ... } }
  */
 app.post('/check-opinion', async (req, res) => {
-    const nip = (req.body.nip || req.query.nip || '').replace(/\D/g, '');
-    if (!nip || nip.length < 9 || nip.length > 15) {
-        return res.status(400).json({ success: false, error: 'Nieprawidłowy NIP (9–15 cyfr)' });
+    const clientType      = (req.body.client_type      || 'pl').trim();
+    const nip             = (req.body.nip              || '').replace(/\D/g, '');
+    const countryIso      = (req.body.country_iso      || '').trim().toUpperCase();
+    const countryName     = (req.body.country_name     || '').trim();
+    const searchMode      = (req.body.search_mode      || 'id').trim();
+    const identifierValue = (req.body.identifier_value || '').trim();
+    const companyName     = (req.body.company_name     || '').trim();
+    const city            = (req.body.city             || '').trim();
+    const street          = (req.body.street           || '').trim();
+    const streetNo        = (req.body.street_no        || '').trim();
+
+    if (clientType === 'pl') {
+        if (!nip || nip.length < 9 || nip.length > 15) {
+            return res.status(400).json({ success: false, error: 'Nieprawidłowy NIP (9–15 cyfr)' });
+        }
+    } else {
+        if (!countryIso) {
+            return res.status(400).json({ success: false, error: 'Wymagany kod kraju (country_iso)' });
+        }
+        if (!identifierValue && !companyName) {
+            return res.status(400).json({ success: false, error: 'Wymagany identifierValue lub companyName dla klientów zagranicznych' });
+        }
     }
 
     const startedAt = Date.now();
     try {
-        const result = await scraper.checkOpinion(nip);
+        const result = await scraper.checkOpinion({
+            type: clientType, nip, countryIso, countryName,
+            searchMode, identifierValue, companyName, city, street, streetNo,
+        });
         res.json({ success: true, result, durationMs: Date.now() - startedAt });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message, durationMs: Date.now() - startedAt });

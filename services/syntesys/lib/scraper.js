@@ -368,13 +368,22 @@ async function scrape(statusCodes) {
 // ─── Check single opinion ─────────────────────────────────────────────────────
 
 /**
- * Sprawdza opinię kredytową dla podanego NIP (lub VAT EU).
- * Loguje do Syntesys, wypełnia formularz, czeka na wynik.
+ * Sprawdza opinię kredytową dla podanego NIP (klient polski) lub danych zagranicznego klienta.
  *
- * @param {string} nip  Numer identyfikacyjny (tylko cyfry)
- * @returns {Promise<object>}  Surowy obiekt odpowiedzi API z advice
+ * @param {object} opts
+ * @param {'pl'|'foreign'} opts.type              - typ klienta
+ * @param {string}  [opts.nip]                    - NIP (tylko dla type='pl')
+ * @param {string}  [opts.countryIso]             - kod ISO kraju (type='foreign')
+ * @param {string}  [opts.countryName]            - nazwa kraju po polsku (do kliknięcia w dropdown)
+ * @param {'id'|'name'} [opts.searchMode='id']    - sposób wyszukiwania zagranicznego
+ * @param {string}  [opts.identifierValue]        - NIP/VAT EU/numer rej. (searchMode='id')
+ * @param {string}  [opts.companyName]            - nazwa firmy (searchMode='name')
+ * @param {string}  [opts.city]                   - miejscowość
+ * @param {string}  [opts.street]                 - ulica
+ * @param {string}  [opts.streetNo]               - numer ulicy
+ * @returns {Promise<object>}
  */
-async function checkOpinion(nip) {
+async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchMode = 'id', identifierValue, companyName, city, street, streetNo } = {}) {
     if (!process.env.SYNTESYS_USER || !process.env.SYNTESYS_PASS) {
         throw new Error('Missing SYNTESYS_USER / SYNTESYS_PASS env vars');
     }
@@ -410,16 +419,21 @@ async function checkOpinion(nip) {
         log(`checkOpinion: nawigacja do ${createUrl}`);
         await page.goto(createUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        // Poczekaj na pole NIP
-        const nipSelector = 'sn-input#identifier-value-nip input';
-        log('checkOpinion: czekam na pole NIP...');
-        await page.waitForSelector(nipSelector, { timeout: 15000 });
-        await sleep(500);
+        if (type === 'pl') {
+            // ── Klient polski (NIP) ──
+            const nipSelector = 'sn-input#identifier-value-nip input';
+            log('checkOpinion: czekam na pole NIP...');
+            await page.waitForSelector(nipSelector, { timeout: 15000 });
+            await sleep(500);
 
-        // Wpisz NIP
-        await page.click(nipSelector, { clickCount: 3 });
-        await page.type(nipSelector, nip, { delay: 60 });
-        log(`checkOpinion: wpisano NIP "${nip}"`);
+            await page.click(nipSelector, { clickCount: 3 });
+            await page.type(nipSelector, nip, { delay: 60 });
+            log(`checkOpinion: wpisano NIP "${nip}"`);
+        } else {
+            // ── Klient zagraniczny ──
+            log(`checkOpinion: tryb zagraniczny kraju=${countryIso} (${countryName}), searchMode=${searchMode}`);
+            await fillForeignForm(page, { countryIso, countryName, searchMode, identifierValue, companyName, city, street, streetNo });
+        }
 
         // Przygotuj przechwycenie odpowiedzi POST zanim klikniemy
         const postPromise = page.waitForResponse(
@@ -517,3 +531,72 @@ async function checkOpinion(nip) {
 }
 
 module.exports = { scrape, checkOpinion, toStatusCode, LIST_MAP };
+
+/**
+ * Wypełnia formularz wyszukiwania zagranicznego klienta na stronie Syntesys.
+ * Zakłada, że strona jest już załadowana (po page.goto createUrl).
+ *
+ * @param {import('puppeteer').Page} page
+ * @param {object} opts
+ */
+async function fillForeignForm(page, { countryIso, countryName, searchMode, identifierValue, companyName, city, street, streetNo }) {
+    // 1. Kliknij radio "Wyszukiwarka klientów zagranicznych"
+    log('fillForeignForm: klikam radio advanceSearch...');
+    await page.waitForSelector('input[value="advanceSearch"]', { timeout: 15000 });
+    await page.click('input[value="advanceSearch"]');
+    await sleep(600);
+
+    // 2. Wybierz kraj z sn-select[formcontrolname="countryIsoCode"]
+    log(`fillForeignForm: wybieram kraj "${countryName}" (${countryIso})...`);
+    await page.click('sn-select[formcontrolname="countryIsoCode"] .control-select-container');
+    await page.waitForSelector(
+        'sn-select[formcontrolname="countryIsoCode"] button[data-test="app-select-option-item"]',
+        { timeout: 5000 }
+    );
+    await sleep(200);
+
+    const countryClicked = await page.evaluate((name) => {
+        const btns = document.querySelectorAll(
+            'sn-select[formcontrolname="countryIsoCode"] button[data-test="app-select-option-item"]'
+        );
+        for (const btn of btns) {
+            if (btn.textContent.trim() === name) { btn.click(); return true; }
+        }
+        return false;
+    }, countryName);
+
+    if (!countryClicked) {
+        throw new Error(`Nie znaleziono kraju "${countryName}" w liście Syntesys. Sprawdź pisownię.`);
+    }
+    await sleep(500);
+
+    if (searchMode === 'name') {
+        // 3a. Szukaj po nazwie i adresie
+        log('fillForeignForm: tryb name — wypełniam nazwę/adres...');
+        if (companyName) {
+            await page.waitForSelector('sn-input[formcontrolname="name"] input', { timeout: 5000 });
+            await page.click('sn-input[formcontrolname="name"] input', { clickCount: 3 });
+            await page.type('sn-input[formcontrolname="name"] input', companyName, { delay: 40 });
+        }
+        if (city) {
+            const cs = 'sn-input[formcontrolname="city"] input';
+            if (await page.$(cs)) { await page.click(cs, { clickCount: 3 }); await page.type(cs, city, { delay: 40 }); }
+        }
+        if (street) {
+            const ss = 'sn-input[formcontrolname="street"] input';
+            if (await page.$(ss)) { await page.click(ss, { clickCount: 3 }); await page.type(ss, street, { delay: 40 }); }
+        }
+        if (streetNo) {
+            const sns = 'sn-input[formcontrolname="streetNo"] input';
+            if (await page.$(sns)) { await page.click(sns, { clickCount: 3 }); await page.type(sns, streetNo, { delay: 40 }); }
+        }
+    } else {
+        // 3b. Szukaj po identyfikatorze (domyślnie)
+        log(`fillForeignForm: tryb id — wpisuję identyfikator "${identifierValue}"...`);
+        await page.waitForSelector('sn-input[formcontrolname="identifierValue"] input', { timeout: 5000 });
+        await page.click('sn-input[formcontrolname="identifierValue"] input', { clickCount: 3 });
+        await page.type('sn-input[formcontrolname="identifierValue"] input', identifierValue, { delay: 60 });
+    }
+
+    log('fillForeignForm: formularz wypełniony');
+}
