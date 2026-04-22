@@ -317,57 +317,27 @@ async function scrape(statusCodes) {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         );
 
-        // Wczytaj zachowaną sesję
-        const savedSession = session.load();
-        const savedToken   = savedSession?.token;
-        let   token;
-        let   loginFirstBody = null; // body strony 1 przechwycone przy logowaniu
-
-        if (savedToken) {
-            // Mamy token — nawiguj do app i włącz logowanie XHR
-            log('Restoring session (token cached, TTL ok)...');
-            enableXhrLogging(page);
-            await page.goto(
-                `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`,
-                { waitUntil: 'domcontentloaded', timeout: 20000 }
-            );
-            await sleep(1500);
-            token = savedToken;
-            log('Session restored — skipping login');
-        } else {
-            log('No valid session — logging in...');
-            const loginResult = await login(page);
-            token         = loginResult.token;
-            loginFirstBody = loginResult.firstBody;
-            session.save({ token });
-        }
+        // Zawsze loguj — najpierw login, potem dane
+        log('Logging in...');
+        enableXhrLogging(page);
+        const loginResult  = await login(page);
+        let   token        = loginResult.token;
+        const loginFirstBody = loginResult.firstBody;
 
         // Pobierz wszystkie żądane statusy
         const output = {};
         let   isFirst = true;
         for (const statusCode of statusCodes) {
-            // Dla pierwszego statusu użyj przechwyconego body z logowania (strona 1 za darmo)
+            // Strona 1 WITH_OPINION już przechwycona przy logowaniu — za darmo
             const firstPage = (isFirst && loginFirstBody) ? loginFirstBody : null;
             isFirst = false;
             try {
                 const result = await fetchList(page, statusCode, token, firstPage);
                 output[statusCode] = result.items;
-                token = result.token; // odśwież token (może być świeższy)
+                token = result.token;
             } catch (e) {
-                if (e.code === 'SESSION_EXPIRED') {
-                    log('Session expired during fetch — re-login...');
-                    session.clear();
-                    const loginResult = await login(page);
-                    token = loginResult.token;
-                    session.save({ token });
-                    // retry once
-                    const retryResult = await fetchList(page, statusCode, token);
-                    output[statusCode] = retryResult.items;
-                    token = retryResult.token;
-                } else {
-                    log(`ERROR for ${statusCode}: ${e.message}`);
-                    output[statusCode] = [];
-                }
+                log(`ERROR for ${statusCode}: ${e.message}`);
+                output[statusCode] = [];
             }
         }
 
