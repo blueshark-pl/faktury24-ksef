@@ -135,7 +135,7 @@ $bankBadge = function (?object $bt): string {
 };
 
 // Pomocnik URL z aktualnymi filtrami
-$currentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
+$currentUrl = function (array $extra = []) use ($baseAction, $search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
     $base = [
         'q'           => $search,
         'status'      => $status,
@@ -782,7 +782,7 @@ if ($status !== '')         $activeFilterCount++;
 <?php
 // ── Sekcja faktur archiwalnych (legacy) ─────────────────────────────────────
 if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
-    $legacyCurrentUrl = function (array $extra = []) use ($search, $status, $dateFrom, $dateTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $legacyPage): array {
+    $legacyCurrentUrl = function (array $extra = []) use ($baseAction, $search, $status, $dateFrom, $dateTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $legacyPage): array {
         $base = [
             'q'         => $search,
             'status'    => $status,
