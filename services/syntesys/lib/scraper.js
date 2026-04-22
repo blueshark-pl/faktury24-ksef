@@ -193,31 +193,18 @@ async function scrape(statusCodes) {
 
         // Wczytaj zachowaną sesję
         const savedCookies = session.load();
-        let sessionValid   = false;
 
         if (savedCookies?.length > 0) {
-            log('Loading saved session...');
+            // Szybkie przywrócenie sesji bez weryfikacji przez pełne ładowanie aplikacji.
+            // Nawigujemy do domeny głównej (domcontentloaded = szybko) żeby page.evaluate
+            // fetch() działało z credentials:include w kontekście tej domeny.
+            // Jeśli sesja wygasła na serwerze, fetchList() rzuci SESSION_EXPIRED → re-login.
+            log(`Restoring session (${savedCookies.length} cookies, TTL ok)...`);
+            await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
             await page.setCookie(...savedCookies);
-
-            // Zweryfikuj sesję
-            try {
-                await page.goto(
-                    `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`,
-                    { waitUntil: 'networkidle2', timeout: 20000 }
-                );
-                sessionValid = !page.url().includes('/login');
-                if (sessionValid) {
-                    log('Saved session is valid');
-                } else {
-                    log('Saved session expired — will re-login');
-                    session.clear();
-                }
-            } catch {
-                sessionValid = false;
-            }
-        }
-
-        if (!sessionValid) {
+            log('Session restored — skipping login');
+        } else {
+            log('No valid session — logging in...');
             await login(page);
             session.save(await page.cookies());
         }
