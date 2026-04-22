@@ -390,6 +390,21 @@ async function checkOpinion(nip) {
         enableXhrLogging(page);
         const { token } = await login(page);
 
+        // Zbieraj odpowiedzi GET na /credit-check-advices/* zanim zostaną skonsumowane
+        // Angular odpytuje GET natychmiast po POST — musimy przechwycić zanim to przetworzymy
+        const capturedAdviceResponses = []; // { adviceId, body }
+        const captureHandler = async (response) => {
+            const m = response.url().match(/\/credit-check-advices\/(\d+)(?:[/?]|$)/);
+            if (m && response.request().method() === 'GET' && response.status() === 200) {
+                try {
+                    const text = await response.text();
+                    capturedAdviceResponses.push({ adviceId: m[1], body: text });
+                    log(`checkOpinion: przechwycono GET /${m[1]} — ${text.slice(0, 80)}`);
+                } catch (_) {}
+            }
+        };
+        page.on('response', captureHandler);
+
         // Nawiguj do formularza zlecenia opinii
         const createUrl = `${BASE_URL}/insurance/credit-check/create/(type:single)`;
         log(`checkOpinion: nawigacja do ${createUrl}`);
@@ -421,8 +436,8 @@ async function checkOpinion(nip) {
         log('checkOpinion: kliknięto submit');
 
         // Poczekaj na odpowiedź POST z ID wniosku
-        const postResp  = await postPromise;
-        const postBody  = await postResp.text();
+        const postResp = await postPromise;
+        const postBody = await postResp.text();
         log(`checkOpinion: POST HTTP ${postResp.status()} — ${postBody.slice(0, 200)}`);
 
         let postJson;
@@ -430,19 +445,57 @@ async function checkOpinion(nip) {
             throw new Error(`Nieprawidłowy JSON po złożeniu wniosku: ${postBody.slice(0, 300)}`);
         }
 
-        const adviceId = postJson.id ?? null;
+        // API może zwrócić gołe ID (liczba) albo obiekt { id: ... }
+        let adviceId;
+        if (postJson && typeof postJson === 'object') {
+            adviceId = postJson.id ?? null;
+        } else if (String(postJson).match(/^\d+$/)) {
+            adviceId = String(postJson);
+        } else {
+            adviceId = null;
+        }
+
         if (!adviceId) {
             throw new Error(`Nie można uzyskać ID wniosku. Odpowiedź: ${JSON.stringify(postJson).slice(0, 300)}`);
         }
         log(`checkOpinion: adviceId=${adviceId}, polling...`);
 
-        // Polling GET /credit-check-advices/{id} co 3s, max 30 prób (90s)
-        const pollUrl    = `${API_BASE}/insurance/credit-check-advices/${adviceId}`;
-        const maxAttempts = 30;
+        const pollUrl = `${API_BASE}/insurance/credit-check-advices/${adviceId}`;
 
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            await sleep(3000);
+        // Sprawdź czy Angular już przechwycił gotową odpowiedź
+        const findCaptured = () => {
+            for (const { adviceId: id, body } of capturedAdviceResponses) {
+                if (id === String(adviceId)) {
+                    try {
+                        const j = JSON.parse(body);
+                        if (j.status && j.status !== 'PROCESSING') return j;
+                    } catch (_) {}
+                }
+            }
+            return null;
+        };
 
+        const immediate = findCaptured();
+        if (immediate) {
+            log(`checkOpinion: wynik z przechwycone GET — status=${immediate.status}`);
+            page.off('response', captureHandler);
+            return immediate;
+        }
+
+        // Polling GET /credit-check-advices/{id} co 3s, max 40 prób (120s)
+        for (let attempt = 1; attempt <= 40; attempt++) {
+            // Pierwsze sprawdzenie po krótszym czasie, kolejne co 3s
+            await sleep(attempt === 1 ? 2000 : 3000);
+
+            // Najpierw sprawdź przechwycone odpowiedzi Angulara
+            const captured = findCaptured();
+            if (captured) {
+                log(`checkOpinion: wynik z przechwycony GET — status=${captured.status}`);
+                page.off('response', captureHandler);
+                return captured;
+            }
+
+            // Ręczny fetch
             const poll = await page.evaluate(async (url, tok) => {
                 try {
                     const r = await fetch(url, { headers: { Authorization: tok } });
@@ -465,11 +518,13 @@ async function checkOpinion(nip) {
 
             if (result.status !== 'PROCESSING') {
                 log(`checkOpinion: gotowe! status=${result.status}`);
+                page.off('response', captureHandler);
                 return result;
             }
         }
 
-        throw new Error('Timeout: opinia nie jest gotowa po 90 sekundach');
+        page.off('response', captureHandler);
+        throw new Error('Timeout: opinia nie jest gotowa po 120 sekundach');
     } finally {
         await browser.close();
     }
