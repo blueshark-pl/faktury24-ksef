@@ -451,9 +451,10 @@ $tabLabels = [
 (function () {
     'use strict';
 
-    const syncUrl         = <?= json_encode($this->Url->build(['action' => 'sync'])) ?>;
-    const checkOpinionUrl = <?= json_encode($this->Url->build(['action' => 'checkOpinion'])) ?>;
-    const csrfToken       = <?= json_encode($csrf) ?>;
+    const syncUrl          = <?= json_encode($this->Url->build(['action' => 'sync'])) ?>;
+    const checkOpinionUrl  = <?= json_encode($this->Url->build(['action' => 'checkOpinion'])) ?>;
+    const foreignSearchUrl = <?= json_encode($this->Url->build(['action' => 'foreignSearch'])) ?>;
+    const csrfToken        = <?= json_encode($csrf) ?>;
 
     // ── Mapy pomocnicze kodów Syntesys (PL) ─────────────────────────────────
     const STATUS_PL = {
@@ -693,7 +694,7 @@ $tabLabels = [
                 </div>
             </div>`;
 
-            const { value: formData, isConfirmed } = await Swal.fire({
+            let { value: formData, isConfirmed } = await Swal.fire({
                 title: 'Sprawdź opinię Allianz Trade',
                 html: checkFormHtml,
                 showCancelButton: true,
@@ -765,6 +766,97 @@ $tabLabels = [
             });
             if (!isConfirmed || !formData) return;
 
+            // ── Krok 1b: zagraniczny — wyszukaj listę firm, pokaż picker ──────
+            if (formData.type === 'foreign') {
+                // Loading: szukam firm
+                Swal.fire({
+                    title: 'Szukam firm\u2026',
+                    html: '<p class="text-muted mb-0">Logowanie do Syntesys i wyszukiwanie.<br>Chwilk\u0119 cierpliwo\u015bci.</p>',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    showConfirmButton: false,
+                    didOpen: () => Swal.showLoading(),
+                });
+
+                let searchData;
+                try {
+                    const sResp = await fetch(foreignSearchUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+                        body: Object.entries({
+                            country_iso:      formData.countryIso       || '',
+                            country_name:     formData.countryName      || '',
+                            search_mode:      formData.searchMode       || 'id',
+                            identifier_value: formData.identifierValue  || '',
+                            company_name:     formData.companyName      || '',
+                            city:             formData.city             || '',
+                            street:           formData.street           || '',
+                            street_no:        formData.streetNo         || '',
+                        }).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'),
+                    });
+                    searchData = await sResp.json();
+                } catch (err) {
+                    Swal.fire('B\u0142\u0105d po\u0142\u0105czenia', err.message, 'error');
+                    return;
+                }
+
+                if (!searchData.success) {
+                    Swal.fire('B\u0142\u0105d wyszukiwania', searchData.message || 'Nieznany b\u0142\u0105d', 'error');
+                    return;
+                }
+
+                const foundItems = searchData.items || [];
+                if (foundItems.length === 0) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Brak wynik\u00f3w',
+                        text: 'Nie znaleziono firm pasuj\u0105cych do podanych kryteri\u00f3w.',
+                    });
+                    return;
+                }
+
+                // Pomocnicze: escape HTML
+                const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+                // Zbuduj HTML listy firm
+                const pickerRows = foundItems.map((item) => {
+                    const ids = (item.companyIdentifiers || [])
+                        .map(id => `<span class="badge bg-light text-dark border">${esc(id.type)}: ${esc(id.value)}</span>`)
+                        .join(' ');
+                    const addr = item.address
+                        ? `${esc(item.address.city || '')}${item.address.country ? ' (' + esc(item.address.country) + ')' : ''}`
+                        : '';
+                    return `<div class="list-group-item d-flex align-items-center gap-2 py-2">
+                        <div class="flex-grow-1 text-start">
+                            <strong>${esc(item.name)}</strong><br>
+                            <small class="text-muted">${ids}${addr ? ' &bull; ' + addr : ''}</small>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm flex-shrink-0 ms-2"
+                            onclick="document.getElementById('swal-picked-ehid').value=${JSON.stringify(String(item.ehid || ''))};Swal.clickConfirm()">
+                            Zam\u00f3w opini\u0119
+                        </button>
+                    </div>`;
+                }).join('');
+
+                const { value: pickedEhid, isConfirmed: pickerConfirmed } = await Swal.fire({
+                    title: `<i class="ri-building-2-line me-1"></i> Wybierz firm\u0119 (${foundItems.length})`,
+                    html: `<input type="hidden" id="swal-picked-ehid">
+                        <div class="list-group" style="max-height:340px;overflow-y:auto">${pickerRows}</div>`,
+                    showConfirmButton: false,
+                    showCancelButton: true,
+                    cancelButtonText: 'Anuluj',
+                    width: 640,
+                    preConfirm: () => {
+                        const v = document.getElementById('swal-picked-ehid')?.value || '';
+                        if (!v) { Swal.showValidationMessage('Wybierz firm\u0119 z listy'); return false; }
+                        return v;
+                    },
+                });
+
+                if (!pickerConfirmed || !pickedEhid) return;
+                formData = { ...formData, ehid: pickedEhid };
+            }
+
             // Krok 2: loading
             Swal.fire({
                 title: 'Trwa sprawdzanie…',
@@ -795,6 +887,7 @@ $tabLabels = [
                         city:             formData.city             || '',
                         street:           formData.street           || '',
                         street_no:        formData.streetNo         || '',
+                        ehid:             formData.ehid             || '',
                     }).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'),
                 });
                 data = await resp.json();

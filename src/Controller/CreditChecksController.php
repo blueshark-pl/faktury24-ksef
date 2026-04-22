@@ -231,6 +231,7 @@ class CreditChecksController extends AppController
             $city            = trim((string)($this->request->getData('city')             ?? ''));
             $street          = trim((string)($this->request->getData('street')           ?? ''));
             $streetNo        = trim((string)($this->request->getData('street_no')        ?? ''));
+            $ehid            = trim((string)($this->request->getData('ehid')             ?? ''));
 
             $scraper      = new SyntesysScraperService();
             $CreditChecks = $this->fetchTable('CreditChecks');
@@ -310,6 +311,7 @@ class CreditChecksController extends AppController
                     'city'             => $city,
                     'street'           => $street,
                     'street_no'        => $streetNo,
+                    'ehid'             => $ehid,
                 ];
             }
 
@@ -414,5 +416,71 @@ class CreditChecksController extends AppController
             : $CreditChecks->newEntity($data);
 
         $CreditChecks->save($entity);
+    }
+
+    // =========================================================================
+    // Wyszukiwanie firm zagranicznych (bez składania wniosku)
+    // =========================================================================
+
+    /**
+     * POST /kredyt-kupiecki/szukaj-firme
+     * Wyszukuje firmy zagraniczne przez Puppeteer i zwraca listę do wyboru.
+     */
+    public function foreignSearch(): \Cake\Http\Response
+    {
+        $this->request->allowMethod('post');
+
+        set_time_limit(120);
+
+        $countryIso      = trim((string)($this->request->getData('country_iso')      ?? ''));
+        $countryName     = trim((string)($this->request->getData('country_name')     ?? ''));
+        $searchMode      = trim((string)($this->request->getData('search_mode')      ?? 'id'));
+        $identifierValue = trim((string)($this->request->getData('identifier_value') ?? ''));
+        $companyName     = trim((string)($this->request->getData('company_name')     ?? ''));
+        $city            = trim((string)($this->request->getData('city')             ?? ''));
+        $street          = trim((string)($this->request->getData('street')           ?? ''));
+        $streetNo        = trim((string)($this->request->getData('street_no')        ?? ''));
+
+        if ($countryIso === '') {
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody((string)json_encode(['success' => false, 'message' => 'Wymagany kod kraju.', 'items' => []]));
+        }
+        if ($identifierValue === '' && $companyName === '') {
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody((string)json_encode(['success' => false, 'message' => 'Wymagany identyfikator lub nazwa firmy.', 'items' => []]));
+        }
+
+        try {
+            $scraper = new SyntesysScraperService();
+            $data    = $scraper->foreignSearch([
+                'country_iso'      => strtoupper($countryIso),
+                'country_name'     => $countryName,
+                'search_mode'      => in_array($searchMode, ['id', 'name'], true) ? $searchMode : 'id',
+                'identifier_value' => $identifierValue,
+                'company_name'     => $companyName,
+                'city'             => $city,
+                'street'           => $street,
+                'street_no'        => $streetNo,
+            ]);
+
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success' => $data['success'],
+                    'message' => $data['message'] ?? 'OK',
+                    'items'   => $data['items'] ?? [],
+                ]));
+        } catch (\Throwable $e) {
+            return $this->response
+                ->withStatus(500)
+                ->withType('application/json')
+                ->withStringBody((string)json_encode([
+                    'success' => false,
+                    'message' => 'Wewnętrzny błąd serwera: ' . $e->getMessage(),
+                    'items'   => [],
+                ]));
+        }
     }
 }

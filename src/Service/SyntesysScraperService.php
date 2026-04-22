@@ -190,5 +190,65 @@ class SyntesysScraperService
 
         return ['success' => true, 'message' => 'OK', 'result' => $data['result'] ?? null];
     }
+
+    /**
+     * Wyszukuje firmy zagraniczne przez Puppeteer.
+     * Zwraca listę firm pasujących do kryteriów (bez składania wniosku o opinię).
+     *
+     * @param array $params  klucze: country_iso, country_name, search_mode, identifier_value, company_name, city, street, street_no
+     * @return array{success: bool, message: string, items: array}
+     */
+    public function foreignSearch(array $params): array
+    {
+        $serviceUrl = rtrim((string)(Configure::read('Syntesys.service_url') ?? ''), '/');
+        $apiKey     = (string)(Configure::read('Syntesys.api_key') ?? '');
+
+        if ($serviceUrl === '') {
+            return ['success' => false, 'message' => 'Brak konfiguracji Syntesys.service_url', 'items' => []];
+        }
+
+        $url = $serviceUrl . '/foreign-search';
+        Log::info("SyntesysScraperService: POST {$url} country=" . ($params['country_iso'] ?? '?'), ['scope' => 'syntesys']);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($params),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT,
+            CURLOPT_HTTPHEADER     => array_filter([
+                'Content-Type: application/json',
+                'Accept: application/json',
+                $apiKey !== '' ? "X-Api-Key: {$apiKey}" : null,
+            ]),
+        ]);
+
+        $body     = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            return ['success' => false, 'message' => "Błąd połączenia: {$curlErr}", 'items' => []];
+        }
+
+        if ($httpCode !== 200) {
+            $decoded = json_decode((string)$body, true);
+            $errMsg  = is_array($decoded) ? ($decoded['error'] ?? "HTTP {$httpCode}") : "HTTP {$httpCode}";
+            return ['success' => false, 'message' => $errMsg, 'items' => []];
+        }
+
+        $data = json_decode((string)$body, true);
+        if (!is_array($data)) {
+            return ['success' => false, 'message' => 'Nieprawidłowy JSON z mikroserwisu', 'items' => []];
+        }
+
+        if (!($data['success'] ?? false)) {
+            return ['success' => false, 'message' => $data['error'] ?? 'Nieznany błąd mikroserwisu', 'items' => []];
+        }
+
+        return ['success' => true, 'message' => 'OK', 'items' => $data['items'] ?? []];
+    }
 }
 

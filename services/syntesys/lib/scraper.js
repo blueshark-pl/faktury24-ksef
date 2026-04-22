@@ -383,7 +383,7 @@ async function scrape(statusCodes) {
  * @param {string}  [opts.streetNo]               - numer ulicy
  * @returns {Promise<object>}
  */
-async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchMode = 'id', identifierValue, companyName, city, street, streetNo } = {}) {
+async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchMode = 'id', identifierValue, companyName, city, street, streetNo, ehid = '' } = {}) {
     if (!process.env.SYNTESYS_USER || !process.env.SYNTESYS_PASS) {
         throw new Error('Missing SYNTESYS_USER / SYNTESYS_PASS env vars');
     }
@@ -445,20 +445,71 @@ async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchM
             log('checkOpinion: kliknięto "Zamów opinię" (PL)');
         } else {
             // ── Klient zagraniczny ──
-            log(`checkOpinion: tryb zagraniczny kraju=${countryIso} (${countryName}), searchMode=${searchMode}`);
+            log(`checkOpinion: tryb zagraniczny kraju=${countryIso} (${countryName}), searchMode=${searchMode}, ehid=${ehid||'?'}`);
+
+            // Rejestrujemy przechwycenie XHR z wynikami wyszukiwania (GET companies/external/search)
+            let searchLoadResolve;
+            const searchLoadedPromise = new Promise((res) => { searchLoadResolve = res; });
+            const onSearchResponse = async (resp) => {
+                if (resp.url().includes('/companies/external/search') &&
+                    resp.request().method() === 'GET' && resp.status() === 200) {
+                    searchLoadResolve();
+                }
+            };
+            page.on('response', onSearchResponse);
+
             await fillForeignForm(page, { countryIso, countryName, searchMode, identifierValue, companyName, city, street, streetNo });
 
-            // Kliknij przycisk "Szukaj" (submit formularza zagranicznego)
+            // Kliknij przycisk "Szukaj"
             await page.evaluate(() => {
                 const btns = document.querySelectorAll('button[type="submit"].btn.btn-primary');
                 for (const btn of btns) {
                     if (btn.textContent.includes('Szukaj')) { btn.click(); return; }
                 }
-                // fallback: kliknij pierwszy btn-primary submit
                 const fb = document.querySelector('button[type="submit"].btn.btn-primary');
                 if (fb) fb.click();
             });
-            log('checkOpinion: kliknięto "Szukaj" (foreign)');
+            log('checkOpinion: kliknięto "Szukaj" (foreign) — czekam na wyniki XHR...');
+
+            // Poczekaj na odpowiedź XHR z wynikami (max 15s)
+            await Promise.race([
+                searchLoadedPromise,
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout: brak wyników wyszukiwania firm (15s)')), 15000)),
+            ]);
+            page.off('response', onSearchResponse);
+            await sleep(1200); // Daj Angularowi czas na renderowanie DOM wyników
+
+            // Kliknij "Zamów opinię" dla firmy z podanym ehid (lub pierwszą jeśli brak ehid)
+            const orderClicked = await page.evaluate((targetEhid) => {
+                if (targetEhid) {
+                    // Szukaj liścia DOM zawierającego dokładnie ehid, idź w górę po przycisk
+                    const allLeaves = [...document.querySelectorAll('td, span, div, p, strong')]
+                        .filter(el => el.children.length === 0 && el.textContent.trim() === targetEhid);
+                    for (const el of allLeaves) {
+                        let parent = el.parentElement;
+                        for (let i = 0; i < 10; i++) {
+                            if (!parent) break;
+                            const btn = parent.querySelector('button');
+                            if (btn && !btn.textContent.trim().includes('Szukaj')) {
+                                btn.click();
+                                return 'ehid-match';
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                }
+                // Fallback: kliknij pierwszy przycisk poza Szukaj
+                const allBtns = [...document.querySelectorAll('button')].filter(b =>
+                    !b.textContent.trim().includes('Szukaj') &&
+                    !b.disabled &&
+                    b.offsetParent !== null // widoczny
+                );
+                if (allBtns.length > 0) { allBtns[0].click(); return 'fallback'; }
+                return null;
+            }, ehid || null);
+
+            log(`checkOpinion: klik "Zamów opinię" — wynik: ${orderClicked}`);
+            if (!orderClicked) throw new Error('Nie znaleziono przycisku "Zamów opinię" w wynikach wyszukiwania.');
         }
 
         // Poczekaj na odpowiedź POST z ID wniosku
@@ -542,7 +593,79 @@ async function checkOpinion({ type = 'pl', nip, countryIso, countryName, searchM
     }
 }
 
-module.exports = { scrape, checkOpinion, toStatusCode, LIST_MAP };
+module.exports = { scrape, checkOpinion, foreignSearch, toStatusCode, LIST_MAP };
+
+/**
+ * Wyszukuje firmy zagraniczne przez Puppeteer i zwraca listę wyników.
+ * Wypełnia formularz wyszukiwania, klika "Szukaj", przechwytuje XHR.
+ *
+ * @param {object} params  { country_iso, country_name, search_mode, identifier_value, company_name, city, street, street_no }
+ * @returns {Promise<Array>} items[] z API
+ */
+async function foreignSearch({ country_iso, country_name, search_mode = 'id', identifier_value, company_name, city, street, street_no }) {
+    const browser = await launchBrowser();
+    try {
+        const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+
+        enableXhrLogging(page);
+        await login(page);
+
+        // Rejestruj przechwycenie XHR z wynikami wyszukiwania
+        let searchResolve, searchReject;
+        const searchPromise = new Promise((res, rej) => { searchResolve = res; searchReject = rej; });
+        page.on('response', async (resp) => {
+            if (resp.url().includes('/companies/external/search') &&
+                resp.request().method() === 'GET' && resp.status() === 200) {
+                try {
+                    const json = await resp.json();
+                    searchResolve(json);
+                } catch (e) { searchReject(e); }
+            }
+        });
+
+        const createUrl = `${BASE_URL}/insurance/credit-check/create/(type:single)`;
+        log(`foreignSearch: nawigacja do ${createUrl}`);
+        await page.goto(createUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+        await fillForeignForm(page, {
+            countryIso:      country_iso,
+            countryName:     country_name,
+            searchMode:      search_mode,
+            identifierValue: identifier_value,
+            companyName:     company_name,
+            city,
+            street,
+            streetNo:        street_no,
+        });
+
+        // Kliknij "Szukaj"
+        await page.evaluate(() => {
+            const btns = document.querySelectorAll('button[type="submit"].btn.btn-primary');
+            for (const btn of btns) {
+                if (btn.textContent.includes('Szukaj')) { btn.click(); return; }
+            }
+            const fb = document.querySelector('button[type="submit"].btn.btn-primary');
+            if (fb) fb.click();
+        });
+        log('foreignSearch: kliknięto "Szukaj"');
+
+        // Poczekaj na XHR z wynikami (max 20s)
+        const timeoutId = setTimeout(() => searchReject(new Error('Timeout: brak odpowiedzi z wyszukiwania firm (20s)')), 20000);
+        let searchResult;
+        try {
+            searchResult = await searchPromise;
+        } finally {
+            clearTimeout(timeoutId);
+        }
+
+        const items = searchResult.items || [];
+        log(`foreignSearch: ${items.length} wyników`);
+        return items;
+    } finally {
+        await browser.close();
+    }
+}
 
 /**
  * Wypełnia formularz wyszukiwania zagranicznego klienta na stronie Syntesys.

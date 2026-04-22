@@ -258,6 +258,7 @@ app.post('/check-opinion', async (req, res) => {
     const city            = (req.body.city             || '').trim();
     const street          = (req.body.street           || '').trim();
     const streetNo        = (req.body.street_no        || '').trim();
+    const ehid            = (req.body.ehid             || '').trim();
 
     if (clientType === 'pl') {
         if (!nip || nip.length < 9 || nip.length > 15) {
@@ -276,9 +277,46 @@ app.post('/check-opinion', async (req, res) => {
     try {
         const result = await scraper.checkOpinion({
             type: clientType, nip, countryIso, countryName,
-            searchMode, identifierValue, companyName, city, street, streetNo,
+            searchMode, identifierValue, companyName, city, street, streetNo, ehid,
         });
         res.json({ success: true, result, durationMs: Date.now() - startedAt });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message, durationMs: Date.now() - startedAt });
+    }
+});
+
+/**
+ * POST /foreign-search
+ * Wyszukuje firmy zagraniczne przez Puppeteer i zwraca listę wyników bez składania wniosku.
+ *
+ * Body: { country_iso, country_name, search_mode, identifier_value, company_name, city, street, street_no }
+ * Response: { success, items: [...], durationMs }
+ */
+app.post('/foreign-search', async (req, res) => {
+    const countryIso      = (req.body.country_iso      || '').trim().toUpperCase();
+    const countryName     = (req.body.country_name     || '').trim();
+    const searchMode      = (req.body.search_mode      || 'id').trim();
+    const identifierValue = (req.body.identifier_value || '').trim();
+    const companyName     = (req.body.company_name     || '').trim();
+    const city            = (req.body.city             || '').trim();
+    const street          = (req.body.street           || '').trim();
+    const streetNo        = (req.body.street_no        || '').trim();
+
+    if (!countryIso) {
+        return res.status(400).json({ success: false, error: 'Wymagany country_iso' });
+    }
+    if (!identifierValue && !companyName) {
+        return res.status(400).json({ success: false, error: 'Wymagany identifier_value lub company_name' });
+    }
+
+    const startedAt = Date.now();
+    try {
+        const items = await scraper.foreignSearch({
+            country_iso: countryIso, country_name: countryName,
+            search_mode: searchMode, identifier_value: identifierValue,
+            company_name: companyName, city, street, street_no: streetNo,
+        });
+        res.json({ success: true, items, durationMs: Date.now() - startedAt });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message, durationMs: Date.now() - startedAt });
     }

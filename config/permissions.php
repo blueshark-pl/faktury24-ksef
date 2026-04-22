@@ -381,7 +381,7 @@ return [
         [
             'role'       => 'user',
             'controller' => 'CreditChecks',
-            'action'     => ['index', 'sync', 'checkOpinion', 'delete'],
+            'action'     => ['index', 'sync', 'checkOpinion', 'foreignSearch', 'delete'],
         ],
 
         // Karty paliwowe E100

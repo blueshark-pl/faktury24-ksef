@@ -170,6 +170,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/kredyt-kupiecki', ['controller' => 'CreditChecks', 'action' => 'index']);
         $builder->post('/kredyt-kupiecki/sync', ['controller' => 'CreditChecks', 'action' => 'sync']);
         $builder->post('/kredyt-kupiecki/sprawdz-opinie', ['controller' => 'CreditChecks', 'action' => 'checkOpinion']);
+        $builder->post('/kredyt-kupiecki/szukaj-firme', ['controller' => 'CreditChecks', 'action' => 'foreignSearch']);
         $builder->post('/kredyt-kupiecki/usun/{id}', ['controller' => 'CreditChecks', 'action' => 'delete'])
             ->setPass(['id']);
 
