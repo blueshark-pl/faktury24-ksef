@@ -135,23 +135,24 @@ $bankBadge = function (?object $bt): string {
 };
 
 // Pomocnik URL z aktualnymi filtrami
-$currentUrl = function (array $extra = []) use ($baseAction, $search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
+$currentUrl = function (array $extra = []) use ($baseAction, $search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $bankAccountFilter, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
     $base = [
-        'q'           => $search,
-        'status'      => $status,
-        'date_from'   => $dateFrom,
-        'date_to'     => $dateTo,
-        'due_from'    => $dueDateFrom,
-        'due_to'      => $dueDateTo,
-        'currency'    => $currencyFilter,
-        'amount_from' => $amountFrom,
-        'amount_to'   => $amountTo,
-        'type'        => $typeFilter,
-        'source'      => $sourceFilter,
-        'sort'        => $sort,
-        'dir'         => $dir,
-        'limit'       => $limit,
-        'page'        => $page,
+        'q'            => $search,
+        'status'       => $status,
+        'date_from'    => $dateFrom,
+        'date_to'      => $dateTo,
+        'due_from'     => $dueDateFrom,
+        'due_to'       => $dueDateTo,
+        'currency'     => $currencyFilter,
+        'amount_from'  => $amountFrom,
+        'amount_to'    => $amountTo,
+        'bank_account' => $bankAccountFilter,
+        'type'         => $typeFilter,
+        'source'       => $sourceFilter,
+        'sort'         => $sort,
+        'dir'          => $dir,
+        'limit'        => $limit,
+        'page'         => $page,
     ];
     $merged = array_merge($base, $extra);
     $params = array_filter($merged, fn($v) => $v !== '' && $v !== null);
@@ -299,17 +300,18 @@ $typeBadge = function (string $type): string {
 <?php
 // Liczba aktywnych filtrów (dla badge)
 $activeFilterCount = 0;
-if ($search !== '')         $activeFilterCount++;
-if ($dateFrom !== '')       $activeFilterCount++;
-if ($dateTo !== '')         $activeFilterCount++;
-if ($dueDateFrom !== '')    $activeFilterCount++;
-if ($dueDateTo !== '')      $activeFilterCount++;
-if ($currencyFilter !== '') $activeFilterCount++;
-if ($amountFrom !== '')     $activeFilterCount++;
-if ($amountTo !== '')       $activeFilterCount++;
-if ($typeFilter !== '')     $activeFilterCount++;
+if ($search !== '')            $activeFilterCount++;
+if ($dateFrom !== '')          $activeFilterCount++;
+if ($dateTo !== '')            $activeFilterCount++;
+if ($dueDateFrom !== '')       $activeFilterCount++;
+if ($dueDateTo !== '')         $activeFilterCount++;
+if ($currencyFilter !== '')    $activeFilterCount++;
+if ($amountFrom !== '')        $activeFilterCount++;
+if ($amountTo !== '')          $activeFilterCount++;
+if ($bankAccountFilter !== '') $activeFilterCount++;
+if ($typeFilter !== '')        $activeFilterCount++;
 if ($sourceFilter !== '' && $lockSource === '') $activeFilterCount++;
-if ($status !== '')         $activeFilterCount++;
+if ($status !== '')            $activeFilterCount++;
 ?>
 
 <!-- Filtry -->
@@ -390,6 +392,34 @@ if ($status !== '')         $activeFilterCount++;
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="source" value="<?= h($lockSource) ?>">
+                <?php endif; ?>
+                <!-- Rachunek bankowy -->
+                <?php if (!empty($companyBankAccounts)): ?>
+                <div class="col-12 col-md-3">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">
+                        <i class="ri-bank-line me-1"></i>Rachunek bankowy
+                    </label>
+                    <select name="bank_account" class="form-select form-select-sm">
+                        <option value="">— wszystkie —</option>
+                        <?php foreach ($companyBankAccounts as $cba):
+                            $cbaLabel = h($cba->label ?: $cba->bank_name ?: '');
+                            $cbaIban  = h($cba->iban ?? '');
+                            $cbaCur   = h($cba->currency ?? 'PLN');
+                            $ibanShort = strlen($cba->iban ?? '') > 8
+                                ? '…' . substr(preg_replace('/[\s\-]/', '', $cba->iban), -8)
+                                : h($cba->iban ?? '');
+                            $selected = ($bankAccountFilter !== '' && str_contains(
+                                preg_replace('/[\s\-]/', '', $cba->iban ?? ''),
+                                preg_replace('/[\s\-]/', '', $bankAccountFilter)
+                            )) ? 'selected' : '';
+                        ?>
+                            <option value="<?= $cbaIban ?>" <?= $selected ?>>
+                                <?= $cbaLabel ? "$cbaLabel · $ibanShort · $cbaCur" : "$ibanShort · $cbaCur" ?>
+                                <?= $cba->is_default ? '★' : '' ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 <?php endif; ?>
             </div>
             <div class="row g-2 align-items-end mt-0">
@@ -1045,7 +1075,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                                 data-invoice-id="<?= h($leg->id) ?>"
                                 data-invoice-number="<?= h($leg->fullnumber) ?>"
                                 data-invoice-remaining="<?= h($legRemain) ?>"
-                                data-invoice-remaining-wal="<?= h((float)($leg->remaining_wal ?? 0)) ?>"
+                                data-invoice-remaining-wal="<?= h(round($legCur !== 'PLN' && $legNetto > 0.001 ? $legRemainBruttoWal : (float)($leg->remaining_wal ?? 0), 2)) ?>"
                                 data-invoice-currency="<?= h($legCur) ?>"
                                 title="Dodaj wpłatę archiwalną">
                             <i class="ri-add-circle-line"></i>
@@ -1431,10 +1461,10 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 
         var isLegacy = !!data.legacy;
 
-        if (!data.nip) {
+        if (!data.nip && !data.contractor) {
             container.innerHTML = '<div class="alert alert-light py-2 small mb-0">'
                 + '<i class="ri-information-line me-1 text-muted"></i>'
-                + 'Kontrahent nie ma przypisanego NIP-u — nie można automatycznie wyszukać przelewów.'
+                + 'Brak danych kontrahenta — nie można automatycznie wyszukać przelewów.'
                 + '</div>';
             return;
         }
@@ -1443,9 +1473,10 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var candidates = data.candidates || [];
 
         if (!linked.length && !candidates.length) {
+            var searchKey = data.contractor || data.nip || '?';
             container.innerHTML = '<div class="text-muted small fst-italic py-1">'
                 + '<i class="ri-search-line me-1"></i>'
-                + 'Brak przelewów dla NIP: <strong>' + esc(data.nip) + '</strong>'
+                + 'Brak pasujących przelewów dla: <strong>' + esc(searchKey) + '</strong>'
                 + '</div>';
             return;
         }

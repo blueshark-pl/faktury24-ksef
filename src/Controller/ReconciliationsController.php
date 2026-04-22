@@ -48,18 +48,19 @@ class ReconciliationsController extends AppController
 
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
 
-        $search         = trim((string)$this->request->getQuery('q', ''));
-        $status         = $this->request->getQuery('status', '');
-        $dateFrom       = $this->request->getQuery('date_from', '');
-        $dateTo         = $this->request->getQuery('date_to', '');
-        $dueDateFrom    = $this->request->getQuery('due_from', '');
-        $dueDateTo      = $this->request->getQuery('due_to', '');
-        $currencyFilter = $this->request->getQuery('currency', '');
-        $amountFrom     = $this->request->getQuery('amount_from', '');
-        $amountTo       = $this->request->getQuery('amount_to', '');
-        $typeFilter     = $this->request->getQuery('type', '');
-        $sort           = (string)$this->request->getQuery('sort', '');
-        $dir            = $this->request->getQuery('dir', 'asc');
+        $search              = trim((string)$this->request->getQuery('q', ''));
+        $status              = $this->request->getQuery('status', '');
+        $dateFrom            = $this->request->getQuery('date_from', '');
+        $dateTo              = $this->request->getQuery('date_to', '');
+        $dueDateFrom         = $this->request->getQuery('due_from', '');
+        $dueDateTo           = $this->request->getQuery('due_to', '');
+        $currencyFilter      = $this->request->getQuery('currency', '');
+        $amountFrom          = $this->request->getQuery('amount_from', '');
+        $amountTo            = $this->request->getQuery('amount_to', '');
+        $typeFilter          = $this->request->getQuery('type', '');
+        $bankAccountFilter   = trim((string)$this->request->getQuery('bank_account', ''));
+        $sort                = (string)$this->request->getQuery('sort', '');
+        $dir                 = $this->request->getQuery('dir', 'asc');
         $page           = max(1, (int)$this->request->getQuery('page', 1));
         $limit          = (int)$this->request->getQuery('limit', 50);
         if (!in_array($limit, [25, 50, 100, 200], true)) {
@@ -68,6 +69,15 @@ class ReconciliationsController extends AppController
 
         $today    = date('Y-m-d');
         $Invoices = $this->fetchTable('Invoices');
+
+        // Rachunki bankowe firmy — do filtra i selecta w modalu
+        $companyBankAccounts = $this->fetchTable('CompanyBankAccounts')
+            ->find()
+            ->where(['company_id' => $companyId])
+            ->select(['id', 'iban', 'label', 'currency', 'bank_name', 'is_default'])
+            ->orderByDesc('is_default')
+            ->orderByAsc('label')
+            ->all()->toArray();
 
         // Typy faktur traktowane jako korekty — wykluczane ze statystyk i listy
         // (pokazywane jako badge na oryginale, nie jako osobne wiersze)
@@ -129,6 +139,26 @@ class ReconciliationsController extends AppController
         $validTypes = ['vat', 'novat', 'currency', 'proforma', 'advance', 'final', 'correction', 'margin', 'rental', 'oss', 'internal', 'internalEvidence'];
         if (in_array($typeFilter, $validTypes, true)) {
             $baseConditions['Invoices.type'] = $typeFilter;
+        }
+
+        // Filtr rachunku bankowego — faktury z powiązanym przelewem na danym koncie
+        if ($bankAccountFilter !== '') {
+            $cleanIban = preg_replace('/[\s\-]/', '', $bankAccountFilter);
+            $bankInvoiceIds = $this->fetchTable('BankTransactions')->find()
+                ->select(['invoice_id'])
+                ->where([
+                    'company_id'         => $companyId,
+                    'invoice_id IS NOT'  => null,
+                    'REPLACE(REPLACE(account_number, " ", ""), "-", "") LIKE' => '%' . $cleanIban . '%',
+                ])
+                ->all()->extract('invoice_id')->toList();
+
+            if (!empty($bankInvoiceIds)) {
+                $baseConditions['Invoices.id IN'] = $bankInvoiceIds;
+            } else {
+                // Brak pasujących transakcji → brak wyników
+                $baseConditions['Invoices.id'] = 'no-match-uuid';
+            }
         }
 
         // Warunki dla statystyk (kafelki) — BEZ filtra statusu, żeby kafelki były zawsze globalne
@@ -445,11 +475,12 @@ class ReconciliationsController extends AppController
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
             'search', 'status', 'dateFrom', 'dateTo', 'dueDateFrom', 'dueDateTo',
-            'currencyFilter', 'amountFrom', 'amountTo',
+            'currencyFilter', 'amountFrom', 'amountTo', 'bankAccountFilter',
             'typeFilter', 'sort', 'dir',
             'stats', 'bankByInvoice', 'speedByInvoice', 'correctionsByParentId',
             'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
-            'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync'
+            'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync',
+            'companyBankAccounts'
         ));
         $this->set('title', 'Rozliczenia');
     }
