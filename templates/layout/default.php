@@ -248,10 +248,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <div class="header-element">
                             <div class="horizontal-logo">
                                 <a href="/" class="header-logo">
-                                    <img src="../assets/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
-                                    <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
-                                    <img src="../assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                                    <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
+                                    <img src="/assets/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
+                                    <img src="/assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
+                                    <img src="/assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
+                                    <img src="/assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
                                 </a>
                             </div>
                         </div>
@@ -391,9 +391,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <div class="main-sidebar-header">
                     <a href="/" class="header-logo">
                         <!-- <img src="/img/logo-faktury24.png" alt="logo" class="desktop-logo"> -->
-                        <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
-                        <img src="../assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                        <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
+                        <img src="/assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
+                        <img src="/assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
+                        <img src="/assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
                     </a>
                 </div>
                 <!-- End::main-sidebar-header -->

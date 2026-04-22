@@ -382,8 +382,9 @@ document.addEventListener('DOMContentLoaded', function () {
             el.innerHTML = '<i class="ri-information-line me-1"></i>' + data.message;
             btn.disabled = false;
             btn.innerHTML = '<i class="ri-refresh-line me-1"></i> Synchronizuj';
-            if (data.imported > 0) {
-                setTimeout(() => location.reload(), 2000);
+            if (data.success) {
+                el.innerHTML += '<br><small class="text-muted">Odświeżam stronę…</small>';
+                setTimeout(() => location.reload(), 1500);
             }
         })
         .catch(() => {

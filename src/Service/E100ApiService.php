@@ -39,7 +39,9 @@ class E100ApiService
      */
     public function encryptPassword(string $plain): string
     {
-        $key  = mb_substr(Configure::read('Security.salt'), 0, 32, '8bit');
+        $salt = (string)(Configure::read('Security.salt') ?? Configure::read('App.defaultLocale') ?? 'fallback_key_32bytes_xxxxxxxxxx');
+        $key  = mb_substr($salt, 0, 32, '8bit');
+        $key  = str_pad($key, 32, '\0');
         $iv   = random_bytes(16);
         $enc  = openssl_encrypt($plain, self::CIPHER, $key, OPENSSL_RAW_DATA, $iv);
 
@@ -51,7 +53,9 @@ class E100ApiService
      */
     public function decryptPassword(string $encoded): string
     {
-        $key  = mb_substr(Configure::read('Security.salt'), 0, 32, '8bit');
+        $salt = (string)(Configure::read('Security.salt') ?? Configure::read('App.defaultLocale') ?? 'fallback_key_32bytes_xxxxxxxxxx');
+        $key  = mb_substr($salt, 0, 32, '8bit');
+        $key  = str_pad($key, 32, '\0');
         $raw  = base64_decode($encoded, true);
         if ($raw === false || mb_strlen($raw, '8bit') < 17) {
             return '';
