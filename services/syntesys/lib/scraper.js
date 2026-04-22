@@ -37,7 +37,8 @@ async function launchBrowser() {
         '--disable-extensions',
     ];
 
-    const opts = { headless: true, args };
+    const headless = process.env.PUPPETEER_HEADLESS !== 'false';
+    const opts = { headless, args };
     if (process.env.CHROME_EXECUTABLE) {
         opts.executablePath = process.env.CHROME_EXECUTABLE;
     }
