@@ -50,34 +50,47 @@ async function launchBrowser() {
     return puppeteer.launch(opts);
 }
 
-// ─── Token capture ───────────────────────────────────────────────────────────
+// ─── XHR interceptor ─────────────────────────────────────────────────────────
+
+const API_CREDIT_BASE = `${API_BASE}/insurance/credit-check-advices`;
 
 /**
- * Czeka na pierwsze żądanie XHR do syntesys-api i wyciąga Bearer token
- * z nagłówka Authorization. MUSI być wywołane PRZED page.goto().
- * @returns {Promise<string>}  pełny nagłówek np. "Bearer eyJ..."
+ * Loguje WSZYSTKIE żądania/odpowiedzi do syntesys-api w konsoli (debug).
  */
-function captureToken(page) {
-    const apiPattern = /syntesys-api\/insurance\/credit-check/;
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            page.off('request', onReq);
-            reject(new Error('Timeout: Angular nie wysłał żądania API w ciągu 30s'));
-        }, 30000);
-
-        function onReq(req) {
-            if (!apiPattern.test(req.url())) return;
-            const auth = req.headers()['authorization'];
-            if (auth && auth.startsWith('Bearer ')) {
-                clearTimeout(timer);
-                page.off('request', onReq);
-                log(`XHR przechwycony: ${req.url()}`);
-                resolve(auth);
-            }
+function enableXhrLogging(page) {
+    page.on('request', req => {
+        if (req.url().includes('syntesys-api')) {
+            log(`[XHR →] ${req.method()} ${req.url()}`);
         }
-
-        page.on('request', onReq);
     });
+    page.on('response', resp => {
+        if (resp.url().includes('syntesys-api')) {
+            log(`[XHR ←] HTTP ${resp.status()} ${resp.url()}`);
+        }
+    });
+}
+
+/**
+ * Czeka na pierwszą odpowiedź XHR do credit-check-advices,
+ * przechwytuje Bearer token z nagłówka żądania i body odpowiedzi.
+ * MUSI być wywołane PRZED page.goto().
+ *
+ * @returns {Promise<{ token: string, status: number, body: string }>}
+ */
+function captureFirstApiCall(page) {
+    return page
+        .waitForResponse(
+            resp => resp.url().includes('/syntesys-api/insurance/credit-check-advices'),
+            { timeout: 30000 }
+        )
+        .then(async resp => {
+            const token  = resp.request().headers()['authorization'] ?? '';
+            const status = resp.status();
+            const body   = await resp.text();
+            log(`[XHR ←] Przechwycona odpowiedź: HTTP ${status} ${resp.url()}`);
+            log(`[XHR] Token Bearer: ${token.length} znaków`);
+            return { token, status, body };
+        });
 }
 
 // ─── Login ───────────────────────────────────────────────────────────────────
@@ -136,64 +149,73 @@ async function login(page) {
     await page.waitForNetworkIdle({ idleTime: 1000, timeout: 20000 }).catch(() => {});
     await sleep(1000);
 
-    // 5. Ustaw interceptor PRZED nawigacją — Angular wyśle XHR zaraz po załadowaniu strony
+    // 5. Włącz logowanie wszystkich XHR + ustaw interceptor odpowiedzi PRZED goto
     const appUrl = `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`;
-    log('Ustawiam interceptor tokenu Bearer...');
-    const tokenPromise = captureToken(page);
+    enableXhrLogging(page);
+    log('Czekam na pierwsze żądanie API od Angulara...');
+    const apiCallPromise = captureFirstApiCall(page);
 
     log(`Navigating to app: ${appUrl}`);
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
-    // 6. Czekamy aż Angular wystrzeli pierwsze żądanie API i przechwycimy token
-    log('Czekam na pierwsze żądanie API od Angulara...');
-    const token = await tokenPromise;
-    log(`Token Bearer przechwycony (${token.length} znaków)`);
+    // 6. Czekamy na odpowiedź — mamy token i body strony 1
+    const { token, status: firstStatus, body: firstBody } = await apiCallPromise;
+    log(`Token przechwycony, pierwsza strona: HTTP ${firstStatus}`);
 
-    return token;
+    return { token, firstBody: { status: firstStatus, body: firstBody } };
 }
 
 // ─── Fetch one list (all pages) ───────────────────────────────────────────────
 
 /**
  * @param {object} page
- * @param {string} statusCode  np. 'WITH_OPINION'
- * @param {string} token       nagłówek Authorization np. 'Bearer eyJ...'
+ * @param {string} statusCode    np. 'WITH_OPINION'
+ * @param {string} token         nagłówek Authorization np. 'Bearer eyJ...'
+ * @param {object|null} firstPage  opcjonalny { status, body } z przechwyconego XHR strony 1
  */
-async function fetchList(page, statusCode, token) {
+async function fetchList(page, statusCode, token, firstPage = null) {
     const items  = [];
     let   pageNo = 1;
 
     log(`Fetching list: ${statusCode}`);
 
     while (true) {
-        let url = `${API_BASE}/insurance/credit-check-advices`
-            + `?filter.listStatus=${statusCode}`
-            + `&page.no=${pageNo}&page.size=${PAGE_SIZE}`
-            + `&sortDirection=DESC&sortBy=sendDate`;
-
+        // Zbuduj URL — base + podmieniona query string
+        const params = new URLSearchParams({
+            'filter.listStatus': statusCode,
+            'page.no':           pageNo,
+            'page.size':         PAGE_SIZE,
+            'sortDirection':     'DESC',
+            'sortBy':            'sendDate',
+        });
         if (statusCode === 'WITH_OPINION') {
-            url += '&filter.activeOnly=true';
+            params.set('filter.activeOnly', 'true');
         }
-
+        const url = `${API_CREDIT_BASE}?${params}`;
         log(`  page ${pageNo}: ${url}`);
 
-        const result = await page.evaluate(async (fetchUrl, authToken) => {
-            const resp = await fetch(fetchUrl, {
-                method:  'GET',
-                headers: {
-                    'Accept':        'application/json',
-                    'Authorization': authToken,
-                },
-            });
-            const body = await resp.text();
-            const headers = {};
-            resp.headers.forEach((v, k) => { headers[k] = v; });
-            return { status: resp.status, body, headers };
-        }, url, token);
+        let result;
 
-        log(`  → HTTP ${result.status}`);
+        // Strona 1 — użyj przechwyconego body jeśli dostępne (oszczędza jeden request)
+        if (pageNo === 1 && firstPage) {
+            log(`  → używam przechwyconą odpowiedź Angulara (HTTP ${firstPage.status})`);
+            result = firstPage;
+        } else {
+            result = await page.evaluate(async (fetchUrl, authToken) => {
+                const resp = await fetch(fetchUrl, {
+                    method:  'GET',
+                    headers: {
+                        'Accept':        'application/json',
+                        'Authorization': authToken,
+                    },
+                });
+                const body = await resp.text();
+                return { status: resp.status, body };
+            }, url, token);
+            log(`  → HTTP ${result.status}`);
+        }
+
         if (result.status !== 200) {
-            log(`  → Headers: ${JSON.stringify(result.headers)}`);
             log(`  → Body: ${result.body.slice(0, 1000)}`);
         }
 
@@ -252,10 +274,12 @@ async function scrape(statusCodes) {
         const savedSession = session.load();
         const savedToken   = savedSession?.token;
         let   token;
+        let   loginFirstBody = null; // body strony 1 przechwycone przy logowaniu
 
         if (savedToken) {
-            // Mamy token — nawiguj do app żeby mieć właściwy origin dla fetch()
+            // Mamy token — nawiguj do app i włącz logowanie XHR
             log('Restoring session (token cached, TTL ok)...');
+            enableXhrLogging(page);
             await page.goto(
                 `${BASE_URL}/insurance/credit-check/requests-lists/(type:done)`,
                 { waitUntil: 'domcontentloaded', timeout: 20000 }
@@ -265,20 +289,27 @@ async function scrape(statusCodes) {
             log('Session restored — skipping login');
         } else {
             log('No valid session — logging in...');
-            token = await login(page);
+            const loginResult = await login(page);
+            token         = loginResult.token;
+            loginFirstBody = loginResult.firstBody;
             session.save({ token });
         }
 
         // Pobierz wszystkie żądane statusy
         const output = {};
+        let   isFirst = true;
         for (const statusCode of statusCodes) {
+            // Dla pierwszego statusu (WITH_OPINION) użyj przechwyconego body z logowania
+            const firstPage = (isFirst && loginFirstBody) ? loginFirstBody : null;
+            isFirst = false;
             try {
-                output[statusCode] = await fetchList(page, statusCode, token);
+                output[statusCode] = await fetchList(page, statusCode, token, firstPage);
             } catch (e) {
                 if (e.code === 'SESSION_EXPIRED') {
                     log('Session expired during fetch — re-login...');
                     session.clear();
-                    token = await login(page);
+                    const loginResult = await login(page);
+                    token = loginResult.token;
                     session.save({ token });
                     // retry once
                     output[statusCode] = await fetchList(page, statusCode, token);
