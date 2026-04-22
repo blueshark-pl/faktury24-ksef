@@ -96,6 +96,12 @@ function upsertBatch(items, listStatus) {
     let inserted   = 0;
     let updated    = 0;
 
+    // Debug: wypisz strukturę pierwszego elementu żeby sprawdzić mapowanie pól
+    if (items.length > 0) {
+        process.stderr.write(`[db] SAMPLE item keys: ${Object.keys(items[0]).join(', ')}\n`);
+        process.stderr.write(`[db] SAMPLE item: ${JSON.stringify(items[0], null, 2).slice(0, 2000)}\n`);
+    }
+
     const upsertMany = db.transaction((rows) => {
         for (const item of rows) {
             const req    = item.request    || {};
