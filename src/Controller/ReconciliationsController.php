@@ -395,32 +395,52 @@ class ReconciliationsController extends AppController
                 ->all()
                 ->toArray();
 
-            // Uzupełnij paymentdate z platnosc dla rekordów z null
-            // UWAGA: disableHydration() w CakePHP 5 nadal zwraca date jako Cake\I18n\Date (DateTimeInterface),
-            // którego __toString() jest zlokalizowany — trzeba używać ->format() zamiast (string) cast.
-            foreach ($legacyStatsRows as &$srow) {
-                if (empty($srow['paymentdate']) && !empty($srow['platnosc'])) {
-                    if (preg_match('/(\d+)\s*dni/i', (string)$srow['platnosc'], $pm)) {
-                        $days = (int)$pm[1];
-                        $dateVal = $srow['date'];
-                        if ($dateVal instanceof \DateTimeInterface) {
-                            $dStr = $dateVal->format('Y-m-d');
-                        } elseif ($dateVal) {
-                            $dStr = substr((string)$dateVal, 0, 10);
-                        } else {
-                            $dStr = '';
-                        }
-                        $dObj = $dStr ? \DateTime::createFromFormat('Y-m-d', $dStr) : false;
-                        if ($dObj) {
-                            $dObj->modify("+{$days} days");
-                            $srow['paymentdate'] = $dObj->format('Y-m-d');
-                        }
+            // Statystyki finansowe (sumy, VAT) — disableHydration dla wydajności
+            $legacyStats = $this->_computeStats($legacyStatsRows, $today, true);
+
+            // ── Przeterminowane (overdue) — osobne zapytanie z identyczną logiką co filtr listy ──
+            // Używamy pełnych encji (nie disableHydration) żeby mieć ten sam format dat co lista,
+            // a filtr PHP jest 1:1 skopiowany z filtra listy overdue — gwarantuje spójność liczb.
+            $legacyOverdueRows = $LegacyInvoices->find()
+                ->where(array_merge($legacyStatsConditions, ['LegacyInvoices.paymentstate !=' => 'paid']))
+                ->select(['id', 'paymentdate', 'platnosc', 'date', 'remaining', 'remaining_wal', 'currency'])
+                ->all()->toArray();
+
+            $legacyOverduePln   = 0.0;
+            $legacyOverdueEur   = 0.0;
+            $legacyOverdueCount = 0;
+
+            foreach ($legacyOverdueRows as $leg) {
+                $pdate = null;
+                if ($leg->paymentdate !== null) {
+                    try { $pdate = $leg->paymentdate->format('Y-m-d'); } catch (\Throwable $e) {
+                        $pdate = substr((string)$leg->paymentdate, 0, 10) ?: null;
+                    }
+                }
+                if (!$pdate && !empty($leg->platnosc) && preg_match('/(\d+)\s*dni/i', (string)$leg->platnosc, $m)) {
+                    try { $ds = $leg->date->format('Y-m-d'); } catch (\Throwable $e) {
+                        $ds = substr((string)$leg->date, 0, 10);
+                    }
+                    if (!empty($ds)) {
+                        $c = \DateTime::createFromFormat('Y-m-d', $ds);
+                        if ($c) { $c->modify("+{$m[1]} days"); $pdate = $c->format('Y-m-d'); }
+                    }
+                }
+                if ($pdate !== null && $pdate < $today) {
+                    $legacyOverdueCount++;
+                    if ((string)($leg->currency ?? 'PLN') === 'EUR') {
+                        $legacyOverdueEur += (float)($leg->remaining_wal ?? 0);
+                    } else {
+                        $legacyOverduePln += (float)($leg->remaining ?? 0);
                     }
                 }
             }
-            unset($srow);
-            // _computeStats już wewnętrznie filtruje: state !== 'paid' && pdate < today
-            $legacyStats = $this->_computeStats($legacyStatsRows, $today, true);
+
+            // Nadpisz overdue wartości dokładnymi (z pełnych encji)
+            $legacyStats['overduePln']   = $legacyOverduePln;
+            $legacyStats['overdueEur']   = $legacyOverdueEur;
+            $legacyStats['overdueCount'] = $legacyOverdueCount;
+            $legacyStats['overdue']      = $legacyOverduePln + $legacyOverdueEur;
 
             // Merge statystyk
             $stats['count']               += $legacyStats['count'];
