@@ -461,7 +461,7 @@ class BankTransactionsController extends AppController
                     ])
                     ->select([
                         'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
-                        'Invoices.remaining', 'Invoices.alreadypaid', 'Invoices.currency',
+                        'Invoices.remaining', 'Invoices.currency',
                         'Invoices.exchange_rate', 'Invoices.paymentstate',
                         'Invoices.paymentdate', 'Invoices.date',
                     ])
@@ -477,7 +477,6 @@ class BankTransactionsController extends AppController
                     $totalPln     = (float)$inv->total;
                     $nettoPln     = (float)$inv->netto;
                     $remainingPln = (float)$inv->remaining;
-                    $alreadyPln   = (float)($inv->alreadypaid ?? 0);
 
                     // Dla faktur walutowych — przelicz na walutę faktury do wyświetlenia
                     if ($isEur) {
