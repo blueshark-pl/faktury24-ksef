@@ -87,6 +87,10 @@ class InvoicesTable extends Table
         $this->hasMany('InvoicePayments', [
             'foreignKey' => 'invoice_id',
         ]);
+        $this->hasMany('BankTransactionAllocations', [
+            'foreignKey' => 'invoice_id',
+            'dependent'  => true,
+        ]);
         $this->hasMany('InvoiceAdditionalDescriptions', [
             'foreignKey' => 'invoice_id',
         ]);

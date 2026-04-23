@@ -154,6 +154,13 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->get('/rozliczenia/legacy-bank-transactions/{id}', ['controller' => 'Reconciliations', 'action' => 'legacyBankTransactions'])
             ->setPass(['id']);
+        $builder->get('/rozliczenia/alokacje/{id}', ['controller' => 'Reconciliations', 'action' => 'allocations'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/add-allocation', ['controller' => 'Reconciliations', 'action' => 'addAllocation']);
+        $builder->post('/rozliczenia/delete-allocation/{id}', ['controller' => 'Reconciliations', 'action' => 'deleteAllocation'])
+            ->setPass(['id']);
+        $builder->get('/rozliczenia/tx-allocated/{id}', ['controller' => 'Reconciliations', 'action' => 'transactionAllocatedSummary'])
+            ->setPass(['id']);
 
         // Wyciągi bankowe MT940
         $builder->get('/wyciagi', ['controller' => 'BankTransactions', 'action' => 'index']);

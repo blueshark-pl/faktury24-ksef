@@ -51,6 +51,10 @@ class InvoicePaymentsTable extends Table
             'foreignKey' => 'invoice_id',
             'joinType' => 'INNER',
         ]);
+        $this->hasOne('BankTransactionAllocation', [
+            'foreignKey' => 'invoice_payment_id',
+            'className'  => 'BankTransactionAllocations',
+        ]);
     }
 
     /**

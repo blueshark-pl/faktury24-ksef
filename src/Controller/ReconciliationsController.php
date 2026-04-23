@@ -1386,6 +1386,331 @@ class ReconciliationsController extends AppController
             ]));
     }
 
+    // ── Alokacje przelewów ────────────────────────────────────────────────────
+
+    /**
+     * AJAX GET: zwraca alokacje przypisane do faktury (system lub legacy).
+     * URL: /rozliczenia/alokacje/{invoiceId}?legacy=1
+     */
+    public function allocations(string $invoiceId): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $isLegacy  = (bool)$this->request->getQuery('legacy');
+
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        $condition = $isLegacy
+            ? ['BankTransactionAllocations.legacy_invoice_id' => $invoiceId]
+            : ['BankTransactionAllocations.invoice_id'        => $invoiceId];
+
+        $rows = $Allocations->find()
+            ->where(array_merge($condition, ['BankTransactionAllocations.company_id' => $companyId]))
+            ->contain([
+                'BankTransactions' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'value_date', 'amount', 'currency', 'party_name', 'title', 'account_number']);
+                },
+            ])
+            ->select([
+                'BankTransactionAllocations.id',
+                'BankTransactionAllocations.bank_transaction_id',
+                'BankTransactionAllocations.invoice_payment_id',
+                'BankTransactionAllocations.allocated_amount',
+                'BankTransactionAllocations.currency',
+                'BankTransactionAllocations.allocation_type',
+                'BankTransactionAllocations.note',
+                'BankTransactionAllocations.created',
+            ])
+            ->orderByDesc('BankTransactionAllocations.created')
+            ->all()->toArray();
+
+        $fmtDate = static function ($v): string {
+            if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            return $v ? substr((string)$v, 0, 10) : '';
+        };
+
+        $result = array_map(static function ($row) use ($fmtDate): array {
+            $tx = $row->bank_transaction;
+            return [
+                'id'               => (string)$row->id,
+                'bank_tx_id'       => (string)$row->bank_transaction_id,
+                'invoice_payment_id' => $row->invoice_payment_id ? (string)$row->invoice_payment_id : null,
+                'allocated_amount' => (float)$row->allocated_amount,
+                'currency'         => (string)$row->currency,
+                'allocation_type'  => (string)$row->allocation_type,
+                'note'             => (string)($row->note ?? ''),
+                'created'          => $fmtDate($row->created),
+                'tx_date'          => $tx ? $fmtDate($tx->value_date) : null,
+                'tx_amount'        => $tx ? (float)$tx->amount : null,
+                'tx_currency'      => $tx ? (string)$tx->currency : null,
+                'tx_party'         => $tx ? (string)($tx->party_name ?? '') : null,
+                'tx_title'         => $tx ? (string)($tx->title ?? '') : null,
+            ];
+        }, $rows);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['allocations' => $result]));
+    }
+
+    /**
+     * AJAX POST: tworzy alokację przelewu do faktury + opcjonalnie wpłatę.
+     * Body JSON: bank_transaction_id, invoice_id|legacy_invoice_id, allocated_amount,
+     *            currency, allocation_type (gross|net|vat), note
+     */
+    public function addAllocation(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $data      = (array)$this->request->getData();
+
+        $txId           = trim((string)($data['bank_transaction_id'] ?? ''));
+        $invoiceId      = trim((string)($data['invoice_id'] ?? ''));
+        $legacyId       = trim((string)($data['legacy_invoice_id'] ?? ''));
+        $amount         = (float)($data['allocated_amount'] ?? 0);
+        $currency       = strtoupper(trim((string)($data['currency'] ?? 'PLN')));
+        $allocationType = (string)($data['allocation_type'] ?? 'gross');
+        $note           = trim((string)($data['note'] ?? ''));
+
+        if ($txId === '' || ($invoiceId === '' && $legacyId === '') || $amount <= 0) {
+            return $this->_jsonError('Brakujące lub nieprawidłowe dane.');
+        }
+        if (!in_array($allocationType, ['gross', 'net', 'vat'], true)) {
+            $allocationType = 'gross';
+        }
+
+        // Weryfikacja przelewu
+        $BankTransactions = $this->fetchTable('BankTransactions');
+        $tx = $BankTransactions->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->select(['id', 'amount', 'currency', 'value_date'])
+            ->first();
+
+        if ($tx === null) {
+            return $this->_jsonError('Przelew nie istnieje lub brak uprawnień.');
+        }
+
+        // Weryfikacja faktury
+        if ($invoiceId !== '') {
+            $invoice = $this->fetchTable('Invoices')->find()
+                ->where(['id' => $invoiceId, 'company_id' => $companyId])
+                ->select(['id', 'total', 'netto', 'remaining', 'currency', 'paymentstate'])
+                ->first();
+            if ($invoice === null) {
+                return $this->_jsonError('Faktura nie istnieje lub brak uprawnień.');
+            }
+        } else {
+            $invoice = $this->fetchTable('LegacyInvoices')->find()
+                ->where(['id' => $legacyId, 'company_id' => $companyId])
+                ->select(['id', 'total', 'netto', 'remaining', 'remaining_wal', 'currency', 'paymentstate'])
+                ->first();
+            if ($invoice === null) {
+                return $this->_jsonError('Faktura archiwalna nie istnieje lub brak uprawnień.');
+            }
+        }
+
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        // Sprawdź czy taka alokacja już istnieje (ten przelew + ta faktura + ten typ)
+        $existingCondition = array_merge(
+            ['BankTransactionAllocations.bank_transaction_id' => $txId,
+             'BankTransactionAllocations.allocation_type'     => $allocationType],
+            $invoiceId !== '' ? ['BankTransactionAllocations.invoice_id' => $invoiceId]
+                              : ['BankTransactionAllocations.legacy_invoice_id' => $legacyId]
+        );
+        if ($Allocations->exists($existingCondition)) {
+            return $this->_jsonError('Ta alokacja już istnieje (ten przelew, faktura i typ płatności są już połączone).');
+        }
+
+        $allocationData = [
+            'id'                  => \Cake\Utility\Text::uuid(),
+            'company_id'          => $companyId,
+            'bank_transaction_id' => $txId,
+            'invoice_id'          => $invoiceId !== '' ? $invoiceId : null,
+            'legacy_invoice_id'   => $legacyId !== '' ? $legacyId : null,
+            'allocated_amount'    => $amount,
+            'currency'            => $currency,
+            'allocation_type'     => $allocationType,
+            'note'                => $note !== '' ? $note : null,
+        ];
+
+        $allocation = $Allocations->newEntity($allocationData);
+        if (!$Allocations->save($allocation)) {
+            return $this->_jsonError('Nie udało się zapisać alokacji.', $allocation->getErrors());
+        }
+
+        // Utwórz invoice_payment jeśli to faktura systemowa
+        $paymentId = null;
+        if ($invoiceId !== '') {
+            $InvoicePayments = $this->fetchTable('InvoicePayments');
+            $payment = $InvoicePayments->newEntity([
+                'id'                              => \Cake\Utility\Text::uuid(),
+                'invoice_id'                      => $invoiceId,
+                'bank_transaction_allocation_id'  => (string)$allocation->id,
+                'payment_date'                    => ($tx->value_date instanceof \DateTimeInterface)
+                                                        ? $tx->value_date->format('Y-m-d')
+                                                        : substr((string)$tx->value_date, 0, 10),
+                'amount'                          => $amount,
+                'currency'                        => $currency,
+                'payment_type'                    => $allocationType,
+                'payment_method'                  => 'transfer',
+                'description'                     => $note !== '' ? $note : ('Przelew: ' . (string)($tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('Y-m-d') : $tx->value_date)),
+            ]);
+
+            if ($InvoicePayments->save($payment)) {
+                $paymentId = (string)$payment->id;
+
+                // Powiąż alokację z wpłatą
+                $allocation->invoice_payment_id = $paymentId;
+                $Allocations->save($allocation);
+
+                // Zaktualizuj alreadypaid / remaining faktury
+                $this->_recalcInvoicePaymentState($invoiceId);
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success'            => true,
+                'allocation_id'      => (string)$allocation->id,
+                'invoice_payment_id' => $paymentId,
+            ]));
+    }
+
+    /**
+     * AJAX DELETE: usuwa alokację (i powiązaną wpłatę jeśli istnieje).
+     */
+    public function deleteAllocation(string $allocationId): Response
+    {
+        $this->request->allowMethod(['post', 'delete']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+        $allocation  = $Allocations->find()
+            ->where(['id' => $allocationId, 'company_id' => $companyId])
+            ->first();
+
+        if ($allocation === null) {
+            return $this->_jsonError('Alokacja nie istnieje lub brak uprawnień.');
+        }
+
+        $invoiceId = $allocation->invoice_id;
+
+        // Usuń powiązaną wpłatę jeśli istnieje
+        if ($allocation->invoice_payment_id) {
+            $this->fetchTable('InvoicePayments')
+                ->deleteAll(['id' => $allocation->invoice_payment_id]);
+        }
+
+        if (!$Allocations->delete($allocation)) {
+            return $this->_jsonError('Nie udało się usunąć alokacji.');
+        }
+
+        // Przelicz stan faktury systemowej
+        if ($invoiceId) {
+            $this->_recalcInvoicePaymentState($invoiceId);
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true]));
+    }
+
+    /**
+     * AJAX GET: zwraca sumę alokacji i pozostałe do przydzielenia dla przelewu.
+     */
+    public function transactionAllocatedSummary(string $txId): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $tx = $this->fetchTable('BankTransactions')->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->select(['id', 'amount', 'currency'])
+            ->first();
+
+        if ($tx === null) {
+            return $this->_jsonError('Przelew nie istnieje.');
+        }
+
+        $allocated = (float)$this->fetchTable('BankTransactionAllocations')
+            ->find()
+            ->where(['bank_transaction_id' => $txId])
+            ->select(['s' => 'SUM(allocated_amount)'])
+            ->disableHydration()
+            ->first()['s'];
+
+        $txAmount  = (float)$tx->amount;
+        $remaining = round($txAmount - $allocated, 4);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'tx_amount'        => $txAmount,
+                'tx_currency'      => (string)$tx->currency,
+                'allocated_amount' => round($allocated, 4),
+                'remaining_amount' => $remaining,
+            ]));
+    }
+
+    // ── Pomocnicze ────────────────────────────────────────────────────────────
+
+    private function _jsonError(string $message, array $errors = []): Response
+    {
+        $body = ['error' => $message];
+        if ($errors) {
+            $body['errors'] = $errors;
+        }
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode($body));
+    }
+
+    /**
+     * Przelicza alreadypaid / remaining / paymentstate dla faktury systemowej.
+     */
+    private function _recalcInvoicePaymentState(string $invoiceId): void
+    {
+        $Invoices        = $this->fetchTable('Invoices');
+        $InvoicePayments = $this->fetchTable('InvoicePayments');
+
+        $invoice = $Invoices->find()
+            ->where(['id' => $invoiceId])
+            ->select(['id', 'total'])
+            ->first();
+
+        if ($invoice === null) {
+            return;
+        }
+
+        $paid = (float)$InvoicePayments->find()
+            ->where(['invoice_id' => $invoiceId])
+            ->select(['s' => 'SUM(amount)'])
+            ->disableHydration()
+            ->first()['s'];
+
+        $total     = (float)$invoice->total;
+        $remaining = round($total - $paid, 2);
+        $paid      = round($paid, 2);
+
+        if ($remaining <= 0.01) {
+            $state = 'paid';
+        } elseif ($paid > 0.01) {
+            $state = 'partial';
+        } else {
+            $state = 'unpaid';
+        }
+
+        $Invoices->updateAll(
+            ['alreadypaid' => $paid, 'remaining' => $remaining, 'paymentstate' => $state],
+            ['id' => $invoiceId]
+        );
+    }
+
     /**
      * Oblicza statystyki finansowe dla zestawu wierszy faktur.
      *

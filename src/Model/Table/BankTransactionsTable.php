@@ -29,6 +29,11 @@ class BankTransactionsTable extends Table
         $this->belongsTo('Invoices', [
             'foreignKey' => 'invoice_id',
         ]);
+
+        $this->hasMany('BankTransactionAllocations', [
+            'foreignKey' => 'bank_transaction_id',
+            'dependent'  => true,
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator
