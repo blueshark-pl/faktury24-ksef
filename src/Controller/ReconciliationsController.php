@@ -890,7 +890,6 @@ class ReconciliationsController extends AppController
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
                           'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
-                ->limit(50)
                 ->all()->toArray();
         }
 
@@ -1032,7 +1031,6 @@ class ReconciliationsController extends AppController
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
                           'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
                 ->orderByDesc('value_date')
-                ->limit(30)
                 ->all()->toArray();
         }
 
