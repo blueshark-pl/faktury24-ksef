@@ -1416,19 +1416,60 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         </div>
                     </div>
 
-                    <!-- ── Prawa: ręczna wpłata ─────────────────────────── -->
+                    <!-- ── Prawa: alokacje + ręczna wpłata ─────────────── -->
                     <div class="col-lg-5 pay-col d-flex flex-column">
+
+                        <!-- Sekcja: przypisane płatności / alokacje -->
+                        <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center gap-2 flex-shrink-0">
+                            <i class="ri-link text-primary fs-6"></i>
+                            <span class="fw-semibold small">Przypisane płatności</span>
+                            <span class="badge bg-primary-subtle text-primary rounded-pill ms-auto small px-2" id="allocCount">0</span>
+                        </div>
+                        <div id="allocSection" class="px-3 py-2 border-bottom flex-shrink-0" style="overflow-y:auto;max-height:220px">
+                            <div class="text-muted small fst-italic py-2 text-center" id="allocEmpty">Brak przypisanych płatności</div>
+                            <div id="allocList"></div>
+                        </div>
+                        <!-- Pasek postępu -->
+                        <div class="px-4 py-2 border-bottom flex-shrink-0 bg-light" id="allocSummaryBar" style="display:none">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">Zapłacono</span>
+                                <span id="allocSummaryPaid" class="fw-semibold text-success">—</span>
+                            </div>
+                            <div class="progress" style="height:6px">
+                                <div class="progress-bar bg-success" id="allocProgressBar" style="width:0%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between small mt-1">
+                                <span class="text-muted">Pozostało</span>
+                                <span id="allocSummaryRemaining" class="fw-semibold text-danger">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Sekcja: ręczna wpłata -->
                         <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center gap-2 flex-shrink-0">
                             <i class="ri-pencil-line text-success fs-6"></i>
                             <span class="fw-semibold small">Ręczna wpłata</span>
                         </div>
-                        <div class="px-4 py-3 flex-grow-1">
+                        <div class="px-4 py-3 flex-grow-1 overflow-y-auto">
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Typ płatności</label>
+                                <select name="payment_type" id="modalPaymentType" class="form-select form-select-sm">
+                                    <option value="gross">Brutto (całość)</option>
+                                    <option value="net">Netto (bez VAT)</option>
+                                    <option value="vat">Sam VAT</option>
+                                </select>
+                            </div>
                             <div class="mb-3">
                                 <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Kwota <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-white"><i class="ri-money-euro-circle-line text-muted"></i></span>
                                     <input type="number" step="0.01" min="0.01" name="amount" id="modalAmount"
                                            class="form-control" required placeholder="0,00">
+                                    <select name="currency" id="modalCurrency" class="form-select" style="max-width:90px">
+                                        <option value="PLN">PLN</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="USD">USD</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
                                 </div>
                                 <div class="form-text small mt-1" id="modalRemaining"></div>
                             </div>
@@ -1441,9 +1482,9 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                             <div class="mb-3">
                                 <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Metoda</label>
                                 <select name="payment_method" class="form-select">
-                                    <option value="transfer">💳 Przelew bankowy</option>
-                                    <option value="cash">💵 Gotówka</option>
-                                    <option value="card">💳 Karta płatnicza</option>
+                                    <option value="transfer">Przelew bankowy</option>
+                                    <option value="cash">Gotówka</option>
+                                    <option value="card">Karta płatnicza</option>
                                     <option value="other">Inne</option>
                                 </select>
                             </div>
@@ -1546,11 +1587,20 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             } else {
                 statusBadge = '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>';
             }
-            actionCol = '<button type="button" class="btn btn-sm btn-outline-primary py-0 btn-use-tx"'
+            actionCol = '<div class="d-flex gap-1 justify-content-end">'
+                      + '<button type="button" class="btn btn-sm btn-primary py-0 btn-assign-tx"'
+                      + ' data-tx-id="' + esc(tx.id) + '"'
                       + ' data-tx-amount="' + esc(tx.amount) + '"'
                       + ' data-tx-date="' + esc(tx.value_date) + '"'
-                      + ' title="Wpisz tę kwotę i datę w formularz wpłaty">'
-                      + '<i class="ri-arrow-left-up-line me-1"></i>Użyj</button>';
+                      + ' data-tx-currency="' + esc(tx.currency || 'PLN') + '"'
+                      + ' title="Przypisz przelew do tej faktury">'
+                      + '<i class="ri-link me-1"></i>Przypisz</button>'
+                      + '<button type="button" class="btn btn-sm btn-outline-secondary py-0 btn-use-tx"'
+                      + ' data-tx-amount="' + esc(tx.amount) + '"'
+                      + ' data-tx-date="' + esc(tx.value_date) + '"'
+                      + ' title="Wpisz kwotę w formularz ręcznej wpłaty">'
+                      + '<i class="ri-pencil-line"></i></button>'
+                      + '</div>';
         } else if (tx.match_status === 'proposed') {
             statusBadge = '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">'
                         + '<i class="ri-alert-line me-1"></i>Sugerowany</span>';
@@ -1980,13 +2030,242 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 document.getElementById('modalInvoiceId').value       = '';
                 document.getElementById('modalLegacyInvoiceId').value = currentInvoiceId;
                 loadLegacyBankTransactions(currentInvoiceId);
+                loadAllocations(currentInvoiceId, true);
             } else {
                 form.action = urlAddPayment;
                 document.getElementById('modalInvoiceId').value       = currentInvoiceId;
                 document.getElementById('modalLegacyInvoiceId').value = '';
                 loadBankTransactions(currentInvoiceId);
+                loadAllocations(currentInvoiceId, false);
             }
+
+            // Pre-set currency select
+            var currSel = document.getElementById('modalCurrency');
+            if (currSel) currSel.value = (currency !== 'PLN' ? currency : 'PLN');
         });
+    });
+
+    // ── Alokacje przelewów ────────────────────────────────────────────────────
+
+    var currentInvoiceIsLegacy = false;
+    var currentInvoiceTotal    = 0;
+
+    function loadAllocations(invoiceId, isLegacy) {
+        currentInvoiceIsLegacy = isLegacy;
+        var url = '/rozliczenia/alokacje/' + invoiceId + (isLegacy ? '?legacy=1' : '');
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { renderAllocations(data.allocations || [], invoiceId, isLegacy); })
+            .catch(function () { console.warn('Nie udało się załadować alokacji.'); });
+    }
+
+    function renderAllocations(allocations, invoiceId, isLegacy) {
+        var list     = document.getElementById('allocList');
+        var emptyMsg = document.getElementById('allocEmpty');
+        var counter  = document.getElementById('allocCount');
+        var summaryBar = document.getElementById('allocSummaryBar');
+
+        if (counter) counter.textContent = allocations.length;
+
+        if (!allocations.length) {
+            if (emptyMsg) emptyMsg.style.display = '';
+            if (list)     list.innerHTML = '';
+            if (summaryBar) summaryBar.style.display = 'none';
+            return;
+        }
+        if (emptyMsg) emptyMsg.style.display = 'none';
+
+        var typeLabels = { gross: 'brutto', net: 'netto', vat: 'VAT' };
+        var html = '';
+        var totalAllocated = 0;
+
+        allocations.forEach(function (a) {
+            totalAllocated += a.allocated_amount;
+            var typeBadge = '<span class="badge bg-secondary-subtle text-secondary border me-1" style="font-size:.7em">'
+                          + (typeLabels[a.allocation_type] || a.allocation_type) + '</span>';
+            var txInfo = a.tx_date
+                ? '<span class="text-muted" style="font-size:.75em">'
+                  + a.tx_date + ' · ' + esc(a.tx_party || '') + '</span>'
+                : '';
+            html += '<div class="d-flex align-items-start gap-2 py-2 border-bottom alloc-row" data-alloc-id="' + esc(a.id) + '">'
+                  + '<div class="flex-grow-1 min-width-0">'
+                  +   typeBadge
+                  +   '<span class="fw-semibold small">' + fmtAmount(a.allocated_amount) + '\u202f' + esc(a.currency) + '</span>'
+                  +   (txInfo ? '<div class="mt-1">' + txInfo + '</div>' : '')
+                  +   (a.note ? '<div class="text-muted" style="font-size:.75em"><i class="ri-chat-1-line me-1"></i>' + esc(a.note) + '</div>' : '')
+                  + '</div>'
+                  + '<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-delete-alloc flex-shrink-0"'
+                  + ' data-alloc-id="' + esc(a.id) + '" title="Usuń alokację">'
+                  + '<i class="ri-delete-bin-line"></i></button>'
+                  + '</div>';
+        });
+
+        if (list) list.innerHTML = html;
+
+        // Pasek postępu (tylko jeśli znamy total)
+        var remEl  = document.getElementById('modalRemaining');
+        var remTxt = remEl ? remEl.textContent : '';
+        if (summaryBar) {
+            summaryBar.style.display = '';
+            var paidEl = document.getElementById('allocSummaryPaid');
+            var remSumEl = document.getElementById('allocSummaryRemaining');
+            if (paidEl) paidEl.textContent = fmtAmount(totalAllocated);
+            // remaining nie znamy dokładnie bez total — pomijamy progres
+            var bar = document.getElementById('allocProgressBar');
+            if (bar) bar.style.width = '0%';
+            if (remSumEl) remSumEl.textContent = '—';
+        }
+
+        // Wire delete buttons
+        list.querySelectorAll('.btn-delete-alloc').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var allocId = this.dataset.allocId;
+                if (!confirm('Usunąć tę alokację? Powiązana wpłata również zostanie usunięta.')) return;
+                var csrf = document.querySelector('input[name="_csrfToken"]');
+                fetch('/rozliczenia/delete-allocation/' + allocId, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-Token': csrf ? csrf.value : '',
+                    },
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) {
+                        loadAllocations(currentInvoiceId, currentInvoiceIsLegacy);
+                    } else {
+                        alert(d.error || 'Błąd usuwania alokacji.');
+                    }
+                });
+            });
+        });
+    }
+
+    // ── Przycisk "Przypisz przelew" w wierszu ────────────────────────────────
+    // Nadpisujemy wireTxButtons — dodajemy btn-assign-tx obok btn-use-tx
+    // (btn-assign-tx jest dodawany w renderTxRow dla legacy)
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.btn-assign-tx');
+        if (!btn) return;
+        e.preventDefault();
+
+        var txId     = btn.dataset.txId;
+        var txAmount = parseFloat(btn.dataset.txAmount || '0');
+        var txDate   = btn.dataset.txDate || '';
+        var txCurr   = btn.dataset.txCurrency || 'PLN';
+
+        // Pokaż mini-formularz alokacji (popover lub inline modal)
+        showAssignForm(txId, txAmount, txDate, txCurr);
+    });
+
+    function showAssignForm(txId, txAmount, txDate, txCurr) {
+        var csrf = document.querySelector('input[name="_csrfToken"]');
+
+        // Pobierz ile już przydzielono z tego przelewu
+        fetch('/rozliczenia/tx-allocated/' + txId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (summary) {
+                var remaining = summary.remaining_amount != null ? summary.remaining_amount : txAmount;
+                var html = '<div class="assign-form border rounded p-3 mt-2 bg-white shadow-sm" id="assignForm_' + esc(txId) + '">'
+                    + '<div class="fw-semibold small mb-2"><i class="ri-link me-1 text-primary"></i>Przypisz przelew do faktury</div>'
+                    + (summary.allocated_amount > 0
+                        ? '<div class="small text-muted mb-2">Przelew: <strong>' + fmtAmount(txAmount) + '\u202f' + esc(summary.tx_currency || txCurr) + '</strong>'
+                          + ' · Przydzielono: <strong>' + fmtAmount(summary.allocated_amount) + '</strong>'
+                          + ' · <span class="text-success fw-semibold">Zostało: ' + fmtAmount(remaining) + '</span></div>'
+                        : '')
+                    + '<div class="row g-2 align-items-end">'
+                    + '<div class="col-5"><label class="form-label small mb-1">Kwota</label>'
+                    + '<input type="number" class="form-control form-control-sm" id="assignAmt_' + esc(txId) + '" value="' + remaining.toFixed(2) + '" step="0.01" min="0.01"></div>'
+                    + '<div class="col-3"><label class="form-label small mb-1">Waluta</label>'
+                    + '<select class="form-select form-select-sm" id="assignCurr_' + esc(txId) + '">'
+                    + ['PLN','EUR','USD','GBP'].map(function (c) {
+                        return '<option value="' + c + '"' + (c === txCurr ? ' selected' : '') + '>' + c + '</option>';
+                    }).join('') + '</select></div>'
+                    + '<div class="col-4"><label class="form-label small mb-1">Typ</label>'
+                    + '<select class="form-select form-select-sm" id="assignType_' + esc(txId) + '">'
+                    + '<option value="gross">Brutto</option><option value="net">Netto</option><option value="vat">VAT</option>'
+                    + '</select></div>'
+                    + '</div>'
+                    + '<div class="mt-2"><label class="form-label small mb-1">Uwaga (opcja)</label>'
+                    + '<input type="text" class="form-control form-control-sm" id="assignNote_' + esc(txId) + '" placeholder="np. MPP – VAT"></div>'
+                    + '<div class="d-flex gap-2 mt-3">'
+                    + '<button type="button" class="btn btn-sm btn-primary btn-do-assign" data-tx-id="' + esc(txId) + '"><i class="ri-check-line me-1"></i>Przypisz</button>'
+                    + '<button type="button" class="btn btn-sm btn-outline-secondary btn-cancel-assign" data-tx-id="' + esc(txId) + '">Anuluj</button>'
+                    + '</div></div>';
+
+                // Wstaw po wierszu przelewu lub w bannerze
+                var existing = document.getElementById('assignForm_' + txId);
+                if (existing) { existing.remove(); return; } // toggle
+                var tbody = document.getElementById('bankTxTbody');
+                if (!tbody) return;
+                // Znajdź wiersz przelewu i wstaw po nim
+                var rows = tbody.querySelectorAll('tr');
+                var inserted = false;
+                rows.forEach(function (tr) {
+                    if (inserted) return;
+                    var useTxBtn = tr.querySelector('.btn-assign-tx[data-tx-id="' + txId + '"]');
+                    if (useTxBtn) {
+                        var newRow = document.createElement('tr');
+                        newRow.innerHTML = '<td colspan="5" class="p-0">' + html + '</td>';
+                        tr.after(newRow);
+                        inserted = true;
+                    }
+                });
+            });
+    }
+
+    document.addEventListener('click', function (e) {
+        // Wykonaj przypisanie
+        var btn = e.target.closest('.btn-do-assign');
+        if (btn) {
+            var txId  = btn.dataset.txId;
+            var amt   = parseFloat(document.getElementById('assignAmt_'  + txId)?.value  || '0');
+            var curr  = document.getElementById('assignCurr_' + txId)?.value || 'PLN';
+            var type  = document.getElementById('assignType_' + txId)?.value || 'gross';
+            var note  = document.getElementById('assignNote_' + txId)?.value || '';
+            var csrf  = document.querySelector('input[name="_csrfToken"]');
+
+            var invoiceId       = currentInvoiceIsLegacy ? null : currentInvoiceId;
+            var legacyInvoiceId = currentInvoiceIsLegacy ? currentInvoiceId : null;
+
+            var body = new URLSearchParams({
+                bank_transaction_id: txId,
+                allocated_amount:    amt.toFixed(2),
+                currency:            curr,
+                allocation_type:     type,
+                note:                note,
+                _csrfToken:          csrf ? csrf.value : '',
+            });
+            if (invoiceId)       body.set('invoice_id', invoiceId);
+            if (legacyInvoiceId) body.set('legacy_invoice_id', legacyInvoiceId);
+
+            fetch('/rozliczenia/add-allocation', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success) {
+                    // Usuń formularz
+                    var form = document.getElementById('assignForm_' + txId);
+                    if (form) form.closest('tr')?.remove();
+                    loadAllocations(currentInvoiceId, currentInvoiceIsLegacy);
+                } else {
+                    alert(d.error || 'Błąd przypisywania alokacji.');
+                }
+            });
+            return;
+        }
+
+        // Anuluj formularz
+        var cancelBtn = e.target.closest('.btn-cancel-assign');
+        if (cancelBtn) {
+            var txId = cancelBtn.dataset.txId;
+            var form = document.getElementById('assignForm_' + txId);
+            if (form) form.closest('tr')?.remove();
+        }
     });
 }());
 </script>
