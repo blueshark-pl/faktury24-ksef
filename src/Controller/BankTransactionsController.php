@@ -126,7 +126,35 @@ class BankTransactionsController extends AppController
             $statusCounts[(string)($row['match_status'] ?? 'unmatched')] = (int)$row['cnt'];
         }
 
-        $this->set(compact('transactions', 'search', 'direction', 'matchStatus', 'dateFrom', 'dateTo', 'page', 'pages', 'total', 'limit', 'statusCounts'));
+        // Zbiorcze alokacje dla widocznych transakcji (jeden SQL)
+        $txAllocMap = [];
+        $txIds = array_map(fn($t) => (string)$t->id, $transactions->toArray());
+        if (!empty($txIds)) {
+            $ph   = implode(',', array_fill(0, count($txIds), '?'));
+            $db   = $BankTransactions->getConnection();
+            $stmt = $db->execute(
+                "SELECT bta.bank_transaction_id,
+                        COUNT(*) AS alloc_count,
+                        SUM(bta.allocated_amount) AS total_allocated,
+                        GROUP_CONCAT(DISTINCT COALESCE(i.fullnumber, li.fullnumber)
+                                     ORDER BY bta.created SEPARATOR '||') AS fullnumbers
+                 FROM bank_transaction_allocations bta
+                 LEFT JOIN invoices i      ON i.id  = bta.invoice_id
+                 LEFT JOIN legacy_invoices li ON li.id = bta.legacy_invoice_id
+                 WHERE bta.bank_transaction_id IN ({$ph}) AND bta.company_id = ?
+                 GROUP BY bta.bank_transaction_id",
+                array_merge($txIds, [$companyId])
+            );
+            foreach ($stmt->fetchAll('assoc') as $row) {
+                $txAllocMap[(string)$row['bank_transaction_id']] = [
+                    'count'     => (int)$row['alloc_count'],
+                    'allocated' => round((float)$row['total_allocated'], 2),
+                    'invoices'  => array_values(array_filter(explode('||', (string)($row['fullnumbers'] ?? '')))),
+                ];
+            }
+        }
+
+        $this->set(compact('transactions', 'txAllocMap', 'search', 'direction', 'matchStatus', 'dateFrom', 'dateTo', 'page', 'pages', 'total', 'limit', 'statusCounts'));
         $this->set('title', 'Historia transakcji');
     }
 
