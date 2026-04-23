@@ -659,10 +659,23 @@ function renderSearchResults(results) {
     results.forEach(function (inv) {
         var srcCls    = inv.source === 'legacy' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary';
         var srcTxt    = inv.source === 'legacy' ? 'arch' : 'sys';
-        var stClr     = inv.paymentstate === 'paid' ? 'text-success' : inv.paymentstate === 'partial' ? 'text-warning' : 'text-danger';
-        var stIco     = inv.paymentstate === 'paid' ? 'ri-checkbox-circle-fill' : inv.paymentstate === 'partial' ? 'ri-time-line' : 'ri-error-warning-line';
+        var isPaid    = inv.paymentstate === 'paid';
+        var isPartial = inv.paymentstate === 'partial';
         var pct       = inv.total > 0 ? Math.min(100, Math.round((inv.total - inv.remaining) / inv.total * 100)) : 0;
         var invJson   = esc(JSON.stringify(inv));
+
+        // Prawa kolumna: brutto prominentnie + pozostało jeśli częściowa
+        var amtHtml = '<div class="fw-bold" style="font-size:.88rem">' + fmtC(inv.total, inv.currency) + '</div>'
+                    + '<div class="text-muted" style="font-size:.68em;letter-spacing:.02em">brutto</div>';
+        if (isPaid) {
+            amtHtml += '<div class="text-success fw-semibold mt-1" style="font-size:.72em"><i class="ri-checkbox-circle-fill me-1"></i>Opłacona</div>';
+        } else if (isPartial && inv.remaining > 0) {
+            amtHtml += '<div class="text-warning fw-semibold mt-1" style="font-size:.75em">'
+                     + '<i class="ri-time-line me-1"></i>Pozostało&nbsp;' + fmtC(inv.remaining, inv.currency) + '</div>';
+        } else if (inv.remaining > 0) {
+            amtHtml += '<div class="text-danger fw-semibold mt-1" style="font-size:.72em">'
+                     + '<i class="ri-error-warning-line me-1"></i>Nieopłacona</div>';
+        }
 
         html += '<div class="inv-result-row" data-inv=\'' + invJson + '\'>'
               + '<div class="flex-shrink-0"><span class="badge ' + srcCls + ' border" style="font-size:.65em">' + srcTxt + '</span></div>'
@@ -673,10 +686,7 @@ function renderSearchResults(results) {
               +     '<div style="height:3px;width:' + pct + '%;background:' + (pct >= 100 ? '#16a34a' : '#3b82f6') + ';border-radius:2px"></div>'
               +   '</div>'
               + '</div>'
-              + '<div class="inv-amt">'
-              +   '<div class="' + stClr + ' fw-semibold small"><i class="' + stIco + ' me-1"></i>' + fmtC(inv.remaining, inv.currency) + '</div>'
-              +   '<div class="text-muted" style="font-size:.7em">z ' + fmtC(inv.total, inv.currency) + '</div>'
-              + '</div>'
+              + '<div class="inv-amt">' + amtHtml + '</div>'
               + '</div>';
     });
     resEl.innerHTML = html;
@@ -778,6 +788,48 @@ document.getElementById('sm-alloc-form').addEventListener('click', function (e) 
     document.getElementById('sm-alloc-type').value = btn.dataset.type;
     this.querySelectorAll('.btn-quick-amt').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
+});
+
+// ── Zmiana typu płatności → aktualizuj kwotę/walutę ───────────────────────────
+function syncAllocType() {
+    if (!selectedInvoice) return;
+    var inv  = selectedInvoice;
+    var type = document.getElementById('sm-alloc-type')?.value;
+    var isEur = inv.currency && inv.currency !== 'PLN';
+    var amt, curr;
+
+    if (type === 'gross') {
+        // Brutto: preferuj pozostało (remaining), jeśli 0 → całe brutto
+        amt  = inv.remaining > 0 ? inv.remaining : inv.total;
+        curr = inv.currency || 'PLN';
+    } else if (type === 'net') {
+        amt  = inv.netto || 0;
+        curr = inv.currency || 'PLN';
+    } else if (type === 'vat') {
+        // VAT zawsze PLN; jeśli EUR-faktura → przelicz vat (w EUR) × kurs
+        amt  = isEur
+            ? Math.round((inv.vat || 0) * (inv.exchange_rate || 1) * 100) / 100
+            : (inv.vat || 0);
+        curr = 'PLN';
+    }
+
+    document.getElementById('sm-alloc-amt').value  = parseFloat(amt || 0).toFixed(2);
+    document.getElementById('sm-alloc-curr').value = curr;
+
+    // Podświetl pasujący przycisk szybkiej kwoty
+    var formEl = document.getElementById('sm-alloc-form');
+    formEl.querySelectorAll('.btn-quick-amt').forEach(function (b) { b.classList.remove('active'); });
+    var targetStr = parseFloat(amt || 0).toFixed(2);
+    var found = null;
+    formEl.querySelectorAll('.btn-quick-amt[data-type="' + type + '"]').forEach(function (b) {
+        if (parseFloat(b.dataset.amt).toFixed(2) === targetStr && !found) found = b;
+    });
+    if (!found) found = formEl.querySelector('.btn-quick-amt[data-type="' + type + '"]');
+    if (found) found.classList.add('active');
+}
+
+document.getElementById('sm-alloc-form').addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'sm-alloc-type') syncAllocType();
 });
 
 // ── Wykonaj alokację ──────────────────────────────────────────────────────────
