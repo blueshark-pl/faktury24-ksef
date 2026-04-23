@@ -461,26 +461,49 @@ class BankTransactionsController extends AppController
                     ])
                     ->select([
                         'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
-                        'Invoices.remaining', 'Invoices.currency', 'Invoices.paymentstate',
+                        'Invoices.remaining', 'Invoices.alreadypaid', 'Invoices.currency',
+                        'Invoices.exchange_rate', 'Invoices.paymentstate',
                         'Invoices.paymentdate', 'Invoices.date',
                     ])
                     ->limit(15)
                     ->all();
 
                 foreach ($rows as $inv) {
-                    $total = (float)$inv->total;
-                    $netto = (float)$inv->netto;
+                    $currency = (string)($inv->currency ?? 'PLN');
+                    $rate     = (float)($inv->exchange_rate ?? 0);
+                    $isEur    = ($currency !== 'PLN') && $rate > 0;
+
+                    // invoices.total / netto / remaining są zawsze w PLN
+                    $totalPln     = (float)$inv->total;
+                    $nettoPln     = (float)$inv->netto;
+                    $remainingPln = (float)$inv->remaining;
+                    $alreadyPln   = (float)($inv->alreadypaid ?? 0);
+
+                    // Dla faktur walutowych — przelicz na walutę faktury do wyświetlenia
+                    if ($isEur) {
+                        $totalDisp     = round($totalPln / $rate, 2);
+                        $nettoDisp     = round($nettoPln / $rate, 2);
+                        $vatDisp       = round(($totalPln - $nettoPln) / $rate, 2);
+                        $remainingDisp = round($remainingPln / $rate, 2);
+                    } else {
+                        $totalDisp     = $totalPln;
+                        $nettoDisp     = $nettoPln;
+                        $vatDisp       = round($totalPln - $nettoPln, 2);
+                        $remainingDisp = $remainingPln;
+                    }
+
                     $results[] = [
                         'id'            => (string)$inv->id,
                         'source'        => 'system',
                         'fullnumber'    => (string)$inv->fullnumber,
                         'contractor'    => (string)($inv->invoice_contractor->name ?? ''),
                         'nip'           => (string)($inv->invoice_contractor->nip ?? ''),
-                        'total'         => $total,
-                        'netto'         => $netto,
-                        'vat'           => round($total - $netto, 2),
-                        'remaining'     => (float)$inv->remaining,
-                        'currency'      => (string)($inv->currency ?? 'PLN'),
+                        'total'         => $totalDisp,
+                        'netto'         => $nettoDisp,
+                        'vat'           => $vatDisp,
+                        'remaining'     => $remainingDisp,
+                        'currency'      => $currency,
+                        'exchange_rate' => $rate > 0 ? $rate : null,
                         'paymentstate'  => (string)($inv->paymentstate ?? 'unpaid'),
                         'date'          => $inv->date instanceof \DateTimeInterface ? $inv->date->format('Y-m-d') : substr((string)$inv->date, 0, 10),
                     ];

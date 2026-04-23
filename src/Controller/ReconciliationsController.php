@@ -1497,7 +1497,7 @@ class ReconciliationsController extends AppController
         if ($invoiceId !== '') {
             $invoice = $this->fetchTable('Invoices')->find()
                 ->where(['id' => $invoiceId, 'company_id' => $companyId])
-                ->select(['id', 'total', 'netto', 'remaining', 'currency', 'paymentstate'])
+                ->select(['id', 'total', 'netto', 'remaining', 'currency', 'paymentstate', 'exchange_rate'])
                 ->first();
             if ($invoice === null) {
                 return $this->_jsonError('Faktura nie istnieje lub brak uprawnień.');
@@ -1505,7 +1505,7 @@ class ReconciliationsController extends AppController
         } else {
             $invoice = $this->fetchTable('LegacyInvoices')->find()
                 ->where(['id' => $legacyId, 'company_id' => $companyId])
-                ->select(['id', 'total', 'netto', 'remaining', 'remaining_wal', 'currency', 'paymentstate'])
+                ->select(['id', 'total', 'netto', 'remaining', 'remaining_wal', 'currency', 'paymentstate', 'exchange_rate'])
                 ->first();
             if ($invoice === null) {
                 return $this->_jsonError('Faktura archiwalna nie istnieje lub brak uprawnień.');
@@ -1542,33 +1542,65 @@ class ReconciliationsController extends AppController
             return $this->_jsonError('Nie udało się zapisać alokacji.', $allocation->getErrors());
         }
 
-        // Utwórz invoice_payment jeśli to faktura systemowa
+        // ── Kwota PLN do zapisania w invoice_payment ──────────────────────────
+        // invoices.total / remaining są zawsze w PLN; alokacja może być w EUR
+        // VAT (allocation_type='vat') jest zawsze w PLN; gross/net przelicz przez kurs
+        $paymentDate = $tx->value_date instanceof \DateTimeInterface
+            ? $tx->value_date->format('Y-m-d')
+            : substr((string)$tx->value_date, 0, 10);
+        $desc = $note !== '' ? $note : ('Przelew bankowy: ' . $paymentDate);
+
+        $plnAmount = $amount;
+        if ($currency !== 'PLN' && $allocationType !== 'vat') {
+            $rate = (float)($invoice->exchange_rate ?? 0);
+            if ($rate > 0) {
+                $plnAmount = round($amount * $rate, 2);
+            }
+        }
+
+        // ── Utwórz wpłatę i przelicz stan faktury ─────────────────────────────
         $paymentId = null;
+
         if ($invoiceId !== '') {
+            // Faktura systemowa → invoice_payments
             $InvoicePayments = $this->fetchTable('InvoicePayments');
             $payment = $InvoicePayments->newEntity([
-                'id'                              => \Cake\Utility\Text::uuid(),
-                'invoice_id'                      => $invoiceId,
-                'bank_transaction_allocation_id'  => (string)$allocation->id,
-                'payment_date'                    => ($tx->value_date instanceof \DateTimeInterface)
-                                                        ? $tx->value_date->format('Y-m-d')
-                                                        : substr((string)$tx->value_date, 0, 10),
-                'amount'                          => $amount,
-                'currency'                        => $currency,
-                'payment_type'                    => $allocationType,
-                'payment_method'                  => 'transfer',
-                'description'                     => $note !== '' ? $note : ('Przelew: ' . (string)($tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('Y-m-d') : $tx->value_date)),
+                'id'                             => \Cake\Utility\Text::uuid(),
+                'invoice_id'                     => $invoiceId,
+                'bank_transaction_allocation_id' => (string)$allocation->id,
+                'payment_date'                   => $paymentDate,
+                'amount'                         => $plnAmount,
+                'currency'                       => 'PLN',
+                'payment_type'                   => $allocationType,
+                'payment_method'                 => 'transfer',
+                'description'                    => $desc,
             ]);
 
             if ($InvoicePayments->save($payment)) {
                 $paymentId = (string)$payment->id;
-
-                // Powiąż alokację z wpłatą
                 $allocation->invoice_payment_id = $paymentId;
                 $Allocations->save($allocation);
-
-                // Zaktualizuj alreadypaid / remaining faktury
                 $this->_recalcInvoicePaymentState($invoiceId);
+            }
+        } else {
+            // Faktura archiwalna → legacy_invoice_payments
+            $LegacyInvoicePayments = $this->fetchTable('LegacyInvoicePayments');
+            $payment = $LegacyInvoicePayments->newEntity([
+                'id'                => \Cake\Utility\Text::uuid(),
+                'legacy_invoice_id' => $legacyId,
+                'company_id'        => $companyId,
+                'payment_date'      => $paymentDate,
+                'amount'            => $plnAmount,
+                'payment_method'    => 'transfer',
+                'description'       => $desc,
+            ]);
+
+            if ($LegacyInvoicePayments->save($payment)) {
+                $paymentId = (string)$payment->id;
+                // Pole invoice_payment_id reużywamy dla legacy (ta sama kolumna, inna tabela)
+                $allocation->invoice_payment_id = $paymentId;
+                $Allocations->save($allocation);
+                $this->_refreshLegacyPaymentState($legacyId);
             }
         }
 
@@ -1600,20 +1632,28 @@ class ReconciliationsController extends AppController
         }
 
         $invoiceId = $allocation->invoice_id;
+        $legacyId  = $allocation->legacy_invoice_id;
 
-        // Usuń powiązaną wpłatę jeśli istnieje
+        // Usuń powiązaną wpłatę — invoice_payment (systemowa) lub legacy_invoice_payment
         if ($allocation->invoice_payment_id) {
-            $this->fetchTable('InvoicePayments')
-                ->deleteAll(['id' => $allocation->invoice_payment_id]);
+            if ($invoiceId) {
+                $this->fetchTable('InvoicePayments')
+                    ->deleteAll(['id' => $allocation->invoice_payment_id]);
+            } else {
+                $this->fetchTable('LegacyInvoicePayments')
+                    ->deleteAll(['id' => $allocation->invoice_payment_id]);
+            }
         }
 
         if (!$Allocations->delete($allocation)) {
             return $this->_jsonError('Nie udało się usunąć alokacji.');
         }
 
-        // Przelicz stan faktury systemowej
+        // Przelicz stan faktury
         if ($invoiceId) {
             $this->_recalcInvoicePaymentState($invoiceId);
+        } elseif ($legacyId) {
+            $this->_refreshLegacyPaymentState($legacyId);
         }
 
         return $this->response->withType('application/json')
