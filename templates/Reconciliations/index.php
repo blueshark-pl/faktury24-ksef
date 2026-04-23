@@ -1288,15 +1288,39 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 <!-- ═══════════════════════════════════════════════════════════════════════════
      Modal: Rozlicz fakturę (przelewy + ręczna wpłata)
 ════════════════════════════════════════════════════════════════════════════ -->
+<style>
+#paymentModal .modal-content { border-radius: .75rem; overflow: hidden; }
+#paymentModal .tx-col { display: flex; flex-direction: column; min-height: 0; max-height: 72vh; }
+#paymentModal .tx-col-body { overflow-y: auto; flex: 1 1 0; }
+#paymentModal .pay-col { background: #f8fafc; border-left: 1px solid #dee2e6; }
+#bankTxFilterBar { background: #fff; border: 1px solid #dee2e6; border-radius: .5rem; padding: .45rem .6rem; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+#bankTxFilterBar .form-control, #bankTxFilterBar .form-select { border: none; box-shadow: none; background: transparent; font-size: .82rem; }
+#bankTxFilterBar .form-control:focus, #bankTxFilterBar .form-select:focus { outline: none; box-shadow: none; }
+#bankTxFilterBar .divider { width: 1px; background: #dee2e6; align-self: stretch; margin: 0 .3rem; }
+.sort-btn { background: none; border: 1px solid transparent; border-radius: .35rem; padding: 2px 7px; font-size: .78rem; cursor: pointer; color: #6c757d; transition: all .15s; white-space: nowrap; }
+.sort-btn:hover { background: #e9ecef; color: #212529; }
+.sort-btn.active { background: #e8f0fe; border-color: #93b8fb; color: #1a56db; font-weight: 600; }
+#bankTxTable thead th { font-size: .78rem; font-weight: 600; letter-spacing: .02em; color: #6c757d; text-transform: uppercase; border-bottom: 2px solid #dee2e6; padding: .4rem .5rem; }
+#bankTxTable tbody tr:hover { background: #f8f9ff; }
+#bankTxTable tbody td { padding: .35rem .5rem; vertical-align: middle; }
+</style>
+
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="paymentModalLabel">
-                    <i class="ri-bank-card-line me-2 text-primary"></i>Rozlicz fakturę
-                    <span id="modalInvoiceName" class="fw-normal text-muted fs-6 ms-2">—</span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+            <!-- Header -->
+            <div class="modal-header px-4 py-3 border-bottom">
+                <div class="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                    <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:36px;height:36px">
+                        <i class="ri-bank-card-line text-primary"></i>
+                    </div>
+                    <div class="min-width-0">
+                        <div class="fw-semibold lh-1" id="paymentModalLabel">Rozlicz fakturę</div>
+                        <div class="text-muted small text-truncate mt-1" id="modalInvoiceName" style="max-width:400px">—</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close ms-3" data-bs-dismiss="modal"></button>
             </div>
 
             <?= $this->Form->create(null, [
@@ -1304,66 +1328,77 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 'method' => 'post',
                 'id'     => 'paymentForm',
             ]) ?>
-            <div class="modal-body pb-2">
+
+            <!-- Body: 2 kolumny -->
+            <div class="modal-body p-0">
                 <input type="hidden" name="invoice_id" id="modalInvoiceId">
                 <input type="hidden" name="legacy_invoice_id" id="modalLegacyInvoiceId">
-                <input type="hidden" name="redirect"   value="<?= h($this->Url->build($currentUrl())) ?>">
+                <input type="hidden" name="redirect" value="<?= h($this->Url->build($currentUrl())) ?>">
 
-                <!-- ── Przelewy bankowe kontrahenta ─────────────────────── -->
-                <div class="mb-1">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="fw-semibold small"><i class="ri-bank-line me-1 text-primary"></i>Przelewy bankowe kontrahenta</span>
-                        <span id="bankTxSpinner" class="spinner-border spinner-border-sm text-muted" role="status" style="display:none!important"></span>
-                    </div>
-                    <div id="bankTxSection">
-                        <div class="text-muted small fst-italic">Ładowanie…</div>
-                    </div>
-                </div>
+                <div class="row g-0" style="min-height:420px">
 
-                <hr class="my-3">
+                    <!-- ── Lewa: przelewy ───────────────────────────────── -->
+                    <div class="col-lg-7 tx-col">
+                        <div class="px-4 pt-3 pb-2 border-bottom bg-white d-flex align-items-center gap-2 flex-shrink-0">
+                            <i class="ri-swap-line text-primary fs-6"></i>
+                            <span class="fw-semibold small">Przelewy kontrahenta</span>
+                            <span id="bankTxSpinner" class="spinner-border spinner-border-sm text-muted ms-1" role="status" style="display:none!important"></span>
+                            <span class="badge bg-primary-subtle text-primary rounded-pill ms-auto small px-2" id="bankTxHeaderCount">—</span>
+                        </div>
+                        <div class="tx-col-body px-3 py-2" id="bankTxSection">
+                            <div class="text-muted small fst-italic py-3 text-center">
+                                <span class="spinner-border spinner-border-sm me-2"></span>Ładowanie przelewów…
+                            </div>
+                        </div>
+                    </div>
 
-                <!-- ── Ręczna wpłata ─────────────────────────────────────── -->
-                <p class="fw-semibold small text-muted mb-2">
-                    <i class="ri-edit-line me-1"></i>Lub dodaj wpłatę ręcznie
-                </p>
+                    <!-- ── Prawa: ręczna wpłata ─────────────────────────── -->
+                    <div class="col-lg-5 pay-col d-flex flex-column">
+                        <div class="px-4 pt-3 pb-2 border-bottom d-flex align-items-center gap-2 flex-shrink-0">
+                            <i class="ri-pencil-line text-success fs-6"></i>
+                            <span class="fw-semibold small">Ręczna wpłata</span>
+                        </div>
+                        <div class="px-4 py-3 flex-grow-1">
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Kwota <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white"><i class="ri-money-euro-circle-line text-muted"></i></span>
+                                    <input type="number" step="0.01" min="0.01" name="amount" id="modalAmount"
+                                           class="form-control" required placeholder="0,00">
+                                </div>
+                                <div class="form-text small mt-1" id="modalRemaining"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Data wpłaty</label>
+                                <input type="date" name="payment_date" id="modalPaymentDate"
+                                       class="form-control"
+                                       value="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Metoda</label>
+                                <select name="payment_method" class="form-select">
+                                    <option value="transfer">💳 Przelew bankowy</option>
+                                    <option value="cash">💵 Gotówka</option>
+                                    <option value="card">💳 Karta płatnicza</option>
+                                    <option value="other">Inne</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Opis</label>
+                                <input type="text" name="description" class="form-control"
+                                       placeholder="np. nr referencyjny, uwagi…">
+                            </div>
+                        </div>
+                        <div class="px-4 py-3 border-top bg-white d-flex gap-2 justify-content-end flex-shrink-0">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
+                            <button type="submit" class="btn btn-success px-4">
+                                <i class="ri-save-line me-1"></i>Zapisz wpłatę
+                            </button>
+                        </div>
+                    </div>
 
-                <div class="row g-3">
-                    <div class="col-7">
-                        <label class="form-label fw-semibold small">Kwota <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0.01" name="amount" id="modalAmount"
-                               class="form-control form-control-sm" required placeholder="0.00">
-                        <div class="form-text" id="modalRemaining"></div>
-                    </div>
-                    <div class="col-5">
-                        <label class="form-label fw-semibold small">Data wpłaty</label>
-                        <input type="date" name="payment_date" id="modalPaymentDate"
-                               class="form-control form-control-sm"
-                               value="<?= date('Y-m-d') ?>">
-                    </div>
-                </div>
-                <div class="row g-3 mt-1">
-                    <div class="col-6">
-                        <label class="form-label fw-semibold small">Metoda</label>
-                        <select name="payment_method" class="form-select form-select-sm">
-                            <option value="transfer">Przelew</option>
-                            <option value="cash">Gotówka</option>
-                            <option value="card">Karta</option>
-                            <option value="other">Inne</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label fw-semibold small">Opis (opcjonalnie)</label>
-                        <input type="text" name="description" class="form-control form-control-sm"
-                               placeholder="np. nr referencyjny przelewu">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
-                <button type="submit" class="btn btn-success btn-sm">
-                    <i class="ri-save-line me-1"></i>Zapisz ręczną wpłatę
-                </button>
-            </div>
+                </div><!-- /row -->
+            </div><!-- /modal-body -->
             <?= $this->Form->end() ?>
         </div>
     </div>
@@ -1562,56 +1597,70 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var sortCol = 'date';
         var sortAsc = false;
 
-        // ── Buduj szkielet HTML (kontrolki + tabela) ──────────────────────────
-        var accountOpts = '<option value="">— wszystkie rachunki —</option>';
+        // ── Buduj toolbar filtrów ─────────────────────────────────────────────
+        var accountOpts = '<option value="">Wszystkie rachunki</option>';
         uniqueAccounts.forEach(function (acc) {
             accountOpts += '<option value="' + esc(acc.clean) + '">'
                 + esc(getBankLabel(acc.raw) || ('…' + acc.clean.slice(-8))) + '</option>';
         });
-        var accountSelectHtml = (uniqueAccounts.length > 1 || companyBankAccounts.length > 0)
-            ? '<div class="d-flex gap-2 mb-2 align-items-center">'
-              + '<i class="ri-bank-line text-muted flex-shrink-0" style="font-size:.85rem" title="Rachunek"></i>'
-              + '<select id="bankTxAccountFilter" class="form-select form-select-sm">' + accountOpts + '</select>'
-              + '</div>'
-            : '';
+        var hasAccounts = uniqueAccounts.length > 1 || companyBankAccounts.length > 0;
 
         container.innerHTML = note
-            + accountSelectHtml
-            + '<div class="row g-1 mb-2 align-items-center">'
-            +   '<div class="col">'
-            +     '<div class="input-group input-group-sm">'
-            +       '<span class="input-group-text bg-white border-end-0"><i class="ri-search-line text-muted"></i></span>'
-            +       '<input type="text" id="bankTxFilter" class="form-control border-start-0 ps-0" placeholder="Nadawca, tytuł, data…" autocomplete="off">'
+            // ── Filter bar ──────────────────────────────────────────────────
+            + '<div id="bankTxFilterBar" class="mb-2">'
+            +   '<div class="d-flex align-items-center gap-0 flex-wrap">'
+            // Szukaj
+            +     '<div class="d-flex align-items-center flex-grow-1 pe-2" style="min-width:160px">'
+            +       '<i class="ri-search-line text-muted me-2 flex-shrink-0" style="font-size:.85rem"></i>'
+            +       '<input type="text" id="bankTxFilter" class="form-control" placeholder="Szukaj nadawcy, tytułu, daty…" autocomplete="off">'
+            +     '</div>'
+            +     '<div class="divider"></div>'
+            // Kwota od–do
+            +     '<div class="d-flex align-items-center gap-1 px-2">'
+            +       '<i class="ri-money-euro-circle-line text-muted flex-shrink-0" style="font-size:.85rem" title="Zakres kwot"></i>'
+            +       '<input type="number" id="bankTxAmtFrom" class="form-control text-end" placeholder="od" min="0" step="0.01" style="width:76px">'
+            +       '<span class="text-muted px-1" style="font-size:.8rem">–</span>'
+            +       '<input type="number" id="bankTxAmtTo" class="form-control" placeholder="do" min="0" step="0.01" style="width:76px">'
+            +     '</div>'
+            // Rachunek (jeśli dostępny)
+            + (hasAccounts
+                ? '<div class="divider"></div>'
+                  + '<div class="d-flex align-items-center gap-1 px-2" style="min-width:140px">'
+                  +   '<i class="ri-bank-line text-muted flex-shrink-0" style="font-size:.85rem"></i>'
+                  +   '<select id="bankTxAccountFilter" class="form-select">' + accountOpts + '</select>'
+                  + '</div>'
+                : '')
+            +     '<div class="divider"></div>'
+            // Clear + count
+            +     '<div class="d-flex align-items-center gap-2 ps-2">'
+            +       '<button type="button" id="bankTxClearBtn" class="btn btn-sm btn-link text-danger p-0 lh-1" style="display:none;font-size:.78rem" title="Wyczyść filtry">'
+            +         '<i class="ri-close-circle-line me-1"></i>wyczyść'
+            +       '</button>'
+            +       '<span class="badge bg-primary-subtle text-primary rounded-pill px-2" id="bankTxCount" style="font-size:.75rem">' + totalCount + '</span>'
             +     '</div>'
             +   '</div>'
-            +   '<div class="col-auto d-flex gap-1 align-items-center">'
-            +     '<input type="number" id="bankTxAmtFrom" class="form-control form-control-sm" placeholder="Kwota od" min="0" step="0.01" style="width:90px" title="Kwota od">'
-            +     '<span class="text-muted small">–</span>'
-            +     '<input type="number" id="bankTxAmtTo" class="form-control form-control-sm" placeholder="do" min="0" step="0.01" style="width:90px" title="Kwota do">'
-            +   '</div>'
-            +   '<div class="col-auto">'
-            +     '<span class="input-group-text bg-white text-muted small border" id="bankTxCount">' + totalCount + '</span>'
+            // Sortowanie
+            +   '<div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top">'
+            +     '<span class="text-muted me-1" style="font-size:.72rem;letter-spacing:.03em;text-transform:uppercase">Sortuj:</span>'
+            +     '<button type="button" id="sort-btn-date"   class="sort-btn active"><i class="ri-calendar-line me-1"></i>Data<span id="bth-date-icon" class="ms-1">↓</span></button>'
+            +     '<button type="button" id="sort-btn-amount" class="sort-btn"><i class="ri-coins-line me-1"></i>Kwota<span id="bth-amount-icon" class="ms-1 opacity-50">⇅</span></button>'
             +   '</div>'
             + '</div>'
+            // ── Tabela ────────────────────────────────────────────────────
             + '<div class="table-responsive">'
-            + '<table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem" id="bankTxTable">'
-            + '<thead class="table-light">'
-            + '<tr>'
-            + '<th class="text-nowrap" style="cursor:pointer;user-select:none" id="bth-date">'
-            +   '<i class="ri-calendar-line me-1 opacity-50"></i>Data <span id="bth-date-icon" class="text-primary">↓</span>'
-            + '</th>'
-            + '<th class="text-end text-nowrap" style="cursor:pointer;user-select:none" id="bth-amount">'
-            +   'Kwota <span id="bth-amount-icon" class="text-muted opacity-50">⇅</span>'
-            + '</th>'
+            + '<table class="table table-hover mb-0" id="bankTxTable">'
+            + '<thead><tr>'
+            + '<th>Data</th>'
+            + '<th class="text-end">Kwota</th>'
             + '<th>Nadawca / Tytuł</th>'
             + '<th>Status</th>'
             + '<th></th>'
-            + '</tr>'
-            + '</thead>'
+            + '</tr></thead>'
             + '<tbody id="bankTxTbody"></tbody>'
             + '</table></div>'
-            + '<div id="bankTxNoResults" class="text-muted small fst-italic py-1" style="display:none">'
-            + '<i class="ri-search-line me-1"></i>Brak wyników dla wybranych filtrów.</div>';
+            + '<div id="bankTxNoResults" class="text-muted small fst-italic py-3 text-center" style="display:none">'
+            + '<i class="ri-search-line me-1"></i>Brak wyników dla wybranych filtrów.'
+            + '</div>';
 
         // ── Funkcja filtrowania + sortowania → re-render tbody ────────────────
         var filterInput   = document.getElementById('bankTxFilter');
@@ -1619,16 +1668,24 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var amtFrom       = document.getElementById('bankTxAmtFrom');
         var amtTo         = document.getElementById('bankTxAmtTo');
         var countBadge    = document.getElementById('bankTxCount');
+        var headerCount   = document.getElementById('bankTxHeaderCount');
         var noResults     = document.getElementById('bankTxNoResults');
         var tbody         = document.getElementById('bankTxTbody');
+        var clearBtn      = document.getElementById('bankTxClearBtn');
+        var sortBtnDate   = document.getElementById('sort-btn-date');
+        var sortBtnAmt    = document.getElementById('sort-btn-amount');
 
-        function updateSortIcons() {
-            var dateIcon   = document.getElementById('bth-date-icon');
-            var amountIcon = document.getElementById('bth-amount-icon');
-            if (dateIcon)   dateIcon.textContent   = sortCol === 'date'   ? (sortAsc ? '↑' : '↓') : '⇅';
-            if (amountIcon) amountIcon.textContent = sortCol === 'amount' ? (sortAsc ? '↑' : '↓') : '⇅';
-            if (dateIcon)   dateIcon.className   = sortCol === 'date'   ? 'text-primary' : 'text-muted opacity-50';
-            if (amountIcon) amountIcon.className = sortCol === 'amount' ? 'text-primary' : 'text-muted opacity-50';
+        function updateSortButtons() {
+            if (sortBtnDate) {
+                sortBtnDate.className = 'sort-btn' + (sortCol === 'date' ? ' active' : '');
+                var di = document.getElementById('bth-date-icon');
+                if (di) { di.textContent = sortCol === 'date' ? (sortAsc ? '↑' : '↓') : '⇅'; di.className = 'ms-1' + (sortCol !== 'date' ? ' opacity-50' : ''); }
+            }
+            if (sortBtnAmt) {
+                sortBtnAmt.className = 'sort-btn' + (sortCol === 'amount' ? ' active' : '');
+                var ai = document.getElementById('bth-amount-icon');
+                if (ai) { ai.textContent = sortCol === 'amount' ? (sortAsc ? '↑' : '↓') : '⇅'; ai.className = 'ms-1' + (sortCol !== 'amount' ? ' opacity-50' : ''); }
+            }
         }
 
         function applyTxFilters() {
@@ -1636,6 +1693,10 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             var account = accountFilter ? accountFilter.value : '';
             var minAmt  = amtFrom && amtFrom.value !== '' ? parseFloat(amtFrom.value) : null;
             var maxAmt  = amtTo   && amtTo.value   !== '' ? parseFloat(amtTo.value)   : null;
+            var hasFilter = q || account || minAmt !== null || maxAmt !== null;
+
+            // Badge "wyczyść"
+            if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
 
             // Filtruj
             var filtered = allTxsData.filter(function (item) {
@@ -1659,36 +1720,43 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 
             // Re-render
             var html = '';
-            filtered.forEach(function (item) {
-                html += renderTxRow(item.tx, item.isLinked, item.isLegacy);
-            });
-            if (tbody) tbody.innerHTML = html || '';
+            filtered.forEach(function (item) { html += renderTxRow(item.tx, item.isLinked, item.isLegacy); });
+            if (tbody) tbody.innerHTML = html;
 
-            if (countBadge) countBadge.textContent = filtered.length;
-            if (noResults)  noResults.style.display = (filtered.length === 0) ? '' : 'none';
+            var n = filtered.length;
+            if (countBadge) countBadge.textContent = n;
+            if (headerCount) headerCount.textContent = n + ' / ' + totalCount;
+            if (noResults)   noResults.style.display = (n === 0) ? '' : 'none';
 
-            // Re-wire przyciski po re-renderze
             wireTxButtons();
         }
 
-        // Sortowanie po nagłówku
-        var thDate   = document.getElementById('bth-date');
-        var thAmount = document.getElementById('bth-amount');
-        if (thDate) thDate.addEventListener('click', function () {
+        // Sortowanie — przyciski
+        if (sortBtnDate) sortBtnDate.addEventListener('click', function () {
             if (sortCol === 'date') { sortAsc = !sortAsc; } else { sortCol = 'date'; sortAsc = false; }
-            updateSortIcons(); applyTxFilters();
+            updateSortButtons(); applyTxFilters();
         });
-        if (thAmount) thAmount.addEventListener('click', function () {
+        if (sortBtnAmt) sortBtnAmt.addEventListener('click', function () {
             if (sortCol === 'amount') { sortAsc = !sortAsc; } else { sortCol = 'amount'; sortAsc = false; }
-            updateSortIcons(); applyTxFilters();
+            updateSortButtons(); applyTxFilters();
         });
 
-        if (filterInput)   filterInput.addEventListener('input', applyTxFilters);
+        // Clear all
+        if (clearBtn) clearBtn.addEventListener('click', function () {
+            if (filterInput)   filterInput.value   = '';
+            if (accountFilter) accountFilter.value = '';
+            if (amtFrom)       amtFrom.value       = '';
+            if (amtTo)         amtTo.value         = '';
+            applyTxFilters();
+        });
+
+        if (filterInput)   filterInput.addEventListener('input',  applyTxFilters);
         if (accountFilter) accountFilter.addEventListener('change', applyTxFilters);
-        if (amtFrom)       amtFrom.addEventListener('input', applyTxFilters);
-        if (amtTo)         amtTo.addEventListener('input', applyTxFilters);
+        if (amtFrom)       amtFrom.addEventListener('input',  applyTxFilters);
+        if (amtTo)         amtTo.addEventListener('input',    applyTxFilters);
 
         // Pierwszy render
+        updateSortButtons();
         applyTxFilters();
         if (filterInput) filterInput.focus();
 
@@ -1776,7 +1844,6 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             var bankSection  = document.getElementById('bankTxSection');
 
             document.getElementById('modalInvoiceName').textContent = number || '—';
-            document.getElementById('modalInvoiceName').textContent = number || 'u2014';
 
             // Tekst pomocniczy "Pozostało" + pre-fill kwoty
             var remainingEl = document.getElementById('modalRemaining');
