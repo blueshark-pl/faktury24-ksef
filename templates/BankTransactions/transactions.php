@@ -316,11 +316,91 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
 <style>
 .btn-xs { padding: .125rem .375rem; font-size: .75rem; border-radius: .2rem; }
-.settle-panel { background: #f8fafc; border-top: 2px solid #0d6efd22; }
-.settle-panel .inv-result-row { cursor: pointer; transition: background .1s; }
-.settle-panel .inv-result-row:hover { background: #e8f0fe; }
-.settle-panel .inv-result-row.selected { background: #dbeafe; border-left: 3px solid #0d6efd; }
-.alloc-badge { font-size: .7em; }
+
+/* Panel rozliczeniowy */
+.settle-panel-td { padding: 0 !important; }
+.settle-panel {
+    background: linear-gradient(to bottom, #f0f4ff, #f8fafc);
+    border-top: 2px solid #3b82f6;
+    border-bottom: 1px solid #dee2e6;
+}
+.settle-col {
+    border-right: 1px solid #e2e8f0;
+    padding: 1rem 1.25rem;
+}
+.settle-col:last-child { border-right: none; }
+.settle-col-label {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: .5rem;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+}
+
+/* Karty alokacji */
+.alloc-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .5rem;
+    padding: .5rem .75rem;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    font-size: .82rem;
+}
+.alloc-card .alloc-num  { font-weight: 600; color: #1e3a5f; }
+.alloc-card .alloc-amt  { font-weight: 700; color: #16a34a; margin-left: auto; white-space: nowrap; }
+.alloc-card .alloc-type { font-size: .68rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: .25rem; padding: .1rem .35rem; color: #64748b; }
+
+/* Wyniki wyszukiwania */
+.inv-result-row {
+    cursor: pointer;
+    padding: .6rem .85rem;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background .12s;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+.inv-result-row:last-child { border-bottom: none; }
+.inv-result-row:hover { background: #eff6ff; }
+.inv-result-row.selected {
+    background: #dbeafe;
+    border-left: 3px solid #3b82f6;
+    padding-left: calc(.85rem - 3px);
+}
+.inv-result-row .inv-num  { font-weight: 600; font-size: .85rem; color: #1e3a5f; }
+.inv-result-row .inv-contr { font-size: .78rem; color: #6b7280; }
+.inv-result-row .inv-amt  { text-align: right; white-space: nowrap; font-size: .82rem; }
+
+/* Szybkie przyciski kwot */
+.btn-quick-amt {
+    font-size: .75rem;
+    padding: .25rem .55rem;
+    border-radius: .375rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #374151;
+    line-height: 1.3;
+    transition: all .12s;
+}
+.btn-quick-amt:hover  { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+.btn-quick-amt.active { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; font-weight: 600; }
+.btn-quick-amt small  { display: block; font-size: .7rem; opacity: .8; }
+
+/* Pasek salda */
+.settle-balance-bar {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .5rem;
+    padding: .6rem .85rem;
+    margin-bottom: .85rem;
+}
+.settle-balance-bar .progress { height: 6px; border-radius: 3px; }
 </style>
 
 <script>
@@ -329,7 +409,9 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
 var urlAddAllocation    = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'addAllocation']) ?>';
 var urlDeleteAllocation = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'deleteAllocation', '_ext' => false]) ?>';
-var csrfToken = (document.cookie.match(/csrfToken=([^;]+)/) || [])[1] || '';
+var csrfToken = '<?= h($this->request->getAttribute('csrfToken') ?? '') ?>';
+
+function getCsrf() { return csrfToken; }
 
 function esc(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -348,11 +430,6 @@ function stateLabel(s) {
 
 // ── Stan paneli ──────────────────────────────────────────────────────────────
 var openPanels = {};   // txId → { selectedInvoice, selectedSource }
-
-function getCsrf() {
-    var m = document.cookie.match(/csrfToken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-}
 
 // ── Kliknięcie "Rozlicz" ─────────────────────────────────────────────────────
 document.addEventListener('click', function (e) {
@@ -378,32 +455,60 @@ document.addEventListener('click', function (e) {
     var panelTr = document.createElement('tr');
     panelTr.id  = 'settle-tr-' + txId;
     panelTr.innerHTML =
-        '<td colspan="8" class="p-0 settle-panel">'
-      + '<div id="settle-panel-' + esc(txId) + '" class="px-4 py-3">'
-      + '<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">'
-      +   '<span class="fw-semibold"><i class="ri-link me-1 text-primary"></i>Rozlicz przelew</span>'
-      +   '<span class="text-muted small">Kwota: <strong class="text-dark">' + fmtCurrency(txAmount, txCurr) + '</strong></span>'
-      +   '<span class="badge bg-primary-subtle text-primary" id="tx-remaining-badge-' + esc(txId) + '">ładowanie…</span>'
-      + '</div>'
-      // Sekcja: istniejące alokacje
-      + '<div id="tx-alloc-list-' + esc(txId) + '" class="mb-3"></div>'
-      // Sekcja: szukaj faktury
-      + '<div class="row g-2 mb-2">'
-      +   '<div class="col-md-6">'
-      +     '<label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Szukaj faktury (nr, kontrahent, NIP)</label>'
-      +     '<div class="input-group input-group-sm">'
-      +       '<span class="input-group-text"><i class="ri-search-line"></i></span>'
-      +       '<input type="text" class="form-control tx-inv-search" id="tx-search-' + esc(txId) + '" data-tx-id="' + esc(txId) + '" placeholder="FV/2026/…, nazwa, NIP…" autocomplete="off">'
-      +       '<select class="form-select" id="tx-search-source-' + esc(txId) + '" style="max-width:110px">'
-      +         '<option value="all">Wszystkie</option>'
-      +         '<option value="system">Systemowe</option>'
-      +         '<option value="legacy">Archiwum</option>'
-      +       '</select>'
+        '<td colspan="8" class="settle-panel-td">'
+      + '<div id="settle-panel-' + esc(txId) + '" class="settle-panel">'
+      + '<div class="d-flex" style="min-height:280px">'
+
+      // ── Kolumna 1: saldo + alokacje ───────────────────────────────────────
+      + '<div class="settle-col" style="width:32%;min-width:240px">'
+      +   '<div class="settle-col-label"><i class="ri-scales-line"></i>Saldo przelewu</div>'
+      +   '<div class="settle-balance-bar" id="tx-balance-box-' + esc(txId) + '">'
+      +     '<div class="d-flex justify-content-between align-items-baseline mb-1">'
+      +       '<span class="text-muted small">Kwota przelewu</span>'
+      +       '<span class="fw-bold">' + fmtCurrency(txAmount, txCurr) + '</span>'
       +     '</div>'
-      +     '<div id="tx-search-results-' + esc(txId) + '" class="border rounded mt-1" style="max-height:220px;overflow-y:auto;display:none"></div>'
+      +     '<div class="progress mb-1"><div class="progress-bar bg-success" id="tx-progress-' + esc(txId) + '" style="width:0%"></div></div>'
+      +     '<div class="d-flex justify-content-between small">'
+      +       '<span class="text-muted">Przydzielono</span>'
+      +       '<span id="tx-allocated-lbl-' + esc(txId) + '" class="text-success fw-semibold">—</span>'
+      +     '</div>'
+      +     '<div class="d-flex justify-content-between small mt-1">'
+      +       '<span class="text-muted">Pozostało</span>'
+      +       '<span id="tx-remaining-lbl-' + esc(txId) + '" class="fw-bold text-danger">ładowanie…</span>'
+      +     '</div>'
       +   '</div>'
-      +   '<div class="col-md-6" id="tx-alloc-form-' + esc(txId) + '" style="display:none"></div>'
+      +   '<div class="settle-col-label mt-2"><i class="ri-link"></i>Przypisane faktury</div>'
+      +   '<div id="tx-alloc-list-' + esc(txId) + '"></div>'
       + '</div>'
+
+      // ── Kolumna 2: szukaj faktury ─────────────────────────────────────────
+      + '<div class="settle-col" style="width:34%;min-width:260px">'
+      +   '<div class="settle-col-label"><i class="ri-search-line"></i>Znajdź fakturę</div>'
+      +   '<div class="d-flex gap-1 mb-2">'
+      +     '<input type="text" class="form-control form-control-sm tx-inv-search flex-grow-1"'
+      +       ' id="tx-search-' + esc(txId) + '" data-tx-id="' + esc(txId) + '"'
+      +       ' placeholder="Nr faktury, kontrahent, NIP…" autocomplete="off">'
+      +     '<select class="form-select form-select-sm" id="tx-search-source-' + esc(txId) + '" style="max-width:105px">'
+      +       '<option value="all">Wszystkie</option>'
+      +       '<option value="system">Systemowe</option>'
+      +       '<option value="legacy">Archiwum</option>'
+      +     '</select>'
+      +   '</div>'
+      +   '<div id="tx-search-results-' + esc(txId) + '"'
+      +     ' class="border rounded bg-white" style="max-height:240px;overflow-y:auto;display:none"></div>'
+      +   '<div id="tx-search-hint-' + esc(txId) + '" class="text-muted small fst-italic mt-2">'
+      +     '<i class="ri-lightbulb-line me-1"></i>Wpisz min. 2 znaki aby wyszukać.'
+      +   '</div>'
+      + '</div>'
+
+      // ── Kolumna 3: formularz alokacji ─────────────────────────────────────
+      + '<div class="settle-col flex-grow-1" id="tx-alloc-form-' + esc(txId) + '">'
+      +   '<div class="text-muted small fst-italic d-flex align-items-center gap-2 h-100 justify-content-center">'
+      +     '<i class="ri-arrow-left-line opacity-50"></i>Wybierz fakturę z listy'
+      +   '</div>'
+      + '</div>'
+
+      + '</div>' // /d-flex
       + '</div></td>';
 
     tr.after(panelTr);
@@ -420,36 +525,39 @@ function loadTxAllocations(txId) {
 }
 
 function renderTxAllocations(txId, d) {
-    var listEl = document.getElementById('tx-alloc-list-' + txId);
-    var badgeEl = document.getElementById('tx-remaining-badge-' + txId);
+    var listEl    = document.getElementById('tx-alloc-list-'    + txId);
+    var remLbl    = document.getElementById('tx-remaining-lbl-' + txId);
+    var allocLbl  = document.getElementById('tx-allocated-lbl-' + txId);
+    var progressEl= document.getElementById('tx-progress-'     + txId);
     if (!listEl) return;
 
-    var remaining = d.remaining_amount != null ? d.remaining_amount : d.tx_amount;
-    if (badgeEl) {
-        badgeEl.textContent = 'Pozostało: ' + fmtCurrency(remaining, d.tx_currency);
-        badgeEl.className = remaining > 0.005
-            ? 'badge bg-warning-subtle text-warning border'
-            : 'badge bg-success-subtle text-success border';
-    }
+    var txAmt     = d.tx_amount || 0;
+    var allocated = d.allocated_amount || 0;
+    var remaining = d.remaining_amount != null ? d.remaining_amount : txAmt;
+    var pct       = txAmt > 0 ? Math.min(100, Math.round(allocated / txAmt * 100)) : 0;
+
+    if (remLbl)   { remLbl.textContent = fmtCurrency(remaining, d.tx_currency); remLbl.className = remaining > 0.005 ? 'fw-bold text-warning' : 'fw-bold text-success'; }
+    if (allocLbl) allocLbl.textContent = fmtCurrency(allocated, d.tx_currency);
+    if (progressEl) { progressEl.style.width = pct + '%'; progressEl.className = 'progress-bar ' + (pct >= 100 ? 'bg-success' : 'bg-primary'); }
 
     if (!d.allocations || !d.allocations.length) {
-        listEl.innerHTML = '<div class="text-muted small fst-italic">Brak przypisanych faktur do tego przelewu.</div>';
+        listEl.innerHTML = '<div class="text-muted small fst-italic py-1">Brak przypisanych faktur.</div>';
         return;
     }
 
-    var html = '<div class="small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Przypisane faktury</div>'
-             + '<div class="d-flex flex-wrap gap-2">';
+    var html = '<div class="d-flex flex-column gap-2">';
     d.allocations.forEach(function (a) {
-        var srcBadge = a.source === 'legacy'
-            ? '<span class="badge bg-secondary-subtle text-secondary border alloc-badge me-1">archiwum</span>'
-            : '<span class="badge bg-primary-subtle text-primary border alloc-badge me-1">sys</span>';
-        html += '<div class="d-flex align-items-center gap-2 border rounded px-2 py-1 bg-white">'
-              + srcBadge
-              + '<span class="fw-semibold">' + esc(a.fullnumber) + '</span>'
-              + '<span class="text-muted alloc-badge">' + esc(a.type_label) + '</span>'
-              + '<span class="fw-semibold text-success">' + fmtCurrency(a.allocated_amount, a.currency) + '</span>'
-              + (a.note ? '<span class="text-muted alloc-badge">' + esc(a.note) + '</span>' : '')
-              + '<button type="button" class="btn btn-xs btn-outline-danger btn-del-alloc" data-alloc-id="' + esc(a.id) + '" data-tx-id="' + esc(txId) + '" title="Usuń">'
+        var srcCls = a.source === 'legacy' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary';
+        html += '<div class="alloc-card">'
+              + '<span class="badge ' + srcCls + ' border" style="font-size:.65em">' + (a.source === 'legacy' ? 'arch' : 'sys') + '</span>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   '<div class="alloc-num text-truncate">' + esc(a.fullnumber) + '</div>'
+              +   '<span class="alloc-type">' + esc(a.type_label) + '</span>'
+              +   (a.note ? ' <span class="text-muted" style="font-size:.72em">' + esc(a.note) + '</span>' : '')
+              + '</div>'
+              + '<span class="alloc-amt">' + fmtCurrency(a.allocated_amount, a.currency) + '</span>'
+              + '<button type="button" class="btn btn-xs btn-outline-danger flex-shrink-0 btn-del-alloc"'
+              + ' data-alloc-id="' + esc(a.id) + '" data-tx-id="' + esc(txId) + '" title="Usuń alokację">'
               + '<i class="ri-delete-bin-line"></i></button>'
               + '</div>';
     });
@@ -501,30 +609,40 @@ function runInvoiceSearch(txId) {
 }
 
 function renderSearchResults(txId, results) {
-    var resEl = document.getElementById('tx-search-results-' + txId);
+    var resEl  = document.getElementById('tx-search-results-' + txId);
+    var hintEl = document.getElementById('tx-search-hint-'    + txId);
     if (!resEl) return;
+    if (hintEl) hintEl.style.display = 'none';
+
     if (!results.length) {
+        resEl.innerHTML = '<div class="text-muted small px-3 py-3 text-center fst-italic">'
+                        + '<i class="ri-file-search-line me-1"></i>Brak wyników.</div>';
         resEl.style.display = '';
-        resEl.innerHTML = '<div class="text-muted small px-3 py-2 fst-italic">Brak wyników.</div>';
         return;
     }
     var html = '';
     results.forEach(function (inv) {
-        var srcBadge = inv.source === 'legacy'
-            ? '<span class="badge bg-secondary-subtle text-secondary border me-1" style="font-size:.7em">archiwum</span>'
-            : '<span class="badge bg-primary-subtle text-primary border me-1" style="font-size:.7em">sys</span>';
-        html += '<div class="inv-result-row d-flex align-items-center gap-2 px-3 py-2 border-bottom"'
-              + ' data-tx-id="' + esc(txId) + '"'
-              + ' data-inv=\'' + esc(JSON.stringify(inv)) + '\'>'
-              + '<div class="flex-grow-1 min-width-0">'
-              +   srcBadge
-              +   '<span class="fw-semibold">' + esc(inv.fullnumber) + '</span>'
-              +   ' <span class="text-muted small">' + esc(inv.contractor) + '</span>'
+        var srcCls = inv.source === 'legacy' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary';
+        var srcTxt = inv.source === 'legacy' ? 'arch' : 'sys';
+        var stateColor = inv.paymentstate === 'paid' ? 'text-success' : inv.paymentstate === 'partial' ? 'text-warning' : 'text-danger';
+        var stateIcon  = inv.paymentstate === 'paid' ? 'ri-checkbox-circle-fill' : inv.paymentstate === 'partial' ? 'ri-time-line' : 'ri-error-warning-line';
+        // Pasek progresu zapłacenia
+        var pct = inv.total > 0 ? Math.min(100, Math.round((inv.total - inv.remaining) / inv.total * 100)) : 0;
+
+        html += '<div class="inv-result-row" data-tx-id="' + esc(txId) + '" data-inv=\'' + esc(JSON.stringify(inv)) + '\'>'
+              + '<div class="flex-shrink-0">'
+              +   '<span class="badge ' + srcCls + ' border" style="font-size:.65em">' + srcTxt + '</span>'
               + '</div>'
-              + '<div class="text-end text-nowrap small">'
-              +   stateLabel(inv.paymentstate)
-              +   '<div class="fw-semibold">' + fmtCurrency(inv.remaining, inv.currency) + '</div>'
-              +   '<div class="text-muted" style="font-size:.75em">z ' + fmtCurrency(inv.total, inv.currency) + '</div>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   '<div class="inv-num">' + esc(inv.fullnumber) + '</div>'
+              +   '<div class="inv-contr text-truncate">' + esc(inv.contractor) + (inv.nip ? ' · ' + esc(inv.nip) : '') + '</div>'
+              +   '<div class="mt-1" style="height:3px;background:#e5e7eb;border-radius:2px">'
+              +     '<div style="height:3px;width:' + pct + '%;background:' + (pct >= 100 ? '#16a34a' : '#3b82f6') + ';border-radius:2px"></div>'
+              +   '</div>'
+              + '</div>'
+              + '<div class="inv-amt">'
+              +   '<div class="' + stateColor + ' fw-semibold"><i class="' + stateIcon + ' me-1"></i>' + fmtCurrency(inv.remaining, inv.currency) + '</div>'
+              +   '<div class="text-muted" style="font-size:.72em">pozostało z ' + fmtCurrency(inv.total, inv.currency) + '</div>'
               + '</div>'
               + '</div>';
     });
@@ -552,54 +670,86 @@ function renderAllocForm(txId, inv) {
     var formEl = document.getElementById('tx-alloc-form-' + txId);
     if (!formEl) return;
 
-    var isEur = inv.currency && inv.currency !== 'PLN';
+    var isEur     = inv.currency && inv.currency !== 'PLN';
     var defAmount = inv.remaining > 0 ? inv.remaining.toFixed(2) : inv.total.toFixed(2);
     var defCurr   = inv.currency || 'PLN';
 
-    var html = '<label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Kwota alokacji</label>'
-             + '<div class="d-flex gap-2 flex-wrap mb-2">';
+    // Karta wybranej faktury
+    var stateColor = inv.paymentstate === 'paid' ? '#16a34a' : inv.paymentstate === 'partial' ? '#d97706' : '#dc2626';
+    var stateText  = inv.paymentstate === 'paid' ? 'opłacona' : inv.paymentstate === 'partial' ? 'częściowo' : 'nieopłacona';
+    var pct = inv.total > 0 ? Math.min(100, Math.round((inv.total - inv.remaining) / inv.total * 100)) : 0;
+
+    var html = '<div class="settle-col-label"><i class="ri-file-text-line"></i>Wybrana faktura</div>'
+             + '<div class="border rounded p-2 mb-3 bg-white" style="border-left:3px solid #3b82f6!important">'
+             + '<div class="d-flex align-items-start gap-2">'
+             + '<div class="flex-grow-1">'
+             +   '<div class="fw-bold" style="font-size:.9rem">' + esc(inv.fullnumber) + '</div>'
+             +   '<div class="text-muted" style="font-size:.78rem">' + esc(inv.contractor) + '</div>'
+             + '</div>'
+             + '<div class="text-end">'
+             +   '<div class="fw-semibold" style="font-size:.85rem;color:' + stateColor + '">' + fmtCurrency(inv.remaining, inv.currency) + '</div>'
+             +   '<div style="font-size:.68rem;color:' + stateColor + '">' + stateText + '</div>'
+             + '</div>'
+             + '</div>'
+             + (isEur && inv.exchange_rate ? '<div class="text-muted mt-1" style="font-size:.7rem">Kurs: ' + parseFloat(inv.exchange_rate).toFixed(4) + ' · brutto PLN: ' + fmtCurrency(Math.round(inv.total * inv.exchange_rate * 100)/100, 'PLN') + '</div>' : '')
+             + '<div class="mt-2" style="height:4px;background:#e5e7eb;border-radius:2px">'
+             +   '<div style="height:4px;width:' + pct + '%;background:' + (pct >= 100 ? '#16a34a' : '#3b82f6') + ';border-radius:2px;transition:width .3s"></div>'
+             + '</div>'
+             + '</div>';
 
     // Szybkie przyciski kwot
     var quickAmounts = [];
     if (isEur) {
-        if (inv.total   > 0) quickAmounts.push({ label: 'Brutto ' + inv.currency, amt: inv.total,  curr: inv.currency, type: 'gross' });
-        if (inv.netto   > 0) quickAmounts.push({ label: 'Netto ' + inv.currency, amt: inv.netto,  curr: inv.currency, type: 'net' });
-        if (inv.vat     > 0) quickAmounts.push({ label: 'VAT PLN', amt: Math.round(inv.vat * (inv.exchange_rate || 1) * 100) / 100, curr: 'PLN', type: 'vat' });
+        if (inv.remaining > 0 && inv.remaining !== inv.total) quickAmounts.push({ label: 'Pozostałe', amt: inv.remaining, curr: inv.currency, type: 'gross' });
+        if (inv.total > 0)  quickAmounts.push({ label: 'Brutto ' + inv.currency, amt: inv.total,  curr: inv.currency, type: 'gross' });
+        if (inv.netto > 0)  quickAmounts.push({ label: 'Netto '  + inv.currency, amt: inv.netto,  curr: inv.currency, type: 'net'   });
+        if (inv.vat   > 0)  quickAmounts.push({ label: 'VAT PLN', amt: Math.round(inv.vat * (inv.exchange_rate || 1) * 100)/100, curr: 'PLN', type: 'vat' });
     } else {
-        if (inv.total   > 0) quickAmounts.push({ label: 'Brutto PLN', amt: inv.total,  curr: 'PLN', type: 'gross' });
-        if (inv.netto   > 0) quickAmounts.push({ label: 'Netto PLN',  amt: inv.netto,  curr: 'PLN', type: 'net' });
-        if (inv.vat     > 0) quickAmounts.push({ label: 'VAT PLN',    amt: inv.vat,    curr: 'PLN', type: 'vat' });
-    }
-    if (inv.remaining > 0 && inv.remaining !== inv.total) {
-        quickAmounts.unshift({ label: 'Pozostałe', amt: inv.remaining, curr: inv.currency, type: 'gross' });
+        if (inv.remaining > 0 && inv.remaining !== inv.total) quickAmounts.push({ label: 'Pozostałe', amt: inv.remaining, curr: 'PLN', type: 'gross' });
+        if (inv.total > 0)  quickAmounts.push({ label: 'Brutto PLN', amt: inv.total, curr: 'PLN', type: 'gross' });
+        if (inv.netto > 0)  quickAmounts.push({ label: 'Netto PLN',  amt: inv.netto, curr: 'PLN', type: 'net'   });
+        if (inv.vat   > 0)  quickAmounts.push({ label: 'VAT PLN',    amt: inv.vat,   curr: 'PLN', type: 'vat'   });
     }
 
+    html += '<div class="settle-col-label mt-1"><i class="ri-money-euro-circle-line"></i>Kwota alokacji</div>'
+          + '<div class="d-flex flex-wrap gap-2 mb-3">';
     quickAmounts.forEach(function (qa) {
-        html += '<button type="button" class="btn btn-xs btn-outline-secondary btn-quick-amt"'
-              + ' data-amt="' + qa.amt + '" data-curr="' + esc(qa.curr) + '" data-type="' + esc(qa.type) + '"'
-              + ' data-tx-id="' + esc(txId) + '">'
-              + esc(qa.label) + '<br><small>' + fmtCurrency(qa.amt, qa.curr) + '</small>'
+        html += '<button type="button" class="btn-quick-amt" data-amt="' + qa.amt + '" data-curr="' + esc(qa.curr) + '" data-type="' + esc(qa.type) + '" data-tx-id="' + esc(txId) + '">'
+              + esc(qa.label) + '<small>' + fmtCurrency(qa.amt, qa.curr) + '</small>'
               + '</button>';
     });
     html += '</div>';
 
-    html += '<div class="row g-2 mb-2">'
-          + '<div class="col-5"><input type="number" class="form-control form-control-sm" id="alloc-amt-' + esc(txId) + '"'
-          + ' value="' + esc(defAmount) + '" step="0.01" min="0.01" placeholder="Kwota"></div>'
-          + '<div class="col-3"><select class="form-select form-select-sm" id="alloc-curr-' + esc(txId) + '">'
-          + ['PLN','EUR','USD','GBP'].map(function (c) { return '<option value="' + c + '"' + (c === defCurr ? ' selected' : '') + '>' + c + '</option>'; }).join('')
-          + '</select></div>'
-          + '<div class="col-4"><select class="form-select form-select-sm" id="alloc-type-' + esc(txId) + '">'
-          + '<option value="gross">Brutto</option><option value="net">Netto</option><option value="vat">VAT</option>'
-          + '</select></div>'
+    html += '<div class="row g-2 mb-2 align-items-end">'
+          + '<div class="col-5">'
+          +   '<label class="form-label small text-muted mb-1" style="font-size:.7rem">Kwota</label>'
+          +   '<input type="number" class="form-control form-control-sm" id="alloc-amt-' + esc(txId) + '" value="' + esc(defAmount) + '" step="0.01" min="0.01">'
           + '</div>'
-          + '<div class="mb-2"><input type="text" class="form-control form-control-sm" id="alloc-note-' + esc(txId) + '"'
-          + ' placeholder="Uwaga (opcja)"></div>'
-          + '<button type="button" class="btn btn-sm btn-primary btn-do-tx-alloc" data-tx-id="' + esc(txId) + '">'
-          + '<i class="ri-check-line me-1"></i>Przypisz do faktury</button>';
+          + '<div class="col-3">'
+          +   '<label class="form-label small text-muted mb-1" style="font-size:.7rem">Waluta</label>'
+          +   '<select class="form-select form-select-sm" id="alloc-curr-' + esc(txId) + '">'
+          +   ['PLN','EUR','USD','GBP'].map(function (c) { return '<option' + (c === defCurr ? ' selected' : '') + '>' + c + '</option>'; }).join('')
+          +   '</select>'
+          + '</div>'
+          + '<div class="col-4">'
+          +   '<label class="form-label small text-muted mb-1" style="font-size:.7rem">Typ</label>'
+          +   '<select class="form-select form-select-sm" id="alloc-type-' + esc(txId) + '">'
+          +   '<option value="gross">Brutto</option><option value="net">Netto</option><option value="vat">VAT</option>'
+          +   '</select>'
+          + '</div>'
+          + '</div>'
+          + '<div class="mb-3">'
+          +   '<input type="text" class="form-control form-control-sm" id="alloc-note-' + esc(txId) + '" placeholder="Uwaga opcjonalna (np. MPP – VAT)">'
+          + '</div>'
+          + '<button type="button" class="btn btn-primary w-100 btn-do-tx-alloc" data-tx-id="' + esc(txId) + '">'
+          + '<i class="ri-link me-1"></i>Przypisz do faktury</button>';
 
     formEl.innerHTML = html;
     formEl.style.display = '';
+
+    // Auto-aktywuj pierwszy szybki przycisk
+    var firstQuick = formEl.querySelector('.btn-quick-amt');
+    if (firstQuick) firstQuick.click();
 }
 
 // ── Szybkie kwoty ────────────────────────────────────────────────────────────
