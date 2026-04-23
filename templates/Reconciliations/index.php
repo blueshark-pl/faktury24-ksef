@@ -230,7 +230,8 @@ $typeBadge = function (string $type): string {
 <!-- Kafelki statystyk -->
 <?php if ($stats['count'] > 0): ?>
 <div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
+    <!-- Faktur łącznie -->
+    <div class="col-6 col-md-4 col-lg">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body d-flex align-items-center gap-3">
                 <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px;">
@@ -243,7 +244,8 @@ $typeBadge = function (string $type): string {
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
+    <!-- Przeterminowane -->
+    <div class="col-6 col-md-4 col-lg">
         <a href="<?= $this->Url->build($currentUrl(['status' => 'overdue', 'page' => 1])) ?>" class="text-decoration-none">
         <div class="card border-0 shadow-sm h-100 <?= $stats['overdueCount'] > 0 ? 'border border-danger' : '' ?>">
             <div class="card-body d-flex align-items-center gap-3">
@@ -251,16 +253,22 @@ $typeBadge = function (string $type): string {
                     <i class="ri-error-warning-line fs-5 text-danger"></i>
                 </div>
                 <div>
-                    <div class="fs-4 fw-bold lh-1 <?= $stats['overdueCount'] > 0 ? 'text-danger' : '' ?>">
-                        <?= number_format($stats['overdue'], 0, ',', ' ') ?> zł
+                    <div class="fs-5 fw-bold lh-1 <?= $stats['overdueCount'] > 0 ? 'text-danger' : '' ?>">
+                        <?= number_format($stats['overduePln'], 0, ',', ' ') ?> zł
                     </div>
-                    <div class="text-muted small">Przeterminowane (<?= $stats['overdueCount'] ?>)</div>
+                    <?php if ($stats['overdueEur'] > 0.01): ?>
+                    <div class="fw-semibold lh-1 mt-1 <?= $stats['overdueCount'] > 0 ? 'text-danger' : 'text-secondary' ?>" style="font-size:.85rem">
+                        <?= number_format($stats['overdueEur'], 0, ',', ' ') ?> EUR
+                    </div>
+                    <?php endif; ?>
+                    <div class="text-muted small mt-1">Przeterminowane (<?= $stats['overdueCount'] ?>)</div>
                 </div>
             </div>
         </div>
         </a>
     </div>
-    <div class="col-6 col-md-3">
+    <!-- Do zapłaty -->
+    <div class="col-6 col-md-4 col-lg">
         <a href="<?= $this->Url->build($currentUrl(['status' => 'unpaid', 'page' => 1])) ?>" class="text-decoration-none">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body d-flex align-items-center gap-3">
@@ -268,16 +276,22 @@ $typeBadge = function (string $type): string {
                     <i class="ri-time-line fs-5 text-warning"></i>
                 </div>
                 <div>
-                    <div class="fs-4 fw-bold lh-1">
-                        <?= number_format($stats['totalRemaining'], 0, ',', ' ') ?> zł
+                    <div class="fs-5 fw-bold lh-1">
+                        <?= number_format($stats['totalRemainingPln'], 0, ',', ' ') ?> zł
                     </div>
-                    <div class="text-muted small">Do zapłaty</div>
+                    <?php if ($stats['totalRemainingEur'] > 0.01): ?>
+                    <div class="fw-semibold lh-1 mt-1 text-secondary" style="font-size:.85rem">
+                        <?= number_format($stats['totalRemainingEur'], 0, ',', ' ') ?> EUR
+                    </div>
+                    <?php endif; ?>
+                    <div class="text-muted small mt-1">Do zapłaty</div>
                 </div>
             </div>
         </div>
         </a>
     </div>
-    <div class="col-6 col-md-3">
+    <!-- Zapłacono -->
+    <div class="col-6 col-md-4 col-lg">
         <a href="<?= $this->Url->build($currentUrl(['status' => 'paid', 'page' => 1])) ?>" class="text-decoration-none">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body d-flex align-items-center gap-3">
@@ -285,14 +299,40 @@ $typeBadge = function (string $type): string {
                     <i class="ri-checkbox-circle-line fs-5 text-success"></i>
                 </div>
                 <div>
-                    <div class="fs-4 fw-bold lh-1 text-success">
-                        <?= number_format($stats['totalPaid'], 0, ',', ' ') ?> zł
+                    <div class="fs-5 fw-bold lh-1 text-success">
+                        <?= number_format($stats['totalPaidPln'], 0, ',', ' ') ?> zł
                     </div>
-                    <div class="text-muted small">Zapłacono</div>
+                    <?php if ($stats['totalPaidEur'] > 0.01): ?>
+                    <div class="fw-semibold lh-1 mt-1 text-success" style="font-size:.85rem;opacity:.8">
+                        <?= number_format($stats['totalPaidEur'], 0, ',', ' ') ?> EUR
+                    </div>
+                    <?php endif; ?>
+                    <div class="text-muted small mt-1">Zapłacono</div>
                 </div>
             </div>
         </div>
         </a>
+    </div>
+    <!-- VAT -->
+    <div class="col-6 col-md-4 col-lg">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-secondary-subtle d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px;">
+                    <i class="ri-percent-line fs-5 text-secondary"></i>
+                </div>
+                <div>
+                    <div class="fs-5 fw-bold lh-1 text-secondary">
+                        <?= number_format($stats['vatPln'], 0, ',', ' ') ?> zł
+                    </div>
+                    <?php if ($stats['vatEur'] > 0.01): ?>
+                    <div class="fw-semibold lh-1 mt-1 text-secondary" style="font-size:.85rem;opacity:.8">
+                        <?= number_format($stats['vatEur'], 0, ',', ' ') ?> EUR
+                    </div>
+                    <?php endif; ?>
+                    <div class="text-muted small mt-1">VAT łącznie</div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 <?php endif; ?>

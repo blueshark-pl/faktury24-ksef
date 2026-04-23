@@ -178,7 +178,18 @@ class ReconciliationsController extends AppController
         $baseConditions['Invoices.type NOT IN'] = $correctionTypes;
 
         // ── Statystyki i lista — system (pomijamy gdy source=legacy) ─────────
-        $stats    = ['count' => 0, 'totalReceivables' => 0.0, 'totalPaid' => 0.0, 'totalRemaining' => 0.0, 'overdue' => 0.0, 'overdueCount' => 0];
+        $stats = [
+            'count'               => 0,
+            'totalReceivablesPln' => 0.0, 'totalReceivablesEur' => 0.0,
+            'totalPaidPln'        => 0.0, 'totalPaidEur'        => 0.0,
+            'totalRemainingPln'   => 0.0, 'totalRemainingEur'   => 0.0,
+            'overduePln'          => 0.0, 'overdueEur'          => 0.0,
+            'overdueCount'        => 0,
+            'vatPln'              => 0.0, 'vatEur'              => 0.0,
+            // compat
+            'totalReceivables'    => 0.0, 'totalPaid'           => 0.0,
+            'totalRemaining'      => 0.0, 'overdue'             => 0.0,
+        ];
         $total    = 0;
         $invoices = [];
         $pages    = 1;
@@ -188,8 +199,10 @@ class ReconciliationsController extends AppController
             $statsRows = $Invoices->find()
                 ->select([
                     'total'        => 'Invoices.total',
+                    'netto'        => 'Invoices.netto',
                     'alreadypaid'  => 'Invoices.alreadypaid',
                     'remaining'    => 'Invoices.remaining',
+                    'currency'     => 'Invoices.currency',
                     'paymentstate' => 'Invoices.paymentstate',
                     'paymentdate'  => 'Invoices.paymentdate',
                 ])
@@ -366,13 +379,16 @@ class ReconciliationsController extends AppController
             // Statystyki legacy — używamy $legacyStatsConditions (bez filtra statusu)
             $legacyStatsRows = $LegacyInvoices->find()
                 ->select([
-                    'total'        => 'LegacyInvoices.total',
-                    'alreadypaid'  => 'LegacyInvoices.alreadypaid',
-                    'remaining'    => 'LegacyInvoices.remaining',
-                    'paymentstate' => 'LegacyInvoices.paymentstate',
-                    'paymentdate'  => 'LegacyInvoices.paymentdate',
-                    'date'         => 'LegacyInvoices.date',
-                    'platnosc'     => 'LegacyInvoices.platnosc',
+                    'total'         => 'LegacyInvoices.total',
+                    'netto'         => 'LegacyInvoices.netto',
+                    'alreadypaid'   => 'LegacyInvoices.alreadypaid',
+                    'remaining'     => 'LegacyInvoices.remaining',
+                    'remaining_wal' => 'LegacyInvoices.remaining_wal',
+                    'currency'      => 'LegacyInvoices.currency',
+                    'paymentstate'  => 'LegacyInvoices.paymentstate',
+                    'paymentdate'   => 'LegacyInvoices.paymentdate',
+                    'date'          => 'LegacyInvoices.date',
+                    'platnosc'      => 'LegacyInvoices.platnosc',
                 ])
                 ->where($legacyStatsConditions)
                 ->disableHydration()
@@ -395,15 +411,25 @@ class ReconciliationsController extends AppController
             }
             unset($srow);
             // _computeStats już wewnętrznie filtruje: state !== 'paid' && pdate < today
-            $legacyStats = $this->_computeStats($legacyStatsRows, $today);
+            $legacyStats = $this->_computeStats($legacyStatsRows, $today, true);
 
             // Merge statystyk
-            $stats['count']            += $legacyStats['count'];
-            $stats['totalReceivables'] += $legacyStats['totalReceivables'];
-            $stats['totalPaid']        += $legacyStats['totalPaid'];
-            $stats['totalRemaining']   += $legacyStats['totalRemaining'];
-            $stats['overdue']          += $legacyStats['overdue'];
-            $stats['overdueCount']     += $legacyStats['overdueCount'];
+            $stats['count']               += $legacyStats['count'];
+            $stats['totalReceivablesPln'] += $legacyStats['totalReceivablesPln'];
+            $stats['totalReceivablesEur'] += $legacyStats['totalReceivablesEur'];
+            $stats['totalPaidPln']        += $legacyStats['totalPaidPln'];
+            $stats['totalPaidEur']        += $legacyStats['totalPaidEur'];
+            $stats['totalRemainingPln']   += $legacyStats['totalRemainingPln'];
+            $stats['totalRemainingEur']   += $legacyStats['totalRemainingEur'];
+            $stats['overduePln']          += $legacyStats['overduePln'];
+            $stats['overdueEur']          += $legacyStats['overdueEur'];
+            $stats['overdueCount']        += $legacyStats['overdueCount'];
+            $stats['vatPln']              += $legacyStats['vatPln'];
+            $stats['vatEur']              += $legacyStats['vatEur'];
+            $stats['totalReceivables']    += $legacyStats['totalReceivables'];
+            $stats['totalPaid']           += $legacyStats['totalPaid'];
+            $stats['totalRemaining']      += $legacyStats['totalRemaining'];
+            $stats['overdue']             += $legacyStats['overdue'];
 
             // Zapytanie legacyInvoices z paginacją
             $legacyAllowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
@@ -1265,43 +1291,89 @@ class ReconciliationsController extends AppController
             ]));
     }
 
-    private function _computeStats(array $rows, string $today): array
+    /**
+     * Oblicza statystyki finansowe dla zestawu wierszy faktur.
+     *
+     * @param array  $rows      Wiersze z bazy (disableHydration)
+     * @param string $today     Data dzisiejsza Y-m-d (do wykrywania przeterminowanych)
+     * @param bool   $isLegacy  true = faktury archiwalne (legacy), gdzie total/netto EUR-owych są w EUR
+     */
+    private function _computeStats(array $rows, string $today, bool $isLegacy = false): array
     {
-        $totalReceivables = 0.0;
-        $totalPaid        = 0.0;
-        $totalRemaining   = 0.0;
-        $overdue          = 0.0;
-        $overdueCount     = 0;
+        $totalReceivablesPln = 0.0;
+        $totalReceivablesEur = 0.0;
+        $totalPaidPln        = 0.0;
+        $totalPaidEur        = 0.0;
+        $totalRemainingPln   = 0.0;
+        $totalRemainingEur   = 0.0;
+        $overduePln          = 0.0;
+        $overdueEur          = 0.0;
+        $overdueCount        = 0;
+        $vatPln              = 0.0;
+        $vatEur              = 0.0;
 
         foreach ($rows as $r) {
-            // total/alreadypaid/remaining są zawsze w PLN (dla legacy: GLO_BRUTTO/GLO_ZL_ZAPLATA/POZOSTALO_PLN)
-            $total     = (float)($r['total']       ?? 0);
-            $remaining = (float)($r['remaining']   ?? 0);
-            $paid      = (float)($r['alreadypaid'] ?? 0);
-            $state     = (string)($r['paymentstate'] ?? 'unpaid');
-            $pdate     = isset($r['paymentdate']) && $r['paymentdate']
+            $total        = (float)($r['total']         ?? 0);
+            $netto        = (float)($r['netto']         ?? 0);
+            $remaining    = (float)($r['remaining']     ?? 0);
+            $paid         = (float)($r['alreadypaid']   ?? 0);
+            $remainingWal = (float)($r['remaining_wal'] ?? 0);
+            $currency     = (string)($r['currency']     ?? 'PLN');
+            $state        = (string)($r['paymentstate'] ?? 'unpaid');
+            $pdate        = isset($r['paymentdate']) && $r['paymentdate']
                 ? (string)(is_string($r['paymentdate'])
                     ? substr($r['paymentdate'], 0, 10)
                     : $r['paymentdate']->format('Y-m-d'))
                 : '';
 
-            $totalReceivables += $total;
-            $totalPaid        += $paid;
-            $totalRemaining   += $remaining;
+            // Legacy EUR: total/netto są w EUR (brutto/netto EUR), remaining_wal = EUR remaining
+            // System: total/netto zawsze PLN niezależnie od waluty faktury
+            $isEurBucket = $isLegacy && $currency === 'EUR';
 
-            if ($state !== 'paid' && $pdate !== '' && $pdate < $today) {
-                $overdue += $remaining;
-                $overdueCount++;
+            if ($isEurBucket) {
+                // total = EUR brutto, remaining_wal = EUR pozostało
+                $paidEur = max(0.0, $total - $remainingWal);
+                $totalReceivablesEur += $total;
+                $totalPaidEur        += $paidEur;
+                $totalRemainingEur   += $remainingWal;
+                $vatEur              += max(0.0, $total - $netto);
+
+                if ($state !== 'paid' && $pdate !== '' && $pdate < $today) {
+                    $overdueEur += $remainingWal;
+                    $overdueCount++;
+                }
+            } else {
+                // total = PLN brutto, remaining = PLN pozostało
+                $totalReceivablesPln += $total;
+                $totalPaidPln        += $paid;
+                $totalRemainingPln   += $remaining;
+                $vatPln              += max(0.0, $total - $netto);
+
+                if ($state !== 'paid' && $pdate !== '' && $pdate < $today) {
+                    $overduePln += $remaining;
+                    $overdueCount++;
+                }
             }
         }
 
         return [
-            'count'            => count($rows),
-            'totalReceivables' => $totalReceivables,
-            'totalPaid'        => $totalPaid,
-            'totalRemaining'   => $totalRemaining,
-            'overdue'          => $overdue,
-            'overdueCount'     => $overdueCount,
+            'count'               => count($rows),
+            'totalReceivablesPln' => $totalReceivablesPln,
+            'totalReceivablesEur' => $totalReceivablesEur,
+            'totalPaidPln'        => $totalPaidPln,
+            'totalPaidEur'        => $totalPaidEur,
+            'totalRemainingPln'   => $totalRemainingPln,
+            'totalRemainingEur'   => $totalRemainingEur,
+            'overduePln'          => $overduePln,
+            'overdueEur'          => $overdueEur,
+            'overdueCount'        => $overdueCount,
+            'vatPln'              => $vatPln,
+            'vatEur'              => $vatEur,
+            // Pola compat (suma PLN + EUR) — do zachowania wstecznej kompatybilności
+            'totalReceivables'    => $totalReceivablesPln + $totalReceivablesEur,
+            'totalPaid'           => $totalPaidPln + $totalPaidEur,
+            'totalRemaining'      => $totalRemainingPln + $totalRemainingEur,
+            'overdue'             => $overduePln + $overdueEur,
         ];
     }
 }
