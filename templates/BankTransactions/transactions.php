@@ -136,12 +136,13 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                     <th>Tytuł / opis</th>
                     <th>Dopasowanie</th>
                     <th class="pe-3">Import</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($transactions)): ?>
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-5">
+                        <td colspan="8" class="text-center text-muted py-5">
                             Brak transakcji<?= ($search || $direction || $dateFrom || $dateTo || $matchStatus) ? ' dla podanych filtrów' : '' ?>.
                         </td>
                     </tr>
@@ -265,6 +266,19 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                                 ) ?>
                             <?php endif; ?>
                         </td>
+                        <td class="pe-2 text-end">
+                            <?php if ($tx->direction === 'C'): ?>
+                            <button type="button"
+                                class="btn btn-sm btn-outline-primary py-0 btn-tx-settle"
+                                data-tx-id="<?= h($tx->id) ?>"
+                                data-tx-amount="<?= h($tx->amount) ?>"
+                                data-tx-currency="<?= h($tx->currency) ?>"
+                                data-tx-date="<?= h($tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('Y-m-d') : substr((string)$tx->value_date, 0, 10)) ?>"
+                                title="Przypisz do faktur / rozlicz">
+                                <i class="ri-link me-1"></i>Rozlicz
+                            </button>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -302,4 +316,369 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
 <style>
 .btn-xs { padding: .125rem .375rem; font-size: .75rem; border-radius: .2rem; }
+.settle-panel { background: #f8fafc; border-top: 2px solid #0d6efd22; }
+.settle-panel .inv-result-row { cursor: pointer; transition: background .1s; }
+.settle-panel .inv-result-row:hover { background: #e8f0fe; }
+.settle-panel .inv-result-row.selected { background: #dbeafe; border-left: 3px solid #0d6efd; }
+.alloc-badge { font-size: .7em; }
 </style>
+
+<script>
+(function () {
+'use strict';
+
+var urlAddAllocation    = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'addAllocation']) ?>';
+var urlDeleteAllocation = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'deleteAllocation', '_ext' => false]) ?>';
+var csrfToken = (document.cookie.match(/csrfToken=([^;]+)/) || [])[1] || '';
+
+function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmt(v) {
+    return parseFloat(v || 0).toFixed(2).replace('.', ',');
+}
+function fmtCurrency(v, c) {
+    return fmt(v) + '\u202f' + esc(c || 'PLN');
+}
+function stateLabel(s) {
+    if (s === 'paid')    return '<span class="badge bg-success-subtle text-success border" style="font-size:.7em">opłacona</span>';
+    if (s === 'partial') return '<span class="badge bg-warning-subtle text-warning border" style="font-size:.7em">częściowo</span>';
+    return '<span class="badge bg-danger-subtle text-danger border" style="font-size:.7em">nieopłacona</span>';
+}
+
+// ── Stan paneli ──────────────────────────────────────────────────────────────
+var openPanels = {};   // txId → { selectedInvoice, selectedSource }
+
+function getCsrf() {
+    var m = document.cookie.match(/csrfToken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+// ── Kliknięcie "Rozlicz" ─────────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-tx-settle');
+    if (!btn) return;
+    var txId     = btn.dataset.txId;
+    var txAmount = parseFloat(btn.dataset.txAmount || 0);
+    var txCurr   = btn.dataset.txCurrency || 'PLN';
+    var txDate   = btn.dataset.txDate || '';
+    var tr       = btn.closest('tr');
+
+    // Toggle
+    var existing = document.getElementById('settle-panel-' + txId);
+    if (existing) {
+        existing.closest('tr').remove();
+        delete openPanels[txId];
+        btn.classList.remove('active');
+        return;
+    }
+    btn.classList.add('active');
+    openPanels[txId] = { invoice: null, source: null };
+
+    var panelTr = document.createElement('tr');
+    panelTr.id  = 'settle-tr-' + txId;
+    panelTr.innerHTML =
+        '<td colspan="8" class="p-0 settle-panel">'
+      + '<div id="settle-panel-' + esc(txId) + '" class="px-4 py-3">'
+      + '<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">'
+      +   '<span class="fw-semibold"><i class="ri-link me-1 text-primary"></i>Rozlicz przelew</span>'
+      +   '<span class="text-muted small">Kwota: <strong class="text-dark">' + fmtCurrency(txAmount, txCurr) + '</strong></span>'
+      +   '<span class="badge bg-primary-subtle text-primary" id="tx-remaining-badge-' + esc(txId) + '">ładowanie…</span>'
+      + '</div>'
+      // Sekcja: istniejące alokacje
+      + '<div id="tx-alloc-list-' + esc(txId) + '" class="mb-3"></div>'
+      // Sekcja: szukaj faktury
+      + '<div class="row g-2 mb-2">'
+      +   '<div class="col-md-6">'
+      +     '<label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Szukaj faktury (nr, kontrahent, NIP)</label>'
+      +     '<div class="input-group input-group-sm">'
+      +       '<span class="input-group-text"><i class="ri-search-line"></i></span>'
+      +       '<input type="text" class="form-control tx-inv-search" id="tx-search-' + esc(txId) + '" data-tx-id="' + esc(txId) + '" placeholder="FV/2026/…, nazwa, NIP…" autocomplete="off">'
+      +       '<select class="form-select" id="tx-search-source-' + esc(txId) + '" style="max-width:110px">'
+      +         '<option value="all">Wszystkie</option>'
+      +         '<option value="system">Systemowe</option>'
+      +         '<option value="legacy">Archiwum</option>'
+      +       '</select>'
+      +     '</div>'
+      +     '<div id="tx-search-results-' + esc(txId) + '" class="border rounded mt-1" style="max-height:220px;overflow-y:auto;display:none"></div>'
+      +   '</div>'
+      +   '<div class="col-md-6" id="tx-alloc-form-' + esc(txId) + '" style="display:none"></div>'
+      + '</div>'
+      + '</div></td>';
+
+    tr.after(panelTr);
+
+    // Wczytaj istniejące alokacje
+    loadTxAllocations(txId);
+});
+
+// ── Wczytaj alokacje dla przelewu ────────────────────────────────────────────
+function loadTxAllocations(txId) {
+    fetch('/wyciagi/tx-allocations/' + txId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { renderTxAllocations(txId, d); });
+}
+
+function renderTxAllocations(txId, d) {
+    var listEl = document.getElementById('tx-alloc-list-' + txId);
+    var badgeEl = document.getElementById('tx-remaining-badge-' + txId);
+    if (!listEl) return;
+
+    var remaining = d.remaining_amount != null ? d.remaining_amount : d.tx_amount;
+    if (badgeEl) {
+        badgeEl.textContent = 'Pozostało: ' + fmtCurrency(remaining, d.tx_currency);
+        badgeEl.className = remaining > 0.005
+            ? 'badge bg-warning-subtle text-warning border'
+            : 'badge bg-success-subtle text-success border';
+    }
+
+    if (!d.allocations || !d.allocations.length) {
+        listEl.innerHTML = '<div class="text-muted small fst-italic">Brak przypisanych faktur do tego przelewu.</div>';
+        return;
+    }
+
+    var html = '<div class="small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Przypisane faktury</div>'
+             + '<div class="d-flex flex-wrap gap-2">';
+    d.allocations.forEach(function (a) {
+        var srcBadge = a.source === 'legacy'
+            ? '<span class="badge bg-secondary-subtle text-secondary border alloc-badge me-1">archiwum</span>'
+            : '<span class="badge bg-primary-subtle text-primary border alloc-badge me-1">sys</span>';
+        html += '<div class="d-flex align-items-center gap-2 border rounded px-2 py-1 bg-white">'
+              + srcBadge
+              + '<span class="fw-semibold">' + esc(a.fullnumber) + '</span>'
+              + '<span class="text-muted alloc-badge">' + esc(a.type_label) + '</span>'
+              + '<span class="fw-semibold text-success">' + fmtCurrency(a.allocated_amount, a.currency) + '</span>'
+              + (a.note ? '<span class="text-muted alloc-badge">' + esc(a.note) + '</span>' : '')
+              + '<button type="button" class="btn btn-xs btn-outline-danger btn-del-alloc" data-alloc-id="' + esc(a.id) + '" data-tx-id="' + esc(txId) + '" title="Usuń">'
+              + '<i class="ri-delete-bin-line"></i></button>'
+              + '</div>';
+    });
+    html += '</div>';
+    listEl.innerHTML = html;
+}
+
+// ── Usuwanie alokacji ────────────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-del-alloc');
+    if (!btn) return;
+    if (!confirm('Usunąć to przypisanie? Powiązana wpłata też zostanie usunięta.')) return;
+    var allocId = btn.dataset.allocId;
+    var txId    = btn.dataset.txId;
+    fetch(urlDeleteAllocation + '/' + allocId, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': getCsrf() },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (d.success) loadTxAllocations(txId);
+        else alert(d.error || 'Błąd.');
+    });
+});
+
+// ── Wyszukiwanie faktur ──────────────────────────────────────────────────────
+var searchTimers = {};
+document.addEventListener('input', function (e) {
+    var input = e.target.closest('.tx-inv-search');
+    if (!input) return;
+    var txId = input.dataset.txId;
+    clearTimeout(searchTimers[txId]);
+    searchTimers[txId] = setTimeout(function () { runInvoiceSearch(txId); }, 300);
+});
+
+function runInvoiceSearch(txId) {
+    var input  = document.getElementById('tx-search-' + txId);
+    var source = document.getElementById('tx-search-source-' + txId);
+    var resEl  = document.getElementById('tx-search-results-' + txId);
+    if (!input || !resEl) return;
+    var q = input.value.trim();
+    if (q.length < 2) { resEl.style.display = 'none'; return; }
+
+    var url = '/wyciagi/invoice-search?q=' + encodeURIComponent(q)
+            + '&source=' + encodeURIComponent(source ? source.value : 'all');
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { renderSearchResults(txId, d.results || []); });
+}
+
+function renderSearchResults(txId, results) {
+    var resEl = document.getElementById('tx-search-results-' + txId);
+    if (!resEl) return;
+    if (!results.length) {
+        resEl.style.display = '';
+        resEl.innerHTML = '<div class="text-muted small px-3 py-2 fst-italic">Brak wyników.</div>';
+        return;
+    }
+    var html = '';
+    results.forEach(function (inv) {
+        var srcBadge = inv.source === 'legacy'
+            ? '<span class="badge bg-secondary-subtle text-secondary border me-1" style="font-size:.7em">archiwum</span>'
+            : '<span class="badge bg-primary-subtle text-primary border me-1" style="font-size:.7em">sys</span>';
+        html += '<div class="inv-result-row d-flex align-items-center gap-2 px-3 py-2 border-bottom"'
+              + ' data-tx-id="' + esc(txId) + '"'
+              + ' data-inv=\'' + esc(JSON.stringify(inv)) + '\'>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   srcBadge
+              +   '<span class="fw-semibold">' + esc(inv.fullnumber) + '</span>'
+              +   ' <span class="text-muted small">' + esc(inv.contractor) + '</span>'
+              + '</div>'
+              + '<div class="text-end text-nowrap small">'
+              +   stateLabel(inv.paymentstate)
+              +   '<div class="fw-semibold">' + fmtCurrency(inv.remaining, inv.currency) + '</div>'
+              +   '<div class="text-muted" style="font-size:.75em">z ' + fmtCurrency(inv.total, inv.currency) + '</div>'
+              + '</div>'
+              + '</div>';
+    });
+    resEl.innerHTML = html;
+    resEl.style.display = '';
+}
+
+// ── Wybór faktury z wyników ──────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var row = e.target.closest('.inv-result-row');
+    if (!row) return;
+    var txId = row.dataset.txId;
+    var inv  = JSON.parse(row.dataset.inv || '{}');
+
+    // Highlight
+    row.closest('div').querySelectorAll('.inv-result-row').forEach(function (r) { r.classList.remove('selected'); });
+    row.classList.add('selected');
+
+    openPanels[txId] = { invoice: inv, source: inv.source };
+    renderAllocForm(txId, inv);
+});
+
+// ── Formularz alokacji ───────────────────────────────────────────────────────
+function renderAllocForm(txId, inv) {
+    var formEl = document.getElementById('tx-alloc-form-' + txId);
+    if (!formEl) return;
+
+    var isEur = inv.currency && inv.currency !== 'PLN';
+    var defAmount = inv.remaining > 0 ? inv.remaining.toFixed(2) : inv.total.toFixed(2);
+    var defCurr   = inv.currency || 'PLN';
+
+    var html = '<label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem">Kwota alokacji</label>'
+             + '<div class="d-flex gap-2 flex-wrap mb-2">';
+
+    // Szybkie przyciski kwot
+    var quickAmounts = [];
+    if (isEur) {
+        if (inv.total   > 0) quickAmounts.push({ label: 'Brutto ' + inv.currency, amt: inv.total,  curr: inv.currency, type: 'gross' });
+        if (inv.netto   > 0) quickAmounts.push({ label: 'Netto ' + inv.currency, amt: inv.netto,  curr: inv.currency, type: 'net' });
+        if (inv.vat     > 0) quickAmounts.push({ label: 'VAT PLN', amt: Math.round(inv.vat * (inv.exchange_rate || 1) * 100) / 100, curr: 'PLN', type: 'vat' });
+    } else {
+        if (inv.total   > 0) quickAmounts.push({ label: 'Brutto PLN', amt: inv.total,  curr: 'PLN', type: 'gross' });
+        if (inv.netto   > 0) quickAmounts.push({ label: 'Netto PLN',  amt: inv.netto,  curr: 'PLN', type: 'net' });
+        if (inv.vat     > 0) quickAmounts.push({ label: 'VAT PLN',    amt: inv.vat,    curr: 'PLN', type: 'vat' });
+    }
+    if (inv.remaining > 0 && inv.remaining !== inv.total) {
+        quickAmounts.unshift({ label: 'Pozostałe', amt: inv.remaining, curr: inv.currency, type: 'gross' });
+    }
+
+    quickAmounts.forEach(function (qa) {
+        html += '<button type="button" class="btn btn-xs btn-outline-secondary btn-quick-amt"'
+              + ' data-amt="' + qa.amt + '" data-curr="' + esc(qa.curr) + '" data-type="' + esc(qa.type) + '"'
+              + ' data-tx-id="' + esc(txId) + '">'
+              + esc(qa.label) + '<br><small>' + fmtCurrency(qa.amt, qa.curr) + '</small>'
+              + '</button>';
+    });
+    html += '</div>';
+
+    html += '<div class="row g-2 mb-2">'
+          + '<div class="col-5"><input type="number" class="form-control form-control-sm" id="alloc-amt-' + esc(txId) + '"'
+          + ' value="' + esc(defAmount) + '" step="0.01" min="0.01" placeholder="Kwota"></div>'
+          + '<div class="col-3"><select class="form-select form-select-sm" id="alloc-curr-' + esc(txId) + '">'
+          + ['PLN','EUR','USD','GBP'].map(function (c) { return '<option value="' + c + '"' + (c === defCurr ? ' selected' : '') + '>' + c + '</option>'; }).join('')
+          + '</select></div>'
+          + '<div class="col-4"><select class="form-select form-select-sm" id="alloc-type-' + esc(txId) + '">'
+          + '<option value="gross">Brutto</option><option value="net">Netto</option><option value="vat">VAT</option>'
+          + '</select></div>'
+          + '</div>'
+          + '<div class="mb-2"><input type="text" class="form-control form-control-sm" id="alloc-note-' + esc(txId) + '"'
+          + ' placeholder="Uwaga (opcja)"></div>'
+          + '<button type="button" class="btn btn-sm btn-primary btn-do-tx-alloc" data-tx-id="' + esc(txId) + '">'
+          + '<i class="ri-check-line me-1"></i>Przypisz do faktury</button>';
+
+    formEl.innerHTML = html;
+    formEl.style.display = '';
+}
+
+// ── Szybkie kwoty ────────────────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-quick-amt');
+    if (!btn) return;
+    var txId = btn.dataset.txId;
+    var amtEl  = document.getElementById('alloc-amt-'  + txId);
+    var currEl = document.getElementById('alloc-curr-' + txId);
+    var typeEl = document.getElementById('alloc-type-' + txId);
+    if (amtEl)  amtEl.value  = parseFloat(btn.dataset.amt).toFixed(2);
+    if (currEl) currEl.value = btn.dataset.curr;
+    if (typeEl) typeEl.value = btn.dataset.type;
+    btn.closest('.d-flex').querySelectorAll('.btn-quick-amt').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+});
+
+// ── Wykonaj alokację ─────────────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-do-tx-alloc');
+    if (!btn) return;
+    var txId  = btn.dataset.txId;
+    var state = openPanels[txId];
+    if (!state || !state.invoice) { alert('Wybierz fakturę z listy wyników.'); return; }
+
+    var inv   = state.invoice;
+    var amt   = parseFloat(document.getElementById('alloc-amt-'  + txId)?.value || 0);
+    var curr  = document.getElementById('alloc-curr-' + txId)?.value || 'PLN';
+    var type  = document.getElementById('alloc-type-' + txId)?.value || 'gross';
+    var note  = document.getElementById('alloc-note-' + txId)?.value || '';
+
+    if (amt <= 0) { alert('Podaj kwotę większą od 0.'); return; }
+
+    var body = new URLSearchParams({
+        bank_transaction_id: txId,
+        allocated_amount:    amt.toFixed(2),
+        currency:            curr,
+        allocation_type:     type,
+        note:                note,
+        _csrfToken:          getCsrf(),
+    });
+    if (inv.source === 'legacy') body.set('legacy_invoice_id', inv.id);
+    else                         body.set('invoice_id',        inv.id);
+
+    btn.disabled = true;
+    fetch(urlAddAllocation, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        btn.disabled = false;
+        if (d.success) {
+            // Wyczyść zaznaczenie i formularz
+            var resEl = document.getElementById('tx-search-results-' + txId);
+            var formEl = document.getElementById('tx-alloc-form-' + txId);
+            var searchEl = document.getElementById('tx-search-' + txId);
+            if (resEl)   { resEl.style.display = 'none'; resEl.innerHTML = ''; }
+            if (formEl)  { formEl.style.display = 'none'; formEl.innerHTML = ''; }
+            if (searchEl) searchEl.value = '';
+            openPanels[txId] = { invoice: null, source: null };
+            // Odśwież listę alokacji
+            loadTxAllocations(txId);
+        } else {
+            alert(d.error || 'Błąd przypisywania.');
+        }
+    })
+    .catch(function () { btn.disabled = false; alert('Błąd połączenia.'); });
+});
+
+// Zamknij wyniki po kliknięciu poza
+document.addEventListener('click', function (e) {
+    if (e.target.closest('.tx-inv-search') || e.target.closest('[id^="tx-search-results-"]')) return;
+    document.querySelectorAll('[id^="tx-search-results-"]').forEach(function (el) {
+        // Nie ukrywaj jeśli jest zaznaczone
+        if (!el.querySelector('.selected')) el.style.display = 'none';
+    });
+});
+
+}());
+</script>

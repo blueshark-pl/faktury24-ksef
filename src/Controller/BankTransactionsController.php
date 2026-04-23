@@ -394,6 +394,203 @@ class BankTransactionsController extends AppController
     // Usunięcie importu
     // -------------------------------------------------------------------------
 
+    // ── Alokacje: wyszukiwanie faktur ─────────────────────────────────────────
+
+    /**
+     * AJAX GET: szukaj faktur (system + legacy) po numerze / nazwie kontrahenta.
+     * Zwraca listę trafień z danymi potrzebnymi do alokacji.
+     */
+    public function invoiceSearch(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $q         = trim((string)$this->request->getQuery('q', ''));
+        $source    = (string)$this->request->getQuery('source', 'all'); // all|system|legacy
+
+        $results = [];
+
+        if (mb_strlen($q) >= 2) {
+            $like = '%' . $q . '%';
+
+            // ── Faktury systemowe ──────────────────────────────────────────
+            if ($source !== 'legacy') {
+                $rows = $this->fetchTable('Invoices')->find()
+                    ->contain([
+                        'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q2) {
+                            return $q2->select(['id', 'invoice_id', 'name', 'nip']);
+                        },
+                    ])
+                    ->where([
+                        'Invoices.company_id'       => $companyId,
+                        'Invoices.workflow_status'  => 'issued',
+                        'OR' => [
+                            'Invoices.fullnumber LIKE' => $like,
+                            'InvoiceContractors.name LIKE' => $like,
+                            'InvoiceContractors.nip'       => $q,
+                        ],
+                    ])
+                    ->select([
+                        'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
+                        'Invoices.remaining', 'Invoices.currency', 'Invoices.paymentstate',
+                        'Invoices.paymentdate', 'Invoices.date',
+                    ])
+                    ->limit(15)
+                    ->all();
+
+                foreach ($rows as $inv) {
+                    $total = (float)$inv->total;
+                    $netto = (float)$inv->netto;
+                    $results[] = [
+                        'id'            => (string)$inv->id,
+                        'source'        => 'system',
+                        'fullnumber'    => (string)$inv->fullnumber,
+                        'contractor'    => (string)($inv->invoice_contractor->name ?? ''),
+                        'nip'           => (string)($inv->invoice_contractor->nip ?? ''),
+                        'total'         => $total,
+                        'netto'         => $netto,
+                        'vat'           => round($total - $netto, 2),
+                        'remaining'     => (float)$inv->remaining,
+                        'currency'      => (string)($inv->currency ?? 'PLN'),
+                        'paymentstate'  => (string)($inv->paymentstate ?? 'unpaid'),
+                        'date'          => $inv->date instanceof \DateTimeInterface ? $inv->date->format('Y-m-d') : substr((string)$inv->date, 0, 10),
+                    ];
+                }
+            }
+
+            // ── Faktury legacy ─────────────────────────────────────────────
+            if ($source !== 'system') {
+                $legacyRows = $this->fetchTable('LegacyInvoices')->find()
+                    ->where([
+                        'company_id' => $companyId,
+                        'OR' => [
+                            'fullnumber LIKE'       => $like,
+                            'contractor_name LIKE'  => $like,
+                            'contractor_nip'        => $q,
+                        ],
+                    ])
+                    ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip',
+                              'total', 'netto', 'remaining', 'remaining_wal', 'total_wal',
+                              'currency', 'exchange_rate', 'paymentstate', 'date'])
+                    ->limit(15)
+                    ->all();
+
+                foreach ($legacyRows as $inv) {
+                    $total    = (float)$inv->total;
+                    $netto    = (float)$inv->netto;
+                    $currency = (string)($inv->currency ?? 'PLN');
+                    $rate     = (float)($inv->exchange_rate ?? 0);
+                    $results[] = [
+                        'id'            => (string)$inv->id,
+                        'source'        => 'legacy',
+                        'fullnumber'    => (string)$inv->fullnumber,
+                        'contractor'    => (string)($inv->contractor_name ?? ''),
+                        'nip'           => (string)($inv->contractor_nip ?? ''),
+                        'total'         => $total,
+                        'netto'         => $netto,
+                        'vat'           => round($total - $netto, 2),
+                        'remaining'     => $currency !== 'PLN' ? (float)$inv->remaining_wal : (float)$inv->remaining,
+                        'remaining_pln' => (float)$inv->remaining,
+                        'currency'      => $currency,
+                        'exchange_rate' => $rate > 0 ? $rate : null,
+                        'paymentstate'  => (string)($inv->paymentstate ?? 'unpaid'),
+                        'date'          => $inv->date instanceof \DateTimeInterface ? $inv->date->format('Y-m-d') : substr((string)$inv->date, 0, 10),
+                    ];
+                }
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['results' => $results]));
+    }
+
+    /**
+     * AJAX GET: zwraca alokacje przypisane do konkretnego przelewu + saldo.
+     */
+    public function txAllocations(string $txId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $tx = $this->fetchTable('BankTransactions')->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->select(['id', 'amount', 'currency'])
+            ->first();
+
+        if ($tx === null) {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['error' => 'Przelew nie istnieje.']));
+        }
+
+        // Raw SQL — nie wymaga BankTransactionAllocationsTable class
+        $db    = $this->fetchTable('BankTransactions')->getConnection();
+        $stmt  = $db->execute(
+            'SELECT bta.id, bta.invoice_id, bta.legacy_invoice_id, bta.invoice_payment_id,
+                    bta.allocated_amount, bta.currency, bta.allocation_type, bta.note, bta.created
+             FROM bank_transaction_allocations bta
+             WHERE bta.bank_transaction_id = ? AND bta.company_id = ?
+             ORDER BY bta.created DESC',
+            [$txId, $companyId]
+        );
+        $rows = $stmt->fetchAll('assoc');
+
+        $txAmount  = (float)$tx->amount;
+        $allocated = array_sum(array_column($rows, 'allocated_amount'));
+        $remaining = round($txAmount - $allocated, 4);
+
+        // Dozbieranie numerów faktur
+        $invIds    = array_filter(array_column($rows, 'invoice_id'));
+        $legIds    = array_filter(array_column($rows, 'legacy_invoice_id'));
+        $invNumbers = [];
+
+        if ($invIds) {
+            $invRows = $this->fetchTable('Invoices')->find()
+                ->where(['id IN' => $invIds])
+                ->select(['id', 'fullnumber'])->all();
+            foreach ($invRows as $r) { $invNumbers[(string)$r->id] = $r->fullnumber; }
+        }
+        if ($legIds) {
+            $legRows = $this->fetchTable('LegacyInvoices')->find()
+                ->where(['id IN' => $legIds])
+                ->select(['id', 'fullnumber'])->all();
+            foreach ($legRows as $r) { $invNumbers[(string)$r->id] = $r->fullnumber; }
+        }
+
+        $typeLabels = ['gross' => 'brutto', 'net' => 'netto', 'vat' => 'VAT'];
+        $mapped = array_map(static function (array $row) use ($invNumbers, $typeLabels): array {
+            $fk = $row['invoice_id'] ?: $row['legacy_invoice_id'];
+            return [
+                'id'               => (string)$row['id'],
+                'invoice_id'       => $row['invoice_id'] ?: null,
+                'legacy_invoice_id'=> $row['legacy_invoice_id'] ?: null,
+                'invoice_payment_id' => $row['invoice_payment_id'] ?: null,
+                'fullnumber'       => $invNumbers[$fk] ?? '—',
+                'source'           => $row['invoice_id'] ? 'system' : 'legacy',
+                'allocated_amount' => round((float)$row['allocated_amount'], 2),
+                'currency'         => (string)$row['currency'],
+                'allocation_type'  => (string)$row['allocation_type'],
+                'type_label'       => $typeLabels[$row['allocation_type']] ?? $row['allocation_type'],
+                'note'             => (string)($row['note'] ?? ''),
+                'created'          => substr((string)($row['created'] ?? ''), 0, 10),
+            ];
+        }, $rows);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'tx_id'            => $txId,
+                'tx_amount'        => $txAmount,
+                'tx_currency'      => (string)$tx->currency,
+                'allocated_amount' => round($allocated, 2),
+                'remaining_amount' => $remaining,
+                'allocations'      => $mapped,
+            ]));
+    }
+
+    // ── Usunięcie importu ─────────────────────────────────────────────────────
+
     public function delete(string $id): Response
     {
         $this->request->allowMethod(['post', 'delete']);

@@ -174,6 +174,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->post('/wyciagi/ignore/{id}', ['controller' => 'BankTransactions', 'action' => 'ignoreTransaction'])
             ->setPass(['id']);
+        $builder->get('/wyciagi/invoice-search', ['controller' => 'BankTransactions', 'action' => 'invoiceSearch']);
+        $builder->get('/wyciagi/tx-allocations/{id}', ['controller' => 'BankTransactions', 'action' => 'txAllocations'])
+            ->setPass(['id']);
 
         // Kredyt kupiecki (Allianz Trade / Syntesys)
         $builder->get('/kredyt-kupiecki', ['controller' => 'CreditChecks', 'action' => 'index']);

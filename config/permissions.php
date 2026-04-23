@@ -377,6 +377,13 @@ return [
             'action' => ['index', 'indexKsef', 'indexSpeed', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions', 'allocations', 'addAllocation', 'deleteAllocation', 'transactionAllocatedSummary'],
         ],
 
+        // Wyciągi bankowe
+        [
+            'role'       => 'user',
+            'controller' => 'BankTransactions',
+            'action'     => ['index', 'transactions', 'view', 'import', 'confirmMatch', 'ignoreTransaction', 'delete', 'invoiceSearch', 'txAllocations'],
+        ],
+
         // Kredyt kupiecki
         [
             'role'       => 'user',
