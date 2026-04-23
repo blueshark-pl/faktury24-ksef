@@ -396,12 +396,21 @@ class ReconciliationsController extends AppController
                 ->toArray();
 
             // Uzupełnij paymentdate z platnosc dla rekordów z null
+            // UWAGA: disableHydration() w CakePHP 5 nadal zwraca date jako Cake\I18n\Date (DateTimeInterface),
+            // którego __toString() jest zlokalizowany — trzeba używać ->format() zamiast (string) cast.
             foreach ($legacyStatsRows as &$srow) {
                 if (empty($srow['paymentdate']) && !empty($srow['platnosc'])) {
                     if (preg_match('/(\d+)\s*dni/i', (string)$srow['platnosc'], $pm)) {
-                        $days  = (int)$pm[1];
-                        $dStr  = $srow['date'] ? substr((string)$srow['date'], 0, 10) : '';
-                        $dObj  = $dStr ? \DateTime::createFromFormat('Y-m-d', $dStr) : false;
+                        $days = (int)$pm[1];
+                        $dateVal = $srow['date'];
+                        if ($dateVal instanceof \DateTimeInterface) {
+                            $dStr = $dateVal->format('Y-m-d');
+                        } elseif ($dateVal) {
+                            $dStr = substr((string)$dateVal, 0, 10);
+                        } else {
+                            $dStr = '';
+                        }
+                        $dObj = $dStr ? \DateTime::createFromFormat('Y-m-d', $dStr) : false;
                         if ($dObj) {
                             $dObj->modify("+{$days} days");
                             $srow['paymentdate'] = $dObj->format('Y-m-d');
