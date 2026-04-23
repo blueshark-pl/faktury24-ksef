@@ -1350,10 +1350,13 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
      Modal: Rozlicz fakturę (przelewy + ręczna wpłata)
 ════════════════════════════════════════════════════════════════════════════ -->
 <style>
-#paymentModal .modal-content { border-radius: .75rem; overflow: hidden; }
-#paymentModal .tx-col { display: flex; flex-direction: column; min-height: 0; max-height: 72vh; }
+#paymentModal .modal-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+#paymentForm { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; }
+#paymentModal .modal-body { flex: 1 1 0; overflow: hidden; }
+#paymentModal .modal-body .row { height: 100%; }
+#paymentModal .tx-col { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 #paymentModal .tx-col-body { overflow-y: auto; flex: 1 1 0; }
-#paymentModal .pay-col { background: #f8fafc; border-left: 1px solid #dee2e6; }
+#paymentModal .pay-col { background: #f8fafc; border-left: 1px solid #dee2e6; overflow-y: auto; display: flex; flex-direction: column; }
 #bankTxFilterBar { background: #fff; border: 1px solid #dee2e6; border-radius: .5rem; padding: .45rem .6rem; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 #bankTxFilterBar .form-control, #bankTxFilterBar .form-select { border: none; box-shadow: none; background: transparent; font-size: .82rem; }
 #bankTxFilterBar .form-control:focus, #bankTxFilterBar .form-select:focus { outline: none; box-shadow: none; }
@@ -1396,7 +1399,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 <input type="hidden" name="legacy_invoice_id" id="modalLegacyInvoiceId">
                 <input type="hidden" name="redirect" value="<?= h($this->Url->build($currentUrl())) ?>">
 
-                <div class="row g-0" style="min-height:420px">
+                <div class="row g-0 h-100">
 
                     <!-- ── Lewa: przelewy ───────────────────────────────── -->
                     <div class="col-lg-7 tx-col">
