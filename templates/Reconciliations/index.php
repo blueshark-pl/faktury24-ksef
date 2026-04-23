@@ -1367,7 +1367,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 </style>
 
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-dialog modal-fullscreen">
         <div class="modal-content">
 
             <!-- Header -->
