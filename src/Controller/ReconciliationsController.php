@@ -1497,7 +1497,7 @@ class ReconciliationsController extends AppController
         if ($invoiceId !== '') {
             $invoice = $this->fetchTable('Invoices')->find()
                 ->where(['id' => $invoiceId, 'company_id' => $companyId])
-                ->select(['id', 'total', 'netto', 'remaining', 'currency', 'paymentstate', 'exchange_rate'])
+                ->select(['id', 'total', 'netto', 'remaining', 'currency', 'paymentstate', 'currency_exchange'])
                 ->first();
             if ($invoice === null) {
                 return $this->_jsonError('Faktura nie istnieje lub brak uprawnień.');
@@ -1552,7 +1552,10 @@ class ReconciliationsController extends AppController
 
         $plnAmount = $amount;
         if ($currency !== 'PLN' && $allocationType !== 'vat') {
-            $rate = (float)($invoice->exchange_rate ?? 0);
+            // system invoice uses column 'currency_exchange'; legacy uses 'exchange_rate'
+            $rate = $invoiceId !== ''
+                ? (float)($invoice->currency_exchange ?? 0)
+                : (float)($invoice->exchange_rate ?? 0);
             if ($rate > 0) {
                 $plnAmount = round($amount * $rate, 2);
             }

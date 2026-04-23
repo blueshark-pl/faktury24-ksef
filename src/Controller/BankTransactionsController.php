@@ -462,7 +462,7 @@ class BankTransactionsController extends AppController
                     ->select([
                         'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
                         'Invoices.remaining', 'Invoices.currency',
-                        'Invoices.exchange_rate', 'Invoices.paymentstate',
+                        'Invoices.currency_exchange', 'Invoices.paymentstate',
                         'Invoices.paymentdate', 'Invoices.date',
                     ])
                     ->limit(15)
@@ -470,7 +470,7 @@ class BankTransactionsController extends AppController
 
                 foreach ($rows as $inv) {
                     $currency = (string)($inv->currency ?? 'PLN');
-                    $rate     = (float)($inv->exchange_rate ?? 0);
+                    $rate     = (float)($inv->currency_exchange ?? 0);
                     $isEur    = ($currency !== 'PLN') && $rate > 0;
 
                     // invoices.total / netto / remaining są zawsze w PLN
