@@ -724,7 +724,14 @@ if ($status !== '')            $activeFilterCount++;
                         <?php endif; ?>
                     </td>
                     <!-- Status -->
-                    <td><?= $paymentBadge($state, $effectiveDue ?: null, $todayStr) ?></td>
+                    <td>
+                        <?= $paymentBadge($state, $effectiveDue ?: null, $todayStr) ?>
+                        <?php if ($pdateStr === null && $state !== 'paid'): ?>
+                            <div class="text-muted mt-1" style="font-size:.68rem">
+                                <i class="ri-calendar-close-line"></i> Brak terminu
+                            </div>
+                        <?php endif; ?>
+                    </td>
                     <!-- Przelew -->
                     <td>
                         <?= $bankBadge($bt) ?>
@@ -1091,7 +1098,21 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <?php endforeach; ?>
                     </td>
                     <!-- Status -->
-                    <td><?= $paymentBadge($legState, $displayPdate, $todayStr) ?></td>
+                    <td>
+                        <?= $paymentBadge($legState, $displayPdate, $todayStr) ?>
+                        <?php if ($legPdate === null && $legState !== 'paid'): ?>
+                            <?php if ($displayPdate !== null): ?>
+                                <div class="text-muted mt-1" style="font-size:.68rem"
+                                     title="Termin obliczony z pola Płatność: <?= h($leg->platnosc) ?>">
+                                    <i class="ri-calendar-2-line"></i> Termin szacowany
+                                </div>
+                            <?php else: ?>
+                                <div class="text-muted mt-1" style="font-size:.68rem">
+                                    <i class="ri-calendar-close-line"></i> Brak terminu
+                                </div>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </td>
                     <!-- Teczka / referencja -->
                     <td class="small text-muted" style="min-width:100px">
                         <?php if (!empty($leg->teczka)): ?>
