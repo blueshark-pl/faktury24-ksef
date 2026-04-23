@@ -785,7 +785,7 @@ class ReconciliationsController extends AppController
         $invoice = $LegacyInvoices->find()
             ->where(['id' => $legacyInvoiceId, 'company_id' => $companyId])
             ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip', 'date',
-                      'remaining', 'total', 'netto', 'remaining_wal', 'total_wal', 'currency'])
+                      'remaining', 'total', 'netto', 'remaining_wal', 'total_wal', 'currency', 'exchange_rate'])
             ->first();
 
         if ($invoice === null) {
@@ -802,19 +802,62 @@ class ReconciliationsController extends AppController
         $invoiceNetto     = (float)($invoice->netto ?? 0);
         $invoiceRemainWal = (float)($invoice->remaining_wal ?? 0);
         $invoiceTotalWal  = (float)($invoice->total_wal ?? 0);
+        $exchangeRate     = (float)($invoice->exchange_rate ?? 0);
+        $fullnumber       = (string)($invoice->fullnumber ?? '');
 
         // Kwota referencyjna PLN: jeśli coś już zapłacono — remaining, wpp total
         $refAmount = $invoiceRemaining > 0.01 ? $invoiceRemaining : $invoiceTotal;
 
         // Kwota referencyjna w walucie obcej (brutto): dla faktur walutowych
-        // W legacy: total = EUR brutto, netto = EUR netto, remaining_wal = EUR netto remaining
-        // Gross EUR remaining = remaining_wal * total / netto (skalowanie przez współczynnik VAT)
         $refAmountWal = 0.0;
         if ($invoiceCurrency !== 'PLN' && $invoiceNetto > 0.001) {
             $remainBruttoWal = $invoiceRemainWal * $invoiceTotal / $invoiceNetto;
-            // Gdy faktura nieopłacona → brutto remaining; gdy brak remaining → brutto total (= $invoiceTotal)
             $refAmountWal = $invoiceRemaining > 0.01 ? $remainBruttoWal : $invoiceTotal;
         }
+
+        // ── Zestaw kwot faktury (do tabelki + do dopasowania) ────────────────
+        $vatVal = max(0.0, $invoiceTotal - $invoiceNetto);
+        if ($invoiceCurrency !== 'PLN') {
+            // Legacy EUR: total/netto są w EUR
+            $amounts = [
+                'brutto_eur' => round($invoiceTotal, 2),
+                'netto_eur'  => round($invoiceNetto, 2),
+                'vat_eur'    => round($vatVal, 2),
+                'brutto_pln' => $exchangeRate > 0 ? round($invoiceTotal * $exchangeRate, 2) : null,
+                'netto_pln'  => $exchangeRate > 0 ? round($invoiceNetto  * $exchangeRate, 2) : null,
+                'vat_pln'    => $exchangeRate > 0 ? round($vatVal        * $exchangeRate, 2) : null,
+                'rate'       => $exchangeRate > 0 ? $exchangeRate : null,
+                'currency'   => $invoiceCurrency,
+            ];
+        } else {
+            $amounts = [
+                'brutto_pln' => round($invoiceTotal, 2),
+                'netto_pln'  => round($invoiceNetto, 2),
+                'vat_pln'    => round($vatVal, 2),
+                'currency'   => 'PLN',
+            ];
+        }
+
+        // Zestaw kwot do porównania z kwotą przelewu (label => wartość)
+        $matchAmounts = [];
+        if ($invoiceCurrency !== 'PLN') {
+            if ($invoiceTotal > 0.01)  $matchAmounts['brutto ' . $invoiceCurrency] = $invoiceTotal;
+            if ($invoiceNetto  > 0.01) $matchAmounts['netto '  . $invoiceCurrency] = $invoiceNetto;
+            if ($vatVal        > 0.01) $matchAmounts['VAT '    . $invoiceCurrency] = $vatVal;
+            if ($exchangeRate  > 0) {
+                if ($invoiceTotal > 0.01) $matchAmounts['brutto PLN'] = round($invoiceTotal * $exchangeRate, 2);
+                if ($invoiceNetto > 0.01) $matchAmounts['netto PLN']  = round($invoiceNetto  * $exchangeRate, 2);
+                if ($vatVal       > 0.01) $matchAmounts['VAT PLN']    = round($vatVal        * $exchangeRate, 2);
+            }
+        } else {
+            if ($invoiceTotal > 0.01) $matchAmounts['brutto PLN'] = $invoiceTotal;
+            if ($invoiceNetto > 0.01) $matchAmounts['netto PLN']  = $invoiceNetto;
+            if ($vatVal       > 0.01) $matchAmounts['VAT PLN']    = $vatVal;
+        }
+        if ($refAmount > 0.01) $matchAmounts['PLN pozostało'] = $refAmount;
+
+        // Znormalizowany numer faktury do porównania z tytułem przelewu
+        $fullnumberNorm = preg_replace('/[\s\/\-_]/', '', mb_strtolower($fullnumber));
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
@@ -823,26 +866,49 @@ class ReconciliationsController extends AppController
             return $v ? substr((string)$v, 0, 10) : '';
         };
 
-        $mapTx = static function ($tx) use ($fmtDate, $refAmount): array {
-            $amount     = (float)$tx->amount;
+        $mapTx = static function ($tx) use ($fmtDate, $refAmount, $matchAmounts, $fullnumberNorm): array {
+            $amount = (float)$tx->amount;
+
+            // Dopasowanie kwotowe — sprawdź wszystkie kwoty faktury (tolerancja 1% lub 1 PLN)
+            $amountMatch = false;
+            $amountMatchLabel = null;
+            foreach ($matchAmounts as $label => $refAmt) {
+                if ($refAmt <= 0) continue;
+                $diff = abs($amount - $refAmt);
+                if ($diff < 1.0 || $diff / $refAmt < 0.01) {
+                    $amountMatch = true;
+                    $amountMatchLabel = $label;
+                    break;
+                }
+            }
+
+            // Dopasowanie tytułu — czy numer faktury zawiera się w tytule przelewu
+            $titleMatch = false;
+            if ($fullnumberNorm !== '' && ($tx->title ?? '') !== '') {
+                $titleNorm = preg_replace('/[\s\/\-_]/', '', mb_strtolower((string)$tx->title));
+                if (str_contains($titleNorm, $fullnumberNorm)) {
+                    $titleMatch = true;
+                }
+            }
+
             $amountDiff = $refAmount > 0 ? abs($amount - $refAmount) : null;
-            // Trafienie kwotowe: różnica < 1% lub < 1 PLN
-            $amountMatch = $amountDiff !== null && ($amountDiff < 1.0 || ($refAmount > 0 && $amountDiff / $refAmount < 0.01));
             return [
-                'id'               => (string)$tx->id,
-                'value_date'       => $fmtDate($tx->value_date),
-                'amount'           => $amount,
-                'direction'        => (string)($tx->direction ?? 'C'),
-                'party_name'       => (string)($tx->party_name ?? ''),
-                'title'            => (string)($tx->title ?? ''),
-                'account_number'   => (string)($tx->account_number ?? ''),
-                'match_status'     => (string)($tx->match_status ?? 'unmatched'),
-                'match_confidence' => (int)($tx->match_confidence ?? 0),
-                'match_reason'     => (string)($tx->match_reason ?? ''),
-                'parsed_inv'       => (string)($tx->parsed_inv ?? ''),
-                'amount_match'     => $amountMatch,
-                'amount_diff'      => $amountDiff !== null ? round($amountDiff, 2) : null,
-                'legacy'           => true,
+                'id'                  => (string)$tx->id,
+                'value_date'          => $fmtDate($tx->value_date),
+                'amount'              => $amount,
+                'direction'           => (string)($tx->direction ?? 'C'),
+                'party_name'          => (string)($tx->party_name ?? ''),
+                'title'               => (string)($tx->title ?? ''),
+                'account_number'      => (string)($tx->account_number ?? ''),
+                'match_status'        => (string)($tx->match_status ?? 'unmatched'),
+                'match_confidence'    => (int)($tx->match_confidence ?? 0),
+                'match_reason'        => (string)($tx->match_reason ?? ''),
+                'parsed_inv'          => (string)($tx->parsed_inv ?? ''),
+                'amount_match'        => $amountMatch,
+                'amount_match_label'  => $amountMatchLabel,
+                'title_match'         => $titleMatch,
+                'amount_diff'         => $amountDiff !== null ? round($amountDiff, 2) : null,
+                'legacy'              => true,
             ];
         };
 
@@ -909,6 +975,8 @@ class ReconciliationsController extends AppController
                 'nip'             => $nip,
                 'contractor'      => $contractorName,
                 'legacy'          => true,
+                'fullnumber'      => $fullnumber,
+                'amounts'         => $amounts,
                 'ref_amount'      => $refAmount,
                 'ref_amount_wal'  => round($refAmountWal, 2),
                 'ref_currency'    => $invoiceCurrency,
