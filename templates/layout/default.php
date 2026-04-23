@@ -286,15 +286,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
 
-                        <!-- Start::header-element (Instrukcja obsługi) -->
-                        <li class="header-element">
-                            <a href="javascript:void(0);" class="header-link btn btn-primary btn-sm d-flex align-items-center gap-1 px-3 py-1 ms-1"
-                               data-bs-toggle="modal" data-bs-target="#manualPdfModal">
-                                <i class="ti ti-book-2 fs-15"></i>
-                                <span class="d-none d-sm-inline fw-medium">Instrukcja obsługi</span>
-                            </a>
-                        </li>
-                        <!-- End::header-element (Instrukcja obsługi) -->
 
                         <!-- Start::header-element -->
                         <li class="header-element dropdown">
@@ -955,28 +946,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             <div class="ratio ratio-16x9">
               <iframe id="ksefVideoFrame" src="" title="Instrukcja KSeF" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal: Instrukcja obsługi (PDF) -->
-    <div class="modal fade" id="manualPdfModal" tabindex="-1" aria-labelledby="manualPdfModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-xl">
-        <div class="modal-content">
-          <div class="modal-header d-flex align-items-center justify-content-between">
-            <h6 class="modal-title mb-0" id="manualPdfModalLabel">
-              <i class="ti ti-book-2 me-2 text-primary"></i>Instrukcja obsługi
-            </h6>
-            <div class="d-flex align-items-center gap-3 ms-3">
-              <a href="/faktury24_manual.pdf" download class="btn btn-outline-primary btn-sm">
-                <i class="ti ti-download me-1"></i>Pobierz PDF
-              </a>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-          </div>
-          <div class="modal-body p-0">
-            <iframe id="manualPdfFrame" src="/faktury24_manual.pdf" width="100%" style="height:78vh;border:0;" title="Instrukcja obsługi"></iframe>
           </div>
         </div>
       </div>
