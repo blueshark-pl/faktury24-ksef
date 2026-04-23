@@ -1528,13 +1528,20 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         + '<i class="ri-check-line me-1"></i>Powiązany</span>';
             actionCol   = '<span class="text-success"><i class="ri-checkbox-circle-line"></i></span>';
         } else if (isLegacy) {
+            var matchBadges = '';
             if (tx.amount_match) {
-                statusBadge = '<span class="badge bg-success text-white border border-success">'
-                            + '<i class="ri-checkbox-circle-line me-1"></i>Kwota pasuje</span>';
+                var amtLabel = tx.amount_match_label ? esc(tx.amount_match_label) : 'kwota';
+                matchBadges += '<span class="badge bg-success text-white border border-success me-1">'
+                             + '<i class="ri-checkbox-circle-line me-1"></i>' + amtLabel + '</span>';
+            }
+            if (tx.title_match) {
+                matchBadges += '<span class="badge bg-info text-white border border-info me-1">'
+                             + '<i class="ri-file-check-line me-1"></i>Nr w tytule</span>';
+            }
+            if (matchBadges) {
+                statusBadge = matchBadges;
             } else {
-                var diffTxt = (tx.amount_diff != null && tx.amount_diff > 0)
-                    ? ' <small class="opacity-75 fw-normal">Δ\u202f' + fmtAmount(tx.amount_diff) + '</small>' : '';
-                statusBadge = '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>' + diffTxt;
+                statusBadge = '<span class="badge bg-secondary-subtle text-secondary border">Kandydat</span>';
             }
             actionCol = '<button type="button" class="btn btn-sm btn-outline-primary py-0 btn-use-tx"'
                       + ' data-tx-amount="' + esc(tx.amount) + '"'
@@ -1617,23 +1624,56 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         }
 
         var rows = '';
-        var note = isLegacy
-            ? '<div class="alert alert-info py-1 px-2 small mb-2 border"><i class="ri-archive-line me-1"></i>Faktura archiwalna — przelewy widoczne informacyjnie. Rozlicz przez lokalne wpłaty (przycisk + w tabeli).</div>'
-            : '';
+        var note = '';
 
-        if (isLegacy && (data.ref_amount > 0 || data.ref_amount_wal > 0)) {
-            var refCur = data.ref_currency || 'PLN';
-            var refDisplay;
-            if (refCur !== 'PLN' && data.ref_amount_wal > 0) {
-                refDisplay = '<strong class="text-dark">' + fmtAmount(data.ref_amount_wal) + '\u202f' + esc(refCur) + '</strong>'
-                           + ' <span class="opacity-75">(' + fmtAmount(data.ref_amount) + '\u202fPLN)</span>';
-            } else {
-                refDisplay = '<strong class="text-dark">' + fmtAmount(data.ref_amount) + '\u202fPLN</strong>';
+        if (isLegacy && data.amounts) {
+            var am = data.amounts;
+            var isEur = am.currency && am.currency !== 'PLN';
+            if (isEur) {
+                note += '<div class="mb-2 border rounded px-3 py-2 small bg-light">'
+                      + '<div class="d-flex flex-wrap gap-3">';
+                var amtDefs = [
+                    { key: 'brutto_eur', label: 'Brutto EUR' },
+                    { key: 'netto_eur',  label: 'Netto EUR'  },
+                    { key: 'vat_eur',    label: 'VAT EUR'    },
+                    { key: 'vat_pln',    label: 'VAT PLN'    },
+                    { key: 'brutto_pln', label: 'Brutto PLN' },
+                    { key: 'netto_pln',  label: 'Netto PLN'  },
+                ];
+                amtDefs.forEach(function (d) {
+                    var val = am[d.key];
+                    if (val == null) return;
+                    var isPln = d.key.slice(-3) === 'pln';
+                    note += '<div class="d-flex flex-column text-center" style="min-width:80px">'
+                          + '<span class="text-muted" style="font-size:.7em;text-transform:uppercase;letter-spacing:.04em">' + d.label + '</span>'
+                          + '<span class="fw-semibold' + (isPln ? ' text-primary' : ' text-success') + '">'
+                          + fmtAmount(val) + '\u202f' + (isPln ? 'PLN' : 'EUR') + '</span>'
+                          + '</div>';
+                });
+                if (am.rate) {
+                    note += '<div class="d-flex flex-column text-center justify-content-end" style="min-width:60px">'
+                          + '<span class="text-muted" style="font-size:.7em;text-transform:uppercase;letter-spacing:.04em">Kurs NBP</span>'
+                          + '<span class="text-muted">' + parseFloat(am.rate).toFixed(4) + '</span>'
+                          + '</div>';
+                }
+                note += '</div></div>';
+            } else if (am.brutto_pln != null) {
+                note += '<div class="mb-2 border rounded px-3 py-2 small bg-light">'
+                      + '<div class="d-flex flex-wrap gap-3">';
+                [
+                    { key: 'brutto_pln', label: 'Brutto PLN' },
+                    { key: 'netto_pln',  label: 'Netto PLN'  },
+                    { key: 'vat_pln',    label: 'VAT PLN'    },
+                ].forEach(function (d) {
+                    var val = am[d.key];
+                    if (val == null) return;
+                    note += '<div class="d-flex flex-column text-center" style="min-width:80px">'
+                          + '<span class="text-muted" style="font-size:.7em;text-transform:uppercase;letter-spacing:.04em">' + d.label + '</span>'
+                          + '<span class="fw-semibold text-primary">' + fmtAmount(val) + '\u202fPLN</span>'
+                          + '</div>';
+                });
+                note += '</div></div>';
             }
-            note += '<div class="d-flex align-items-center gap-2 small text-muted mb-2 px-1 border-start border-primary ps-2">'
-                  + '<i class="ri-scales-line text-primary"></i>'
-                  + 'Kwota referencyjna: ' + refDisplay
-                  + ' — podświetlam przelewy z pasującą kwotą.</div>';
         }
 
         // ── Dane do filtrowania / sortowania ─────────────────────────────────
@@ -1771,7 +1811,16 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             });
 
             // Sortuj
+            function matchScore(item) {
+                if (!item.isLegacy) return 0;
+                var am = item.tx.amount_match ? 1 : 0;
+                var tm = item.tx.title_match  ? 1 : 0;
+                return am + tm; // 0,1,2
+            }
             filtered.sort(function (a, b) {
+                // Najpierw: score dopasowania (malejąco) dla trybu domyślnego
+                var sa = matchScore(a), sb = matchScore(b);
+                if (sa !== sb) return sb - sa;
                 var va = sortCol === 'amount' ? a.tx.amount : a.tx.value_date;
                 var vb = sortCol === 'amount' ? b.tx.amount : b.tx.value_date;
                 if (va < vb) return sortAsc ? -1 : 1;
