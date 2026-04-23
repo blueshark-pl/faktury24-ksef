@@ -1289,7 +1289,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
      Modal: Rozlicz fakturę (przelewy + ręczna wpłata)
 ════════════════════════════════════════════════════════════════════════════ -->
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="paymentModalLabel">
