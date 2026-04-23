@@ -126,180 +126,127 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 <!-- Tabela -->
 <div class="card shadow-sm">
     <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0 align-middle">
-            <thead class="table-light">
+        <table class="table table-hover mb-0 align-middle" style="font-size:.875rem">
+            <thead class="table-light border-bottom-2">
                 <tr>
-                    <th class="ps-3 text-nowrap">Data waluty</th>
-                    <th class="text-center">Typ</th>
-                    <th class="text-end">Kwota</th>
-                    <th>Kontrahent</th>
-                    <th>Tytuł / opis</th>
-                    <th>Dopasowanie</th>
-                    <th class="pe-3">Import</th>
-                    <th></th>
+                    <th class="ps-3 text-nowrap" style="width:90px">Data</th>
+                    <th style="width:220px">Kontrahent</th>
+                    <th>Tytuł / Opis</th>
+                    <th style="width:180px">Faktury</th>
+                    <th class="text-end pe-2" style="width:140px">Kwota</th>
+                    <th class="pe-3" style="width:90px"></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($transactions)): ?>
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-5">
+                        <td colspan="6" class="text-center text-muted py-5">
                             Brak transakcji<?= ($search || $direction || $dateFrom || $dateTo || $matchStatus) ? ' dla podanych filtrów' : '' ?>.
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($transactions as $tx): ?>
-                    <tr>
-                        <td class="ps-3 text-nowrap small">
-                            <?= $fdate($tx->value_date) ?>
-                            <?php if ($tx->booking_date && $tx->booking_date != $tx->value_date): ?>
-                                <br><span class="text-muted" style="font-size:.75em"><?= $fdate($tx->booking_date) ?></span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-center">
-                            <?php if ($tx->direction === 'C'): ?>
-                                <span class="badge bg-success-subtle text-success" title="Wpływ">
-                                    <i class="ri-arrow-down-line"></i> WP
-                                </span>
-                            <?php else: ?>
-                                <span class="badge bg-danger-subtle text-danger" title="Wypływ">
-                                    <i class="ri-arrow-up-line"></i> WY
-                                </span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-end text-nowrap">
-                            <div class="fw-semibold <?= $tx->direction === 'C' ? 'text-success' : 'text-danger' ?>">
-                                <?= $tx->direction === 'D' ? '−' : '+' ?><?= $fnum($tx->amount) ?>
-                                <span class="text-muted fw-normal small"><?= h($tx->currency) ?></span>
-                            </div>
-                            <?php if (!empty($txAllocMap[$tx->id])): ?>
-                            <div class="tx-alloc-amt" id="tx-alloc-amt-<?= h($tx->id) ?>">
-                                <span class="text-primary"><i class="ri-link-m"></i> <?= $fnum($txAllocMap[$tx->id]['allocated']) ?></span>
-                                <span class="text-muted"><?= h($tx->currency) ?></span>
-                            </div>
-                            <?php else: ?>
-                            <div class="tx-alloc-amt" id="tx-alloc-amt-<?= h($tx->id) ?>" style="display:none"></div>
-                            <?php endif; ?>
-                        </td>
-                        <td class="small" style="max-width:180px;">
-                            <?php if ($tx->party_name): ?>
-                                <span class="fw-semibold"><?= h($tx->party_name) ?></span>
-                                <?php if ($tx->party_account): ?>
-                                    <br><code class="text-muted" style="font-size:.75em"><?= h($tx->party_account) ?></code>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span class="text-muted">—</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="small" style="max-width:240px;">
-                            <?php $t = $tx->title ?? ''; ?>
-                            <?php if ($t): ?>
-                                <span class="text-truncate d-inline-block" style="max-width:230px;" title="<?= h($t) ?>"><?= h(mb_strimwidth($t, 0, 80, '…')) ?></span>
-                            <?php else: ?>
-                                <span class="text-muted">—</span>
+                    <?php
+                        $isCredit   = $tx->direction === 'C';
+                        $txDateStr  = $tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('d.m.Y') : substr((string)$tx->value_date, 0, 10);
+                        $bkDateStr  = $tx->booking_date instanceof \DateTimeInterface ? $tx->booking_date->format('d.m.Y') : substr((string)$tx->booking_date, 0, 10);
+                        $hasAlloc   = !empty($txAllocMap[$tx->id]);
+                    ?>
+                    <tr class="<?= $isCredit ? 'tx-row-credit' : 'tx-row-debit' ?>">
+
+                        <!-- Data -->
+                        <td class="ps-3 text-nowrap align-top pt-3">
+                            <div class="fw-semibold"><?= $fdate($tx->value_date) ?></div>
+                            <?php if ($tx->booking_date && $bkDateStr !== $txDateStr): ?>
+                                <div class="text-muted" style="font-size:.75em">ks. <?= $fdate($tx->booking_date) ?></div>
                             <?php endif; ?>
                             <?php if ($tx->tx_type_code): ?>
-                                <br><span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.7em"><?= h($tx->tx_type_code) ?></span>
+                                <div class="mt-1">
+                                    <span class="badge bg-light text-secondary border" style="font-size:.68em;letter-spacing:.03em"><?= h($tx->tx_type_code) ?></span>
+                                </div>
                             <?php endif; ?>
                         </td>
 
-                        <!-- Kolumna dopasowania -->
-                        <td class="small" style="min-width:200px;">
-                            <?= $statusBadge($tx->match_status, $tx->match_confidence) ?>
-
-                            <?php if ($tx->match_status === 'matched' && $tx->invoice): ?>
-                                <div class="mt-1">
-                                    <?= $this->Html->link(
-                                        '<i class="ri-file-text-line me-1"></i>' . h($tx->invoice->fullnumber ?? ''),
-                                        ['controller' => 'Invoices', 'action' => 'view', $tx->invoice_id],
-                                        ['class' => 'small text-success text-decoration-none', 'escape' => false]
-                                    ) ?>
-                                </div>
-
-                            <?php elseif ($tx->match_status === 'proposed' && $tx->invoice): ?>
-                                <div class="mt-1">
-                                    <span class="text-muted small d-block mb-1">
-                                        <?= $this->Html->link(
-                                            '<i class="ri-file-text-line me-1"></i>' . h($tx->invoice->fullnumber ?? ''),
-                                            ['controller' => 'Invoices', 'action' => 'view', $tx->invoice_id],
-                                            ['class' => 'text-warning text-decoration-none', 'escape' => false]
-                                        ) ?>
-                                        <span class="text-muted">(<?= $tx->match_confidence ?>%)</span>
-                                    </span>
-                                    <div class="d-flex gap-1">
-                                        <?= $this->Form->postLink(
-                                            '<i class="ri-check-line me-1"></i>Potwierdź',
-                                            ['action' => 'confirmMatch', $tx->id],
-                                            [
-                                                'class'  => 'btn btn-xs btn-success',
-                                                'escape' => false,
-                                                'data'   => ['invoice_id' => $tx->invoice_id, 'redirect' => $this->request->getRequestTarget()],
-                                                'confirm' => 'Potwierdzić dopasowanie i oznaczyć fakturę jako opłaconą?',
-                                            ]
-                                        ) ?>
-                                        <?= $this->Form->postLink(
-                                            '<i class="ri-close-line"></i>',
-                                            ['action' => 'ignoreTransaction', $tx->id],
-                                            [
-                                                'class'  => 'btn btn-xs btn-outline-secondary',
-                                                'escape' => false,
-                                                'data'   => ['redirect' => $this->request->getRequestTarget()],
-                                                'title'  => 'Ignoruj tę transakcję',
-                                            ]
-                                        ) ?>
-                                    </div>
-                                </div>
-
-                            <?php elseif ($tx->match_status === 'unmatched'): ?>
-                                <?php if ($tx->parsed_inv): ?>
-                                    <div class="text-muted small mt-1">
-                                        <i class="ri-file-search-line me-1"></i>INV: <?= h($tx->parsed_inv) ?>
-                                    </div>
-                                <?php endif; ?>
-                                <?php if ($tx->parsed_nip): ?>
-                                    <div class="text-muted small">NIP: <?= h($tx->parsed_nip) ?></div>
-                                <?php endif; ?>
+                        <!-- Kontrahent -->
+                        <td class="align-top pt-3" style="max-width:220px">
+                            <?php if ($tx->party_name): ?>
+                                <div class="fw-semibold lh-sm text-truncate" title="<?= h($tx->party_name) ?>"><?= h($tx->party_name) ?></div>
+                            <?php else: ?>
+                                <span class="text-muted fst-italic small">nieznany nadawca</span>
                             <?php endif; ?>
-
-                            <?php if ($tx->match_reason && $tx->match_status === 'proposed'): ?>
-                                <div class="text-muted" style="font-size:.7em"><?= h($tx->match_reason) ?></div>
+                            <?php if ($tx->party_account): ?>
+                                <div class="text-muted mt-1" style="font-size:.75em;font-family:monospace;letter-spacing:.02em;word-break:break-all"><?= h($tx->party_account) ?></div>
                             <?php endif; ?>
+                            <?php if ($tx->parsed_nip): ?>
+                                <div class="text-muted small mt-1"><span class="badge bg-light text-secondary border" style="font-size:.68em">NIP <?= h($tx->parsed_nip) ?></span></div>
+                            <?php endif; ?>
+                        </td>
 
-                            <?php /* Faktury z alokacji ręcznych */ ?>
-                            <?php if (!empty($txAllocMap[$tx->id]['invoices'])): ?>
-                            <div class="tx-alloc-invs mt-1 d-flex flex-wrap gap-1" id="tx-alloc-invs-<?= h($tx->id) ?>">
+                        <!-- Tytuł / Opis -->
+                        <td class="align-top pt-3">
+                            <?php $title = trim((string)($tx->title ?? '')); ?>
+                            <?php if ($title): ?>
+                                <div class="lh-sm" style="word-break:break-word"><?= h($title) ?></div>
+                            <?php else: ?>
+                                <span class="text-muted fst-italic small">brak opisu</span>
+                            <?php endif; ?>
+                            <?php if ($tx->bank_reference): ?>
+                                <div class="text-muted mt-1" style="font-size:.73em">REF: <?= h($tx->bank_reference) ?></div>
+                            <?php endif; ?>
+                            <?php if ($tx->customer_reference && $tx->customer_reference !== $tx->bank_reference): ?>
+                                <div class="text-muted" style="font-size:.73em">REF kl.: <?= h($tx->customer_reference) ?></div>
+                            <?php endif; ?>
+                            <?php if ($tx->parsed_inv): ?>
+                                <div class="mt-1"><span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.7em"><i class="ri-file-search-line me-1"></i><?= h($tx->parsed_inv) ?></span></div>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Faktury (ręczne alokacje) -->
+                        <td class="align-top pt-3">
+                            <?php if ($hasAlloc): ?>
+                            <div class="tx-alloc-invs d-flex flex-wrap gap-1" id="tx-alloc-invs-<?= h($tx->id) ?>">
                                 <?php foreach ($txAllocMap[$tx->id]['invoices'] as $fn): ?>
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:.7em">
-                                    <i class="ri-link-m me-1"></i><?= h($fn) ?>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:.72em">
+                                    <i class="ri-link-m"></i> <?= h($fn) ?>
                                 </span>
                                 <?php endforeach; ?>
                             </div>
                             <?php else: ?>
-                            <div class="tx-alloc-invs mt-1" id="tx-alloc-invs-<?= h($tx->id) ?>"></div>
+                            <div class="tx-alloc-invs" id="tx-alloc-invs-<?= h($tx->id) ?>">
+                                <span class="text-muted fst-italic" style="font-size:.8em">—</span>
+                            </div>
                             <?php endif; ?>
                         </td>
 
-                        <td class="pe-3 small text-muted">
-                            <?php if ($tx->bank_statement_import): ?>
-                                <code style="font-size:.75em;"><?= h($tx->bank_statement_import->account_number ?? '') ?></code>
-                                <br>
-                                <?= $this->Html->link(
-                                    h(mb_strimwidth($tx->bank_statement_import->filename ?? '—', 0, 22, '…')),
-                                    ['action' => 'view', $tx->import_id],
-                                    ['class' => 'text-muted text-decoration-none small', 'title' => h($tx->bank_statement_import->filename ?? '')]
-                                ) ?>
+                        <!-- Kwota -->
+                        <td class="text-end pe-2 align-top pt-3 text-nowrap">
+                            <div class="fw-bold lh-1 <?= $isCredit ? 'text-success' : 'text-danger' ?>" style="font-size:1rem">
+                                <?= $isCredit ? '+' : '−' ?><?= $fnum($tx->amount) ?>
+                            </div>
+                            <div class="text-muted small mt-1"><?= h($tx->currency) ?></div>
+                            <?php if ($hasAlloc): ?>
+                            <div class="tx-alloc-amt mt-1" id="tx-alloc-amt-<?= h($tx->id) ?>">
+                                <span class="badge bg-primary-subtle text-primary border" style="font-size:.7em">
+                                    <i class="ri-link-m"></i> <?= $fnum($txAllocMap[$tx->id]['allocated']) ?> <?= h($tx->currency) ?>
+                                </span>
+                            </div>
+                            <?php else: ?>
+                            <div class="tx-alloc-amt mt-1" id="tx-alloc-amt-<?= h($tx->id) ?>" style="display:none"></div>
                             <?php endif; ?>
                         </td>
-                        <td class="pe-2 text-end">
-                            <?php if ($tx->direction === 'C'): ?>
+
+                        <!-- Akcja -->
+                        <td class="pe-3 align-top pt-2 text-end">
+                            <?php if ($isCredit): ?>
                             <button type="button"
-                                class="btn btn-sm btn-outline-primary py-0 btn-tx-settle"
+                                class="btn btn-sm btn-outline-primary btn-tx-settle"
                                 data-tx-id="<?= h($tx->id) ?>"
                                 data-tx-amount="<?= h($tx->amount) ?>"
                                 data-tx-currency="<?= h($tx->currency) ?>"
-                                data-tx-date="<?= h($tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('d.m.Y') : substr((string)$tx->value_date, 0, 10)) ?>"
+                                data-tx-date="<?= h($txDateStr) ?>"
                                 data-tx-party="<?= h($tx->party_name ?? '') ?>"
                                 data-tx-iban="<?= h($tx->party_account ?? '') ?>"
-                                title="Przypisz do faktur / rozlicz">
+                                title="Rozlicz przelew z fakturami">
                                 <i class="ri-link me-1"></i>Rozlicz
                             </button>
                             <?php endif; ?>
@@ -462,6 +409,12 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
 /* Przydzielona kwota pod kwotą w tabeli */
 .tx-alloc-amt { font-size: .75rem; margin-top: .15rem; }
+
+/* Wiersze tabeli — kolorowe oznaczenie jak w banku */
+.tx-row-credit { border-left: 3px solid #16a34a; }
+.tx-row-debit  { border-left: 3px solid #dc2626; }
+.tx-row-credit td:first-child { padding-left: calc(.75rem - 3px) !important; }
+.tx-row-debit  td:first-child { padding-left: calc(.75rem - 3px) !important; }
 /* Wyniki wyszukiwania */
 .inv-result-row {
     cursor: pointer;
