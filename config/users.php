@@ -2,6 +2,32 @@
 return [
     'Users.Registration.active' => true, //enable or disable password meter. Defaults to true
 
+    // ── Authorization unauthorized handler ────────────────────────────────────
+    // Dla roli `client` przekierowuj na /portal (zamiast domyślnego /users/login,
+    // co przy nieautoryzowanym `/` powoduje pętlę ERR_TOO_MANY_REDIRECTS).
+    'Auth.AuthorizationMiddleware' => [
+        'unauthorizedHandler' => [
+            'className' => 'CakeDC/Users.DefaultRedirect',
+            'url' => function (\Psr\Http\Message\ServerRequestInterface $request, array $options) {
+                $identity = $request->getAttribute('identity');
+                $role     = strtolower((string)($identity?->get('role') ?? ''));
+                if ($role === 'client') {
+                    return \Cake\Routing\Router::url([
+                        'plugin'     => false,
+                        'controller' => 'ClientPortal',
+                        'action'     => 'index',
+                    ]);
+                }
+                // Domyślnie: redirect na stronę logowania (jak default plugina).
+                return \Cake\Routing\Router::url([
+                    'plugin'     => 'CakeDC/Users',
+                    'controller' => 'Users',
+                    'action'     => 'login',
+                ]);
+            },
+        ],
+    ],
+
     // CakeDC Users: password rehash
     // The plugin loads identifiers inside authenticators (Auth.Authenticators.*.identifier).
     // Using deprecated `Auth.PasswordRehash.identifiers` causes warnings because the global

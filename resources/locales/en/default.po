@@ -64,6 +64,90 @@ msgstr "gross"
 msgid "Brak zleceń do wyświetlenia."
 msgstr "No orders to display."
 
+msgid "Brak zleceń pasujących do filtrów."
+msgstr "No orders match the filters."
+
+msgid "Wszystkie"
+msgstr "All"
+
+msgid "Aktywne"
+msgstr "Active"
+
+msgid "Zamknięte"
+msgstr "Closed"
+
+msgid "Filtruj"
+msgstr "Filter"
+
+msgid "Filtry"
+msgstr "Filters"
+
+msgid "Wyczyść filtry"
+msgstr "Clear filters"
+
+msgid "Data od"
+msgstr "Date from"
+
+msgid "Data do"
+msgstr "Date to"
+
+msgid "Waluta"
+msgstr "Currency"
+
+msgid "Faktura: wszystkie"
+msgstr "Invoice: all"
+
+msgid "Z fakturą"
+msgstr "With invoice"
+
+msgid "Bez faktury"
+msgstr "Without invoice"
+
+msgid "Opłacone"
+msgstr "Paid"
+
+msgid "Nieopłacone"
+msgstr "Unpaid"
+
+msgid "CMR"
+msgstr "CMR"
+
+msgid "Z CMR"
+msgstr "With CMR"
+
+msgid "Bez CMR"
+msgstr "Without CMR"
+
+msgid "Szukaj"
+msgstr "Search"
+
+msgid "Od"
+msgstr "From"
+
+msgid "Do"
+msgstr "To"
+
+msgid "zleceń"
+msgstr "orders"
+
+msgid "suma brutto (po filtrach)"
+msgstr "total gross (filtered)"
+
+msgid "Sortuj"
+msgstr "Sort"
+
+msgid "Data ↓ (najnowsze)"
+msgstr "Date ↓ (newest)"
+
+msgid "Data ↑ (najstarsze)"
+msgstr "Date ↑ (oldest)"
+
+msgid "Kwota ↓"
+msgstr "Amount ↓"
+
+msgid "Kwota ↑"
+msgstr "Amount ↑"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 

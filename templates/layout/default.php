@@ -838,6 +838,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 }
                                             }
                                         ?>
+                                        <?php if (($currentRole ?? '') !== 'client'): /* banner KSeF nie dotyczy klientów portalu */ ?>
                                         <?php if ($ksefModeEnabled): ?>
                                         <div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -867,6 +868,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
                                         </div>
                                         <?php endif; // ksefModeEnabled ?>
+                                        <?php endif; // !client ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
                                                 <div class="flex-grow-1">

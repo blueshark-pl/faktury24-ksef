@@ -52,14 +52,20 @@ class ClientPortalController extends AppController
     {
         if ($r = $this->ensureProfile()) { return $r; }
 
-        $page  = max(1, (int)$this->request->getQuery('page', 1));
-        $limit = 50;
-        $q     = trim((string)$this->request->getQuery('q', ''));
+        $page     = max(1, (int)$this->request->getQuery('page', 1));
+        $limit    = 50;
+        $q        = trim((string)$this->request->getQuery('q', ''));
+        $status   = (string)$this->request->getQuery('status', ''); // '', 'active', 'closed'
+        $invState = (string)$this->request->getQuery('inv', '');     // '', 'with', 'without', 'paid', 'unpaid'
+        $cmrState = (string)$this->request->getQuery('cmr', '');     // '', 'with', 'without'
+        $currency = strtoupper(trim((string)$this->request->getQuery('currency', '')));
+        $dateFrom = (string)$this->request->getQuery('date_from', '');
+        $dateTo   = (string)$this->request->getQuery('date_to', '');
+        $sort     = (string)$this->request->getQuery('sort', 'date_desc'); // date_desc|date_asc|amount_desc|amount_asc
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
         $query = $SpeedOrders->find()
-            ->where(['SpeedOrders.buyer_nip' => $this->profile->nip])
-            ->orderByDesc('SpeedOrders.date_doc');
+            ->where(['SpeedOrders.buyer_nip' => $this->profile->nip]);
 
         if ($q !== '') {
             $like = '%' . $q . '%';
@@ -68,13 +74,84 @@ class ClientPortalController extends AppController
                 'SpeedOrders.title1 LIKE'            => $like,
                 'SpeedOrders.title2 LIKE'            => $like,
                 'SpeedOrders.route_description LIKE' => $like,
+                'SpeedOrders.place_from_name LIKE'   => $like,
+                'SpeedOrders.place_to_name LIKE'     => $like,
             ]]);
         }
+        if ($status === 'active')  { $query->where(['SpeedOrders.status' => 1]); }
+        if ($status === 'closed')  { $query->where(['SpeedOrders.status' => 0]); }
+        if ($currency !== '')      { $query->where(['SpeedOrders.currency' => $currency]); }
+        if ($dateFrom !== '')      { $query->where(['SpeedOrders.date_doc >=' => $dateFrom]); }
+        if ($dateTo   !== '')      { $query->where(['SpeedOrders.date_doc <=' => $dateTo]); }
+        if ($invState === 'with')    { $query->where(['SpeedOrders.invoice_id IS NOT' => null]); }
+        if ($invState === 'without') { $query->where(['SpeedOrders.invoice_id IS' => null]); }
+
+        // Stan zapłaty wymaga JOIN na invoices
+        if (in_array($invState, ['paid', 'unpaid'], true)) {
+            $query->innerJoinWith('Invoices', function ($q) use ($invState) {
+                if ($invState === 'paid')   { $q->where(['Invoices.paymentstate' => 'paid']); }
+                if ($invState === 'unpaid') { $q->where(['Invoices.paymentstate IN' => ['unpaid', 'partial']]); }
+                return $q;
+            });
+        }
+
+        // Filtr CMR — wymaga subquery
+        if ($cmrState === 'with') {
+            $sub = $this->fetchTable('SpeedOrderAttachments')->find()
+                ->select(['speed_order_id'])
+                ->distinct(['speed_order_id']);
+            $query->where(['SpeedOrders.id IN' => $sub]);
+        } elseif ($cmrState === 'without') {
+            $sub = $this->fetchTable('SpeedOrderAttachments')->find()
+                ->select(['speed_order_id'])
+                ->distinct(['speed_order_id']);
+            $query->where(['SpeedOrders.id NOT IN' => $sub]);
+        }
+
+        // Sortowanie
+        match ($sort) {
+            'date_asc'    => $query->orderByAsc('SpeedOrders.date_doc'),
+            'amount_desc' => $query->orderByDesc('SpeedOrders.brutto'),
+            'amount_asc'  => $query->orderByAsc('SpeedOrders.brutto'),
+            default       => $query->orderByDesc('SpeedOrders.date_doc'),
+        };
 
         $total  = (clone $query)->count();
         $pages  = max(1, (int)ceil($total / $limit));
         $page   = min($page, $pages);
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
+
+        // Statystyki sumaryczne (po tych samych filtrach, ale bez paginacji)
+        $sumQuery = (clone $query)
+            ->select([
+                'count'      => $query->func()->count('*'),
+                'sum_brutto' => $query->func()->sum('SpeedOrders.brutto'),
+            ])
+            ->disableHydration()
+            ->limit(null)
+            ->offset(null);
+        // Dla podsumowania liczbowego w jednej walucie — pokażemy tylko gdy 1 waluta przefiltrowana
+        $stats = ['count' => $total, 'sum_brutto' => null, 'currency' => $currency];
+        if ($currency !== '') {
+            try {
+                $row = $sumQuery->first();
+                $stats['sum_brutto'] = (float)($row['sum_brutto'] ?? 0);
+            } catch (\Throwable) {}
+        }
+
+        // Lista walut do selecta filtra (dystyntne dla tego klienta)
+        $currencyOptions = [];
+        try {
+            $rows = $SpeedOrders->find()
+                ->select(['currency'])
+                ->distinct(['currency'])
+                ->where(['buyer_nip' => $this->profile->nip])
+                ->all();
+            foreach ($rows as $r) {
+                if ($r->currency) { $currencyOptions[] = (string)$r->currency; }
+            }
+            sort($currencyOptions);
+        } catch (\Throwable) { $currencyOptions = []; }
 
         // Mapa załączników CMR per zlecenie
         $cmrMap = [];
@@ -109,7 +186,11 @@ class ClientPortalController extends AppController
             }
         }
 
-        $this->set(compact('orders', 'cmrMap', 'invoiceMap', 'total', 'page', 'pages', 'limit', 'q'));
+        $this->set(compact(
+            'orders', 'cmrMap', 'invoiceMap', 'total', 'page', 'pages', 'limit',
+            'q', 'status', 'invState', 'cmrState', 'currency', 'dateFrom', 'dateTo',
+            'sort', 'stats', 'currencyOptions'
+        ));
         $this->set('clientProfile', $this->profile);
         return null;
     }
