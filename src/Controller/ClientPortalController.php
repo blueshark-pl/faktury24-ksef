@@ -110,10 +110,10 @@ class ClientPortalController extends AppController
 
         // Sortowanie
         match ($sort) {
-            'date_asc'    => $query->orderByAsc('SpeedOrders.date_doc'),
-            'amount_desc' => $query->orderByDesc('SpeedOrders.brutto'),
-            'amount_asc'  => $query->orderByAsc('SpeedOrders.brutto'),
-            default       => $query->orderByDesc('SpeedOrders.date_doc'),
+            'date_asc'      => $query->orderByAsc('SpeedOrders.date_doc'),
+            'delivery_desc' => $query->orderByDesc('SpeedOrders.date_delivery'),
+            'delivery_asc'  => $query->orderByAsc('SpeedOrders.date_delivery'),
+            default         => $query->orderByDesc('SpeedOrders.date_doc'),
         };
 
         $total  = (clone $query)->count();
@@ -121,23 +121,7 @@ class ClientPortalController extends AppController
         $page   = min($page, $pages);
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
-        // Statystyki sumaryczne (po tych samych filtrach, ale bez paginacji)
-        $sumQuery = (clone $query)
-            ->select([
-                'count'      => $query->func()->count('*'),
-                'sum_brutto' => $query->func()->sum('SpeedOrders.brutto'),
-            ])
-            ->disableHydration()
-            ->limit(null)
-            ->offset(null);
-        // Dla podsumowania liczbowego w jednej walucie — pokażemy tylko gdy 1 waluta przefiltrowana
-        $stats = ['count' => $total, 'sum_brutto' => null, 'currency' => $currency];
-        if ($currency !== '') {
-            try {
-                $row = $sumQuery->first();
-                $stats['sum_brutto'] = (float)($row['sum_brutto'] ?? 0);
-            } catch (\Throwable) {}
-        }
+        $stats = ['count' => $total];
 
         // Lista walut do selecta filtra (dystyntne dla tego klienta)
         $currencyOptions = [];

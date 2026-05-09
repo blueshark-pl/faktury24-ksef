@@ -148,6 +148,54 @@ msgstr "Amount ↓"
 msgid "Kwota ↑"
 msgstr "Amount ↑"
 
+msgid "Data dok. ↓ (najnowsze)"
+msgstr "Doc date ↓ (newest)"
+
+msgid "Data dok. ↑ (najstarsze)"
+msgstr "Doc date ↑ (oldest)"
+
+msgid "Data rozładunku ↓"
+msgstr "Delivery date ↓"
+
+msgid "Data rozładunku ↑"
+msgstr "Delivery date ↑"
+
+msgid "Zlecenie"
+msgstr "Order"
+
+msgid "Numer zlecenia"
+msgstr "Order number"
+
+msgid "Zał."
+msgstr "PU"
+
+msgid "Rozł."
+msgstr "DEL"
+
+msgid "Przyjęte"
+msgstr "Accepted"
+
+msgid "Zaplanowane"
+msgstr "Planned"
+
+msgid "Załadowane"
+msgstr "Loaded"
+
+msgid "Zrealizowane"
+msgstr "Completed"
+
+msgid "Zafakturowane"
+msgstr "Invoiced"
+
+msgid "Brak"
+msgstr "No"
+
+msgid "Przeterminowane"
+msgstr "Overdue"
+
+msgid "brak"
+msgstr "none"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 
