@@ -877,6 +877,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                             </div>
                                         <?php endif; ?>
+                    <?php if (($currentRole ?? '') !== 'client'): /* banner weryfikacji nie dotyczy klientów portalu */ ?>
                     <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm pe-5" role="alert" style="display:none!important">
                         <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"><i class="ri-close-line"></i></button>
                         <div class="d-flex align-items-start gap-2">
@@ -891,6 +892,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
                     <script>
                     (function () {
                         var key = 'verificationBannerDismissed';

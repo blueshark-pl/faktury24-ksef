@@ -196,6 +196,69 @@ msgstr "Overdue"
 msgid "brak"
 msgstr "none"
 
+msgid "Historia transportu"
+msgstr "Transport history"
+
+msgid "Zlecenie przyjęte"
+msgstr "Order accepted"
+
+msgid "Załadunek potwierdzony"
+msgstr "Loading confirmed"
+
+msgid "Rozładunek potwierdzony"
+msgstr "Delivery confirmed"
+
+msgid "Faktura wystawiona"
+msgstr "Invoice issued"
+
+msgid "Wystawiona"
+msgstr "Issued"
+
+msgid "Czas transportu"
+msgstr "Transport time"
+
+msgid "dni"
+msgstr "days"
+
+msgid "Brak danych"
+msgstr "No data"
+
+msgid "Realizacja"
+msgstr "Delivery"
+
+msgid "Oczekuje"
+msgstr "Pending"
+
+msgid "W terminie"
+msgstr "On time"
+
+msgid "Opóźniony"
+msgstr "Delayed"
+
+msgid "Przeterminowany"
+msgstr "Overdue"
+
+msgid "%d dni"
+msgstr "%d days"
+
+msgid "%d dni przed terminem"
+msgstr "%d days early"
+
+msgid "Brak faktury"
+msgstr "No invoice"
+
+msgid "Częściowo"
+msgstr "Partial"
+
+msgid "Załączniki: %d"
+msgstr "Attachments: %d"
+
+msgid "Dostarczone"
+msgstr "Delivered"
+
+msgid "Plan"
+msgstr "Plan"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 
