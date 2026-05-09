@@ -84,10 +84,13 @@ $this->assign('title', 'Dodaj klienta');
                         'class' => 'form-control',
                         'label' => false,
                         'required' => true,
-                        'minlength' => 9,
-                        'placeholder' => '5252344078',
+                        'minlength' => 5,
+                        'placeholder' => 'np. 5252344078 lub DE123456789',
                     ]) ?>
-                    <div class="form-text">Po tym NIP-ie portal dopasowuje zlecenia (<code>speed_orders.buyer_nip</code>).</div>
+                    <div class="form-text">
+                        Krajowy lub zagraniczny — wpisz dokładnie tak, jak figuruje w Speed ERP
+                        (<code>speed_orders.buyer_nip</code>). NIP-y zagraniczne z prefiksem kraju (np. <code>DE</code>, <code>FR</code>).
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small text-muted">Nazwa firmy</label>

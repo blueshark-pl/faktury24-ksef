@@ -85,9 +85,13 @@ $this->assign('title', 'Edytuj klienta');
             <div class="card-body">
                 <div class="mb-3">
                     <label class="form-label small text-muted">NIP <span class="text-danger">*</span></label>
-                    <input type="text" name="nip" class="form-control" required minlength="9"
-                           value="<?= h($profile->nip ?? '') ?>">
-                    <div class="form-text">Po tym NIP-ie portal dopasowuje zlecenia (<code>speed_orders.buyer_nip</code>).</div>
+                    <input type="text" name="nip" class="form-control" required minlength="5"
+                           value="<?= h($profile->nip ?? '') ?>"
+                           placeholder="np. 5252344078 lub DE123456789">
+                    <div class="form-text">
+                        Krajowy lub zagraniczny — wpisz dokładnie tak, jak figuruje w Speed ERP
+                        (<code>speed_orders.buyer_nip</code>).
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small text-muted">Nazwa firmy</label>

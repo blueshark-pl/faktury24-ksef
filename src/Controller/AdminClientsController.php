@@ -99,7 +99,9 @@ class AdminClientsController extends AppController
             $email    = trim((string)($data['email'] ?? ''));
             $username = trim((string)($data['username'] ?? '')) ?: $email;
             $password = (string)($data['password'] ?? '');
-            $nip      = preg_replace('/\D+/', '', (string)($data['nip'] ?? ''));
+            // NIP może być krajowy (PL) lub zagraniczny (np. DE…, FR…) — nie czyścimy go,
+            // tylko ujednolicamy: trim + upper, bo kontrahent w Speed ERP może być zapisany różnie.
+            $nip      = strtoupper(trim((string)($data['nip'] ?? '')));
             $name     = trim((string)($data['company_name'] ?? ''));
 
             $errors = [];
@@ -109,8 +111,8 @@ class AdminClientsController extends AppController
             if (strlen($password) < 8) {
                 $errors[] = 'Hasło musi mieć co najmniej 8 znaków.';
             }
-            if (strlen($nip) < 9) {
-                $errors[] = 'NIP musi mieć co najmniej 9 cyfr.';
+            if (strlen($nip) < 5) {
+                $errors[] = 'NIP musi mieć co najmniej 5 znaków.';
             }
             if ($Users->exists(['email' => $email])) {
                 $errors[] = 'Użytkownik z tym e-mailem już istnieje.';
@@ -192,11 +194,12 @@ class AdminClientsController extends AppController
             $data = $this->request->getData();
 
             $errors = [];
-            $nip    = preg_replace('/\D+/', '', (string)($data['nip'] ?? ''));
+            // NIP może być krajowy lub zagraniczny — nie czyścimy, tylko trim + upper.
+            $nip    = strtoupper(trim((string)($data['nip'] ?? '')));
             $name   = trim((string)($data['company_name'] ?? ''));
 
-            if (strlen($nip) < 9) {
-                $errors[] = 'NIP musi mieć co najmniej 9 cyfr.';
+            if (strlen($nip) < 5) {
+                $errors[] = 'NIP musi mieć co najmniej 5 znaków.';
             }
             // sprawdź czy NIP nie należy do innego klienta
             if (empty($errors)) {
