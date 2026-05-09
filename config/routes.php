@@ -178,6 +178,17 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/wyciagi/tx-allocations/{id}', ['controller' => 'BankTransactions', 'action' => 'txAllocations'])
             ->setPass(['id']);
 
+        // Portal klienta (rola `client`) — zlecenia transportowe powiązane przez NIP
+        $builder->get('/portal',                       ['controller' => 'ClientPortal', 'action' => 'index']);
+        $builder->get('/portal/zlecenie/{id}',         ['controller' => 'ClientPortal', 'action' => 'view'])
+            ->setPass(['id']);
+        $builder->get('/portal/cmr/{attId}',           ['controller' => 'ClientPortal', 'action' => 'downloadAttachment'])
+            ->setPass(['attId']);
+        $builder->get('/portal/faktura/{invoiceId}',   ['controller' => 'ClientPortal', 'action' => 'downloadInvoice'])
+            ->setPass(['invoiceId']);
+        $builder->get('/portal/lang/{lang}',           ['controller' => 'ClientPortal', 'action' => 'setLocale'])
+            ->setPass(['lang']);
+
         // Kredyt kupiecki (Allianz Trade / Syntesys)
         $builder->get('/kredyt-kupiecki', ['controller' => 'CreditChecks', 'action' => 'index']);
         $builder->post('/kredyt-kupiecki/sync', ['controller' => 'CreditChecks', 'action' => 'sync']);

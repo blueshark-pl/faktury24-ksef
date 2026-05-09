@@ -11,7 +11,8 @@
       "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Model/Table/BankTransactionsTable.php\")",
       "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Model/Table/BankStatementImportsTable.php\")",
       "Bash(php bin/cake.php migrations dump)",
-      "Bash(php -r ' *)"
+      "Bash(php -r ' *)",
+      "Bash(grep -rn \"CREATE TABLE \\\\`invoices\\\\`\\\\|'invoices'\" config/Migrations/)"
     ]
   }
 }

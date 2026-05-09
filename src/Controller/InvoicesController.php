@@ -5051,6 +5051,11 @@ private function makeClient(string $environment): KsefClient
         $identity = $this->getRequest()->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
+        // Klient (portal) nie ma company_id naszej firmy — weryfikacja dostępu
+        // odbywa się w permissions.php (closure sprawdza powiązanie z jego zleceniem).
+        $isClientRole = strtolower((string)($identity?->get('role') ?? '')) === 'client';
+        $loadConditions = $isClientRole ? [] : ['Invoices.company_id' => $companyId];
+
         $invoice = $this->Invoices->get($id, [
             'contain' => [
                 'InvoiceContractors',
@@ -5058,9 +5063,7 @@ private function makeClient(string $environment): KsefClient
                 'Companies',
                 'InvoiceCompanyDetails'
             ],
-            'conditions' => [
-                'Invoices.company_id' => $companyId
-            ]
+            'conditions' => $loadConditions,
         ]);
 
         // 1) Zbuduj FA(3) XML

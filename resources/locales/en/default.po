@@ -1,0 +1,159 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: faktury24\n"
+"Report-Msgid-Bugs-To: \n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# ── Portal klienta ─────────────────────────────────────────────────
+msgid "Portal klienta"
+msgstr "Client portal"
+
+msgid "Zlecenia transportowe"
+msgstr "Transport orders"
+
+msgid "Twoje konto nie ma jeszcze przypisanego profilu klienta. Skontaktuj się z administratorem."
+msgstr "Your account does not have a client profile assigned yet. Please contact the administrator."
+
+msgid "Zlecenie nie istnieje lub nie należy do Twojej firmy."
+msgstr "The order does not exist or does not belong to your company."
+
+# Lista
+msgid "Szukaj: numer, tytuł, trasa…"
+msgstr "Search: number, title, route…"
+
+msgid "Wyczyść"
+msgstr "Clear"
+
+msgid "%s zleceń"
+msgstr "%s orders"
+
+msgid "Data"
+msgstr "Date"
+
+msgid "Numer"
+msgstr "Number"
+
+msgid "Trasa"
+msgstr "Route"
+
+msgid "Tytuł"
+msgstr "Title"
+
+msgid "Kwota"
+msgstr "Amount"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Akcje"
+msgstr "Actions"
+
+msgid "Zamknięte"
+msgstr "Closed"
+
+msgid "Aktywne"
+msgstr "Active"
+
+msgid "brutto"
+msgstr "gross"
+
+msgid "Brak zleceń do wyświetlenia."
+msgstr "No orders to display."
+
+msgid "Szczegóły zlecenia"
+msgstr "Order details"
+
+msgid "CMR — %d plików"
+msgstr "CMR — %d files"
+
+msgid "Pobierz fakturę %s"
+msgstr "Download invoice %s"
+
+msgid "z"
+msgstr "of"
+
+msgid "Język"
+msgstr "Language"
+
+# Widok zlecenia
+msgid "Zlecenie"
+msgstr "Order"
+
+msgid "Wróć do listy"
+msgstr "Back to list"
+
+msgid "Dane transportu"
+msgstr "Transport details"
+
+msgid "Załadunek"
+msgstr "Pick-up"
+
+msgid "Rozładunek"
+msgstr "Delivery"
+
+msgid "Data dokumentu"
+msgstr "Document date"
+
+msgid "Planowany załadunek"
+msgstr "Planned pick-up"
+
+msgid "Planowane zakończenie"
+msgstr "Planned completion"
+
+msgid "Tytuł / Ładunek"
+msgstr "Title / Cargo"
+
+msgid "Uwagi"
+msgstr "Notes"
+
+msgid "Załączniki (CMR)"
+msgstr "Attachments (CMR)"
+
+msgid "Brak załączników."
+msgstr "No attachments."
+
+msgid "Pobierz"
+msgstr "Download"
+
+msgid "Wartość zlecenia"
+msgstr "Order value"
+
+msgid "Netto"
+msgstr "Net"
+
+msgid "VAT"
+msgstr "VAT"
+
+msgid "Brutto"
+msgstr "Gross"
+
+msgid "Kurs"
+msgstr "Exchange rate"
+
+msgid "Faktura"
+msgstr "Invoice"
+
+msgid "Data wystawienia"
+msgstr "Issue date"
+
+msgid "Termin płatności"
+msgstr "Payment due date"
+
+msgid "Opłacona"
+msgstr "Paid"
+
+msgid "Częściowo opłacona"
+msgstr "Partially paid"
+
+msgid "Nieopłacona"
+msgstr "Unpaid"
+
+msgid "Pobierz fakturę PDF"
+msgstr "Download invoice PDF"
+
+msgid "Faktura jeszcze nie została wystawiona."
+msgstr "The invoice has not been issued yet."

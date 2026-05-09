@@ -236,12 +236,34 @@ class AppController extends Controller
     {
         parent::beforeFilter($event);
 
+        // Ustaw locale (PL/EN) z sesji — używane przez portal klienta (i18n).
+        // Pracownicy nie korzystają z tłumaczeń (interfejs hardcoded PL),
+        // więc to jest no-op dla ich widoków.
+        $session = $this->request->getSession();
+        $lang    = $session->read('Config.locale');
+        if (!in_array($lang, ['pl', 'en'], true)) {
+            $lang = 'pl';
+        }
+        \Cake\I18n\I18n::setLocale($lang);
+        $this->set('currentLocale', $lang);
+
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
             $this->set('ksefModeEnabled', true);
             $this->set('rentalEnabled', false);
             $this->set('draftInvoicesCount', 0);
             return; // nie zalogowany → nic nie rób
+        }
+
+        // Klient (rola `client`) nie ma company_id naszej firmy i nie przechodzi onboardingu —
+        // jego portal działa wyłącznie na podstawie client_profiles.nip.
+        $role = strtolower((string)($identity->get('role') ?? ''));
+        $this->set('currentRole', $role);
+        if ($role === 'client') {
+            $this->set('ksefModeEnabled', false);
+            $this->set('rentalEnabled', false);
+            $this->set('draftInvoicesCount', 0);
+            return;
         }
 
         // Jeśli identity nie ma company_id, ale w DB user ma już przypisaną firmę,

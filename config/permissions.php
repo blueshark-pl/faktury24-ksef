@@ -456,6 +456,45 @@ return [
             'controller' => 'SupportTickets',
             'action' => ['index', 'add', 'view', 'download'],
         ],
+
+        // ── Portal klienta (rola `client`) ────────────────────────────────────
+        [
+            'role'       => 'client',
+            'plugin'     => 'CakeDC/Users',
+            'controller' => 'Users',
+            'action'     => ['profile', 'logout'],
+        ],
+        [
+            'role'       => 'client',
+            'controller' => 'ClientPortal',
+            'action'     => ['index', 'view', 'downloadAttachment', 'downloadInvoice', 'setLocale'],
+        ],
+        // Klient może pobrać PDF faktury — ale tylko tej, która wisi przy jego zleceniu
+        [
+            'role'       => 'client',
+            'controller' => 'Invoices',
+            'action'     => 'print',
+            'allowed'    => function (array $user, $role, \Cake\Http\ServerRequest $request) {
+                $invoiceId = \Cake\Utility\Hash::get($request->getAttribute('params'), 'pass.0');
+                $userId    = $user['id'] ?? null;
+                if (!$invoiceId || !$userId) {
+                    return false;
+                }
+                $profile = \Cake\ORM\TableRegistry::getTableLocator()
+                    ->get('ClientProfiles')
+                    ->find()
+                    ->where(['user_id' => $userId])
+                    ->first();
+                if (!$profile) {
+                    return false;
+                }
+                return \Cake\ORM\TableRegistry::getTableLocator()
+                    ->get('SpeedOrders')
+                    ->find()
+                    ->where(['invoice_id' => $invoiceId, 'buyer_nip' => $profile->nip])
+                    ->count() > 0;
+            },
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',

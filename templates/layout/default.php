@@ -435,6 +435,21 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             <svg xmlns="http://www.w3.org/2000/svg" fill="#7b8191" width="24" height="24" viewBox="0 0 24 24"> <path d="M13.293 6.293 7.586 12l5.707 5.707 1.414-1.414L10.414 12l4.293-4.293z"></path> </svg>
                         </div>
                         <ul class="main-menu">
+                            <?php if (($currentRole ?? '') === 'client'): ?>
+                                <!-- ── SIDEBAR: Portal klienta ──────────────────────────────── -->
+                                <li class="slide__category"><span class="category-name"><?= __('Portal klienta') ?></span></li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-truck-line side-menu__icon" style="font-size:1.25rem;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center"></i>'
+                                        . '<span class="side-menu__label">' . h(__('Zlecenia transportowe')) . '</span>',
+                                        ['controller' => 'ClientPortal', 'action' => 'index'],
+                                        [
+                                            'class'  => trim('side-menu__item ' . $navActive('clientportal', 'index')),
+                                            'escape' => false,
+                                        ]
+                                    ) ?>
+                                </li>
+                            <?php else: ?>
                             <!-- Start::slide__category -->
                             <li class="slide__category"><span class="category-name">Faktury24</span></li>
                             <!-- End::slide__category -->
@@ -781,6 +796,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </li>
                             <?php endif; ?>
 
+                            <?php endif; /* end: not client role */ ?>
                         </ul>
                         <div class="slide-right" id="slide-right"><svg xmlns="http://www.w3.org/2000/svg" fill="#7b8191" width="24" height="24" viewBox="0 0 24 24"> <path d="M10.707 17.707 16.414 12l-5.707-5.707-1.414 1.414L13.586 12l-4.293 4.293z"></path> </svg></div>
                     </nav>
