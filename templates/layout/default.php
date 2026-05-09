@@ -747,6 +747,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             ?>
                             <!-- Administracja -->
                             <li class="slide__category"><span class="category-name">Administracja</span></li>
+                            <li class="slide <?= $navActive('AdminClients', 'index') || $navActive('AdminClients', 'add') || $navActive('AdminClients', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-user-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Klienci portalu</span>',
+                                    ['plugin' => false, 'controller' => 'AdminClients', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
                                     '<i class="ri-file-list-3-line side-menu__icon"></i>

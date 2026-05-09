@@ -178,6 +178,14 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/wyciagi/tx-allocations/{id}', ['controller' => 'BankTransactions', 'action' => 'txAllocations'])
             ->setPass(['id']);
 
+        // Admin — zarządzanie klientami portalu (CRUD na user-ach z rolą `client`)
+        $builder->get('/admin/klienci',                 ['controller' => 'AdminClients', 'action' => 'index']);
+        $builder->connect('/admin/klienci/dodaj',       ['controller' => 'AdminClients', 'action' => 'add']);
+        $builder->connect('/admin/klienci/edytuj/{id}', ['controller' => 'AdminClients', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/admin/klienci/usun/{id}',      ['controller' => 'AdminClients', 'action' => 'delete'])
+            ->setPass(['id']);
+
         // Portal klienta (rola `client`) — zlecenia transportowe powiązane przez NIP
         $builder->get('/portal',                       ['controller' => 'ClientPortal', 'action' => 'index']);
         $builder->get('/portal/zlecenie/{id}',         ['controller' => 'ClientPortal', 'action' => 'view'])
