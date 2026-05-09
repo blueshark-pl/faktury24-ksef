@@ -130,11 +130,13 @@ class AdminClientsController extends AppController
                         'password'        => $password,
                         'first_name'      => trim((string)($data['first_name'] ?? '')) ?: null,
                         'last_name'       => trim((string)($data['last_name']  ?? '')) ?: null,
-                        'role'            => 'client',
                         'active'          => 1,
-                        'is_superuser'    => 0,
                         'activation_date' => \Cake\I18n\DateTime::now(),
                     ], ['validate' => false]);
+                    // role i is_superuser mają _accessible=false w CakeDC/Users User entity —
+                    // ustawiamy je bezpośrednio na encji, by ominąć mass-assignment guard.
+                    $user->role         = 'client';
+                    $user->is_superuser = false;
 
                     if (!$Users->save($user, ['checkRules' => false])) {
                         throw new \RuntimeException('Nie udało się zapisać konta: ' . json_encode($user->getErrors()));
