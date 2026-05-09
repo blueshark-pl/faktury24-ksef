@@ -263,6 +263,23 @@ class AppController extends Controller
             $this->set('ksefModeEnabled', false);
             $this->set('rentalEnabled', false);
             $this->set('draftInvoicesCount', 0);
+
+            // Klient może być wyłącznie w portalu, na akcjach autoryzacji lub pobierać PDF faktury.
+            // Wszystko inne (np. domyślne `/` → Invoices/index po logowaniu) → redirect na /portal.
+            // Zapobiega pętli ERR_TOO_MANY_REDIRECTS, bo Authorization odrzuciłby /Invoices/index.
+            $controller = (string)$this->request->getParam('controller');
+            $action     = (string)$this->request->getParam('action');
+            $allowedForClient = [
+                'ClientPortal' => '*',
+                'Users'        => ['login', 'logout', 'profile', 'webauthn2fa', 'webauthn2faAuthenticate'],
+                'Invoices'     => ['print'],
+            ];
+            $isAllowed = isset($allowedForClient[$controller])
+                && ($allowedForClient[$controller] === '*'
+                    || in_array($action, $allowedForClient[$controller], true));
+            if (!$isAllowed) {
+                return $this->redirect(['controller' => 'ClientPortal', 'action' => 'index']);
+            }
             return;
         }
 
