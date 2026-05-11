@@ -271,7 +271,9 @@ class AppController extends Controller
             $action     = (string)$this->request->getParam('action');
             $allowedForClient = [
                 'ClientPortal' => '*',
-                'Users'        => ['login', 'logout', 'profile', 'webauthn2fa', 'webauthn2faAuthenticate'],
+                'Users'        => ['login', 'logout', 'profile', 'edit', 'changePassword',
+                                   'webauthn2fa', 'webauthn2faRegister', 'webauthn2faRegisterOptions',
+                                   'webauthn2faAuthenticate', 'webauthn2faAuthenticateOptions'],
                 'Invoices'     => ['print'],
             ];
             $isAllowed = isset($allowedForClient[$controller])

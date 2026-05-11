@@ -462,7 +462,9 @@ return [
             'role'       => 'client',
             'plugin'     => 'CakeDC/Users',
             'controller' => 'Users',
-            'action'     => ['profile', 'logout'],
+            'action'     => ['profile', 'logout', 'changePassword', 'edit',
+                             'webauthn2fa', 'webauthn2faRegister', 'webauthn2faRegisterOptions',
+                             'webauthn2faAuthenticate', 'webauthn2faAuthenticateOptions'],
         ],
         [
             'role'       => 'client',
