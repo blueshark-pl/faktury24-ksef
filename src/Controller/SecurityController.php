@@ -141,9 +141,13 @@ class SecurityController extends AppController
             return $this->jsonError(__('Nieprawidłowe aktualne hasło.'));
         }
 
-        // Zapisujemy bezpośrednio hash — pomija setter password z User entity
-        $user->set('pin_hash', $hasher->hash($newPin), ['guard' => false]);
-        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+        // Bezpośredni UPDATE — pomija _setPassword setter, _accessible i schema cache
+        $updated = $Users->updateAll(
+            ['pin_hash' => $hasher->hash($newPin)],
+            ['id' => $userId]
+        );
+        if ($updated < 1) {
+            \Cake\Log\Log::error('setPin: UPDATE failed for user ' . $userId);
             return $this->jsonError(__('Nie udało się zapisać PIN-u.'));
         }
 
@@ -235,22 +239,29 @@ class SecurityController extends AppController
         }
         imagedestroy($dst);
 
-        // Usuń poprzedni avatar tego usera (mogą zostać sieroty)
+        // Pobierz aktualną wartość avatara (potrzebne do usunięcia starego pliku)
         $Users = $this->fetchTable('Users');
-        $user  = $Users->find()->where(['id' => $userId])->first();
-        if (!$user) {
+        $row = $Users->find()
+            ->select(['id', 'avatar'])
+            ->where(['id' => $userId])
+            ->disableHydration()
+            ->first();
+        if (!$row) {
             @unlink($fullPath);
             return $this->jsonError(__('Użytkownik nie istnieje.'), 404);
         }
-        $oldAvatar = (string)$user->get('avatar');
+        $oldAvatar = (string)($row['avatar'] ?? '');
         if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
             $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
             if (is_file($oldPath) && $oldPath !== $fullPath) { @unlink($oldPath); }
         }
 
-        $user->set('avatar', $relUrl, ['guard' => false]);
-        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+        // Bezpośredni UPDATE — pomija _accessible/_setAvatar/setterów + schema cache.
+        // Zwraca liczbę zaktualizowanych wierszy.
+        $updated = $Users->updateAll(['avatar' => $relUrl], ['id' => $userId]);
+        if ($updated < 1) {
             @unlink($fullPath);
+            \Cake\Log\Log::error('uploadAvatar: UPDATE failed for user ' . $userId . ' (updated=' . $updated . ')');
             return $this->jsonError(__('Nie udało się zapisać profilu.'));
         }
 
@@ -272,19 +283,24 @@ class SecurityController extends AppController
         $userId = (string)$identity->get('id');
 
         $Users = $this->fetchTable('Users');
-        $user  = $Users->find()->where(['id' => $userId])->first();
-        if (!$user) {
+        $row = $Users->find()
+            ->select(['id', 'avatar'])
+            ->where(['id' => $userId])
+            ->disableHydration()
+            ->first();
+        if (!$row) {
             return $this->jsonError(__('Użytkownik nie istnieje.'), 404);
         }
 
-        $oldAvatar = (string)$user->get('avatar');
+        $oldAvatar = (string)($row['avatar'] ?? '');
         if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
             $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
             if (is_file($oldPath)) { @unlink($oldPath); }
         }
 
-        $user->set('avatar', null, ['guard' => false]);
-        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+        $updated = $Users->updateAll(['avatar' => null], ['id' => $userId]);
+        if ($updated < 1) {
+            \Cake\Log\Log::error('deleteAvatar: UPDATE failed for user ' . $userId);
             return $this->jsonError(__('Nie udało się zaktualizować profilu.'));
         }
 
@@ -318,8 +334,9 @@ class SecurityController extends AppController
             return $this->jsonError(__('Nieprawidłowe aktualne hasło.'));
         }
 
-        $user->set('pin_hash', null, ['guard' => false]);
-        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+        $updated = $Users->updateAll(['pin_hash' => null], ['id' => $userId]);
+        if ($updated < 1) {
+            \Cake\Log\Log::error('deletePin: UPDATE failed for user ' . $userId);
             return $this->jsonError(__('Nie udało się usunąć PIN-u.'));
         }
 
