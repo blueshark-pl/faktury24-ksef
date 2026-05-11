@@ -492,6 +492,13 @@ return [
             'controller' => 'ClientPortal',
             'action'     => ['index', 'view', 'downloadAttachment', 'downloadInvoice', 'setLocale'],
         ],
+        // Każdy zalogowany może przełączać język (PL/EN) — używamy ClientPortal::setLocale
+        // jako wspólnego endpointu (zapisuje Config.locale w sesji)
+        [
+            'role'       => '*',
+            'controller' => 'ClientPortal',
+            'action'     => 'setLocale',
+        ],
         // Klient może pobrać PDF faktury — ale tylko tej, która wisi przy jego zleceniu
         [
             'role'       => 'client',

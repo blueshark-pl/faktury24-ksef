@@ -458,7 +458,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ]);
                             };
                         ?>
-                        <?php if ($roleLang === 'client'): ?>
+                        <?php if ($identityLang): /* Dla każdego zalogowanego — admin, user, client */ ?>
                         <!-- Start::header-element | Wybór języka (Zynix country-selector) -->
                         <li class="header-element country-selector dropdown">
                             <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret"
