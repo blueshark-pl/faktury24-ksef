@@ -34,8 +34,13 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
     <?= $this->Html->meta('author', 'Faktury24.com') ?>
     <?= $this->Html->meta('keywords', 'faktury, faktury24, faktury online, faktury elektroniczne, ksef') ?>
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="<?= $this->Url->assetUrl('assets/images/brand-logos/favicon.ico') ?>"/>
+    <!-- Favicon (Booklio TMS) -->
+    <link rel="icon"           type="image/png"     sizes="96x96" href="/favicon-96x96.png">
+    <link rel="icon"           type="image/svg+xml"               href="/favicon.svg">
+    <link rel="shortcut icon"                                     href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180"                  href="/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-title" content="Booklio TMS">
+    <link rel="manifest"                                          href="/site.webmanifest">
 
     <!-- Main Theme Js (head) -->
     <?= $this->Html->script($this->Url->assetUrl('assets/js/authentication-main.js'), ['block' => true]) ?>

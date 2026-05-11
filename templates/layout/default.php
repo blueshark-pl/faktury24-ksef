@@ -34,8 +34,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     // Opis/autor/keywords – możesz nadpisać blokiem 'meta'
     echo $this->fetch('meta');
 
-    // Favicon
-    echo $this->Html->meta('icon', $this->Url->assetUrl('/assets/images/brand-logos/favicon.ico'), ['type' => 'image/x-icon']);
+    // Favicon (Booklio TMS)
+    ?>
+    <link rel="icon"           type="image/png"     sizes="96x96" href="/favicon-96x96.png">
+    <link rel="icon"           type="image/svg+xml"               href="/favicon.svg">
+    <link rel="shortcut icon"                                     href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180"                  href="/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-title" content="Booklio TMS">
+    <link rel="manifest"                                          href="/site.webmanifest">
+    <?php
 
     // CSRF token dla JS (jeśli używasz CsrfProtectionMiddleware)
     $csrf = $this->request->getAttribute('csrfToken');
