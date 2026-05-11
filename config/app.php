@@ -480,8 +480,8 @@ return [
     'Security' => [
         'screenLock' => [
             'enabled'        => true,
-            'idleSeconds'    => 40,    // TEST: 40s bezczynności → lock (docelowo 300 = 5 min)
-            'warningSeconds' => 15,    // pre-warning toast 15s przed lockiem (TEST)
+            'idleSeconds'    => 900,   // 15 min bezczynności → lock
+            'warningSeconds' => 30,    // pre-warning toast 30s przed lockiem
             'maxFailures'    => 3,     // po N błędach → twardy logout
         ],
     ],
