@@ -73,6 +73,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       /* Show hand cursor on tab-style nav items */
       .nav-pills.tab-style-7 .nav-link { cursor: pointer; }
       .nav-pills.tab-style-7 .nav-item { cursor: pointer; }
+
+      /* Logo w sidebarze — wyższe niż domyślny theme (lepsza czytelność szerokiego logo 1894×585) */
+      .app-sidebar .main-sidebar-header .header-logo img { height: 2.5rem !important; }
     </style>
     <?php
 
