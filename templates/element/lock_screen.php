@@ -338,9 +338,19 @@ body.sl-active .simplebar-mask {
         if (e.newValue && !isLocked) showLock();
         if (!e.newValue && isLocked) hideLock();
     });
-    // Na starcie sprawdź czy inna karta już zablokowała
+    // Na starcie sprawdź czy:
+    //  a) inna karta już zablokowała (storage flag)
+    //  b) F5 na zablokowanej stronie (pre-lock klasa z inline head script)
+    // W obu przypadkach od razu pokaż modal i usuń pre-lock CSS.
     try {
-        if (localStorage.getItem(STORAGE_KEY)) showLock();
+        var wasPrelocked = document.documentElement.classList.contains('sl-prelocked');
+        if (localStorage.getItem(STORAGE_KEY) || wasPrelocked) {
+            showLock();
+        }
+        if (wasPrelocked) {
+            // Modal już renderuje się w pełni — można usunąć stub overlay
+            document.documentElement.classList.remove('sl-prelocked');
+        }
     } catch (e) {}
 
     // ── Toggle widoczność hasła ─────────────────────────────────────────

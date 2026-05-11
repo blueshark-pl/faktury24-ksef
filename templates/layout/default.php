@@ -34,15 +34,50 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <!-- Wczytanie zapisanego trybu motywu PRZED CSS — eliminuje flash jasnego motywu przy dark mode -->
     <script>
     (function () {
-        var mode = localStorage.getItem('themeMode');
-        if (mode === 'dark') {
-            var h = document.documentElement;
-            h.setAttribute('data-theme-mode',   'dark');
-            h.setAttribute('data-header-styles','dark');
-            h.setAttribute('data-menu-styles',  'dark');
-        }
+        try {
+            var mode = localStorage.getItem('themeMode');
+            if (mode === 'dark') {
+                var h = document.documentElement;
+                h.setAttribute('data-theme-mode',   'dark');
+                h.setAttribute('data-header-styles','dark');
+                h.setAttribute('data-menu-styles',  'dark');
+            }
+        } catch (e) {}
+
+        // ── Pre-lock: jeśli ktoś F5-uje gdy ekran był zablokowany, blokujemy stronę
+        // natychmiast (przed załadowaniem CSS) żeby nie było okna interakcji 2-5s.
+        try {
+            if (localStorage.getItem('bookliio_locked_at')) {
+                document.documentElement.classList.add('sl-active', 'sl-prelocked');
+            }
+        } catch (e) {}
     })();
     </script>
+
+    <!-- Pre-lock CSS — ukrywa wszystko (zostaje tylko modal) zanim załaduje się styles.css.
+         Inline w head = aplikuje się natychmiast po parsowaniu, jeszcze przed renderem body. -->
+    <style id="sl-pre-style">
+        html.sl-prelocked, html.sl-prelocked body {
+            overflow: hidden !important;
+            height: 100% !important;
+            background: #0f172a !important;
+        }
+        html.sl-prelocked body { visibility: hidden !important; pointer-events: none !important; }
+        /* Override HTML attr [hidden] — wymusza display:none. Pokażmy modal natychmiast. */
+        html.sl-prelocked .screen-lock[hidden],
+        html.sl-prelocked .screen-lock {
+            display: flex !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+        }
+        html.sl-prelocked .screen-lock * { visibility: visible !important; pointer-events: auto !important; }
+        /* Stub-overlay (gdyby JS jeszcze nie podstawił modala) */
+        html.sl-prelocked::before {
+            content: ""; position: fixed; inset: 0; z-index: 99998;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(8px);
+        }
+    </style>
 
     <?php
     // Opis/autor/keywords – możesz nadpisać blokiem 'meta'
