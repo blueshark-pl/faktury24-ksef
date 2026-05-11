@@ -1062,11 +1062,19 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             ?>
                             <!-- Administracja -->
                             <li class="slide__category"><span class="category-name">Administracja</span></li>
-                            <li class="slide <?= $navActive('AdminClients', 'index') || $navActive('AdminClients', 'add') || $navActive('AdminClients', 'edit') ?>">
+                            <li class="slide <?= $navActive('AdminUsers', 'index') || $navActive('AdminUsers', 'add') || $navActive('AdminUsers', 'edit') ?>">
                                 <?= $this->Html->link(
-                                    '<i class="ri-user-2-line side-menu__icon"></i>
-                                    <span class="side-menu__label">Klienci portalu</span>',
-                                    ['plugin' => false, 'controller' => 'AdminClients', 'action' => 'index'],
+                                    '<i class="ri-team-line side-menu__icon"></i>
+                                    <span class="side-menu__label">' . __('Użytkownicy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'AdminUsers', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Roles', 'index') || $navActive('Roles', 'add') || $navActive('Roles', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-shield-user-line side-menu__icon"></i>
+                                    <span class="side-menu__label">' . __('Role i uprawnienia') . '</span>',
+                                    ['plugin' => false, 'controller' => 'Roles', 'action' => 'index'],
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>

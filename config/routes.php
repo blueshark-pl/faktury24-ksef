@@ -185,7 +185,23 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/upload-avatar', ['controller' => 'Security', 'action' => 'uploadAvatar']);
         $builder->post('/delete-avatar', ['controller' => 'Security', 'action' => 'deleteAvatar']);
 
-        // Admin — zarządzanie klientami portalu (CRUD na user-ach z rolą `client`)
+        // Admin — zarządzanie użytkownikami (pracownicy + klienci, filtr po roli)
+        $builder->get('/admin/uzytkownicy',                 ['controller' => 'AdminUsers', 'action' => 'index']);
+        $builder->connect('/admin/uzytkownicy/dodaj',       ['controller' => 'AdminUsers', 'action' => 'add']);
+        $builder->connect('/admin/uzytkownicy/edytuj/{id}', ['controller' => 'AdminUsers', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/admin/uzytkownicy/usun/{id}',      ['controller' => 'AdminUsers', 'action' => 'delete'])
+            ->setPass(['id']);
+
+        // Admin — role i uprawnienia
+        $builder->get('/admin/role',                  ['controller' => 'Roles', 'action' => 'index']);
+        $builder->connect('/admin/role/dodaj',        ['controller' => 'Roles', 'action' => 'add']);
+        $builder->connect('/admin/role/edytuj/{id}',  ['controller' => 'Roles', 'action' => 'edit'])
+            ->setPatterns(['id' => '\d+'])->setPass(['id']);
+        $builder->post('/admin/role/usun/{id}',       ['controller' => 'Roles', 'action' => 'delete'])
+            ->setPatterns(['id' => '\d+'])->setPass(['id']);
+
+        // Wsteczna kompatybilność: stare URL /admin/klienci → nowe /admin/uzytkownicy?role=client
         $builder->get('/admin/klienci',                 ['controller' => 'AdminClients', 'action' => 'index']);
         $builder->connect('/admin/klienci/dodaj',       ['controller' => 'AdminClients', 'action' => 'add']);
         $builder->connect('/admin/klienci/edytuj/{id}', ['controller' => 'AdminClients', 'action' => 'edit'])

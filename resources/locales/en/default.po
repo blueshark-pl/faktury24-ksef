@@ -608,3 +608,342 @@ msgstr "Download invoice PDF"
 
 msgid "Faktura jeszcze nie została wystawiona."
 msgstr "The invoice has not been issued yet."
+
+# ── Role i uprawnienia / Roles & permissions ─────────────────────────────────
+msgid "Role i uprawnienia"
+msgstr "Roles & permissions"
+
+msgid "Zarządzanie rolami systemowymi i własnymi. Każdej roli przypisujesz zestaw uprawnień."
+msgstr "Manage system and custom roles. Assign a set of permissions to each role."
+
+msgid "Dodaj rolę"
+msgstr "Add role"
+
+msgid "Nazwa"
+msgstr "Name"
+
+msgid "Kod"
+msgstr "Code"
+
+msgid "Typ"
+msgstr "Type"
+
+msgid "Uprawnień"
+msgstr "Permissions"
+
+msgid "Użytkowników"
+msgstr "Users"
+
+msgid "Aktywna"
+msgstr "Active"
+
+msgid "Brak ról."
+msgstr "No roles."
+
+msgid "Rola systemowa — nie można usunąć"
+msgstr "System role — cannot be deleted"
+
+msgid "systemowa"
+msgstr "system"
+
+msgid "własna"
+msgstr "custom"
+
+msgid "Admin ma wildcard w permissions.php"
+msgstr "Admin has a wildcard entry in permissions.php"
+
+msgid "Nieaktywna"
+msgstr "Inactive"
+
+msgid "Edytuj"
+msgstr "Edit"
+
+msgid "Usunąć rolę {0}? Tej operacji nie można cofnąć."
+msgstr "Delete role {0}? This action cannot be undone."
+
+msgid "Nowa rola"
+msgstr "New role"
+
+msgid "Po utworzeniu roli przypiszesz jej uprawnienia w edycji."
+msgstr "After creating a role you'll assign permissions in the edit screen."
+
+msgid "Kod roli"
+msgstr "Role code"
+
+msgid "Tylko litery, cyfry i podkreślenia. Po zapisie kod można jeszcze zmienić, ale wpływa na permissions.php."
+msgstr "Letters, digits and underscores only. The code can be changed later but it affects permissions.php."
+
+msgid "Wyświetlana nazwa roli"
+msgstr "Display name of the role"
+
+msgid "Opis"
+msgstr "Description"
+
+msgid "Utwórz rolę"
+msgstr "Create role"
+
+msgid "Anuluj"
+msgstr "Cancel"
+
+msgid "Podaj kod roli."
+msgstr "Provide a role code."
+
+msgid "Rola o tym kodzie już istnieje."
+msgstr "A role with this code already exists."
+
+msgid "Rola dodana. Możesz teraz przypisać uprawnienia."
+msgstr "Role created. You can now assign permissions."
+
+msgid "Nie udało się zapisać roli."
+msgstr "Failed to save the role."
+
+msgid "Rola nie istnieje."
+msgstr "Role not found."
+
+msgid "Edycja roli: {0}"
+msgstr "Edit role: {0}"
+
+msgid "Edycja roli"
+msgstr "Edit role"
+
+msgid "Dane podstawowe"
+msgstr "Basic data"
+
+msgid "Kod roli systemowej jest zablokowany."
+msgstr "The code of a system role is locked."
+
+msgid "Uprawnienia"
+msgstr "Permissions"
+
+msgid "Admin ma wildcard w permissions.php — uprawnienia z DB są ignorowane"
+msgstr "Admin has a wildcard in permissions.php — DB permissions are ignored"
+
+msgid "Zaznacz wszystko"
+msgstr "Select all"
+
+msgid "Rola admin ma wpis wildcard (*) w pliku permissions.php i automatycznie ma dostęp do wszystkiego. Zmiana uprawnień w DB nie ma wpływu."
+msgstr "The admin role has a wildcard entry (*) in permissions.php and automatically has access to everything. Changing DB permissions has no effect."
+
+msgid "Zaznacz wszystkie w tej kategorii"
+msgstr "Select all in this category"
+
+msgid "Inna rola ma już ten kod."
+msgstr "Another role already uses this code."
+
+msgid "Zapisano rolę i jej uprawnienia."
+msgstr "Role and its permissions saved."
+
+msgid "Nie udało się zapisać."
+msgstr "Save failed."
+
+msgid "Nie można usunąć roli systemowej."
+msgstr "Cannot delete a system role."
+
+msgid "Nie można usunąć — {0} użytkowników ma tę rolę. Najpierw zmień im rolę."
+msgstr "Cannot delete — {0} users have this role. Change their role first."
+
+msgid "Rola usunięta."
+msgstr "Role deleted."
+
+msgid "Nie udało się usunąć roli."
+msgstr "Failed to delete the role."
+
+msgid "Zapisz zmiany"
+msgstr "Save changes"
+
+# Kategorie uprawnień
+msgid "Faktury sprzedaży"
+msgstr "Sales invoices"
+
+msgid "Kontrahenci"
+msgstr "Contractors"
+
+msgid "Faktury kosztowe"
+msgstr "Cost invoices"
+
+msgid "Rozliczenia i bank"
+msgstr "Reconciliations & bank"
+
+msgid "Raporty"
+msgstr "Reports"
+
+msgid "Administracja"
+msgstr "Administration"
+
+msgid "Inne"
+msgstr "Other"
+
+# ── Użytkownicy (AdminUsers) ─────────────────────────────────────────────────
+msgid "Użytkownicy"
+msgstr "Users"
+
+msgid "Wszyscy użytkownicy systemu — pracownicy i klienci portalu."
+msgstr "All users in the system — staff and portal clients."
+
+msgid "Dodaj użytkownika"
+msgstr "Add user"
+
+msgid "Wszystkie role"
+msgstr "All roles"
+
+msgid "Aktywni"
+msgstr "Active"
+
+msgid "Nieaktywni"
+msgstr "Inactive"
+
+msgid "Szukaj: e-mail, login, imię, nazwisko…"
+msgstr "Search: e-mail, login, first name, last name…"
+
+msgid "użytkowników"
+msgstr "users"
+
+msgid "Rola"
+msgstr "Role"
+
+msgid "Firma / NIP"
+msgstr "Company / Tax ID"
+
+msgid "Aktywny"
+msgstr "Active"
+
+msgid "Utworzono"
+msgstr "Created"
+
+msgid "Brak użytkowników{0}."
+msgstr "No users{0}."
+
+msgid "dla podanych kryteriów"
+msgstr "for the given criteria"
+
+msgid "powiązany z firmą"
+msgstr "linked to a company"
+
+msgid "Usunąć użytkownika {0}? Tej operacji nie można cofnąć."
+msgstr "Delete user {0}? This action cannot be undone."
+
+msgid "Nowy użytkownik"
+msgstr "New user"
+
+msgid "Wybierz rolę — dla klienta uzupełnij dodatkowo NIP i nazwę firmy."
+msgstr "Pick a role — for a client also fill in the Tax ID and company name."
+
+msgid "E-mail"
+msgstr "E-mail"
+
+msgid "Login"
+msgstr "Login"
+
+msgid "opcjonalnie — domyślnie e-mail"
+msgstr "optional — defaults to e-mail"
+
+msgid "Imię"
+msgstr "First name"
+
+msgid "Nazwisko"
+msgstr "Last name"
+
+msgid "Hasło"
+msgstr "Password"
+
+msgid "Min. 8 znaków."
+msgstr "Min. 8 characters."
+
+msgid "Dane dla profilu klienta portalu"
+msgstr "Portal client profile data"
+
+msgid "NIP"
+msgstr "Tax ID"
+
+msgid "np. 1234567890 lub DE123456789"
+msgstr "e.g. 1234567890 or DE123456789"
+
+msgid "PL lub zagraniczny — bez czyszczenia."
+msgstr "PL or foreign — not sanitized."
+
+msgid "Nazwa firmy"
+msgstr "Company name"
+
+msgid "Utwórz konto"
+msgstr "Create account"
+
+msgid "Podaj poprawny e-mail."
+msgstr "Provide a valid e-mail."
+
+msgid "Hasło musi mieć co najmniej 8 znaków."
+msgstr "Password must have at least 8 characters."
+
+msgid "Nieprawidłowa rola."
+msgstr "Invalid role."
+
+msgid "Użytkownik z tym e-mailem już istnieje."
+msgstr "A user with this e-mail already exists."
+
+msgid "NIP musi mieć co najmniej 5 znaków."
+msgstr "Tax ID must have at least 5 characters."
+
+msgid "Profil klienta z tym NIP-em już istnieje."
+msgstr "A client profile with this Tax ID already exists."
+
+msgid "Nie udało się zapisać konta"
+msgstr "Failed to save the account"
+
+msgid "Nie udało się zapisać profilu klienta"
+msgstr "Failed to save the client profile"
+
+msgid "Konto utworzone. Login: {0}"
+msgstr "Account created. Login: {0}"
+
+msgid "Edycja: {0}"
+msgstr "Edit: {0}"
+
+msgid "Edycja użytkownika"
+msgstr "Edit user"
+
+msgid "Dane konta"
+msgstr "Account data"
+
+msgid "E-mail jest loginem — zmiana nieobsługiwana z poziomu admina."
+msgstr "The e-mail is the login — admin-side change is not supported."
+
+msgid "Nowe hasło"
+msgstr "New password"
+
+msgid "zostaw puste żeby nie zmieniać"
+msgstr "leave empty to keep current"
+
+msgid "Konto aktywne"
+msgstr "Account active"
+
+msgid "Dane profilu klienta portalu"
+msgstr "Portal client profile data"
+
+msgid "Usuń konto"
+msgstr "Delete account"
+
+msgid "NIP jest już przypisany do innego klienta."
+msgstr "This Tax ID is already linked to another client."
+
+msgid "Zapisano zmiany."
+msgstr "Changes saved."
+
+msgid "Informacje"
+msgstr "Information"
+
+msgid "ID"
+msgstr "ID"
+
+msgid "Ostatnio modyf."
+msgstr "Last modified"
+
+msgid "Zleceń (NIP)"
+msgstr "Orders (Tax ID)"
+
+msgid "Nie możesz usunąć własnego konta."
+msgstr "You cannot delete your own account."
+
+msgid "Nie udało się usunąć konta."
+msgstr "Failed to delete the account."
+
+msgid "Użytkownik usunięty."
+msgstr "User deleted."
