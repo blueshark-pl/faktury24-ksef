@@ -33,13 +33,16 @@ $raw = function ($order): array {
     if (empty($order->raw_json)) return [];
     return (array)(json_decode((string)$order->raw_json, true) ?? []);
 };
-// Flaga emoji z 2-literowego ISO 3166-1 alpha-2 (PL → 🇵🇱, DE → 🇩🇪 itd.)
+// Flaga jako <img> z flagcdn.com (działa na Windows/Linux/Mac — Regional Indicator emoji
+// nie renderują się na Windows). 2-literowy ISO 3166-1 alpha-2 (PL, DE, IT…).
 $flag = function (?string $code): string {
-    $code = strtoupper(trim((string)$code));
-    if (!preg_match('/^[A-Z]{2}$/', $code)) return '';
-    $a = 0x1F1E6; // Regional Indicator Symbol "A"
-    return mb_chr($a + ord($code[0]) - ord('A'), 'UTF-8')
-         . mb_chr($a + ord($code[1]) - ord('A'), 'UTF-8');
+    $code = strtolower(trim((string)$code));
+    if (!preg_match('/^[a-z]{2}$/', $code)) return '';
+    return '<img src="https://flagcdn.com/24x18/' . $code . '.png"'
+         . ' srcset="https://flagcdn.com/48x36/' . $code . '.png 2x,'
+         . ' https://flagcdn.com/72x54/' . $code . '.png 3x"'
+         . ' alt="' . htmlspecialchars(strtoupper($code)) . '"'
+         . ' style="width:16px;height:12px;border-radius:1px;vertical-align:-2px;object-fit:cover">';
 };
 
 // ── Status Nordlogis (operacyjny) ─────────────────────────────────────────
@@ -313,7 +316,7 @@ $today = date('Y-m-d');
                                     <?php if ($loadCountry): ?>
                                         <div class="place-country">
                                             <span class="badge bg-light text-secondary border d-inline-flex align-items-center gap-1" style="font-size:.65em">
-                                                <span style="font-size:1.1em;line-height:1"><?= $flag($loadCountry) ?></span>
+                                                <?= $flag($loadCountry) ?>
                                                 <?= h($loadCountry) ?>
                                             </span>
                                         </div>
@@ -337,7 +340,7 @@ $today = date('Y-m-d');
                                     <?php if ($unloadCountry): ?>
                                         <div class="place-country">
                                             <span class="badge bg-light text-secondary border d-inline-flex align-items-center gap-1" style="font-size:.65em">
-                                                <span style="font-size:1.1em;line-height:1"><?= $flag($unloadCountry) ?></span>
+                                                <?= $flag($unloadCountry) ?>
                                                 <?= h($unloadCountry) ?>
                                             </span>
                                         </div>

@@ -12,13 +12,15 @@ $this->assign('title', __('Zlecenie') . ' ' . ($order->symbol ?: '#' . $order->i
 $fdate     = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : null;
 $fdatetime = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:i') : substr((string)$v, 0, 16)) : null;
 $fnum      = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
-// Flaga emoji z 2-literowego ISO 3166-1 alpha-2 (PL → 🇵🇱, DE → 🇩🇪 itd.)
-$flag = function (?string $code): string {
-    $code = strtoupper(trim((string)$code));
-    if (!preg_match('/^[A-Z]{2}$/', $code)) return '';
-    $a = 0x1F1E6;
-    return mb_chr($a + ord($code[0]) - ord('A'), 'UTF-8')
-         . mb_chr($a + ord($code[1]) - ord('A'), 'UTF-8');
+// Flaga jako <img> z flagcdn.com (działa na Windows/Linux/Mac). ISO 3166-1 alpha-2.
+$flag = function (?string $code, int $w = 24, int $h = 18): string {
+    $code = strtolower(trim((string)$code));
+    if (!preg_match('/^[a-z]{2}$/', $code)) return '';
+    return '<img src="https://flagcdn.com/' . $w . 'x' . $h . '/' . $code . '.png"'
+         . ' srcset="https://flagcdn.com/' . ($w*2) . 'x' . ($h*2) . '/' . $code . '.png 2x,'
+         . ' https://flagcdn.com/' . ($w*3) . 'x' . ($h*3) . '/' . $code . '.png 3x"'
+         . ' alt="' . htmlspecialchars(strtoupper($code)) . '"'
+         . ' class="rounded" style="width:' . ($w*2/3) . 'px;height:' . ($h*2/3) . 'px;vertical-align:-2px;object-fit:cover">';
 };
 
 $rawData = [];
@@ -311,7 +313,7 @@ if ($order->date_delivery && $order->pod_at) {
     <div class="route-node">
         <div class="d-flex align-items-center gap-2">
             <span class="rn-flag" title="<?= h($loadCountry) ?>">
-                <?= $flag($loadCountry) ?: '📤' ?>
+                <?= $flag($loadCountry, 60, 45) ?: '<i class="ri-truck-line" style="font-size:1.6rem;color:rgb(27,89,152)"></i>' ?>
             </span>
             <div>
                 <div class="rn-city"><?= h($loadCity ?: '—') ?></div>
@@ -350,7 +352,7 @@ if ($order->date_delivery && $order->pod_at) {
                 <?php endif; ?>
             </div>
             <span class="rn-flag" title="<?= h($unloadCountry) ?>">
-                <?= $flag($unloadCountry) ?: '📥' ?>
+                <?= $flag($unloadCountry, 60, 45) ?: '<i class="ri-flag-line" style="font-size:1.6rem;color:rgb(34,197,94)"></i>' ?>
             </span>
         </div>
     </div>
@@ -418,7 +420,7 @@ if ($order->date_delivery && $order->pod_at) {
                             <?= h($loadCity ?: $order->place_from_name ?: '—') ?>
                             <?php if ($loadCountry): ?>
                                 <span class="badge bg-light text-secondary border ms-1 d-inline-flex align-items-center gap-1" style="font-size:.65em">
-                                    <span style="font-size:1.1em;line-height:1"><?= $flag($loadCountry) ?></span>
+                                    <?= $flag($loadCountry) ?>
                                     <?= h($loadCountry) ?>
                                 </span>
                             <?php endif; ?>
@@ -435,7 +437,7 @@ if ($order->date_delivery && $order->pod_at) {
                             <?= h($unloadName ?: $unloadCity ?: $order->place_to_name ?: '—') ?>
                             <?php if ($unloadCountry): ?>
                                 <span class="badge bg-light text-secondary border ms-1 d-inline-flex align-items-center gap-1" style="font-size:.65em">
-                                    <span style="font-size:1.1em;line-height:1"><?= $flag($unloadCountry) ?></span>
+                                    <?= $flag($unloadCountry) ?>
                                     <?= h($unloadCountry) ?>
                                 </span>
                             <?php endif; ?>
