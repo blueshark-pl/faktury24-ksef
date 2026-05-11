@@ -185,7 +185,7 @@ body.sl-active .simplebar-mask {
     var MAX_FAILS    = <?= $maxFails ?>;
     var STORAGE_KEY  = 'bookliio_locked_at';
     var CSRF_TOKEN   = <?= json_encode($csrf) ?>;
-    var URL_UNLOCK   = '<?= $this->Url->build(['controller' => 'Security', 'action' => 'unlock']) ?>';
+    var URL_UNLOCK   = '<?= $this->Url->build(['plugin' => false, 'controller' => 'Security', 'action' => 'unlock']) ?>';
 
     var lockEl    = document.getElementById('screenLock');
     var warnEl    = document.getElementById('screenLockWarning');
