@@ -13,7 +13,7 @@ if (empty($cfg['enabled'])) { return; }
 $identity = $this->request->getAttribute('identity');
 if (!$identity) { return; }
 
-$idleSec    = (int)($cfg['idleSeconds']    ?? 300);
+$idleSec    = (int)($cfg['idleSeconds']    ?? 40);
 $warningSec = (int)($cfg['warningSeconds'] ?? 30);
 $maxFails   = (int)($cfg['maxFailures']    ?? 3);
 
@@ -85,24 +85,39 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
 /* Zamrożenie strony pod modalem — pełna blokada scrolla */
 html.sl-active, body.sl-active {
     overflow: hidden !important;
+    overflow: clip !important;              /* nowsza wersja, twardsza od hidden */
     height: 100% !important;
-    /* Ukryj scrollbar w każdym silniku */
     scrollbar-width: none !important;       /* Firefox */
     -ms-overflow-style: none !important;    /* IE/legacy Edge */
+    /* Każde kliknięcie/scroll na elementach poza modalem ignorowane */
+    pointer-events: none !important;
+    -webkit-user-select: none !important;
+            user-select: none !important;
 }
 html.sl-active::-webkit-scrollbar,
-body.sl-active::-webkit-scrollbar { display: none !important; }
+body.sl-active::-webkit-scrollbar { display: none !important; width: 0 !important; }
+
 body.sl-active {
     position: fixed !important;
-    left: 0; right: 0; width: 100%;
-    /* `top` ustawiany dynamicznie z JS (-savedScrollY) — body wisi w viewportcie */
+    left: 0; right: 0; width: 100vw !important;
+    /* `top` ustawiany dynamicznie z JS (-savedScrollY) */
 }
-/* Każdy potencjalny scroll-container wewnątrz pod modalem */
+/* Wszystkie scroll-containery w środku — zamrożone */
 body.sl-active .main-content,
 body.sl-active .app-content,
 body.sl-active #sidebar,
-body.sl-active .main-sidebar {
+body.sl-active .main-sidebar,
+body.sl-active .simplebar-content-wrapper,
+body.sl-active .simplebar-mask {
     overflow: hidden !important;
+}
+
+/* Modal ZAWSZE klikalny — przywracamy pointer-events tylko jemu */
+.screen-lock,
+.screen-lock * {
+    pointer-events: auto !important;
+    -webkit-user-select: auto !important;
+            user-select: auto !important;
 }
 
 .screen-lock-card {
