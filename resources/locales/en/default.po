@@ -427,6 +427,9 @@ msgstr "PIN deleted. Refresh the page."
 msgid "Błąd usuwania."
 msgstr "Delete error."
 
+msgid "Bezpieczeństwo"
+msgstr "Security"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 

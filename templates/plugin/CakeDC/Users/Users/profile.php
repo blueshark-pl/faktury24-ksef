@@ -106,9 +106,12 @@
                     </div>
 
 
-                    <div class="tab-pane overflow-hidden p-0 border-0" id="security-tab-pane" role="tabpanel" aria-labelledby="security-tab" tabindex="0">
+                    <div id="security-section" class="mt-4 pt-4 border-top">
                         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
-                            <div class="fw-semibold d-block fs-15"><?= __('Zmień hasło') ?></div>
+                            <div class="fw-semibold d-block fs-15"><i class="ri-shield-keyhole-line me-1"></i><?= __('Bezpieczeństwo') ?></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
+                            <div class="fw-medium d-block"><?= __('Zmień hasło') ?></div>
                         </div>
                         <p class="text-muted mb-2"><?= __('Możesz zmienić hasło przyciskiem poniżej.') ?></p>
                         <?php if (!empty($isCurrentUser)) : ?>

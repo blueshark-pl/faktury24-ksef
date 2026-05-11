@@ -272,6 +272,8 @@ class AppController extends Controller
             $allowedForClient = [
                 'ClientPortal' => '*',
                 'Security'     => '*',
+                'TwoFactor'    => '*',
+                'ApiTokens'    => '*',
                 'Users'        => ['login', 'logout', 'profile', 'edit', 'changePassword',
                                    'webauthn2fa', 'webauthn2faRegister', 'webauthn2faRegisterOptions',
                                    'webauthn2faAuthenticate', 'webauthn2faAuthenticateOptions'],

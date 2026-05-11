@@ -118,6 +118,20 @@ return [
             'controller' => 'Security',
             'action'     => ['unlock', 'setPin', 'deletePin'],
         ],
+        // 2FA — ustawienia tokenu uwierzytelniającego (dla każdej roli)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'TwoFactor',
+            'action'     => ['index', 'enable', 'verify', 'disable'],
+        ],
+        // Tokeny API — generowanie i unieważnianie własnych tokenów (dla każdej roli)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'ApiTokens',
+            'action'     => ['index', 'generate', 'revoke'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',
