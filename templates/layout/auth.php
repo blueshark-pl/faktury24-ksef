@@ -30,6 +30,12 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
     <title><?= h($this->fetch('title')) ?> | faktury24.com</title>
+
+    <!-- Czyść flagę screen-lock — auth layout odwiedzany podczas /logout i /login,
+         to gwarantuje że nowy zalogowany user nie zobaczy stale lock-modala. -->
+    <script>
+        try { localStorage.removeItem('bookliio_locked_at'); } catch (e) {}
+    </script>
     <?= $this->Html->meta('description', 'Faktury24.com') ?>
     <?= $this->Html->meta('author', 'Faktury24.com') ?>
     <?= $this->Html->meta('keywords', 'faktury, faktury24, faktury online, faktury elektroniczne, ksef') ?>

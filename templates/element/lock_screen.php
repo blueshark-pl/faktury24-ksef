@@ -56,7 +56,10 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
         </form>
 
         <div class="sl-actions mt-3">
-            <a href="/logout" class="text-muted small"><i class="ri-logout-box-line me-1"></i><?= __('Wyloguj się') ?></a>
+            <a href="/logout" class="text-muted small" id="slLogoutBtn"
+               onclick="try { localStorage.removeItem('bookliio_locked_at'); } catch (e) {}">
+                <i class="ri-logout-box-line me-1"></i><?= __('Wyloguj się') ?>
+            </a>
         </div>
     </div>
 </div>
