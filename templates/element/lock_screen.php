@@ -86,11 +86,23 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
 html.sl-active, body.sl-active {
     overflow: hidden !important;
     height: 100% !important;
+    /* Ukryj scrollbar w każdym silniku */
+    scrollbar-width: none !important;       /* Firefox */
+    -ms-overflow-style: none !important;    /* IE/legacy Edge */
 }
+html.sl-active::-webkit-scrollbar,
+body.sl-active::-webkit-scrollbar { display: none !important; }
 body.sl-active {
     position: fixed !important;
     left: 0; right: 0; width: 100%;
     /* `top` ustawiany dynamicznie z JS (-savedScrollY) — body wisi w viewportcie */
+}
+/* Każdy potencjalny scroll-container wewnątrz pod modalem */
+body.sl-active .main-content,
+body.sl-active .app-content,
+body.sl-active #sidebar,
+body.sl-active .main-sidebar {
+    overflow: hidden !important;
 }
 
 .screen-lock-card {
@@ -215,15 +227,31 @@ body.sl-active {
         resetIdleTimer();
     }
 
-    // Blokuj scroll wheel/touchmove na overlayu (niech nie przebija pod modal)
-    ['wheel', 'touchmove', 'scroll'].forEach(function (ev) {
-        lockEl.addEventListener(ev, function (e) {
-            // Tylko gdy event NIE jest wewnątrz karty z formularzem (formularz nadal scrollowalny)
-            if (!e.target.closest('.screen-lock-card')) {
-                e.preventDefault();
-            }
-        }, { passive: false });
+    // Globalne blokery scrolla — działają gdy isLocked === true.
+    // capture:true + passive:false → przechwytujemy zanim browser scrolluje.
+    function blockScrollEvent(e) {
+        if (!isLocked) return;
+        // Pozwól na scroll/interakcję wewnątrz karty modala (np. długie błędy)
+        if (e.target && e.target.closest && e.target.closest('.screen-lock-card')) return;
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    ['wheel', 'mousewheel', 'DOMMouseScroll', 'touchmove'].forEach(function (ev) {
+        document.addEventListener(ev, blockScrollEvent, { passive: false, capture: true });
+        window.addEventListener(ev,   blockScrollEvent, { passive: false, capture: true });
     });
+    // Klawiatura: blokujemy klawisze nawigacji gdy lock aktywny i fokus NIE w modalu
+    document.addEventListener('keydown', function (e) {
+        if (!isLocked) return;
+        if (e.target && e.target.closest && e.target.closest('#screenLock')) return;
+        var navKeys = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+                       'PageUp','PageDown','Home','End',' ','Spacebar','Tab'];
+        if (navKeys.indexOf(e.key) >= 0) {
+            e.preventDefault();
+            // Zwróć focus do inputa w modalu
+            if (input) input.focus();
+        }
+    }, true);
     function showWarn(secLeft) {
         if (isLocked) return;
         warnEl.hidden = false;
