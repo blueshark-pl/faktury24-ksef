@@ -456,11 +456,11 @@ $today = date('Y-m-d');
 </div>
 
 <style>
-/* Header tabeli — używa zmiennych theme (działa w light + dark) */
+/* Header tabeli — używa zmiennych Zynix theme (light + dark) */
 .client-orders-table thead th {
-    background: var(--bs-tertiary-bg, #f1f5f9);
-    color: var(--bs-body-color);
-    border-bottom: 2px solid var(--bs-border-color);
+    background: rgb(var(--light-rgb));
+    color: var(--default-text-color);
+    border-bottom: 2px solid var(--default-border);
 }
 
 /* Bloki załadunku/rozładunku — kolory zależne od theme */
@@ -474,7 +474,7 @@ $today = date('Y-m-d');
 .client-orders-table tr.row-overdue td { background: rgba(239, 68, 68, 0.08); }
 .client-orders-table tr.row-overdue:hover td { background: rgba(239, 68, 68, 0.14); }
 
-/* Dark mode — overrides */
+/* Dark mode — overrides dla mocniejszego kontrastu */
 [data-theme-mode="dark"] .client-orders-table tr.row-overdue td { background: rgba(239, 68, 68, 0.15); }
 [data-theme-mode="dark"] .client-orders-table tr.row-overdue:hover td { background: rgba(239, 68, 68, 0.22); }
 </style>
