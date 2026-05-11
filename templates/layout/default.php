@@ -1304,12 +1304,12 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             '/assets/libs/@tarekraafat/autocomplete.js/autoComplete.min.js',
             '/assets/libs/@simonwep/pickr/pickr.es5.min.js',
             '/assets/libs/flatpickr/flatpickr.min.js',
-            '/assets/js/custom-switcher.min.js',
+            // '/assets/js/custom-switcher.min.js',  // theme demo — wymaga elementów switcher (kolorów, layoutu) których nie używamy
             '/assets/libs/prismjs/prism.js',
             '/assets/js/prism-custom.js',
             '/assets/libs/choices.js/public/assets/scripts/choices.min.js',
             '/assets/js/alerts.js',
-            '/assets/js/custom.js',
+            // '/assets/js/custom.js',  // theme demo — odpowiednik niżej inline (tylko tooltips, bez crashujących elementów)
         ], ['block' => 'scriptBottom']);
 
         // Skrypty dokładane z widoków/kontrolek:
@@ -1644,6 +1644,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             el.addEventListener('hidden.bs.toast', function() { el.remove(); });
         }
     };
+    </script>
+
+    <!-- Bootstrap tooltips init (przeniesione z theme custom.js — bez crashujących na brakujące elementy) -->
+    <script>
+    (function () {
+        if (typeof bootstrap === 'undefined') return;
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (el) {
+            try { new bootstrap.Tooltip(el); } catch (e) {}
+        });
+    })();
     </script>
 
     <!-- Toggle: pełny ekran (Fullscreen API) — przełącza między klasycznym a fullscreen widokiem -->
