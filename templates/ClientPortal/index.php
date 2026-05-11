@@ -101,37 +101,14 @@ $today = date('Y-m-d');
 
 <?= $this->Flash->render() ?>
 
-<!-- Pasek statusu (tabs) -->
-<ul class="nav nav-pills nav-fill mb-3 small" style="background:#f1f5f9;border-radius:.5rem;padding:.25rem">
-    <li class="nav-item">
-        <a class="nav-link <?= $status === ''        ? 'active' : '' ?> py-1"
-           href="<?= $this->Url->build(['action' => 'index', '?' => $mergeUrl(['status' => null, 'page' => null])]) ?>">
-            <i class="ri-list-check me-1"></i><?= __('Wszystkie') ?>
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link <?= $status === 'active'  ? 'active' : '' ?> py-1"
-           href="<?= $this->Url->build(['action' => 'index', '?' => $mergeUrl(['status' => 'active', 'page' => null])]) ?>">
-            <i class="ri-time-line me-1"></i><?= __('Aktywne') ?>
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link <?= $status === 'closed'  ? 'active' : '' ?> py-1"
-           href="<?= $this->Url->build(['action' => 'index', '?' => $mergeUrl(['status' => 'closed', 'page' => null])]) ?>">
-            <i class="ri-checkbox-circle-line me-1"></i><?= __('Zamknięte') ?>
-        </a>
-    </li>
-</ul>
-
 <!-- Filtry -->
 <form method="get" action="<?= $this->Url->build(['action' => 'index']) ?>"
       class="card shadow-sm mb-3" id="filterForm">
-    <input type="hidden" name="status" value="<?= h($status) ?>">
     <div class="card-body py-2 px-3">
         <div class="row g-2 align-items-center">
             <div class="col-md-3">
                 <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-white"><i class="ri-search-line"></i></span>
+                    <span class="input-group-text"><i class="ri-search-line"></i></span>
                     <input type="text" name="q" value="<?= h($q) ?>"
                            class="form-control" placeholder="<?= __('Szukaj: numer, tytuł, trasa…') ?>">
                 </div>
@@ -240,7 +217,7 @@ $today = date('Y-m-d');
 <div class="card shadow-sm">
     <div class="table-responsive">
         <table class="table table-hover mb-0 align-middle client-orders-table" style="font-size:.875rem">
-            <thead class="table-light border-bottom-2">
+            <thead class="border-bottom-2">
                 <tr>
                     <th class="ps-3" style="width:160px"><?= __('Zlecenie') ?></th>
                     <th style="width:200px"><?= __('Załadunek') ?></th>
@@ -479,14 +456,25 @@ $today = date('Y-m-d');
 </div>
 
 <style>
-/* Bloki załadunku/rozładunku — styl z SpeedOrders */
+/* Header tabeli — używa zmiennych theme (działa w light + dark) */
+.client-orders-table thead th {
+    background: var(--bs-tertiary-bg, #f1f5f9);
+    color: var(--bs-body-color);
+    border-bottom: 2px solid var(--bs-border-color);
+}
+
+/* Bloki załadunku/rozładunku — kolory zależne od theme */
 .client-orders-table .place-block { line-height: 1.3; }
 .client-orders-table .place-block .place-label   { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; opacity: .55; margin-bottom: .15rem; }
-.client-orders-table .place-block .place-date    { font-size: .78rem; color: #475569; font-weight: 600; }
+.client-orders-table .place-block .place-date    { font-size: .78rem; opacity: .80; font-weight: 600; }
 .client-orders-table .place-block .place-country { font-size: .7rem; opacity: .85; margin-top: .15rem; }
-.client-orders-table .place-block .place-city    { font-size: .8rem; font-weight: 500; color: #1e293b; margin-top: .1rem; }
+.client-orders-table .place-block .place-city    { font-size: .8rem; font-weight: 500; margin-top: .1rem; }
 
-/* Wiersze przeterminowane */
-.client-orders-table tr.row-overdue td { background: #fef2f2; }
-.client-orders-table tr.row-overdue:hover td { background: #fee2e2; }
+/* Wiersze przeterminowane — subtelnie czerwone w obu trybach */
+.client-orders-table tr.row-overdue td { background: rgba(239, 68, 68, 0.08); }
+.client-orders-table tr.row-overdue:hover td { background: rgba(239, 68, 68, 0.14); }
+
+/* Dark mode — overrides */
+[data-theme-mode="dark"] .client-orders-table tr.row-overdue td { background: rgba(239, 68, 68, 0.15); }
+[data-theme-mode="dark"] .client-orders-table tr.row-overdue:hover td { background: rgba(239, 68, 68, 0.22); }
 </style>
