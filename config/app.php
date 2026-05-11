@@ -464,6 +464,19 @@ return [
     ],
 
     /**
+     * Screen lock — blokada interfejsu po bezczynności.
+     * Modal fullscreen wymaga hasła lub PIN-u; sesja serwerowa pozostaje aktywna.
+     */
+    'Security' => [
+        'screenLock' => [
+            'enabled'        => true,
+            'idleSeconds'    => 300,   // 5 min bezczynności → lock
+            'warningSeconds' => 30,    // pre-warning toast 30s przed lockiem
+            'maxFailures'    => 3,     // po N błędach → twardy logout
+        ],
+    ],
+
+    /**
      * DebugKit configuration.
      *
      * Contains an array of configurations to apply to the DebugKit plugin, if loaded.

@@ -271,6 +271,7 @@ class AppController extends Controller
             $action     = (string)$this->request->getParam('action');
             $allowedForClient = [
                 'ClientPortal' => '*',
+                'Security'     => '*',
                 'Users'        => ['login', 'logout', 'profile', 'edit', 'changePassword',
                                    'webauthn2fa', 'webauthn2faRegister', 'webauthn2faRegisterOptions',
                                    'webauthn2faAuthenticate', 'webauthn2faAuthenticateOptions'],

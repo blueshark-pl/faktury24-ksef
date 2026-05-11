@@ -321,6 +321,112 @@ msgstr "Copyright © Booklio.pl. All rights reserved."
 msgid "Wersja"
 msgstr "Version"
 
+# ── Screen lock + PIN bezpieczeństwa ─────────────────────────────
+msgid "Sesja zablokowana"
+msgstr "Session locked"
+
+msgid "Witaj"
+msgstr "Hi"
+
+msgid "Z powodu bezczynności ekran został zablokowany. Wpisz hasło lub PIN, aby kontynuować pracę."
+msgstr "Due to inactivity, the screen has been locked. Enter your password or PIN to continue."
+
+msgid "Hasło lub PIN"
+msgstr "Password or PIN"
+
+msgid "Pokaż / ukryj"
+msgstr "Show / hide"
+
+msgid "Odblokuj"
+msgstr "Unlock"
+
+msgid "Sesja zablokuje się za"
+msgstr "Session locks in"
+
+msgid "Brak aktywnej sesji."
+msgstr "No active session."
+
+msgid "Wpisz hasło lub PIN."
+msgstr "Enter password or PIN."
+
+msgid "Konto nieaktywne."
+msgstr "Account inactive."
+
+msgid "Zbyt wiele błędnych prób. Wymagane ponowne logowanie."
+msgstr "Too many failed attempts. Re-login required."
+
+msgid "Nieprawidłowe hasło lub PIN."
+msgstr "Invalid password or PIN."
+
+msgid "PIN musi mieć 4–6 cyfr."
+msgstr "PIN must be 4–6 digits."
+
+msgid "Użytkownik nie istnieje."
+msgstr "User does not exist."
+
+msgid "Nieprawidłowe aktualne hasło."
+msgstr "Invalid current password."
+
+msgid "Nie udało się zapisać PIN-u."
+msgstr "Failed to save PIN."
+
+msgid "Nie udało się usunąć PIN-u."
+msgstr "Failed to delete PIN."
+
+msgid "PIN bezpieczeństwa"
+msgstr "Security PIN"
+
+msgid "Ustawiony"
+msgstr "Set"
+
+msgid "Brak"
+msgstr "None"
+
+msgid "PIN to szybsza alternatywa dla hasła — używany do odblokowania ekranu po bezczynności. Wystarczą 4–6 cyfr."
+msgstr "PIN is a faster alternative to password — used to unlock the screen after inactivity. 4–6 digits are enough."
+
+msgid "Nowy PIN (4–6 cyfr)"
+msgstr "New PIN (4–6 digits)"
+
+msgid "Aktualne hasło (potwierdzenie)"
+msgstr "Current password (confirmation)"
+
+msgid "Ustaw"
+msgstr "Set"
+
+msgid "Zmień"
+msgstr "Change"
+
+msgid "Usuń PIN"
+msgstr "Delete PIN"
+
+msgid "Możesz zmienić hasło przyciskiem poniżej."
+msgstr "You can change your password using the button below."
+
+msgid "Zmień hasło"
+msgstr "Change password"
+
+msgid "Błąd połączenia."
+msgstr "Connection error."
+
+msgid "Wpisz aktualne hasło."
+msgstr "Enter current password."
+
+msgid "PIN zapisany. Odśwież stronę aby zobaczyć zmianę statusu."
+msgstr "PIN saved. Refresh the page to see the status change."
+
+msgid "Błąd zapisu."
+msgstr "Save error."
+
+msgid "Aby usunąć PIN podaj aktualne hasło:"
+msgstr "To delete the PIN, enter your current password:"
+
+msgid "PIN usunięty. Odśwież stronę."
+msgstr "PIN deleted. Refresh the page."
+
+msgid "Błąd usuwania."
+msgstr "Delete error."
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 

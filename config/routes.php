@@ -178,6 +178,11 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/wyciagi/tx-allocations/{id}', ['controller' => 'BankTransactions', 'action' => 'txAllocations'])
             ->setPass(['id']);
 
+        // Screen lock — odblokowanie po bezczynności + zarządzanie PIN-em
+        $builder->post('/unlock',     ['controller' => 'Security', 'action' => 'unlock']);
+        $builder->post('/set-pin',    ['controller' => 'Security', 'action' => 'setPin']);
+        $builder->post('/delete-pin', ['controller' => 'Security', 'action' => 'deletePin']);
+
         // Admin — zarządzanie klientami portalu (CRUD na user-ach z rolą `client`)
         $builder->get('/admin/klienci',                 ['controller' => 'AdminClients', 'action' => 'index']);
         $builder->connect('/admin/klienci/dodaj',       ['controller' => 'AdminClients', 'action' => 'add']);

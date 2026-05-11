@@ -111,6 +111,13 @@ return [
             'controller' => 'Users',
             'action' => ['profile', 'logout', 'linkSocial', 'callbackLinkSocial'],
         ],
+        // Screen lock — odblokowywanie i zarządzanie PIN-em (dla zalogowanych każdej roli)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'Security',
+            'action'     => ['unlock', 'setPin', 'deletePin'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',

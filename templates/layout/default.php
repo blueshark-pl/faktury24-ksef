@@ -1465,5 +1465,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     })();
     </script>
 
+    <!-- Screen lock — modal po bezczynności (tylko dla zalogowanych) -->
+    <?= $this->element('lock_screen') ?>
+
 </body>
 </html>
