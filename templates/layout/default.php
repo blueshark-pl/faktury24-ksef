@@ -388,10 +388,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <!-- Start::main-sidebar-header -->
                 <div class="main-sidebar-header">
                     <a href="/" class="header-logo">
-                        <!-- <img src="/img/logo-faktury24.png" alt="logo" class="desktop-logo"> -->
-                        <img src="/assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
-                        <img src="/assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                        <img src="/assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
+                        <img src="/img/logo.png" alt="Booklio TMS" class="desktop-logo">
+                        <img src="/img/logo.png" alt="Booklio TMS" class="desktop-dark">
+                        <img src="/img/logo.png" alt="Booklio TMS" class="toggle-logo">
+                        <img src="/img/logo.png" alt="Booklio TMS" class="toggle-dark">
                     </a>
                 </div>
                 <!-- End::main-sidebar-header -->
