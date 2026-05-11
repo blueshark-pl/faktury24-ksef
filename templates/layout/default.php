@@ -132,6 +132,93 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       /* Dropdown języka — ukryj strzałkę bootstrap (jak w Zynix country-selector) */
       .header-element.country-selector .dropdown-toggle.no-caret::after { display: none !important; }
       .header-element.country-selector .main-header-dropdown { min-width: 180px; }
+
+      /* ── Widget sesji w navbar (countdown + zablokuj) ─────────────────── */
+      .session-widget {
+          display: inline-flex;
+          align-items: center;
+          gap: 0;
+          padding: 0 .25rem 0 .65rem;
+          height: 36px;
+          border-radius: 999px;
+          background: rgba(var(--primary-rgb), .07);
+          border: 1px solid rgba(var(--primary-rgb), .14);
+          transition: background .15s, border-color .15s, box-shadow .15s;
+      }
+      .session-widget:hover {
+          background: rgba(var(--primary-rgb), .12);
+          border-color: rgba(var(--primary-rgb), .25);
+          box-shadow: 0 2px 8px rgba(var(--primary-rgb), .08);
+      }
+      .session-widget .sw-countdown {
+          display: inline-flex;
+          align-items: center;
+          gap: .4rem;
+          color: var(--default-text-color);
+          padding-right: .55rem;
+          line-height: 1;
+      }
+      .session-widget .sw-icon {
+          font-size: 1rem;
+          color: rgb(var(--primary-rgb));
+          opacity: .8;
+      }
+      .session-widget .sw-time {
+          font-variant-numeric: tabular-nums;
+          font-weight: 600;
+          font-size: .85rem;
+          letter-spacing: .02em;
+          min-width: 38px;
+          text-align: right;
+      }
+      /* Stany kolorystyczne (sterowane przez JS dodający klasy do #lockCountdownBox) */
+      #lockCountdownBox.text-warning .sw-icon,
+      #lockCountdownBox.text-warning .sw-time { color: #d97706; }
+      #lockCountdownBox.text-danger  .sw-icon,
+      #lockCountdownBox.text-danger  .sw-time { color: #dc3545; }
+
+      .session-widget .sw-divider {
+          width: 1px;
+          height: 20px;
+          background: rgba(var(--primary-rgb), .25);
+      }
+      .session-widget .sw-lock-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 30px;
+          height: 30px;
+          margin-left: .35rem;
+          border-radius: 50%;
+          color: rgb(var(--primary-rgb));
+          font-size: 1.05rem;
+          transition: background .15s, color .15s, transform .1s;
+      }
+      .session-widget .sw-lock-btn:hover {
+          background: rgb(var(--primary-rgb));
+          color: #fff;
+          transform: scale(1.06);
+      }
+      .session-widget .sw-lock-btn:active {
+          transform: scale(0.95);
+      }
+
+      /* Dark mode — lekko inne tło żeby było czytelne */
+      [data-theme-mode="dark"] .session-widget {
+          background: rgba(var(--primary-rgb), .14);
+          border-color: rgba(var(--primary-rgb), .28);
+      }
+      [data-theme-mode="dark"] .session-widget:hover {
+          background: rgba(var(--primary-rgb), .22);
+      }
+      [data-theme-mode="dark"] .session-widget .sw-divider {
+          background: rgba(255, 255, 255, .14);
+      }
+
+      /* Schowaj na bardzo wąskich ekranach (poniżej tabletu) */
+      @media (max-width: 575.98px) {
+          .session-widget { display: none; }
+      }
     </style>
     <?php
 
@@ -409,20 +496,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <!-- End::header-element -->
                         <?php endif; ?>
 
-                        <?php if ($identityLang): /* Pokazujemy countdown tylko dla zalogowanych */ ?>
-                        <!-- Start::header-element | Countdown + "Zablokuj teraz" -->
+                        <?php if ($identityLang): /* Sekcja sesji — widoczna tylko dla zalogowanego */ ?>
+                        <!-- Start::header-element | Widget sesji (countdown + lock) -->
                         <li class="header-element">
-                            <span class="header-link" id="lockCountdownBox" title="<?= __('Sesja zablokuje się po bezczynności') ?>"
-                                  style="cursor:default;display:inline-flex;align-items:center;gap:.35rem">
-                                <i class="ri-time-line header-link-icon" style="font-size:1.1rem"></i>
-                                <span id="lockCountdownText" style="font-variant-numeric:tabular-nums;font-weight:600;font-size:.85rem">--:--</span>
-                            </span>
-                        </li>
-                        <li class="header-element">
-                            <a class="header-link" href="javascript:void(0)" id="lockNowBtn"
-                               title="<?= __('Zablokuj teraz') ?>" aria-label="<?= __('Zablokuj teraz') ?>">
-                                <i class="ri-lock-line header-link-icon"></i>
-                            </a>
+                            <div class="session-widget" title="<?= __('Sesja zablokuje się po bezczynności') ?>">
+                                <span class="sw-countdown" id="lockCountdownBox">
+                                    <i class="ri-time-line sw-icon"></i>
+                                    <span id="lockCountdownText" class="sw-time">--:--</span>
+                                </span>
+                                <span class="sw-divider"></span>
+                                <a href="javascript:void(0)" id="lockNowBtn" class="sw-lock-btn"
+                                   title="<?= __('Zablokuj teraz') ?>" aria-label="<?= __('Zablokuj teraz') ?>">
+                                    <i class="ri-lock-line"></i>
+                                </a>
+                            </div>
                         </li>
                         <!-- End::header-element -->
                         <?php endif; ?>
