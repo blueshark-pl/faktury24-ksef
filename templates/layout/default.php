@@ -134,18 +134,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       .header-element.country-selector .main-header-dropdown { min-width: 180px; }
 
       /* ── Widget sesji w navbar (countdown + zablokuj) ─────────────────── */
-      /* Wyrównanie do innych .header-link (theme-toggle, fullscreen itd.) */
-      .header-content-right > li:has(> .session-widget) { display: inline-flex; align-items: center; }
+      /* Theme: .header-link-icon { height: 34px } — pill ma być DOKŁADNIE tej wysokości */
       .session-widget {
           display: inline-flex;
           align-items: center;
+          align-self: center;
           gap: 0;
-          padding: .35rem .35rem .35rem .75rem;
+          height: 34px;            /* równo z theme header-link-icon */
+          padding: 0 .35rem 0 .65rem;
           line-height: 1;
           border-radius: 999px;
           background: rgba(var(--primary-rgb), .07);
           border: 1px solid rgba(var(--primary-rgb), .14);
           transition: background .15s, border-color .15s, box-shadow .15s;
+          margin: auto 0;
       }
       .session-widget:hover {
           background: rgba(var(--primary-rgb), .12);
@@ -188,12 +190,12 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 26px;
-          height: 26px;
+          width: 24px;
+          height: 24px;
           margin-left: .35rem;
           border-radius: 50%;
           color: rgb(var(--primary-rgb));
-          font-size: 1rem;
+          font-size: .95rem;
           line-height: 1;
           transition: background .15s, color .15s, transform .1s;
       }
