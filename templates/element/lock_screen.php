@@ -24,6 +24,25 @@ if ($name === '') {
     $name = (string)($identity->get('email') ?? $identity->get('username') ?? '');
 }
 $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
+
+// Avatar zalogowanego usera (jeśli ma)
+$avatarUrl = null;
+try {
+    $r = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')->find()
+        ->select(['avatar'])
+        ->where(['id' => (string)$identity->getIdentifier()])
+        ->disableHydration()
+        ->first();
+    if (!empty($r['avatar'])) {
+        $avatarUrl = (string)$r['avatar'];
+        if (str_starts_with($avatarUrl, '/files/avatars/')) {
+            $diskPath = WWW_ROOT . ltrim($avatarUrl, '/');
+            if (is_file($diskPath)) {
+                $avatarUrl .= '?v=' . filemtime($diskPath);
+            }
+        }
+    }
+} catch (\Throwable) {}
 ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -32,9 +51,16 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
 <div id="screenLock" class="screen-lock" aria-hidden="true" hidden>
     <div class="screen-lock-card shadow-lg">
         <img src="/img/logo.png" alt="Booklio TMS" class="sl-logo">
+        <?php if ($avatarUrl): ?>
+        <div class="sl-avatar">
+            <img src="<?= h($avatarUrl) ?>" alt="" class="sl-avatar-img">
+            <span class="sl-avatar-lock"><i class="ri-lock-line"></i></span>
+        </div>
+        <?php else: ?>
         <div class="sl-icon">
             <i class="ri-lock-line"></i>
         </div>
+        <?php endif; ?>
         <h2 class="sl-title"><?= __('Sesja zablokowana') ?></h2>
         <p class="sl-greet"><?= __('Witaj') ?>, <strong><?= h($name) ?></strong></p>
         <p class="sl-desc"><?= __('Z powodu bezczynności ekran został zablokowany. Wpisz hasło lub PIN, aby kontynuować pracę.') ?></p>
@@ -140,6 +166,28 @@ body.sl-active .simplebar-mask {
     color: rgb(var(--primary-rgb, 27,89,152));
     display: flex; align-items: center; justify-content: center;
     font-size: 1.8rem;
+}
+/* Avatar zalogowanego usera + badge "kłódka" w prawym dolnym rogu */
+.sl-avatar {
+    position: relative;
+    width: 86px; height: 86px;
+    margin: 0 auto 1rem;
+}
+.sl-avatar-img {
+    width: 100%; height: 100%; border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(var(--primary-rgb, 27,89,152), .25);
+    box-shadow: 0 6px 22px rgba(15, 23, 42, .18);
+}
+.sl-avatar-lock {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgb(var(--primary-rgb, 27,89,152));
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .95rem;
+    border: 2px solid var(--custom-white, #fff);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .25);
 }
 .sl-title { font-size: 1.3rem; font-weight: 700; color: var(--default-text-color, #1e293b); margin-bottom: .35rem; }
 .sl-greet { color: var(--text-muted, #6b7280); margin-bottom: .35rem; font-size: .9rem; }
