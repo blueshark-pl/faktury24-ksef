@@ -410,13 +410,19 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <?php endif; ?>
 
                         <?php if ($identityLang): /* Pokazujemy countdown tylko dla zalogowanych */ ?>
-                        <!-- Start::header-element | Countdown do screen lock -->
+                        <!-- Start::header-element | Countdown + "Zablokuj teraz" -->
                         <li class="header-element">
                             <span class="header-link" id="lockCountdownBox" title="<?= __('Sesja zablokuje się po bezczynności') ?>"
                                   style="cursor:default;display:inline-flex;align-items:center;gap:.35rem">
-                                <i class="ri-lock-line header-link-icon" style="font-size:1.1rem"></i>
+                                <i class="ri-time-line header-link-icon" style="font-size:1.1rem"></i>
                                 <span id="lockCountdownText" style="font-variant-numeric:tabular-nums;font-weight:600;font-size:.85rem">--:--</span>
                             </span>
+                        </li>
+                        <li class="header-element">
+                            <a class="header-link" href="javascript:void(0)" id="lockNowBtn"
+                               title="<?= __('Zablokuj teraz') ?>" aria-label="<?= __('Zablokuj teraz') ?>">
+                                <i class="ri-lock-line header-link-icon"></i>
+                            </a>
                         </li>
                         <!-- End::header-element -->
                         <?php endif; ?>

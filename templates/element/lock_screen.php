@@ -497,6 +497,15 @@ body.sl-active .simplebar-mask {
         });
     });
 
+    // ── Przycisk "Zablokuj teraz" w navbarze ─────────────────────────────
+    var lockNowBtn = document.getElementById('lockNowBtn');
+    if (lockNowBtn) {
+        lockNowBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            showLock();
+        });
+    }
+
     // ── Start ────────────────────────────────────────────────────────────
     resetIdleTimer();
 })();

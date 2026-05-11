@@ -343,6 +343,12 @@ msgstr "Unlock"
 msgid "Sesja zablokuje się za"
 msgstr "Session locks in"
 
+msgid "Sesja zablokuje się po bezczynności"
+msgstr "Session will lock on inactivity"
+
+msgid "Zablokuj teraz"
+msgstr "Lock now"
+
 msgid "Brak aktywnej sesji."
 msgstr "No active session."
 
