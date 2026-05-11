@@ -11,11 +11,14 @@
         $freshAvatar = $row['avatar'] ?? null;
     } catch (\Throwable) {}
 
+    // Domyślny placeholder — używamy assetu z pluginu jako pełny URL (NIE notacji 'Plugin.image.png')
+    // bo używamy plain <img src=>. Plugin.image notation działa tylko z Html->image()
+    $defaultPlaceholderUrl = $this->Url->assetUrl('CakeDC/Users.avatar_placeholder.png');
+
     // Priorytet: świeży avatar z DB > $user->avatar z entity > placeholder
     $avatarUrl = !empty($freshAvatar)
         ? $freshAvatar
-        : (!empty($user->avatar) ? $user->avatar
-                                 : ($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png'));
+        : (!empty($user->avatar) ? $user->avatar : $defaultPlaceholderUrl);
 
     // Cache-busting — jeśli avatar użytkownika z naszego /files/avatars, dodaj v=mtime
     if ($freshAvatar && str_starts_with($freshAvatar, '/files/avatars/')) {
@@ -54,7 +57,7 @@
                                               style="width:128px;height:128px;background:rgb(var(--light-rgb))">
                                             <img id="avatarImg" src="<?= h($avatarUrl) ?>" alt="avatar"
                                                  style="width:100%;height:100%;object-fit:cover"
-                                                 onerror="this.src='<?= h($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png') ?>'; console.warn('Avatar load failed:', this.dataset.origSrc || '');"
+                                                 onerror="this.src='<?= h($defaultPlaceholderUrl) ?>'; console.warn('Avatar load failed:', this.dataset.origSrc || '');"
                                                  data-orig-src="<?= h($avatarUrl) ?>">
                                         </span>
                                         <?php if (!empty($isCurrentUser)): ?>
@@ -184,7 +187,7 @@
                                         .then(function (r) { return r.json(); })
                                         .then(function (d) {
                                             if (d.success) {
-                                                imgEl.src = '<?= h($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png') ?>';
+                                                imgEl.src = '<?= h($defaultPlaceholderUrl) ?>';
                                                 setStatus('<?= __('Zdjęcie usunięte.') ?>', 'text-success');
                                                 btn.remove();
                                             } else {
