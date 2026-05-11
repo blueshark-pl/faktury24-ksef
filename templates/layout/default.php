@@ -134,12 +134,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       .header-element.country-selector .main-header-dropdown { min-width: 180px; }
 
       /* ── Widget sesji w navbar (countdown + zablokuj) ─────────────────── */
+      /* Wyrównanie do innych .header-link (theme-toggle, fullscreen itd.) */
+      .header-content-right > li:has(> .session-widget) { display: inline-flex; align-items: center; }
       .session-widget {
           display: inline-flex;
           align-items: center;
           gap: 0;
-          padding: 0 .25rem 0 .65rem;
-          height: 36px;
+          padding: .35rem .35rem .35rem .75rem;
+          line-height: 1;
           border-radius: 999px;
           background: rgba(var(--primary-rgb), .07);
           border: 1px solid rgba(var(--primary-rgb), .14);
@@ -179,19 +181,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
       .session-widget .sw-divider {
           width: 1px;
-          height: 20px;
+          height: 18px;
           background: rgba(var(--primary-rgb), .25);
       }
       .session-widget .sw-lock-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 30px;
-          height: 30px;
+          width: 26px;
+          height: 26px;
           margin-left: .35rem;
           border-radius: 50%;
           color: rgb(var(--primary-rgb));
-          font-size: 1.05rem;
+          font-size: 1rem;
+          line-height: 1;
           transition: background .15s, color .15s, transform .1s;
       }
       .session-widget .sw-lock-btn:hover {
