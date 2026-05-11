@@ -32,21 +32,39 @@ endif;
 ?>
 
 <?php if (!Configure::read('debug')): ?>
-<div class="text-center py-5">
-    <div class="mb-4">
-        <i class="bi bi-x-circle" style="font-size:4rem;color:#d9534f;"></i>
-    </div>
-    <h2 class="mb-3">Wystąpił błąd</h2>
-    <p class="text-muted mb-4">Przepraszamy, coś poszło nie tak po naszej stronie. Pracujemy nad rozwiązaniem problemu.</p>
-    <div class="alert alert-secondary d-inline-block">
-        <small>Kod błędu: <strong><?= h($errorCode ?? '—') ?></strong></small>
-    </div>
-    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z nami: <a href="mailto:partnersc@partnersc.com">partnersc@partnersc.com</a> i podaj powyższy kod błędu.</small></p>
-    <div class="mt-4">
-        <a href="javascript:history.back()" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Wróć</a>
-        <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona główna</a>
-    </div>
+<div class="err-visual">
+    <span class="err-code" style="color:#dc3545">500</span>
+    <i class="ri-truck-line err-icon-overlay" style="color:#dc3545"></i>
 </div>
+
+<h1 class="err-title">Awaria w drodze</h1>
+<p class="err-desc">
+    Coś poszło nie tak po naszej stronie — kierowca dał już znać dyspozytorowi.
+    Spróbuj ponownie za chwilę lub wróć do panelu.
+</p>
+
+<?php if (!empty($errorCode)): ?>
+<div class="err-chip" style="background:rgba(220,53,69,.08);border-color:rgba(220,53,69,.22);color:#dc3545">
+    <i class="ri-barcode-line"></i>
+    Kod błędu: <strong style="margin-left:.2rem"><?= h($errorCode) ?></strong>
+</div>
+<?php endif; ?>
+
+<div class="err-actions">
+    <a href="javascript:history.back()" class="btn btn-outline-secondary">
+        <i class="ri-arrow-left-line me-1"></i> Wróć
+    </a>
+    <a href="/" class="btn btn-primary-booklio">
+        <i class="ri-truck-line me-1"></i> Do panelu
+    </a>
+</div>
+
+<p class="err-contact">
+    Jeśli problem się powtarza, napisz do nas:
+    <a href="mailto:kontakt@booklio.pl">kontakt@booklio.pl</a>
+    <?php if (!empty($errorCode)): ?>i&nbsp;podaj powyższy kod błędu<?php endif; ?>.
+</p>
+
 <?php else: ?>
 <h2><?= __d('cake', 'An Internal Error Has Occurred.') ?></h2>
 <p class="error">

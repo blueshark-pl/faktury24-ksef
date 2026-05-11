@@ -50,7 +50,7 @@
                                 <p class="form-control-plaintext border rounded px-2 py-1 bg-light mb-0"><?= h($user->email ?? '') ?></p>
                                 <div class="form-text text-muted mt-1">
                                     Jeśli Twój adres e-mail uległ zmianie, skontaktuj się z naszym supportem:
-                                    <a href="mailto:partnersc@partnersc.com?subject=Zmiana%20adresu%20e-mail">partnersc@partnersc.com</a>
+                                    <a href="mailto:kontakt@booklio.pl?subject=Zmiana%20adresu%20e-mail">kontakt@booklio.pl</a>
                                 </div>
                             </div>
                             <div class="col-xl-6">

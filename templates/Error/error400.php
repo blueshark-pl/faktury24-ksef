@@ -22,21 +22,39 @@ endif;
 ?>
 
 <?php if (!Configure::read('debug')): ?>
-<div class="text-center py-5">
-    <div class="mb-4">
-        <i class="bi bi-exclamation-triangle" style="font-size:4rem;color:#f0ad4e;"></i>
-    </div>
-    <h2 class="mb-3">Strona nie została znaleziona</h2>
-    <p class="text-muted mb-4">Żądany adres nie istnieje lub nie masz do niego dostępu.</p>
-    <div class="alert alert-secondary d-inline-block">
-        <small>Kod błędu: <strong><?= h($errorCode ?? '—') ?></strong></small>
-    </div>
-    <p class="mt-4 text-muted"><small>Jeśli problem się powtarza, skontaktuj się z nami: <a href="mailto:partnersc@partnersc.com">partnersc@partnersc.com</a> i podaj powyższy kod błędu.</small></p>
-    <div class="mt-4">
-        <a href="javascript:history.back()" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Wróć</a>
-        <a href="/" class="btn btn-primary"><i class="bi bi-house"></i> Strona główna</a>
-    </div>
+<div class="err-visual">
+    <span class="err-code">404</span>
+    <i class="ri-road-map-line err-icon-overlay"></i>
 </div>
+
+<h1 class="err-title">Trasa nieodnaleziona</h1>
+<p class="err-desc">
+    Tej strony nie ma na naszej mapie — być może zlecenie zostało już zrealizowane,
+    a link wygasł. Sprawdź adres lub wróć do panelu.
+</p>
+
+<?php if (!empty($errorCode)): ?>
+<div class="err-chip">
+    <i class="ri-barcode-line"></i>
+    Kod błędu: <strong style="margin-left:.2rem"><?= h($errorCode) ?></strong>
+</div>
+<?php endif; ?>
+
+<div class="err-actions">
+    <a href="javascript:history.back()" class="btn btn-outline-secondary">
+        <i class="ri-arrow-left-line me-1"></i> Wróć
+    </a>
+    <a href="/" class="btn btn-primary-booklio">
+        <i class="ri-truck-line me-1"></i> Do panelu
+    </a>
+</div>
+
+<p class="err-contact">
+    Jeśli problem się powtarza, napisz do nas:
+    <a href="mailto:kontakt@booklio.pl">kontakt@booklio.pl</a>
+    <?php if (!empty($errorCode)): ?>i&nbsp;podaj powyższy kod błędu<?php endif; ?>.
+</p>
+
 <?php else: ?>
 <h2><?= h($message) ?></h2>
 <p class="error">
