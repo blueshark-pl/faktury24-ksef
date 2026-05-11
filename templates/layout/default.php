@@ -22,6 +22,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       data-header-styles="light"
       data-width="fullwidth"
       data-menu-styles="light"
+      style="--primary-rgb: 27, 89, 152;"
       data-toggled="close">
 <head>
     <?= $this->Html->charset() ?>
