@@ -3,3 +3,18 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Limit uploadu — 5 MB dla pliku, 6 MB dla całego POST.
+# Działa na Apache + mod_php; przy PHP-FPM ustaw w php.ini lub w user.ini w webroot.
+<IfModule mod_php.c>
+    php_value upload_max_filesize 5M
+    php_value post_max_size       6M
+</IfModule>
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 5M
+    php_value post_max_size       6M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 5M
+    php_value post_max_size       6M
+</IfModule>

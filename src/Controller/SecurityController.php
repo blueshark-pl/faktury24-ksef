@@ -151,8 +151,19 @@ class SecurityController extends AppController
         $userId = (string)$identity->get('id');
 
         $uploaded = $this->request->getUploadedFile('avatar');
-        if (!$uploaded || $uploaded->getError() !== UPLOAD_ERR_OK) {
-            return $this->jsonError(__('Nie udało się odebrać pliku.'));
+        $errCode  = $uploaded ? $uploaded->getError() : UPLOAD_ERR_NO_FILE;
+        if (!$uploaded || $errCode !== UPLOAD_ERR_OK) {
+            $iniLimit = (string)(ini_get('upload_max_filesize') ?: '?');
+            $msg = match ($errCode) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                    sprintf((string)__('Plik za duży — serwer akceptuje maks. %s. Skontaktuj się z administratorem aby zwiększyć limit.'), $iniLimit),
+                UPLOAD_ERR_PARTIAL   => __('Plik został wgrany tylko częściowo.'),
+                UPLOAD_ERR_NO_FILE   => __('Nie wybrano pliku.'),
+                UPLOAD_ERR_NO_TMP_DIR=> __('Brak katalogu tymczasowego na serwerze.'),
+                UPLOAD_ERR_CANT_WRITE=> __('Nie można zapisać pliku tymczasowego na serwerze.'),
+                default              => sprintf((string)__('Nie udało się odebrać pliku (kod %d).'), (int)$errCode),
+            };
+            return $this->jsonError($msg);
         }
 
         $mime = (string)$uploaded->getClientMediaType();
