@@ -22,7 +22,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
       data-theme-mode="light"
       data-header-styles="light"
       data-menu-styles="light"
-       style="--primary-rgb: 148, 200, 31;"
+       style="--primary-rgb: 27, 89, 152;"
       data-toggled="close">
 <head>
     <?= $this->Html->charset() ?>
@@ -98,6 +98,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         initial-value: 0deg;
       }
 
+      /* Główny kolor przewodni: #1b5998 (rgb 27,89,152) — transport/logistyka */
       .authentication{
         min-height: 100vh;
         position: relative;
@@ -105,10 +106,10 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         overflow: hidden;
         padding: 24px 0 84px;
         background:
-          radial-gradient(1100px 700px at 12% 8%, rgba(138, 32, 140, 0.10), transparent 60%),
-          radial-gradient(900px 650px at 92% 18%, rgba(77, 170, 72, 0.10), transparent 60%),
-          radial-gradient(800px 520px at 50% 105%, rgba(56, 189, 248, 0.08), transparent 62%),
-          linear-gradient(180deg, #f7f8fe 0%, #eef2ff 45%, #ffffff 100%) !important;
+          radial-gradient(1100px 700px at 12% 8%, rgba(27, 89, 152, 0.18), transparent 60%),
+          radial-gradient(900px 650px at 92% 18%, rgba(27, 89, 152, 0.12), transparent 60%),
+          radial-gradient(800px 520px at 50% 105%, rgba(56, 189, 248, 0.10), transparent 62%),
+          linear-gradient(180deg, #eaf2fb 0%, #dbe7f5 45%, #f4f8fc 100%) !important;
       }
 
       .authentication::before{
@@ -118,11 +119,11 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         pointer-events:none;
         z-index: 0;
         background:
-          radial-gradient(900px 620px at 15% 20%, rgba(34, 197, 94, 0.10), transparent 62%),
-          radial-gradient(820px 620px at 85% 15%, rgba(249, 115, 22, 0.10), transparent 62%),
-          radial-gradient(1200px 900px at 50% 110%, rgba(15, 23, 42, 0.06), transparent 60%);
+          radial-gradient(900px 620px at 15% 20%, rgba(27, 89, 152, 0.10), transparent 62%),
+          radial-gradient(820px 620px at 85% 15%, rgba(27, 89, 152, 0.08), transparent 62%),
+          radial-gradient(1200px 900px at 50% 110%, rgba(15, 23, 42, 0.08), transparent 60%);
         box-shadow:
-          inset 0 0 220px rgba(15, 23, 42, 0.10),
+          inset 0 0 220px rgba(27, 89, 152, 0.10),
           inset 0 0 40px rgba(15, 23, 42, 0.06);
       }
 
@@ -132,11 +133,11 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         z-index: 0;
         pointer-events:none;
         background:
-          radial-gradient(700px 520px at 18% 18%, rgba(34, 197, 94, 0.18), transparent 60%),
-          radial-gradient(620px 520px at 78% 28%, rgba(56, 189, 248, 0.12), transparent 62%),
-          radial-gradient(640px 520px at 62% 78%, rgba(138, 32, 140, 0.14), transparent 62%);
-        filter: blur(22px) saturate(135%);
-        opacity: 0.9;
+          radial-gradient(700px 520px at 18% 18%, rgba(27, 89, 152, 0.22), transparent 60%),
+          radial-gradient(620px 520px at 78% 28%, rgba(56, 189, 248, 0.18), transparent 62%),
+          radial-gradient(640px 520px at 62% 78%, rgba(27, 89, 152, 0.14), transparent 62%);
+        filter: blur(22px) saturate(125%);
+        opacity: 0.85;
         transform: translate3d(0,0,0);
         animation: authGlowDrift 22s ease-in-out infinite alternate;
       }
@@ -146,6 +147,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         100% { transform: translate3d(1.5%, 1%, 0) scale(1.04); }
       }
 
+      /* Warstwa "logistyczna": siatka dróg/mapy + delikatny SVG pattern z trasą i ikonami */
       .authentication .auth-bg-dots{
         position:absolute;
         inset:-2px;
@@ -153,19 +155,45 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         pointer-events:none;
         display:block;
         background-image:
-          radial-gradient(circle at 1px 1px, rgba(34, 197, 94, 0.34) 1.15px, transparent 2.05px),
-          radial-gradient(circle at 2px 2px, rgba(34, 197, 94, 0.16) 1.45px, transparent 3.3px);
-        background-size: 22px 22px, 64px 64px;
-        background-position: 0 0, 12px 18px;
-        opacity: 0.62;
-        filter: saturate(160%) contrast(118%);
+          /* siatka mapy (poziomo i pionowo) */
+          linear-gradient(rgba(27, 89, 152, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(27, 89, 152, 0.06) 1px, transparent 1px),
+          /* drobne kropki — przypinki na mapie */
+          radial-gradient(circle at 1px 1px, rgba(27, 89, 152, 0.32) 1.15px, transparent 2.05px),
+          radial-gradient(circle at 2px 2px, rgba(27, 89, 152, 0.14) 1.45px, transparent 3.3px);
+        background-size: 56px 56px, 56px 56px, 28px 28px, 84px 84px;
+        background-position: 0 0, 0 0, 0 0, 14px 22px;
+        opacity: 0.55;
+        filter: saturate(140%) contrast(110%);
         -webkit-mask-image: radial-gradient(closest-side at 50% 45%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,0) 100%);
         mask-image: radial-gradient(closest-side at 50% 45%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,0) 100%);
-        animation: authDotsFloat 18s linear infinite;
+        animation: authDotsFloat 30s linear infinite;
       }
 
       @keyframes authDotsFloat{
-        to { background-position: 120px 80px; }
+        to { background-position: 120px 80px, 120px 80px, 140px 100px, 154px 102px; }
+      }
+
+      /* Warstwa SVG z ikonami logistyki (ciężarówka, kompas, łańcuch dostaw) — bardzo delikatna */
+      .authentication::after{
+        content:"";
+        position:absolute;
+        inset:0;
+        z-index: 1;
+        pointer-events:none;
+        opacity: 0.10;
+        background-repeat: no-repeat;
+        background-position: 6% 86%, 92% 12%, 88% 78%, 10% 14%;
+        background-size: 180px, 140px, 120px, 110px;
+        background-image:
+          /* Ciężarówka — lewy dół */
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b5998' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2'/><path d='M15 18H9'/><path d='M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14'/><circle cx='17' cy='18' r='2'/><circle cx='7' cy='18' r='2'/></svg>"),
+          /* Kompas — prawy góra */
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b5998' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><polygon points='16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76'/></svg>"),
+          /* Pakunek — prawy dół */
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b5998' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M16.5 9.4 7.5 4.21'/><path d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/><polyline points='3.29 7 12 12 20.71 7'/><line x1='12' x2='12' y1='22' y2='12'/></svg>"),
+          /* Pin lokalizacji — lewy góra */
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b5998' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M20 10c0 7-8 12-8 12s-8-5-8-12a8 8 0 0 1 16 0z'/><circle cx='12' cy='10' r='3'/></svg>");
       }
 
       .authentication > .container{
@@ -197,14 +225,14 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         pointer-events: none;
         z-index: -1;
         background:
-          radial-gradient(closest-side, rgba(34, 197, 94, 0.12), transparent 72%),
-          radial-gradient(closest-side, rgba(56, 189, 248, 0.06), transparent 74%);
+          radial-gradient(closest-side, rgba(27, 89, 152, 0.14), transparent 72%),
+          radial-gradient(closest-side, rgba(56, 189, 248, 0.08), transparent 74%);
         filter: blur(10px);
-        opacity: 0.55;
+        opacity: 0.6;
       }
 
       .authentication .auth-logo a:focus-visible{
-        box-shadow: 0 0 0 0.25rem rgba(34, 197, 94, 0.18);
+        box-shadow: 0 0 0 0.25rem rgba(27, 89, 152, 0.22);
       }
 
       .authentication .auth-logo img{
@@ -249,8 +277,8 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
           inset:0;
           pointer-events:none;
           background:
-            radial-gradient(800px 240px at 50% 0%, rgba(34, 197, 94, 0.10), transparent 55%),
-            radial-gradient(700px 240px at 0% 20%, rgba(56, 189, 248, 0.08), transparent 58%);
+            radial-gradient(800px 240px at 50% 0%, rgba(27, 89, 152, 0.12), transparent 55%),
+            radial-gradient(700px 240px at 0% 20%, rgba(56, 189, 248, 0.10), transparent 58%);
           opacity: 0.85;
         }
 
@@ -283,9 +311,9 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
       .authentication .form-control:focus,
       .authentication .form-select:focus{
-          border-color: rgba(34, 197, 94, 0.45) !important;
+          border-color: rgba(27, 89, 152, 0.50) !important;
           box-shadow:
-            0 0 0 0.25rem rgba(34, 197, 94, 0.18),
+            0 0 0 0.25rem rgba(27, 89, 152, 0.20),
             0 10px 24px rgba(15, 23, 42, 0.10) !important;
         }
 
