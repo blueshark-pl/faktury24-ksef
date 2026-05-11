@@ -1,7 +1,6 @@
     <?php
     // Zmienne z CakeDC Users: $user (Entity), $isCurrentUser (bool), $avatarPlaceholder (opcjonalnie)
-    // Pobierz `avatar` bezpośrednio z DB — omija schema cache ORM, gdyby na produkcji
-    // cache nie zawierał jeszcze nowej kolumny (po świeżej migracji).
+    // Pobierz `avatar` bezpośrednio z DB osobnym query — bez polegania na settrach CakeDC User entity.
     $freshAvatar = null;
     try {
         $row = $this->fetchTable('Users')->find()
@@ -11,10 +10,20 @@
             ->first();
         $freshAvatar = $row['avatar'] ?? null;
     } catch (\Throwable) {}
-    if ($freshAvatar) {
-        $user->set('avatar', $freshAvatar, ['guard' => false]);
+
+    // Priorytet: świeży avatar z DB > $user->avatar z entity > placeholder
+    $avatarUrl = !empty($freshAvatar)
+        ? $freshAvatar
+        : (!empty($user->avatar) ? $user->avatar
+                                 : ($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png'));
+
+    // Cache-busting — jeśli avatar użytkownika z naszego /files/avatars, dodaj v=mtime
+    if ($freshAvatar && str_starts_with($freshAvatar, '/files/avatars/')) {
+        $diskPath = WWW_ROOT . ltrim($freshAvatar, '/');
+        if (is_file($diskPath)) {
+            $avatarUrl .= '?v=' . filemtime($diskPath);
+        }
     }
-    $avatarUrl = !empty($user->avatar) ? $user->avatar : ($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png');
     ?>
     <div class="row">
         <div class="col-xl-3">
@@ -39,11 +48,14 @@
                         <div class="row gy-4">
                             <div class="col-xl-12">
                                 <div class="d-flex align-items-start flex-wrap gap-3">
+                                    <!-- DEBUG: avatarUrl=<?= h($avatarUrl) ?> | freshAvatar=<?= h((string)($freshAvatar ?? 'null')) ?> | entityAvatar=<?= h((string)($user->avatar ?? 'null')) ?> -->
                                     <div class="position-relative" id="avatarBox">
                                         <span class="avatar avatar-xxl rounded-circle overflow-hidden border d-inline-flex align-items-center justify-content-center"
                                               style="width:128px;height:128px;background:rgb(var(--light-rgb))">
                                             <img id="avatarImg" src="<?= h($avatarUrl) ?>" alt="avatar"
-                                                 style="width:100%;height:100%;object-fit:cover">
+                                                 style="width:100%;height:100%;object-fit:cover"
+                                                 onerror="this.src='<?= h($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png') ?>'; console.warn('Avatar load failed:', this.dataset.origSrc || '');"
+                                                 data-orig-src="<?= h($avatarUrl) ?>">
                                         </span>
                                         <?php if (!empty($isCurrentUser)): ?>
                                         <!-- Przycisk "kamera" w prawym dolnym rogu avatara -->
