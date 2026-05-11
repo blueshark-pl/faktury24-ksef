@@ -50,7 +50,8 @@ try {
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <div id="screenLock" class="screen-lock" aria-hidden="true" hidden>
     <div class="screen-lock-card shadow-lg">
-        <img src="/img/logo.png" alt="Booklio TMS" class="sl-logo">
+        <img src="/img/logo.png"       alt="Booklio TMS" class="sl-logo sl-logo-light">
+        <img src="/img/logo-white.png" alt="Booklio TMS" class="sl-logo sl-logo-dark">
         <?php if ($avatarUrl): ?>
         <div class="sl-avatar">
             <img src="<?= h($avatarUrl) ?>" alt="" class="sl-avatar-img">
@@ -159,6 +160,10 @@ body.sl-active .simplebar-mask {
     box-shadow: 0 30px 90px rgba(0,0,0,.45);
 }
 .sl-logo  { max-width: 140px; height: auto; opacity: .9; margin-bottom: 1rem; }
+/* Light/dark logo switch — pokazujemy odpowiedni wariant wg motywu */
+.sl-logo-dark  { display: none; }
+[data-theme-mode="dark"] .sl-logo-light { display: none; }
+[data-theme-mode="dark"] .sl-logo-dark  { display: inline-block; }
 .sl-icon  {
     width: 64px; height: 64px;
     margin: 0 auto 1rem; border-radius: 50%;
