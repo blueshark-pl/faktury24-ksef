@@ -93,6 +93,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       /* Tryb ciemny/jasny — pokazuj właściwą ikonę w toggle */
       html:not([data-theme-mode="dark"]) #theme-toggle .dark-mode-show  { display: none !important; }
       html[data-theme-mode="dark"]       #theme-toggle .light-mode-show { display: none !important; }
+
+      /* Dropdown języka — ukryj strzałkę bootstrap (jak w Zynix country-selector) */
+      .header-element.country-selector .dropdown-toggle.no-caret::after { display: none !important; }
+      .header-element.country-selector .main-header-dropdown { min-width: 180px; }
     </style>
     <?php
 
@@ -313,6 +317,54 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
+
+                        <?php
+                            // ── Język portalu (tylko dla klienta — pracownicy mają PL hardcoded) ──
+                            $identityLang = $this->request->getAttribute('identity') ?? null;
+                            $roleLang     = strtolower((string)($identityLang?->get('role') ?? ''));
+                            $currLang     = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
+                            $langs = [
+                                'pl' => ['label' => 'Polski',  'flag' => "\u{1F1F5}\u{1F1F1}"],
+                                'en' => ['label' => 'English', 'flag' => "\u{1F1EC}\u{1F1E7}"],
+                            ];
+                            $setLocaleUrl = function (string $code) {
+                                return \Cake\Routing\Router::url([
+                                    'plugin' => false,
+                                    'controller' => 'ClientPortal',
+                                    'action'     => 'setLocale',
+                                    $code,
+                                ]);
+                            };
+                        ?>
+                        <?php if ($roleLang === 'client'): ?>
+                        <!-- Start::header-element | Wybór języka -->
+                        <li class="header-element country-selector dropdown">
+                            <a class="header-link dropdown-toggle no-caret" data-bs-auto-close="outside"
+                               href="javascript:void(0);" data-bs-toggle="dropdown"
+                               id="languageDropdown" aria-expanded="false"
+                               title="<?= __('Język') ?>" aria-label="Toggle language">
+                                <span class="header-link-icon d-inline-flex align-items-center justify-content-center"
+                                      style="font-size:1.25rem;line-height:1">
+                                    <?= $langs[$currLang]['flag'] ?>
+                                </span>
+                            </a>
+                            <ul class="main-header-dropdown dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
+                                <?php foreach ($langs as $code => $info): ?>
+                                <li>
+                                    <a class="dropdown-item d-flex align-items-center gap-2 <?= $code === $currLang ? 'active fw-semibold' : '' ?>"
+                                       href="<?= h($setLocaleUrl($code)) ?>">
+                                        <span style="font-size:1.25rem;line-height:1"><?= $info['flag'] ?></span>
+                                        <span><?= h($info['label']) ?></span>
+                                        <?php if ($code === $currLang): ?>
+                                            <i class="ri-check-line ms-auto text-success"></i>
+                                        <?php endif; ?>
+                                    </a>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </li>
+                        <!-- End::header-element -->
+                        <?php endif; ?>
 
                         <!-- Start::header-element | Tryb ciemny / jasny -->
                         <li class="header-element">

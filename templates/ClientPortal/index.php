@@ -96,14 +96,7 @@ $today = date('Y-m-d');
             <span class="ms-2 badge bg-light text-secondary border">NIP <?= h($clientProfile->nip) ?></span>
         </div>
     </div>
-    <div class="d-flex align-items-center gap-2">
-        <div class="btn-group btn-group-sm" role="group" aria-label="<?= __('Język') ?>">
-            <a href="<?= $this->Url->build(['action' => 'setLocale', 'pl']) ?>"
-               class="btn btn-outline-secondary <?= $currentLocale === 'pl' ? 'active' : '' ?>" title="Polski">PL</a>
-            <a href="<?= $this->Url->build(['action' => 'setLocale', 'en']) ?>"
-               class="btn btn-outline-secondary <?= $currentLocale === 'en' ? 'active' : '' ?>" title="English">EN</a>
-        </div>
-    </div>
+    <!-- Switcher języka przeniesiony do nagłówka (dropdown z flagami) -->
 </div>
 
 <?= $this->Flash->render() ?>

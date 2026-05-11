@@ -194,12 +194,7 @@ if ($order->date_delivery && $order->pod_at) {
                 <i class="ri-download-line me-1"></i><?= __('Pobierz fakturę PDF') ?>
             </a>
         <?php endif; ?>
-        <div class="btn-group btn-group-sm" role="group">
-            <a href="<?= $this->Url->build(['action' => 'setLocale', 'pl']) ?>"
-               class="btn btn-outline-secondary <?= $currentLocale === 'pl' ? 'active' : '' ?>">PL</a>
-            <a href="<?= $this->Url->build(['action' => 'setLocale', 'en']) ?>"
-               class="btn btn-outline-secondary <?= $currentLocale === 'en' ? 'active' : '' ?>">EN</a>
-        </div>
+        <!-- Switcher języka przeniesiony do nagłówka (dropdown z flagami) -->
     </div>
 </div>
 
