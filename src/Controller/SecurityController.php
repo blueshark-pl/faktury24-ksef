@@ -225,7 +225,18 @@ class SecurityController extends AppController
 
         // Katalog (utwórz jeśli nie istnieje)
         $dir = WWW_ROOT . 'files' . DS . 'avatars';
-        if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
+                imagedestroy($dst);
+                \Cake\Log\Log::error('uploadAvatar: mkdir failed for ' . $dir);
+                return $this->jsonError(sprintf((string)__('Nie udało się utworzyć katalogu: %s'), $dir));
+            }
+        }
+        if (!is_writable($dir)) {
+            imagedestroy($dst);
+            \Cake\Log\Log::error('uploadAvatar: dir not writable: ' . $dir);
+            return $this->jsonError(sprintf((string)__('Katalog nie ma uprawnień zapisu: %s'), $dir));
+        }
 
         // Nazwa pliku: avatar_{userId}_{timestamp}.jpg (timestamp = cache-busting)
         $ts       = time();
@@ -233,11 +244,15 @@ class SecurityController extends AppController
         $fullPath = $dir . DS . $filename;
         $relUrl   = '/files/avatars/' . $filename;
 
-        if (!imagejpeg($dst, $fullPath, 88)) {
-            imagedestroy($dst);
-            return $this->jsonError(__('Nie udało się zapisać pliku.'));
-        }
+        $saved = imagejpeg($dst, $fullPath, 88);
         imagedestroy($dst);
+
+        if (!$saved || !is_file($fullPath) || filesize($fullPath) < 1) {
+            \Cake\Log\Log::error('uploadAvatar: imagejpeg failed. saved=' . var_export($saved, true)
+                . ' is_file=' . (is_file($fullPath) ? '1' : '0')
+                . ' path=' . $fullPath);
+            return $this->jsonError(__('Nie udało się zapisać pliku na dysku.'));
+        }
 
         // Pobierz aktualną wartość avatara (potrzebne do usunięcia starego pliku)
         $Users = $this->fetchTable('Users');
@@ -257,7 +272,6 @@ class SecurityController extends AppController
         }
 
         // Bezpośredni UPDATE — pomija _accessible/_setAvatar/setterów + schema cache.
-        // Zwraca liczbę zaktualizowanych wierszy.
         $updated = $Users->updateAll(['avatar' => $relUrl], ['id' => $userId]);
         if ($updated < 1) {
             @unlink($fullPath);
@@ -265,7 +279,23 @@ class SecurityController extends AppController
             return $this->jsonError(__('Nie udało się zapisać profilu.'));
         }
 
-        return $this->jsonOk(['avatar' => $relUrl]);
+        // Po zapisie sprawdzamy realnie co jest w bazie + plik na dysku.
+        $check = $Users->find()
+            ->select(['id', 'avatar'])
+            ->where(['id' => $userId])
+            ->disableHydration()
+            ->first();
+
+        return $this->jsonOk([
+            'avatar' => $relUrl,
+            'debug'  => [
+                'file_exists_on_disk' => is_file($fullPath),
+                'file_size'           => is_file($fullPath) ? filesize($fullPath) : 0,
+                'full_path'           => $fullPath,
+                'db_avatar_after'     => $check['avatar'] ?? null,
+                'rows_updated'        => $updated,
+            ],
+        ]);
     }
 
     /**
