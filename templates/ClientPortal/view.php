@@ -12,6 +12,14 @@ $this->assign('title', __('Zlecenie') . ' ' . ($order->symbol ?: '#' . $order->i
 $fdate     = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : null;
 $fdatetime = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:i') : substr((string)$v, 0, 16)) : null;
 $fnum      = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
+// Flaga emoji z 2-literowego ISO 3166-1 alpha-2 (PL → 🇵🇱, DE → 🇩🇪 itd.)
+$flag = function (?string $code): string {
+    $code = strtoupper(trim((string)$code));
+    if (!preg_match('/^[A-Z]{2}$/', $code)) return '';
+    $a = 0x1F1E6;
+    return mb_chr($a + ord($code[0]) - ord('A'), 'UTF-8')
+         . mb_chr($a + ord($code[1]) - ord('A'), 'UTF-8');
+};
 
 $rawData = [];
 if (!empty($order->raw_json)) {
@@ -302,7 +310,9 @@ if ($order->date_delivery && $order->pod_at) {
 <div class="route-bar shadow-sm mb-3">
     <div class="route-node">
         <div class="d-flex align-items-center gap-2">
-            <span class="rn-flag">📤</span>
+            <span class="rn-flag" title="<?= h($loadCountry) ?>">
+                <?= $flag($loadCountry) ?: '📤' ?>
+            </span>
             <div>
                 <div class="rn-city"><?= h($loadCity ?: '—') ?></div>
                 <?php if ($loadCountry || $loadCode): ?>
@@ -339,7 +349,9 @@ if ($order->date_delivery && $order->pod_at) {
                     <div class="rn-date"><i class="ri-calendar-line me-1 opacity-50"></i><?= h($fdate($order->date_delivery)) ?></div>
                 <?php endif; ?>
             </div>
-            <span class="rn-flag">📥</span>
+            <span class="rn-flag" title="<?= h($unloadCountry) ?>">
+                <?= $flag($unloadCountry) ?: '📥' ?>
+            </span>
         </div>
     </div>
 </div>
@@ -405,7 +417,10 @@ if ($order->date_delivery && $order->pod_at) {
                             <i class="ri-arrow-up-circle-fill text-success me-1"></i>
                             <?= h($loadCity ?: $order->place_from_name ?: '—') ?>
                             <?php if ($loadCountry): ?>
-                                <span class="badge bg-light text-secondary border ms-1" style="font-size:.65em"><?= h($loadCountry) ?></span>
+                                <span class="badge bg-light text-secondary border ms-1 d-inline-flex align-items-center gap-1" style="font-size:.65em">
+                                    <span style="font-size:1.1em;line-height:1"><?= $flag($loadCountry) ?></span>
+                                    <?= h($loadCountry) ?>
+                                </span>
                             <?php endif; ?>
                         </div>
                         <?php if ($loadCode): ?>
@@ -419,7 +434,10 @@ if ($order->date_delivery && $order->pod_at) {
                             <i class="ri-arrow-down-circle-fill text-danger me-1"></i>
                             <?= h($unloadName ?: $unloadCity ?: $order->place_to_name ?: '—') ?>
                             <?php if ($unloadCountry): ?>
-                                <span class="badge bg-light text-secondary border ms-1" style="font-size:.65em"><?= h($unloadCountry) ?></span>
+                                <span class="badge bg-light text-secondary border ms-1 d-inline-flex align-items-center gap-1" style="font-size:.65em">
+                                    <span style="font-size:1.1em;line-height:1"><?= $flag($unloadCountry) ?></span>
+                                    <?= h($unloadCountry) ?>
+                                </span>
                             <?php endif; ?>
                         </div>
                         <?php if ($unloadCity && $unloadCity !== $unloadName): ?>

@@ -31,6 +31,19 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
     <title><?= h($title) ?></title>
 
+    <!-- Wczytanie zapisanego trybu motywu PRZED CSS — eliminuje flash jasnego motywu przy dark mode -->
+    <script>
+    (function () {
+        var mode = localStorage.getItem('themeMode');
+        if (mode === 'dark') {
+            var h = document.documentElement;
+            h.setAttribute('data-theme-mode',   'dark');
+            h.setAttribute('data-header-styles','dark');
+            h.setAttribute('data-menu-styles',  'dark');
+        }
+    })();
+    </script>
+
     <?php
     // Opis/autor/keywords – możesz nadpisać blokiem 'meta'
     echo $this->fetch('meta');
@@ -76,6 +89,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
       /* Logo w sidebarze — wyższe niż domyślny theme (lepsza czytelność szerokiego logo 1894×585) */
       .app-sidebar .main-sidebar-header .header-logo img { height: 2.5rem !important; }
+
+      /* Tryb ciemny/jasny — pokazuj właściwą ikonę w toggle */
+      html:not([data-theme-mode="dark"]) #theme-toggle .dark-mode-show  { display: none !important; }
+      html[data-theme-mode="dark"]       #theme-toggle .light-mode-show { display: none !important; }
     </style>
     <?php
 
@@ -297,6 +314,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
 
+                        <!-- Start::header-element | Tryb ciemny / jasny -->
+                        <li class="header-element">
+                            <a class="header-link layout-setting" href="javascript:void(0);"
+                               id="theme-toggle"
+                               title="Przełącz tryb jasny / ciemny" aria-label="Toggle theme mode">
+                                <i class="ri-moon-line header-link-icon dark-mode-show"></i>
+                                <i class="ri-sun-line header-link-icon light-mode-show"></i>
+                            </a>
+                        </li>
+                        <!-- End::header-element -->
 
                         <!-- Start::header-element -->
                         <li class="header-element dropdown">
@@ -1343,6 +1370,29 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             el.addEventListener('hidden.bs.toast', function() { el.remove(); });
         }
     };
+    </script>
+
+    <!-- Toggle: tryb ciemny / jasny (Zynix theme) — atrybut data-* na <html> + localStorage -->
+    <script>
+    (function () {
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var h = document.documentElement;
+            var isDark = h.getAttribute('data-theme-mode') === 'dark';
+            if (isDark) {
+                h.setAttribute('data-theme-mode',   'light');
+                h.setAttribute('data-header-styles','light');
+                h.setAttribute('data-menu-styles',  'light');
+                localStorage.setItem('themeMode', 'light');
+            } else {
+                h.setAttribute('data-theme-mode',   'dark');
+                h.setAttribute('data-header-styles','dark');
+                h.setAttribute('data-menu-styles',  'dark');
+                localStorage.setItem('themeMode', 'dark');
+            }
+        });
+    })();
     </script>
 
 </body>

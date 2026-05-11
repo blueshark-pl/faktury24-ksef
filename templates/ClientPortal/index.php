@@ -33,6 +33,14 @@ $raw = function ($order): array {
     if (empty($order->raw_json)) return [];
     return (array)(json_decode((string)$order->raw_json, true) ?? []);
 };
+// Flaga emoji z 2-literowego ISO 3166-1 alpha-2 (PL → 🇵🇱, DE → 🇩🇪 itd.)
+$flag = function (?string $code): string {
+    $code = strtoupper(trim((string)$code));
+    if (!preg_match('/^[A-Z]{2}$/', $code)) return '';
+    $a = 0x1F1E6; // Regional Indicator Symbol "A"
+    return mb_chr($a + ord($code[0]) - ord('A'), 'UTF-8')
+         . mb_chr($a + ord($code[1]) - ord('A'), 'UTF-8');
+};
 
 // ── Status Nordlogis (operacyjny) ─────────────────────────────────────────
 $nlStatusMap = [
@@ -334,7 +342,10 @@ $today = date('Y-m-d');
                                     <?php if ($loadDate): ?><div class="place-date"><?= h($loadDate) ?></div><?php endif; ?>
                                     <?php if ($loadCountry): ?>
                                         <div class="place-country">
-                                            <span class="badge bg-light text-secondary border" style="font-size:.65em"><?= h($loadCountry) ?></span>
+                                            <span class="badge bg-light text-secondary border d-inline-flex align-items-center gap-1" style="font-size:.65em">
+                                                <span style="font-size:1.1em;line-height:1"><?= $flag($loadCountry) ?></span>
+                                                <?= h($loadCountry) ?>
+                                            </span>
                                         </div>
                                     <?php endif; ?>
                                     <?php $loadPlace = trim(implode(' ', array_filter([$loadCode, $loadCity])));
@@ -355,7 +366,10 @@ $today = date('Y-m-d');
                                     <?php if ($unloadDate): ?><div class="place-date"><?= h($unloadDate) ?></div><?php endif; ?>
                                     <?php if ($unloadCountry): ?>
                                         <div class="place-country">
-                                            <span class="badge bg-light text-secondary border" style="font-size:.65em"><?= h($unloadCountry) ?></span>
+                                            <span class="badge bg-light text-secondary border d-inline-flex align-items-center gap-1" style="font-size:.65em">
+                                                <span style="font-size:1.1em;line-height:1"><?= $flag($unloadCountry) ?></span>
+                                                <?= h($unloadCountry) ?>
+                                            </span>
                                         </div>
                                     <?php endif; ?>
                                     <?php $unloadPlace = trim(implode(', ', array_filter([$unloadName, $unloadCity])));
