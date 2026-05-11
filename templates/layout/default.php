@@ -407,7 +407,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                                 <div class="d-flex align-items-center">
                                     <div class="d-xl-block d-none lh-1">
-                                        Jesteś zalogowany jako, <?php $nameToShow = ($first !== '' || $last !== '') ? $full : $displayName; ?>
+                                        <?= __('Zalogowany jako') ?>, <?php $nameToShow = ($first !== '' || $last !== '') ? $full : $displayName; ?>
                                         <span class="fw-medium lh-1"><?= h($nameToShow) ?></span>
                                     </div>
                                 </div>
@@ -420,10 +420,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         $isAdminHeader = (bool)($identityHeader?->get('is_admin') ?? false);
                                         $roleHeader    = strtolower((string)($identityHeader?->get('role') ?? ''));
                                         $roleLabel = match (true) {
-                                            $isAdminHeader || $roleHeader === 'admin' => 'Administrator',
-                                            $roleHeader === 'client'                  => 'Klient',
-                                            $roleHeader === 'user'                    => 'Właściciel',
-                                            $roleHeader === ''                        => 'Użytkownik',
+                                            $isAdminHeader || $roleHeader === 'admin' => __('Administrator'),
+                                            $roleHeader === 'client'                  => __('Klient'),
+                                            $roleHeader === 'user'                    => __('Właściciel'),
+                                            $roleHeader === ''                        => __('Użytkownik'),
                                             default                                   => ucfirst($roleHeader),
                                         };
                                     ?>
@@ -431,15 +431,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             class="d-block fs-12 text-muted"><?= h($roleLabel) ?></span> </div>
                                 </li>
                                 <li><a class="dropdown-item d-flex align-items-center" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>"><i
-                                            class="ti ti-user text-primary me-2 fs-16"></i>Mój profil</a>
+                                            class="ti ti-user text-primary me-2 fs-16"></i><?= __('Mój profil') ?></a>
                                 </li>
+                                <?php if ($roleHeader !== 'client'): /* klient nie ma "Moja firma" — to ustawienia naszej firmy */ ?>
                                 <li><a class="dropdown-item d-flex align-items-center" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>"><i
-                                            class="ti ti-settings text-info me-2 fs-16"></i>Moja firma</a>
+                                            class="ti ti-settings text-info me-2 fs-16"></i><?= __('Moja firma') ?></a>
                                 </li>
-                                <!-- <li><a class="dropdown-item d-flex align-items-center" href="/"><i
-                                            class="ti ti-headset text-warning me-2 fs-16"></i>Wsparcie</a>
-                                </li> -->
-                                <li class="py-2 px-3"><a class="btn btn-primary btn-sm w-100" href="/logout">Wyloguj się</a>
+                                <?php endif; ?>
+                                <li class="py-2 px-3"><a class="btn btn-primary btn-sm w-100" href="/logout"><?= __('Wyloguj się') ?></a>
                                 </li>
                             </ul>
                         </li>

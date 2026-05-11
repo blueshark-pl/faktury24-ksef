@@ -259,6 +259,31 @@ msgstr "Delivered"
 msgid "Plan"
 msgstr "Plan"
 
+# ── Navbar / dropdown profilu użytkownika ─────────────────────────
+msgid "Zalogowany jako"
+msgstr "Logged in as"
+
+msgid "Mój profil"
+msgstr "My profile"
+
+msgid "Moja firma"
+msgstr "My company"
+
+msgid "Wyloguj się"
+msgstr "Log out"
+
+msgid "Administrator"
+msgstr "Administrator"
+
+msgid "Klient"
+msgstr "Client"
+
+msgid "Właściciel"
+msgstr "Owner"
+
+msgid "Użytkownik"
+msgstr "User"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 
