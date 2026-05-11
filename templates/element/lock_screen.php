@@ -76,8 +76,22 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
     -webkit-backdrop-filter: blur(8px) saturate(140%);
     animation: sl-fade .25s ease-out;
     padding: 24px;
+    /* Zamiast pozwolić scroll przebijać się pod modal */
+    overflow: hidden;
+    overscroll-behavior: contain;
 }
 @keyframes sl-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Zamrożenie strony pod modalem — pełna blokada scrolla */
+html.sl-active, body.sl-active {
+    overflow: hidden !important;
+    height: 100% !important;
+}
+body.sl-active {
+    position: fixed !important;
+    left: 0; right: 0; width: 100%;
+    /* `top` ustawiany dynamicznie z JS (-savedScrollY) — body wisi w viewportcie */
+}
 
 .screen-lock-card {
     background: var(--custom-white, #fff);
@@ -161,14 +175,23 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
     var isLocked  = false;
 
     // ── Lock / unlock UI ─────────────────────────────────────────────────
+    var savedScrollY = 0;
+
     function showLock() {
         if (isLocked) return;
         isLocked = true;
         hideWarn();
+
+        // Zamroź scroll strony — zapamiętaj pozycję i przypnij body do viewportu
+        savedScrollY = window.scrollY || window.pageYOffset || 0;
+        document.documentElement.classList.add('sl-active');
+        document.body.classList.add('sl-active');
+        document.body.style.top = '-' + savedScrollY + 'px';
+
         lockEl.hidden = false;
         lockEl.removeAttribute('aria-hidden');
         lockEl.setAttribute('aria-hidden', 'false');
-        document.body.style.overflow = 'hidden';
+
         // localStorage sync — inne karty też locknij
         try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch (e) {}
         setTimeout(function () { if (input) input.focus(); }, 80);
@@ -178,13 +201,29 @@ $csrf = (string)($this->request->getAttribute('csrfToken') ?? '');
         isLocked = false;
         lockEl.hidden = true;
         lockEl.setAttribute('aria-hidden', 'true');
-        document.body.style.overflow = '';
+
+        // Odmrażamy stronę i przywracamy pozycję scroll
+        document.documentElement.classList.remove('sl-active');
+        document.body.classList.remove('sl-active');
+        document.body.style.top = '';
+        window.scrollTo(0, savedScrollY);
+
         errEl.hidden = true;
         if (input) input.value = '';
         failCount = 0;
         try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
         resetIdleTimer();
     }
+
+    // Blokuj scroll wheel/touchmove na overlayu (niech nie przebija pod modal)
+    ['wheel', 'touchmove', 'scroll'].forEach(function (ev) {
+        lockEl.addEventListener(ev, function (e) {
+            // Tylko gdy event NIE jest wewnątrz karty z formularzem (formularz nadal scrollowalny)
+            if (!e.target.closest('.screen-lock-card')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    });
     function showWarn(secLeft) {
         if (isLocked) return;
         warnEl.hidden = false;
