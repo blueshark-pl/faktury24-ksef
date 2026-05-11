@@ -19,13 +19,40 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
 
     <?= $this->Flash->render('auth') ?>
     <?= $this->Flash->render() ?>
-<div class="d-flex align-items-center justify-content-center mb-3">
-                        <span class="auth-icon">
-                            <i class="ri-shield-user-line fs-1 text-primary"></i>
-                        </span>
-                    </div>
+    <div class="d-flex align-items-center justify-content-center mb-3">
+        <span class="auth-icon" id="loginAvatarBox">
+            <!-- Domyślnie ikona ; JS podstawi avatar z localStorage jeśli jest -->
+            <i class="ri-shield-user-line fs-1 text-primary" id="loginAvatarIcon"></i>
+            <img id="loginAvatarImg" src="" alt="" style="display:none;width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid rgba(var(--primary-rgb),.25);box-shadow:0 6px 22px rgba(15,23,42,.15)">
+        </span>
+    </div>
     <p class="h4 fw-semibold mb-0 text-center"><?= __d('cake_d_c/users', 'Zaloguj się') ?></p>
-    <p class="mb-0 text-muted fw-normal text-center"><?= __d('cake_d_c/users', 'Witaj ponownie! Zaloguj się, aby kontynuować.') ?></p>
+    <p class="mb-0 text-muted fw-normal text-center" id="loginGreet"><?= __d('cake_d_c/users', 'Witaj ponownie! Zaloguj się, aby kontynuować.') ?></p>
+
+    <script>
+    (function () {
+        try {
+            var avatar = localStorage.getItem('lastLoginAvatar');
+            var email  = localStorage.getItem('lastLoginEmail');
+            if (avatar) {
+                var img  = document.getElementById('loginAvatarImg');
+                var icon = document.getElementById('loginAvatarIcon');
+                if (img && icon) {
+                    img.onload  = function () { icon.style.display = 'none'; img.style.display = 'block'; };
+                    img.onerror = function () { /* zostaje ikona, czyścimy stary URL */
+                        try { localStorage.removeItem('lastLoginAvatar'); } catch (e) {}
+                    };
+                    img.src = avatar;
+                }
+            }
+            // Prefill emaila — jeśli istnieje user input
+            if (email) {
+                var uInput = document.getElementById('username');
+                if (uInput && !uInput.value) { uInput.value = email; }
+            }
+        } catch (e) {}
+    })();
+    </script>
 
     <div class="row gy-3 mt-3">
       <div class="col-xl-12">

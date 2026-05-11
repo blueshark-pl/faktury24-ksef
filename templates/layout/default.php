@@ -1503,5 +1503,35 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <!-- Screen lock — modal po bezczynności (tylko dla zalogowanych) -->
     <?= $this->element('lock_screen') ?>
 
+    <?php
+    // Zapisujemy avatar i e-mail zalogowanego usera do localStorage,
+    // żeby ekran logowania mógł go pokazać przy ponownym logowaniu.
+    $idForAvatar = $this->request->getAttribute('identity');
+    if ($idForAvatar):
+        $myEmail = (string)($idForAvatar->get('email') ?? '');
+        $myAv    = null;
+        try {
+            $r = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')->find()
+                ->select(['avatar'])
+                ->where(['id' => (string)$idForAvatar->getIdentifier()])
+                ->disableHydration()
+                ->first();
+            $myAv = $r['avatar'] ?? null;
+        } catch (\Throwable) {}
+    ?>
+    <script>
+    (function () {
+        try {
+            <?php if (!empty($myAv)): ?>
+            localStorage.setItem('lastLoginAvatar', <?= json_encode($myAv) ?>);
+            localStorage.setItem('lastLoginEmail',  <?= json_encode($myEmail) ?>);
+            <?php else: ?>
+            localStorage.removeItem('lastLoginAvatar');
+            <?php endif; ?>
+        } catch (e) {}
+    })();
+    </script>
+    <?php endif; ?>
+
 </body>
 </html>
