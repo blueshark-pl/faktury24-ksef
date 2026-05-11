@@ -25,21 +25,139 @@
                         <div class="row gy-4">
                             <div class="col-xl-12">
                                 <div class="d-flex align-items-start flex-wrap gap-3">
-                                    <div>
-                                        <span class="avatar avatar-xxl rounded-circle overflow-hidden border">
-                                            <?= $this->Html->image($avatarUrl, ['alt' => 'avatar', 'width' => '128', 'height' => '128']); ?>
+                                    <div class="position-relative" id="avatarBox">
+                                        <span class="avatar avatar-xxl rounded-circle overflow-hidden border d-inline-flex align-items-center justify-content-center"
+                                              style="width:128px;height:128px;background:rgb(var(--light-rgb))">
+                                            <img id="avatarImg" src="<?= h($avatarUrl) ?>" alt="avatar"
+                                                 style="width:100%;height:100%;object-fit:cover">
                                         </span>
+                                        <?php if (!empty($isCurrentUser)): ?>
+                                        <!-- Przycisk "kamera" w prawym dolnym rogu avatara -->
+                                        <label for="avatarFile" class="btn btn-primary btn-sm rounded-circle position-absolute"
+                                               style="bottom:0;right:0;width:34px;height:34px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center"
+                                               title="<?= __('Zmień zdjęcie') ?>">
+                                            <i class="ri-camera-line"></i>
+                                        </label>
+                                        <input type="file" id="avatarFile" accept="image/jpeg,image/png,image/webp"
+                                               style="display:none">
+                                        <?php endif; ?>
                                     </div>
-                                    <div>
+                                    <div class="flex-grow-1">
                                         <span class="fw-medium d-block mb-1">
                                             <?= __d('cake_d_c/users', '{0} {1}', h($user->first_name ?? ''), h($user->last_name ?? '')); ?>
                                         </span>
                                         <span class="text-muted d-block">
                                             <?= h($user->username ?? '') ?> · <?= h($user->email ?? '') ?>
                                         </span>
+                                        <?php if (!empty($isCurrentUser)): ?>
+                                        <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+                                            <button type="button" id="avatarUploadBtn" class="btn btn-sm btn-outline-primary">
+                                                <i class="ri-upload-2-line me-1"></i><?= __('Wgraj zdjęcie') ?>
+                                            </button>
+                                            <?php if (!empty($user->avatar) && str_starts_with((string)$user->avatar, '/files/avatars/')): ?>
+                                            <button type="button" id="avatarDeleteBtn" class="btn btn-sm btn-outline-danger">
+                                                <i class="ri-delete-bin-line me-1"></i><?= __('Usuń zdjęcie') ?>
+                                            </button>
+                                            <?php endif; ?>
+                                            <span id="avatarStatus" class="small text-muted"></span>
+                                        </div>
+                                        <div class="form-text mt-1" style="font-size:.78rem">
+                                            <?= __('JPG, PNG lub WebP, maks. 5 MB. Zdjęcie zostanie wykadrowane do kwadratu 400×400.') ?>
+                                        </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
+
+                            <?php if (!empty($isCurrentUser)): ?>
+                            <script>
+                            (function () {
+                                var csrf = '<?= h($this->request->getAttribute('csrfToken') ?? '') ?>';
+                                var fileInput = document.getElementById('avatarFile');
+                                var uploadBtn = document.getElementById('avatarUploadBtn');
+                                var deleteBtn = document.getElementById('avatarDeleteBtn');
+                                var status    = document.getElementById('avatarStatus');
+                                var imgEl     = document.getElementById('avatarImg');
+
+                                function setStatus(text, cls) {
+                                    if (!status) return;
+                                    status.textContent = text;
+                                    status.className = 'small ' + (cls || 'text-muted');
+                                }
+
+                                if (uploadBtn) uploadBtn.addEventListener('click', function () { fileInput.click(); });
+
+                                if (fileInput) fileInput.addEventListener('change', function () {
+                                    var file = fileInput.files && fileInput.files[0];
+                                    if (!file) return;
+                                    if (file.size > 5 * 1024 * 1024) {
+                                        setStatus('<?= __('Plik jest za duży (maks. 5 MB).') ?>', 'text-danger');
+                                        return;
+                                    }
+                                    setStatus('<?= __('Wgrywanie…') ?>', 'text-muted');
+
+                                    var fd = new FormData();
+                                    fd.append('avatar', file);
+                                    fd.append('_csrfToken', csrf);
+
+                                    fetch('/upload-avatar', {
+                                        method: 'POST',
+                                        headers: { 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                                        credentials: 'same-origin',
+                                        body: fd,
+                                    })
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (d) {
+                                        if (d.success && d.avatar) {
+                                            imgEl.src = d.avatar + '?v=' + Date.now();
+                                            setStatus('<?= __('Zdjęcie zaktualizowane.') ?>', 'text-success');
+                                            // Pokaż przycisk Usuń jeśli go nie było
+                                            if (!deleteBtn) {
+                                                deleteBtn = document.createElement('button');
+                                                deleteBtn.type = 'button';
+                                                deleteBtn.id = 'avatarDeleteBtn';
+                                                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                                                deleteBtn.innerHTML = '<i class="ri-delete-bin-line me-1"></i><?= __('Usuń zdjęcie') ?>';
+                                                uploadBtn.parentNode.insertBefore(deleteBtn, status);
+                                                bindDelete(deleteBtn);
+                                            }
+                                        } else {
+                                            setStatus(d.error || '<?= __('Błąd wgrywania.') ?>', 'text-danger');
+                                        }
+                                    })
+                                    .catch(function () {
+                                        setStatus('<?= __('Błąd połączenia.') ?>', 'text-danger');
+                                    });
+                                });
+
+                                function bindDelete(btn) {
+                                    btn.addEventListener('click', function () {
+                                        if (!confirm('<?= __('Czy na pewno usunąć zdjęcie profilowe?') ?>')) return;
+                                        setStatus('<?= __('Usuwanie…') ?>', 'text-muted');
+                                        var body = new URLSearchParams({ _csrfToken: csrf });
+                                        fetch('/delete-avatar', {
+                                            method: 'POST',
+                                            headers: { 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest',
+                                                       'Content-Type': 'application/x-www-form-urlencoded' },
+                                            credentials: 'same-origin',
+                                            body: body.toString(),
+                                        })
+                                        .then(function (r) { return r.json(); })
+                                        .then(function (d) {
+                                            if (d.success) {
+                                                imgEl.src = '<?= h($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png') ?>';
+                                                setStatus('<?= __('Zdjęcie usunięte.') ?>', 'text-success');
+                                                btn.remove();
+                                            } else {
+                                                setStatus(d.error || '<?= __('Błąd usuwania.') ?>', 'text-danger');
+                                            }
+                                        });
+                                    });
+                                }
+                                if (deleteBtn) bindDelete(deleteBtn);
+                            })();
+                            </script>
+                            <?php endif; ?>
 
                             <div class="col-xl-6">
                                 <label class="form-label">Nazwa użytkownika</label>

@@ -111,12 +111,12 @@ return [
             'controller' => 'Users',
             'action' => ['profile', 'logout', 'linkSocial', 'callbackLinkSocial'],
         ],
-        // Screen lock — odblokowywanie i zarządzanie PIN-em (dla zalogowanych każdej roli)
+        // Screen lock + PIN + avatar — dla zalogowanych każdej roli
         [
             'role'       => '*',
             'plugin'     => false,
             'controller' => 'Security',
-            'action'     => ['unlock', 'setPin', 'deletePin'],
+            'action'     => ['unlock', 'setPin', 'deletePin', 'uploadAvatar', 'deleteAvatar'],
         ],
         // 2FA — ustawienia tokenu uwierzytelniającego (dla każdej roli)
         [

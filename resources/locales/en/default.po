@@ -430,6 +430,58 @@ msgstr "Delete error."
 msgid "Bezpieczeństwo"
 msgstr "Security"
 
+# ── Avatar (zdjęcie profilowe) ────────────────────────────────────
+msgid "Zmień zdjęcie"
+msgstr "Change photo"
+
+msgid "Wgraj zdjęcie"
+msgstr "Upload photo"
+
+msgid "Usuń zdjęcie"
+msgstr "Delete photo"
+
+msgid "JPG, PNG lub WebP, maks. 5 MB. Zdjęcie zostanie wykadrowane do kwadratu 400×400."
+msgstr "JPG, PNG or WebP, max 5 MB. The image will be cropped to a 400×400 square."
+
+msgid "Wgrywanie…"
+msgstr "Uploading…"
+
+msgid "Usuwanie…"
+msgstr "Deleting…"
+
+msgid "Zdjęcie zaktualizowane."
+msgstr "Photo updated."
+
+msgid "Zdjęcie usunięte."
+msgstr "Photo deleted."
+
+msgid "Błąd wgrywania."
+msgstr "Upload error."
+
+msgid "Czy na pewno usunąć zdjęcie profilowe?"
+msgstr "Are you sure you want to delete the profile photo?"
+
+msgid "Plik jest za duży (maks. 5 MB)."
+msgstr "File is too large (max 5 MB)."
+
+msgid "Dozwolone formaty: JPG, PNG, WebP."
+msgstr "Allowed formats: JPG, PNG, WebP."
+
+msgid "Nie udało się odebrać pliku."
+msgstr "Could not receive the file."
+
+msgid "Nie udało się odczytać obrazu."
+msgstr "Could not read the image."
+
+msgid "Nie udało się zapisać pliku."
+msgstr "Could not save the file."
+
+msgid "Nie udało się zapisać profilu."
+msgstr "Could not save the profile."
+
+msgid "Nie udało się zaktualizować profilu."
+msgstr "Could not update the profile."
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 

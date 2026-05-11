@@ -136,6 +136,131 @@ class SecurityController extends AppController
     }
 
     /**
+     * POST /upload-avatar — wgrywa zdjęcie profilowe (multipart).
+     * Plik: jpg/png/webp, ≤ 5 MB. Skalowany do 400×400 i zapisany jako JPG.
+     */
+    public function uploadAvatar(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $identity = $this->request->getAttribute('identity');
+        if (!$identity) {
+            return $this->jsonError(__('Brak aktywnej sesji.'), 401);
+        }
+        $userId = (string)$identity->get('id');
+
+        $uploaded = $this->request->getUploadedFile('avatar');
+        if (!$uploaded || $uploaded->getError() !== UPLOAD_ERR_OK) {
+            return $this->jsonError(__('Nie udało się odebrać pliku.'));
+        }
+
+        $mime = (string)$uploaded->getClientMediaType();
+        $size = (int)$uploaded->getSize();
+        $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!isset($allowed[$mime])) {
+            return $this->jsonError(__('Dozwolone formaty: JPG, PNG, WebP.'));
+        }
+        if ($size > 5 * 1024 * 1024) {
+            return $this->jsonError(__('Plik jest za duży (maks. 5 MB).'));
+        }
+
+        // Tymczasowo zapisz do pamięci, otwórz przez GD
+        $tmpPath = $uploaded->getStream()->getMetadata('uri');
+        $src = match ($mime) {
+            'image/jpeg' => @imagecreatefromjpeg($tmpPath),
+            'image/png'  => @imagecreatefrompng($tmpPath),
+            'image/webp' => @imagecreatefromwebp($tmpPath),
+        };
+        if (!$src) {
+            return $this->jsonError(__('Nie udało się odczytać obrazu.'));
+        }
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $target = 400;
+
+        // Crop do kwadratu (center) → resize do 400×400
+        $side  = min($w, $h);
+        $sx    = (int)(($w - $side) / 2);
+        $sy    = (int)(($h - $side) / 2);
+        $dst   = imagecreatetruecolor($target, $target);
+        imagecopyresampled($dst, $src, 0, 0, $sx, $sy, $target, $target, $side, $side);
+        imagedestroy($src);
+
+        // Katalog (utwórz jeśli nie istnieje)
+        $dir = WWW_ROOT . 'files' . DS . 'avatars';
+        if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+
+        // Nazwa pliku: avatar_{userId}_{timestamp}.jpg (timestamp = cache-busting)
+        $ts       = time();
+        $filename = 'avatar_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $userId) . '_' . $ts . '.jpg';
+        $fullPath = $dir . DS . $filename;
+        $relUrl   = '/files/avatars/' . $filename;
+
+        if (!imagejpeg($dst, $fullPath, 88)) {
+            imagedestroy($dst);
+            return $this->jsonError(__('Nie udało się zapisać pliku.'));
+        }
+        imagedestroy($dst);
+
+        // Usuń poprzedni avatar tego usera (mogą zostać sieroty)
+        $Users = $this->fetchTable('Users');
+        $user  = $Users->find()->where(['id' => $userId])->first();
+        if (!$user) {
+            @unlink($fullPath);
+            return $this->jsonError(__('Użytkownik nie istnieje.'), 404);
+        }
+        $oldAvatar = (string)$user->get('avatar');
+        if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
+            $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
+            if (is_file($oldPath) && $oldPath !== $fullPath) { @unlink($oldPath); }
+        }
+
+        $user->set('avatar', $relUrl, ['guard' => false]);
+        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+            @unlink($fullPath);
+            return $this->jsonError(__('Nie udało się zapisać profilu.'));
+        }
+
+        return $this->jsonOk(['avatar' => $relUrl]);
+    }
+
+    /**
+     * POST /delete-avatar — usuwa zdjęcie profilowe.
+     */
+    public function deleteAvatar(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $identity = $this->request->getAttribute('identity');
+        if (!$identity) {
+            return $this->jsonError(__('Brak aktywnej sesji.'), 401);
+        }
+        $userId = (string)$identity->get('id');
+
+        $Users = $this->fetchTable('Users');
+        $user  = $Users->find()->where(['id' => $userId])->first();
+        if (!$user) {
+            return $this->jsonError(__('Użytkownik nie istnieje.'), 404);
+        }
+
+        $oldAvatar = (string)$user->get('avatar');
+        if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
+            $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
+            if (is_file($oldPath)) { @unlink($oldPath); }
+        }
+
+        $user->set('avatar', null, ['guard' => false]);
+        if (!$Users->save($user, ['checkRules' => false, 'validate' => false])) {
+            return $this->jsonError(__('Nie udało się zaktualizować profilu.'));
+        }
+
+        return $this->jsonOk();
+    }
+
+    /**
      * POST /delete-pin — usuwa PIN (wymaga hasła do potwierdzenia).
      * Body: {current_password: '...'}
      */
