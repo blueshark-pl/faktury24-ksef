@@ -1,5 +1,19 @@
     <?php
     // Zmienne z CakeDC Users: $user (Entity), $isCurrentUser (bool), $avatarPlaceholder (opcjonalnie)
+    // Pobierz `avatar` bezpośrednio z DB — omija schema cache ORM, gdyby na produkcji
+    // cache nie zawierał jeszcze nowej kolumny (po świeżej migracji).
+    $freshAvatar = null;
+    try {
+        $row = $this->fetchTable('Users')->find()
+            ->select(['avatar'])
+            ->where(['id' => $user->id])
+            ->disableHydration()
+            ->first();
+        $freshAvatar = $row['avatar'] ?? null;
+    } catch (\Throwable) {}
+    if ($freshAvatar) {
+        $user->set('avatar', $freshAvatar, ['guard' => false]);
+    }
     $avatarUrl = !empty($user->avatar) ? $user->avatar : ($avatarPlaceholder ?? 'https://ssl.gstatic.com/accounts/ui/avatar_2x.png');
     ?>
     <div class="row">
