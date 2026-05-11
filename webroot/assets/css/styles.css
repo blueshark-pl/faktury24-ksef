@@ -14535,7 +14535,6 @@ ul.available-doctors-list li:last-child {
 }
 .main-header-container .header-link-icon {
   width: 34px;
-  height: 34px;
   font-size: 1rem;
   color: var(--header-prime-color);
   fill: var(--header-prime-color);

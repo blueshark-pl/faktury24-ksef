@@ -134,20 +134,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       .header-element.country-selector .main-header-dropdown { min-width: 180px; }
 
       /* ── Widget sesji w navbar (countdown + zablokuj) ─────────────────── */
-      /* Theme: .header-link-icon { height: 34px } — pill ma być DOKŁADNIE tej wysokości */
       .session-widget {
           display: inline-flex;
           align-items: center;
-          align-self: center;
           gap: 0;
-          height: 34px;            /* równo z theme header-link-icon */
-          padding: 0 .35rem 0 .65rem;
+          padding: .25rem .35rem .25rem .65rem;
           line-height: 1;
           border-radius: 999px;
           background: rgba(var(--primary-rgb), .07);
           border: 1px solid rgba(var(--primary-rgb), .14);
           transition: background .15s, border-color .15s, box-shadow .15s;
-          margin: auto 0;
       }
       .session-widget:hover {
           background: rgba(var(--primary-rgb), .12);
