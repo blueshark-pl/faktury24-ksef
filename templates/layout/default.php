@@ -409,6 +409,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <!-- End::header-element -->
                         <?php endif; ?>
 
+                        <?php if ($identityLang): /* Pokazujemy countdown tylko dla zalogowanych */ ?>
+                        <!-- Start::header-element | Countdown do screen lock -->
+                        <li class="header-element">
+                            <span class="header-link" id="lockCountdownBox" title="<?= __('Sesja zablokuje się po bezczynności') ?>"
+                                  style="cursor:default;display:inline-flex;align-items:center;gap:.35rem">
+                                <i class="ri-lock-line header-link-icon" style="font-size:1.1rem"></i>
+                                <span id="lockCountdownText" style="font-variant-numeric:tabular-nums;font-weight:600;font-size:.85rem">--:--</span>
+                            </span>
+                        </li>
+                        <!-- End::header-element -->
+                        <?php endif; ?>
+
                         <!-- Start::header-element | Tryb ciemny / jasny -->
                         <li class="header-element">
                             <a class="header-link layout-setting" href="javascript:void(0);"

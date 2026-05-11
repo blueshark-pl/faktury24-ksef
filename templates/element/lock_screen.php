@@ -247,10 +247,42 @@ body.sl-active .simplebar-mask {
     var togglePw  = document.getElementById('slTogglePw');
     if (!lockEl || !form) return;
 
-    var idleTimer = null;
-    var warnTimer = null;
-    var failCount = 0;
-    var isLocked  = false;
+    var idleTimer  = null;
+    var warnTimer  = null;
+    var countdownInt = null;
+    var lastActivityTs = Date.now();
+    var failCount  = 0;
+    var isLocked   = false;
+    var navTextEl  = document.getElementById('lockCountdownText');
+    var navBoxEl   = document.getElementById('lockCountdownBox');
+
+    function fmtCountdown(ms) {
+        if (ms <= 0) return '0:00';
+        var totalSec = Math.ceil(ms / 1000);
+        var m = Math.floor(totalSec / 60);
+        var s = totalSec % 60;
+        return m + ':' + (s < 10 ? '0' + s : s);
+    }
+    function updateNavCountdown() {
+        if (!navTextEl) return;
+        if (isLocked) {
+            navTextEl.textContent = '0:00';
+            navBoxEl && navBoxEl.classList.remove('text-warning', 'text-danger');
+            navBoxEl && navBoxEl.classList.add('text-danger');
+            return;
+        }
+        var elapsed = Date.now() - lastActivityTs;
+        var remain  = Math.max(0, IDLE_MS - elapsed);
+        navTextEl.textContent = fmtCountdown(remain);
+        if (navBoxEl) {
+            navBoxEl.classList.remove('text-warning', 'text-danger');
+            if (remain <= WARNING_MS) navBoxEl.classList.add('text-warning');
+            if (remain <= 5000)        navBoxEl.classList.add('text-danger');
+        }
+    }
+    // Aktualizacja co sekundę
+    countdownInt = setInterval(updateNavCountdown, 1000);
+    updateNavCountdown();
 
     // ── Lock / unlock UI ─────────────────────────────────────────────────
     var savedScrollY = 0;
@@ -350,6 +382,8 @@ body.sl-active .simplebar-mask {
     // ── Timer bezczynności ───────────────────────────────────────────────
     function resetIdleTimer() {
         if (isLocked) return;
+        lastActivityTs = Date.now();   // reset countdown w navbarze
+        updateNavCountdown();
         if (idleTimer) clearTimeout(idleTimer);
         if (warnTimer) clearTimeout(warnTimer);
         hideWarn();
