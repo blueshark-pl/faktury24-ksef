@@ -324,8 +324,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             $roleLang     = strtolower((string)($identityLang?->get('role') ?? ''));
                             $currLang     = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
                             $langs = [
-                                'pl' => ['label' => 'Polski',  'flag' => "\u{1F1F5}\u{1F1F1}"],
-                                'en' => ['label' => 'English', 'flag' => "\u{1F1EC}\u{1F1E7}"],
+                                'pl' => ['label' => 'Polski',  'cc' => 'PL', 'flag' => '/assets/images/flags/poland_flag.jpg'],
+                                'en' => ['label' => 'English', 'cc' => 'UK', 'flag' => '/assets/images/flags/uk_flag.jpg'],
                             ];
                             $setLocaleUrl = function (string $code) {
                                 return \Cake\Routing\Router::url([
@@ -337,27 +337,35 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             };
                         ?>
                         <?php if ($roleLang === 'client'): ?>
-                        <!-- Start::header-element | Wybór języka -->
+                        <!-- Start::header-element | Wybór języka (Zynix country-selector) -->
                         <li class="header-element country-selector dropdown">
-                            <a class="header-link dropdown-toggle no-caret" data-bs-auto-close="outside"
-                               href="javascript:void(0);" data-bs-toggle="dropdown"
+                            <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret"
+                               data-bs-auto-close="outside" data-bs-toggle="dropdown"
                                id="languageDropdown" aria-expanded="false"
                                title="<?= __('Język') ?>" aria-label="Toggle language">
-                                <span class="header-link-icon d-inline-flex align-items-center justify-content-center"
-                                      style="font-size:1.25rem;line-height:1">
-                                    <?= $langs[$currLang]['flag'] ?>
-                                </span>
+                                <!-- Ikona "translate" jak w Zynix -->
+                                <svg xmlns="http://www.w3.org/2000/svg" class="header-link-icon" viewBox="0 0 256 256">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <polyline points="240 216 184 104 128 216" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <line x1="144" y1="184" x2="224" y2="184" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <line x1="96" y1="32" x2="96" y2="56" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <line x1="32" y1="56" x2="160" y2="56" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <path d="M128,56a96,96,0,0,1-96,96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <path d="M69.47,88A96,96,0,0,0,160,152" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                </svg>
                             </a>
                             <ul class="main-header-dropdown dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
                                 <?php foreach ($langs as $code => $info): ?>
                                 <li>
-                                    <a class="dropdown-item d-flex align-items-center gap-2 <?= $code === $currLang ? 'active fw-semibold' : '' ?>"
+                                    <a class="dropdown-item d-flex align-items-center justify-content-between <?= $code === $currLang ? 'active' : '' ?>"
                                        href="<?= h($setLocaleUrl($code)) ?>">
-                                        <span style="font-size:1.25rem;line-height:1"><?= $info['flag'] ?></span>
-                                        <span><?= h($info['label']) ?></span>
-                                        <?php if ($code === $currLang): ?>
-                                            <i class="ri-check-line ms-auto text-success"></i>
-                                        <?php endif; ?>
+                                        <div class="d-flex align-items-center">
+                                            <span class="avatar avatar-rounded avatar-xs lh-1 me-2">
+                                                <img src="<?= h($info['flag']) ?>" alt="<?= h($info['cc']) ?>">
+                                            </span>
+                                            <?= h($info['label']) ?>
+                                        </div>
+                                        <span class="text-muted fs-12">(<?= h($info['cc']) ?>)</span>
                                     </a>
                                 </li>
                                 <?php endforeach; ?>
