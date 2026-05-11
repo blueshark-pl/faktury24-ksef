@@ -61,8 +61,12 @@
                                             <?php endif; ?>
                                             <span id="avatarStatus" class="small text-muted"></span>
                                         </div>
+                                        <?php
+                                            // Limit pobierany dynamicznie z php.ini — dopasowany do tego, co serwer faktycznie pozwala
+                                            $iniLimitStr = (string)(ini_get('upload_max_filesize') ?: '2M');
+                                        ?>
                                         <div class="form-text mt-1" style="font-size:.78rem">
-                                            <?= __('JPG, PNG lub WebP, maks. 5 MB. Zdjęcie zostanie wykadrowane do kwadratu 400×400.') ?>
+                                            <?= sprintf((string)__('JPG, PNG lub WebP, maks. %s. Zdjęcie zostanie wykadrowane do kwadratu 400×400.'), h($iniLimitStr)) ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -87,11 +91,20 @@
 
                                 if (uploadBtn) uploadBtn.addEventListener('click', function () { fileInput.click(); });
 
+                                <?php
+                                    // Limit z PHP ini → bajty dla JS validation
+                                    $jsLimitBytes = (int)(match (strtolower(substr($iniLimitStr, -1))) {
+                                        'g' => ((int)$iniLimitStr) * 1024 * 1024 * 1024,
+                                        'm' => ((int)$iniLimitStr) * 1024 * 1024,
+                                        'k' => ((int)$iniLimitStr) * 1024,
+                                        default => (int)$iniLimitStr,
+                                    });
+                                ?>
                                 if (fileInput) fileInput.addEventListener('change', function () {
                                     var file = fileInput.files && fileInput.files[0];
                                     if (!file) return;
-                                    if (file.size > 5 * 1024 * 1024) {
-                                        setStatus('<?= __('Plik jest za duży (maks. 5 MB).') ?>', 'text-danger');
+                                    if (file.size > <?= $jsLimitBytes ?>) {
+                                        setStatus('<?= sprintf((string)__('Plik za duży — maks. %s.'), h($iniLimitStr)) ?>', 'text-danger');
                                         return;
                                     }
                                     setStatus('<?= __('Wgrywanie…') ?>', 'text-muted');

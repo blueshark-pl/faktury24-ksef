@@ -15,6 +15,21 @@ use Cake\Http\Response;
  */
 class SecurityController extends AppController
 {
+    /** Parsuje wartość typu "2M", "512K", "1G" do bajtów. */
+    private function _parseIniSize(string $val): int
+    {
+        $val = trim($val);
+        if ($val === '') return 0;
+        $last = strtolower(substr($val, -1));
+        $num  = (int)$val;
+        return match ($last) {
+            'g'     => $num * 1024 * 1024 * 1024,
+            'm'     => $num * 1024 * 1024,
+            'k'     => $num * 1024,
+            default => $num,
+        };
+    }
+
     private function jsonOk(array $extra = []): Response
     {
         return $this->response->withType('application/json')
@@ -172,8 +187,13 @@ class SecurityController extends AppController
         if (!isset($allowed[$mime])) {
             return $this->jsonError(__('Dozwolone formaty: JPG, PNG, WebP.'));
         }
-        if ($size > 5 * 1024 * 1024) {
-            return $this->jsonError(__('Plik jest za duży (maks. 5 MB).'));
+        // Limit dostosowany do faktycznego limitu PHP (zwykle 2 MB na shared hostingu)
+        $iniLimit = $this->_parseIniSize((string)(ini_get('upload_max_filesize') ?: '2M'));
+        if ($size > $iniLimit) {
+            return $this->jsonError(sprintf(
+                (string)__('Plik za duży — maks. %s.'),
+                ini_get('upload_max_filesize') ?: '2M'
+            ));
         }
 
         // Tymczasowo zapisz do pamięci, otwórz przez GD

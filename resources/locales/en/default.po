@@ -443,6 +443,30 @@ msgstr "Delete photo"
 msgid "JPG, PNG lub WebP, maks. 5 MB. Zdjęcie zostanie wykadrowane do kwadratu 400×400."
 msgstr "JPG, PNG or WebP, max 5 MB. The image will be cropped to a 400×400 square."
 
+msgid "JPG, PNG lub WebP, maks. %s. Zdjęcie zostanie wykadrowane do kwadratu 400×400."
+msgstr "JPG, PNG or WebP, max %s. The image will be cropped to a 400×400 square."
+
+msgid "Plik za duży — maks. %s."
+msgstr "File too large — max %s."
+
+msgid "Plik za duży — serwer akceptuje maks. %s. Skontaktuj się z administratorem aby zwiększyć limit."
+msgstr "File too large — server accepts max %s. Contact the administrator to increase the limit."
+
+msgid "Plik został wgrany tylko częściowo."
+msgstr "File was only partially uploaded."
+
+msgid "Nie wybrano pliku."
+msgstr "No file selected."
+
+msgid "Brak katalogu tymczasowego na serwerze."
+msgstr "Missing temporary directory on server."
+
+msgid "Nie można zapisać pliku tymczasowego na serwerze."
+msgstr "Cannot write temporary file on server."
+
+msgid "Nie udało się odebrać pliku (kod %d)."
+msgstr "Could not receive file (code %d)."
+
 msgid "Wgrywanie…"
 msgstr "Uploading…"
 
