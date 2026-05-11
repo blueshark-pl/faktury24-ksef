@@ -84,16 +84,10 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
             <span>Wersja: <?= h($appVersion) ?></span>
           <?php endif; ?>
           <?= $this->cell('KsefStatus') ?>
-          <span class="mx-2">•</span>
-          <a href="#" role="button" data-bs-toggle="modal" data-bs-target="#regulaminModal"><?= __('Regulamin') ?></a>
-          <span class="mx-2">•</span>
-          <a href="#" role="button" data-bs-toggle="modal" data-bs-target="#privacyModal"><?= __('Polityka prywatności') ?></a>
         </div>
       </div>
     </div>
 
-    <?= $this->element('auth/regulamin_modal') ?>
-    <?= $this->element('auth/polityka_prywatnosci_modal') ?>
     <?= $this->element('auth/dpa_modal') ?>
     <?= $this->fetch('ksefModals') ?>
 

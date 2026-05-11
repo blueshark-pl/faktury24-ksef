@@ -1,6 +1,6 @@
 <?php
 return [
-    'Users.Registration.active' => true, //enable or disable password meter. Defaults to true
+    'Users.Registration.active' => false, //enable or disable self-registration. Defaults to true
 
     // ── Authorization unauthorized handler ────────────────────────────────────
     // Dla roli `client` przekierowuj na /portal (zamiast domyślnego /users/login,
