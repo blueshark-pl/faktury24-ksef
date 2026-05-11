@@ -552,7 +552,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <?= $this->Html->link(
                                         '<i class="ri-truck-line side-menu__icon" style="font-size:1.25rem;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center"></i>'
                                         . '<span class="side-menu__label">' . h(__('Zlecenia transportowe')) . '</span>',
-                                        ['controller' => 'ClientPortal', 'action' => 'index'],
+                                        ['plugin' => false, 'controller' => 'ClientPortal', 'action' => 'index'],
                                         [
                                             'class'  => trim('side-menu__item ' . $navActive('clientportal', 'index')),
                                             'escape' => false,
