@@ -459,8 +459,18 @@ return [
      *
      * To use database sessions, load the SQL file located at config/schema/sessions.sql
      */
+    /**
+     * Sesja użytkownika — 5 dni.
+     * Screen lock (Security.screenLock niżej) blokuje UI po 5 min bezczynności
+     * wymagając hasła/PIN, więc fizycznie nikt obcy nie wejdzie nawet przy długiej sesji.
+     */
     'Session' => [
         'defaults' => 'php',
+        'timeout'  => 7200,           // 7200 min = 5 dni (idle timeout CakePHP)
+        'ini' => [
+            'session.gc_maxlifetime'  => 432000,  // 5 dni w sekundach (PHP GC)
+            'session.cookie_lifetime' => 432000,  // cookie też 5 dni (przetrwa zamknięcie przeglądarki)
+        ],
     ],
 
     /**
