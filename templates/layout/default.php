@@ -419,9 +419,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <!-- Start::main-sidebar-header -->
                 <div class="main-sidebar-header">
                     <a href="/" class="header-logo">
-                        <!-- Rozwinięty sidebar: szerokie logo 1894×585 -->
+                        <!-- Rozwinięty sidebar: szerokie logo 1894×585 — wersja light vs dark -->
                         <img src="/img/logo.png"           alt="Booklio TMS" class="desktop-logo">
-                        <img src="/img/logo.png"           alt="Booklio TMS" class="desktop-dark">
+                        <img src="/img/logo-white.png"     alt="Booklio TMS" class="desktop-dark">
                         <!-- Zwinięty sidebar: kwadratowa ikona 180×180 -->
                         <img src="/apple-touch-icon.png"   alt="Booklio TMS" class="toggle-logo">
                         <img src="/apple-touch-icon.png"   alt="Booklio TMS" class="toggle-dark">
