@@ -542,13 +542,41 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ?? $identityHeader?->get('username')
                                 ?? 'Użytkownik'
                             );
+                            $nameToShow = ($first !== '' || $last !== '') ? $full : $displayName;
+                            // Pobierz avatar zalogowanego usera (jeśli ma)
+                            $hdrAvatarUrl = null;
+                            try {
+                                $r = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')->find()
+                                    ->select(['avatar'])
+                                    ->where(['id' => (string)$identityHeader?->getIdentifier()])
+                                    ->disableHydration()
+                                    ->first();
+                                if (!empty($r['avatar'])) {
+                                    $hdrAvatarUrl = (string)$r['avatar'];
+                                    if (str_starts_with($hdrAvatarUrl, '/files/avatars/')) {
+                                        $diskPath = WWW_ROOT . ltrim($hdrAvatarUrl, '/');
+                                        if (is_file($diskPath)) {
+                                            $hdrAvatarUrl .= '?v=' . filemtime($diskPath);
+                                        }
+                                    }
+                                }
+                            } catch (\Throwable) {}
                             ?>
                             <a href="javascript:void(0);" class="header-link dropdown-toggle" id="mainHeaderProfile"
                                 data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                                <div class="d-flex align-items-center">
+                                <div class="d-flex align-items-center gap-2">
+                                    <?php if ($hdrAvatarUrl): ?>
+                                        <img src="<?= h($hdrAvatarUrl) ?>" alt="" class="rounded-circle hdr-avatar-trigger"
+                                             style="width:34px;height:34px;object-fit:cover;border:2px solid rgba(var(--primary-rgb),.25)">
+                                    <?php else: ?>
+                                        <span class="rounded-circle d-inline-flex align-items-center justify-content-center hdr-avatar-trigger"
+                                              style="width:34px;height:34px;background:rgba(var(--primary-rgb),.12);color:rgb(var(--primary-rgb));font-weight:700">
+                                            <?= h(strtoupper(mb_substr($nameToShow ?: '?', 0, 1))) ?>
+                                        </span>
+                                    <?php endif; ?>
                                     <div class="d-xl-block d-none lh-1">
-                                        <?= __('Zalogowany jako') ?>, <?php $nameToShow = ($first !== '' || $last !== '') ? $full : $displayName; ?>
-                                        <span class="fw-medium lh-1"><?= h($nameToShow) ?></span>
+                                        <span class="text-muted" style="font-size:.72rem"><?= __('Zalogowany jako') ?></span>
+                                        <span class="fw-medium d-block lh-sm"><?= h($nameToShow) ?></span>
                                     </div>
                                 </div>
                             </a>
@@ -567,8 +595,22 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             default                                   => ucfirst($roleHeader),
                                         };
                                     ?>
-                                    <div class="py-2 px-3 text-center"> <span class="fw-semibold"> <?= h($nameToShow) ?> </span> <span
-                                            class="d-block fs-12 text-muted"><?= h($roleLabel) ?></span> </div>
+                                    <div class="py-3 px-3 text-center">
+                                        <div class="mb-2">
+                                            <?php if ($hdrAvatarUrl): ?>
+                                                <img src="<?= h($hdrAvatarUrl) ?>" alt=""
+                                                     class="rounded-circle"
+                                                     style="width:64px;height:64px;object-fit:cover;border:3px solid rgba(var(--primary-rgb),.25);box-shadow:0 4px 12px rgba(15,23,42,.12)">
+                                            <?php else: ?>
+                                                <span class="rounded-circle d-inline-flex align-items-center justify-content-center"
+                                                      style="width:64px;height:64px;background:rgba(var(--primary-rgb),.12);color:rgb(var(--primary-rgb));font-size:1.6rem;font-weight:700;border:3px solid rgba(var(--primary-rgb),.18)">
+                                                    <?= h(strtoupper(mb_substr($nameToShow ?: '?', 0, 1))) ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <span class="fw-semibold d-block"><?= h($nameToShow) ?></span>
+                                        <span class="d-block fs-12 text-muted"><?= h($roleLabel) ?></span>
+                                    </div>
                                 </li>
                                 <li><a class="dropdown-item d-flex align-items-center" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>"><i
                                             class="ti ti-user text-primary me-2 fs-16"></i><?= __('Mój profil') ?></a>
