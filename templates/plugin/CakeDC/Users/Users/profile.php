@@ -2,14 +2,46 @@
     // Zmienne z CakeDC Users: $user (Entity), $isCurrentUser (bool), $avatarPlaceholder (opcjonalnie)
     // Pobierz `avatar` bezpośrednio z DB osobnym query — bez polegania na settrach CakeDC User entity.
     $freshAvatar = null;
-    try {
-        $row = $this->fetchTable('Users')->find()
-            ->select(['avatar'])
-            ->where(['id' => $user->id])
-            ->disableHydration()
-            ->first();
-        $freshAvatar = $row['avatar'] ?? null;
-    } catch (\Throwable) {}
+    $debugRow    = null;
+    $debugErr    = null;
+    // Próbuj kolejno: id z entity → identity → email z entity
+    $identity      = $this->request->getAttribute('identity');
+    $candidateIds  = array_filter([
+        (string)($user->id ?? ''),
+        (string)($identity?->getIdentifier() ?? ''),
+    ]);
+    foreach ($candidateIds as $cid) {
+        try {
+            $row = $this->fetchTable('Users')->find()
+                ->select(['id', 'avatar', 'email'])
+                ->where(['id' => $cid])
+                ->disableHydration()
+                ->first();
+            if ($row) {
+                $debugRow    = $row;
+                $freshAvatar = $row['avatar'] ?? null;
+                if ($freshAvatar) break;
+            }
+        } catch (\Throwable $e) {
+            $debugErr = $e->getMessage();
+        }
+    }
+    // Ostatnia szansa — po e-mail
+    if (!$freshAvatar && !empty($user->email)) {
+        try {
+            $row = $this->fetchTable('Users')->find()
+                ->select(['id', 'avatar', 'email'])
+                ->where(['email' => $user->email])
+                ->disableHydration()
+                ->first();
+            if ($row) {
+                $debugRow    = $row;
+                $freshAvatar = $row['avatar'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            $debugErr = $e->getMessage();
+        }
+    }
 
     // Domyślny placeholder — Url->image() dodaje 'img/' do ścieżki pluginu
     // ('CakeDC/Users.avatar_placeholder.png' → '/cake_d_c/users/img/avatar_placeholder.png')
@@ -51,7 +83,22 @@
                         <div class="row gy-4">
                             <div class="col-xl-12">
                                 <div class="d-flex align-items-start flex-wrap gap-3">
-                                    <!-- DEBUG: avatarUrl=<?= h($avatarUrl) ?> | freshAvatar=<?= h((string)($freshAvatar ?? 'null')) ?> | entityAvatar=<?= h((string)($user->avatar ?? 'null')) ?> -->
+                                    <!-- DEBUG AVATAR
+                                         user->id           = <?= h((string)($user->id ?? 'null')) ?>
+
+                                         user->email        = <?= h((string)($user->email ?? 'null')) ?>
+
+                                         freshAvatar (DB)   = <?= h((string)($freshAvatar ?? 'null')) ?>
+
+                                         entityAvatar       = <?= h((string)($user->avatar ?? 'null')) ?>
+
+                                         query row          = <?= h(json_encode($debugRow)) ?>
+
+                                         query err          = <?= h((string)($debugErr ?? 'none')) ?>
+
+                                         avatarUrl (final)  = <?= h($avatarUrl) ?>
+
+                                    -->
                                     <div class="position-relative" id="avatarBox">
                                         <span class="avatar avatar-xxl rounded-circle overflow-hidden border d-inline-flex align-items-center justify-content-center"
                                               style="width:128px;height:128px;background:rgb(var(--light-rgb))">
