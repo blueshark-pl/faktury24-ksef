@@ -189,22 +189,34 @@ body.sl-active .main-sidebar {
     // ── Lock / unlock UI ─────────────────────────────────────────────────
     var savedScrollY = 0;
 
+    // Pomocnicze: setStyleImportant — inline style z !important wygrywa z każdym CSS
+    function setImp(el, prop, val) { el.style.setProperty(prop, val, 'important'); }
+    function clrImp(el, prop)      { el.style.removeProperty(prop); }
+
     function showLock() {
         if (isLocked) return;
         isLocked = true;
         hideWarn();
 
-        // Zamroź scroll strony — zapamiętaj pozycję i przypnij body do viewportu
         savedScrollY = window.scrollY || window.pageYOffset || 0;
-        document.documentElement.classList.add('sl-active');
-        document.body.classList.add('sl-active');
-        document.body.style.top = '-' + savedScrollY + 'px';
+        var html = document.documentElement, body = document.body;
+
+        // Klasa + inline style (najwyższy priorytet) na html/body
+        html.classList.add('sl-active');
+        body.classList.add('sl-active');
+        setImp(html, 'overflow', 'hidden');
+        setImp(html, 'scrollbar-width', 'none');
+        setImp(body, 'overflow', 'hidden');
+        setImp(body, 'position', 'fixed');
+        setImp(body, 'top', '-' + savedScrollY + 'px');
+        setImp(body, 'left', '0');
+        setImp(body, 'right', '0');
+        setImp(body, 'width', '100%');
 
         lockEl.hidden = false;
         lockEl.removeAttribute('aria-hidden');
         lockEl.setAttribute('aria-hidden', 'false');
 
-        // localStorage sync — inne karty też locknij
         try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch (e) {}
         setTimeout(function () { if (input) input.focus(); }, 80);
     }
@@ -214,10 +226,12 @@ body.sl-active .main-sidebar {
         lockEl.hidden = true;
         lockEl.setAttribute('aria-hidden', 'true');
 
-        // Odmrażamy stronę i przywracamy pozycję scroll
-        document.documentElement.classList.remove('sl-active');
-        document.body.classList.remove('sl-active');
-        document.body.style.top = '';
+        var html = document.documentElement, body = document.body;
+        html.classList.remove('sl-active');
+        body.classList.remove('sl-active');
+        ['overflow','scrollbar-width'].forEach(function(p){ clrImp(html, p); });
+        ['overflow','position','top','left','right','width'].forEach(function(p){ clrImp(body, p); });
+
         window.scrollTo(0, savedScrollY);
 
         errEl.hidden = true;
@@ -226,6 +240,14 @@ body.sl-active .main-sidebar {
         try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
         resetIdleTimer();
     }
+
+    // Scroll-revert: gdyby cokolwiek (drag scrollbara, scrollTo, anchor link) zmieniło scroll,
+    // natychmiast przywracamy zapisaną pozycję. To bezwzględny rygor.
+    window.addEventListener('scroll', function () {
+        if (isLocked && (window.scrollY !== 0 || window.pageYOffset !== 0)) {
+            window.scrollTo(0, 0);
+        }
+    }, { passive: true });
 
     // Globalne blokery scrolla — działają gdy isLocked === true.
     // capture:true + passive:false → przechwytujemy zanim browser scrolluje.
