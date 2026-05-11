@@ -514,6 +514,28 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <!-- End::header-element -->
                         <?php endif; ?>
 
+                        <!-- Start::header-element | Pełny ekran (Zynix style) -->
+                        <li class="header-element header-fullscreen">
+                            <a href="javascript:void(0);" class="header-link" id="fullscreenBtn"
+                               title="<?= __('Pełny ekran') ?>" aria-label="<?= __('Pełny ekran') ?>">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="full-screen-open header-link-icon" viewBox="0 0 256 256">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <polyline points="168 48 208 48 208 88" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="88 208 48 208 48 168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="208 168 208 208 168 208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="48 88 48 48 88 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                </svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="full-screen-close header-link-icon" viewBox="0 0 256 256" style="display:none">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <polyline points="160 48 208 48 208 96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <line x1="144" y1="112" x2="208" y2="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <polyline points="96 208 48 208 48 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <line x1="112" y1="144" x2="48" y2="208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                </svg>
+                            </a>
+                        </li>
+                        <!-- End::header-element -->
+
                         <!-- Start::header-element | Tryb ciemny / jasny -->
                         <li class="header-element">
                             <a class="header-link layout-setting" href="javascript:void(0);"
@@ -1622,6 +1644,39 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             el.addEventListener('hidden.bs.toast', function() { el.remove(); });
         }
     };
+    </script>
+
+    <!-- Toggle: pełny ekran (Fullscreen API) — przełącza między klasycznym a fullscreen widokiem -->
+    <script>
+    (function () {
+        var btn = document.getElementById('fullscreenBtn');
+        if (!btn) return;
+        var iconOpen  = btn.querySelector('.full-screen-open');
+        var iconClose = btn.querySelector('.full-screen-close');
+
+        btn.addEventListener('click', function () {
+            try {
+                if (!document.fullscreenElement) {
+                    (document.documentElement.requestFullscreen
+                     || document.documentElement.webkitRequestFullscreen
+                     || function () {}).call(document.documentElement);
+                } else {
+                    (document.exitFullscreen
+                     || document.webkitExitFullscreen
+                     || function () {}).call(document);
+                }
+            } catch (e) {}
+        });
+
+        function syncIcons() {
+            var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            if (iconOpen)  iconOpen.style.display  = isFs ? 'none' : '';
+            if (iconClose) iconClose.style.display = isFs ? '' : 'none';
+        }
+        document.addEventListener('fullscreenchange',       syncIcons);
+        document.addEventListener('webkitfullscreenchange', syncIcons);
+        syncIcons();
+    })();
     </script>
 
     <!-- Toggle: tryb ciemny / jasny (Zynix theme) — atrybut data-* na <html> + localStorage -->

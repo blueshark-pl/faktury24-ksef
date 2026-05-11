@@ -349,6 +349,9 @@ msgstr "Session will lock on inactivity"
 msgid "Zablokuj teraz"
 msgstr "Lock now"
 
+msgid "Pełny ekran"
+msgstr "Fullscreen"
+
 msgid "Brak aktywnej sesji."
 msgstr "No active session."
 
