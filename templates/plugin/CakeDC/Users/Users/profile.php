@@ -12,7 +12,7 @@
     ]);
     foreach ($candidateIds as $cid) {
         try {
-            $row = $this->fetchTable('Users')->find()
+            $row = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')->find()
                 ->select(['id', 'avatar', 'email'])
                 ->where(['id' => $cid])
                 ->disableHydration()
@@ -29,7 +29,7 @@
     // Ostatnia szansa — po e-mail
     if (!$freshAvatar && !empty($user->email)) {
         try {
-            $row = $this->fetchTable('Users')->find()
+            $row = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')->find()
                 ->select(['id', 'avatar', 'email'])
                 ->where(['email' => $user->email])
                 ->disableHydration()
