@@ -284,6 +284,43 @@ msgstr "Owner"
 msgid "Użytkownik"
 msgstr "User"
 
+# ── Strony błędów ─────────────────────────────────────────────────
+msgid "Błąd"
+msgstr "Error"
+
+msgid "Trasa nieodnaleziona"
+msgstr "Route not found"
+
+msgid "Tej strony nie ma na naszej mapie — być może zlecenie zostało już zrealizowane, a link wygasł. Sprawdź adres lub wróć do panelu."
+msgstr "This page is not on our map — perhaps the order has already been completed and the link expired. Please check the address or return to the panel."
+
+msgid "Awaria w drodze"
+msgstr "Breakdown on route"
+
+msgid "Coś poszło nie tak po naszej stronie — kierowca dał już znać dyspozytorowi. Spróbuj ponownie za chwilę lub wróć do panelu."
+msgstr "Something went wrong on our end — the driver has already notified the dispatcher. Please try again shortly or return to the panel."
+
+msgid "Kod błędu"
+msgstr "Error code"
+
+msgid "Do panelu"
+msgstr "To panel"
+
+msgid "Wróć"
+msgstr "Back"
+
+msgid "Jeśli problem się powtarza, napisz do nas:"
+msgstr "If the problem persists, please contact us:"
+
+msgid "i podaj powyższy kod błędu"
+msgstr "and include the error code above"
+
+msgid "Copyright © Booklio.pl. Wszelkie prawa zastrzeżone."
+msgstr "Copyright © Booklio.pl. All rights reserved."
+
+msgid "Wersja"
+msgstr "Version"
+
 msgid "Szczegóły zlecenia"
 msgstr "Order details"
 

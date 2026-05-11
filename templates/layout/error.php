@@ -13,7 +13,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 <head>
     <?= $this->Html->charset() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Błąd — Booklio TMS</title>
+    <title><?= __('Błąd') ?> — Booklio TMS</title>
 
     <!-- Favicon -->
     <link rel="icon"           type="image/png"     sizes="96x96" href="/favicon-96x96.png">
@@ -152,10 +152,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     </div>
     <div class="auth-footer" role="contentinfo">
         <div class="auth-footer-inner">
-            Copyright © Booklio.pl All rights reserved
+            <?= __('Copyright © Booklio.pl. Wszelkie prawa zastrzeżone.') ?>
             <?php if ($appVersion !== ''): ?>
                 <span class="mx-2">•</span>
-                <span>Wersja: <?= h($appVersion) ?></span>
+                <span><?= __('Wersja') ?>: <?= h($appVersion) ?></span>
             <?php endif; ?>
         </div>
     </div>

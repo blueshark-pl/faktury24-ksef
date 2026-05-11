@@ -34,6 +34,30 @@ Gdy skończysz zadanie:
 Przed modyfikacją zawsze przeczytaj aktualny stan pliku.
 Nie opieraj się wyłącznie na pamięci z poprzednich sesji — kod mógł się zmienić.
 
+### 5. Wszystko 2-językowo: PL + EN (i18n)
+Każdy widoczny dla użytkownika tekst musi przechodzić przez `__('...')` (CakePHP I18n).
+Dotyczy: nagłówków, etykiet, przycisków, placeholderów, opcji `<select>`, komunikatów
+flash, tytułów `<title>`, atrybutów `title`/`aria-label`, treści error-pages, e-maili.
+
+**Workflow:**
+1. W szablonie/kontrolerze: `<?= __('Polski tekst') ?>` — klucz to polska wersja
+2. Po dodaniu/zmianie kluczy: dopisz tłumaczenia EN w `resources/locales/en/default.po`
+   ```po
+   msgid "Polski tekst"
+   msgstr "English translation"
+   ```
+3. Po zmianach `.po` — bez kompilacji, CakePHP czyta na bieżąco
+4. Sprawdzenie: przełącz w portalu na EN (`/portal/lang/en`) i potwierdź że wszystko tłumaczone
+
+**Wyjątki (można hardcode PL):**
+- Nazwy własne (Booklio TMS, KSeF, FA(3), NIP, MPP)
+- Logi techniczne (Cake\Log\Log::error itp. — to tylko dla devów)
+- Komentarze w kodzie
+- Nazwy kolumn w DB
+
+**Locale jest ustawiane w `AppController::beforeFilter`** z sesji (`Config.locale`) —
+domyślnie `pl`. Klient portalu przełącza `/portal/lang/{pl|en}`.
+
 ---
 
 ## Stack technologiczny

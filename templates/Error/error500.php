@@ -37,32 +37,31 @@ endif;
     <i class="ri-truck-line err-icon-overlay" style="color:#dc3545"></i>
 </div>
 
-<h1 class="err-title">Awaria w drodze</h1>
+<h1 class="err-title"><?= __('Awaria w drodze') ?></h1>
 <p class="err-desc">
-    Coś poszło nie tak po naszej stronie — kierowca dał już znać dyspozytorowi.
-    Spróbuj ponownie za chwilę lub wróć do panelu.
+    <?= __('Coś poszło nie tak po naszej stronie — kierowca dał już znać dyspozytorowi. Spróbuj ponownie za chwilę lub wróć do panelu.') ?>
 </p>
 
 <?php if (!empty($errorCode)): ?>
 <div class="err-chip" style="background:rgba(220,53,69,.08);border-color:rgba(220,53,69,.22);color:#dc3545">
     <i class="ri-barcode-line"></i>
-    Kod błędu: <strong style="margin-left:.2rem"><?= h($errorCode) ?></strong>
+    <?= __('Kod błędu') ?>: <strong style="margin-left:.2rem"><?= h($errorCode) ?></strong>
 </div>
 <?php endif; ?>
 
 <div class="err-actions">
     <a href="javascript:history.back()" class="btn btn-outline-secondary">
-        <i class="ri-arrow-left-line me-1"></i> Wróć
+        <i class="ri-arrow-left-line me-1"></i> <?= __('Wróć') ?>
     </a>
     <a href="/" class="btn btn-primary-booklio">
-        <i class="ri-truck-line me-1"></i> Do panelu
+        <i class="ri-truck-line me-1"></i> <?= __('Do panelu') ?>
     </a>
 </div>
 
 <p class="err-contact">
-    Jeśli problem się powtarza, napisz do nas:
+    <?= __('Jeśli problem się powtarza, napisz do nas:') ?>
     <a href="mailto:kontakt@booklio.pl">kontakt@booklio.pl</a>
-    <?php if (!empty($errorCode)): ?>i&nbsp;podaj powyższy kod błędu<?php endif; ?>.
+    <?php if (!empty($errorCode)): ?><?= __('i podaj powyższy kod błędu') ?><?php endif; ?>.
 </p>
 
 <?php else: ?>
