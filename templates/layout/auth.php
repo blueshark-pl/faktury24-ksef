@@ -66,8 +66,8 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
         <div class="row justify-content-center">
           <div class="<?= h($authColumnClass) ?>">
             <div class="mb-3 d-flex justify-content-center auth-logo">
-              <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none" aria-label="Faktury24">
-                <!-- <img src="/img/logo-faktury24.png" alt="Faktury24"> -->
+              <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none" aria-label="Booklio">
+                <img src="<?= $this->Url->assetUrl('img/logo.png') ?>" alt="Booklio">
               </a>
             </div>
             <?= $this->cell('KsefStatus::banner') ?>
@@ -237,9 +237,9 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
       .authentication .auth-logo img{
         display: block;
-        width: clamp(120px, 34vw, 180px);
-        max-height: 44px;
-        height: auto;
+        width: auto;
+        height: clamp(72px, 14vw, 110px);
+        max-width: 220px;
         filter: drop-shadow(0 10px 26px rgba(15, 23, 42, 0.18));
         transition: transform 180ms ease, filter 180ms ease;
       }
