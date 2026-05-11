@@ -243,8 +243,8 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
       .authentication .auth-logo img{
         display: block;
         width: auto;
-        height: clamp(72px, 14vw, 110px);
-        max-width: 220px;
+        height: clamp(48px, 9vw, 78px);
+        max-width: min(340px, 80vw);
         filter: drop-shadow(0 10px 26px rgba(15, 23, 42, 0.18));
         transition: transform 180ms ease, filter 180ms ease;
       }
