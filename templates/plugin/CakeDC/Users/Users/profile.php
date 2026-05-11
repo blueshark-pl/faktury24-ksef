@@ -11,9 +11,9 @@
         $freshAvatar = $row['avatar'] ?? null;
     } catch (\Throwable) {}
 
-    // Domyślny placeholder — używamy assetu z pluginu jako pełny URL (NIE notacji 'Plugin.image.png')
-    // bo używamy plain <img src=>. Plugin.image notation działa tylko z Html->image()
-    $defaultPlaceholderUrl = $this->Url->assetUrl('CakeDC/Users.avatar_placeholder.png');
+    // Domyślny placeholder — Url->image() dodaje 'img/' do ścieżki pluginu
+    // ('CakeDC/Users.avatar_placeholder.png' → '/cake_d_c/users/img/avatar_placeholder.png')
+    $defaultPlaceholderUrl = $this->Url->image('CakeDC/Users.avatar_placeholder.png');
 
     // Priorytet: świeży avatar z DB > $user->avatar z entity > placeholder
     $avatarUrl = !empty($freshAvatar)
