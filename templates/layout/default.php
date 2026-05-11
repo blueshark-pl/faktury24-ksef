@@ -416,8 +416,19 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             <ul class="main-header-dropdown dropdown-menu pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end"
                                 aria-labelledby="mainHeaderProfile">
                                 <li>
+                                    <?php
+                                        $isAdminHeader = (bool)($identityHeader?->get('is_admin') ?? false);
+                                        $roleHeader    = strtolower((string)($identityHeader?->get('role') ?? ''));
+                                        $roleLabel = match (true) {
+                                            $isAdminHeader || $roleHeader === 'admin' => 'Administrator',
+                                            $roleHeader === 'client'                  => 'Klient',
+                                            $roleHeader === 'user'                    => 'Właściciel',
+                                            $roleHeader === ''                        => 'Użytkownik',
+                                            default                                   => ucfirst($roleHeader),
+                                        };
+                                    ?>
                                     <div class="py-2 px-3 text-center"> <span class="fw-semibold"> <?= h($nameToShow) ?> </span> <span
-                                            class="d-block fs-12 text-muted">Właściciel</span> </div>
+                                            class="d-block fs-12 text-muted"><?= h($roleLabel) ?></span> </div>
                                 </li>
                                 <li><a class="dropdown-item d-flex align-items-center" href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>"><i
                                             class="ti ti-user text-primary me-2 fs-16"></i>Mój profil</a>
