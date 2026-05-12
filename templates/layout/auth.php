@@ -449,8 +449,8 @@ $currentLang = $this->request->getSession()->read('Config.locale') === 'en' ? 'e
     <?= $this->Html->script($this->Url->assetUrl('assets/libs/bootstrap/js/bootstrap.bundle.min.js'), ['block' => 'bottom']) ?>
 
 
-    <!-- Cover Password (opcjonalnie – jeśli używasz createpassword()) -->
-    <?= $this->Html->script($this->Url->assetUrl('assets/js/cover-password.js'), ['block' => 'bottom']) ?>
+    <!-- Cover Password (skrypt demo motywu wymagał particlesJS — usunięty,
+         bo tło auth mamy własne, logistyczne, nie potrzebujemy particle animation) -->
 
     <!-- Show Password JS -->
     <?= $this->Html->script($this->Url->assetUrl('assets/js/show-password.js'), ['block' => 'bottom']) ?>
