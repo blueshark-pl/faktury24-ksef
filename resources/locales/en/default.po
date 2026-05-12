@@ -1162,3 +1162,161 @@ msgstr "Save"
 
 msgid "Zapisywanie..."
 msgstr "Saving..."
+
+# ── Reset hasła (request_reset_password.php) ────────────────────────────────
+msgid "Reset hasła"
+msgstr "Password reset"
+
+msgid "Zresetuj hasło"
+msgstr "Reset your password"
+
+msgid "Podaj adres e-mail, aby otrzymać link do ustawienia nowego hasła."
+msgstr "Enter your e-mail to receive a link to set a new password."
+
+msgid "Wyślij"
+msgstr "Send"
+
+msgid "Wysyłanie..."
+msgstr "Sending..."
+
+msgid "Pamiętasz hasło?"
+msgstr "Remember your password?"
+
+msgid "Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość."
+msgstr "If you didn't request a password reset, ignore this message."
+
+# ── Logowanie linkiem (request_login_link.php) ──────────────────────────────
+msgid "Logowanie linkiem"
+msgstr "Sign in with a link"
+
+msgid "Podaj adres e-mail, a wyślemy jednorazowy link do logowania."
+msgstr "Enter your e-mail and we'll send you a one-time sign-in link."
+
+msgid "Wyślij link"
+msgstr "Send link"
+
+msgid "Wróć do"
+msgstr "Back to"
+
+msgid "logowania"
+msgstr "sign in"
+
+# ── Weryfikacja 2FA (verify.php) ────────────────────────────────────────────
+msgid "Weryfikacja konta"
+msgstr "Account verification"
+
+msgid "Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej."
+msgstr "Enter the 6-digit code from your authenticator app."
+
+msgid "Korzystamy z aplikacji Google Authenticator (2FA)."
+msgstr "We use Google Authenticator (2FA)."
+
+msgid "Pobierz aplikację na telefon:"
+msgstr "Get the app for your phone:"
+
+msgid "Android (Google Play)"
+msgstr "Android (Google Play)"
+
+msgid "iOS (App Store)"
+msgstr "iOS (App Store)"
+
+msgid "Kod QR do aplikacji uwierzytelniającej"
+msgstr "QR code for the authenticator app"
+
+msgid "Zeskanuj kod QR w aplikacji uwierzytelniającej, a następnie wpisz kod poniżej."
+msgstr "Scan the QR code in your authenticator app, then enter the code below."
+
+msgid "Kod weryfikacyjny"
+msgstr "Verification code"
+
+msgid "6-cyfrowy kod weryfikacyjny"
+msgstr "6-digit verification code"
+
+msgid "Cyfra {0}"
+msgstr "Digit {0}"
+
+msgid "Wskazówka: możesz wkleić cały 6-cyfrowy kod — podzielimy go automatycznie."
+msgstr "Tip: you can paste the entire 6-digit code — we'll split it automatically."
+
+msgid "Zweryfikuj"
+msgstr "Verify"
+
+msgid "Weryfikacja..."
+msgstr "Verifying..."
+
+msgid "Nie udostępniaj kodu weryfikacyjnego nikomu!"
+msgstr "Don't share the verification code with anyone!"
+
+# ── Rejestracja (register.php) ──────────────────────────────────────────────
+msgid "Rejestracja"
+msgstr "Sign up"
+
+msgid "Załóż konto"
+msgstr "Create an account"
+
+msgid "Wpisz dane i ustaw hasło, aby dokończyć rejestrację."
+msgstr "Enter your details and set a password to complete the registration."
+
+msgid "NIP firmy"
+msgstr "Company Tax ID"
+
+msgid "np. 6571234567"
+msgstr "e.g. 6571234567"
+
+msgid "Pobierz z GUS"
+msgstr "Fetch from registry"
+
+msgid "Nazwa firmy / imię i nazwisko"
+msgstr "Company name / full name"
+
+msgid "np. ACME Sp. z o.o."
+msgstr "e.g. ACME Ltd."
+
+msgid "Ulica i numer"
+msgstr "Street and number"
+
+msgid "np. Lipowa 12/3"
+msgstr "e.g. Lime St 12/3"
+
+msgid "Nr lokalu"
+msgstr "Apt. no."
+
+msgid "np. 3"
+msgstr "e.g. 3"
+
+msgid "Kod pocztowy"
+msgstr "Postal code"
+
+msgid "00-000"
+msgstr "00-000"
+
+msgid "Miasto"
+msgstr "City"
+
+msgid "Kraj"
+msgstr "Country"
+
+msgid "Ustaw hasło"
+msgstr "Set a password"
+
+msgid "Powtórz hasło"
+msgstr "Repeat password"
+
+msgid "Regulamin"
+msgstr "Terms of Service"
+
+msgid "Politykę prywatności"
+msgstr "Privacy Policy"
+
+msgid "Akceptuję {0} oraz {1}."
+msgstr "I accept the {0} and {1}."
+
+msgid "Tworzenie konta..."
+msgstr "Creating account..."
+
+msgid "Masz już konto?"
+msgstr "Already have an account?"
+
+# ── Zmiana hasła (auth flow / change_password.php) ──────────────────────────
+msgid "Wpisz nowe hasło dla swojego konta."
+msgstr "Enter a new password for your account."
