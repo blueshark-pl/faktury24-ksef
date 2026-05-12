@@ -15,6 +15,13 @@ if (!$isModal) {
     $this->assign('title', 'Zlecenie ' . h($order->symbol));
 }
 
+// Czy zalogowany user to admin — odblokowuje "tryb force": cofanie statusów,
+// odznaczanie POL/POD/FK/FS, edycja actual_* niezależnie od auto-eskalacji.
+$_identityRoles = $this->request->getAttribute('identity');
+$_isAdminUser   = $_identityRoles
+    && ((bool)($_identityRoles->get('is_admin') ?? false)
+        || strtolower((string)($_identityRoles->get('role') ?? '')) === 'admin');
+
 $fdate     = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : null;
 $fdatetime = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:i') : substr((string)$v, 0, 16)) : null;
 $fnum      = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
@@ -362,6 +369,24 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
             <?php endif; ?>
             <?php endforeach; ?>
         </div>
+
+        <?php if ($_isAdminUser): ?>
+        <!-- Tryb admin: force-update (cofnij status, odznacz POL/POD/FK/FS bez auto-eskalacji) -->
+        <div class="d-flex justify-content-center mb-2">
+            <label class="check-pill <?= 'unchecked' ?>" id="forceModeLabel"
+                   style="--pill-color:#dc2626; cursor:pointer"
+                   title="Tylko admin: pozwala cofnąć status oraz odznaczyć POL/POD/FK/FS bez auto-eskalacji">
+                <input type="checkbox" class="d-none" id="force-mode-toggle">
+                <i class="ri-shield-flash-line"></i>
+                <span class="d-flex flex-column gap-0" style="line-height:1.2">
+                    <span><strong>Tryb admin — wsteczne zmiany</strong></span>
+                    <span class="opacity-50" style="font-weight:400;font-size:.65rem">
+                        Wyłączony — auto-eskalacja statusu aktywna
+                    </span>
+                </span>
+            </label>
+        </div>
+        <?php endif; ?>
 
         <!-- Rzeczywisty załadunek / rozładunek (datetime, edytowalne) -->
         <?php
@@ -1341,7 +1366,28 @@ document.addEventListener('DOMContentLoaded', function() {
     var csrfToken    = '<?= h($csrfToken) ?>';
     var nlLabels     = <?= json_encode(array_map(fn($s)=>$s['label'],$nlStatusMap)) ?>;
 
+    // ── Tryb admin force ──
+    var forceToggle = document.getElementById('force-mode-toggle');
+    var forceLabel  = document.getElementById('forceModeLabel');
+    function isForce() { return !!(forceToggle && forceToggle.checked); }
+    if (forceToggle) {
+        forceToggle.addEventListener('change', function () {
+            var on = forceToggle.checked;
+            forceLabel.classList.toggle('checked', on);
+            forceLabel.classList.toggle('unchecked', !on);
+            var sub = forceLabel.querySelector('.opacity-50');
+            if (sub) sub.textContent = on
+                ? 'WŁ — możesz cofnąć status i odznaczyć POL/POD/FK/FS'
+                : 'Wyłączony — auto-eskalacja statusu aktywna';
+        });
+    }
+
     function post(url, payload) {
+        // Dla updateUrl + włączonego trybu force dorzucamy force=1 (server ignoruje
+        // dla nie-adminów). NIE dorzucamy do innych endpointów (assignFk itp.).
+        if (url === updateUrl && isForce()) {
+            payload = Object.assign({}, payload, { force: 1 });
+        }
         return fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },

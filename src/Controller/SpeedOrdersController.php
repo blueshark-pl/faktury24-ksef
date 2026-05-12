@@ -918,7 +918,20 @@ class SpeedOrdersController extends AppController
         }
 
         // Automatyczne przejścia statusu + is_complete
-        $this->applyAutoNlStatus($order);
+        // Admin może wymusić cofnięcie statusu/dat (parametr force=1), wtedy
+        // pomijamy applyAutoNlStatus żeby nie podbiło z powrotem.
+        $isAdmin = (bool)($identity?->get('is_admin') ?? false)
+                || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
+        $forceAdmin = $isAdmin && (bool)$this->request->getData('force');
+        if (!$forceAdmin) {
+            $this->applyAutoNlStatus($order);
+        } else {
+            // Przy force i tak liczymy is_complete (read-only field)
+            $order->set('is_complete',
+                !empty($order->pol_at) && !empty($order->pod_at) &&
+                !empty($order->fk_at)  && !empty($order->fs_at)
+            );
+        }
 
         if ($SpeedOrders->save($order)) {
             // Zapisz logi
