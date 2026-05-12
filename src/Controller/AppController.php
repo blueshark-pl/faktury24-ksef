@@ -240,7 +240,15 @@ class AppController extends Controller
         // Pracownicy nie korzystają z tłumaczeń (interfejs hardcoded PL),
         // więc to jest no-op dla ich widoków.
         $session = $this->request->getSession();
-        $lang    = $session->read('Config.locale');
+
+        // Jeśli URL zawiera ?lang=pl|en (np. po kliknięciu w link z e-maila reset hasła)
+        // → nadpisuje sesyjne ustawienie. Pozwala wejść z mailem w EN-flow do PL-konta itp.
+        $queryLang = (string)$this->request->getQuery('lang', '');
+        if (in_array($queryLang, ['pl', 'en'], true)) {
+            $session->write('Config.locale', $queryLang);
+        }
+
+        $lang = $session->read('Config.locale');
         if (!in_array($lang, ['pl', 'en'], true)) {
             $lang = 'pl';
         }

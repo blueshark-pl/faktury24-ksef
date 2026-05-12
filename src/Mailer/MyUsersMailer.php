@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Mailer;
 
 use Cake\Datasource\EntityInterface;
+use Cake\I18n\I18n;
 use Cake\Mailer\Message;
 use CakeDC\Users\Mailer\UsersMailer;
 
@@ -19,6 +20,7 @@ class MyUsersMailer extends UsersMailer
             : __('Potwierdź rejestrację');
 
         $this->setSubject($subject);
+        $this->appendLocaleToActivationUrl();
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_validation');
@@ -34,6 +36,7 @@ class MyUsersMailer extends UsersMailer
             : __('Ustaw nowe hasło');
 
         $this->setSubject($subject);
+        $this->appendLocaleToActivationUrl();
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_reset_password');
@@ -49,6 +52,7 @@ class MyUsersMailer extends UsersMailer
             : __('Potwierdź logowanie kontem społecznościowym');
 
         $this->setSubject($subject);
+        $this->appendLocaleToActivationUrl();
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_social_account_validation');
@@ -65,8 +69,43 @@ class MyUsersMailer extends UsersMailer
 
         $this->setSubject($subject);
         $this->setEmailFormat(Message::MESSAGE_BOTH);
+        $this->appendLocaleToLink('loginLink');
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_onetime_token');
+    }
+
+    /**
+     * Doklej ?lang=pl|en do linku aktywacyjnego — kliknięcie z e-maila
+     * automatycznie ustawi locale, którego user używał w momencie wysyłki.
+     */
+    private function appendLocaleToActivationUrl(): void
+    {
+        $this->appendLocaleToLink('activationUrl');
+    }
+
+    /**
+     * Doklej ?lang=pl|en do dowolnej zmiennej widoku zawierającej URL.
+     */
+    private function appendLocaleToLink(string $varName): void
+    {
+        $vars = $this->viewBuilder()->getVars();
+        $link = (string)($vars[$varName] ?? '');
+        if ($link === '') {
+            return;
+        }
+
+        $locale = (string)I18n::getLocale();
+        $lang   = str_starts_with($locale, 'en') ? 'en' : 'pl';
+
+        // Bez nadpisywania jeśli już jest lang= w query
+        if (preg_match('/[?&]lang=/', $link)) {
+            return;
+        }
+
+        $separator = str_contains($link, '?') ? '&' : '?';
+        $newLink   = $link . $separator . 'lang=' . $lang;
+
+        $this->setViewVars([$varName => $newLink]);
     }
 }
