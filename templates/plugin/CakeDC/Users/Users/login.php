@@ -213,8 +213,10 @@ $this->Html->scriptBlock(<<<'JS'
       sp.style.marginLeft = '0.5rem';
       btn.appendChild(sp);
     } else {
-      const label = btn.dataset.originalText || 'Zaloguj się';
-      btn.textContent = label;
+      // Tylko jeśli wcześniej zapisaliśmy oryginalny tekst — nie nadpisuj tym co PHP wyrenderował.
+      if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText;
+      }
       toggle();
     }
   }

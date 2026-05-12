@@ -177,8 +177,9 @@ $this->Html->scriptBlock(<<<'JS'
       submitBtn.appendChild(sp);
     } else {
       // przywróć stan przycisku wg aktualnej walidacji
-      const label = submitBtn.dataset.originalText || 'Verify';
-      submitBtn.textContent = label;
+      if (submitBtn.dataset.originalText) {
+        submitBtn.textContent = submitBtn.dataset.originalText;
+      }
       toggleSubmitState();
     }
   }

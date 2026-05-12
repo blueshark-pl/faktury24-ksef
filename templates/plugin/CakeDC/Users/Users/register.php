@@ -390,8 +390,9 @@ $this->Html->scriptBlock(<<<JS
       sp.style.marginLeft = '0.5rem';
       btn.appendChild(sp);
     } else {
-      const label = btn.dataset.originalText || 'Utwórz konto';
-      btn.textContent = label;
+      if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText;
+      }
       toggle();
     }
   }

@@ -125,8 +125,11 @@ $this->Html->scriptBlock(<<<'JS'
       sp.setAttribute('role','status'); sp.setAttribute('aria-hidden','true');
       sp.style.marginLeft = '0.5rem'; submitBtn.appendChild(sp);
     } else {
-      const label = submitBtn.dataset.originalText || 'Wyślij';
-      submitBtn.textContent = label; toggle();
+      // Nie nadpisuj tekstu wyrenderowanego przez PHP, jeśli nie zapisaliśmy oryginału.
+      if (submitBtn.dataset.originalText) {
+        submitBtn.textContent = submitBtn.dataset.originalText;
+      }
+      toggle();
     }
   }
 
