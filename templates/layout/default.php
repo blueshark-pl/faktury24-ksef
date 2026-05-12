@@ -238,7 +238,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       }
       /* Większy padding-bottom na main-sidebar żeby ostatnie pozycje nie były pod widgetem */
       .main-sidebar.has-caretaker-widget {
-          padding-block-end: 9rem !important;
+          padding-block-end: 13rem !important;
       }
       .sidebar-caretaker__label {
           font-size: 11px;
@@ -253,12 +253,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
       .sidebar-caretaker__card {
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
+          text-align: center;
+          gap: 8px;
+          padding: 14px 12px 12px;
           background: rgba(var(--primary-rgb), .06);
           border: 1px solid rgba(var(--primary-rgb), .15);
-          border-radius: 12px;
+          border-radius: 14px;
           transition: background .15s, border-color .15s;
       }
       .sidebar-caretaker__card:hover {
@@ -267,11 +269,11 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       }
       .sidebar-caretaker__avatar {
           flex-shrink: 0;
-          width: 40px; height: 40px;
+          width: 72px; height: 72px;
           border-radius: 50%;
           object-fit: cover;
-          border: 2px solid rgba(var(--primary-rgb), .22);
-          box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+          border: 3px solid rgba(var(--primary-rgb), .25);
+          box-shadow: 0 6px 18px rgba(15, 23, 42, .12);
       }
       .sidebar-caretaker__avatar--initials {
           display: inline-flex;
@@ -280,18 +282,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           background: rgb(var(--primary-rgb));
           color: #fff;
           font-weight: 700;
-          font-size: 16px;
+          font-size: 28px;
           border-color: transparent;
       }
       .sidebar-caretaker__info {
-          min-width: 0;     /* by ellipsis dla emaila działał */
-          flex: 1;
+          width: 100%;
+          min-width: 0;
       }
       .sidebar-caretaker__name {
-          font-weight: 600;
-          font-size: 13px;
-          color: rgba(var(--menu-prime-color), .92);
-          line-height: 1.2;
+          font-weight: 700;
+          font-size: 14px;
+          color: rgba(var(--menu-prime-color), .94);
+          line-height: 1.25;
           margin-bottom: 2px;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -312,7 +314,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           display: inline-flex;
           align-items: center;
           gap: 3px;
-          margin-top: 4px;
+          margin-top: 6px;
           padding: 2px 8px;
           font-size: 10.5px;
           font-weight: 600;
