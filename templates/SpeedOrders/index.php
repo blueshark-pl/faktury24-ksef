@@ -14,6 +14,8 @@
  * @var string $deliveryFrom
  * @var string $deliveryTo
  * @var array $cmrMap   speed_order_id => [{id, path, mime, name, label}]
+ * @var string $sortKey
+ * @var string $sortDir
  */
 
 $this->assign('title', 'Zlecenia Speed');
@@ -372,6 +374,36 @@ $quickFilters = [
 .place-block .place-country { font-size: .7rem; opacity: .7; }
 </style>
 
+<?php
+// Helper do generowania klikalnego nagłówka z sortowaniem
+$sortKey = $sortKey ?? 'date_doc';
+$sortDir = $sortDir ?? 'desc';
+$sortLink = function (string $field, string $label, string $extraClass = '') use ($sortKey, $sortDir) {
+    $newDir = ($sortKey === $field && $sortDir === 'asc') ? 'desc' : 'asc';
+    $params = array_filter([
+        'q'             => $this->request->getQuery('q'),
+        'status'        => $this->request->getQuery('status'),
+        'currency'      => $this->request->getQuery('currency'),
+        'amount_min'    => $this->request->getQuery('amount_min'),
+        'amount_max'    => $this->request->getQuery('amount_max'),
+        'delivery_from' => $this->request->getQuery('delivery_from'),
+        'delivery_to'   => $this->request->getQuery('delivery_to'),
+        'limit'         => $this->request->getQuery('limit'),
+        'sort'          => $field,
+        'direction'     => $newDir,
+    ], fn($v) => $v !== null && $v !== '');
+    $url = $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'index', '?' => $params]);
+
+    $arrow = '';
+    if ($sortKey === $field) {
+        $arrow = $sortDir === 'asc' ? ' <i class="ri-arrow-up-s-fill"></i>' : ' <i class="ri-arrow-down-s-fill"></i>';
+    } else {
+        $arrow = ' <i class="ri-arrow-up-down-line text-muted opacity-50" style="font-size:.85em"></i>';
+    }
+    $cls = $sortKey === $field ? 'fw-bold text-primary' : 'text-dark';
+    return '<th class="' . $extraClass . '"><a href="' . h($url) . '" class="text-decoration-none ' . $cls . '">' . h($label) . $arrow . '</a></th>';
+};
+?>
 <div class="table-responsive">
 <table class="table table-hover table-sm align-middle mb-0 orders-table" id="orders-table">
     <thead class="table-light">
@@ -380,14 +412,14 @@ $quickFilters = [
                 <input type="checkbox" class="form-check-input" id="chk-all"
                     title="Zaznacz wszystko (każda grupa zleceniodawca+data rozładunku = osobna faktura)">
             </th>
-            <th>Symbol / Data dok.</th>
-            <th>Zleceniodawca</th>
-            <th>Załadunek</th>
-            <th>Rozładunek</th>
-            <th>Kierowca / Przewoźnik</th>
-            <th class="text-end">Netto</th>
-            <th>Wal.</th>
-            <th>Status</th>
+            <?= $sortLink('date_doc',         'Symbol / Data dok.') ?>
+            <?= $sortLink('buyer_name',       'Zleceniodawca') ?>
+            <?= $sortLink('date_deadline',    'Załadunek') ?>
+            <?= $sortLink('date_delivery',    'Rozładunek') ?>
+            <?= $sortLink('carrier',          'Kierowca / Przewoźnik') ?>
+            <?= $sortLink('netto',            'Netto', 'text-end') ?>
+            <?= $sortLink('currency',         'Wal.') ?>
+            <?= $sortLink('nordlogis_status', 'Status') ?>
             <th></th>
         </tr>
     </thead>
@@ -652,6 +684,8 @@ $quickFilters = [
             $dateTo !== '' ? ['date_to' => $dateTo] : [],
             $deliveryFrom !== '' ? ['delivery_from' => $deliveryFrom] : [],
             $deliveryTo !== '' ? ['delivery_to' => $deliveryTo] : [],
+            $sortKey !== 'date_doc' ? ['sort' => $sortKey] : [],
+            $sortDir !== 'desc'     ? ['direction' => $sortDir] : [],
             ['page' => $p, 'limit' => $limit]
         )]) ?>"><?= $p ?></a>
     </li>

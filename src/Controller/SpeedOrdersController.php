@@ -37,8 +37,32 @@ class SpeedOrdersController extends AppController
         }
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
-        $query = $SpeedOrders->find()
-            ->orderByDesc('SpeedOrders.date_doc');
+
+        // Sortowanie kolumn — whitelist + walidacja kierunku
+        $sortable = [
+            'symbol'           => 'SpeedOrders.symbol',
+            'date_doc'         => 'SpeedOrders.date_doc',
+            'buyer_name'       => 'SpeedOrders.buyer_name',
+            'date_deadline'    => 'SpeedOrders.date_deadline',
+            'date_delivery'    => 'SpeedOrders.date_delivery',
+            'carrier'          => 'SpeedOrders.carrier',
+            'driver'           => 'SpeedOrders.driver',
+            'netto'            => 'SpeedOrders.netto',
+            'currency'         => 'SpeedOrders.currency',
+            'nordlogis_status' => 'SpeedOrders.nordlogis_status',
+        ];
+        $sortKey  = (string)$this->request->getQuery('sort', 'date_doc');
+        $sortDir  = strtolower((string)$this->request->getQuery('direction', 'desc'));
+        if (!isset($sortable[$sortKey]))         $sortKey = 'date_doc';
+        if (!in_array($sortDir, ['asc','desc'])) $sortDir = 'desc';
+        $sortCol = $sortable[$sortKey];
+
+        $query = $SpeedOrders->find();
+        if ($sortDir === 'asc') {
+            $query->orderByAsc($sortCol);
+        } else {
+            $query->orderByDesc($sortCol);
+        }
 
         if ($search !== '') {
             $like = '%' . $search . '%';
@@ -125,7 +149,7 @@ class SpeedOrdersController extends AppController
             $cmrMap = [];
         }
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'sortKey', 'sortDir'));
     }
 
     // -------------------------------------------------------------------------
