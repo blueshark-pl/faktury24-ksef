@@ -393,6 +393,18 @@ class AppController extends Controller
         $this->set('rentalEnabled', false);
         $this->set('draftInvoicesCount', 0);
 
+        // Onboarding firmy dotyczy TYLKO ról które samodzielnie zakładają konto
+        // (user — standardowy spedytor rejestrujący się z kreatora). Pozostałe role
+        // pracownicze (asystent_spedytora, mlodszy_spedytor, spedycja_manager,
+        // sales_manager) są zakładane przez admina i nie potrzebują własnej firmy —
+        // admin może (ale nie musi) przypisać im company_id w /admin/uzytkownicy.
+        // Bez tego wyjątku robi się ERR_TOO_MANY_REDIRECTS bo nowe role nie mają
+        // permission do Companies::onboarding → middleware odsyła z powrotem.
+        $employeeRolesSkippingOnboarding = ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'];
+        if (in_array($role, $employeeRolesSkippingOnboarding, true)) {
+            return;
+        }
+
         // whitelist akcji (żeby nie robić pętli)
         $allowed = [
             'Companies' => ['onboarding', 'saveOnboarding'],
