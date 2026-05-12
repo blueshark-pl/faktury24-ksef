@@ -28,8 +28,12 @@ class LocaleController extends Controller
     }
 
     /**
-     * GET /lang/{lang} — ustawia locale w sesji i przekierowuje na referer (lub /).
+     * GET /lang/{lang} — ustawia locale w sesji + cookie i przekierowuje na referer (lub /).
      * Akcja nazywa się `change`, bo `set` koliduje z Controller::set(name, value).
+     *
+     * Cookie `bookliio_lang` jest zapisywane na rok — przeżyje wylogowanie/zamknięcie
+     * przeglądarki. Sesja jest priorytetem w odczycie (zmienia się szybciej),
+     * cookie to fallback gdy sesja świeża po wylogowaniu.
      */
     public function change(string $lang): Response
     {
@@ -37,7 +41,7 @@ class LocaleController extends Controller
         $this->request->getSession()->write('Config.locale', $lang);
         I18n::setLocale($lang);
 
-        // Jeśli user jest zalogowany i ma profil klienta — zapisz na stałe
+        // Jeśli user jest zalogowany i ma profil klienta — zapisz na stałe (DB)
         $identity = $this->request->getAttribute('identity');
         if ($identity) {
             try {
@@ -52,6 +56,17 @@ class LocaleController extends Controller
         }
 
         $referer = $this->request->referer(true);
-        return $this->redirect($referer ?: '/');
+        $response = $this->redirect($referer ?: '/');
+
+        // Cookie: rok ważności, ścieżka '/', samesite=Lax
+        return $response->withCookie(
+            (new \Cake\Http\Cookie\Cookie('bookliio_lang'))
+                ->withValue($lang)
+                ->withPath('/')
+                ->withExpiry(new \DateTime('+1 year'))
+                ->withSecure((bool)$this->request->is('https'))
+                ->withHttpOnly(false)        // dostępne dla JS jeśli zechcemy
+                ->withSameSite('Lax')
+        );
     }
 }

@@ -236,24 +236,52 @@ class AppController extends Controller
     {
         parent::beforeFilter($event);
 
-        // Ustaw locale (PL/EN) z sesji — używane przez portal klienta (i18n).
-        // Pracownicy nie korzystają z tłumaczeń (interfejs hardcoded PL),
-        // więc to jest no-op dla ich widoków.
+        // Ustaw locale (PL/EN) — priorytet:
+        //   1) ?lang=pl|en w URL (np. link z e-maila — najwyższy)
+        //   2) Sesja Config.locale (zmiana w bieżącej wizycie)
+        //   3) Cookie bookliio_lang (przeżyje wylogowanie/zamknięcie przeglądarki)
+        //   4) Default 'pl'
         $session = $this->request->getSession();
 
-        // Jeśli URL zawiera ?lang=pl|en (np. po kliknięciu w link z e-maila reset hasła)
-        // → nadpisuje sesyjne ustawienie. Pozwala wejść z mailem w EN-flow do PL-konta itp.
-        $queryLang = (string)$this->request->getQuery('lang', '');
+        $queryLang  = (string)$this->request->getQuery('lang', '');
+        $cookieLang = (string)$this->request->getCookie('bookliio_lang', '');
+
+        $lang = null;
+        $persistCookie = false;
         if (in_array($queryLang, ['pl', 'en'], true)) {
-            $session->write('Config.locale', $queryLang);
+            $lang = $queryLang;
+            $session->write('Config.locale', $lang);
+            // Wejście z linku e-mailowego — utrwal cookie żeby przetrwało wylogowanie
+            if ($cookieLang !== $lang) {
+                $persistCookie = true;
+            }
+        } else {
+            $sessionLang = $session->read('Config.locale');
+            if (in_array($sessionLang, ['pl', 'en'], true)) {
+                $lang = $sessionLang;
+            } elseif (in_array($cookieLang, ['pl', 'en'], true)) {
+                $lang = $cookieLang;
+                $session->write('Config.locale', $lang);
+            }
         }
 
-        $lang = $session->read('Config.locale');
         if (!in_array($lang, ['pl', 'en'], true)) {
             $lang = 'pl';
         }
         \Cake\I18n\I18n::setLocale($lang);
         $this->set('currentLocale', $lang);
+
+        if ($persistCookie) {
+            $this->response = $this->response->withCookie(
+                (new \Cake\Http\Cookie\Cookie('bookliio_lang'))
+                    ->withValue($lang)
+                    ->withPath('/')
+                    ->withExpiry(new \DateTime('+1 year'))
+                    ->withSecure($this->request->is('https'))
+                    ->withHttpOnly(false)
+                    ->withSameSite('Lax')
+            );
+        }
 
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
