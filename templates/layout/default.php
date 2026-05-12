@@ -879,9 +879,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ) ?>
                                 </li>
                             <?php else: ?>
+                            <?php
+                                // Asystent spedytora widzi tylko Kontrahentów i Zlecenia.
+                                // Wszystkie inne sekcje (fakturowanie, finanse, księgowość itp.)
+                                // są dla niego ukryte.
+                                $_isAssistant = (($currentRole ?? '') === 'asystent_spedytora');
+                            ?>
                             <!-- Start::slide__category -->
-                            <li class="slide__category"><span class="category-name">Faktury24</span></li>
+                            <li class="slide__category"><span class="category-name"><?= $_isAssistant ? 'Booklio TMS' : 'Faktury24' ?></span></li>
                             <!-- End::slide__category -->
+                            <?php if (!$_isAssistant): ?>
                             <!-- Fakturowanie -->
                             <li class="<?= $liClass(['invoices', 'nbp', 'legacyinvoices']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -980,6 +987,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                             </ul>
                             </li>
+                            <?php endif; /* !$_isAssistant — koniec Fakturowanie */ ?>
 
                             <!-- Kontrahenci -->
                             <li class="<?= $liClass(['contractors']) ?>">
@@ -1017,6 +1025,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -1166,6 +1175,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+
+                            <?php endif; /* !$_isAssistant — koniec sekcji TMS/Pomoc */ ?>
 
                             <?php
                             // Sekcja administracyjna – widoczna tylko dla administratorów
