@@ -1145,53 +1145,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             <div class="main-content app-content">
                 <div class="container-fluid mt-2">
                                         <?php
-                                            $ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
-                                            $ksefStatusTop = $this->getRequest()->getSession()->read('Ksef.status');
-                                            $permLabel = 'wymagane';
-                                            $permClass = 'warning';
-                                            if (is_array($ksefStatusTop)) {
-                                                $activeTop = (bool)($ksefStatusTop['active'] ?? false);
-                                                $stateTop = (string)($ksefStatusTop['state'] ?? '');
-                                                if ($activeTop) {
-                                                    $permLabel = 'OK';
-                                                    $permClass = 'success';
-                                                } elseif ($stateTop === 'inactive') {
-                                                    $permLabel = 'brak';
-                                                    $permClass = 'danger';
-                                                }
-                                            }
+                                            // Pasek "Tryb KSeF" usunięty na życzenie — zostaje tylko
+                                            // notyfikacja o roboczych fakturach dla pracowników.
+                                            $draftInvoicesCount = (int)($draftInvoicesCount ?? 0);
                                         ?>
-                                        <?php if (($currentRole ?? '') !== 'client'): /* banner KSeF nie dotyczy klientów portalu */ ?>
-                                        <?php if ($ksefModeEnabled): ?>
-                                        <div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <span class="fw-semibold">Tryb KSeF:</span>
-                                                <span class="badge bg-success">WŁ.</span>
-                                                <span class="fw-semibold ms-2">Uprawnienia KSeF:</span>
-                                                <span id="ksef-perm-badge" class="badge bg-<?= h($permClass) ?>"><?= h($permLabel) ?></span>
-                                            </div>
-                                            <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
-                                        </div>
-                                        <?php $draftInvoicesCount = (int)($draftInvoicesCount ?? 0); ?>
-                                        <?php if ($draftInvoicesCount > 0): ?>
+                                        <?php if (($currentRole ?? '') !== 'client' && $draftInvoicesCount > 0): ?>
                                             <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
                                                 <div>
                                                     Masz <strong><?= $draftInvoicesCount ?></strong> roboczych faktur niewysłanych do KSeF.
                                                 </div>
                                                 <a class="btn btn-sm btn-outline-warning" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Invoices', 'action' => 'drafts']) ?>">Przejdź do roboczych</a>
                                             </div>
-                                        <?php endif; // draftInvoicesCount ?>
-                                        <?php else: ?>
-                                        <div class="alert alert-secondary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <span class="fw-semibold">Tryb KSeF:</span>
-                                                <span class="badge bg-danger">WYŁ.</span>
-                                                <span class="small text-muted ms-2">Faktury nie są wysyłane do KSeF. Aby włączyć, przejdź do ustawień firmy.</span>
-                                            </div>
-                                            <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
-                                        </div>
-                                        <?php endif; // ksefModeEnabled ?>
-                                        <?php endif; // !client ?>
+                                        <?php endif; ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
                                                 <div class="flex-grow-1">
