@@ -167,12 +167,21 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                             <?php endif; ?>
                         </td>
 
-                        <!-- Kontrahent -->
+                        <!-- Kontrahent: dla rozchodu (D) to odbiorca, dla wpływu (C) — nadawca -->
+                        <?php
+                            $isOutflow = (string)($tx->direction ?? '') === 'D';
+                            $partyRoleLabel = $isOutflow ? 'Odbiorca' : 'Nadawca';
+                            $missingLabel   = $isOutflow ? 'nieznany odbiorca' : 'nieznany nadawca';
+                        ?>
                         <td class="align-top pt-3" style="max-width:220px">
+                            <div class="text-muted small mb-1" style="font-size:.7em; text-transform:uppercase; letter-spacing:.4px">
+                                <i class="<?= $isOutflow ? 'ri-arrow-right-up-line text-danger' : 'ri-arrow-left-down-line text-success' ?>"></i>
+                                <?= h($partyRoleLabel) ?>
+                            </div>
                             <?php if ($tx->party_name): ?>
                                 <div class="fw-semibold lh-sm text-truncate" title="<?= h($tx->party_name) ?>"><?= h($tx->party_name) ?></div>
                             <?php else: ?>
-                                <span class="text-muted fst-italic small">nieznany nadawca</span>
+                                <span class="text-muted fst-italic small"><?= h($missingLabel) ?></span>
                             <?php endif; ?>
                             <?php if ($tx->party_account): ?>
                                 <div class="text-muted mt-1" style="font-size:.75em;font-family:monospace;letter-spacing:.02em;word-break:break-all"><?= h($tx->party_account) ?></div>

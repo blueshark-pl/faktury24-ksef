@@ -476,7 +476,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                   </div>
                                     <div class="w-100"></div>
                                     <div class="text-muted small">
-                                        Faktury24 mają uprawnienia.
+                                        Booklio TMS ma uprawnienia.
                                     </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
@@ -886,7 +886,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 $_isAssistant = (($currentRole ?? '') === 'asystent_spedytora');
                             ?>
                             <!-- Start::slide__category -->
-                            <li class="slide__category"><span class="category-name"><?= $_isAssistant ? 'Booklio TMS' : 'Faktury24' ?></span></li>
+                            <li class="slide__category"><span class="category-name">Booklio TMS</span></li>
                             <!-- End::slide__category -->
                             <?php if (!$_isAssistant): ?>
                             <!-- Fakturowanie -->
