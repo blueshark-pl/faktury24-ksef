@@ -1594,3 +1594,16 @@ msgstr "Sent"
 
 msgid "Usuń"
 msgstr "Delete"
+
+# ── Pole 'Firma' przy tworzeniu/edycji usera ────────────────────────────────
+msgid "Firma"
+msgstr "Company"
+
+msgid "— bez firmy (user przejdzie onboarding) —"
+msgstr "— no company (user will go through onboarding) —"
+
+msgid "Pracownicy są przypisywani do firmy z której będą wystawiać faktury. Możesz zostawić puste — wtedy user wybierze firmę w onboardingu."
+msgstr "Employees are assigned to the company they will issue invoices from. You can leave it empty — the user will pick a company during onboarding."
+
+msgid "Pracownicy są przypisywani do firmy z której będą wystawiać faktury."
+msgstr "Employees are assigned to the company they will issue invoices from."

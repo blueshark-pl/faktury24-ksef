@@ -65,6 +65,21 @@ $this->assign('title', __('Nowy użytkownik'));
                 </select>
             </div>
 
+            <!-- Firma — dla pracowników (admin/user/asystent/...) — ignorowane dla klienta -->
+            <div class="col-md-12 employee-fields">
+                <label class="form-label"><?= __('Firma') ?></label>
+                <select name="company_id" class="form-select">
+                    <option value=""><?= __('— bez firmy (user przejdzie onboarding) —') ?></option>
+                    <?php $selCompany = $this->request->getData('company_id'); ?>
+                    <?php foreach ($companiesList as $c): ?>
+                        <option value="<?= h($c->id) ?>" <?= $selCompany === $c->id ? 'selected' : '' ?>>
+                            <?= h($c->name) ?><?= $c->nip ? ' — NIP ' . h($c->nip) : '' ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-text"><?= __('Pracownicy są przypisywani do firmy z której będą wystawiać faktury. Możesz zostawić puste — wtedy user wybierze firmę w onboardingu.') ?></div>
+            </div>
+
             <!-- Pola klienta — pokazują się tylko gdy role=client -->
             <div class="col-12 client-fields" style="display:none">
                 <hr>
@@ -107,13 +122,13 @@ $this->assign('title', __('Nowy użytkownik'));
 <script>
 (function () {
     var sel = document.getElementById('role-select');
-    var clientFields = document.querySelectorAll('.client-fields');
+    var clientFields   = document.querySelectorAll('.client-fields');
+    var employeeFields = document.querySelectorAll('.employee-fields');
 
     function toggle() {
         var isClient = sel.value === 'client';
-        clientFields.forEach(function (el) {
-            el.style.display = isClient ? '' : 'none';
-        });
+        clientFields.forEach(function (el)   { el.style.display = isClient ? '' : 'none'; });
+        employeeFields.forEach(function (el) { el.style.display = isClient ? 'none' : ''; });
     }
     sel.addEventListener('change', toggle);
     toggle();

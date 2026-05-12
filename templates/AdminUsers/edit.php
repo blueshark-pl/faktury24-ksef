@@ -68,6 +68,20 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
                         </div>
                     </div>
 
+                    <!-- Firma — dla pracowników (admin/user/asystent/...) — ignorowane dla klienta -->
+                    <div class="col-md-12 employee-fields" style="display:<?= $user->role === 'client' ? 'none' : '' ?>">
+                        <label class="form-label"><?= __('Firma') ?></label>
+                        <select name="company_id" class="form-select">
+                            <option value=""><?= __('— bez firmy (user przejdzie onboarding) —') ?></option>
+                            <?php foreach ($companiesList as $c): ?>
+                                <option value="<?= h($c->id) ?>" <?= $user->company_id === $c->id ? 'selected' : '' ?>>
+                                    <?= h($c->name) ?><?= $c->nip ? ' — NIP ' . h($c->nip) : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text"><?= __('Pracownicy są przypisywani do firmy z której będą wystawiać faktury.') ?></div>
+                    </div>
+
                     <!-- Pola klienta -->
                     <div class="col-12 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
                         <hr>
@@ -239,10 +253,12 @@ $typeIcons = [
 <script>
 (function () {
     var sel = document.getElementById('role-select');
-    var clientFields = document.querySelectorAll('.client-fields');
+    var clientFields   = document.querySelectorAll('.client-fields');
+    var employeeFields = document.querySelectorAll('.employee-fields');
     function toggle() {
         var isClient = sel.value === 'client';
-        clientFields.forEach(function (el) { el.style.display = isClient ? '' : 'none'; });
+        clientFields.forEach(function (el)   { el.style.display = isClient ? '' : 'none'; });
+        employeeFields.forEach(function (el) { el.style.display = isClient ? 'none' : ''; });
     }
     sel.addEventListener('change', toggle);
 })();

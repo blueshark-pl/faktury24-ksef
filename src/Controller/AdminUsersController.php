@@ -138,12 +138,22 @@ class AdminUsersController extends AppController
                 try {
                     $conn->begin();
 
+                    // company_id: dla pracowników opcjonalne (mogą przejść onboarding sami),
+                    // dla klientów ignorowane (nie używają company_id naszej firmy)
+                    $companyId = trim((string)($data['company_id'] ?? ''));
+                    if ($isClient || $companyId === '') {
+                        $companyId = null;
+                    } elseif (!$this->fetchTable('Companies')->exists(['id' => $companyId])) {
+                        $companyId = null;
+                    }
+
                     $user = $Users->newEntity([
                         'username'        => $username,
                         'email'           => $email,
                         'password'        => $password,
                         'first_name'      => trim((string)($data['first_name'] ?? '')) ?: null,
                         'last_name'       => trim((string)($data['last_name']  ?? '')) ?: null,
+                        'company_id'      => $companyId,
                         'active'          => !empty($data['active']) ? 1 : 1,    // domyślnie aktywne
                         'activation_date' => \Cake\I18n\DateTime::now(),
                     ], ['validate' => false]);
@@ -187,7 +197,12 @@ class AdminUsersController extends AppController
             ->orderBy(['Roles.name' => 'ASC'])
             ->all();
 
-        $this->set(compact('user', 'profile', 'rolesList'));
+        $companiesList = $this->fetchTable('Companies')->find()
+            ->select(['id', 'name', 'nip'])
+            ->orderBy(['Companies.name' => 'ASC'])
+            ->all();
+
+        $this->set(compact('user', 'profile', 'rolesList', 'companiesList'));
         return null;
     }
 
@@ -238,9 +253,18 @@ class AdminUsersController extends AppController
                 try {
                     $conn->begin();
 
+                    // company_id: dla pracowników — bierzemy z formularza, dla klientów → null
+                    $companyId = trim((string)($data['company_id'] ?? ''));
+                    if ($isClient || $companyId === '') {
+                        $companyId = null;
+                    } elseif (!$this->fetchTable('Companies')->exists(['id' => $companyId])) {
+                        $companyId = null;
+                    }
+
                     $patch = [
                         'first_name' => trim((string)($data['first_name'] ?? '')) ?: null,
                         'last_name'  => trim((string)($data['last_name']  ?? '')) ?: null,
+                        'company_id' => $companyId,
                         'active'     => !empty($data['active']) ? 1 : 0,
                     ];
                     if ($newPassword !== '') {
@@ -311,7 +335,12 @@ class AdminUsersController extends AppController
             ->limit(20)
             ->all();
 
-        $this->set(compact('user', 'profile', 'rolesList', 'orderCount', 'emailLogs'));
+        $companiesList = $this->fetchTable('Companies')->find()
+            ->select(['id', 'name', 'nip'])
+            ->orderBy(['Companies.name' => 'ASC'])
+            ->all();
+
+        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'orderCount', 'emailLogs'));
         return null;
     }
 
