@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 namespace App\Model\Entity;
 
-use Cake\I18n\DateTime;
-use Cake\I18n\FrozenDate;
 use Cake\ORM\Entity;
 
 /**
@@ -47,16 +45,31 @@ class ClientProfile extends Entity
         if (empty($this->substitute_user_id)) {
             return false;
         }
-        $today = FrozenDate::now();
-        $from  = $this->substitute_from;
-        $to    = $this->substitute_to;
-        if ($from && $today->lt($from)) {
+        // Porównujemy daty jako stringi YYYY-MM-DD — ISO 8601 sortuje się
+        // leksykograficznie tak samo jak chronologicznie. Działa zarówno gdy
+        // ORM hydratował kolumnę do Date/ChronosDate, jak i gdy zwrócił string.
+        $today = date('Y-m-d');
+        $from  = $this->_dateToString($this->substitute_from);
+        $to    = $this->_dateToString($this->substitute_to);
+
+        if ($from !== null && $today < $from) {
             return false;
         }
-        if ($to && $today->gt($to)) {
+        if ($to !== null && $today > $to) {
             return false;
         }
         return true;
+    }
+
+    private function _dateToString($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        return substr((string)$value, 0, 10);
     }
 
     /**
