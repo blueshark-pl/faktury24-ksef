@@ -38,7 +38,14 @@ class AdminUsersController extends AppController
         $limit      = 50;
 
         $Users = $this->fetchTable('Users');
-        $query = $Users->find()->orderByDesc('Users.created');
+        $query = $Users->find()
+            ->select([
+                'Users.id', 'Users.email', 'Users.username',
+                'Users.first_name', 'Users.last_name',
+                'Users.role', 'Users.active', 'Users.avatar',
+                'Users.company_id', 'Users.created',
+            ])
+            ->orderByDesc('Users.created');
 
         if ($roleFilter !== '') {
             $query->where(['Users.role' => $roleFilter]);
