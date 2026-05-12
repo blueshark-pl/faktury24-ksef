@@ -41,7 +41,7 @@ $fmt = function ($t): string {
   <a href="#" role="button"
      data-bs-toggle="modal" data-bs-target="#<?= h($modalId) ?>"
      class="text-decoration-none <?= h($badgeClass) ?>">
-    Komunikaty MF<?= $hasAnyMessages ? ' (' . (int)count($messages) . ')' : '' ?>
+    <?= __('Komunikaty MF') ?><?= $hasAnyMessages ? ' (' . (int)count($messages) . ')' : '' ?>
   </a>
 </span>
 
@@ -50,17 +50,17 @@ $fmt = function ($t): string {
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
-          <h6 class="modal-title" id="<?= h($modalLabelId) ?>">Komunikaty MF – Latarnia KSeF</h6>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+          <h6 class="modal-title" id="<?= h($modalLabelId) ?>"><?= __('Komunikaty MF – Latarnia KSeF') ?></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= __('Zamknij') ?>"></button>
         </div>
         <div class="modal-body">
           <?php if (!$hasAnyMessages): ?>
-            <div class="text-muted">Brak komunikatów.</div>
+            <div class="text-muted"><?= __('Brak komunikatów.') ?></div>
           <?php else: ?>
 
             <?php if ($activeMessages !== []): ?>
               <div class="mb-3">
-                <div class="fw-semibold mb-2">Aktywne</div>
+                <div class="fw-semibold mb-2"><?= __('Aktywne') ?></div>
                 <div class="list-group">
                   <?php foreach ($activeMessages as $m): ?>
                     <?php
@@ -80,13 +80,13 @@ $fmt = function ($t): string {
                             <div class="fw-semibold"><?= h($title) ?></div>
                           <?php endif; ?>
                           <?php if ($range !== ''): ?>
-                            <div class="small text-muted mb-2">Okres: <?= h($range) ?></div>
+                            <div class="small text-muted mb-2"><?= __('Okres') ?>: <?= h($range) ?></div>
                           <?php endif; ?>
                           <?php if ($text !== ''): ?>
                             <div class="small" style="white-space: pre-wrap;"><?= h($text) ?></div>
                           <?php endif; ?>
                         </div>
-                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Aktywne</span>
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><?= __('Aktywne') ?></span>
                       </div>
                     </div>
                   <?php endforeach; ?>
@@ -96,7 +96,7 @@ $fmt = function ($t): string {
 
             <?php if ($upcomingMessages !== []): ?>
               <div class="mb-3">
-                <div class="fw-semibold mb-2">Nadchodzące</div>
+                <div class="fw-semibold mb-2"><?= __('Nadchodzące') ?></div>
                 <div class="list-group">
                   <?php foreach ($upcomingMessages as $m): ?>
                     <?php
@@ -116,13 +116,13 @@ $fmt = function ($t): string {
                             <div class="fw-semibold"><?= h($title) ?></div>
                           <?php endif; ?>
                           <?php if ($range !== ''): ?>
-                            <div class="small text-muted mb-2">Planowane: <?= h($range) ?></div>
+                            <div class="small text-muted mb-2"><?= __('Planowane') ?>: <?= h($range) ?></div>
                           <?php endif; ?>
                           <?php if ($text !== ''): ?>
                             <div class="small" style="white-space: pre-wrap;"><?= h($text) ?></div>
                           <?php endif; ?>
                         </div>
-                        <span class="badge bg-info-subtle text-info border border-info-subtle">Nadchodzące</span>
+                        <span class="badge bg-info-subtle text-info border border-info-subtle"><?= __('Nadchodzące') ?></span>
                       </div>
                     </div>
                   <?php endforeach; ?>
@@ -144,7 +144,7 @@ $fmt = function ($t): string {
             ?>
             <?php if ($other !== []): ?>
               <details>
-                <summary class="fw-semibold">Pozostałe (<?= (int)count($other) ?>)</summary>
+                <summary class="fw-semibold"><?= __('Pozostałe ({0})', (int)count($other)) ?></summary>
                 <div class="list-group mt-2">
                   <?php foreach ($other as $m): ?>
                     <?php
@@ -162,7 +162,7 @@ $fmt = function ($t): string {
                         <div class="fw-semibold"><?= h($title) ?></div>
                       <?php endif; ?>
                       <?php if ($range !== ''): ?>
-                        <div class="small text-muted mb-2">Okres: <?= h($range) ?></div>
+                        <div class="small text-muted mb-2"><?= __('Okres') ?>: <?= h($range) ?></div>
                       <?php endif; ?>
                       <?php if ($text !== ''): ?>
                         <div class="small" style="white-space: pre-wrap;"><?= h($text) ?></div>
@@ -176,8 +176,8 @@ $fmt = function ($t): string {
           <?php endif; ?>
         </div>
         <div class="modal-footer">
-          <a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="https://ksef.mf.gov.pl/">Strona KSeF (MF)</a>
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zamknij</button>
+          <a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="https://ksef.mf.gov.pl/"><?= __('Strona KSeF (MF)') ?></a>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
         </div>
       </div>
     </div>

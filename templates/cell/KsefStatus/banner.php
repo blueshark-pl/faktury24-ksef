@@ -38,7 +38,7 @@ if ($start instanceof \Cake\I18n\FrozenTime || $end instanceof \Cake\I18n\Frozen
 <div class="alert <?= h($alertClass) ?> d-flex align-items-start gap-3 mb-3" role="alert">
   <div class="flex-grow-1">
     <div class="fw-semibold mb-1">
-      <?= $isUpcoming ? 'Planowane zdarzenie KSeF (komunikat MF)' : 'Komunikat MF – KSeF' ?>
+      <?= $isUpcoming ? __('Planowane zdarzenie KSeF (komunikat MF)') : __('Komunikat MF – KSeF') ?>
     </div>
 
     <?php if ($title !== ''): ?>
@@ -47,7 +47,7 @@ if ($start instanceof \Cake\I18n\FrozenTime || $end instanceof \Cake\I18n\Frozen
 
     <?php if ($range !== ''): ?>
       <div class="small text-muted mb-2">
-        <?= $isUpcoming ? 'Planowane:' : 'Okres:' ?> <?= h($range) ?>
+        <?= $isUpcoming ? __('Planowane') : __('Okres') ?>: <?= h($range) ?>
       </div>
     <?php endif; ?>
 
@@ -58,7 +58,7 @@ if ($start instanceof \Cake\I18n\FrozenTime || $end instanceof \Cake\I18n\Frozen
 
   <div class="ms-auto">
     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#ksefMfMessagesModal">
-      Zobacz wszystkie
+      <?= __('Zobacz wszystkie') ?>
     </button>
   </div>
 </div>

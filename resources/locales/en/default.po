@@ -1320,3 +1320,53 @@ msgstr "Already have an account?"
 # ── Zmiana hasła (auth flow / change_password.php) ──────────────────────────
 msgid "Wpisz nowe hasło dla swojego konta."
 msgstr "Enter a new password for your account."
+
+# ── KSeF status (stopka + modal komunikatów MF) ─────────────────────────────
+msgid "Dostępny"
+msgstr "Available"
+
+msgid "Przerwa techniczna"
+msgstr "Maintenance"
+
+msgid "Awaria"
+msgstr "Outage"
+
+msgid "Niedostępny"
+msgstr "Unavailable"
+
+msgid "Komunikaty MF"
+msgstr "MF announcements"
+
+msgid "Komunikaty MF – Latarnia KSeF"
+msgstr "MF announcements – KSeF Lighthouse"
+
+msgid "Brak komunikatów."
+msgstr "No announcements."
+
+msgid "Nadchodzące"
+msgstr "Upcoming"
+
+msgid "Okres"
+msgstr "Period"
+
+msgid "Planowane"
+msgstr "Scheduled"
+
+msgid "Pozostałe ({0})"
+msgstr "Other ({0})"
+
+msgid "Strona KSeF (MF)"
+msgstr "KSeF website (MF)"
+
+msgid "Zamknij"
+msgstr "Close"
+
+# ── Baner KSeF (ekran loginu) ───────────────────────────────────────────────
+msgid "Planowane zdarzenie KSeF (komunikat MF)"
+msgstr "Scheduled KSeF event (MF announcement)"
+
+msgid "Komunikat MF – KSeF"
+msgstr "MF announcement – KSeF"
+
+msgid "Zobacz wszystkie"
+msgstr "See all"

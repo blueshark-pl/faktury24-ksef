@@ -167,11 +167,11 @@ final class KsefStatusCell extends Cell
     private function mapStatus(string $status): array
     {
         return match ($status) {
-            'AVAILABLE' => ['Dostępny', 'text-success'],
-            'MAINTENANCE' => ['Przerwa techniczna', 'text-warning'],
-            'FAILURE' => ['Awaria', 'text-danger'],
-            'TOTAL_FAILURE' => ['Niedostępny', 'text-danger'],
-            default => ['Brak danych', 'text-muted'],
+            'AVAILABLE'     => [__('Dostępny'),          'text-success'],
+            'MAINTENANCE'   => [__('Przerwa techniczna'),'text-warning'],
+            'FAILURE'       => [__('Awaria'),            'text-danger'],
+            'TOTAL_FAILURE' => [__('Niedostępny'),       'text-danger'],
+            default         => [__('Brak danych'),       'text-muted'],
         };
     }
 
