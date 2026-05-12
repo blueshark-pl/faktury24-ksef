@@ -109,6 +109,22 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
     </div>
 
     <div class="col-lg-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-transparent"><strong><?= __('Akcje e-mailowe') ?></strong></div>
+            <div class="card-body">
+                <button type="button" class="btn btn-outline-success w-100"
+                        data-bs-toggle="modal" data-bs-target="#welcomeEmailModal"
+                        data-user-id="<?= h($user->id) ?>"
+                        data-user-email="<?= h($user->email) ?>"
+                        data-user-role="<?= h($user->role) ?>">
+                    <i class="ri-mail-send-line me-1"></i><?= __('Wyślij e-mail powitalny') ?>
+                </button>
+                <div class="form-text mt-2 small">
+                    <?= __('Mail zawiera link do ustawienia hasła (ważny 7 dni). Treść dopasowuje się do roli.') ?>
+                </div>
+            </div>
+        </div>
+
         <div class="card shadow-sm">
             <div class="card-header bg-transparent"><strong><?= __('Informacje') ?></strong></div>
             <div class="card-body">
@@ -144,5 +160,70 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
         clientFields.forEach(function (el) { el.style.display = isClient ? '' : 'none'; });
     }
     sel.addEventListener('change', toggle);
+})();
+</script>
+
+<!-- Modal: Wyślij e-mail powitalny (PL/EN) -->
+<div class="modal fade" id="welcomeEmailModal" tabindex="-1" aria-labelledby="welcomeEmailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="welcomeEmailForm" method="post" action="">
+                <input type="hidden" name="_csrfToken" value="<?= h($this->request->getAttribute('csrfToken')) ?>">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="ri-mail-send-line me-1"></i><?= __('Wyślij e-mail powitalny') ?>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= __('Zamknij') ?>"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3"><?= __('Treść e-maila dopasuje się do roli użytkownika. Mail zawiera link do ustawienia nowego hasła (polityka bezpieczeństwa) ważny 7 dni.') ?></p>
+
+                    <dl class="row mb-3 small">
+                        <dt class="col-sm-3"><?= __('Odbiorca') ?></dt>
+                        <dd class="col-sm-9"><strong id="welcomeUserEmail">—</strong></dd>
+                        <dt class="col-sm-3"><?= __('Rola') ?></dt>
+                        <dd class="col-sm-9"><code id="welcomeUserRole">—</code></dd>
+                    </dl>
+
+                    <label class="form-label fw-semibold"><?= __('Język wiadomości') ?></label>
+                    <div class="d-flex gap-2">
+                        <label class="form-check form-check-inline border rounded p-2 px-3 flex-grow-1" style="cursor:pointer">
+                            <input type="radio" class="form-check-input me-2" name="lang" value="pl" checked>
+                            <img src="/assets/images/flags/poland_flag.jpg" alt="PL" style="width:20px;height:20px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle">
+                            <strong>Polski</strong>
+                        </label>
+                        <label class="form-check form-check-inline border rounded p-2 px-3 flex-grow-1" style="cursor:pointer">
+                            <input type="radio" class="form-check-input me-2" name="lang" value="en">
+                            <img src="/assets/images/flags/uk_flag.jpg" alt="EN" style="width:20px;height:20px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle">
+                            <strong>English</strong>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ri-send-plane-line me-1"></i><?= __('Wyślij e-mail') ?>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var modal = document.getElementById('welcomeEmailModal');
+    if (!modal) return;
+    modal.addEventListener('show.bs.modal', function (e) {
+        var btn = e.relatedTarget;
+        if (!btn) return;
+        var userId = btn.getAttribute('data-user-id');
+        var email  = btn.getAttribute('data-user-email');
+        var role   = btn.getAttribute('data-user-role');
+        modal.querySelector('#welcomeEmailForm').action = '/admin/uzytkownicy/powitanie/' + userId;
+        modal.querySelector('#welcomeUserEmail').textContent = email || '—';
+        modal.querySelector('#welcomeUserRole').textContent  = role  || '—';
+    });
 })();
 </script>

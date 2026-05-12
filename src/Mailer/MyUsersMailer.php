@@ -58,6 +58,51 @@ class MyUsersMailer extends UsersMailer
             ->setTemplate('users_social_account_validation');
     }
 
+    /**
+     * E-mail powitalny — wysyłany ręcznie z panelu admina po utworzeniu konta.
+     * Treść maila zależy od roli usera (role-specific bloki w szablonie).
+     * Locale jest już ustawione przez kontroler (I18n::setLocale($lang)) zanim ta
+     * metoda jest wywoływana — wszystkie __() w szablonie renderują się w tym języku.
+     *
+     * @param EntityInterface $user user z polami: email, first_name, role, token
+     * @param string $lang 'pl'|'en' — dla URL (?lang=...)
+     */
+    public function welcome(EntityInterface $user, string $lang = 'pl'): void
+    {
+        $lang = in_array($lang, ['pl', 'en'], true) ? $lang : 'pl';
+
+        $firstName = (string)($user->get('first_name') ?? '');
+        $role      = (string)($user->get('role') ?? 'user');
+
+        $subject = $firstName !== ''
+            ? __('{0}, witamy w Booklio TMS!', $firstName)
+            : __('Witamy w Booklio TMS!');
+
+        // Link do ustawienia hasła (token resetu) + ?lang=
+        $resetUrl = \CakeDC\Users\Utility\UsersUrl::actionUrl('resetPassword', [
+            '_full' => true,
+            $user->get('token'),
+        ]);
+        $separator = str_contains($resetUrl, '?') ? '&' : '?';
+        $resetUrl .= $separator . 'lang=' . $lang;
+
+        $this
+            ->setTo($user->get('email'))
+            ->setSubject($subject)
+            ->setEmailFormat(Message::MESSAGE_BOTH)
+            ->setViewVars([
+                'user'      => $user,
+                'firstName' => $firstName,
+                'role'      => $role,
+                'resetUrl'  => $resetUrl,
+                'lang'      => $lang,
+            ]);
+
+        $this->viewBuilder()
+            ->setLayout('users')
+            ->setTemplate('users_welcome');
+    }
+
     public function sendToken(EntityInterface $user, string $token): void
     {
         parent::sendToken($user, $token);

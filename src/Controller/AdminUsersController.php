@@ -5,6 +5,7 @@ namespace App\Controller;
 
 use Cake\Http\Exception\NotFoundException;
 use Cake\Http\Response;
+use Cake\Mailer\MailerAwareTrait;
 
 /**
  * Admin — zarządzanie wszystkimi użytkownikami (pracownicy + klienci portalu).
@@ -18,6 +19,8 @@ use Cake\Http\Response;
  */
 class AdminUsersController extends AppController
 {
+    use MailerAwareTrait;
+
     public function beforeFilter(\Cake\Event\EventInterface $event)
     {
         parent::beforeFilter($event);
@@ -303,6 +306,55 @@ class AdminUsersController extends AppController
 
         $this->set(compact('user', 'profile', 'rolesList', 'orderCount'));
         return null;
+    }
+
+    /**
+     * Wysłanie e-maila powitalnego do usera.
+     * POST /admin/uzytkownicy/powitanie/{id}  body: lang=pl|en
+     *
+     * Treść zależy od roli (admin/user/client/asystent_spedytora/mlodszy_spedytor/
+     * spedycja_manager/sales_manager) — wszystkie zawierają link do ustawienia
+     * hasła (token resetu) z polityką bezpieczeństwa.
+     */
+    public function sendWelcome(string $userId): Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $lang = (string)$this->request->getData('lang', 'pl');
+        $lang = in_array($lang, ['pl', 'en'], true) ? $lang : 'pl';
+
+        $Users = $this->fetchTable('Users');
+        $user  = $Users->find()->where(['Users.id' => $userId])->first();
+        if (!$user) {
+            throw new NotFoundException(__('Użytkownik nie istnieje.'));
+        }
+
+        try {
+            // Wygeneruj świeży token resetu hasła (7 dni ważności)
+            $tokenResult = $Users->resetToken($user->email, [
+                'expiration' => 86400 * 7,
+                'sendEmail'  => false,
+            ]);
+            if (!$tokenResult) {
+                throw new \RuntimeException(__('Nie udało się wygenerować tokenu.'));
+            }
+
+            // Tymczasowo przestaw locale na czas renderowania maila
+            $prevLocale = \Cake\I18n\I18n::getLocale();
+            \Cake\I18n\I18n::setLocale($lang);
+
+            $mailer = $this->getMailer('App.MyUsers');
+            $mailer->send('welcome', [$tokenResult, $lang]);
+
+            \Cake\I18n\I18n::setLocale($prevLocale);
+
+            $this->Flash->success(__('E-mail powitalny wysłany na {0} ({1}).', $user->email, strtoupper($lang)));
+        } catch (\Throwable $e) {
+            $this->Flash->error(__('Nie udało się wysłać e-maila: {0}', $e->getMessage()));
+        }
+
+        $referer = $this->request->referer(true);
+        return $this->redirect($referer ?: ['action' => 'edit', $userId]);
     }
 
     public function delete(string $userId): Response

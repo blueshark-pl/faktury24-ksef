@@ -192,6 +192,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->post('/admin/uzytkownicy/usun/{id}',      ['controller' => 'AdminUsers', 'action' => 'delete'])
             ->setPass(['id']);
+        $builder->post('/admin/uzytkownicy/powitanie/{id}', ['controller' => 'AdminUsers', 'action' => 'sendWelcome'])
+            ->setPass(['id']);
 
         // Admin — role i uprawnienia
         $builder->get('/admin/role',                  ['controller' => 'Roles', 'action' => 'index']);

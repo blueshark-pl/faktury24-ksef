@@ -1370,3 +1370,196 @@ msgstr "MF announcement – KSeF"
 
 msgid "Zobacz wszystkie"
 msgstr "See all"
+
+# ── E-mail powitalny + modal admin ──────────────────────────────────────────
+msgid "Wyślij e-mail powitalny"
+msgstr "Send welcome e-mail"
+
+msgid "Wyślij e-mail"
+msgstr "Send e-mail"
+
+msgid "Akcje e-mailowe"
+msgstr "E-mail actions"
+
+msgid "Mail zawiera link do ustawienia hasła (ważny 7 dni). Treść dopasowuje się do roli."
+msgstr "The e-mail contains a password setup link (valid 7 days). Content adapts to the role."
+
+msgid "Treść e-maila dopasuje się do roli użytkownika. Mail zawiera link do ustawienia nowego hasła (polityka bezpieczeństwa) ważny 7 dni."
+msgstr "The e-mail content adapts to the user's role. It contains a password setup link (security policy) valid for 7 days."
+
+msgid "Język wiadomości"
+msgstr "Message language"
+
+msgid "Odbiorca"
+msgstr "Recipient"
+
+msgid "E-mail powitalny wysłany na {0} ({1})."
+msgstr "Welcome e-mail sent to {0} ({1})."
+
+msgid "Nie udało się wysłać e-maila: {0}"
+msgstr "Failed to send e-mail: {0}"
+
+msgid "Nie udało się wygenerować tokenu."
+msgstr "Failed to generate token."
+
+# ── Treść e-maila powitalnego (users_welcome) ────────────────────────────────
+msgid "{0}, witamy w Booklio TMS!"
+msgstr "{0}, welcome to Booklio TMS!"
+
+msgid "Witamy w Booklio TMS!"
+msgstr "Welcome to Booklio TMS!"
+
+msgid "Witamy w {0}"
+msgstr "Welcome to {0}"
+
+msgid "Twoje konto w {0} zostało utworzone. Ustaw hasło aby się zalogować."
+msgstr "Your account in {0} has been created. Set your password to sign in."
+
+msgid "Administrator założył dla Ciebie konto w {0} — systemie zarządzania transportem."
+msgstr "An administrator created your account in {0} — a transport management system."
+
+msgid "Twoja rola w systemie"
+msgstr "Your role in the system"
+
+msgid "Co możesz robić"
+msgstr "What you can do"
+
+msgid "Polityka bezpieczeństwa"
+msgstr "Security policy"
+
+msgid "Przed pierwszym logowaniem musisz ustawić własne hasło. Hasło utworzone przez administratora jest tymczasowe i wygaśnie po ustanowieniu nowego."
+msgstr "Before your first sign-in you must set your own password. The password created by the administrator is temporary and will expire once you set a new one."
+
+msgid "Ustaw moje hasło"
+msgstr "Set my password"
+
+msgid "Dane logowania"
+msgstr "Sign-in details"
+
+msgid "Login (e-mail)"
+msgstr "Login (e-mail)"
+
+msgid "Link do ustawienia hasła wygaśnie po 7 dniach. Jeśli to nie Ty powinieneś otrzymać tę wiadomość, zignoruj ją lub poinformuj administratora."
+msgstr "The password setup link will expire in 7 days. If this message wasn't meant for you, ignore it or inform the administrator."
+
+msgid "Link do ustawienia hasła wygaśnie po 7 dniach."
+msgstr "The password setup link will expire in 7 days."
+
+msgid "Jeśli to nie Ty powinieneś otrzymać tę wiadomość, zignoruj ją lub poinformuj administratora."
+msgstr "If this message wasn't meant for you, ignore it or inform the administrator."
+
+msgid "Ustaw hasło klikając w link"
+msgstr "Set your password by clicking the link"
+
+# ── Etykiety i opisy ról w mailu powitalnym ─────────────────────────────────
+msgid "Pracownik (spedytor)"
+msgstr "Employee (dispatcher)"
+
+msgid "Klient portalu"
+msgstr "Portal client"
+
+msgid "Asystent spedytora"
+msgstr "Dispatcher assistant"
+
+msgid "Młodszy spedytor"
+msgstr "Junior dispatcher"
+
+msgid "Kierownik Spedycji"
+msgstr "Dispatch Manager"
+
+msgid "Kierownik Działu Handlowego"
+msgstr "Sales Manager"
+
+# Opisy ról
+msgid "Masz pełny dostęp do systemu — zarządzanie użytkownikami, rolami, uprawnieniami, kontami i wszystkimi modułami operacyjnymi."
+msgstr "You have full access to the system — managing users, roles, permissions, accounts and all operational modules."
+
+msgid "Zarządzanie użytkownikami i rolami"
+msgstr "Managing users and roles"
+
+msgid "Wszystkie moduły: faktury, zlecenia, kontrahenci, finanse, raporty"
+msgstr "All modules: invoices, orders, contractors, finance, reports"
+
+msgid "Konfiguracja systemu i integracji (KSeF, GUS, banki)"
+msgstr "System configuration and integrations (KSeF, business registry, banks)"
+
+msgid "Otrzymujesz pełen zakres operacyjny — zlecenia transportowe, kontrahenci, faktury, rozliczenia."
+msgstr "You get the full operational scope — transport orders, contractors, invoices, reconciliations."
+
+msgid "Tworzenie i edycja zleceń transportowych"
+msgstr "Creating and editing transport orders"
+
+msgid "Wystawianie faktur (VAT, walutowe, korekty)"
+msgstr "Issuing invoices (VAT, currency, corrections)"
+
+msgid "Zarządzanie kontrahentami i ich akceptacja"
+msgstr "Managing contractors and approving them"
+
+msgid "Rozliczenia, wyciągi bankowe, raporty"
+msgstr "Reconciliations, bank statements, reports"
+
+msgid "Dostajesz dostęp do portalu klienta — możesz na bieżąco śledzić swoje zlecenia transportowe i pobierać dokumenty."
+msgstr "You get access to the client portal — track your transport orders in real time and download documents."
+
+msgid "Podgląd zleceń transportowych powiązanych z Twoim NIP"
+msgstr "View transport orders linked to your Tax ID"
+
+msgid "Pobieranie dokumentów CMR i faktur PDF"
+msgstr "Downloading CMR documents and invoice PDFs"
+
+msgid "Filtrowanie po statusie, dacie, walucie"
+msgstr "Filtering by status, date, currency"
+
+msgid "Pomagasz w obsłudze zleceń transportowych — wprowadzasz kontrahentów (wymagana akceptacja kierownika) oraz prowadzisz dokumentację POL/POD."
+msgstr "You support transport order handling — adding contractors (requires manager approval) and maintaining POL/POD documentation."
+
+msgid "Dodawanie nowych kontrahentów (do akceptacji)"
+msgstr "Adding new contractors (for approval)"
+
+msgid "Wgrywanie dokumentów POL/POD"
+msgstr "Uploading POL/POD documents"
+
+msgid "Rejestrowanie statusów operacyjnych"
+msgstr "Recording operational statuses"
+
+msgid "Pełna obsługa zleceń — od tworzenia, przez przewoźników i koszty, po wynik finansowy."
+msgstr "Full order handling — from creation, through carriers and costs, to financial result."
+
+msgid "Tworzenie zleceń i wystawianie zleceń przewoźnikom"
+msgstr "Creating orders and issuing dispatch orders to carriers"
+
+msgid "Przypisywanie pojazdów i kierowców"
+msgstr "Assigning vehicles and drivers"
+
+msgid "Dodawanie kosztów i faktur kosztowych"
+msgstr "Adding costs and cost invoices"
+
+msgid "Podgląd marży i wyniku finansowego zlecenia"
+msgstr "Viewing margin and financial result of an order"
+
+msgid "Nadzorujesz dział spedycji — akceptujesz nowych kontrahentów i masz wgląd w pełną operacyjną i finansową stronę zleceń."
+msgstr "You oversee the dispatch department — approve new contractors and have full visibility into operational and financial aspects of orders."
+
+msgid "Akceptacja kontrahentów dodanych przez asystentów"
+msgstr "Approving contractors added by assistants"
+
+msgid "Pełen wgląd w operacyjną stronę zleceń"
+msgstr "Full visibility into the operational side of orders"
+
+msgid "Koszty, marże, wyniki finansowe"
+msgstr "Costs, margins, financial results"
+
+msgid "Raporty zarządcze"
+msgstr "Management reports"
+
+msgid "Akceptujesz nowych kontrahentów oraz masz dostęp do raportów zarządczych dla działu handlowego."
+msgstr "You approve new contractors and have access to management reports for the sales department."
+
+msgid "Akceptacja kontrahentów"
+msgstr "Contractor approval"
+
+msgid "Raporty zarządcze i wyniki sprzedaży"
+msgstr "Management reports and sales results"
+
+msgid "Podgląd zleceń transportowych"
+msgstr "Viewing transport orders"
