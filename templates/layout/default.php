@@ -1200,38 +1200,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                             </div>
                                         <?php endif; ?>
-                    <?php if (($currentRole ?? '') !== 'client'): /* banner weryfikacji nie dotyczy klientów portalu */ ?>
-                    <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm pe-5" role="alert" style="display:none!important">
-                        <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"><i class="ri-close-line"></i></button>
-                        <div class="d-flex align-items-start gap-2">
-                            <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
-                            <div>
-                                <strong>Prosimy o weryfikację danych!</strong><br>
-                                Sprawdź i uzupełnij: <strong>Rachunek bankowy</strong>, <strong>Serie numeracji</strong> oraz <strong>Dane firmy</strong>.
-                                Dołożyliśmy wszelkich starań, aby dane zostały zaimportowane poprawnie &mdash; jednak jeśli były niepełne lub nie spełniały wymogów systemu MF / KSeF, prosimy o ich ponowne wprowadzenie.
-                                <span class="d-flex gap-2 mt-2 flex-wrap">
-                                    <a class="btn btn-sm btn-outline-danger" href="/firma/edycja">Przejdź do ustawień firmy</a>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    <script>
-                    (function () {
-                        var key = 'verificationBannerDismissed';
-                        var el = document.getElementById('verification-banner');
-                        if (el && !localStorage.getItem(key)) {
-                            el.style.removeProperty('display');
-                        }
-                        var btn = document.getElementById('verification-banner-close');
-                        if (btn) {
-                            btn.addEventListener('click', function () {
-                                localStorage.setItem(key, '1');
-                                el.style.setProperty('display', 'none', 'important');
-                            });
-                        }
-                    })();
-                    </script>
                     <?= $this->Flash->render() ?>
                     <?= $this->fetch('content') ?>
                 </div>
