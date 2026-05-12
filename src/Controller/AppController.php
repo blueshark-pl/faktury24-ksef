@@ -459,7 +459,7 @@ class AppController extends Controller
             // Pobierz dane pracownika — disableHydration() bo CakeDC plugin
             // czasem gubi avatar w hydratowanej encji
             $row = $this->fetchTable('Users')->find()
-                ->select(['id', 'email', 'first_name', 'last_name', 'avatar'])
+                ->select(['id', 'email', 'first_name', 'last_name', 'phone', 'avatar'])
                 ->where(['id' => $caretakerId, 'active' => 1])
                 ->disableHydration()
                 ->first();
@@ -476,7 +476,7 @@ class AppController extends Controller
                 'name'          => $name,
                 'email'         => (string)$row['email'],
                 'avatar'        => !empty($row['avatar']) ? (string)$row['avatar'] : null,
-                'phone'         => null,
+                'phone'         => !empty($row['phone'])  ? (string)$row['phone']  : null,
                 'is_substitute' => (bool)$profile->is_substitute_active,
             ];
         } catch (\Throwable) {

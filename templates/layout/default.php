@@ -299,7 +299,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           text-overflow: ellipsis;
           white-space: nowrap;
       }
-      .sidebar-caretaker__email {
+      .sidebar-caretaker__contact {
           display: block;
           font-size: 11.5px;
           color: rgba(var(--menu-prime-color), .65);
@@ -307,8 +307,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          margin-top: 2px;
       }
-      .sidebar-caretaker__email:hover { color: rgb(var(--primary-rgb)); text-decoration: underline; }
+      .sidebar-caretaker__contact i { color: rgb(var(--primary-rgb)); opacity: .8; }
+      .sidebar-caretaker__contact:hover { color: rgb(var(--primary-rgb)); text-decoration: underline; }
 
       .sidebar-caretaker__badge {
           display: inline-flex;
@@ -1269,7 +1271,16 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             <?php endif; ?>
                             <div class="sidebar-caretaker__info">
                                 <div class="sidebar-caretaker__name" title="<?= h($_ct['name']) ?>"><?= h($_ct['name']) ?></div>
-                                <a href="<?= h($_mailto) ?>" class="sidebar-caretaker__email" title="<?= h($_ct['email']) ?>"><?= h($_ct['email']) ?></a>
+                                <a href="<?= h($_mailto) ?>" class="sidebar-caretaker__contact" title="<?= h($_ct['email']) ?>">
+                                    <i class="ri-mail-line me-1"></i><?= h($_ct['email']) ?>
+                                </a>
+                                <?php if (!empty($_ct['phone'])):
+                                    $_telLink = 'tel:' . preg_replace('/[^+\d]/', '', $_ct['phone']);
+                                ?>
+                                    <a href="<?= h($_telLink) ?>" class="sidebar-caretaker__contact" title="<?= h($_ct['phone']) ?>">
+                                        <i class="ri-phone-line me-1"></i><?= h($_ct['phone']) ?>
+                                    </a>
+                                <?php endif; ?>
                                 <?php if ($_ct['is_substitute']): ?>
                                     <span class="sidebar-caretaker__badge" title="<?= __('Aktualnie obsługuje Cię zastępca głównego opiekuna') ?>">
                                         <i class="ri-time-line"></i> <?= __('zastępstwo') ?>

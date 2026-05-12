@@ -48,6 +48,13 @@ $this->assign('title', __('Nowy użytkownik'));
             </div>
 
             <div class="col-md-6">
+                <label class="form-label"><?= __('Telefon') ?></label>
+                <input type="tel" name="phone" class="form-control" maxlength="32"
+                       value="<?= h($this->request->getData('phone')) ?>"
+                       placeholder="<?= __('np. +48 600 100 200') ?>">
+            </div>
+
+            <div class="col-md-6">
                 <label class="form-label"><?= __('Hasło') ?> <span class="text-danger">*</span></label>
                 <input type="password" name="password" class="form-control" required minlength="8" autocomplete="new-password">
                 <div class="form-text"><?= __('Min. 8 znaków.') ?></div>

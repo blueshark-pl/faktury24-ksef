@@ -1677,3 +1677,9 @@ msgstr "Your caretaker"
 
 msgid "Aktualnie obsługuje Cię zastępca głównego opiekuna"
 msgstr "You're currently being assisted by your caretaker's substitute"
+
+msgid "Telefon"
+msgstr "Phone"
+
+msgid "np. +48 600 100 200"
+msgstr "e.g. +48 600 100 200"

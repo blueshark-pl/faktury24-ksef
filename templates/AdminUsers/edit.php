@@ -57,6 +57,13 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
                     </div>
 
                     <div class="col-md-6">
+                        <label class="form-label"><?= __('Telefon') ?></label>
+                        <input type="tel" name="phone" class="form-control" maxlength="32"
+                               value="<?= h($user->phone) ?>"
+                               placeholder="<?= __('np. +48 600 100 200') ?>">
+                    </div>
+
+                    <div class="col-md-6">
                         <label class="form-label"><?= __('Nowe hasło') ?> <small class="text-muted">(<?= __('zostaw puste żeby nie zmieniać') ?>)</small></label>
                         <input type="password" name="password" class="form-control" minlength="8" autocomplete="new-password">
                     </div>

@@ -268,6 +268,7 @@ class AdminUsersController extends AppController
                         'password'        => $password,
                         'first_name'      => trim((string)($data['first_name'] ?? '')) ?: null,
                         'last_name'       => trim((string)($data['last_name']  ?? '')) ?: null,
+                        'phone'           => trim((string)($data['phone'] ?? '')) ?: null,
                         'company_id'      => $companyId,
                         'active'          => !empty($data['active']) ? 1 : 1,    // domyślnie aktywne
                         'activation_date' => \Cake\I18n\DateTime::now(),
@@ -391,6 +392,7 @@ class AdminUsersController extends AppController
                     $patch = [
                         'first_name' => trim((string)($data['first_name'] ?? '')) ?: null,
                         'last_name'  => trim((string)($data['last_name']  ?? '')) ?: null,
+                        'phone'      => trim((string)($data['phone'] ?? '')) ?: null,
                         'company_id' => $companyId,
                         'active'     => !empty($data['active']) ? 1 : 0,
                     ];
