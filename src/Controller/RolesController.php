@@ -120,19 +120,18 @@ class RolesController extends AppController
                 }
             }
 
-            // Uprawnienia — checkboxy
+            // Uprawnienia — checkboxy. Używamy CakePHP-owej konwencji '_ids'
+            // dla many-to-many: marshaler oznacza asocjację jako dirty i przy
+            // save() (saveStrategy: 'replace' w RolesTable) podmienia pivot.
             $selected = (array)($data['permissions'] ?? []);
             $selected = array_values(array_unique(array_map('intval', $selected)));
-            $patch['permissions'] = $Permissions->find()
-                ->where(['Permissions.id IN' => $selected ?: [-1]])
-                ->all()
-                ->toArray();
+            $patch['permissions'] = ['_ids' => $selected];
 
             $role = $Roles->patchEntity($role, $patch, [
-                'associated' => ['Permissions' => ['onlyIds' => false]],
+                'associated' => ['Permissions'],
             ]);
 
-            if ($Roles->save($role)) {
+            if ($Roles->save($role, ['associated' => ['Permissions']])) {
                 $this->Flash->success(__('Zapisano rolę i jej uprawnienia.'));
                 return $this->redirect(['action' => 'edit', $role->id]);
             }
