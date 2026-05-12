@@ -11,6 +11,8 @@ return [
             'url' => function (\Psr\Http\Message\ServerRequestInterface $request, array $options) {
                 $identity = $request->getAttribute('identity');
                 $role     = strtolower((string)($identity?->get('role') ?? ''));
+
+                // Klient → /portal
                 if ($role === 'client') {
                     return \Cake\Routing\Router::url([
                         'plugin'     => false,
@@ -18,11 +20,32 @@ return [
                         'action'     => 'index',
                     ]);
                 }
-                // Domyślnie: redirect na stronę logowania (jak default plugina).
+
+                // Asystent spedytora → /zlecenia (jego domyślny landing,
+                // bo nie ma dostępu do / czyli Invoices::index — pętla redirect)
+                if ($role === 'asystent_spedytora') {
+                    return \Cake\Routing\Router::url([
+                        'plugin'     => false,
+                        'controller' => 'SpeedOrders',
+                        'action'     => 'index',
+                    ]);
+                }
+
+                // Niezalogowany → ekran logowania
+                if (!$identity) {
+                    return \Cake\Routing\Router::url([
+                        'plugin'     => 'CakeDC/Users',
+                        'controller' => 'Users',
+                        'action'     => 'login',
+                    ]);
+                }
+
+                // Zalogowany ale brak uprawnień → /zlecenia (bezpieczny default
+                // dla pracowniczych ról, nie powoduje pętli)
                 return \Cake\Routing\Router::url([
-                    'plugin'     => 'CakeDC/Users',
-                    'controller' => 'Users',
-                    'action'     => 'login',
+                    'plugin'     => false,
+                    'controller' => 'SpeedOrders',
+                    'action'     => 'index',
                 ]);
             },
         ],
