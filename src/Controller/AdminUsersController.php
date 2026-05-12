@@ -304,7 +304,14 @@ class AdminUsersController extends AppController
                 ->count();
         }
 
-        $this->set(compact('user', 'profile', 'rolesList', 'orderCount'));
+        // Historia wysyłki e-maili do tego usera (najnowsze 20)
+        $emailLogs = $this->fetchTable('UserEmailLogs')->find()
+            ->where(['user_id' => $userId])
+            ->orderByDesc('created')
+            ->limit(20)
+            ->all();
+
+        $this->set(compact('user', 'profile', 'rolesList', 'orderCount', 'emailLogs'));
         return null;
     }
 

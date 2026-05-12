@@ -76,7 +76,7 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                     <th><?= __('Firma / NIP') ?></th>
                     <th style="width:80px"  class="text-center"><?= __('Aktywny') ?></th>
                     <th style="width:120px"><?= __('Utworzono') ?></th>
-                    <th class="pe-3 text-end" style="width:140px"><?= __('Akcje') ?></th>
+                    <th class="pe-3 text-end text-nowrap" style="width:160px"><?= __('Akcje') ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -143,26 +143,29 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                         <td class="text-muted small">
                             <?= $fdate($u->created) ?>
                         </td>
-                        <td class="pe-3 text-end">
-                            <button type="button" class="btn btn-sm btn-outline-success me-1 btn-welcome"
-                                    data-bs-toggle="modal" data-bs-target="#welcomeEmailModal"
-                                    data-user-id="<?= h($u->id) ?>"
-                                    data-user-email="<?= h($u->email) ?>"
-                                    data-user-role="<?= h($u->role) ?>"
-                                    title="<?= __('Wyślij e-mail powitalny') ?>">
-                                <i class="ri-mail-send-line"></i>
-                            </button>
-                            <a href="<?= $this->Url->build(['action' => 'edit', $u->id]) ?>"
-                               class="btn btn-sm btn-outline-primary me-1" title="<?= __('Edytuj') ?>">
-                                <i class="ri-edit-line"></i>
-                            </a>
-                            <?= $this->Form->postLink('<i class="ri-delete-bin-line"></i>',
-                                ['action' => 'delete', $u->id],
-                                [
-                                    'class'   => 'btn btn-sm btn-outline-danger',
-                                    'escape'  => false,
-                                    'confirm' => __('Usunąć użytkownika {0}? Tej operacji nie można cofnąć.', $u->email),
-                                ]) ?>
+                        <td class="pe-3 text-end text-nowrap">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="<?= __('Akcje') ?>">
+                                <button type="button" class="btn btn-outline-success"
+                                        data-bs-toggle="modal" data-bs-target="#welcomeEmailModal"
+                                        data-user-id="<?= h($u->id) ?>"
+                                        data-user-email="<?= h($u->email) ?>"
+                                        data-user-role="<?= h($u->role) ?>"
+                                        title="<?= __('Wyślij e-mail powitalny') ?>">
+                                    <i class="ri-mail-send-line"></i>
+                                </button>
+                                <a href="<?= $this->Url->build(['action' => 'edit', $u->id]) ?>"
+                                   class="btn btn-outline-primary" title="<?= __('Edytuj') ?>">
+                                    <i class="ri-edit-line"></i>
+                                </a>
+                                <?= $this->Form->postLink('<i class="ri-delete-bin-line"></i>',
+                                    ['action' => 'delete', $u->id],
+                                    [
+                                        'class'   => 'btn btn-outline-danger',
+                                        'escape'  => false,
+                                        'confirm' => __('Usunąć użytkownika {0}? Tej operacji nie można cofnąć.', $u->email),
+                                        'title'   => __('Usuń'),
+                                    ]) ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>

@@ -5,12 +5,22 @@ namespace App\Mailer;
 
 use Cake\Datasource\EntityInterface;
 use Cake\I18n\I18n;
+use Cake\Log\Log;
 use Cake\Mailer\Message;
+use Cake\ORM\TableRegistry;
 use Cake\Routing\Router;
 use CakeDC\Users\Mailer\UsersMailer;
 
 class MyUsersMailer extends UsersMailer
 {
+    /**
+     * Metadane do zalogowania po udanej wysyłce — wypełniane przez konfiguracyjne
+     * metody (welcome/resetPassword/...). Odczytywane w send() po parent::send().
+     *
+     * @var array{user_id:?string, email:string, type:string, lang:string}|null
+     */
+    private ?array $pendingLog = null;
+
     public function validation(EntityInterface $user, array $options = []): void
     {
         parent::validation($user, $options);
@@ -25,6 +35,8 @@ class MyUsersMailer extends UsersMailer
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_validation');
+
+        $this->markForLog($user, 'validation');
     }
 
     public function resetPassword(EntityInterface $user, array $options = []): void
@@ -41,6 +53,8 @@ class MyUsersMailer extends UsersMailer
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_reset_password');
+
+        $this->markForLog($user, 'reset_password');
     }
 
     public function socialAccountValidation(EntityInterface $user, EntityInterface $socialAccount): void
@@ -57,6 +71,8 @@ class MyUsersMailer extends UsersMailer
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_social_account_validation');
+
+        $this->markForLog($user, 'social_validation');
     }
 
     /**
@@ -79,8 +95,6 @@ class MyUsersMailer extends UsersMailer
             ? __('{0}, witamy w Booklio TMS!', $firstName)
             : __('Witamy w Booklio TMS!');
 
-        // Link do ustawienia hasła (token resetu) — UsersUrl::actionUrl zwraca tablicę,
-        // konwertujemy przez Router::url. Dokładamy ?lang= aby kliknięcie ustawiło locale.
         $urlArr = \CakeDC\Users\Utility\UsersUrl::actionUrl('resetPassword', [
             '_full' => true,
             $user->get('token'),
@@ -103,6 +117,8 @@ class MyUsersMailer extends UsersMailer
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_welcome');
+
+        $this->markForLog($user, 'welcome', $lang);
     }
 
     public function sendToken(EntityInterface $user, string $token): void
@@ -120,6 +136,92 @@ class MyUsersMailer extends UsersMailer
         $this->viewBuilder()
             ->setLayout('users')
             ->setTemplate('users_onetime_token');
+
+        $this->markForLog($user, 'onetime_token');
+    }
+
+    /**
+     * Override Mailer::send() — po udanej wysyłce zapisuje rekord do user_email_logs.
+     * Wyjątek z parent::send() (transport down itp.) zapisujemy ze statusem 'failed'.
+     */
+    public function send(?string $action = null, array $args = [], array $headers = []): array
+    {
+        try {
+            $result = parent::send($action, $args, $headers);
+            $this->logEmail('sent');
+            return $result;
+        } catch (\Throwable $e) {
+            $this->logEmail('failed', $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Zaznacz że po wysyłce trzeba zalogować. Wywołane z konfig-metod (welcome/...).
+     */
+    private function markForLog(EntityInterface $user, string $type, ?string $lang = null): void
+    {
+        if ($lang === null) {
+            $locale = (string)I18n::getLocale();
+            $lang   = str_starts_with($locale, 'en') ? 'en' : 'pl';
+        }
+        $this->pendingLog = [
+            'user_id' => (string)($user->get('id') ?? ''),
+            'email'   => (string)$user->get('email'),
+            'type'    => $type,
+            'lang'    => $lang,
+        ];
+    }
+
+    /**
+     * Faktyczny zapis do DB. Nie rzuca wyjątkiem — log emaila nie może
+     * blokować flow wysyłki/aplikacji.
+     */
+    private function logEmail(string $status, ?string $errorMessage = null): void
+    {
+        if (!$this->pendingLog) {
+            return;
+        }
+
+        try {
+            $UserEmailLogs = TableRegistry::getTableLocator()->get('UserEmailLogs');
+
+            // Aktualnie zalogowany user (jeśli można pobrać z request scope) → sender
+            $senderId    = null;
+            $senderEmail = null;
+            try {
+                $request = \Cake\Routing\Router::getRequest();
+                if ($request) {
+                    $identity = $request->getAttribute('identity');
+                    if ($identity) {
+                        $senderId    = (string)$identity->getIdentifier();
+                        $senderEmail = (string)($identity->get('email') ?? '');
+                    }
+                }
+            } catch (\Throwable) { /* best-effort */ }
+
+            $log = $UserEmailLogs->newEmptyEntity();
+            $log = $UserEmailLogs->patchEntity($log, [
+                'user_id'         => $this->pendingLog['user_id'] ?: null,
+                'recipient_email' => $this->pendingLog['email'],
+                'email_type'      => $this->pendingLog['type'],
+                'lang'            => $this->pendingLog['lang'],
+                'subject'         => (string)$this->getSubject(),
+                'status'          => $status,
+                'error_message'   => $errorMessage,
+                'sender_user_id'  => $senderId,
+                'sender_email'    => $senderEmail,
+                'created'         => \Cake\I18n\DateTime::now(),
+            ]);
+
+            if (!$UserEmailLogs->save($log)) {
+                Log::warning('UserEmailLogs save failed: ' . json_encode($log->getErrors()));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('UserEmailLogs exception: ' . $e->getMessage());
+        } finally {
+            $this->pendingLog = null;
+        }
     }
 
     /**
@@ -145,7 +247,6 @@ class MyUsersMailer extends UsersMailer
         $locale = (string)I18n::getLocale();
         $lang   = str_starts_with($locale, 'en') ? 'en' : 'pl';
 
-        // Bez nadpisywania jeśli już jest lang= w query
         if (preg_match('/[?&]lang=/', $link)) {
             return;
         }

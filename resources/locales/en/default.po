@@ -1563,3 +1563,34 @@ msgstr "Management reports and sales results"
 
 msgid "Podgląd zleceń transportowych"
 msgstr "Viewing transport orders"
+
+# ── Historia wysyłki e-maili ────────────────────────────────────────────────
+msgid "Historia wysyłki e-maili"
+msgstr "Email send history"
+
+msgid "ostatnich"
+msgstr "recent"
+
+msgid "Temat"
+msgstr "Subject"
+
+msgid "Wysłał"
+msgstr "Sender"
+
+msgid "Brak wysyłek do tego użytkownika."
+msgstr "No emails sent to this user."
+
+msgid "Powitalny"
+msgstr "Welcome"
+
+msgid "Aktywacja"
+msgstr "Activation"
+
+msgid "Social — aktywacja"
+msgstr "Social — activation"
+
+msgid "Wysłano"
+msgstr "Sent"
+
+msgid "Usuń"
+msgstr "Delete"

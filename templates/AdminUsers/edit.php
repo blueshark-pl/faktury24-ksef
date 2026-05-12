@@ -151,6 +151,91 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
     </div>
 </div>
 
+<!-- Historia wysyłki e-maili do użytkownika -->
+<?php
+$logsArr = isset($emailLogs) ? $emailLogs->toArray() : [];
+$typeLabels = [
+    'welcome'           => __('Powitalny'),
+    'reset_password'    => __('Reset hasła'),
+    'validation'        => __('Aktywacja'),
+    'social_validation' => __('Social — aktywacja'),
+    'onetime_token'     => __('Jednorazowe logowanie'),
+];
+$typeIcons = [
+    'welcome'           => 'ri-mail-send-line text-success',
+    'reset_password'    => 'ri-lock-password-line text-warning',
+    'validation'        => 'ri-mail-check-line text-info',
+    'social_validation' => 'ri-account-circle-line text-info',
+    'onetime_token'     => 'ri-key-2-line text-primary',
+];
+?>
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <strong><i class="ri-history-line me-1"></i><?= __('Historia wysyłki e-maili') ?></strong>
+                <?php if (count($logsArr)): ?>
+                    <span class="badge bg-secondary-transparent"><?= count($logsArr) ?> <?= __('ostatnich') ?></span>
+                <?php endif; ?>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.85rem">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3" style="width:180px"><?= __('Data') ?></th>
+                            <th style="width:180px"><?= __('Typ') ?></th>
+                            <th style="width:60px"  class="text-center"><?= __('Język') ?></th>
+                            <th><?= __('Temat') ?></th>
+                            <th style="width:90px"  class="text-center"><?= __('Status') ?></th>
+                            <th class="pe-3" style="width:180px"><?= __('Wysłał') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($logsArr)): ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <i class="ri-mail-line" style="font-size:1.4em"></i><br>
+                                    <?= __('Brak wysyłek do tego użytkownika.') ?>
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($logsArr as $log):
+                                $typeLabel = $typeLabels[$log->email_type] ?? $log->email_type;
+                                $typeIcon  = $typeIcons[$log->email_type]  ?? 'ri-mail-line text-muted';
+                            ?>
+                            <tr>
+                                <td class="ps-3 text-muted small">
+                                    <?= $log->created ? $log->created->i18nFormat('yyyy-MM-dd HH:mm') : '—' ?>
+                                </td>
+                                <td>
+                                    <i class="<?= h($typeIcon) ?> me-1"></i><?= h($typeLabel) ?>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary-transparent"><?= h(strtoupper($log->lang)) ?></span>
+                                </td>
+                                <td class="small"><?= h($log->subject ?? '—') ?></td>
+                                <td class="text-center">
+                                    <?php if ($log->status === 'sent'): ?>
+                                        <span class="badge bg-success-transparent"><i class="ri-check-line"></i> <?= __('Wysłano') ?></span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger-transparent" title="<?= h($log->error_message ?? '') ?>">
+                                            <i class="ri-close-line"></i> <?= __('Błąd') ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="pe-3 small text-muted">
+                                    <?= h($log->sender_email ?: '—') ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function () {
     var sel = document.getElementById('role-select');
