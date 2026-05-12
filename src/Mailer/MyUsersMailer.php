@@ -235,25 +235,38 @@ class MyUsersMailer extends UsersMailer
 
     /**
      * Doklej ?lang=pl|en do dowolnej zmiennej widoku zawierającej URL.
+     * Obsługuje obie formy: array (CakePHP URL params, np. UsersUrl::actionUrl)
+     * oraz pełny string URL.
      */
     private function appendLocaleToLink(string $varName): void
     {
         $vars = $this->viewBuilder()->getVars();
-        $link = (string)($vars[$varName] ?? '');
-        if ($link === '') {
+        $val  = $vars[$varName] ?? null;
+        if ($val === null || $val === '') {
             return;
         }
 
         $locale = (string)I18n::getLocale();
         $lang   = str_starts_with($locale, 'en') ? 'en' : 'pl';
 
-        if (preg_match('/[?&]lang=/', $link)) {
+        if (is_array($val)) {
+            // CakePHP URL array — dorzucamy '?' => ['lang' => ...]
+            $existingQuery = (array)($val['?'] ?? []);
+            if (isset($existingQuery['lang'])) {
+                return; // już ma lang
+            }
+            $existingQuery['lang'] = $lang;
+            $val['?'] = $existingQuery;
+            $this->setViewVars([$varName => $val]);
             return;
         }
 
+        // String URL
+        $link = (string)$val;
+        if (preg_match('/[?&]lang=/', $link)) {
+            return;
+        }
         $separator = str_contains($link, '?') ? '&' : '?';
-        $newLink   = $link . $separator . 'lang=' . $lang;
-
-        $this->setViewVars([$varName => $newLink]);
+        $this->setViewVars([$varName => $link . $separator . 'lang=' . $lang]);
     }
 }
