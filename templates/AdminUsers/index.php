@@ -97,7 +97,15 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                         <td class="ps-3">
                             <div class="d-flex align-items-center gap-2">
                                 <?php if (!empty($u->avatar)): ?>
-                                    <img src="<?= h($u->avatar) ?>" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover">
+                                    <a href="<?= h($u->avatar) ?>"
+                                       class="user-avatar-lightbox"
+                                       data-glightbox="title: <?= h(trim($name ?: $u->email)) ?>"
+                                       title="<?= __('Powiększ zdjęcie') ?>">
+                                        <img src="<?= h($u->avatar) ?>" alt=""
+                                             style="width:32px;height:32px;border-radius:50%;object-fit:cover;cursor:zoom-in;transition:transform .15s ease,box-shadow .15s ease"
+                                             onmouseover="this.style.transform='scale(1.06)';this.style.boxShadow='0 4px 12px rgba(15,23,42,.18)'"
+                                             onmouseout="this.style.transform='';this.style.boxShadow=''">
+                                    </a>
                                 <?php else: ?>
                                     <div class="bg-primary-transparent text-primary fw-semibold d-inline-flex align-items-center justify-content-center"
                                          style="width:32px;height:32px;border-radius:50%;font-size:.8rem">
@@ -254,6 +262,23 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
         modal.querySelector('#welcomeEmailForm').action = '/admin/uzytkownicy/powitanie/' + userId;
         modal.querySelector('#welcomeUserEmail').textContent = email || '—';
         modal.querySelector('#welcomeUserRole').textContent  = role  || '—';
+    });
+})();
+</script>
+
+<!-- GLightbox: powiększenie zdjęć użytkowników po kliku -->
+<link rel="stylesheet" href="/assets/libs/glightbox/css/glightbox.min.css">
+<script src="/assets/libs/glightbox/js/glightbox.min.js"></script>
+<script>
+(function () {
+    if (typeof GLightbox === 'undefined') return;
+    GLightbox({
+        selector: '.user-avatar-lightbox',
+        touchNavigation: true,
+        loop: false,
+        zoomable: true,
+        openEffect: 'zoom',
+        closeEffect: 'zoom'
     });
 })();
 </script>

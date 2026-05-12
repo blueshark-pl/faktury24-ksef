@@ -1614,3 +1614,6 @@ msgstr "Searching…"
 
 msgid "Brak wyników"
 msgstr "No results"
+
+msgid "Powiększ zdjęcie"
+msgstr "Enlarge photo"
