@@ -16,7 +16,9 @@ class UserEmailLogsTable extends Table
 
         $this->getSchema()->setColumnType('created', 'datetime');
 
-        $this->belongsTo('Users', ['foreignKey' => 'user_id']);
+        // Bez belongsTo('Users') — CakeDC/Users plugin rejestruje swój alias
+        // z innym targetTable className, co powoduje konflikt asocjacji.
+        // Filtry/joiny po user_id robimy ręcznie.
     }
 
     /**
