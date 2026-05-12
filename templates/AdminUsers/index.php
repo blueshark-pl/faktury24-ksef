@@ -95,13 +95,29 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                     ?>
                     <tr>
                         <td class="ps-3">
+                            <?php
+                                // Fallback: jeśli ORM nie hydratował kolumny avatar (np. mapping/cache issue),
+                                // czytamy bezpośrednio z DB po user_id przez locator.
+                                $avatar = (string)($u->get('avatar') ?? '');
+                                if ($avatar === '' && !empty($u->id)) {
+                                    try {
+                                        $row = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')
+                                            ->find()
+                                            ->select(['avatar'])
+                                            ->where(['id' => (string)$u->id])
+                                            ->disableHydration()
+                                            ->first();
+                                        $avatar = (string)($row['avatar'] ?? '');
+                                    } catch (\Throwable) { /* best-effort */ }
+                                }
+                            ?>
                             <div class="d-flex align-items-center gap-2">
-                                <?php if (!empty($u->avatar)): ?>
-                                    <a href="<?= h($u->avatar) ?>"
+                                <?php if ($avatar !== ''): ?>
+                                    <a href="<?= h($avatar) ?>"
                                        class="user-avatar-lightbox"
                                        data-glightbox="title: <?= h(trim($name ?: $u->email)) ?>"
                                        title="<?= __('Powiększ zdjęcie') ?>">
-                                        <img src="<?= h($u->avatar) ?>" alt=""
+                                        <img src="<?= h($avatar) ?>" alt=""
                                              style="width:32px;height:32px;border-radius:50%;object-fit:cover;cursor:zoom-in;transition:transform .15s ease,box-shadow .15s ease"
                                              onmouseover="this.style.transform='scale(1.06)';this.style.boxShadow='0 4px 12px rgba(15,23,42,.18)'"
                                              onmouseout="this.style.transform='';this.style.boxShadow=''">
