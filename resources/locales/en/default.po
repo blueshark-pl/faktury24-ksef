@@ -1636,3 +1636,37 @@ msgstr "Failed to fetch history."
 
 msgid "Brak wysłanych maili powitalnych do tego użytkownika."
 msgstr "No welcome emails sent to this user."
+
+# ── Opiekun klienta + zastępstwo ────────────────────────────────────────────
+msgid "Opiekun klienta i zastępstwo"
+msgstr "Client caretaker & substitution"
+
+msgid "Opiekun główny"
+msgstr "Primary caretaker"
+
+msgid "Zastępca (na czas urlopu)"
+msgstr "Substitute (during leave)"
+
+msgid "Zastępstwo od"
+msgstr "Substitution from"
+
+msgid "Zastępstwo do"
+msgstr "Substitution to"
+
+msgid "— brak opiekuna —"
+msgstr "— no caretaker —"
+
+msgid "— bez zastępcy —"
+msgstr "— no substitute —"
+
+msgid "Zastępstwo jest aktualnie aktywne — wiadomości i powiadomienia dot. tego klienta trafiają do zastępcy."
+msgstr "Substitution is currently active — messages and notifications for this client are routed to the substitute."
+
+msgid "Opiekun"
+msgstr "Caretaker"
+
+msgid "Aktywne zastępstwo"
+msgstr "Active substitution"
+
+msgid "zastępstwo"
+msgstr "substitution"

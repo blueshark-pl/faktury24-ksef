@@ -97,6 +97,42 @@ class AdminUsersController extends AppController
             }
         }
 
+        // Mapa: client_user_id → aktualny opiekun (substitut jeśli aktywny w okresie,
+        // inaczej caretaker_user_id) + nazwa pracownika do wyświetlenia
+        $caretakerMap = [];
+        if (!empty($userIds)) {
+            $profiles = $this->fetchTable('ClientProfiles')->find()
+                ->where(['user_id IN' => $userIds])
+                ->all();
+            $caretakerIds = [];
+            foreach ($profiles as $p) {
+                $current = $p->current_caretaker_user_id;
+                if ($current) {
+                    $caretakerMap[(string)$p->user_id] = [
+                        'caretaker_id'    => $current,
+                        'is_substitute'   => $p->is_substitute_active,
+                    ];
+                    $caretakerIds[$current] = true;
+                }
+            }
+            if (!empty($caretakerIds)) {
+                $rows = $Users->find()
+                    ->select(['id', 'email', 'first_name', 'last_name'])
+                    ->where(['id IN' => array_keys($caretakerIds)])
+                    ->disableHydration()
+                    ->all();
+                foreach ($rows as $r) {
+                    $name = trim(((string)$r['first_name']) . ' ' . ((string)$r['last_name']));
+                    foreach ($caretakerMap as $clientId => $info) {
+                        if ($info['caretaker_id'] === $r['id']) {
+                            $caretakerMap[$clientId]['name']  = $name !== '' ? $name : $r['email'];
+                            $caretakerMap[$clientId]['email'] = $r['email'];
+                        }
+                    }
+                }
+            }
+        }
+
         // Mapa: user_id → ostatni welcome e-mail (created, lang, status)
         $lastWelcomeMap = [];
         if (!empty($userIds)) {
@@ -139,7 +175,7 @@ class AdminUsersController extends AppController
         }
 
         $this->set(compact(
-            'users', 'profileMap', 'avatarMap', 'lastWelcomeMap',
+            'users', 'profileMap', 'avatarMap', 'caretakerMap', 'lastWelcomeMap',
             'rolesList', 'roleNameByCode',
             'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit'
         ));
@@ -246,10 +282,14 @@ class AdminUsersController extends AppController
 
                     if ($isClient) {
                         $profile = $ClientProfiles->newEntity([
-                            'user_id'      => (string)$user->id,
-                            'nip'          => $nip,
-                            'company_name' => $company !== '' ? $company : null,
-                            'locale'       => in_array($data['locale'] ?? 'pl', ['pl', 'en'], true) ? $data['locale'] : 'pl',
+                            'user_id'            => (string)$user->id,
+                            'nip'                => $nip,
+                            'company_name'       => $company !== '' ? $company : null,
+                            'locale'             => in_array($data['locale'] ?? 'pl', ['pl', 'en'], true) ? $data['locale'] : 'pl',
+                            'caretaker_user_id'  => $this->normalizeUserId($data['caretaker_user_id'] ?? null),
+                            'substitute_user_id' => $this->normalizeUserId($data['substitute_user_id'] ?? null),
+                            'substitute_from'    => $this->normalizeDate($data['substitute_from'] ?? null),
+                            'substitute_to'      => $this->normalizeDate($data['substitute_to'] ?? null),
                         ]);
                         if (!$ClientProfiles->save($profile)) {
                             throw new \RuntimeException(__('Nie udało się zapisać profilu klienta') . ': ' . json_encode($profile->getErrors()));
@@ -281,7 +321,15 @@ class AdminUsersController extends AppController
             ->orderBy(['Companies.name' => 'ASC'])
             ->all();
 
-        $this->set(compact('user', 'profile', 'rolesList', 'companiesList'));
+        $employeesList = $this->fetchTable('Users')->find()
+            ->select(['id', 'email', 'first_name', 'last_name', 'role'])
+            ->where(['Users.role !=' => 'client', 'Users.active' => 1])
+            ->orderBy(['Users.first_name' => 'ASC', 'Users.last_name' => 'ASC', 'Users.email' => 'ASC'])
+            ->disableHydration()
+            ->all()
+            ->toArray();
+
+        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'employeesList'));
         return null;
     }
 
@@ -360,10 +408,14 @@ class AdminUsersController extends AppController
 
                     if ($isClient) {
                         $profilePatch = [
-                            'user_id'      => (string)$userId,
-                            'nip'          => $nip,
-                            'company_name' => $company !== '' ? $company : null,
-                            'locale'       => in_array($data['locale'] ?? 'pl', ['pl', 'en'], true) ? $data['locale'] : 'pl',
+                            'user_id'            => (string)$userId,
+                            'nip'                => $nip,
+                            'company_name'       => $company !== '' ? $company : null,
+                            'locale'             => in_array($data['locale'] ?? 'pl', ['pl', 'en'], true) ? $data['locale'] : 'pl',
+                            'caretaker_user_id'  => $this->normalizeUserId($data['caretaker_user_id'] ?? null),
+                            'substitute_user_id' => $this->normalizeUserId($data['substitute_user_id'] ?? null),
+                            'substitute_from'    => $this->normalizeDate($data['substitute_from'] ?? null),
+                            'substitute_to'      => $this->normalizeDate($data['substitute_to'] ?? null),
                         ];
                         $profile = $profile->isNew()
                             ? $ClientProfiles->newEntity($profilePatch)
@@ -419,7 +471,16 @@ class AdminUsersController extends AppController
             ->orderBy(['Companies.name' => 'ASC'])
             ->all();
 
-        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'orderCount', 'emailLogs'));
+        // Lista pracowników (nie-klientów) do wyboru jako opiekun/zastępca
+        $employeesList = $this->fetchTable('Users')->find()
+            ->select(['id', 'email', 'first_name', 'last_name', 'role'])
+            ->where(['Users.role !=' => 'client', 'Users.active' => 1])
+            ->orderBy(['Users.first_name' => 'ASC', 'Users.last_name' => 'ASC', 'Users.email' => 'ASC'])
+            ->disableHydration()
+            ->all()
+            ->toArray();
+
+        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'employeesList', 'orderCount', 'emailLogs'));
         return null;
     }
 
@@ -506,5 +567,35 @@ class AdminUsersController extends AppController
         }
 
         return $this->redirect(['action' => 'index']);
+    }
+
+    /**
+     * Normalizuje user_id z formularza: pusty/nieistniejący → null.
+     */
+    private function normalizeUserId($value): ?string
+    {
+        $v = trim((string)($value ?? ''));
+        if ($v === '') {
+            return null;
+        }
+        if (!$this->fetchTable('Users')->exists(['id' => $v])) {
+            return null;
+        }
+        return $v;
+    }
+
+    /**
+     * Normalizuje datę z formularza ('YYYY-MM-DD'): pusta → null.
+     */
+    private function normalizeDate($value): ?string
+    {
+        $v = trim((string)($value ?? ''));
+        if ($v === '') {
+            return null;
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+            return null;
+        }
+        return $v;
     }
 }

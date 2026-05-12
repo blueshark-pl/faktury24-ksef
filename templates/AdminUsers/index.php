@@ -4,6 +4,7 @@
  * @var \Cake\ORM\ResultSet                            $users
  * @var array<string, \App\Model\Entity\ClientProfile> $profileMap
  * @var array<string, string>                          $avatarMap  user_id → avatar URL
+ * @var array<string, array>                           $caretakerMap user_id → ['caretaker_id', 'name', 'email', 'is_substitute']
  * @var array<string, array{last_sent:string,count:int}> $lastWelcomeMap user_id → ostatnia data + liczba
  * @var \Cake\ORM\ResultSet                            $rolesList
  * @var array<string, string>                          $roleNameByCode
@@ -76,6 +77,9 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                     <th class="ps-3" style="width:280px"><?= __('Użytkownik') ?></th>
                     <th style="width:180px"><?= __('Rola') ?></th>
                     <th><?= __('Firma / NIP') ?></th>
+                    <?php if ($roleFilter === 'client'): ?>
+                        <th style="width:200px"><?= __('Opiekun') ?></th>
+                    <?php endif; ?>
                     <th style="width:80px"  class="text-center"><?= __('Aktywny') ?></th>
                     <th style="width:120px"><?= __('Utworzono') ?></th>
                     <th style="width:160px"><?= __('Ostatnie powitanie') ?></th>
@@ -85,7 +89,7 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
             <tbody>
                 <?php if (empty($users) || count($users->toArray()) === 0): ?>
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-5">
+                        <td colspan="<?= $roleFilter === 'client' ? 8 : 7 ?>" class="text-center text-muted py-5">
                             <i class="ri-user-search-line" style="font-size:2em"></i><br>
                             <?= __('Brak użytkowników{0}.', ($q !== '' || $roleFilter !== '') ? ' ' . __('dla podanych kryteriów') : '') ?>
                         </td>
@@ -145,6 +149,21 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                                 <span class="text-muted small">—</span>
                             <?php endif; ?>
                         </td>
+                        <?php if ($roleFilter === 'client'): ?>
+                            <td class="small">
+                                <?php $ct = $caretakerMap[(string)$u->id] ?? null; ?>
+                                <?php if ($ct && !empty($ct['name'])): ?>
+                                    <div class="fw-semibold"><i class="ri-user-heart-line me-1 text-primary"></i><?= h($ct['name']) ?></div>
+                                    <?php if (!empty($ct['is_substitute'])): ?>
+                                        <span class="badge bg-warning-transparent" title="<?= __('Aktywne zastępstwo') ?>">
+                                            <i class="ri-time-line"></i> <?= __('zastępstwo') ?>
+                                        </span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                         <td class="text-center">
                             <?php if ($u->active): ?>
                                 <i class="ri-checkbox-circle-fill text-success"></i>

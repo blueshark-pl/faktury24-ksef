@@ -104,6 +104,66 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
                             <option value="en" <?= ($profile->locale ?? 'pl') === 'en' ? 'selected' : '' ?>>EN</option>
                         </select>
                     </div>
+
+                    <!-- Opiekun klienta + zastępstwo -->
+                    <?php
+                        $employeesList = $employeesList ?? [];
+                        $employeeOption = function (array $e) {
+                            $name = trim(((string)$e['first_name']) . ' ' . ((string)$e['last_name']));
+                            return ($name !== '' ? $name : $e['email']) . ' — ' . $e['email'];
+                        };
+                        $caretakerId  = $profile->caretaker_user_id  ?? '';
+                        $substituteId = $profile->substitute_user_id ?? '';
+                        $fmtDate = function ($d) {
+                            if (!$d) return '';
+                            if ($d instanceof \DateTimeInterface) return $d->format('Y-m-d');
+                            return substr((string)$d, 0, 10);
+                        };
+                    ?>
+                    <div class="col-12 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
+                        <hr>
+                        <div class="text-muted small mb-2">
+                            <i class="ri-user-heart-line me-1"></i><?= __('Opiekun klienta i zastępstwo') ?>
+                        </div>
+                    </div>
+                    <div class="col-md-6 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
+                        <label class="form-label"><?= __('Opiekun główny') ?></label>
+                        <select name="caretaker_user_id" id="caretaker-select" class="form-select" data-placeholder="<?= __('— brak opiekuna —') ?>">
+                            <option value=""></option>
+                            <?php foreach ($employeesList as $e): ?>
+                                <option value="<?= h($e['id']) ?>" <?= $caretakerId === $e['id'] ? 'selected' : '' ?>>
+                                    <?= h($employeeOption($e)) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
+                        <label class="form-label"><?= __('Zastępca (na czas urlopu)') ?></label>
+                        <select name="substitute_user_id" id="substitute-select" class="form-select" data-placeholder="<?= __('— bez zastępcy —') ?>">
+                            <option value=""></option>
+                            <?php foreach ($employeesList as $e): ?>
+                                <option value="<?= h($e['id']) ?>" <?= $substituteId === $e['id'] ? 'selected' : '' ?>>
+                                    <?= h($employeeOption($e)) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
+                        <label class="form-label"><?= __('Zastępstwo od') ?></label>
+                        <input type="date" name="substitute_from" class="form-control" value="<?= h($fmtDate($profile->substitute_from ?? null)) ?>">
+                    </div>
+                    <div class="col-md-3 client-fields" style="display:<?= $user->role === 'client' ? '' : 'none' ?>">
+                        <label class="form-label"><?= __('Zastępstwo do') ?></label>
+                        <input type="date" name="substitute_to" class="form-control" value="<?= h($fmtDate($profile->substitute_to ?? null)) ?>">
+                    </div>
+                    <?php if (($profile->is_substitute_active ?? false) && $user->role === 'client'): ?>
+                        <div class="col-12 client-fields">
+                            <div class="alert alert-info py-2 mb-0 small">
+                                <i class="ri-information-line me-1"></i>
+                                <?= __('Zastępstwo jest aktualnie aktywne — wiadomości i powiadomienia dot. tego klienta trafiają do zastępcy.') ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="mt-4 d-flex gap-2">
@@ -262,16 +322,23 @@ $typeIcons = [
     }
     sel.addEventListener('change', toggle);
 
-    // Select2 dla pola firmy
+    // Select2 dla pól: firma, opiekun, zastępca
     if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-        window.jQuery('#company-select').select2({
-            width: '100%',
-            allowClear: true,
-            placeholder: window.jQuery('#company-select').data('placeholder') || '',
-            language: {
-                searching:   function () { return <?= json_encode(__('Szukam…')) ?>; },
-                noResults:   function () { return <?= json_encode(__('Brak wyników')) ?>; },
-                inputTooShort: function () { return ''; }
+        var $j = window.jQuery;
+        var s2lang = {
+            searching:   function () { return <?= json_encode(__('Szukam…')) ?>; },
+            noResults:   function () { return <?= json_encode(__('Brak wyników')) ?>; },
+            inputTooShort: function () { return ''; }
+        };
+        ['#company-select', '#caretaker-select', '#substitute-select'].forEach(function (sel) {
+            var $el = $j(sel);
+            if ($el.length) {
+                $el.select2({
+                    width: '100%',
+                    allowClear: true,
+                    placeholder: $el.data('placeholder') || '',
+                    language: s2lang
+                });
             }
         });
     }
