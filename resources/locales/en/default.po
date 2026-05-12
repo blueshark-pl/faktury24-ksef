@@ -1617,3 +1617,22 @@ msgstr "No results"
 
 msgid "Powiększ zdjęcie"
 msgstr "Enlarge photo"
+
+# ── Lista user: ostatnie powitanie + modal historii ────────────────────────
+msgid "Ostatnie powitanie"
+msgstr "Last welcome"
+
+msgid "Pokaż historię powitań"
+msgstr "Show welcome history"
+
+msgid "Historia maili powitalnych"
+msgstr "Welcome emails history"
+
+msgid "Ładowanie…"
+msgstr "Loading…"
+
+msgid "Nie udało się pobrać historii."
+msgstr "Failed to fetch history."
+
+msgid "Brak wysłanych maili powitalnych do tego użytkownika."
+msgstr "No welcome emails sent to this user."

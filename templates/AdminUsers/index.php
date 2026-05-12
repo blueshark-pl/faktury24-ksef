@@ -4,6 +4,7 @@
  * @var \Cake\ORM\ResultSet                            $users
  * @var array<string, \App\Model\Entity\ClientProfile> $profileMap
  * @var array<string, string>                          $avatarMap  user_id → avatar URL
+ * @var array<string, array{last_sent:string,count:int}> $lastWelcomeMap user_id → ostatnia data + liczba
  * @var \Cake\ORM\ResultSet                            $rolesList
  * @var array<string, string>                          $roleNameByCode
  * @var string                                         $roleFilter
@@ -77,13 +78,14 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                     <th><?= __('Firma / NIP') ?></th>
                     <th style="width:80px"  class="text-center"><?= __('Aktywny') ?></th>
                     <th style="width:120px"><?= __('Utworzono') ?></th>
+                    <th style="width:160px"><?= __('Ostatnie powitanie') ?></th>
                     <th class="pe-3 text-end text-nowrap" style="width:160px"><?= __('Akcje') ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($users) || count($users->toArray()) === 0): ?>
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-5">
+                        <td colspan="7" class="text-center text-muted py-5">
                             <i class="ri-user-search-line" style="font-size:2em"></i><br>
                             <?= __('Brak użytkowników{0}.', ($q !== '' || $roleFilter !== '') ? ' ' . __('dla podanych kryteriów') : '') ?>
                         </td>
@@ -152,6 +154,36 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                         </td>
                         <td class="text-muted small">
                             <?= $fdate($u->created) ?>
+                        </td>
+                        <?php
+                            $welcomeInfo = $lastWelcomeMap[(string)$u->id] ?? null;
+                        ?>
+                        <td class="small">
+                            <?php if ($welcomeInfo): ?>
+                                <?php
+                                    $lastSent = $welcomeInfo['last_sent'];
+                                    if ($lastSent instanceof \DateTimeInterface) {
+                                        $dateText = $lastSent->format('Y-m-d H:i');
+                                    } else {
+                                        $dateText = substr((string)$lastSent, 0, 16);
+                                    }
+                                    $cnt = (int)($welcomeInfo['count'] ?? 0);
+                                ?>
+                                <button type="button"
+                                        class="btn btn-link p-0 text-decoration-none btn-welcome-history"
+                                        data-user-id="<?= h($u->id) ?>"
+                                        data-user-email="<?= h($u->email) ?>"
+                                        title="<?= __('Pokaż historię powitań') ?>">
+                                    <span class="badge bg-success-transparent">
+                                        <i class="ri-mail-check-line me-1"></i><?= h($dateText) ?>
+                                    </span>
+                                    <?php if ($cnt > 1): ?>
+                                        <small class="text-muted ms-1">×<?= $cnt ?></small>
+                                    <?php endif; ?>
+                                </button>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
                         </td>
                         <td class="pe-3 text-end text-nowrap">
                             <div class="btn-group btn-group-sm" role="group" aria-label="<?= __('Akcje') ?>">
@@ -264,6 +296,56 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
         modal.querySelector('#welcomeEmailForm').action = '/admin/uzytkownicy/powitanie/' + userId;
         modal.querySelector('#welcomeUserEmail').textContent = email || '—';
         modal.querySelector('#welcomeUserRole').textContent  = role  || '—';
+    });
+})();
+</script>
+
+<!-- Modal: historia maili powitalnych (AJAX) -->
+<div class="modal fade" id="welcomeHistoryModal" tabindex="-1" aria-labelledby="welcomeHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="welcomeHistoryModalLabel">
+                    <i class="ri-history-line me-1"></i><?= __('Historia maili powitalnych') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= __('Zamknij') ?>"></button>
+            </div>
+            <div class="modal-body" id="welcomeHistoryBody">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border spinner-border-sm me-2"></div>
+                    <?= __('Ładowanie…') ?>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    document.querySelectorAll('.btn-welcome-history').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var userId = btn.getAttribute('data-user-id');
+            var modalEl = document.getElementById('welcomeHistoryModal');
+            var body = document.getElementById('welcomeHistoryBody');
+            body.innerHTML = '<div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div><?= __('Ładowanie…') ?></div>';
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+            fetch('/admin/uzytkownicy/welcome-history/' + encodeURIComponent(userId), {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (html) { body.innerHTML = html; })
+            .catch(function () {
+                body.innerHTML = '<div class="alert alert-danger"><?= __('Nie udało się pobrać historii.') ?></div>';
+            });
+        });
     });
 })();
 </script>

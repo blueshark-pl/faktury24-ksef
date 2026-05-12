@@ -97,6 +97,36 @@ class AdminUsersController extends AppController
             }
         }
 
+        // Mapa: user_id → ostatni welcome e-mail (created, lang, status)
+        $lastWelcomeMap = [];
+        if (!empty($userIds)) {
+            $UserEmailLogs = $this->fetchTable('UserEmailLogs');
+            $cnt = $UserEmailLogs->find()
+                ->select(['user_id', 'cnt' => $UserEmailLogs->find()->func()->count('*')])
+                ->where(['user_id IN' => $userIds, 'email_type' => 'welcome'])
+                ->groupBy('user_id')
+                ->disableHydration()
+                ->all()
+                ->toArray();
+            $countByUser = [];
+            foreach ($cnt as $c) {
+                $countByUser[(string)$c['user_id']] = (int)$c['cnt'];
+            }
+            // Najnowsze: jedno zapytanie z window-like fallback — pobieramy MAX(created) per user
+            $maxDates = $UserEmailLogs->find()
+                ->select(['user_id', 'last_sent' => $UserEmailLogs->find()->func()->max('created')])
+                ->where(['user_id IN' => $userIds, 'email_type' => 'welcome'])
+                ->groupBy('user_id')
+                ->disableHydration()
+                ->all();
+            foreach ($maxDates as $row) {
+                $lastWelcomeMap[(string)$row['user_id']] = [
+                    'last_sent' => $row['last_sent'],
+                    'count'     => $countByUser[(string)$row['user_id']] ?? 0,
+                ];
+            }
+        }
+
         // Słownik ról (do filtra i kolumny)
         $rolesList = $this->fetchTable('Roles')->find()
             ->where(['is_active' => true])
@@ -109,9 +139,35 @@ class AdminUsersController extends AppController
         }
 
         $this->set(compact(
-            'users', 'profileMap', 'avatarMap', 'rolesList', 'roleNameByCode',
+            'users', 'profileMap', 'avatarMap', 'lastWelcomeMap',
+            'rolesList', 'roleNameByCode',
             'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit'
         ));
+    }
+
+    /**
+     * AJAX endpoint: historia maili powitalnych dla danego usera.
+     * GET /admin/uzytkownicy/welcome-history/{userId}
+     * Zwraca HTML do wstawienia w modal (klucz: ostatnie 50 welcome maili).
+     */
+    public function welcomeHistory(string $userId): ?Response
+    {
+        $Users = $this->fetchTable('Users');
+        $user  = $Users->find()->select(['id', 'email', 'first_name', 'last_name'])
+            ->where(['id' => $userId])->first();
+        if (!$user) {
+            throw new NotFoundException(__('Użytkownik nie istnieje.'));
+        }
+
+        $logs = $this->fetchTable('UserEmailLogs')->find()
+            ->where(['user_id' => $userId, 'email_type' => 'welcome'])
+            ->orderByDesc('created')
+            ->limit(50)
+            ->all();
+
+        $this->viewBuilder()->setLayout('ajax');
+        $this->set(compact('user', 'logs'));
+        return null;
     }
 
     public function add(): ?Response
