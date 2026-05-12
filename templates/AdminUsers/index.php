@@ -195,7 +195,6 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <form id="welcomeEmailForm" method="post" action="">
-                <?= $this->Form->unlockField('lang') ?>
                 <input type="hidden" name="_csrfToken" value="<?= h($this->request->getAttribute('csrfToken')) ?>">
 
                 <div class="modal-header">
