@@ -186,12 +186,12 @@ return [
         ],
         // onboarding firmy (wymagane po rejestracji, zanim user ma company_id)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Companies',
             'action' => ['onboarding', 'saveOnboarding', 'edit', 'checkSeriesStart'],
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => ['Invoices'],
             'action' => [
                 'addRental',
@@ -259,7 +259,7 @@ return [
 
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Contractors',
             'action' => [
                 'gusLookup',
@@ -279,9 +279,32 @@ return [
 
         ],
 
+        // ── Asystent spedytora ── tylko Kontrahenci (view+add — wg specyfikacji,
+        // edit/delete robi kierownik/admin po akceptacji) + Zlecenia transportowe.
+        // Granularne ograniczenia per akcja (np. zakaz delete) wymagają DB-driven
+        // enforcement w osobnej iteracji — na razie pełen zakres tych dwóch modułów.
+        [
+            'role' => 'asystent_spedytora',
+            'controller' => 'Contractors',
+            'action' => [
+                'gusLookup', 'vatStatusLookup', 'search',
+                'index', 'view', 'viewJson', 'add', 'edit',
+                'importFetch', 'importBatch',
+            ],
+        ],
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'SpeedOrders',
+            'action' => [
+                'index', 'dashboard', 'exportCsv', 'view', 'viewModal',
+                'sync', 'updateStatus', 'createBatchInvoices',
+                'uploadAttachment', 'deleteAttachment',
+            ],
+        ],
+
         // towary i usługi
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Products',
             'action' => [
                 'index',
@@ -297,7 +320,7 @@ return [
             ],
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Units',
             'action' => [
                 'index',
@@ -310,7 +333,7 @@ return [
 
         // rachunki bankowe firmy (select na fakturze)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'CompanyBankAccounts',
             'action' => [
                 'index',
@@ -323,7 +346,7 @@ return [
 
         // serie numeracji faktur
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user',  'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'InvoiceSeries',
             'action' => [
                 'index',
@@ -336,7 +359,7 @@ return [
             ],
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'InvoiceSeriesTypes',
             'action' => [
                 'index',
@@ -345,7 +368,7 @@ return [
             ],
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'InvoiceSeriesPeriods',
             'action' => [
                 'index',
@@ -356,12 +379,12 @@ return [
 
         // podstawowy landing po zalogowaniu
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Dashboard',
             'action' => ['index'],
         ],
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'KsefAuthorizations',
             'action' => [
                 'received',
@@ -386,21 +409,21 @@ return [
 
         // 2FA jest opcjonalne, ale dostęp do ustawień musi mieć każdy zalogowany
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'TwoFactor',
             'action' => ['index', 'enable', 'verify', 'disable'],
         ],
 
         // rozliczenia/płatności do faktur (modal w liście faktur)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'InvoicePayments',
             'action' => ['index', 'add', 'delete'],
         ],
 
         // Rozliczenia — moduł + synchronizacja legacy
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Reconciliations',
             'action' => ['index', 'indexKsef', 'indexSpeed', 'addPayment', 'deletePayment', 'bankTransactions', 'contractorInfo', 'createContractorFromInvoice', 'syncLegacy', 'addLegacyPayment', 'deleteLegacyPayment', 'legacyBankTransactions', 'allocations', 'addAllocation', 'deleteAllocation', 'transactionAllocatedSummary'],
         ],
@@ -421,7 +444,7 @@ return [
 
         // Karty paliwowe E100
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user',  'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'FuelCards',
             'action' => [
                 'index', 'exportCsv', 'sync',
@@ -435,42 +458,42 @@ return [
 
         // odbiorcy e-mail faktur (panel kontrahenta)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Recipients',
             'action' => ['byContractor', 'view', 'add', 'edit', 'delete'],
         ],
 
         // ustawienia kontrahenta (panel kontrahenta)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'ContractorsSettings',
             'action' => ['view', 'save'],
         ],
 
         // stawki VAT (widok tylko do odczytu; edycja dla admina)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Vats',
             'action' => ['index', 'view'],
         ],
 
         // archiwum faktur (import z poprzedniego systemu)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'LegacyInvoices',
             'action' => ['index', 'fetch', 'downloadPdf'],
         ],
 
         // tokeny API (generowanie i unieważnianie własnych tokenów)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'ApiTokens',
             'action' => ['index', 'generate', 'revoke'],
         ],
 
         // słownik walutowy NBP
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'Nbp',
             'action' => ['dictionary', 'rates'],
         ],
@@ -480,7 +503,7 @@ return [
 
         // zgłoszenia i uwagi (support tickets)
         [
-            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
             'controller' => 'SupportTickets',
             'action' => ['index', 'add', 'view', 'download'],
         ],
