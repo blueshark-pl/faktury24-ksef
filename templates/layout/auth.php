@@ -32,16 +32,16 @@ $currentLang = $this->request->getSession()->read('Config.locale') === 'en' ? 'e
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
-    <title><?= h($this->fetch('title')) ?> | faktury24.com</title>
+    <title><?= h($this->fetch('title')) ?> | Booklio TMS</title>
 
     <!-- Czyść flagę screen-lock — auth layout odwiedzany podczas /logout i /login,
          to gwarantuje że nowy zalogowany user nie zobaczy stale lock-modala. -->
     <script>
         try { localStorage.removeItem('bookliio_locked_at'); } catch (e) {}
     </script>
-    <?= $this->Html->meta('description', 'Faktury24.com') ?>
-    <?= $this->Html->meta('author', 'Faktury24.com') ?>
-    <?= $this->Html->meta('keywords', 'faktury, faktury24, faktury online, faktury elektroniczne, ksef') ?>
+    <?= $this->Html->meta('description', 'Booklio TMS — system zarządzania transportem (booklio.pl)') ?>
+    <?= $this->Html->meta('author', 'Booklio TMS') ?>
+    <?= $this->Html->meta('keywords', 'booklio, booklio tms, tms, transport, spedycja, zlecenia transportowe, ksef') ?>
 
     <!-- Favicon (Booklio TMS) -->
     <link rel="icon"           type="image/png"     sizes="96x96" href="/favicon-96x96.png">
