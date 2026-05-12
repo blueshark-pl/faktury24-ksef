@@ -6,6 +6,7 @@ namespace App\Mailer;
 use Cake\Datasource\EntityInterface;
 use Cake\I18n\I18n;
 use Cake\Mailer\Message;
+use Cake\Routing\Router;
 use CakeDC\Users\Mailer\UsersMailer;
 
 class MyUsersMailer extends UsersMailer
@@ -78,13 +79,14 @@ class MyUsersMailer extends UsersMailer
             ? __('{0}, witamy w Booklio TMS!', $firstName)
             : __('Witamy w Booklio TMS!');
 
-        // Link do ustawienia hasła (token resetu) + ?lang=
-        $resetUrl = \CakeDC\Users\Utility\UsersUrl::actionUrl('resetPassword', [
+        // Link do ustawienia hasła (token resetu) — UsersUrl::actionUrl zwraca tablicę,
+        // konwertujemy przez Router::url. Dokładamy ?lang= aby kliknięcie ustawiło locale.
+        $urlArr = \CakeDC\Users\Utility\UsersUrl::actionUrl('resetPassword', [
             '_full' => true,
             $user->get('token'),
+            '?'     => ['lang' => $lang],
         ]);
-        $separator = str_contains($resetUrl, '?') ? '&' : '?';
-        $resetUrl .= $separator . 'lang=' . $lang;
+        $resetUrl = Router::url($urlArr, true);
 
         $this
             ->setTo($user->get('email'))
