@@ -300,6 +300,9 @@ class AppController extends Controller
             $this->set('rentalEnabled', false);
             $this->set('draftInvoicesCount', 0);
 
+            // Opiekun klienta do widgetu w sidebarze (substitut jeśli aktywny w okresie)
+            $this->set('clientCaretaker', $this->buildClientCaretakerInfo((string)$identity->getIdentifier()));
+
             // Klient może być wyłącznie w portalu, na akcjach autoryzacji lub pobierać PDF faktury.
             // Wszystko inne (np. domyślne `/` → Invoices/index po logowaniu) → redirect na /portal.
             // Zapobiega pętli ERR_TOO_MANY_REDIRECTS, bo Authorization odrzuciłby /Invoices/index.
@@ -431,5 +434,53 @@ class AppController extends Controller
             return $this->redirect(['controller' => 'Invoices', 'action' => 'index']);
         }
         return null;
+    }
+
+    /**
+     * Buduje info o aktualnym opiekunie klienta — do widoku w sidebarze portalu.
+     * Zwraca null jeśli klient nie ma profilu lub nie ma przypisanego opiekuna.
+     *
+     * @return array{name:string,email:string,avatar:?string,phone:?string,is_substitute:bool}|null
+     */
+    private function buildClientCaretakerInfo(string $clientUserId): ?array
+    {
+        try {
+            $profile = $this->fetchTable('ClientProfiles')->find()
+                ->where(['user_id' => $clientUserId])
+                ->first();
+            if (!$profile) {
+                return null;
+            }
+            $caretakerId = $profile->current_caretaker_user_id;
+            if (!$caretakerId) {
+                return null;
+            }
+
+            // Pobierz dane pracownika — disableHydration() bo CakeDC plugin
+            // czasem gubi avatar w hydratowanej encji
+            $row = $this->fetchTable('Users')->find()
+                ->select(['id', 'email', 'first_name', 'last_name', 'avatar'])
+                ->where(['id' => $caretakerId, 'active' => 1])
+                ->disableHydration()
+                ->first();
+            if (!$row) {
+                return null;
+            }
+
+            $name = trim(((string)($row['first_name'] ?? '')) . ' ' . ((string)($row['last_name'] ?? '')));
+            if ($name === '') {
+                $name = (string)$row['email'];
+            }
+
+            return [
+                'name'          => $name,
+                'email'         => (string)$row['email'],
+                'avatar'        => !empty($row['avatar']) ? (string)$row['avatar'] : null,
+                'phone'         => null,
+                'is_substitute' => (bool)$profile->is_substitute_active,
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

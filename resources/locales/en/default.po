@@ -1670,3 +1670,10 @@ msgstr "Active substitution"
 
 msgid "zastępstwo"
 msgstr "substitution"
+
+# ── Widget opiekuna w sidebarze portalu klienta ─────────────────────────────
+msgid "Twój opiekun"
+msgstr "Your caretaker"
+
+msgid "Aktualnie obsługuje Cię zastępca głównego opiekuna"
+msgstr "You're currently being assisted by your caretaker's substitute"

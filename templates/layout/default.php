@@ -220,6 +220,102 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       @media (max-width: 575.98px) {
           .session-widget { display: none; }
       }
+
+      /* ── Widget opiekuna klienta w sidebarze ─────────────────────────────── */
+      .sidebar-caretaker {
+          margin: auto 12px 14px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(var(--menu-prime-color), .08);
+      }
+      .sidebar-caretaker__label {
+          font-size: 11px;
+          letter-spacing: .4px;
+          text-transform: uppercase;
+          color: rgba(var(--menu-prime-color), .55);
+          margin: 0 0 8px;
+          padding: 0 4px;
+          font-weight: 700;
+      }
+      .sidebar-caretaker__label i { margin-right: 4px; color: rgb(var(--primary-rgb)); }
+
+      .sidebar-caretaker__card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          background: rgba(var(--primary-rgb), .06);
+          border: 1px solid rgba(var(--primary-rgb), .15);
+          border-radius: 12px;
+          transition: background .15s, border-color .15s;
+      }
+      .sidebar-caretaker__card:hover {
+          background: rgba(var(--primary-rgb), .10);
+          border-color: rgba(var(--primary-rgb), .25);
+      }
+      .sidebar-caretaker__avatar {
+          flex-shrink: 0;
+          width: 40px; height: 40px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid rgba(var(--primary-rgb), .22);
+          box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+      }
+      .sidebar-caretaker__avatar--initials {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgb(var(--primary-rgb));
+          color: #fff;
+          font-weight: 700;
+          font-size: 16px;
+          border-color: transparent;
+      }
+      .sidebar-caretaker__info {
+          min-width: 0;     /* by ellipsis dla emaila działał */
+          flex: 1;
+      }
+      .sidebar-caretaker__name {
+          font-weight: 600;
+          font-size: 13px;
+          color: rgba(var(--menu-prime-color), .92);
+          line-height: 1.2;
+          margin-bottom: 2px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+      }
+      .sidebar-caretaker__email {
+          display: block;
+          font-size: 11.5px;
+          color: rgba(var(--menu-prime-color), .65);
+          text-decoration: none;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+      }
+      .sidebar-caretaker__email:hover { color: rgb(var(--primary-rgb)); text-decoration: underline; }
+
+      .sidebar-caretaker__badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          margin-top: 4px;
+          padding: 2px 8px;
+          font-size: 10.5px;
+          font-weight: 600;
+          background: rgba(245, 158, 11, .15);
+          color: #b45309;
+          border-radius: 999px;
+      }
+
+      /* Zwijany sidebar: chowamy widget — i tak nie zmieści się */
+      [data-toggled="icon-overlay-close"]    .sidebar-caretaker,
+      [data-toggled="icon-text-close"]       .sidebar-caretaker,
+      [data-toggled="icon-hover-menu-close"] .sidebar-caretaker,
+      [data-toggled="close"][data-nav-style="icontext-menu"] .sidebar-caretaker,
+      [data-toggled="menu-click-closed"]     .sidebar-caretaker {
+          display: none;
+      }
     </style>
     <?php
 
@@ -1136,7 +1232,37 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 </div>
                 <!-- End::main-sidebar -->
 
-
+                <?php /* ── Widget: opiekun klienta (tylko dla zalogowanego klienta z opiekunem) ─ */ ?>
+                <?php if (($currentRole ?? '') === 'client' && !empty($clientCaretaker)): ?>
+                    <?php
+                        $_ct       = $clientCaretaker;
+                        $_initial  = mb_strtoupper(mb_substr($_ct['name'] !== '' ? $_ct['name'] : $_ct['email'], 0, 1));
+                        $_mailto   = $_ct['email'] !== '' ? 'mailto:' . $_ct['email'] : '';
+                    ?>
+                    <div class="sidebar-caretaker">
+                        <div class="sidebar-caretaker__label">
+                            <i class="ri-user-heart-line"></i> <?= __('Twój opiekun') ?>
+                        </div>
+                        <div class="sidebar-caretaker__card">
+                            <?php if (!empty($_ct['avatar'])): ?>
+                                <img src="<?= h($_ct['avatar']) ?>" alt="" class="sidebar-caretaker__avatar">
+                            <?php else: ?>
+                                <div class="sidebar-caretaker__avatar sidebar-caretaker__avatar--initials">
+                                    <?= h($_initial) ?>
+                                </div>
+                            <?php endif; ?>
+                            <div class="sidebar-caretaker__info">
+                                <div class="sidebar-caretaker__name" title="<?= h($_ct['name']) ?>"><?= h($_ct['name']) ?></div>
+                                <a href="<?= h($_mailto) ?>" class="sidebar-caretaker__email" title="<?= h($_ct['email']) ?>"><?= h($_ct['email']) ?></a>
+                                <?php if ($_ct['is_substitute']): ?>
+                                    <span class="sidebar-caretaker__badge" title="<?= __('Aktualnie obsługuje Cię zastępca głównego opiekuna') ?>">
+                                        <i class="ri-time-line"></i> <?= __('zastępstwo') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
             </aside>
             <!-- End::app-sidebar -->
