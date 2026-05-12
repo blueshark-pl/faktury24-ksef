@@ -1607,3 +1607,10 @@ msgstr "Employees are assigned to the company they will issue invoices from. You
 
 msgid "Pracownicy są przypisywani do firmy z której będą wystawiać faktury."
 msgstr "Employees are assigned to the company they will issue invoices from."
+
+# ── Select2 (i18n) ──────────────────────────────────────────────────────────
+msgid "Szukam…"
+msgstr "Searching…"
+
+msgid "Brak wyników"
+msgstr "No results"

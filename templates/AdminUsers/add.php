@@ -68,8 +68,8 @@ $this->assign('title', __('Nowy użytkownik'));
             <!-- Firma — dla pracowników (admin/user/asystent/...) — ignorowane dla klienta -->
             <div class="col-md-12 employee-fields">
                 <label class="form-label"><?= __('Firma') ?></label>
-                <select name="company_id" class="form-select">
-                    <option value=""><?= __('— bez firmy (user przejdzie onboarding) —') ?></option>
+                <select name="company_id" id="company-select" class="form-select" data-placeholder="<?= __('— bez firmy (user przejdzie onboarding) —') ?>">
+                    <option value=""></option>
                     <?php $selCompany = $this->request->getData('company_id'); ?>
                     <?php foreach ($companiesList as $c): ?>
                         <option value="<?= h($c->id) ?>" <?= $selCompany === $c->id ? 'selected' : '' ?>>
@@ -132,5 +132,19 @@ $this->assign('title', __('Nowy użytkownik'));
     }
     sel.addEventListener('change', toggle);
     toggle();
+
+    // Select2 dla pola firmy — wyszukiwarka + ładny dropdown
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+        window.jQuery('#company-select').select2({
+            width: '100%',
+            allowClear: true,
+            placeholder: window.jQuery('#company-select').data('placeholder') || '',
+            language: {
+                searching:   function () { return <?= json_encode(__('Szukam…')) ?>; },
+                noResults:   function () { return <?= json_encode(__('Brak wyników')) ?>; },
+                inputTooShort: function () { return ''; }
+            }
+        });
+    }
 })();
 </script>

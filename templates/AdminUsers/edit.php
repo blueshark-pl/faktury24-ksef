@@ -71,8 +71,8 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
                     <!-- Firma — dla pracowników (admin/user/asystent/...) — ignorowane dla klienta -->
                     <div class="col-md-12 employee-fields" style="display:<?= $user->role === 'client' ? 'none' : '' ?>">
                         <label class="form-label"><?= __('Firma') ?></label>
-                        <select name="company_id" class="form-select">
-                            <option value=""><?= __('— bez firmy (user przejdzie onboarding) —') ?></option>
+                        <select name="company_id" id="company-select" class="form-select" data-placeholder="<?= __('— bez firmy (user przejdzie onboarding) —') ?>">
+                            <option value=""></option>
                             <?php foreach ($companiesList as $c): ?>
                                 <option value="<?= h($c->id) ?>" <?= $user->company_id === $c->id ? 'selected' : '' ?>>
                                     <?= h($c->name) ?><?= $c->nip ? ' — NIP ' . h($c->nip) : '' ?>
@@ -261,6 +261,20 @@ $typeIcons = [
         employeeFields.forEach(function (el) { el.style.display = isClient ? 'none' : ''; });
     }
     sel.addEventListener('change', toggle);
+
+    // Select2 dla pola firmy
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+        window.jQuery('#company-select').select2({
+            width: '100%',
+            allowClear: true,
+            placeholder: window.jQuery('#company-select').data('placeholder') || '',
+            language: {
+                searching:   function () { return <?= json_encode(__('Szukam…')) ?>; },
+                noResults:   function () { return <?= json_encode(__('Brak wyników')) ?>; },
+                inputTooShort: function () { return ''; }
+            }
+        });
+    }
 })();
 </script>
 
