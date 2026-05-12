@@ -177,10 +177,10 @@ if ($isResetFlow) {
 
                     <div class="card custom-card">
                             <div class="card-header justify-content-between">
-                                    <div class="card-title">Zmień hasło</div>
+                                    <div class="card-title"><?= __('Zmień hasło') ?></div>
                             </div>
                             <div class="card-body">
-                                    <p class="text-muted mb-3">Ustaw nowe hasło dla swojego konta.</p>
+                                    <p class="text-muted mb-3"><?= __('Ustaw nowe hasło dla swojego konta.') ?></p>
                                     <?= $this->Form->create($user, ['class' => 'needs-validation', 'novalidate' => true]) ?>
 
                                     <div class="row gy-3">
@@ -188,7 +188,7 @@ if ($isResetFlow) {
                                                     <?= $this->Form->control('current_password', [
                                                             'type' => 'password',
                                                             'required' => true,
-                                                            'label' => 'Obecne hasło',
+                                                            'label' => __('Obecne hasło'),
                                                             'class' => 'form-control'
                                                     ]); ?>
                                             </div>
@@ -198,7 +198,7 @@ if ($isResetFlow) {
                                                             'type' => 'password',
                                                             'required' => true,
                                                             'id' => 'new-password',
-                                                            'label' => 'Nowe hasło',
+                                                            'label' => __('Nowe hasło'),
                                                             'class' => 'form-control'
                                                     ]); ?>
                                                     <?php if (Configure::read('Users.passwordMeter.enabled')) : ?>
@@ -212,16 +212,16 @@ if ($isResetFlow) {
                                                     <?= $this->Form->control('password_confirm', [
                                                             'type' => 'password',
                                                             'required' => true,
-                                                            'label' => 'Potwierdź hasło',
+                                                            'label' => __('Potwierdź hasło'),
                                                             'class' => 'form-control'
                                                     ]); ?>
                                             </div>
                                     </div>
 
                                     <div class="d-flex gap-2 justify-content-end mt-4">
-                                            <a href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>" class="btn btn-secondary btn-wave">Anuluj</a>
+                                            <a href="<?= $this->Url->build(['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'profile']) ?>" class="btn btn-secondary btn-wave"><?= __('Anuluj') ?></a>
                                             <button id="btn-submit" class="btn btn-primary btn-wave">
-                                                    <span class="submit-text">Zapisz</span>
+                                                    <span class="submit-text"><?= __('Zapisz') ?></span>
                                                     <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
                                             </button>
                                     </div>
@@ -246,7 +246,7 @@ if ($isResetFlow) {
                     }
                     submitBtn.disabled = true;
                     submitBtn.querySelector('.spinner-border')?.classList.remove('d-none');
-                    submitBtn.querySelector('.submit-text').textContent = 'Zapisywanie...';
+                    submitBtn.querySelector('.submit-text').textContent = <?= json_encode(__('Zapisywanie...')) ?>;
             }, false);
     })();
     </script>

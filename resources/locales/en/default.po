@@ -1143,3 +1143,22 @@ msgstr "Confirm your social account sign-in"
 
 msgid "{0}, jednorazowe logowanie"
 msgstr "{0}, one-time sign-in"
+
+# ── Stopka auth + zmiana hasła z profilu ────────────────────────────────────
+msgid "Copyright © {0} — wszelkie prawa zastrzeżone."
+msgstr "Copyright © {0} — all rights reserved."
+
+msgid "Ustaw nowe hasło dla swojego konta."
+msgstr "Set a new password for your account."
+
+msgid "Obecne hasło"
+msgstr "Current password"
+
+msgid "Potwierdź hasło"
+msgstr "Confirm password"
+
+msgid "Zapisz"
+msgstr "Save"
+
+msgid "Zapisywanie..."
+msgstr "Saving..."

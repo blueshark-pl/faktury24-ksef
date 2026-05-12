@@ -104,10 +104,10 @@ $currentLang = $this->request->getSession()->read('Config.locale') === 'en' ? 'e
 
       <div class="auth-footer" role="contentinfo">
         <div class="auth-footer-inner">
-          Copyright © Booklio.pl All rights reserved
+          <?= __('Copyright © {0} — wszelkie prawa zastrzeżone.', 'Booklio.pl') ?>
           <?php if ($appVersion !== ''): ?>
             <span class="mx-2">•</span>
-            <span>Wersja: <?= h($appVersion) ?></span>
+            <span><?= __('Wersja') ?>: <?= h($appVersion) ?></span>
           <?php endif; ?>
           <?= $this->cell('KsefStatus') ?>
         </div>
