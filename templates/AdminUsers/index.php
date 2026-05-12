@@ -3,6 +3,7 @@
  * @var \App\View\AppView                              $this
  * @var \Cake\ORM\ResultSet                            $users
  * @var array<string, \App\Model\Entity\ClientProfile> $profileMap
+ * @var array<string, string>                          $avatarMap  user_id → avatar URL
  * @var \Cake\ORM\ResultSet                            $rolesList
  * @var array<string, string>                          $roleNameByCode
  * @var string                                         $roleFilter
@@ -94,23 +95,8 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                         $roleName = $roleNameByCode[(string)$u->role] ?? $u->role;
                     ?>
                     <tr>
+                        <?php $avatar = $avatarMap[(string)$u->id] ?? ''; ?>
                         <td class="ps-3">
-                            <?php
-                                // Fallback: jeśli ORM nie hydratował kolumny avatar (np. mapping/cache issue),
-                                // czytamy bezpośrednio z DB po user_id przez locator.
-                                $avatar = (string)($u->get('avatar') ?? '');
-                                if ($avatar === '' && !empty($u->id)) {
-                                    try {
-                                        $row = \Cake\ORM\TableRegistry::getTableLocator()->get('Users')
-                                            ->find()
-                                            ->select(['avatar'])
-                                            ->where(['id' => (string)$u->id])
-                                            ->disableHydration()
-                                            ->first();
-                                        $avatar = (string)($row['avatar'] ?? '');
-                                    } catch (\Throwable) { /* best-effort */ }
-                                }
-                            ?>
                             <div class="d-flex align-items-center gap-2">
                                 <?php if ($avatar !== ''): ?>
                                     <a href="<?= h($avatar) ?>"

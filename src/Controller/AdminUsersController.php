@@ -42,7 +42,7 @@ class AdminUsersController extends AppController
             ->select([
                 'Users.id', 'Users.email', 'Users.username',
                 'Users.first_name', 'Users.last_name',
-                'Users.role', 'Users.active', 'Users.avatar',
+                'Users.role', 'Users.active',
                 'Users.company_id', 'Users.created',
             ])
             ->orderByDesc('Users.created');
@@ -81,6 +81,22 @@ class AdminUsersController extends AppController
             }
         }
 
+        // Mapa avatarów per user_id — osobne zapytanie bo hydratacja przez ORM
+        // (find() z CakeDC plugin) gubi to pole w niektórych przypadkach.
+        $avatarMap = [];
+        if (!empty($userIds)) {
+            $rows = $Users->find()
+                ->select(['id', 'avatar'])
+                ->where(['id IN' => $userIds, 'avatar IS NOT' => null])
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) {
+                if (!empty($r['avatar'])) {
+                    $avatarMap[(string)$r['id']] = (string)$r['avatar'];
+                }
+            }
+        }
+
         // Słownik ról (do filtra i kolumny)
         $rolesList = $this->fetchTable('Roles')->find()
             ->where(['is_active' => true])
@@ -93,7 +109,7 @@ class AdminUsersController extends AppController
         }
 
         $this->set(compact(
-            'users', 'profileMap', 'rolesList', 'roleNameByCode',
+            'users', 'profileMap', 'avatarMap', 'rolesList', 'roleNameByCode',
             'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit'
         ));
     }
