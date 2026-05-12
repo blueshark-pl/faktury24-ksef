@@ -12,9 +12,9 @@
 
 $url = (string)($url ?? '');
 $label = (string)($label ?? '');
-$bg = (string)($bg ?? '#94c81f');
+$bg = (string)($bg ?? '#1b5998');
 $textColor = (string)($textColor ?? '#ffffff');
-$radius = (int)($radius ?? 4);
+$radius = (int)($radius ?? 8);
 
 if ($url === '' || $label === '') {
     return;
@@ -34,7 +34,7 @@ if ($url === '' || $label === '') {
       <![endif]-->
       <!--[if !mso]><!-- -->
       <a href="<?= h($url) ?>"
-        style="display:inline-block;background:<?= h($bg) ?>;color:<?= h($textColor) ?>;text-decoration:none;padding:11px 18px;border-radius:<?= h((string)$radius) ?>px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px;">
+        style="display:inline-block;background:<?= h($bg) ?>;color:<?= h($textColor) ?>;text-decoration:none;padding:13px 26px;border-radius:<?= h((string)$radius) ?>px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px;letter-spacing:.2px;">
         <?= h($label) ?>
       </a>
       <!--<![endif]-->
