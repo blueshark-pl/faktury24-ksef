@@ -29,8 +29,9 @@ class LocaleController extends Controller
 
     /**
      * GET /lang/{lang} — ustawia locale w sesji i przekierowuje na referer (lub /).
+     * Akcja nazywa się `change`, bo `set` koliduje z Controller::set(name, value).
      */
-    public function set(string $lang): Response
+    public function change(string $lang): Response
     {
         $lang = in_array($lang, ['pl', 'en'], true) ? $lang : 'pl';
         $this->request->getSession()->write('Config.locale', $lang);

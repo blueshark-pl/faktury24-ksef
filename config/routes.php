@@ -210,7 +210,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
 
         // Przełączanie języka UI — dostępne dla każdego (także przed logowaniem)
-        $builder->get('/lang/{lang}', ['controller' => 'Locale', 'action' => 'set'])
+        $builder->get('/lang/{lang}', ['controller' => 'Locale', 'action' => 'change'])
             ->setPatterns(['lang' => 'pl|en'])
             ->setPass(['lang']);
 

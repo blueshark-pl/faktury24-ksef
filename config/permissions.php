@@ -163,7 +163,7 @@ return [
         [
             'role' => '*',
             'controller' => 'Locale',
-            'action' => 'set',
+            'action' => 'change',
             'bypassAuth' => true,
         ],
         [
