@@ -1093,3 +1093,53 @@ msgstr "If it wasn't you trying to sign in — ignore this message."
 
 msgid "Linki logowania są jednorazowe i przypisane do konta."
 msgstr "Sign-in links are single-use and tied to your account."
+
+# ── Ekran loginu (CakeDC/Users login.php) ──────────────────────────────────
+msgid "Witaj ponownie! Zaloguj się, aby kontynuować."
+msgstr "Welcome back! Sign in to continue."
+
+msgid "Adres e-mail"
+msgstr "E-mail address"
+
+msgid "Wpisz adres e-mail"
+msgstr "Enter your e-mail"
+
+msgid "Wpisz hasło"
+msgstr "Enter your password"
+
+msgid "Nie pamiętasz hasła?"
+msgstr "Forgot your password?"
+
+msgid "Zapamiętaj mnie"
+msgstr "Remember me"
+
+msgid "Lub zaloguj się przez"
+msgstr "Or sign in with"
+
+msgid "Logowanie..."
+msgstr "Signing in..."
+
+msgid "Nie masz jeszcze konta?"
+msgstr "Don't have an account yet?"
+
+msgid "Zarejestruj się"
+msgstr "Sign up"
+
+# ── Tematy maili (MyUsersMailer) ────────────────────────────────────────────
+msgid "{0}, potwierdź rejestrację"
+msgstr "{0}, confirm your registration"
+
+msgid "Potwierdź rejestrację"
+msgstr "Confirm your registration"
+
+msgid "{0}, ustaw nowe hasło"
+msgstr "{0}, set a new password"
+
+msgid "{0}, potwierdź logowanie kontem społecznościowym"
+msgstr "{0}, confirm your social account sign-in"
+
+msgid "Potwierdź logowanie kontem społecznościowym"
+msgstr "Confirm your social account sign-in"
+
+msgid "{0}, jednorazowe logowanie"
+msgstr "{0}, one-time sign-in"

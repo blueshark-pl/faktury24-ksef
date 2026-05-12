@@ -26,8 +26,8 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
             <img id="loginAvatarImg" src="" alt="" style="display:none;width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid rgba(var(--primary-rgb),.25);box-shadow:0 6px 22px rgba(15,23,42,.15)">
         </span>
     </div>
-    <p class="h4 fw-semibold mb-0 text-center"><?= __d('cake_d_c/users', 'Zaloguj się') ?></p>
-    <p class="mb-0 text-muted fw-normal text-center" id="loginGreet"><?= __d('cake_d_c/users', 'Witaj ponownie! Zaloguj się, aby kontynuować.') ?></p>
+    <p class="h4 fw-semibold mb-0 text-center"><?= __('Zaloguj się') ?></p>
+    <p class="mb-0 text-muted fw-normal text-center" id="loginGreet"><?= __('Witaj ponownie! Zaloguj się, aby kontynuować.') ?></p>
 
     <script>
     (function () {
@@ -137,7 +137,7 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
 
         <div class="d-grid mt-4">
           <?= $this->User->button(
-            __d('cake_d_c/users', 'Zaloguj się'),
+            __('Zaloguj się'),
             [
               'class' => 'btn btn-primary btn-lg d-inline-flex align-items-center justify-content-center gap-2',
               'id' => 'loginBtn',
