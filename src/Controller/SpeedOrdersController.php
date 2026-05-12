@@ -688,22 +688,23 @@ class SpeedOrdersController extends AppController
                     'speed_modified_at' => $speedModAt,
                 ];
 
-                // ── Auto-POL/POD na podstawie dat ze Speed ──
-                // POL: GLO_DATA_TER (data załadunku) < dziś → załadunek zakończony
-                $autoPol = ($dateDeadline !== null && $dateDeadline < date('Y-m-d'));
-                // POD: GLO_DATA_ZAK (data rozładunku) < dziś → rozładunek zakończony
-                $autoPod = ($dateDelivery !== null && $dateDelivery < date('Y-m-d'));
+                // ── Auto: rzeczywisty załadunek/rozładunek (actual_*) na podstawie dat ──
+                // Tylko gdy planowana data jest w przeszłości — wtedy domyślnie
+                // zakładamy że zrealizowano. NIE ustawiamy pol_at/pod_at —
+                // ikony POL/POD pozostają szare aż do faktycznego wgrania plików.
+                $autoLoad   = ($dateDeadline !== null && $dateDeadline < date('Y-m-d'));
+                $autoUnload = ($dateDelivery !== null && $dateDelivery < date('Y-m-d'));
 
                 // Upsert po speed_id
                 $existing = $SpeedOrders->find()->where(['speed_id' => $speedId])->first();
                 if ($existing) {
                     $entity = $SpeedOrders->patchEntity($existing, $data);
                     // Nie cofamy ręcznie ustawionych dat — uzupełniamy tylko jeśli puste
-                    if ($autoPol && empty($entity->pol_at)) {
-                        $entity->set('pol_at', $now);
+                    if ($autoLoad && empty($entity->actual_load_at)) {
+                        $entity->set('actual_load_at', $dateDeadline . ' 00:00:00');
                     }
-                    if ($autoPod && empty($entity->pod_at)) {
-                        $entity->set('pod_at', $now);
+                    if ($autoUnload && empty($entity->actual_unload_at)) {
+                        $entity->set('actual_unload_at', $dateDelivery . ' 00:00:00');
                     }
                     $this->applyAutoNlStatus($entity);
                     if ($SpeedOrders->save($entity)) {
@@ -713,8 +714,8 @@ class SpeedOrdersController extends AppController
                     }
                 } else {
                     $entity = $SpeedOrders->newEntity($data);
-                    if ($autoPol) $entity->set('pol_at', $now);
-                    if ($autoPod) $entity->set('pod_at', $now);
+                    if ($autoLoad)   $entity->set('actual_load_at',   $dateDeadline . ' 00:00:00');
+                    if ($autoUnload) $entity->set('actual_unload_at', $dateDelivery . ' 00:00:00');
                     $this->applyAutoNlStatus($entity);
                     if ($SpeedOrders->save($entity)) {
                         $saved++;
@@ -860,6 +861,32 @@ class SpeedOrdersController extends AppController
         if ($this->request->getData('docs_electronic_only') !== null) {
             $val = (bool)(int)$this->request->getData('docs_electronic_only');
             $order->set('docs_electronic_only', $val);
+        }
+
+        // Rzeczywisty załadunek/rozładunek (datetime, edytowalne przez spedytora)
+        foreach (['actual_load_at', 'actual_unload_at'] as $field) {
+            $val = $this->request->getData($field);
+            if ($val === null) {
+                continue;
+            }
+            $val = trim((string)$val);
+            $oldVal = $order->{$field} ? substr((string)$order->{$field}, 0, 16) : null;
+            // Akceptowany format: 'YYYY-MM-DDTHH:MM' (datetime-local) lub puste = wyczyść
+            if ($val === '') {
+                $newVal = null;
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $val)) {
+                $newVal = str_replace('T', ' ', $val);
+                if (strlen($newVal) === 16) {
+                    $newVal .= ':00';
+                }
+            } else {
+                continue; // bezpieczeństwo: nie zapisuj nieprawidłowych wartości
+            }
+            $order->set($field, $newVal);
+            $newValStr = $newVal ? substr($newVal, 0, 16) : null;
+            if ($oldVal !== $newValStr) {
+                $logEntries[] = ['field' => $field, 'old' => $oldVal, 'new' => $newValStr];
+            }
         }
 
         // Checkboxy — ustawiamy datę, pole *_by i null

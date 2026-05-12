@@ -74,11 +74,18 @@ $byUser = function(string $field) use ($order, $logByField): ?string {
     return isset($logByField[$field]) ? (string)($logByField[$field]->username ?? '') : null;
 };
 
-// 3. POL — załadunek potwierdzony
+// 3a. Rzeczywisty załadunek (z pola actual_load_at — czas operacyjny)
+if (!empty($order->actual_load_at)) {
+    $d = $order->actual_load_at instanceof \DateTimeInterface ? $order->actual_load_at : new \DateTimeImmutable(substr((string)$order->actual_load_at,0,16));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Rzeczywisty załadunek',
+        'sub' => $fdatetime($order->actual_load_at),
+        'icon' => 'ri-truck-line', 'color' => '#0ea5e9', 'done' => true];
+}
+// 3. POL — załadunek potwierdzony dokumentem
 if ($order->pol_at) {
     $d = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at : new \DateTimeImmutable(substr((string)$order->pol_at,0,16));
     $by = $byUser('pol_at');
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony',
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony dokumentem',
         'sub' => $fdatetime($order->pol_at), 'by' => $by,
         'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
 }
@@ -89,11 +96,18 @@ if ($order->date_delivery) {
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany rozładunek', 'sub' => $fdate($order->date_delivery), 'icon' => 'ri-download-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
-// 5. POD — rozładunek potwierdzony
+// 4a. Rzeczywisty rozładunek
+if (!empty($order->actual_unload_at)) {
+    $d = $order->actual_unload_at instanceof \DateTimeInterface ? $order->actual_unload_at : new \DateTimeImmutable(substr((string)$order->actual_unload_at,0,16));
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Rzeczywisty rozładunek',
+        'sub' => $fdatetime($order->actual_unload_at),
+        'icon' => 'ri-truck-line', 'color' => '#0ea5e9', 'done' => true];
+}
+// 5. POD — rozładunek potwierdzony dokumentem
 if ($order->pod_at) {
     $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
     $by = $byUser('pod_at');
-    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony',
+    $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony dokumentem',
         'sub' => $fdatetime($order->pod_at), 'by' => $by,
         'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
 }
@@ -347,6 +361,35 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
             <div class="stepper-arrow"><i class="ri-arrow-right-s-line"></i></div>
             <?php endif; ?>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Rzeczywisty załadunek / rozładunek (datetime, edytowalne) -->
+        <?php
+            $fmtLocal = function ($v): string {
+                if (!$v) return '';
+                if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d\TH:i');
+                return str_replace(' ', 'T', substr((string)$v, 0, 16));
+            };
+        ?>
+        <div class="d-flex gap-2 flex-wrap justify-content-center mb-2" id="actual-times-row">
+            <div class="actual-time-box" style="background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.25);border-radius:10px;padding:8px 12px;min-width:240px">
+                <div class="small text-muted mb-1"><i class="ri-truck-line text-info"></i> <strong>Rzeczywisty załadunek</strong></div>
+                <input type="datetime-local" class="form-control form-control-sm actual-time-input"
+                       data-field="actual_load_at"
+                       value="<?= h($fmtLocal($order->actual_load_at ?? null)) ?>">
+                <?php if (!empty($order->date_deadline)): ?>
+                    <div class="text-muted" style="font-size:.7em">Planowany: <?= h($fdate($order->date_deadline)) ?></div>
+                <?php endif; ?>
+            </div>
+            <div class="actual-time-box" style="background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.25);border-radius:10px;padding:8px 12px;min-width:240px">
+                <div class="small text-muted mb-1"><i class="ri-truck-line text-info"></i> <strong>Rzeczywisty rozładunek</strong></div>
+                <input type="datetime-local" class="form-control form-control-sm actual-time-input"
+                       data-field="actual_unload_at"
+                       value="<?= h($fmtLocal($order->actual_unload_at ?? null)) ?>">
+                <?php if (!empty($order->date_delivery)): ?>
+                    <div class="text-muted" style="font-size:.7em">Planowany: <?= h($fdate($order->date_delivery)) ?></div>
+                <?php endif; ?>
+            </div>
         </div>
 
         <!-- POL/POD/FK/FS pills -->
@@ -1383,6 +1426,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast(data.error||'Błąd', false);
                 }
             }).catch(function(e){ self.checked=!val; showToast('Błąd: '+e.message,false); });
+        });
+    });
+
+    // ── Rzeczywisty załadunek / rozładunek (datetime-local inputs, debounced save) ──
+    document.querySelectorAll('.actual-time-input').forEach(function (inp) {
+        var saveTimer = null;
+        function save() {
+            var field = inp.dataset.field;
+            var val   = (inp.value || '').trim();
+            var payload = { id: orderId };
+            payload[field] = val;
+            post(updateUrl, payload).then(function (data) {
+                if (data.success) {
+                    var label = field === 'actual_load_at' ? 'Rzeczywisty załadunek' : 'Rzeczywisty rozładunek';
+                    showToast('✔ ' + label + ' ' + (val ? 'zapisany' : 'wyczyszczony'), true);
+                } else {
+                    showToast(data.error || 'Błąd zapisu', false);
+                }
+            }).catch(function (e) { showToast('Błąd: ' + e.message, false); });
+        }
+        inp.addEventListener('change', function () {
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(save, 300);
         });
     });
 
