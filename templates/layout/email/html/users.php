@@ -17,9 +17,23 @@ $brand     = '#1b5998';     // Booklio primary blue
 $brandDark = '#13406d';     // hover/darker
 $preheader = (string)$this->fetch('preheader');
 $year      = (int)date('Y');
+$brandSite = 'booklio.pl';
+
+// Logo: priorytet plik /webroot/img/email-logo.png (mały, inline base64)
+// → fallback config App.emailLogoDataUri lub App.emailLogoUrl
+// → fallback tekstowy placeholder
+$logoDataUri = '';
 $logoUrl     = trim((string)(Configure::read('App.emailLogoUrl') ?? ''));
-$logoDataUri = trim((string)(Configure::read('App.emailLogoDataUri') ?? ''));
-$brandSite   = 'booklio.pl';
+$emailLogoPath = WWW_ROOT . 'img' . DIRECTORY_SEPARATOR . 'email-logo.png';
+if (is_file($emailLogoPath)) {
+    $bin = @file_get_contents($emailLogoPath);
+    if ($bin !== false && strlen($bin) < 80000) {
+        $logoDataUri = 'data:image/png;base64,' . base64_encode($bin);
+    }
+}
+if ($logoDataUri === '') {
+    $logoDataUri = trim((string)(Configure::read('App.emailLogoDataUri') ?? ''));
+}
 ?>
 <!doctype html>
 <html lang="pl">
@@ -49,23 +63,13 @@ $brandSite   = 'booklio.pl';
           <tr>
             <td align="center" style="padding: 4px 0 22px;">
               <?php if ($logoDataUri !== ''): ?>
-                <img src="<?= h($logoDataUri) ?>" width="140" alt="<?= h($appName) ?>" style="display:block; border:0; outline:none; text-decoration:none; width:140px; max-width:60%; height:auto;">
+                <img src="<?= h($logoDataUri) ?>" width="180" alt="<?= h($appName) ?>" style="display:block; border:0; outline:none; text-decoration:none; width:180px; max-width:60%; height:auto;">
               <?php elseif ($logoUrl !== ''): ?>
-                <img src="<?= h($logoUrl) ?>" width="140" alt="<?= h($appName) ?>" style="display:block; border:0; outline:none; text-decoration:none; width:140px; max-width:60%; height:auto;">
+                <img src="<?= h($logoUrl) ?>" width="180" alt="<?= h($appName) ?>" style="display:block; border:0; outline:none; text-decoration:none; width:180px; max-width:60%; height:auto;">
               <?php else: ?>
-                <!-- Placeholder z literą B na okrągłym tle, jeśli logo nie skonfigurowane -->
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
-                  <tr>
-                    <td style="width:52px; height:52px; background:<?= h($brand) ?>; border-radius:14px; text-align:center; vertical-align:middle;">
-                      <span style="display:inline-block; font-family:'Segoe UI',Arial,sans-serif; font-size:22px; font-weight:900; color:#ffffff; line-height:52px;">B</span>
-                    </td>
-                    <td style="width:8px;"></td>
-                    <td style="vertical-align:middle; text-align:left;">
-                      <div style="font-family:'Segoe UI',Arial,sans-serif; font-size:18px; font-weight:700; color:#0f172a; line-height:1.1;"><?= h($appName) ?></div>
-                      <div style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; color:#64748b; letter-spacing:.5px; text-transform:uppercase;">Transport Management System</div>
-                    </td>
-                  </tr>
-                </table>
+                <div style="font-family:'Segoe UI',Arial,sans-serif; font-size:20px; font-weight:800; color:<?= h($brand) ?>; letter-spacing:.3px;">
+                  <?= h($appName) ?>
+                </div>
               <?php endif; ?>
             </td>
           </tr>
@@ -90,7 +94,7 @@ $brandSite   = 'booklio.pl';
                 </tr>
                 <tr>
                   <td style="padding: 14px 32px 24px; font-size: 12px; color: #94a3b8; line-height: 1.6;">
-                    Ta wiadomość została wysłana automatycznie. Prosimy na nią nie odpowiadać.
+                    <?= __('Ta wiadomość została wysłana automatycznie. Prosimy na nią nie odpowiadać.') ?>
                   </td>
                 </tr>
               </table>
@@ -101,7 +105,7 @@ $brandSite   = 'booklio.pl';
           <tr>
             <td align="center" style="padding: 22px 0 0;">
               <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; font-size:12px; color:#94a3b8; line-height:1.7;">
-                <div>© <?= $year ?> <strong style="color:#64748b;"><?= h($appName) ?></strong> — system zarządzania transportem</div>
+                <div>© <?= $year ?> <strong style="color:#64748b;"><?= h($appName) ?></strong> — <?= __('system zarządzania transportem') ?></div>
                 <div style="margin-top:6px;">
                   <a href="https://<?= h($brandSite) ?>" style="color:<?= h($brand) ?>; text-decoration:none; font-weight:600;"><?= h($brandSite) ?></a>
                 </div>

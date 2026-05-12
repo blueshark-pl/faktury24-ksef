@@ -14,16 +14,19 @@ if ($appName === '') {
 	$appName = 'Booklio TMS';
 }
 $firstName = (string)($user->get('first_name') ?? '');
-$greeting  = $firstName !== '' ? "Cześć {$firstName}," : 'Cześć,';
+$greeting  = $firstName !== '' ? __('Cześć {0},', $firstName) : __('Cześć,');
 $link      = is_array($activationUrl) ? Router::url($activationUrl, true) : (string)$activationUrl;
 $provider  = (string)($socialAccount->get('provider') ?? '');
-$providerTxt = $provider !== '' ? " ({$provider})" : '';
 
 echo "{$greeting}\n\n";
-echo "Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym{$providerTxt} w {$appName}.\n";
-echo "Jeśli to Ty, otwórz poniższy link, aby dokończyć logowanie:\n\n";
+if ($provider !== '') {
+    echo __('Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym ({0}) w {1}.', $provider, $appName) . "\n";
+} else {
+    echo __('Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym w {0}.', $appName) . "\n";
+}
+echo __('Jeśli to Ty, otwórz poniższy link, aby dokończyć logowanie:') . "\n\n";
 echo "{$link}\n\n";
 echo "---\n";
-echo "Jeśli to nie Ty próbowałeś się zalogować — zignoruj tę wiadomość.\n";
-echo "Linki logowania są jednorazowe i przypisane do konta.\n\n";
+echo __('Jeśli to nie Ty próbowałeś się zalogować — zignoruj tę wiadomość.') . "\n";
+echo __('Linki logowania są jednorazowe i przypisane do konta.') . "\n\n";
 echo "© " . date('Y') . " {$appName}\n";

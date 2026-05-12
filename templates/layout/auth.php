@@ -14,6 +14,9 @@ $this->assign('title', $this->fetch('title') ?: 'Sign In');
 
 $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col-md-8 col-sm-10 col-12');
+
+// Język UI — z sesji, default pl
+$currentLang = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr"
@@ -67,6 +70,18 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
     <!-- Switcher -->
     <?= $this->element('auth/switcher') ?>
+
+    <!-- Floating: przełącznik języka PL/EN (dla niezalogowanych — ekran loginu/rejestracji) -->
+    <div class="auth-lang" role="navigation" aria-label="Language">
+        <a href="/lang/pl" class="auth-lang__btn <?= $currentLang === 'pl' ? 'is-active' : '' ?>" title="Polski">
+            <img src="/assets/images/flags/poland_flag.jpg" alt="PL">
+            <span>PL</span>
+        </a>
+        <a href="/lang/en" class="auth-lang__btn <?= $currentLang === 'en' ? 'is-active' : '' ?>" title="English">
+            <img src="/assets/images/flags/uk_flag.jpg" alt="EN">
+            <span>EN</span>
+        </a>
+    </div>
 
     <!-- Auth Wrapper -->
     <div class="d-flex align-items-center justify-content-center authentication">
@@ -376,6 +391,58 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
       .auth-footer-inner a:hover{
         color: rgba(15, 23, 42, 0.85);
+      }
+
+      /* ── Floating: przełącznik języka (PL/EN) w prawym górnym rogu ──────── */
+      .auth-lang{
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        z-index: 10;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.65);
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        border-radius: 999px;
+        backdrop-filter: blur(10px) saturate(140%);
+        -webkit-backdrop-filter: blur(10px) saturate(140%);
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.10);
+      }
+      .auth-lang__btn{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px 6px 6px;
+        border-radius: 999px;
+        text-decoration: none;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(15, 23, 42, 0.65);
+        transition: background .15s ease, color .15s ease, transform .1s ease;
+      }
+      .auth-lang__btn img{
+        display: block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+      }
+      .auth-lang__btn:hover{
+        background: rgba(27, 89, 152, 0.08);
+        color: rgba(15, 23, 42, 0.85);
+      }
+      .auth-lang__btn.is-active{
+        background: rgba(27, 89, 152, 0.12);
+        color: #1b5998;
+      }
+      @media (max-width: 480px){
+        .auth-lang{ top: 12px; right: 12px; }
+        .auth-lang__btn span{ display: none; }
+        .auth-lang__btn{ padding: 6px; }
       }
     </style>
     <!-- Bootstrap JS -->

@@ -159,6 +159,13 @@ return [
             'action' => ['gusLookup'],
             'bypassAuth' => true,
         ],
+        // Przełączanie języka UI — dostępne także bez logowania (ekran loginu)
+        [
+            'role' => '*',
+            'controller' => 'Locale',
+            'action' => 'set',
+            'bypassAuth' => true,
+        ],
         [
             'role' => '*',
             'controller' => 'Companies',

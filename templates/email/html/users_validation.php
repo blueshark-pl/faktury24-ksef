@@ -14,10 +14,10 @@ if ($appName === '') {
 }
 $brand     = '#1b5998';
 $firstName = (string)($first_name ?? '');
-$greeting  = $firstName !== '' ? 'Cześć ' . $firstName . ',' : 'Cześć,';
+$greeting  = $firstName !== '' ? __('Cześć {0},', $firstName) : __('Cześć,');
 $link      = is_array($activationUrl) ? Router::url($activationUrl, true) : (string)$activationUrl;
 
-$this->assign('preheader', 'Potwierdź rejestrację i aktywuj konto w ' . $appName . '.');
+$this->assign('preheader', __('Potwierdź rejestrację i aktywuj konto w {0}.', $appName));
 ?>
 
 <div style="font-size:15px; line-height:1.65; color:#0f172a;">
@@ -31,17 +31,17 @@ $this->assign('preheader', 'Potwierdź rejestrację i aktywuj konto w ' . $appNa
     </tr>
   </table>
 
-  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;">Aktywuj konto</h1>
+  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;"><?= __('Aktywuj konto') ?></h1>
   <p style="margin:0 0 16px; font-size:14px; color:#475569;"><?= h($greeting) ?></p>
   <p style="margin:0 0 20px; color:#334155;">
-    Dziękujemy za rejestrację w <strong><?= h($appName) ?></strong>.
-    Aby dokończyć proces i aktywować konto, kliknij przycisk poniżej.
+    <?= __('Dziękujemy za rejestrację w {0}.', '<strong>' . h($appName) . '</strong>') ?>
+    <?= __('Aby dokończyć proces i aktywować konto, kliknij przycisk poniżej.') ?>
   </p>
 
   <div style="margin: 24px 0;">
     <?= $this->element('email/cta_button', [
       'url' => $link,
-      'label' => 'Aktywuj konto',
+      'label' => __('Aktywuj konto'),
       'bg' => $brand,
       'textColor' => '#ffffff',
       'radius' => 8,
@@ -52,16 +52,16 @@ $this->assign('preheader', 'Potwierdź rejestrację i aktywuj konto w ' . $appNa
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 20px;">
     <tr>
       <td style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px;">
-        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;">Po aktywacji</div>
+        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;"><?= __('Po aktywacji') ?></div>
         <div style="font-size:13px; color:#334155;">
-          Zyskasz dostęp do panelu Booklio TMS — zleceń transportowych, kontrahentów, faktur i pełnej historii operacji.
+          <?= __('Zyskasz dostęp do panelu — zleceń transportowych, kontrahentów, faktur i pełnej historii operacji.') ?>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- Fallback link -->
-  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;">Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:</p>
+  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;"><?= __('Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:') ?></p>
   <p style="margin:0 0 0; word-break:break-all; font-size:12px;">
     <a href="<?= h($link) ?>" style="color:<?= h($brand) ?>; text-decoration:underline;"><?= h($link) ?></a>
   </p>
@@ -75,8 +75,8 @@ $this->assign('preheader', 'Potwierdź rejestrację i aktywuj konto w ' . $appNa
       </td>
       <td>
         <div style="font-size:12px; color:#64748b;">
-          Jeśli to nie Ty zakładałeś konto — zignoruj tę wiadomość.
-          Link aktywacyjny jest unikalny — nie udostępniaj go osobom trzecim.
+          <?= __('Jeśli to nie Ty zakładałeś konto — zignoruj tę wiadomość.') ?>
+          <?= __('Link aktywacyjny jest unikalny — nie udostępniaj go osobom trzecim.') ?>
         </div>
       </td>
     </tr>

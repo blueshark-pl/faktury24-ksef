@@ -209,6 +209,11 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/admin/klienci/usun/{id}',      ['controller' => 'AdminClients', 'action' => 'delete'])
             ->setPass(['id']);
 
+        // Przełączanie języka UI — dostępne dla każdego (także przed logowaniem)
+        $builder->get('/lang/{lang}', ['controller' => 'Locale', 'action' => 'set'])
+            ->setPatterns(['lang' => 'pl|en'])
+            ->setPass(['lang']);
+
         // Portal klienta (rola `client`) — zlecenia transportowe powiązane przez NIP
         $builder->get('/portal',                       ['controller' => 'ClientPortal', 'action' => 'index']);
         $builder->get('/portal/zlecenie/{id}',         ['controller' => 'ClientPortal', 'action' => 'view'])

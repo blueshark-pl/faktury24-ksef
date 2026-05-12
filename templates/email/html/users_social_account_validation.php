@@ -15,11 +15,11 @@ if ($appName === '') {
 }
 $brand     = '#1b5998';
 $firstName = (string)($user->get('first_name') ?? '');
-$greeting  = $firstName !== '' ? 'Cześć ' . $firstName . ',' : 'Cześć,';
+$greeting  = $firstName !== '' ? __('Cześć {0},', $firstName) : __('Cześć,');
 $link      = is_array($activationUrl) ? Router::url($activationUrl, true) : (string)$activationUrl;
 $provider  = (string)($socialAccount->get('provider') ?? '');
 
-$this->assign('preheader', 'Potwierdź logowanie kontem społecznościowym i kontynuuj.');
+$this->assign('preheader', __('Potwierdź logowanie kontem społecznościowym i kontynuuj.'));
 ?>
 
 <div style="font-size:15px; line-height:1.65; color:#0f172a;">
@@ -32,18 +32,19 @@ $this->assign('preheader', 'Potwierdź logowanie kontem społecznościowym i kon
     </tr>
   </table>
 
-  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;">Potwierdź logowanie</h1>
+  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;"><?= __('Potwierdź logowanie') ?></h1>
   <p style="margin:0 0 16px; font-size:14px; color:#475569;"><?= h($greeting) ?></p>
   <p style="margin:0 0 20px; color:#334155;">
-    Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym<?= $provider !== '' ? ' (<strong>' . h($provider) . '</strong>)' : '' ?>
-    w <strong><?= h($appName) ?></strong>.
-    Jeśli to Ty, kliknij przycisk, aby dokończyć logowanie.
+    <?= $provider !== ''
+        ? __('Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym ({0}) w {1}.', '<strong>' . h($provider) . '</strong>', '<strong>' . h($appName) . '</strong>')
+        : __('Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym w {0}.', '<strong>' . h($appName) . '</strong>') ?>
+    <?= __('Jeśli to Ty, kliknij przycisk, aby dokończyć logowanie.') ?>
   </p>
 
   <div style="margin: 24px 0;">
     <?= $this->element('email/cta_button', [
       'url' => $link,
-      'label' => 'Potwierdź i kontynuuj',
+      'label' => __('Potwierdź i kontynuuj'),
       'bg' => $brand,
       'textColor' => '#ffffff',
       'radius' => 8,
@@ -53,15 +54,15 @@ $this->assign('preheader', 'Potwierdź logowanie kontem społecznościowym i kon
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 20px;">
     <tr>
       <td style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px;">
-        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;">Dlaczego prosimy o potwierdzenie?</div>
+        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;"><?= __('Dlaczego prosimy o potwierdzenie?') ?></div>
         <div style="font-size:13px; color:#334155;">
-          To dodatkowy krok bezpieczeństwa — chroni konto przed nieautoryzowanym dostępem.
+          <?= __('To dodatkowy krok bezpieczeństwa — chroni konto przed nieautoryzowanym dostępem.') ?>
         </div>
       </td>
     </tr>
   </table>
 
-  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;">Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:</p>
+  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;"><?= __('Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:') ?></p>
   <p style="margin:0 0 0; word-break:break-all; font-size:12px;">
     <a href="<?= h($link) ?>" style="color:<?= h($brand) ?>; text-decoration:underline;"><?= h($link) ?></a>
   </p>
@@ -75,8 +76,8 @@ $this->assign('preheader', 'Potwierdź logowanie kontem społecznościowym i kon
       </td>
       <td>
         <div style="font-size:12px; color:#64748b;">
-          Jeśli to nie Ty próbowałeś się zalogować — zignoruj tę wiadomość.
-          Linki logowania są jednorazowe i przypisane do konta.
+          <?= __('Jeśli to nie Ty próbowałeś się zalogować — zignoruj tę wiadomość.') ?>
+          <?= __('Linki logowania są jednorazowe i przypisane do konta.') ?>
         </div>
       </td>
     </tr>

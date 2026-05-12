@@ -14,9 +14,9 @@ if ($appName === '') {
 }
 $brand     = '#1b5998';
 $firstName = (string)($user->get('first_name') ?? '');
-$greeting  = $firstName !== '' ? 'Cześć ' . $firstName . ',' : 'Cześć,';
+$greeting  = $firstName !== '' ? __('Cześć {0},', $firstName) : __('Cześć,');
 
-$this->assign('preheader', 'Jednorazowy link do logowania — bez hasła.');
+$this->assign('preheader', __('Jednorazowy link do logowania — bez hasła.'));
 ?>
 
 <div style="font-size:15px; line-height:1.65; color:#0f172a;">
@@ -30,17 +30,17 @@ $this->assign('preheader', 'Jednorazowy link do logowania — bez hasła.');
     </tr>
   </table>
 
-  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;">Jednorazowe logowanie</h1>
+  <h1 style="margin:0 0 8px; font-size:22px; font-weight:700; color:#0f172a; line-height:1.3;"><?= __('Jednorazowe logowanie') ?></h1>
   <p style="margin:0 0 16px; font-size:14px; color:#475569;"><?= h($greeting) ?></p>
   <p style="margin:0 0 20px; color:#334155;">
-    Oto jednorazowy link do logowania w <strong><?= h($appName) ?></strong> — bez podawania hasła.
-    Wystarczy jedno kliknięcie, aby przejść do panelu.
+    <?= __('Oto jednorazowy link do logowania w {0} — bez podawania hasła.', '<strong>' . h($appName) . '</strong>') ?>
+    <?= __('Wystarczy jedno kliknięcie, aby przejść do panelu.') ?>
   </p>
 
   <div style="margin: 24px 0;">
     <?= $this->element('email/cta_button', [
       'url' => $loginLink,
-      'label' => 'Zaloguj się',
+      'label' => __('Zaloguj się'),
       'bg' => $brand,
       'textColor' => '#ffffff',
       'radius' => 8,
@@ -51,16 +51,16 @@ $this->assign('preheader', 'Jednorazowy link do logowania — bez hasła.');
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 20px;">
     <tr>
       <td style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px;">
-        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;">Bezpieczeństwo</div>
+        <div style="font-weight:700; font-size:13px; color:#0f172a; margin:0 0 8px; text-transform:uppercase; letter-spacing:.4px;"><?= __('Bezpieczeństwo') ?></div>
         <div style="font-size:13px; color:#334155;">
-          Link działa tylko raz i jest przypisany do Twojego konta. Po wygaśnięciu poproś o nowy z ekranu logowania.
+          <?= __('Link działa tylko raz i jest przypisany do Twojego konta. Po wygaśnięciu poproś o nowy z ekranu logowania.') ?>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- Fallback link -->
-  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;">Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:</p>
+  <p style="margin:18px 0 6px; font-size:12px; color:#64748b;"><?= __('Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:') ?></p>
   <p style="margin:0 0 0; word-break:break-all; font-size:12px;">
     <a href="<?= h($loginLink) ?>" style="color:<?= h($brand) ?>; text-decoration:underline;"><?= h($loginLink) ?></a>
   </p>
@@ -74,7 +74,7 @@ $this->assign('preheader', 'Jednorazowy link do logowania — bez hasła.');
       </td>
       <td>
         <div style="font-size:12px; color:#64748b;">
-          Jeśli to nie Ty prosiłeś o link logowania — zignoruj tę wiadomość.
+          <?= __('Jeśli to nie Ty prosiłeś o link logowania — zignoruj tę wiadomość.') ?>
         </div>
       </td>
     </tr>

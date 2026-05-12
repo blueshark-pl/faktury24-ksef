@@ -13,15 +13,15 @@ if ($appName === '') {
 	$appName = 'Booklio TMS';
 }
 $firstName = (string)($first_name ?? '');
-$greeting  = $firstName !== '' ? "Cześć {$firstName}," : 'Cześć,';
+$greeting  = $firstName !== '' ? __('Cześć {0},', $firstName) : __('Cześć,');
 $link      = is_array($activationUrl) ? Router::url($activationUrl, true) : (string)$activationUrl;
 
 echo "{$greeting}\n\n";
-echo "Dziękujemy za rejestrację w {$appName}.\n";
-echo "Aby dokończyć proces i aktywować konto, otwórz poniższy link:\n\n";
+echo __('Dziękujemy za rejestrację w {0}.', $appName) . "\n";
+echo __('Aby dokończyć proces i aktywować konto, otwórz poniższy link:') . "\n\n";
 echo "{$link}\n\n";
-echo "Po aktywacji zyskasz dostęp do panelu — zleceń, kontrahentów, faktur i pełnej historii operacji.\n\n";
+echo __('Po aktywacji zyskasz dostęp do panelu — zleceń, kontrahentów, faktur i pełnej historii operacji.') . "\n\n";
 echo "---\n";
-echo "Jeśli to nie Ty zakładałeś konto — zignoruj tę wiadomość.\n";
-echo "Link aktywacyjny jest unikalny — nie udostępniaj go osobom trzecim.\n\n";
+echo __('Jeśli to nie Ty zakładałeś konto — zignoruj tę wiadomość.') . "\n";
+echo __('Link aktywacyjny jest unikalny — nie udostępniaj go osobom trzecim.') . "\n\n";
 echo "© " . date('Y') . " {$appName}\n";

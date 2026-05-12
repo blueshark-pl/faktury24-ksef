@@ -947,3 +947,149 @@ msgstr "Failed to delete the account."
 
 msgid "Użytkownik usunięty."
 msgstr "User deleted."
+
+# ── E-maile (reset hasła, aktywacja, jednorazowe logowanie) ─────────────────
+msgid "Cześć {0},"
+msgstr "Hi {0},"
+
+msgid "Cześć,"
+msgstr "Hi,"
+
+msgid "Ta wiadomość została wysłana automatycznie. Prosimy na nią nie odpowiadać."
+msgstr "This message was sent automatically. Please do not reply."
+
+msgid "system zarządzania transportem"
+msgstr "transport management system"
+
+# Reset hasła
+msgid "Link do ustawienia nowego hasła do Twojego konta."
+msgstr "Link to set a new password for your account."
+
+msgid "Ustaw nowe hasło"
+msgstr "Set a new password"
+
+msgid "Otrzymaliśmy prośbę o reset hasła do Twojego konta w {0}."
+msgstr "We received a request to reset the password for your account at {0}."
+
+msgid "Jeśli to była Twoja prośba, kliknij przycisk poniżej, aby ustawić nowe hasło."
+msgstr "If this was you, click the button below to set a new password."
+
+msgid "Co dalej?"
+msgstr "What's next?"
+
+msgid "Co dalej:"
+msgstr "What's next:"
+
+msgid "Otwórz link z przycisku powyżej"
+msgstr "Open the link from the button above"
+
+msgid "Otwórz link poniżej"
+msgstr "Open the link below"
+
+msgid "Ustaw nowe hasło (min. 8 znaków)"
+msgstr "Set a new password (min. 8 characters)"
+
+msgid "Zaloguj się ponownie"
+msgstr "Sign in again"
+
+msgid "Link do ustawienia hasła:"
+msgstr "Password reset link:"
+
+msgid "Jeśli przycisk nie działa, skopiuj poniższy link do przeglądarki:"
+msgstr "If the button doesn't work, copy the link below into your browser:"
+
+msgid "Jeśli nie prosiłeś o zmianę hasła — zignoruj tę wiadomość. Twoje konto pozostanie bez zmian."
+msgstr "If you didn't request a password change — ignore this message. Your account will remain unchanged."
+
+msgid "Nigdy nie udostępniaj tego linku ani danych logowania osobom trzecim."
+msgstr "Never share this link or your login details with third parties."
+
+# Aktywacja
+msgid "Potwierdź rejestrację i aktywuj konto w {0}."
+msgstr "Confirm your registration and activate your account at {0}."
+
+msgid "Aktywuj konto"
+msgstr "Activate account"
+
+msgid "Dziękujemy za rejestrację w {0}."
+msgstr "Thank you for registering at {0}."
+
+msgid "Aby dokończyć proces i aktywować konto, kliknij przycisk poniżej."
+msgstr "To complete the process and activate your account, click the button below."
+
+msgid "Aby dokończyć proces i aktywować konto, otwórz poniższy link:"
+msgstr "To complete the process and activate your account, open the link below:"
+
+msgid "Po aktywacji"
+msgstr "After activation"
+
+msgid "Zyskasz dostęp do panelu — zleceń transportowych, kontrahentów, faktur i pełnej historii operacji."
+msgstr "You'll get access to the panel — transport orders, contractors, invoices and the full history of operations."
+
+msgid "Po aktywacji zyskasz dostęp do panelu — zleceń, kontrahentów, faktur i pełnej historii operacji."
+msgstr "After activation you'll get access to the panel — orders, contractors, invoices and the full history of operations."
+
+msgid "Jeśli to nie Ty zakładałeś konto — zignoruj tę wiadomość."
+msgstr "If it wasn't you who created the account — ignore this message."
+
+msgid "Link aktywacyjny jest unikalny — nie udostępniaj go osobom trzecim."
+msgstr "The activation link is unique — do not share it with third parties."
+
+# Jednorazowy link
+msgid "Jednorazowy link do logowania — bez hasła."
+msgstr "One-time login link — no password required."
+
+msgid "Jednorazowe logowanie"
+msgstr "One-time sign in"
+
+msgid "Oto jednorazowy link do logowania w {0} — bez podawania hasła."
+msgstr "Here's a one-time link to sign in to {0} — no password required."
+
+msgid "Wystarczy jedno kliknięcie, aby przejść do panelu."
+msgstr "One click is all it takes to access the panel."
+
+msgid "Zaloguj się"
+msgstr "Sign in"
+
+msgid "Link działa tylko raz i jest przypisany do Twojego konta. Po wygaśnięciu poproś o nowy z ekranu logowania."
+msgstr "The link works only once and is tied to your account. If it expires, request a new one from the login screen."
+
+msgid "Link logowania:"
+msgstr "Login link:"
+
+msgid "Jeśli to nie Ty prosiłeś o link logowania — zignoruj tę wiadomość."
+msgstr "If it wasn't you who requested a login link — ignore this message."
+
+# Konto społecznościowe
+msgid "Potwierdź logowanie kontem społecznościowym i kontynuuj."
+msgstr "Confirm sign-in with your social account and continue."
+
+msgid "Potwierdź logowanie"
+msgstr "Confirm sign-in"
+
+msgid "Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym ({0}) w {1}."
+msgstr "We received a request to confirm sign-in with a social account ({0}) at {1}."
+
+msgid "Otrzymaliśmy prośbę o potwierdzenie logowania kontem społecznościowym w {0}."
+msgstr "We received a request to confirm sign-in with a social account at {0}."
+
+msgid "Jeśli to Ty, kliknij przycisk, aby dokończyć logowanie."
+msgstr "If this is you, click the button to finish signing in."
+
+msgid "Jeśli to Ty, otwórz poniższy link, aby dokończyć logowanie:"
+msgstr "If this is you, open the link below to finish signing in:"
+
+msgid "Potwierdź i kontynuuj"
+msgstr "Confirm and continue"
+
+msgid "Dlaczego prosimy o potwierdzenie?"
+msgstr "Why are we asking for confirmation?"
+
+msgid "To dodatkowy krok bezpieczeństwa — chroni konto przed nieautoryzowanym dostępem."
+msgstr "It's an additional security step — it protects your account from unauthorized access."
+
+msgid "Jeśli to nie Ty próbowałeś się zalogować — zignoruj tę wiadomość."
+msgstr "If it wasn't you trying to sign in — ignore this message."
+
+msgid "Linki logowania są jednorazowe i przypisane do konta."
+msgstr "Sign-in links are single-use and tied to your account."
