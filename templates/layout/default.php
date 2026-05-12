@@ -222,10 +222,23 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       }
 
       /* ── Widget opiekuna klienta w sidebarze ─────────────────────────────── */
+      /* Aside ma position:fixed → widget absolute przyklejony do dołu.
+         main-sidebar ma padding-block-end:5rem co zapewnia, że content nie
+         wjeżdża pod widget. */
+      .app-sidebar { position: fixed; }  /* gwarantujemy że jest reference dla absolute */
       .sidebar-caretaker {
-          margin: auto 12px 14px;
-          padding-top: 12px;
-          border-top: 1px solid rgba(var(--menu-prime-color), .08);
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          padding: 12px;
+          background: var(--menu-bg);
+          border-top: 1px solid var(--menu-border-color);
+          z-index: 5;
+      }
+      /* Większy padding-bottom na main-sidebar żeby ostatnie pozycje nie były pod widgetem */
+      .main-sidebar.has-caretaker-widget {
+          padding-block-end: 9rem !important;
       }
       .sidebar-caretaker__label {
           font-size: 11px;
@@ -801,7 +814,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <!-- End::main-sidebar-header -->
 
                 <!-- Start::main-sidebar -->
-                                                <div class="main-sidebar " id="sidebar-scroll">
+                                                <?php $_hasCaretakerSidebar = (($currentRole ?? '') === 'client' && !empty($clientCaretaker)); ?>
+                                                <div class="main-sidebar <?= $_hasCaretakerSidebar ? 'has-caretaker-widget' : '' ?>" id="sidebar-scroll">
 
                     <!-- Start::nav -->
                     <?php
