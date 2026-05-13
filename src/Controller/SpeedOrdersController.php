@@ -968,6 +968,21 @@ class SpeedOrdersController extends AppController
             }
         }
 
+        // Walidacja sekwencji: POD wymaga POL (chyba że force=1 dla admina).
+        // POL/POD jest również warunkiem dla FK/FS (semantycznie), ale tu blokujemy
+        // tylko PROD-bez-POL żeby nie psuć ewentualnych legacy zachowań na FK/FS.
+        $isAdminEarly  = (bool)($identity?->get('is_admin') ?? false)
+                      || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
+        $isForceEarly  = $isAdminEarly && (bool)$this->request->getData('force');
+        $podRequested  = $this->request->getData('pod');
+        if ($podRequested !== null && (bool)$podRequested && empty($order->pol_at) && !$isForceEarly) {
+            $this->jsonResp([
+                'success' => false,
+                'error'   => 'Nie można oznaczyć jako zrealizowane: najpierw oznacz jako załadowane (POL).',
+            ]);
+            return;
+        }
+
         // Checkboxy — ustawiamy datę, pole *_by i null
         foreach (['pol', 'pod', 'fk', 'fs'] as $chk) {
             $val = $this->request->getData($chk);

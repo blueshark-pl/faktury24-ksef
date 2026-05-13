@@ -238,6 +238,8 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 .check-pill.checked  { border-color:var(--pill-color); background:color-mix(in srgb,var(--pill-color) 12%,white); color:var(--pill-color); }
 .check-pill.unchecked{ border-color:#e5e7eb; background:#f9fafb; color:#9ca3af; }
 .check-pill.unchecked:hover { border-color:var(--pill-color); color:var(--pill-color); }
+.check-pill.pill-locked { opacity:.5; cursor:not-allowed !important; }
+.check-pill.pill-locked:hover { border-color:#e5e7eb; color:#9ca3af; background:#f9fafb; }
 </style>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -480,26 +482,42 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                     <?= !empty($order->pol_at) ? 'disabled title="Już oznaczone jako załadowane"' : '' ?>>
                 <i class="ri-check-double-line me-1"></i>Zatwierdź i oznacz jako <strong>załadowany</strong>
             </button>
+            <?php
+                // POD wymaga wcześniejszego POL — nie można zrealizować bez załadunku.
+                $podDisabledReason = !empty($order->pod_at)
+                    ? 'Już oznaczone jako zrealizowane'
+                    : (empty($order->pol_at) ? 'Najpierw oznacz jako załadowany' : null);
+            ?>
             <button type="button" class="btn btn-sm btn-outline-success confirm-and-mark-btn"
                     data-target="pod"
                     data-time-field="actual_unload_at"
                     data-planned-date="<?= h($plannedUnloadDate ?? '') ?>"
-                    <?= !empty($order->pod_at) ? 'disabled title="Już oznaczone jako zrealizowane"' : '' ?>>
+                    <?= $podDisabledReason ? 'disabled title="' . h($podDisabledReason) . '"' : '' ?>>
                 <i class="ri-flag-2-line me-1"></i>Zatwierdź i oznacz jako <strong>zrealizowany</strong>
+                <?php if ($podDisabledReason === 'Najpierw oznacz jako załadowany'): ?>
+                    <i class="ri-lock-line ms-1 opacity-75" style="font-size:.85em"></i>
+                <?php endif; ?>
             </button>
         </div>
 
         <!-- POL/POD/FK/FS pills -->
         <div class="d-flex gap-2 flex-wrap justify-content-center" id="checks-row">
-            <?php foreach ($checks as $chk): ?>
-            <label class="check-pill <?= $chk['checked'] ? 'checked' : 'unchecked' ?>"
+            <?php foreach ($checks as $chk):
+                // POD wymaga POL — pill zablokowany dopóki POL nie jest zaznaczony.
+                $isPillLocked = $chk['field'] === 'pod_at' && empty($order->pol_at);
+                $pillTitle    = $isPillLocked
+                    ? 'Najpierw oznacz POL — załadunek (POD wymaga załadunku).'
+                    : $chk['desc'];
+            ?>
+            <label class="check-pill <?= $chk['checked'] ? 'checked' : 'unchecked' ?><?= $isPillLocked ? ' pill-locked' : '' ?>"
                    style="--pill-color:<?= $chk['color'] ?>"
-                   title="<?= h($chk['desc']) ?>"
+                   title="<?= h($pillTitle) ?>"
                    for="chk-<?= $chk['field'] ?>">
                 <input type="checkbox" class="d-none check-toggle"
                        id="chk-<?= $chk['field'] ?>"
                        data-field="<?= $chk['field'] ?>"
-                       <?= $chk['checked'] ? 'checked' : '' ?>>
+                       <?= $chk['checked'] ? 'checked' : '' ?>
+                       <?= $isPillLocked ? 'disabled' : '' ?>>
                 <i class="<?= $chk['icon'] ?>"></i>
                 <span class="d-flex flex-column gap-0" style="line-height:1.2">
                     <span><?= $chk['label'] ?> — <?= $chk['title'] ?></span>
