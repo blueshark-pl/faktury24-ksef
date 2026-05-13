@@ -2520,6 +2520,27 @@ $('#gus-fetch-btn').on('click', function(){
   $soldDate.on('change', fetchNbpRate);
   setTimeout(fetchNbpRate, 0);
 
+  // Manualny przycisk 'NBP' — wymuszony refresh kursu (np. po zmianie daty
+  // bez triggera change albo aby ponownie pobrać aktualny średni).
+  // Jest też auto-fetch podczas edycji — fetchNbpRate w setTimeout fires
+  // gdy formularz ma już currency != PLN (page load + every relevant change).
+  $(document).on('click', '#btn-fetch-nbp', function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var origHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="ri-loader-4-line"></i>');
+    Promise.resolve(fetchNbpRate()).finally(function () {
+      $btn.prop('disabled', false).html(origHtml);
+    });
+  });
+
+  // Edit-mode: gdy Select2 init kończy się PO setTimeout, value w $currency
+  // mogło być chwilowo PLN. Po zainicjowaniu Select2 trigger 'change' powoduje
+  // ponowny fetch — patrz blok niżej (.on('select2:select', ..., fetchNbpRate)).
+  // Tu dodatkowo wymuszamy fetch po ~250ms żeby ostatecznie złapać prawdziwą
+  // walutę z entity (idempotent — nie szkodzi).
+  setTimeout(fetchNbpRate, 250);
+
   // Enhance currency select with Select2 + NBP currencies (filterable)
   if ($.fn && $.fn.select2) {
     var curVal = $currency.val() || 'PLN';
