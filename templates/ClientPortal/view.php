@@ -966,7 +966,6 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                 $truckTooltip = [];
                 if ($plateText !== '')   $truckTooltip[] = __('Tablica') . ': ' . strtoupper($plateText);
                 if ($driverName !== '')  $truckTooltip[] = __('Kierowca') . ': ' . $driverName;
-                if ($order->carrier)     $truckTooltip[] = __('Przewoźnik') . ': ' . (string)$order->carrier;
                 $truckTooltip[] = __('Status') . ': ' . $nlCurrent['label'];
             ?>
             <span class="route-line-truck truck-state-<?= (int)$effective ?>"
