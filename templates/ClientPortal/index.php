@@ -4,7 +4,7 @@
  * @var \Cake\ORM\ResultSet|\App\Model\Entity\SpeedOrder[] $orders
  * @var \App\Model\Entity\ClientProfile                $clientProfile
  * @var array<int, array{id:int,mime:string,name:string}> $cmrMap
- * @var array<string, \App\Model\Entity\Invoice>       $invoiceMap
+ * @var array<int, \App\Model\Entity\Invoice[]>        $invoicesMap speed_order_id → array faktur
  * @var int                                            $total
  * @var int                                            $page
  * @var int                                            $pages
@@ -249,7 +249,9 @@ $today = date('Y-m-d');
                     <?php
                         $r = $raw($order);
                         $cmrs    = $cmrMap[$order->id] ?? [];
-                        $invoice = $order->invoice_id ? ($invoiceMap[(string)$order->invoice_id] ?? null) : null;
+                        // M:N — wszystkie faktury powiązane ze zleceniem; $invoice (legacy) = pierwsza
+                        $orderInvoices = $invoicesMap[$order->id] ?? [];
+                        $invoice = !empty($orderInvoices) ? $orderInvoices[0] : null;
 
                         $dateDoc = $order->date_doc instanceof \DateTimeInterface
                             ? $order->date_doc->format('d.m.Y')
@@ -283,7 +285,7 @@ $today = date('Y-m-d');
 
                         // Status
                         $nlStatus    = (int)($order->nordlogis_status ?? 1);
-                        $effectiveNl = !empty($order->invoice_id) ? 5 : $nlStatus;
+                        $effectiveNl = !empty($orderInvoices) ? 5 : $nlStatus;
                         $polAt = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at->format('Y-m-d H:i') : (string)($order->pol_at ?? '');
                         $podAt = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at->format('Y-m-d H:i') : (string)($order->pod_at ?? '');
 
@@ -292,7 +294,7 @@ $today = date('Y-m-d');
                             ? $order->date_delivery->format('Y-m-d')
                             : substr((string)($order->date_delivery ?? ''), 0, 10);
                         if ($delivStr === '') { $delivStr = substr(trim((string)($r['GLO_DATA_ZAK'] ?? '')), 0, 10); }
-                        $isOverdue = ($delivStr !== '' && $delivStr < $today && empty($order->pod_at) && empty($order->invoice_id));
+                        $isOverdue = ($delivStr !== '' && $delivStr < $today && empty($order->pod_at) && empty($orderInvoices));
 
                         $tytParts = array_filter([trim((string)($order->title1 ?? '')), trim((string)($order->title2 ?? ''))]);
                     ?>
@@ -421,12 +423,32 @@ $today = date('Y-m-d');
                                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success" style="font-size:.55em"><?= count($cmrs) ?></span>
                                 </button>
                             <?php endif; ?>
-                            <?php if ($invoice): ?>
-                                <a href="<?= $this->Url->build(['action' => 'downloadInvoice', $order->invoice_id]) ?>"
+                            <?php if (count($orderInvoices) === 1): ?>
+                                <a href="<?= $this->Url->build(['action' => 'downloadInvoice', $orderInvoices[0]->id]) ?>"
                                    class="btn btn-sm btn-outline-secondary ms-1"
-                                   title="<?= sprintf(__('Pobierz fakturę %s'), h($invoice->fullnumber ?: '')) ?>">
+                                   title="<?= sprintf(__('Pobierz fakturę %s'), h($orderInvoices[0]->fullnumber ?: '')) ?>">
                                     <i class="ri-file-pdf-line"></i>
                                 </a>
+                            <?php elseif (count($orderInvoices) > 1): ?>
+                                <div class="btn-group ms-1" role="group">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                            data-bs-toggle="dropdown" aria-expanded="false"
+                                            title="<?= sprintf(__('%d faktur'), count($orderInvoices)) ?>">
+                                        <i class="ri-file-pdf-line"></i>
+                                        <span class="badge bg-secondary text-white ms-1" style="font-size:.55em"><?= count($orderInvoices) ?></span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" style="font-size:.78rem">
+                                        <?php foreach ($orderInvoices as $_inv): ?>
+                                            <li>
+                                                <a class="dropdown-item d-flex justify-content-between gap-3"
+                                                   href="<?= $this->Url->build(['action' => 'downloadInvoice', $_inv->id]) ?>">
+                                                    <span><i class="ri-download-line me-1 opacity-50"></i><?= h($_inv->fullnumber ?: substr($_inv->id, 0, 8)) ?></span>
+                                                    <span class="text-muted"><?= $_inv->date instanceof \DateTimeInterface ? $_inv->date->format('d.m.Y') : '' ?></span>
+                                                </a>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
                             <?php endif; ?>
                         </td>
                     </tr>

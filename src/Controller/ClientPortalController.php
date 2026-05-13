@@ -161,21 +161,29 @@ class ClientPortalController extends AppController
             } catch (\Throwable) { /* tabela może nie istnieć */ }
         }
 
-        // Mapa faktur sprzedażowych — jakie zlecenia mają fakturę
-        $invoiceIds = array_filter(array_map(fn($o) => $o->invoice_id, $orders->toArray()));
-        $invoiceMap = [];
-        if (!empty($invoiceIds)) {
-            $invs = $this->fetchTable('Invoices')->find()
-                ->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
-                ->where(['id IN' => $invoiceIds])
-                ->all();
-            foreach ($invs as $inv) {
-                $invoiceMap[(string)$inv->id] = $inv;
+        // M:N: mapa wszystkich faktur per zlecenie przez pivot speed_order_invoices.
+        // $invoicesMap[order_id] = [Invoice, Invoice, ...] (uporządkowane wg id).
+        $invoicesMap = [];
+        if (!empty($orderIds)) {
+            try {
+                $rows = $this->fetchTable('SpeedOrderInvoices')->find()
+                    ->select(['SpeedOrderInvoices.speed_order_id', 'Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.total', 'Invoices.currency', 'Invoices.paymentstate'])
+                    ->contain(['Invoices'])
+                    ->where(['SpeedOrderInvoices.speed_order_id IN' => $orderIds])
+                    ->orderByAsc('SpeedOrderInvoices.id')
+                    ->all();
+                foreach ($rows as $r) {
+                    if ($r->invoice) {
+                        $invoicesMap[$r->speed_order_id][] = $r->invoice;
+                    }
+                }
+            } catch (\Throwable) {
+                $invoicesMap = [];
             }
         }
 
         $this->set(compact(
-            'orders', 'cmrMap', 'invoiceMap', 'total', 'page', 'pages', 'limit',
+            'orders', 'cmrMap', 'invoicesMap', 'total', 'page', 'pages', 'limit',
             'q', 'status', 'invState', 'cmrState', 'currency', 'dateFrom', 'dateTo',
             'sort', 'stats', 'currencyOptions'
         ));
@@ -190,10 +198,17 @@ class ClientPortalController extends AppController
     {
         if ($r = $this->ensureProfile()) { return $r; }
 
+        // M:N: ładujemy zlecenie wraz z wszystkimi fakturami sprzedażowymi.
         $order = $this->fetchTable('SpeedOrders')->find()
             ->where([
                 'SpeedOrders.id'        => $id,
                 'SpeedOrders.buyer_nip' => $this->profile->nip,
+            ])
+            ->contain([
+                'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate', 'paymentdate'])
+                        ->orderByAsc('Invoices.date');
+                },
             ])
             ->first();
         if (!$order) {
@@ -201,14 +216,9 @@ class ClientPortalController extends AppController
             return $this->redirect(['action' => 'index']);
         }
 
-        // Faktura sprzedażowa (jeśli została wystawiona)
-        $invoice = null;
-        if ($order->invoice_id) {
-            $invoice = $this->fetchTable('Invoices')->find()
-                ->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate', 'paymentdate'])
-                ->where(['id' => $order->invoice_id])
-                ->first();
-        }
+        // Backward compat: niektóre szablony jeszcze czytają $invoice (pierwsza).
+        $invoices = $order->invoices ?? [];
+        $invoice  = !empty($invoices) ? $invoices[0] : null;
 
         // Załączniki CMR
         $attachments = [];
@@ -221,7 +231,7 @@ class ClientPortalController extends AppController
                 ->toArray();
         } catch (\Throwable) { /* ignore */ }
 
-        $this->set(compact('order', 'invoice', 'attachments'));
+        $this->set(compact('order', 'invoice', 'invoices', 'attachments'));
         $this->set('clientProfile', $this->profile);
         return null;
     }

@@ -2,7 +2,8 @@
 /**
  * @var \App\View\AppView                                  $this
  * @var \App\Model\Entity\SpeedOrder                       $order
- * @var \App\Model\Entity\Invoice|null                     $invoice
+ * @var \App\Model\Entity\Invoice|null                     $invoice Pierwsza (legacy alias)
+ * @var \App\Model\Entity\Invoice[]                         $invoices Wszystkie faktury powiązane ze zleceniem
  * @var \App\Model\Entity\SpeedOrderAttachment[]           $attachments
  * @var \App\Model\Entity\ClientProfile                    $clientProfile
  * @var string                                             $currentLocale
@@ -37,7 +38,7 @@ $nlStatusMap = [
     5 => ['label' => __('Zafakturowane'),'cls' => 'bg-dark text-white',    'icon' => 'ri-file-text-line',      'color' => '#374151'],
 ];
 $nlStatus  = (int)($order->nordlogis_status ?? 1);
-$effective = !empty($order->invoice_id) ? 5 : $nlStatus;
+$effective = !empty($invoices ?? []) ? 5 : $nlStatus;
 $nlCurrent = $nlStatusMap[$effective] ?? $nlStatusMap[1];
 
 // Załadunek / rozładunek
@@ -94,7 +95,7 @@ if ($hasPodFile && $order->pod_at) {
     $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at, 0, 16));
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Rozładunek potwierdzony') . ' (POD)', 'sub' => $fdatetime($order->pod_at), 'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
 }
-if ($order->fs_at || $order->invoice_id) {
+if ($order->fs_at || !empty($invoices ?? [])) {
     $d = $order->fs_at
         ? ($order->fs_at instanceof \DateTimeInterface ? $order->fs_at : new \DateTimeImmutable(substr((string)$order->fs_at, 0, 16)))
         : $today;
@@ -835,6 +836,9 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             <span class="kpi-sub">
                 <?php if ($invoice): ?>
                     <?= h($invoice->fullnumber ?: '—') ?>
+                    <?php if (count($invoices ?? []) > 1): ?>
+                        <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:.65em">+<?= count($invoices) - 1 ?></span>
+                    <?php endif; ?>
                 <?php else: ?>
                     <i class="ri-attachment-2 me-1"></i><?= sprintf(__('Załączniki: %d'), count($attachments)) ?>
                 <?php endif; ?>
@@ -1285,44 +1289,51 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             </div>
         </div>
 
-        <!-- Faktura -->
+        <!-- Faktury (M:N — może być więcej niż jedna na zlecenie) -->
+        <?php $clientInvoices = $invoices ?? []; ?>
         <div class="card shadow-sm mb-3">
-            <div class="card-header py-2">
-                <strong><i class="ri-file-text-line me-1"></i><?= __('Faktura') ?></strong>
+            <div class="card-header py-2 d-flex align-items-center gap-2">
+                <strong><i class="ri-file-text-line me-1"></i><?= count($clientInvoices) > 1 ? __('Faktury') : __('Faktura') ?></strong>
+                <?php if (count($clientInvoices) > 1): ?>
+                    <span class="badge bg-primary ms-1"><?= count($clientInvoices) ?></span>
+                <?php endif; ?>
             </div>
             <div class="card-body">
-                <?php if ($invoice): ?>
-                    <div class="fw-bold mb-1" style="font-size:1.05rem"><?= h($invoice->fullnumber) ?></div>
-                    <div class="text-muted small mb-3">
-                        <i class="ri-calendar-line me-1 opacity-50"></i><?= __('Data wystawienia') ?>: <?= h($fdate($invoice->date)) ?>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small"><?= __('Kwota') ?></span>
-                        <span class="fw-semibold"><?= $fnum($invoice->total) ?> <?= h($invoice->currency) ?></span>
-                    </div>
-                    <?php if ($invoice->paymentdate): ?>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small"><?= __('Termin płatności') ?></span>
-                        <span><?= h($fdate($invoice->paymentdate)) ?></span>
-                    </div>
-                    <?php endif; ?>
+                <?php if (!empty($clientInvoices)): ?>
                     <?php
                         $stMap = [
                             'paid'    => ['cls' => 'bg-success-subtle text-success border-success-subtle', 'lbl' => __('Opłacona'),    'ico' => 'ri-checkbox-circle-fill'],
                             'partial' => ['cls' => 'bg-warning-subtle text-warning border-warning-subtle', 'lbl' => __('Częściowo opłacona'), 'ico' => 'ri-time-line'],
                             'unpaid'  => ['cls' => 'bg-danger-subtle text-danger border-danger-subtle',    'lbl' => __('Nieopłacona'), 'ico' => 'ri-error-warning-line'],
                         ];
-                        $st = $stMap[$invoice->paymentstate ?? 'unpaid'] ?? $stMap['unpaid'];
                     ?>
-                    <div class="mb-3">
-                        <span class="badge <?= $st['cls'] ?> border w-100 py-2" style="font-size:.85rem">
-                            <i class="<?= $st['ico'] ?> me-1"></i><?= $st['lbl'] ?>
-                        </span>
-                    </div>
-                    <a href="<?= $this->Url->build(['action' => 'downloadInvoice', $invoice->id]) ?>"
-                       class="btn btn-primary w-100">
-                        <i class="ri-download-line me-1"></i><?= __('Pobierz fakturę PDF') ?>
-                    </a>
+                    <?php foreach ($clientInvoices as $i => $_inv): ?>
+                        <?php $st = $stMap[$_inv->paymentstate ?? 'unpaid'] ?? $stMap['unpaid']; ?>
+                        <?php if ($i > 0): ?><hr class="my-3"><?php endif; ?>
+                        <div class="fw-bold mb-1" style="font-size:1.05rem"><?= h($_inv->fullnumber ?: substr($_inv->id, 0, 8)) ?></div>
+                        <div class="text-muted small mb-3">
+                            <i class="ri-calendar-line me-1 opacity-50"></i><?= __('Data wystawienia') ?>: <?= h($fdate($_inv->date)) ?>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small"><?= __('Kwota') ?></span>
+                            <span class="fw-semibold"><?= $fnum($_inv->total) ?> <?= h($_inv->currency) ?></span>
+                        </div>
+                        <?php if ($_inv->paymentdate): ?>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted small"><?= __('Termin płatności') ?></span>
+                                <span><?= h($fdate($_inv->paymentdate)) ?></span>
+                            </div>
+                        <?php endif; ?>
+                        <div class="mb-2">
+                            <span class="badge <?= $st['cls'] ?> border w-100 py-2" style="font-size:.85rem">
+                                <i class="<?= $st['ico'] ?> me-1"></i><?= $st['lbl'] ?>
+                            </span>
+                        </div>
+                        <a href="<?= $this->Url->build(['action' => 'downloadInvoice', $_inv->id]) ?>"
+                           class="btn btn-primary w-100">
+                            <i class="ri-download-line me-1"></i><?= __('Pobierz fakturę PDF') ?>
+                        </a>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <div class="text-center text-muted py-3">
                         <i class="ri-file-line" style="font-size:2.5em;opacity:.3"></i>
