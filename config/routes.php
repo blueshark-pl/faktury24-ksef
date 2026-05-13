@@ -202,6 +202,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Admin — historia logowań
         $builder->get('/admin/logowania', ['controller' => 'AdminLoginLogs', 'action' => 'index']);
 
+        // Admin — wydarzenia bezpieczeństwa
+        $builder->get('/admin/bezpieczenstwo', ['controller' => 'AdminSecurityEvents', 'action' => 'index']);
+
         // Admin — wcielanie się w użytkownika (impersonation)
         $builder->post('/admin/impersonate/start/{userId}', ['controller' => 'AdminImpersonate', 'action' => 'start'])
             ->setPass(['userId']);

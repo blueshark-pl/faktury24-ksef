@@ -3,7 +3,8 @@
  * @var \App\View\AppView                              $this
  * @var \Cake\ORM\ResultSet                            $users
  * @var array<string, \App\Model\Entity\ClientProfile> $profileMap
- * @var array<string, string>                          $avatarMap  user_id → avatar URL
+ * @var array<string, string>                          $avatarMap        user_id → avatar URL
+ * @var array<string, int>                             $lastActivityMap  user_id → timestamp ostatniej aktywności
  * @var array<string, array>                           $caretakerMap user_id → ['caretaker_id', 'name', 'email', 'is_substitute']
  * @var array<string, array{last_sent:string,count:int}> $lastWelcomeMap user_id → ostatnia data + liczba
  * @var \Cake\ORM\ResultSet                            $rolesList
@@ -128,7 +129,26 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
                                     </div>
                                 <?php endif; ?>
                                 <div>
-                                    <div class="fw-semibold"><?= h($u->email) ?></div>
+                                    <?php
+                                        // Indykator aktywności: zielony dot = aktywny ostatnie 5 min,
+                                        // żółty = ostatnie 30 min, szary inaczej. Brak danych = nic.
+                                        $lastActTs = $lastActivityMap[(string)$u->id] ?? null;
+                                        $actState = null;
+                                        if ($lastActTs) {
+                                            $elapsed = time() - $lastActTs;
+                                            if ($elapsed < 300)        $actState = ['cls' => '#22c55e', 'lbl' => __('Aktywny teraz')];
+                                            elseif ($elapsed < 1800)   $actState = ['cls' => '#f59e0b', 'lbl' => __('Aktywny przed chwilą')];
+                                            elseif ($elapsed < 86400)  $actState = ['cls' => '#94a3b8', 'lbl' => sprintf(__('Aktywny przed %dh'), (int)floor($elapsed / 3600))];
+                                            else                       $actState = ['cls' => '#cbd5e1', 'lbl' => sprintf(__('Aktywny przed %dd'), (int)floor($elapsed / 86400))];
+                                        }
+                                    ?>
+                                    <div class="fw-semibold d-flex align-items-center gap-1">
+                                        <?php if ($actState): ?>
+                                            <span title="<?= h($actState['lbl']) ?>"
+                                                  style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $actState['cls'] ?>;flex-shrink:0"></span>
+                                        <?php endif; ?>
+                                        <?= h($u->email) ?>
+                                    </div>
                                     <?php if ($name !== ''): ?>
                                         <div class="text-muted small"><?= h($name) ?></div>
                                     <?php endif; ?>

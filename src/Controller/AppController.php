@@ -291,6 +291,20 @@ class AppController extends Controller
             return; // nie zalogowany → nic nie rób
         }
 
+        // Last activity per user — debounced 5 min żeby nie spamować DB.
+        // Session flag 'Activity.last_update_ts' trzyma timestamp ostatniego UPDATE.
+        try {
+            $now = time();
+            $lastUpdate = (int)$this->request->getSession()->read('Activity.last_update_ts');
+            if (($now - $lastUpdate) > 300) { // 5 min debounce
+                $this->fetchTable('Users')->updateAll(
+                    ['last_activity_at' => date('Y-m-d H:i:s', $now)],
+                    ['id' => (string)$identity->getIdentifier()]
+                );
+                $this->request->getSession()->write('Activity.last_update_ts', $now);
+            }
+        } catch (\Throwable) { /* ignore */ }
+
         // Logowanie audytu — raz per sesja. Session flag chroni przed
         // multi-insertem przy każdym page view. Logout czyści sesję więc
         // przy kolejnym logowaniu znów wstawiamy.

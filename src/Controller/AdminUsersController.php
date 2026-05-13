@@ -97,10 +97,26 @@ class AdminUsersController extends AppController
             }
         }
 
-        // Mapa avatarów per user_id — osobne zapytanie bo hydratacja przez ORM
-        // (find() z CakeDC plugin) gubi to pole w niektórych przypadkach.
+        // Mapa avatarów + last_activity_at per user_id — osobne zapytanie bo
+        // hydratacja przez ORM (find() z CakeDC plugin) gubi te pola w niektórych
+        // przypadkach.
         $avatarMap = [];
+        $lastActivityMap = []; // user_id → timestamp
         if (!empty($userIds)) {
+            $rows = $Users->find()
+                ->select(['id', 'avatar', 'last_activity_at'])
+                ->where(['id IN' => $userIds])
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) {
+                if (!empty($r['last_activity_at'])) {
+                    $ts = $r['last_activity_at'] instanceof \DateTimeInterface
+                        ? $r['last_activity_at']->getTimestamp()
+                        : strtotime((string)$r['last_activity_at']);
+                    if ($ts) $lastActivityMap[(string)$r['id']] = $ts;
+                }
+            }
+            // Filtruj avatarowo (osobno żeby zachować existing logic z file_exists)
             $rows = $Users->find()
                 ->select(['id', 'avatar'])
                 ->where(['id IN' => $userIds, 'avatar IS NOT' => null])
@@ -201,7 +217,7 @@ class AdminUsersController extends AppController
         }
 
         $this->set(compact(
-            'users', 'profileMap', 'avatarMap', 'caretakerMap', 'lastWelcomeMap',
+            'users', 'profileMap', 'avatarMap', 'caretakerMap', 'lastWelcomeMap', 'lastActivityMap',
             'rolesList', 'roleNameByCode',
             'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit',
             'sortKey', 'sortDir'
