@@ -1391,9 +1391,16 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 </div>
 <?php endif; ?>
 
-<?php $this->append('scriptBottom'); ?>
+<?php
+// W trybie modala (AJAX) wstrzykujemy script INLINE — bo $this->fetch('scriptBottom')
+// nie jest wywoływane bez layoutu, a DOMContentLoaded już dawno fired na parent page.
+// Używamy IIFE z natychmiastowym uruchomieniem zamiast addEventListener('DOMContentLoaded').
+if (!$isModal):
+    $this->append('scriptBottom');
+endif;
+?>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function () {
     var orderId      = <?= (int)$order->id ?>;
     var updateUrl    = '<?= $updateStatusUrl ?>';
     var assignFkUrl  = '<?= $assignFkUrl ?>';
@@ -1664,6 +1671,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('fk-search-q')?.addEventListener('keydown', function(e){
         if (e.key === 'Enter') document.getElementById('btn-fk-search').click();
     });
-});
+})();
 </script>
+<?php if (!$isModal): ?>
 <?php $this->end(); ?>
+<?php endif; ?>
