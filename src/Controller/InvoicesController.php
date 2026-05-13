@@ -3556,7 +3556,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 return is_numeric($s) ? (float)$s : 0.0;
             };
 
-            $noVat   = ($invoice->type === 'novat');
+            // novat (rachunek) ORAZ credit_note (nota uznaniowa) — dokumenty
+            // księgowe bez VAT. Wymuszamy rate=0, tax=null, vat_code_id=null.
+            $noVat   = in_array((string)$invoice->type, ['novat', 'credit_note'], true);
             $items   = (array)($data['items'] ?? []);
             $contents = [];
             $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
