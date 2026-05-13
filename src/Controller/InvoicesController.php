@@ -3445,6 +3445,12 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             if (empty($invoice->series) && !empty($invoice->invoice_series) && !empty($invoice->invoice_series->name)) {
                 $invoice->set('series', (string)$invoice->invoice_series->name);
             }
+            // Prefill fx_rate z currency_exchange (DB ma tylko currency_exchange,
+            // ale formularze używają input name='fx_rate'). Bez tego pole jest
+            // puste przy edycji → submit → backend defaultuje na 1.0.
+            if (empty($invoice->fx_rate) && !empty($invoice->currency_exchange)) {
+                $invoice->set('fx_rate', (float)$invoice->currency_exchange);
+            }
         } catch (\Throwable) { /* ignore */ }
 
         $kind = strtolower((string)($invoice->type ?? ''));
