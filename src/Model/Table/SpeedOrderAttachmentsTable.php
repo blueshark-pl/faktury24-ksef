@@ -13,6 +13,10 @@ class SpeedOrderAttachmentsTable extends Table
         parent::initialize($config);
         $this->setTable('speed_order_attachments');
         $this->setEntityClass('App\Model\Entity\SpeedOrderAttachment');
+        $this->belongsTo('SpeedOrders', [
+            'foreignKey' => 'speed_order_id',
+            'joinType'   => 'INNER',
+        ]);
         $this->belongsTo('SpeedOrderAttachmentLabels', [
             'foreignKey' => 'label_id',
             'joinType'   => 'LEFT',
