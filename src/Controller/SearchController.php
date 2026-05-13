@@ -52,7 +52,7 @@ class SearchController extends AppController
             ->select([
                 'Invoices.id', 'Invoices.fullnumber', 'Invoices.type',
                 'Invoices.workflow_status', 'Invoices.paymentstate',
-                'Invoices.brutto', 'Invoices.currency', 'Invoices.created',
+                'Invoices.total', 'Invoices.currency', 'Invoices.created',
                 'InvoiceContractors.name', 'InvoiceContractors.nip',
             ])
             ->contain(['InvoiceContractors' => function ($q) {
@@ -77,7 +77,7 @@ class SearchController extends AppController
                 'type'       => (string)$i->type,
                 'workflow'   => (string)$i->workflow_status,
                 'payment'    => (string)$i->paymentstate,
-                'brutto'     => $i->brutto !== null ? (float)$i->brutto : null,
+                'brutto'     => $i->total !== null ? (float)$i->total : null,
                 'currency'   => (string)$i->currency,
                 'contractor' => (string)($i->invoice_contractor->name ?? ''),
                 'nip'        => (string)($i->invoice_contractor->nip ?? ''),
