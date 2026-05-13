@@ -482,28 +482,50 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         <?php
             $plannedLoadDate   = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline->format('Y-m-d') : substr((string)($order->date_deadline ?? ''), 0, 10);
             $plannedUnloadDate = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery->format('Y-m-d') : substr((string)($order->date_delivery ?? ''), 0, 10);
+
+            // Tryby przycisków:
+            //  - 'set'    — domyślny, oznacz jako załadowany/zrealizowany
+            //  - 'reset'  — admin: cofnij oznaczenie (zeruje _at, cofa status)
+            //  - 'locked' — non-admin, już zaznaczone (button disabled)
+            $polMode = !empty($order->pol_at)
+                ? ($_isAdminUser ? 'reset' : 'locked')
+                : 'set';
+            $podMode = !empty($order->pod_at)
+                ? ($_isAdminUser ? 'reset' : 'locked')
+                : (empty($order->pol_at) ? 'blocked' : 'set');
         ?>
         <div class="d-flex gap-2 flex-wrap justify-content-center mb-3" id="confirm-buttons-row">
-            <button type="button" class="btn btn-sm btn-outline-primary confirm-and-mark-btn"
+            <button type="button"
+                    class="btn btn-sm <?= $polMode === 'reset' ? 'btn-outline-warning' : 'btn-outline-primary' ?> confirm-and-mark-btn"
                     data-target="pol"
+                    data-mode="<?= $polMode ?>"
+                    data-pod-set="<?= !empty($order->pod_at) ? '1' : '0' ?>"
                     data-time-field="actual_load_at"
                     data-planned-date="<?= h($plannedLoadDate ?? '') ?>"
-                    <?= !empty($order->pol_at) ? 'disabled title="Już oznaczone jako załadowane"' : '' ?>>
-                <i class="ri-check-double-line me-1"></i>Zatwierdź i oznacz jako <strong>załadowany</strong>
+                    <?= $polMode === 'locked' ? 'disabled title="Już oznaczone jako załadowane"' : '' ?>>
+                <?php if ($polMode === 'reset'): ?>
+                    <i class="ri-arrow-go-back-line me-1"></i>Cofnij oznaczenie <strong>załadowany</strong>
+                <?php else: ?>
+                    <i class="ri-check-double-line me-1"></i>Zatwierdź i oznacz jako <strong>załadowany</strong>
+                <?php endif; ?>
             </button>
-            <?php
-                // POD wymaga wcześniejszego POL — nie można zrealizować bez załadunku.
-                $podDisabledReason = !empty($order->pod_at)
-                    ? 'Już oznaczone jako zrealizowane'
-                    : (empty($order->pol_at) ? 'Najpierw oznacz jako załadowany' : null);
-            ?>
-            <button type="button" class="btn btn-sm btn-outline-success confirm-and-mark-btn"
+            <button type="button"
+                    class="btn btn-sm <?= $podMode === 'reset' ? 'btn-outline-warning' : 'btn-outline-success' ?> confirm-and-mark-btn"
                     data-target="pod"
+                    data-mode="<?= $podMode ?>"
                     data-time-field="actual_unload_at"
                     data-planned-date="<?= h($plannedUnloadDate ?? '') ?>"
-                    <?= $podDisabledReason ? 'disabled title="' . h($podDisabledReason) . '"' : '' ?>>
-                <i class="ri-flag-2-line me-1"></i>Zatwierdź i oznacz jako <strong>zrealizowany</strong>
-                <?php if ($podDisabledReason === 'Najpierw oznacz jako załadowany'): ?>
+                    <?php if ($podMode === 'locked'): ?>
+                        disabled title="Już oznaczone jako zrealizowane"
+                    <?php elseif ($podMode === 'blocked'): ?>
+                        disabled title="Najpierw oznacz jako załadowany"
+                    <?php endif; ?>>
+                <?php if ($podMode === 'reset'): ?>
+                    <i class="ri-arrow-go-back-line me-1"></i>Cofnij oznaczenie <strong>zrealizowany</strong>
+                <?php else: ?>
+                    <i class="ri-flag-2-line me-1"></i>Zatwierdź i oznacz jako <strong>zrealizowany</strong>
+                <?php endif; ?>
+                <?php if ($podMode === 'blocked'): ?>
                     <i class="ri-lock-line ms-1 opacity-75" style="font-size:.85em"></i>
                 <?php endif; ?>
             </button>
@@ -1751,11 +1773,71 @@ endif;
     document.querySelectorAll('.confirm-and-mark-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var target      = btn.dataset.target;          // 'pol' | 'pod'
+            var mode        = btn.dataset.mode || 'set';   // 'set' | 'reset' | 'locked' | 'blocked'
             var timeField   = btn.dataset.timeField;        // 'actual_load_at' | 'actual_unload_at'
             var plannedDate = (btn.dataset.plannedDate || '').slice(0, 10); // YYYY-MM-DD
             var inp         = document.querySelector('.actual-time-input[data-field="' + timeField + '"]');
             var actualVal   = inp ? (inp.value || '').trim() : '';
             var actualDate  = actualVal.slice(0, 10);
+
+            // ── Tryb RESET (admin) — cofa oznaczenie i status ──
+            if (mode === 'reset') {
+                var label    = target === 'pol' ? 'załadowany' : 'zrealizowany';
+                var newNs    = target === 'pol' ? 2 : 3; // cofamy o jeden krok stepperu
+                var newNsLbl = target === 'pol' ? 'Zaplanowane' : 'Załadowane';
+                // Cofając POL musimy też zeszyć POD jeśli był (inaczej stan niespójny:
+                // dostawa bez załadunku). POD jest osobno cofany własnym przyciskiem.
+                var alsoClearPod = target === 'pol' && btn.dataset.podSet === '1';
+                var doReset = function () {
+                    var payload = {
+                        id: orderId,
+                        force: 1,                  // admin reverse — pomija applyAutoNlStatus
+                        nordlogis_status: newNs,
+                    };
+                    payload[target] = 0;            // zeruj _at + _by
+                    if (alsoClearPod) payload.pod = 0;
+                    post(updateUrl, payload).then(function (data) {
+                        if (data.success) {
+                            showToast('↩ Cofnięto oznaczenie "' + label + '"', true);
+                            setTimeout(function () {
+                                var modalEl = document.querySelector('#orderViewModal.show');
+                                if (modalEl && window.bootstrap) {
+                                    var inst = bootstrap.Modal.getInstance(modalEl);
+                                    if (inst) { inst.hide(); return; }
+                                }
+                                location.reload();
+                            }, 900);
+                        } else {
+                            showToast(data.error || 'Błąd zapisu', false);
+                        }
+                    }).catch(function (e) { showToast('Błąd: ' + e.message, false); });
+                };
+                if (window.Swal) {
+                    Swal.fire({
+                        title: 'Cofnąć oznaczenie "' + label + '"?',
+                        html:
+                            '<p style="text-align:left;font-size:.9rem">Status zlecenia zostanie cofnięty na '
+                            + '<strong>' + newNsLbl + '</strong>, a data oznaczenia wyzerowana.</p>'
+                            + (alsoClearPod
+                                ? '<p style="text-align:left;font-size:.85rem;color:#b45309"><i class="ri-alert-line me-1"></i>'
+                                  + 'Oznaczenie <strong>"zrealizowany"</strong> również zostanie cofnięte '
+                                  + '(nie można mieć dostawy bez załadunku).</p>'
+                                : '')
+                            + '<p style="text-align:left;font-size:.85rem;color:#9ca3af">Akcja jest logowana — '
+                            + 'pojawi się w historii zmian z Twoim username.</p>',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Tak, cofnij',
+                        cancelButtonText:  'Anuluj',
+                        confirmButtonColor: '#f59e0b',
+                    }).then(function (res) { if (res && res.isConfirmed) doReset(); });
+                } else {
+                    if (window.confirm('Cofnąć oznaczenie "' + label + '"? Status wróci do "' + newNsLbl + '".')) {
+                        doReset();
+                    }
+                }
+                return;
+            }
 
             // Stała część payloadu — zawsze wysyłamy faktyczną datetime żeby zapisać ją
             // razem z oznaczeniem (UX: button = "zatwierdź czas i oznacz").
