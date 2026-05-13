@@ -552,6 +552,9 @@ msgstr "Document date"
 msgid "Planowany załadunek"
 msgstr "Planned pick-up"
 
+msgid "Planowany rozładunek"
+msgstr "Planned delivery"
+
 msgid "Planowane zakończenie"
 msgstr "Planned completion"
 
