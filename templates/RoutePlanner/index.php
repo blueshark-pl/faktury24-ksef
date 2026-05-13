@@ -1113,7 +1113,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
     function shortLabel(addr) {
         if (!addr) return '?';
-        var first = addr.split(',')[0];
+        // Akceptuje string lub obiekt waypointu {address,label,lat,lng}
+        if (typeof addr === 'object') addr = addr.address || addr.label || '';
+        if (!addr) return '?';
+        var first = String(addr).split(',')[0];
         return first.length > 22 ? first.substring(0, 20) + '…' : first;
     }
     function metaLine(s) {
