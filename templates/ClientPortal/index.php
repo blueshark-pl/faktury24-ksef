@@ -266,7 +266,17 @@ $today = date('Y-m-d');
                         // Rozładunek
                         $unloadName    = (string)($order->unload_name    ?? $r['GLO_MIE_NAZWA1'] ?? $order->place_to_name ?? '');
                         $unloadCity    = (string)($order->unload_city    ?? $r['GLO_MIE_MIEJSC'] ?? '');
-                        $unloadCountry = (string)($order->unload_country ?? $order->place_to_country ?? '');
+                        // Speed API nie podaje kraju rozładunku, a sync ustawia place_to_country = load_country
+                        // (fallback) — dlatego najpierw próbujemy wyciągnąć kod kraju z prefixu unload_name
+                        // ("NL, 3925CK" → "NL"). Dopiero potem fallback na unload_country (ręcznie ustawiony).
+                        $extractedUnloadCountry = '';
+                        if (preg_match('/^([A-Z]{2})\s*,/', trim($unloadName), $m)) {
+                            $extractedUnloadCountry = $m[1];
+                        }
+                        $unloadCountry = $extractedUnloadCountry ?: (string)($order->unload_country ?? '');
+                        $unloadNameDisplay = $extractedUnloadCountry !== ''
+                            ? trim((string)preg_replace('/^[A-Z]{2}\s*,\s*/', '', $unloadName))
+                            : $unloadName;
                         $unloadDate    = $fmtDate(!empty($order->date_delivery)
                             ? ($order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery->format('Y-m-d') : (string)$order->date_delivery)
                             : trim((string)($r['GLO_DATA_ZAK'] ?? '')));
@@ -345,7 +355,7 @@ $today = date('Y-m-d');
                                             </span>
                                         </div>
                                     <?php endif; ?>
-                                    <?php $unloadPlace = trim(implode(', ', array_filter([$unloadName, $unloadCity])));
+                                    <?php $unloadPlace = trim(implode(', ', array_filter([$unloadNameDisplay, $unloadCity])));
                                           if ($unloadPlace !== ''): ?>
                                         <div class="place-city"><?= h($unloadPlace) ?></div>
                                     <?php endif; ?>

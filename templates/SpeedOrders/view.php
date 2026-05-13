@@ -56,7 +56,15 @@ $loadCode    = (string)($order->load_postal_code ?? $rawData['GLO_MIE_KOD']     
 $loadCity    = (string)($order->load_city        ?? $rawData['GLO_MIE_POCZTA']  ?? '');
 $unloadName  = (string)($order->unload_name      ?? $rawData['GLO_MIE_NAZWA1']  ?? '');
 $unloadCity  = (string)($order->unload_city      ?? $rawData['GLO_MIE_MIEJSC']  ?? '');
-$unloadCountry=(string)($order->unload_country   ?? '');
+// Speed API zwykle zaszywa kod kraju rozładunku w prefixie unload_name ("NL, 3925CK" → "NL").
+$_extractedUnloadCountry = '';
+if (preg_match('/^([A-Z]{2})\s*,/', trim($unloadName), $_m)) {
+    $_extractedUnloadCountry = $_m[1];
+}
+$unloadCountry=$_extractedUnloadCountry ?: (string)($order->unload_country ?? '');
+$unloadName  = $_extractedUnloadCountry !== ''
+    ? trim((string)preg_replace('/^[A-Z]{2}\s*,\s*/', '', $unloadName))
+    : $unloadName;
 
 // Timeline events
 $today = new \DateTimeImmutable('today');

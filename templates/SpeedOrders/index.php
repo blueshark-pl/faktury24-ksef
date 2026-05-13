@@ -528,7 +528,16 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
             // Rozładunek — z kolumn lub fallback raw_json
             $unloadName    = (string)($order->unload_name    ?? $r['GLO_MIE_NAZWA1'] ?? '');
             $unloadCity    = (string)($order->unload_city    ?? $r['GLO_MIE_MIEJSC'] ?? '');
-            $unloadCountry = (string)($order->unload_country ?? '');
+            // Kraj rozładunku zwykle siedzi w prefixie unload_name ("NL, 3925CK" → "NL"),
+            // bo Speed API nie podaje osobnego kraju rozładunku.
+            $extractedUnloadCountry = '';
+            if (preg_match('/^([A-Z]{2})\s*,/', trim($unloadName), $m)) {
+                $extractedUnloadCountry = $m[1];
+            }
+            $unloadCountry = $extractedUnloadCountry ?: (string)($order->unload_country ?? '');
+            $unloadNameDisplay = $extractedUnloadCountry !== ''
+                ? trim((string)preg_replace('/^[A-Z]{2}\s*,\s*/', '', $unloadName))
+                : $unloadName;
             $unloadDate    = $fmtDate(!empty($order->date_delivery)
                 ? ($order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery->format('Y-m-d') : (string)$order->date_delivery)
                 : trim((string)($r['GLO_DATA_ZAK'] ?? '')));
@@ -611,7 +620,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
                     <div class="place-label">Rozł.</div>
                     <?php if ($unloadDate): ?><div class="place-date"><?= h($unloadDate) ?></div><?php endif; ?>
                     <?php if ($unloadCountry): ?><div class="place-country"><?= h($unloadCountry) ?></div><?php endif; ?>
-                    <?php $unloadPlace = implode(', ', array_filter([$unloadName, $unloadCity]));
+                    <?php $unloadPlace = implode(', ', array_filter([$unloadNameDisplay, $unloadCity]));
                           if ($unloadPlace): ?><div class="place-city"><?= h($unloadPlace) ?></div><?php endif; ?>
                 </div>
                 <?php else: ?><span class="text-muted">—</span><?php endif; ?>
