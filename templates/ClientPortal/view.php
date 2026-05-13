@@ -140,7 +140,7 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .kpi-tile .kpi-sub   { font-size:.72rem; color: var(--text-muted); opacity:.8; }
 
 /* ── Route bar ── delikatny gradient w odcieniach primary, w dark mode ciemniejszy */
-.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 0; padding:1.5rem 1.25rem 1rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:.75rem; }
+.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 0; padding:1.5rem 1.25rem 2rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:.75rem; }
 [data-theme-mode="dark"] .route-bar { background: linear-gradient(135deg, rgba(var(--primary-rgb), .18) 0%, rgba(34, 197, 94, .15) 100%); }
 .route-node { flex-shrink:0; min-width:180px; }
 .route-node .rn-flag    { font-size:1.6rem; line-height:1; }
@@ -211,30 +211,29 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     100% { transform:translateY(0)     scale(1); }
 }
 @keyframes truck-delivery-playback {
-    0%   { left:-22px;              transform:translateY(0)   rotate(0deg)  scale(1); }
-    5%   { left:-22px;              transform:translateY(-2px) rotate(-3deg) scale(1); }
-    /* Etap 1: jedzie do POL (środek trasy) */
-    20%  { left:calc(20% - 20px);   transform:translateY(-1px) rotate(1deg)  scale(1.02); }
-    32%  { left:calc(50% - 48px);   transform:translateY(0)   rotate(-1deg) scale(1); }
-    /* Postojek przy POL — załadunek (~0.5s) z lekkim trzęsieniem */
-    34%  { left:calc(50% - 48px);   transform:translateY(-2px) rotate(-2deg) scale(1.02); }
-    37%  { left:calc(50% - 48px);   transform:translateY(1px)  rotate(2deg)  scale(1); }
-    40%  { left:calc(50% - 48px);   transform:translateY(-1px) rotate(-1deg) scale(1.02); }
-    43%  { left:calc(50% - 48px);   transform:translateY(0)   rotate(0deg)  scale(1); }
+    0%   { left:-22px;              transform:translateY(0)    rotate(0deg)    scale(1); }
+    5%   { left:-22px;              transform:translateY(-1px) rotate(-1deg)   scale(1); }
+    /* Etap 1: jedzie do POL (delikatnie) */
+    20%  { left:calc(20% - 20px);   transform:translateY(0)    rotate(.5deg)   scale(1); }
+    32%  { left:calc(50% - 48px);   transform:translateY(0)    rotate(-.5deg)  scale(1); }
+    /* Postojek przy POL — załadunek subtelnie */
+    34%  { left:calc(50% - 48px);   transform:translateY(-1px) rotate(-1deg)   scale(1); }
+    38%  { left:calc(50% - 48px);   transform:translateY(.5px) rotate(1deg)    scale(1); }
+    43%  { left:calc(50% - 48px);   transform:translateY(0)    rotate(0deg)    scale(1); }
     /* Etap 2: jedzie do mety */
-    60%  { left:calc(75% - 70px);   transform:translateY(-1px) rotate(2deg)  scale(1.02); }
-    80%  { left:calc(100% - 96px);  transform:translateY(-3px) rotate(-1deg) scale(1); }
-    /* Hamowanie z bounce */
-    88%  { transform:translateY(3px) scale(1.08) rotate(0deg); }
-    100% { left:calc(100% - 96px);  transform:translateY(0)   rotate(0deg)  scale(1); }
+    60%  { left:calc(75% - 70px);   transform:translateY(0)    rotate(1deg)    scale(1); }
+    80%  { left:calc(100% - 96px);  transform:translateY(-1px) rotate(-.5deg)  scale(1); }
+    /* Łagodne dohamowanie bez bouncu */
+    92%  { transform:translateY(.5px) scale(1.015) rotate(0deg); }
+    100% { left:calc(100% - 96px);  transform:translateY(0)    rotate(0deg)    scale(1); }
 }
-/* POL pulse podczas postojek (32-43% playbacku = ~1.28s-1.72s) */
+/* POL pulse podczas postojek (32-43% playbacku = ~1.28s-1.72s) — delikatny */
 .route-line.is-completed .route-pol {
-    animation: pol-pulse .9s 1.2s ease-in-out;
+    animation: pol-pulse 1.2s 1.2s ease-in-out;
 }
 @keyframes pol-pulse {
     0%,100% { transform:scale(1); box-shadow:none; }
-    50%     { transform:scale(1.25); box-shadow:0 0 0 4px rgba(99,102,241,.3); }
+    50%     { transform:scale(1.1); box-shadow:0 0 0 3px rgba(99,102,241,.2); }
 }
 /* Badge 'Dostarczone DD.MM.YYYY' — pod miastem rozładunku, wjeżdża po dojechaniu trucka */
 .route-delivered-badge {
@@ -262,7 +261,7 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     color:#86efac;
     border-color:rgba(34,197,94,.5);
 }
-/* Speed lines / kreski prędkości za jadącą ciężarówką */
+/* Speed lines / delikatne kreski za jadącą ciężarówką */
 .truck-state-4 .truck-speedlines,
 .truck-state-5 .truck-speedlines {
     position:absolute;
@@ -279,51 +278,51 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .truck-state-5 .truck-speedlines::after {
     content:'';
     position:absolute;
-    width:14px; height:2px;
-    background:linear-gradient(to left, rgba(99,102,241,.7), transparent);
+    height:1.5px;
+    background:linear-gradient(to left, rgba(99,102,241,.45), transparent);
     border-radius:2px;
 }
 .truck-state-4 .truck-speedlines::before,
-.truck-state-5 .truck-speedlines::before { top:-6px; right:6px; width:16px; }
+.truck-state-5 .truck-speedlines::before { top:-4px; right:6px; width:14px; }
 .truck-state-4 .truck-speedlines::after,
-.truck-state-5 .truck-speedlines::after  { top:4px;  right:2px; width:10px; opacity:.7; }
+.truck-state-5 .truck-speedlines::after  { top:3px;  right:2px; width:9px; opacity:.55; }
 @keyframes speedlines-show {
     0%,5%   { opacity:0; }
-    10%,80% { opacity:1; }
+    15%,70% { opacity:.55; }
     90%,100%{ opacity:0; }
 }
-/* Konfetti na mecie */
+/* Konfetti na mecie — delikatne, jeden raz */
 .truck-state-4 .truck-confetti,
 .truck-state-5 .truck-confetti {
     position:absolute;
-    left:50%; top:-4px;
+    left:50%; top:-2px;
     transform:translateX(-50%);
     pointer-events:none;
     opacity:0;
-    font-size:1rem;
-    animation: confetti-burst 1.2s 3.5s ease-out forwards;
+    font-size:.8rem;
+    animation: confetti-burst 1.6s 3.5s ease-out forwards;
 }
 @keyframes confetti-burst {
-    0%   { opacity:0; transform:translate(-50%, 0) scale(.4) rotate(0deg); }
-    30%  { opacity:1; transform:translate(-50%, -16px) scale(1.2) rotate(180deg); }
-    100% { opacity:0; transform:translate(-50%, -28px) scale(1.4) rotate(360deg); }
+    0%   { opacity:0;  transform:translate(-50%, 0)    scale(.5) rotate(0deg); }
+    25%  { opacity:.85; transform:translate(-50%, -10px) scale(1) rotate(60deg); }
+    100% { opacity:0;  transform:translate(-50%, -20px) scale(1.1) rotate(120deg); }
 }
-/* Pulsujący glow na mecie */
+/* Subtelny glow na mecie — mniejszy, łagodniejszy, wolniejszy */
 .truck-state-4 .truck-arrived-glow,
 .truck-state-5 .truck-arrived-glow {
     position:absolute;
-    right:-4px; top:50%;
-    width:24px; height:24px;
-    margin-top:-12px;
+    right:-2px; top:50%;
+    width:18px; height:18px;
+    margin-top:-9px;
     border-radius:50%;
-    background:radial-gradient(circle, rgba(34,197,94,.5) 0%, transparent 70%);
+    background:radial-gradient(circle, rgba(34,197,94,.3) 0%, transparent 70%);
     pointer-events:none;
     opacity:0;
-    animation: arrival-glow 1.5s 3.4s ease-out infinite;
+    animation: arrival-glow 2.5s 3.4s ease-in-out infinite;
 }
 @keyframes arrival-glow {
-    0%,100% { opacity:0; transform:scale(.5); }
-    50%     { opacity:1; transform:scale(1.4); }
+    0%,100% { opacity:0;  transform:scale(.6); }
+    50%     { opacity:.6; transform:scale(1.1); }
 }
 /* Puff spalin gdy w drodze */
 .truck-smoke {
@@ -348,15 +347,16 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     top:22px;
     color:#22c55e;
     font-weight:900;
-    font-size:1.8rem;
+    font-size:1.6rem;
     line-height:1;
     /* delay 3.5s — czeka aż truck dojedzie na metę (playback 4s) */
-    animation: check-pop .7s 3.5s cubic-bezier(.34,1.8,.64,1) both;
-    text-shadow:0 1px 2px rgba(34,197,94,.4);
+    animation: check-pop .9s 3.5s cubic-bezier(.4,1.2,.6,1) both;
+    text-shadow:0 1px 2px rgba(34,197,94,.3);
 }
 @keyframes check-pop {
-    0%   { transform:scale(0) rotate(-90deg); opacity:0; }
-    100% { transform:scale(1) rotate(0deg);   opacity:1; }
+    0%   { transform:scale(0)   rotate(-30deg); opacity:0; }
+    60%  { transform:scale(1.05) rotate(0deg);   opacity:1; }
+    100% { transform:scale(1)   rotate(0deg);   opacity:1; }
 }
 /* Trasa wypełniona — fill zależny od statusu (subtelny overlay) */
 .route-line-progress {
@@ -397,14 +397,13 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 }
 .route-origin      { left:-18px; }
 .route-destination { right:-18px; }
-/* Magazyn klienta pulsuje gdy truck dojeżdża (delay zsynchr. z bounce mety) */
+/* Magazyn klienta delikatnie oddycha gdy truck dojeżdża */
 .route-line.is-completed .route-destination {
-    animation: warehouse-arrival 1.8s 3.4s cubic-bezier(.34,1.56,.64,1) infinite;
+    animation: warehouse-arrival 3s 3.4s ease-in-out infinite;
 }
 @keyframes warehouse-arrival {
-    0%,100% { transform:scale(1) translateY(0); filter:drop-shadow(0 2px 3px rgba(0,0,0,.12)); }
-    25%     { transform:scale(1.25) translateY(-3px); filter:drop-shadow(0 0 14px rgba(34,197,94,.7)) drop-shadow(0 3px 5px rgba(0,0,0,.15)); }
-    60%     { transform:scale(1.1)  translateY(-1px); }
+    0%,100% { transform:scale(1) translateY(0); filter:drop-shadow(0 3px 5px rgba(0,0,0,.18)); }
+    50%     { transform:scale(1.06) translateY(-1px); filter:drop-shadow(0 0 8px rgba(34,197,94,.45)) drop-shadow(0 3px 5px rgba(0,0,0,.18)); }
 }
 /* Magazyn nadawcy lekko podświetlony gdy truck wyjeżdża (state 3 i wyżej) */
 .route-line.is-driving .route-origin {
@@ -415,7 +414,7 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     40%  { transform:scale(1.15); filter:drop-shadow(0 0 8px rgba(99,102,241,.5)) drop-shadow(0 2px 3px rgba(0,0,0,.12)); }
     100% { transform:scale(1); }
 }
-/* ── Mijająca ciężarówka (state 3 — w drodze) ── */
+/* ── Mijająca ciężarówka (state 3 — w drodze, infinite loop) ── */
 .oncoming-truck {
     position:absolute;
     top:-30px;
@@ -425,12 +424,18 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     pointer-events:none;
     opacity:0;
     filter:drop-shadow(0 3px 5px rgba(0,0,0,.18));
-    animation: oncoming-pass 6s 2s ease-in-out infinite;
 }
 .oncoming-truck .oncoming-img {
     width:100%; height:100%;
     object-fit:contain;
     display:block;
+}
+.route-line.is-driving .oncoming-truck {
+    animation: oncoming-pass 6s 2s ease-in-out infinite;
+}
+/* ── Mijająca ciężarówka podczas completed playbacku (1× pass) ── */
+.route-line.is-completed .oncoming-truck {
+    animation: oncoming-pass 2.8s 1.5s ease-in-out forwards;
 }
 @keyframes oncoming-pass {
     0%   { left:calc(100% + 30px); opacity:0; transform:translateY(0); }
@@ -439,43 +444,47 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     92%  { opacity:.85; }
     100% { left:-100px; opacity:0; transform:translateY(0); }
 }
-/* ── Badge kierowcy + tablica rejestracyjna ── */
-.truck-assignment-badge {
+/* ── Tablica rejestracyjna PRZYKLEJONA do ciężarówki ── */
+.route-line-truck .truck-plate {
     position:absolute;
-    top:calc(100% + 10px);
+    bottom:-4px;
     left:50%;
     transform:translateX(-50%);
-    display:flex;
-    gap:.4rem;
+    background:linear-gradient(to bottom, #fef3c7 0%, #fbbf24 100%);
+    color:#1f2937;
+    padding:.05rem .3rem;
+    border-radius:.18rem;
+    font-weight:800;
+    letter-spacing:.05em;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size:.6rem;
+    border:1px solid rgba(0,0,0,.2);
+    line-height:1.1;
+    box-shadow:0 1px 2px rgba(0,0,0,.2);
+    white-space:nowrap;
+    z-index:1;
+    pointer-events:none;
+}
+/* ── Badge kierowcy (statyczny pod route-line) ── */
+.driver-name-badge {
+    position:absolute;
+    top:calc(100% + 12px);
+    left:50%;
+    transform:translateX(-50%);
+    display:inline-flex;
+    gap:.3rem;
     align-items:center;
-    background:rgba(31,41,55,.92);
+    background:rgba(31,41,55,.85);
     color:#f3f4f6;
-    padding:.2rem .5rem;
-    border-radius:.35rem;
+    padding:.15rem .5rem;
+    border-radius:.3rem;
     font-size:.65rem;
     font-weight:600;
     white-space:nowrap;
     z-index:3;
-    box-shadow:0 2px 6px rgba(0,0,0,.18);
-    border:1px solid rgba(255,255,255,.1);
+    box-shadow:0 2px 4px rgba(0,0,0,.15);
 }
-.truck-assignment-badge .ta-plate {
-    background:linear-gradient(to bottom, #fef3c7 0%, #fbbf24 100%);
-    color:#1f2937;
-    padding:.1rem .35rem;
-    border-radius:.2rem;
-    font-weight:800;
-    letter-spacing:.06em;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size:.7rem;
-    border:1px solid rgba(0,0,0,.15);
-    line-height:1;
-}
-.truck-assignment-badge .ta-driver {
-    display:inline-flex; align-items:center; gap:.2rem;
-    opacity:.9;
-}
-.truck-assignment-badge .ta-driver i { font-size:.85em; opacity:.7; }
+.driver-name-badge i { opacity:.7; font-size:.85em; }
 /* ── Granica kraju (gdy load_country != unload_country) ── */
 .border-crossing {
     position:absolute;
@@ -774,31 +783,22 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             </span>
         <?php endif; ?>
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
-        <!-- Mijająca ciężarówka (tylko gdy w drodze) -->
-        <?php if ($effective === 3): ?>
+        <!-- Mijająca ciężarówka (w drodze: loop; completed: 1× pass) -->
+        <?php if ($effective >= 3): ?>
             <span class="oncoming-truck" aria-hidden="true">
                 <img src="/assets/img/truck-2.png" alt="" class="oncoming-img">
             </span>
         <?php endif; ?>
-        <!-- Badge kierowcy + tablica rejestracyjna (gdy mamy dane) -->
         <?php
             $driverName = trim((string)($order->driver ?? ''));
             $plateText  = trim((string)($order->vehicle_reg ?? ''));
-            $hasTruckInfo = $effective >= 2 && ($driverName !== '' || $plateText !== '');
         ?>
-        <?php if ($hasTruckInfo): ?>
-            <div class="truck-assignment-badge">
-                <?php if ($plateText !== ''): ?>
-                    <span class="ta-plate"><?= h(strtoupper($plateText)) ?></span>
-                <?php endif; ?>
-                <?php if ($driverName !== ''): ?>
-                    <span class="ta-driver"><i class="ri-user-line"></i><?= h($driverName) ?></span>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
         <?php if ($effective >= 2): ?>
             <span class="route-line-truck truck-state-<?= (int)$effective ?>" aria-label="<?= h($nlCurrent['label']) ?>">
                 <img src="/assets/img/truck.png" alt="" class="truck-img">
+                <?php if ($plateText !== ''): ?>
+                    <span class="truck-plate"><?= h(strtoupper($plateText)) ?></span>
+                <?php endif; ?>
                 <?php if ($effective === 3): ?>
                     <span class="truck-smoke" aria-hidden="true">💨</span>
                     <span class="truck-smoke" aria-hidden="true">💨</span>
@@ -811,6 +811,12 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             </span>
         <?php endif; ?>
         <?php if ($hasPodFile): ?><span class="route-pod">POD ✓</span><?php endif; ?>
+        <!-- Badge kierowcy (statyczny pod trasą) -->
+        <?php if ($effective >= 2 && $driverName !== ''): ?>
+            <div class="driver-name-badge">
+                <i class="ri-user-line"></i><?= h($driverName) ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <div class="route-node text-end">
