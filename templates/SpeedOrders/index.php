@@ -689,18 +689,45 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
                    data-order-id="<?= $order->id ?>">
                     <i class="ri-eye-line"></i>
                 </a>
-                <?php if (!empty($order->invoice_id)): ?>
-                <a href="<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'view', $order->invoice_id]) ?>"
-                   class="btn btn-xs btn-outline-success py-0 px-1 ms-1" title="Pokaż fakturę">
-                    <i class="ri-file-text-line"></i>
-                </a>
-                <?php else: ?>
+                <?php
+                    // M:N — wszystkie faktury powiązane ze zleceniem
+                    $orderInvoices = $invoicesMap[$order->id] ?? [];
+                    $invCount = count($orderInvoices);
+                ?>
+                <?php if ($invCount === 1): ?>
+                    <?php $inv = $orderInvoices[0]; ?>
+                    <a href="<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'view', $inv->id]) ?>"
+                       class="btn btn-xs btn-outline-success py-0 px-1 ms-1"
+                       title="Pokaż fakturę <?= h($inv->fullnumber ?: $inv->id) ?>">
+                        <i class="ri-file-text-line"></i>
+                    </a>
+                <?php elseif ($invCount > 1): ?>
+                    <div class="btn-group ms-1" role="group">
+                        <button type="button" class="btn btn-xs btn-outline-success py-0 px-1 dropdown-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                title="<?= $invCount ?> faktur">
+                            <i class="ri-file-text-line"></i>
+                            <span class="badge bg-success text-white ms-1" style="font-size:.55rem"><?= $invCount ?></span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" style="font-size:.78rem">
+                            <?php foreach ($orderInvoices as $inv): ?>
+                                <li>
+                                    <a class="dropdown-item d-flex justify-content-between gap-3"
+                                       href="<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'view', $inv->id]) ?>">
+                                        <span><?= h($inv->fullnumber ?: substr($inv->id, 0, 8)) ?></span>
+                                        <span class="text-muted"><?= $inv->date instanceof \DateTimeInterface ? $inv->date->format('d.m.Y') : '' ?></span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+                <!-- Przycisk "Wystaw kolejną fakturę" — zawsze dostępny -->
                 <a href="<?= h($fvUrl) ?>"
                    class="btn btn-xs btn-outline-primary py-0 px-1 ms-1"
-                   title="Wystaw fakturę">
+                   title="<?= $invCount > 0 ? 'Wystaw kolejną fakturę' : 'Wystaw fakturę' ?>">
                     <i class="ri-file-add-line"></i>
                 </a>
-                <?php endif; ?>
             </td>
         </tr>
         <?php endforeach; ?>

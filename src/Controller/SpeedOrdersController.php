@@ -164,6 +164,28 @@ class SpeedOrdersController extends AppController
             $hasPolPodMap = [];
         }
 
+        // Mapa faktur (M:N): speed_order_id → [Invoice, Invoice, ...]
+        // Pobierane jednym zapytaniem przez pivot speed_order_invoices,
+        // zachowuje kolejność wstawienia (id ASC).
+        $invoicesMap = [];
+        try {
+            if (!empty($orderIds)) {
+                $rows = $this->fetchTable('SpeedOrderInvoices')->find()
+                    ->select(['SpeedOrderInvoices.speed_order_id', 'Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentstate', 'Invoices.total'])
+                    ->contain(['Invoices'])
+                    ->where(['SpeedOrderInvoices.speed_order_id IN' => $orderIds])
+                    ->orderByAsc('SpeedOrderInvoices.id')
+                    ->all();
+                foreach ($rows as $r) {
+                    if ($r->invoice) {
+                        $invoicesMap[$r->speed_order_id][] = $r->invoice;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            $invoicesMap = [];
+        }
+
         // Lista unikalnych kontraktów do dropdown filtra
         $contractsList = $SpeedOrders->find()
             ->select(['contract'])
@@ -175,7 +197,7 @@ class SpeedOrdersController extends AppController
             ->extract('contract')
             ->toArray();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'hasPolPodMap', 'sortKey', 'sortDir'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'hasPolPodMap', 'invoicesMap', 'sortKey', 'sortDir'));
     }
 
     // -------------------------------------------------------------------------
@@ -321,7 +343,16 @@ class SpeedOrdersController extends AppController
         $this->request->allowMethod(['get']);
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
-        $order = $SpeedOrders->get($id);
+        // M:N: ładujemy wszystkie faktury sprzedażowe przez pivot — \$order->invoices
+        $order = $SpeedOrders->find()
+            ->where(['SpeedOrders.id' => $id])
+            ->contain([
+                'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
+                        ->orderByAsc('Invoices.date');
+                },
+            ])
+            ->firstOrFail();
         $rawData = null;
         if (!empty($order->raw_json)) {
             $rawData = json_decode($order->raw_json, true);
@@ -388,7 +419,16 @@ class SpeedOrdersController extends AppController
         $this->request->allowMethod(['get']);
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
-        $order = $SpeedOrders->get($id);
+        // M:N — wszystkie faktury sprzedażowe przez pivot
+        $order = $SpeedOrders->find()
+            ->where(['SpeedOrders.id' => $id])
+            ->contain([
+                'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
+                        ->orderByAsc('Invoices.date');
+                },
+            ])
+            ->firstOrFail();
         $rawData = null;
         if (!empty($order->raw_json)) {
             $rawData = json_decode($order->raw_json, true);

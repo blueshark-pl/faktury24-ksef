@@ -3169,6 +3169,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $conn->commit();
 
             // ── Powiąż zlecenia Speed ERP z fakturą ──
+            // Faza B: zapisujemy do PIVOT speed_order_invoices (M:N) ORAZ do starej
+            // kolumny speed_orders.invoice_id (kompatybilność wsteczna — niektóre
+            // moduły jeszcze czytają legacy pole; drop w fazie D).
             try {
                 $speedOrderIds = [];
                 $fromId  = $this->request->getQuery('from_order_id');
@@ -3180,9 +3183,29 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $speedOrderIds = array_values(array_unique(array_filter($speedOrderIds)));
                 if (!empty($speedOrderIds)) {
                     $SpeedOrders = $this->fetchTable('SpeedOrders');
+                    $Pivot       = $this->fetchTable('SpeedOrderInvoices');
+
+                    // Pivot insert (INSERT IGNORE — chronimy przed FK violation gdy
+                    // ktoś dwa razy zaaplikuje akcję). updateAll legacy też uruchamiamy.
+                    $now = date('Y-m-d H:i:s');
+                    foreach ($speedOrderIds as $soId) {
+                        // Skip duplicate przez UNIQUE key — try/catch wystarczy
+                        try {
+                            $pivot = $Pivot->newEntity([
+                                'speed_order_id' => $soId,
+                                'invoice_id'     => $invoiceId,
+                                'created'        => $now,
+                            ]);
+                            $Pivot->save($pivot);
+                        } catch (\Throwable) { /* duplicate — ignore */ }
+                    }
+
+                    // Legacy: aktualizujemy invoice_id na PIERWSZE zlecenie (zachowa
+                    // backward compat z czytającym kodem). Późniejsze faktury nie
+                    // nadpisują invoice_id zlecenia jeśli już ma — ale pivot jest pełen.
                     $SpeedOrders->updateAll(
-                        ['invoice_id' => $invoiceId, 'invoiced_at' => date('Y-m-d H:i:s')],
-                        ['id IN' => $speedOrderIds]
+                        ['invoice_id' => $invoiceId, 'invoiced_at' => $now],
+                        ['id IN' => $speedOrderIds, 'invoice_id IS' => null]
                     );
                 }
             } catch (\Throwable $ex) {

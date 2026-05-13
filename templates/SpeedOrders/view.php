@@ -146,8 +146,8 @@ if ($order->fk_at) {
         'sub' => $fdatetime($order->fk_at) . (count($costInvoices) ? ' ('.count($costInvoices).' dok.)' : ''),
         'by' => $by, 'icon' => 'ri-receipt-line', 'color' => '#8b5cf6', 'done' => true];
 }
-// 7. FS / faktura sprzedażowa
-if ($order->fs_at || $order->invoice_id) {
+// 7. FS / faktura sprzedażowa — istnieje gdy fs_at zaznaczony LUB jest wpis w pivot
+if ($order->fs_at || !empty($order->invoices ?? [])) {
     $d = $order->fs_at ? ($order->fs_at instanceof \DateTimeInterface ? $order->fs_at : new \DateTimeImmutable(substr((string)$order->fs_at,0,16))) : $today;
     $by = $byUser('fs_at');
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'FS — faktura sprzedażowa',
@@ -274,10 +274,20 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 
     <!-- Separator -->
     <div class="ms-auto d-flex gap-2 align-items-center">
-        <?php if (!empty($order->invoice_id)): ?>
-        <a href="<?= $this->Url->build(['controller'=>'Invoices','action'=>'view',$order->invoice_id]) ?>"
+        <?php
+            $_hasAnyInvoice = !empty($order->invoices ?? []);
+            $_firstInvId    = $_hasAnyInvoice ? $order->invoices[0]->id : null;
+        ?>
+        <?php if ($_hasAnyInvoice): ?>
+        <a href="<?= $this->Url->build(['controller'=>'Invoices','action'=>'view',$_firstInvId]) ?>"
            class="btn btn-sm btn-success">
             <i class="ri-file-text-line me-1"></i>Faktura sprzedażowa
+            <?php if (count($order->invoices) > 1): ?>
+                <span class="badge bg-light text-success ms-1"><?= count($order->invoices) ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="<?= h($fvUrl) ?>" class="btn btn-sm btn-outline-primary" title="Wystaw kolejną fakturę">
+            <i class="ri-add-line"></i>
         </a>
         <?php elseif (empty($order->pod_at)): ?>
         <button class="btn btn-sm btn-outline-secondary" disabled title="Potwierdź POD żeby odblokować fakturowanie">
@@ -621,7 +631,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         </div>
 
         <!-- Alerty -->
-        <?php if (empty($order->pod_at) && empty($order->invoice_id)): ?>
+        <?php if (empty($order->pod_at) && empty($order->invoices ?? [])): ?>
         <div class="alert alert-warning d-flex align-items-center gap-2 mt-3 mb-0 py-2">
             <i class="ri-lock-line fs-5"></i>
             <div><strong>Blokada fakturowania</strong> — potwierdź POD żeby odblokować wystawienie faktury sprzedażowej.</div>
@@ -985,17 +995,67 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- FAKTURA SPRZEDAŻOWA                                                    -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
-<?php if (!empty($order->invoice_id)): ?>
+<?php
+    // M:N — wszystkie faktury powiązane ze zleceniem (z pivota).
+    // $order->invoices załadowany przez SpeedOrdersController::view/viewModal.
+    $salesInvoices = $order->invoices ?? [];
+?>
+<?php if (!empty($salesInvoices)): ?>
 <div class="card border-success shadow-sm mb-3">
     <div class="card-header fw-semibold text-success bg-success-subtle border-bottom d-flex align-items-center gap-2">
-        <i class="ri-file-text-line"></i>Powiązana faktura sprzedażowa
-        <?php if ($order->invoiced_at): ?>
-        <span class="text-muted fw-normal small ms-2">Wystawiono: <?= $fdatetime($order->invoiced_at) ?></span>
-        <?php endif; ?>
-        <a href="<?= $this->Url->build(['controller'=>'Invoices','action'=>'view',$order->invoice_id]) ?>"
-           class="btn btn-sm btn-success ms-auto">
-            <i class="ri-external-link-line me-1"></i>Otwórz fakturę
+        <i class="ri-file-text-line"></i>
+        Faktury sprzedażowe
+        <span class="badge bg-success ms-1"><?= count($salesInvoices) ?></span>
+        <?php
+            // Link "Wystaw kolejną" zawsze dostępny w prawej części headera
+            $curCode = strtoupper(trim((string)($order->currency ?? 'PLN')));
+            $addAction = $curCode !== '' && $curCode !== 'PLN' ? 'addCurrency' : 'addVat';
+            $addUrl = $this->Url->build(['controller' => 'Invoices', 'action' => $addAction, '?' => ['from_order_id' => $order->id]]);
+        ?>
+        <a href="<?= h($addUrl) ?>" class="btn btn-sm btn-outline-success ms-auto">
+            <i class="ri-add-line me-1"></i>Wystaw kolejną
         </a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.85rem">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">Numer faktury</th>
+                    <th>Data wystawienia</th>
+                    <th>Kwota</th>
+                    <th>Status płatności</th>
+                    <th class="pe-3 text-end">Akcje</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($salesInvoices as $inv): ?>
+                <?php
+                    $payCls = $inv->paymentstate === 'paid'
+                        ? 'success' : ($inv->paymentstate === 'partial' ? 'warning' : 'danger');
+                    $payLbl = $inv->paymentstate === 'paid'
+                        ? 'Opłacona' : ($inv->paymentstate === 'partial' ? 'Częściowo' : 'Nieopłacona');
+                ?>
+                <tr>
+                    <td class="ps-3 fw-semibold">
+                        <i class="ri-file-text-line text-success me-1"></i><?= h($inv->fullnumber ?: substr($inv->id, 0, 8)) ?>
+                    </td>
+                    <td><?= $inv->date instanceof \DateTimeInterface ? $inv->date->format('d.m.Y') : '—' ?></td>
+                    <td><?= number_format((float)($inv->total ?? 0), 2, ',', ' ') ?> <?= h($inv->currency ?? '') ?></td>
+                    <td>
+                        <span class="badge bg-<?= $payCls ?>-subtle text-<?= $payCls ?> border border-<?= $payCls ?>-subtle">
+                            <?= $payLbl ?>
+                        </span>
+                    </td>
+                    <td class="pe-3 text-end">
+                        <a href="<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'view', $inv->id]) ?>"
+                           class="btn btn-sm btn-outline-success" title="Otwórz fakturę">
+                            <i class="ri-external-link-line"></i>
+                        </a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 </div>
 <?php endif; ?>
