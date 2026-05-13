@@ -570,11 +570,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                id="impersonateDropdown"
                                title="<?= __('Wcielenie w użytkownika') ?>"
                                aria-label="<?= __('Wcielenie w użytkownika') ?>">
-                                <!-- Phosphor MagnifyingGlass — w stylu Zynix header-link-icon -->
+                                <!-- Phosphor UserSwitch — user + okrągła strzałka (przełączanie tożsamości) -->
                                 <svg xmlns="http://www.w3.org/2000/svg" class="header-link-icon" viewBox="0 0 256 256">
                                     <rect width="256" height="256" fill="none"></rect>
-                                    <circle cx="112" cy="112" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></circle>
-                                    <line x1="168.57" y1="168.57" x2="224" y2="224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <!-- Głowa -->
+                                    <circle cx="108" cy="100" r="44" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></circle>
+                                    <!-- Tułów (półkole na dole) -->
+                                    <path d="M28,224c14.78-25.55,46-44,80-44s65.22,18.45,80,44" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <!-- Strzałka 'switch' w prawym górnym rogu -->
+                                    <polyline points="184 16 200 32 184 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="232 80 216 64 232 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <path d="M200,32a32,32,0,0,1,32,32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <path d="M216,64a32,32,0,0,1-32-32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
                                 </svg>
                             </a>
                             <ul class="main-header-dropdown dropdown-menu dropdown-menu-end p-0 shadow"
@@ -621,8 +628,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ? '<img src="'+ u.avatar +'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb">'
                                         : '<span style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,.15);color:#6366f1;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700">'+ initial +'</span>';
                                     var inactive = u.active ? '' : ' opacity-50';
+                                    // Atrybuty data-* używane przez SweetAlert do pokazu szczegółów wybranego usera
+                                    var encName = (u.name || u.username || '').replace(/"/g, '&quot;');
+                                    var encEmail = (u.email || '').replace(/"/g, '&quot;');
+                                    var encRole = (u.role || '').replace(/"/g, '&quot;');
+                                    var encAvatar = (u.avatar || '').replace(/"/g, '&quot;');
                                     html += '<li class="border-bottom">'
-                                          + '<button type="button" class="btn btn-link text-decoration-none w-100 py-2 px-3 d-flex align-items-center gap-2 imp-pick'+ inactive +'" data-user-id="'+ u.id +'">'
+                                          + '<button type="button" class="btn btn-link text-decoration-none w-100 py-2 px-3 d-flex align-items-center gap-2 imp-pick'+ inactive +'"'
+                                          +   ' data-user-id="'+ u.id +'"'
+                                          +   ' data-username="'+ encName +'"'
+                                          +   ' data-email="'+ encEmail +'"'
+                                          +   ' data-role="'+ encRole +'"'
+                                          +   ' data-avatar="'+ encAvatar +'">'
                                           +   avatarHtml
                                           +   '<div class="flex-grow-1 text-start min-width-0">'
                                           +     '<div class="fw-semibold text-truncate">'+ (u.name || u.username) +'</div>'
@@ -649,12 +666,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 clearTimeout(debounceTimer);
                                 debounceTimer = setTimeout(function () { doSearch($inp.value.trim()); }, 250);
                             });
-                            $res.addEventListener('click', function (e) {
-                                var btn = e.target.closest('.imp-pick');
-                                if (!btn) return;
-                                var userId = btn.dataset.userId;
-                                if (!userId) return;
-                                if (!confirm('<?= __('Wcielić się w tego użytkownika? Będziesz widzieć aplikację z jego perspektywy.') ?>')) return;
+                            function submitImpersonate(userId) {
                                 var form = document.createElement('form');
                                 form.method = 'POST';
                                 form.action = startUrlBase + '/' + userId;
@@ -665,6 +677,52 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 form.appendChild(csrf);
                                 document.body.appendChild(form);
                                 form.submit();
+                            }
+                            $res.addEventListener('click', function (e) {
+                                var btn = e.target.closest('.imp-pick');
+                                if (!btn) return;
+                                var userId = btn.dataset.userId;
+                                if (!userId) return;
+
+                                var name   = btn.dataset.username || '?';
+                                var email  = btn.dataset.email || '';
+                                var role   = btn.dataset.role || '';
+                                var avatar = btn.dataset.avatar || '';
+                                var initial = name.substring(0, 1).toUpperCase();
+                                var avatarHtml = avatar
+                                    ? '<img src="' + avatar + '" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #e5e7eb">'
+                                    : '<span style="width:64px;height:64px;border-radius:50%;background:rgba(99,102,241,.15);color:#6366f1;display:inline-flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700">' + initial + '</span>';
+
+                                if (!window.Swal) {
+                                    // Fallback gdy SweetAlert nie załadowany
+                                    if (confirm('<?= __('Wcielić się w tego użytkownika?') ?>')) submitImpersonate(userId);
+                                    return;
+                                }
+
+                                Swal.fire({
+                                    title: '<?= __('Wcielenie w użytkownika') ?>',
+                                    html:
+                                        '<div class="text-center mb-3">' + avatarHtml + '</div>'
+                                        + '<div class="text-center"><strong style="font-size:1.05rem">' + name + '</strong></div>'
+                                        + (email ? '<div class="text-center text-muted small">' + email + '</div>' : '')
+                                        + (role ? '<div class="text-center mt-2"><span class="badge bg-secondary-subtle text-secondary border" style="font-size:.7em">' + role + '</span></div>' : '')
+                                        + '<hr>'
+                                        + '<p class="small text-muted mb-0" style="text-align:left">'
+                                        +   '<i class="ri-information-line me-1"></i><?= __('Będziesz widzieć aplikację z jego perspektywy, z jego uprawnieniami. Wszystkie wykonane akcje pojawią się w logu audytu. Wróć do siebie żółtym banerem u góry.') ?>'
+                                        + '</p>',
+                                    icon: 'question',
+                                    showCancelButton: true,
+                                    confirmButtonText: '<i class="ri-user-shared-line me-1"></i><?= __('Wcielę się') ?>',
+                                    cancelButtonText: '<?= __('Anuluj') ?>',
+                                    confirmButtonColor: '#6366f1',
+                                    reverseButtons: true,
+                                    focusCancel: true,
+                                    customClass: {
+                                        popup: 'shadow-lg',
+                                    },
+                                }).then(function (result) {
+                                    if (result && result.isConfirmed) submitImpersonate(userId);
+                                });
                             });
                         })();
                         </script>
