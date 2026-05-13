@@ -280,6 +280,15 @@ msgstr "Last update"
 msgid "Tablica"
 msgstr "Plate"
 
+msgid "Pojazd"
+msgstr "Vehicle"
+
+msgid "Kierowca"
+msgstr "Driver"
+
+msgid "Symulowana prędkość pojazdu"
+msgstr "Simulated vehicle speed"
+
 msgid "Przewoźnik"
 msgstr "Carrier"
 
