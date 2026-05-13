@@ -548,6 +548,194 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <!-- End::header-element -->
 
 
+                        <?php
+                            // ── Globalne wyszukiwanie (ukryte dla klientów) ──
+                            $identitySearch = $this->request->getAttribute('identity');
+                            $roleSearch = strtolower((string)($identitySearch?->get('role') ?? ''));
+                            $showGlobalSearch = $identitySearch && $roleSearch !== 'client';
+                        ?>
+                        <?php if ($showGlobalSearch): ?>
+                        <div class="header-element header-search-wrap" style="position:relative">
+                            <div class="input-group" style="min-width:280px;max-width:420px">
+                                <span class="input-group-text bg-white border-end-0" style="border-radius:8px 0 0 8px">
+                                    <i class="ri-search-2-line text-muted"></i>
+                                </span>
+                                <input type="text" class="form-control border-start-0" id="global-search-input"
+                                       placeholder="<?= __('Szukaj fakt., kontr., zleceń…') ?>"
+                                       autocomplete="off"
+                                       style="border-radius:0 8px 8px 0;font-size:.85rem">
+                            </div>
+                            <div id="global-search-results"
+                                 class="shadow-lg border bg-white rounded"
+                                 style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;max-height:420px;overflow-y:auto;z-index:1050;min-width:380px">
+                            </div>
+                        </div>
+                        <script>
+                        (function () {
+                            var $inp = document.getElementById('global-search-input');
+                            var $res = document.getElementById('global-search-results');
+                            if (!$inp || !$res) return;
+                            var searchUrl = '<?= $this->Url->build(['controller' => 'Search', 'action' => 'query']) ?>';
+                            var debounceTimer = null;
+                            var lastResults = null;
+                            var activeIdx = -1;
+
+                            function escapeHtml(s) {
+                                return String(s == null ? '' : s)
+                                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                            }
+                            function highlight(text, q) {
+                                if (!q || !text) return escapeHtml(text || '');
+                                var safe = escapeHtml(text);
+                                var qre = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                return safe.replace(new RegExp('(' + qre + ')', 'ig'), '<mark style="background:#fff3a0;padding:0">$1</mark>');
+                            }
+                            function fmtMoney(v, c) {
+                                if (v == null) return '';
+                                return v.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + (c || '');
+                            }
+                            function statusBadge(payment) {
+                                payment = (payment || '').toLowerCase();
+                                if (payment === 'paid')    return '<span class="badge bg-success-subtle text-success border" style="font-size:.6em;"><?= __('Opłacona') ?></span>';
+                                if (payment === 'partial') return '<span class="badge bg-warning-subtle text-warning border" style="font-size:.6em;"><?= __('Częściowo') ?></span>';
+                                if (payment === 'unpaid')  return '<span class="badge bg-danger-subtle text-danger border" style="font-size:.6em;"><?= __('Nieopłacona') ?></span>';
+                                return '';
+                            }
+                            function buildItem(href, iconClass, iconBg, primary, secondary, meta) {
+                                return '<a href="' + href + '" class="gs-item d-flex align-items-center gap-2 px-3 py-2 text-decoration-none text-dark border-bottom"'
+                                     + ' style="cursor:pointer">'
+                                     +   '<div class="' + iconBg + ' d-inline-flex align-items-center justify-content-center border"'
+                                     +     ' style="width:32px;height:32px;border-radius:50%;flex-shrink:0">'
+                                     +     '<i class="' + iconClass + '"></i>'
+                                     +   '</div>'
+                                     +   '<div class="flex-grow-1 min-width-0">'
+                                     +     '<div class="fw-semibold small text-truncate">' + primary + '</div>'
+                                     +     '<div class="text-muted text-truncate" style="font-size:.72rem">' + secondary + '</div>'
+                                     +   '</div>'
+                                     +   (meta ? '<div class="text-end small text-nowrap" style="font-size:.7rem">' + meta + '</div>' : '')
+                                     + '</a>';
+                            }
+                            function render(data) {
+                                var q = data.q || '';
+                                var total = (data.invoices || []).length + (data.contractors || []).length + (data.orders || []).length;
+                                if (!q || q.length < 2) {
+                                    $res.style.display = 'none';
+                                    return;
+                                }
+                                if (!total) {
+                                    $res.innerHTML = '<div class="p-4 text-muted small text-center"><i class="ri-search-line d-block mb-2" style="font-size:1.4rem"></i><?= __('Brak wyników dla') ?> <strong>' + escapeHtml(q) + '</strong></div>';
+                                    $res.style.display = 'block';
+                                    return;
+                                }
+                                var html = '';
+
+                                if ((data.invoices || []).length) {
+                                    html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-file-text-line me-1"></i><?= __('Faktury') ?></div>';
+                                    data.invoices.forEach(function (inv) {
+                                        var href = '<?= $this->Url->build('/invoices/view') ?>/' + inv.id;
+                                        var primary = highlight(inv.fullnumber || '—', q);
+                                        var sec = highlight(inv.contractor || '—', q) + (inv.nip ? ' · NIP ' + highlight(inv.nip, q) : '');
+                                        var meta = fmtMoney(inv.brutto, inv.currency) + (statusBadge(inv.payment) ? '<br>' + statusBadge(inv.payment) : '');
+                                        html += buildItem(href, 'ri-file-text-line', 'bg-info-subtle text-info', primary, sec, meta);
+                                    });
+                                }
+                                if ((data.contractors || []).length) {
+                                    html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-building-line me-1"></i><?= __('Kontrahenci') ?></div>';
+                                    data.contractors.forEach(function (c) {
+                                        var href = '<?= $this->Url->build('/contractors') ?>?q=' + encodeURIComponent(c.nip || c.name);
+                                        var primary = highlight(c.name || '—', q);
+                                        var sec = (c.nip ? 'NIP ' + highlight(c.nip, q) : '') + (c.city ? ' · ' + highlight(c.city, q) : '');
+                                        html += buildItem(href, 'ri-building-line', 'bg-success-subtle text-success', primary, sec, '');
+                                    });
+                                }
+                                if ((data.orders || []).length) {
+                                    html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-truck-line me-1"></i><?= __('Zlecenia') ?></div>';
+                                    data.orders.forEach(function (o) {
+                                        var href = '<?= $this->Url->build('/zlecenia/view') ?>/' + o.id;
+                                        var primary = highlight(o.symbol || '—', q) + ' · ' + escapeHtml(o.buyer || '');
+                                        var route = (o.from || '?') + ' → ' + (o.to || '?');
+                                        var meta = fmtMoney(o.netto, o.currency);
+                                        html += buildItem(href, 'ri-truck-line', 'bg-warning-subtle text-warning', primary, escapeHtml(route), meta);
+                                    });
+                                }
+                                html += '<div class="px-3 py-1 small text-muted text-center border-top" style="font-size:.68rem">'
+                                     + '<i class="ri-keyboard-line me-1"></i><?= __('↑↓ aby nawigować · Enter aby otworzyć · Esc aby zamknąć') ?>'
+                                     + '</div>';
+                                $res.innerHTML = html;
+                                $res.style.display = 'block';
+                                activeIdx = -1;
+                            }
+                            function doSearch(q) {
+                                if (q.length < 2) {
+                                    $res.style.display = 'none';
+                                    return;
+                                }
+                                fetch(searchUrl + '?q=' + encodeURIComponent(q), { headers: {'Accept': 'application/json'} })
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (data) { lastResults = data; render(data); })
+                                    .catch(function () {
+                                        $res.innerHTML = '<div class="p-3 text-danger small text-center"><?= __('Błąd wyszukiwania') ?></div>';
+                                        $res.style.display = 'block';
+                                    });
+                            }
+                            function setActive(items, idx) {
+                                items.forEach(function (it, i) {
+                                    if (i === idx) {
+                                        it.style.background = '#f0f4ff';
+                                        it.scrollIntoView({block: 'nearest'});
+                                    } else {
+                                        it.style.background = '';
+                                    }
+                                });
+                            }
+                            $inp.addEventListener('input', function () {
+                                clearTimeout(debounceTimer);
+                                debounceTimer = setTimeout(function () { doSearch($inp.value.trim()); }, 250);
+                            });
+                            $inp.addEventListener('focus', function () {
+                                if ($inp.value.trim().length >= 2 && lastResults) {
+                                    render(lastResults);
+                                }
+                            });
+                            $inp.addEventListener('keydown', function (e) {
+                                var items = $res.querySelectorAll('.gs-item');
+                                if (!items.length) return;
+                                if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    activeIdx = Math.min(activeIdx + 1, items.length - 1);
+                                    setActive(items, activeIdx);
+                                } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    activeIdx = Math.max(activeIdx - 1, 0);
+                                    setActive(items, activeIdx);
+                                } else if (e.key === 'Enter') {
+                                    if (activeIdx >= 0 && items[activeIdx]) {
+                                        e.preventDefault();
+                                        window.location = items[activeIdx].href;
+                                    }
+                                } else if (e.key === 'Escape') {
+                                    $res.style.display = 'none';
+                                    $inp.blur();
+                                }
+                            });
+                            document.addEventListener('click', function (e) {
+                                if (!$res.contains(e.target) && e.target !== $inp) {
+                                    $res.style.display = 'none';
+                                }
+                            });
+                            // Skrót klawiszowy: Ctrl/Cmd + K
+                            document.addEventListener('keydown', function (e) {
+                                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                                    e.preventDefault();
+                                    $inp.focus();
+                                    $inp.select();
+                                }
+                            });
+                        })();
+                        </script>
+                        <?php endif; ?>
+
                     </div>
                     <!-- End::header-content-left -->
 

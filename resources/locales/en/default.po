@@ -1806,3 +1806,33 @@ msgstr "Delete this notification?"
 
 msgid "Oznacz jako przeczytane"
 msgstr "Mark as read"
+
+msgid "Szukaj fakt., kontr., zleceń…"
+msgstr "Search invoices, contractors, orders…"
+
+msgid "Brak wyników dla"
+msgstr "No results for"
+
+msgid "Faktury"
+msgstr "Invoices"
+
+msgid "Kontrahenci"
+msgstr "Contractors"
+
+msgid "Zlecenia"
+msgstr "Orders"
+
+msgid "Opłacona"
+msgstr "Paid"
+
+msgid "Częściowo"
+msgstr "Partial"
+
+msgid "Nieopłacona"
+msgstr "Unpaid"
+
+msgid "↑↓ aby nawigować · Enter aby otworzyć · Esc aby zamknąć"
+msgstr "↑↓ to navigate · Enter to open · Esc to close"
+
+msgid "Błąd wyszukiwania"
+msgstr "Search error"

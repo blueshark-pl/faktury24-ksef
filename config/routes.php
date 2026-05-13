@@ -211,6 +211,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Admin — wydajność pracowników
         $builder->get('/admin/wydajnosc', ['controller' => 'AdminPerformance', 'action' => 'index']);
 
+        // Globalne wyszukiwanie (AJAX z headera)
+        $builder->get('/szukaj', ['controller' => 'Search', 'action' => 'query']);
+
         // Powiadomienia (per user)
         $builder->get('/powiadomienia',                 ['controller' => 'Notifications', 'action' => 'index']);
         $builder->get('/powiadomienia/recent',          ['controller' => 'Notifications', 'action' => 'recent']);

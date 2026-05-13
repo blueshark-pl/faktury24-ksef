@@ -147,6 +147,13 @@ return [
             'controller' => 'Notifications',
             'action'     => ['index', 'recent', 'count', 'markRead', 'markAllRead', 'delete'],
         ],
+        // Globalne wyszukiwanie (faktury + kontrahenci + zlecenia) — bez klientów
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'Search',
+            'action'     => ['query'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',
