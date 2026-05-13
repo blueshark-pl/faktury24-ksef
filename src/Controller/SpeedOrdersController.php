@@ -919,6 +919,10 @@ class SpeedOrdersController extends AppController
         $Logs = $this->fetchTable('SpeedOrderStatusLogs');
         $logEntries = [];
 
+        // Oryginalny status — używany później do walidacji edycji actual_*_at.
+        // Capture na samym początku, bo nordlogis_status może zostać zmienione w trakcie.
+        $originalNs = (int)($order->nordlogis_status ?? 1);
+
         // Powód + notatka (z modalu "Zatwierdź i oznacz jako…") — dopinane do wszystkich
         // wpisów logów generowanych w tym requeście. Pusta wartość = NULL w logach.
         $reqReason = trim((string)$this->request->getData('reason', ''));
@@ -980,11 +984,29 @@ class SpeedOrdersController extends AppController
             $order->set('docs_electronic_only', $val);
         }
 
-        // Rzeczywisty załadunek/rozładunek (datetime, edytowalne przez spedytora)
+        // Rzeczywisty załadunek/rozładunek (datetime, edytowalne przez spedytora).
+        // Po Załadowane (3+) actual_load_at jest readonly, po Zrealizowane (4+) — actual_unload_at.
+        // Admin może zawsze. Sprawdzamy ORYGINALNY status (przed ewentualnym bumpem
+        // przez stepper), żeby nie zablokować POL button który w jednym requeście
+        // bumpuje ns=2→3 i zapisuje actual_load_at.
         foreach (['actual_load_at', 'actual_unload_at'] as $field) {
             $val = $this->request->getData($field);
             if ($val === null) {
                 continue;
+            }
+            // Lock guard: non-admin nie może zmieniać po fixacji statusu.
+            $isLockedField = (!$isAdminEarly) && (
+                ($field === 'actual_load_at'   && $originalNs >= 3)
+             || ($field === 'actual_unload_at' && $originalNs >= 4)
+            );
+            if ($isLockedField) {
+                $this->jsonResp([
+                    'success' => false,
+                    'error'   => $field === 'actual_load_at'
+                        ? 'Nie można zmienić rzeczywistego załadunku — status to "Załadowane" lub wyżej. Skontaktuj się z administratorem.'
+                        : 'Nie można zmienić rzeczywistego rozładunku — status to "Zrealizowane". Skontaktuj się z administratorem.',
+                ]);
+                return;
             }
             $val = trim((string)$val);
             $oldVal = $order->{$field} ? substr((string)$order->{$field}, 0, 16) : null;

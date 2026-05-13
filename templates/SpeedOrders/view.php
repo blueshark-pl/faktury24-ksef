@@ -453,27 +453,44 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d\TH:i');
                 return str_replace(' ', 'T', substr((string)$v, 0, 16));
             };
+            // Po Załadowane (3+) blokujemy edycję actual_load_at — to data faktu;
+            // po Zrealizowane (4+) blokujemy actual_unload_at. Admin może zawsze.
+            $lockLoad   = $nlStatus >= 3 && !$_isAdminUser;
+            $lockUnload = $nlStatus >= 4 && !$_isAdminUser;
         ?>
         <style>
             .actual-time-input.is-pending { border-color:#f59e0b; box-shadow:0 0 0 .15rem rgba(245,158,11,.18); }
             .actual-time-input.is-saved   { border-color:#22c55e; box-shadow:0 0 0 .15rem rgba(34,197,94,.18); }
             .actual-time-input.is-error   { border-color:#ef4444; box-shadow:0 0 0 .15rem rgba(239,68,68,.18); }
+            .actual-time-input:disabled   { background:#f3f4f6; cursor:not-allowed; opacity:.85; }
         </style>
         <div class="d-flex gap-2 flex-wrap justify-content-center mb-2" id="actual-times-row">
             <div class="actual-time-box" style="background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.25);border-radius:10px;padding:8px 12px;min-width:240px">
-                <div class="small text-muted mb-1"><i class="ri-truck-line text-info"></i> <strong>Rzeczywisty załadunek</strong></div>
+                <div class="small text-muted mb-1 d-flex align-items-center gap-1">
+                    <i class="ri-truck-line text-info"></i> <strong>Rzeczywisty załadunek</strong>
+                    <?php if ($lockLoad): ?>
+                        <i class="ri-lock-line ms-auto text-muted" title="Zablokowane — status 'Załadowane' lub wyżej. Skontaktuj się z administratorem aby zmienić."></i>
+                    <?php endif; ?>
+                </div>
                 <input type="datetime-local" class="form-control form-control-sm actual-time-input"
                        data-field="actual_load_at"
-                       value="<?= h($fmtLocal($order->actual_load_at ?? null)) ?>">
+                       value="<?= h($fmtLocal($order->actual_load_at ?? null)) ?>"
+                       <?= $lockLoad ? 'disabled' : '' ?>>
                 <?php if (!empty($order->date_deadline)): ?>
                     <div class="text-muted" style="font-size:.7em">Planowany: <?= h($fdate($order->date_deadline)) ?></div>
                 <?php endif; ?>
             </div>
             <div class="actual-time-box" style="background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.25);border-radius:10px;padding:8px 12px;min-width:240px">
-                <div class="small text-muted mb-1"><i class="ri-truck-line text-info"></i> <strong>Rzeczywisty rozładunek</strong></div>
+                <div class="small text-muted mb-1 d-flex align-items-center gap-1">
+                    <i class="ri-truck-line text-info"></i> <strong>Rzeczywisty rozładunek</strong>
+                    <?php if ($lockUnload): ?>
+                        <i class="ri-lock-line ms-auto text-muted" title="Zablokowane — status 'Zrealizowane'. Skontaktuj się z administratorem aby zmienić."></i>
+                    <?php endif; ?>
+                </div>
                 <input type="datetime-local" class="form-control form-control-sm actual-time-input"
                        data-field="actual_unload_at"
-                       value="<?= h($fmtLocal($order->actual_unload_at ?? null)) ?>">
+                       value="<?= h($fmtLocal($order->actual_unload_at ?? null)) ?>"
+                       <?= $lockUnload ? 'disabled' : '' ?>>
                 <?php if (!empty($order->date_delivery)): ?>
                     <div class="text-muted" style="font-size:.7em">Planowany: <?= h($fdate($order->date_delivery)) ?></div>
                 <?php endif; ?>
