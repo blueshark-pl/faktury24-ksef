@@ -3,143 +3,139 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use Cake\Http\Response;
+
 /**
- * Notifications Controller
+ * Powiadomienia in-app per user.
  *
- * @property \App\Model\Table\NotificationsTable $Notifications
+ * Akcje:
+ *  - index() — pełna strona z paginacją + filtrami (all / unread)
+ *  - recent() — AJAX feed dla dropdown w nagłówku (ostatnie 10)
+ *  - count() — AJAX licznik nieprzeczytanych (do badge auto-refresh)
+ *  - markRead($id) — POST oznacz jedną jako przeczytaną
+ *  - markAllRead() — POST oznacz wszystkie usera
+ *  - delete($id) — POST usuń własną notyfikację
+ *
+ * Wszystkie akcje wymagają zalogowania (beforeFilter). Każda notyfikacja
+ * jest scope'owana do user_id z identity — nie można podejrzeć cudzych.
  */
 class NotificationsController extends AppController
 {
-    /**
-     * Index method
-     *
-     * @return \Cake\Http\Response|null|void Renders view
-     */
-public function index(): ?Response
+    public function beforeFilter(\Cake\Event\EventInterface $event)
     {
-        $this->request->allowMethod(['get']);
+        parent::beforeFilter($event);
+        $identity = $this->request->getAttribute('identity');
+        if (!$identity) {
+            $event->setResult($this->redirect('/users/login'));
+        }
+    }
 
-        $q        = trim((string)$this->request->getQuery('q'));
-        $channel  = $this->request->getQuery('channel');   // email|push|sms|null
-        $severity = $this->request->getQuery('severity');  // info|success|warning|danger|null
-        $read     = $this->request->getQuery('read');      // 0|1|null
-        $type     = $this->request->getQuery('type');      // dowolny string
+    public function index(): ?Response
+    {
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
 
-        /** @var \App\Model\Table\NotificationsTable $Notifications */
         $Notifications = $this->fetchTable('Notifications');
+        $page  = max(1, (int)$this->request->getQuery('page', 1));
+        $limit = 30;
+        $filter = (string)$this->request->getQuery('filter', 'all'); // all | unread
 
         $query = $Notifications->find()
-            ->orderDesc('Notifications.created');
-
-        if ($q !== '') {
-            $query->where(function ($exp, $qry) use ($q) {
-                return $exp->or_([
-                    'Notifications.title LIKE' => "%$q%",
-                    'Notifications.message LIKE' => "%$q%",
-                    'Notifications.type LIKE' => "%$q%",
-                ]);
-            });
-        }
-        if ($channel !== null && $channel !== '') {
-            $query->where(['Notifications.channel' => $channel]);
-        }
-        if ($severity !== null && $severity !== '') {
-            $query->where(['Notifications.severity' => $severity]);
-        }
-        if ($type !== null && $type !== '') {
-            $query->where(['Notifications.type' => $type]);
-        }
-        if ($read !== null && $read !== '') {
-            $query->where(['Notifications.is_read' => (bool)$read]);
+            ->where(['user_id' => $userId])
+            ->orderByDesc('created');
+        if ($filter === 'unread') {
+            $query->where(['is_read' => false]);
         }
 
-        $this->paginate = [
-            'limit' => 25,
-        ];
-        $notifications = $this->paginate($query);
+        $total = $query->count();
+        $pages = (int)ceil($total / $limit);
+        $notifications = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
-        // liczniki do UI (np. zakładki)
-        $unreadCount = $Notifications->find()->where(['is_read' => false])->count();
+        $unreadCount = $Notifications->find()
+            ->where(['user_id' => $userId, 'is_read' => false])
+            ->count();
 
-        $this->set(compact('notifications', 'unreadCount', 'q', 'channel', 'severity', 'read', 'type'));
-        $this->viewBuilder()->setLayout('default'); // dopasuj do Zynix
+        $this->set(compact('notifications', 'total', 'page', 'pages', 'limit', 'filter', 'unreadCount'));
         return null;
     }
 
-    /**
-     * View method
-     *
-     * @param string|null $id Notification id.
-     * @return \Cake\Http\Response|null|void Renders view
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
-     */
-    public function view($id = null)
+    public function recent(): Response
     {
-        $notification = $this->Notifications->get($id, contain: ['Users']);
-        $this->set(compact('notification'));
-    }
+        $this->disableAutoRender();
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
 
-    /**
-     * Add method
-     *
-     * @return \Cake\Http\Response|null|void Redirects on successful add, renders view otherwise.
-     */
-    public function add()
-    {
-        $notification = $this->Notifications->newEmptyEntity();
-        if ($this->request->is('post')) {
-            $notification = $this->Notifications->patchEntity($notification, $this->request->getData());
-            if ($this->Notifications->save($notification)) {
-                $this->Flash->success(__('The notification has been saved.'));
+        $rows = $this->fetchTable('Notifications')->find()
+            ->where(['user_id' => $userId])
+            ->orderByDesc('created')
+            ->limit(10)
+            ->all();
 
-                return $this->redirect(['action' => 'index']);
-            }
-            $this->Flash->error(__('The notification could not be saved. Please, try again.'));
+        $items = [];
+        foreach ($rows as $n) {
+            $items[] = [
+                'id'       => (string)$n->id,
+                'type'     => (string)$n->type,
+                'severity' => (string)$n->severity,
+                'title'    => (string)$n->title,
+                'message'  => mb_substr((string)$n->message, 0, 200),
+                'url'      => (string)($n->action_url ?? ''),
+                'is_read'  => (bool)$n->is_read,
+                'created'  => $n->created instanceof \DateTimeInterface ? $n->created->format('c') : (string)$n->created,
+            ];
         }
-        $users = $this->Notifications->Users->find('list', limit: 200)->all();
-        $this->set(compact('notification', 'users'));
+        $unread = $this->fetchTable('Notifications')->find()
+            ->where(['user_id' => $userId, 'is_read' => false])
+            ->count();
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['items' => $items, 'unread' => $unread]));
     }
 
-    /**
-     * Edit method
-     *
-     * @param string|null $id Notification id.
-     * @return \Cake\Http\Response|null|void Redirects on successful edit, renders view otherwise.
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
-     */
-    public function edit($id = null)
+    public function count(): Response
     {
-        $notification = $this->Notifications->get($id, contain: []);
-        if ($this->request->is(['patch', 'post', 'put'])) {
-            $notification = $this->Notifications->patchEntity($notification, $this->request->getData());
-            if ($this->Notifications->save($notification)) {
-                $this->Flash->success(__('The notification has been saved.'));
-
-                return $this->redirect(['action' => 'index']);
-            }
-            $this->Flash->error(__('The notification could not be saved. Please, try again.'));
-        }
-        $users = $this->Notifications->Users->find('list', limit: 200)->all();
-        $this->set(compact('notification', 'users'));
+        $this->disableAutoRender();
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
+        $unread = $this->fetchTable('Notifications')->find()
+            ->where(['user_id' => $userId, 'is_read' => false])
+            ->count();
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['unread' => $unread]));
     }
 
-    /**
-     * Delete method
-     *
-     * @param string|null $id Notification id.
-     * @return \Cake\Http\Response|null Redirects to index.
-     * @throws \Cake\Datasource\Exception\RecordNotFoundException When record not found.
-     */
-    public function delete($id = null)
+    public function markRead(string $id): Response
     {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
+
+        $this->fetchTable('Notifications')->updateAll(
+            ['is_read' => true, 'read_at' => date('Y-m-d H:i:s')],
+            ['id' => $id, 'user_id' => $userId]
+        );
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true]));
+    }
+
+    public function markAllRead(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
+
+        $this->fetchTable('Notifications')->updateAll(
+            ['is_read' => true, 'read_at' => date('Y-m-d H:i:s')],
+            ['user_id' => $userId, 'is_read' => false]
+        );
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true]));
+    }
+
+    public function delete(string $id): Response
+    {
+        $this->disableAutoRender();
         $this->request->allowMethod(['post', 'delete']);
-        $notification = $this->Notifications->get($id);
-        if ($this->Notifications->delete($notification)) {
-            $this->Flash->success(__('The notification has been deleted.'));
-        } else {
-            $this->Flash->error(__('The notification could not be deleted. Please, try again.'));
-        }
-
-        return $this->redirect(['action' => 'index']);
+        $userId = (string)$this->request->getAttribute('identity')->getIdentifier();
+        $this->fetchTable('Notifications')->deleteAll(['id' => $id, 'user_id' => $userId]);
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true]));
     }
 }

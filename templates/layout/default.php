@@ -555,6 +555,181 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     <ul class="header-content-right">
 
                         <?php
+                            // ── Powiadomienia (dla każdego zalogowanego) ──
+                            $identityNotif = $this->request->getAttribute('identity');
+                        ?>
+                        <?php if ($identityNotif): ?>
+                        <li class="header-element notifications-dropdown dropdown">
+                            <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret"
+                               data-bs-auto-close="outside" data-bs-toggle="dropdown"
+                               id="notificationsDropdown" aria-expanded="false"
+                               title="<?= __('Powiadomienia') ?>" aria-label="<?= __('Powiadomienia') ?>">
+                                <!-- Phosphor Bell -->
+                                <svg xmlns="http://www.w3.org/2000/svg" class="header-link-icon" viewBox="0 0 256 256">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <path d="M56.27,104a72,72,0,0,1,144.93-1.11C201.2,141.21,212,152,212,152H44S56,141,56.27,104Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <path d="M96,192a32,32,0,0,0,64,0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                </svg>
+                                <span id="notif-badge" class="badge bg-danger rounded-pill header-icon-badge pulse pulse-danger"
+                                      style="display:none;position:absolute;top:8px;right:8px;font-size:.55rem">0</span>
+                            </a>
+                            <ul class="main-header-dropdown dropdown-menu dropdown-menu-end p-0 shadow"
+                                style="min-width:360px;max-width:420px" id="notifDropdownMenu">
+                                <li class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                    <span class="fw-semibold small">
+                                        <i class="ri-notification-3-line me-1"></i><?= __('Powiadomienia') ?>
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-link p-0 text-muted small text-decoration-none"
+                                            id="notif-mark-all-btn" style="font-size:.72rem">
+                                        <?= __('Oznacz wszystkie') ?>
+                                    </button>
+                                </li>
+                                <li>
+                                    <div id="notif-list" style="max-height:380px;overflow-y:auto">
+                                        <div class="p-3 text-muted small text-center"><?= __('Ładowanie…') ?></div>
+                                    </div>
+                                </li>
+                                <li class="border-top text-center py-2">
+                                    <a href="<?= $this->Url->build(['controller' => 'Notifications', 'action' => 'index']) ?>"
+                                       class="small text-decoration-none"><?= __('Zobacz wszystkie') ?></a>
+                                </li>
+                            </ul>
+                        </li>
+                        <script>
+                        (function () {
+                            var feedUrl  = '<?= $this->Url->build(['controller' => 'Notifications', 'action' => 'recent']) ?>';
+                            var countUrl = '<?= $this->Url->build(['controller' => 'Notifications', 'action' => 'count']) ?>';
+                            var markBase = '<?= $this->Url->build(['controller' => 'Notifications', 'action' => 'markRead']) ?>';
+                            var markAllUrl = '<?= $this->Url->build(['controller' => 'Notifications', 'action' => 'markAllRead']) ?>';
+                            var csrf = '<?= h($this->request->getAttribute('csrfToken')) ?>';
+                            var $badge = document.getElementById('notif-badge');
+                            var $list  = document.getElementById('notif-list');
+                            var $toggle = document.getElementById('notificationsDropdown');
+                            var $markAllBtn = document.getElementById('notif-mark-all-btn');
+
+                            function sevBadge(s) {
+                                s = (s || 'info').toLowerCase();
+                                if (s === 'error' || s === 'critical') return 'bg-danger-subtle text-danger';
+                                if (s === 'warning' || s === 'warn')   return 'bg-warning-subtle text-warning';
+                                if (s === 'success')                    return 'bg-success-subtle text-success';
+                                return 'bg-info-subtle text-info';
+                            }
+                            function sevIcon(s) {
+                                s = (s || 'info').toLowerCase();
+                                if (s === 'error' || s === 'critical') return 'ri-error-warning-line';
+                                if (s === 'warning' || s === 'warn')   return 'ri-alert-line';
+                                if (s === 'success')                    return 'ri-checkbox-circle-line';
+                                return 'ri-information-line';
+                            }
+                            function timeAgo(iso) {
+                                if (!iso) return '';
+                                try {
+                                    var d = new Date(iso);
+                                    var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                                    if (diff < 60)    return diff + ' s';
+                                    if (diff < 3600)  return Math.floor(diff / 60) + ' min';
+                                    if (diff < 86400) return Math.floor(diff / 3600) + ' h';
+                                    if (diff < 604800) return Math.floor(diff / 86400) + ' d';
+                                    return d.toLocaleDateString();
+                                } catch (e) { return ''; }
+                            }
+                            function setBadge(n) {
+                                if (!$badge) return;
+                                if (n > 0) {
+                                    $badge.textContent = n > 99 ? '99+' : String(n);
+                                    $badge.style.display = '';
+                                } else {
+                                    $badge.style.display = 'none';
+                                }
+                            }
+                            function escapeHtml(s) {
+                                return String(s == null ? '' : s)
+                                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                            }
+                            function render(items) {
+                                if (!items || !items.length) {
+                                    $list.innerHTML = '<div class="p-4 text-center text-muted small"><i class="ri-notification-off-line d-block mb-2" style="font-size:1.6rem"></i><?= __('Brak powiadomień') ?></div>';
+                                    return;
+                                }
+                                var html = '<ul class="list-unstyled mb-0">';
+                                items.forEach(function (n) {
+                                    var unreadCls = n.is_read ? '' : ' bg-light';
+                                    var ago = timeAgo(n.created);
+                                    var icon = sevIcon(n.severity);
+                                    var sevCls = sevBadge(n.severity);
+                                    html += '<li class="border-bottom notif-item' + unreadCls + '" data-id="' + escapeHtml(n.id) + '" data-url="' + escapeHtml(n.url) + '" style="cursor:pointer">'
+                                          +   '<div class="px-3 py-2 d-flex gap-2">'
+                                          +     '<div class="' + sevCls + ' border d-inline-flex align-items-center justify-content-center" style="width:32px;height:32px;border-radius:50%;flex-shrink:0">'
+                                          +       '<i class="' + icon + '"></i>'
+                                          +     '</div>'
+                                          +     '<div class="flex-grow-1 min-width-0">'
+                                          +       '<div class="d-flex justify-content-between align-items-start">'
+                                          +         '<strong class="small text-truncate" style="max-width:230px">' + escapeHtml(n.title) + '</strong>'
+                                          +         '<span class="text-muted" style="font-size:.65rem">' + ago + '</span>'
+                                          +       '</div>'
+                                          +       '<div class="text-muted" style="font-size:.78rem">' + escapeHtml(n.message) + '</div>'
+                                          +     '</div>'
+                                          +   '</div>'
+                                          + '</li>';
+                                });
+                                html += '</ul>';
+                                $list.innerHTML = html;
+                            }
+                            function loadFeed() {
+                                fetch(feedUrl, { headers: { 'Accept': 'application/json' } })
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (data) {
+                                        render(data.items || []);
+                                        setBadge(data.unread || 0);
+                                    })
+                                    .catch(function () {
+                                        $list.innerHTML = '<div class="p-3 text-danger small text-center"><?= __('Błąd ładowania') ?></div>';
+                                    });
+                            }
+                            function loadCount() {
+                                fetch(countUrl, { headers: { 'Accept': 'application/json' } })
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (data) { setBadge(data.unread || 0); })
+                                    .catch(function () {});
+                            }
+                            function postCsrf(url) {
+                                return fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+                                });
+                            }
+                            if ($toggle) {
+                                $toggle.addEventListener('click', loadFeed);
+                            }
+                            if ($list) {
+                                $list.addEventListener('click', function (e) {
+                                    var li = e.target.closest('.notif-item');
+                                    if (!li) return;
+                                    var id = li.dataset.id;
+                                    var url = li.dataset.url;
+                                    if (id) postCsrf(markBase + '/' + id);
+                                    if (url) { window.location = url; }
+                                    else { li.classList.remove('bg-light'); }
+                                });
+                            }
+                            if ($markAllBtn) {
+                                $markAllBtn.addEventListener('click', function (e) {
+                                    e.stopPropagation();
+                                    postCsrf(markAllUrl).then(function () {
+                                        setBadge(0);
+                                        loadFeed();
+                                    });
+                                });
+                            }
+                            // Auto-refresh licznika co 60s
+                            loadCount();
+                            setInterval(loadCount, 60000);
+                        })();
+                        </script>
+                        <?php endif; ?>
+
+                        <?php
                             // ── Impersonacja: wyszukiwarka userów (tylko admin) ──
                             // Wcielanie się żeby zobaczyć system z perspektywy innego usera.
                             // Aktywna gdy currentRole = admin AND nie jesteśmy aktualnie wcieleni.

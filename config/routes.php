@@ -211,6 +211,16 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Admin — wydajność pracowników
         $builder->get('/admin/wydajnosc', ['controller' => 'AdminPerformance', 'action' => 'index']);
 
+        // Powiadomienia (per user)
+        $builder->get('/powiadomienia',                 ['controller' => 'Notifications', 'action' => 'index']);
+        $builder->get('/powiadomienia/recent',          ['controller' => 'Notifications', 'action' => 'recent']);
+        $builder->get('/powiadomienia/count',           ['controller' => 'Notifications', 'action' => 'count']);
+        $builder->post('/powiadomienia/oznacz/{id}',    ['controller' => 'Notifications', 'action' => 'markRead'])
+            ->setPass(['id']);
+        $builder->post('/powiadomienia/oznacz-wszystkie', ['controller' => 'Notifications', 'action' => 'markAllRead']);
+        $builder->post('/powiadomienia/usun/{id}',      ['controller' => 'Notifications', 'action' => 'delete'])
+            ->setPass(['id']);
+
         // Admin — wcielanie się w użytkownika (impersonation)
         $builder->post('/admin/impersonate/start/{userId}', ['controller' => 'AdminImpersonate', 'action' => 'start'])
             ->setPass(['userId']);

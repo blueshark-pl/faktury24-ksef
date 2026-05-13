@@ -140,6 +140,13 @@ return [
             'controller' => 'ApiTokens',
             'action'     => ['index', 'generate', 'revoke'],
         ],
+        // Powiadomienia in-app — własne notyfikacje per user (dla każdej roli)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'Notifications',
+            'action'     => ['index', 'recent', 'count', 'markRead', 'markAllRead', 'delete'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',

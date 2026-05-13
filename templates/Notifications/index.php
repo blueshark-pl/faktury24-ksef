@@ -1,194 +1,153 @@
 <?php
 /**
  * @var \App\View\AppView $this
- * @var \Cake\Datasource\ResultSetInterface|\Cake\Collection\CollectionInterface $notifications
+ * @var iterable<\App\Model\Entity\Notification> $notifications
+ * @var int $total
+ * @var int $page
+ * @var int $pages
+ * @var int $limit
+ * @var string $filter
  * @var int $unreadCount
  */
+$this->assign('title', __('Powiadomienia'));
 
-$this->assign('title', 'Powiadomienia');
+$sevIcon = function (string $s): string {
+    return match (strtolower($s)) {
+        'error', 'critical' => 'ri-error-warning-line',
+        'warning', 'warn'   => 'ri-alert-line',
+        'success'           => 'ri-checkbox-circle-line',
+        default             => 'ri-information-line',
+    };
+};
+$sevCls = function (string $s): string {
+    return match (strtolower($s)) {
+        'error', 'critical' => 'bg-danger-subtle text-danger',
+        'warning', 'warn'   => 'bg-warning-subtle text-warning',
+        'success'           => 'bg-success-subtle text-success',
+        default             => 'bg-info-subtle text-info',
+    };
+};
 
-$q        = trim((string)$this->request->getQuery('q'));
-$channel  = $this->request->getQuery('channel');
-$severity = $this->request->getQuery('severity');
-$read     = $this->request->getQuery('read');
-$type     = $this->request->getQuery('type');
-
-$badgeMap = [
-  'info'    => 'bg-info-transparent',
-  'success' => 'bg-success-transparent',
-  'warning' => 'bg-warning-transparent',
-  'danger'  => 'bg-danger-transparent',
-];
-
-$channelBadge = [
-  'email' => 'EMAIL',
-  'push'  => 'PUSH',
-  'sms'   => 'SMS',
-];
+$csrf = (string)$this->request->getAttribute('csrfToken');
 ?>
 
-<div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
-  <div>
-    <h1 class="page-title fw-medium fs-18 mb-2"><?= __('Powiadomienia') ?></h1>
-    <nav><ol class="breadcrumb mb-0">
-      <li class="breadcrumb-item"><?= $this->Html->link(__('Dashboard'), ['controller'=>'Pages','action'=>'display','home']) ?></li>
-      <li class="breadcrumb-item active"><?= __('Powiadomienia') ?></li>
-    </ol></nav>
-  </div>
-  <div class="btn-list">
-    <span class="badge bg-secondary-transparent"><?= $unreadCount ?> <?= __('nieprzeczytanych') ?></span>
-    <?= $this->Html->link('<i class="ri-refresh-line align-middle"></i> '.__('Odśwież'), ['action'=>'index'], [
-      'escape'=>false,'class'=>'btn btn-secondary-light btn-wave'
-    ]) ?>
-  </div>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0 fw-semibold">
+        <i class="ri-notification-3-line me-1"></i><?= __('Powiadomienia') ?>
+        <?php if ($unreadCount > 0): ?>
+            <span class="badge bg-danger ms-2"><?= (int)$unreadCount ?> <?= __('nieprzeczytanych') ?></span>
+        <?php endif; ?>
+    </h4>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="btn-group btn-group-sm" role="group">
+            <a href="<?= $this->Url->build(['action' => 'index', '?' => ['filter' => 'all']]) ?>"
+               class="btn <?= $filter === 'all' ? 'btn-primary' : 'btn-outline-secondary' ?>"><?= __('Wszystkie') ?></a>
+            <a href="<?= $this->Url->build(['action' => 'index', '?' => ['filter' => 'unread']]) ?>"
+               class="btn <?= $filter === 'unread' ? 'btn-primary' : 'btn-outline-secondary' ?>"><?= __('Nieprzeczytane') ?></a>
+        </div>
+        <?php if ($unreadCount > 0): ?>
+            <form method="post" action="<?= $this->Url->build(['action' => 'markAllRead']) ?>" style="display:inline">
+                <input type="hidden" name="_csrfToken" value="<?= h($csrf) ?>">
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <i class="ri-check-double-line me-1"></i><?= __('Oznacz wszystkie jako przeczytane') ?>
+                </button>
+            </form>
+        <?php endif; ?>
+    </div>
 </div>
 
-<div class="card">
-  <div class="card-body pb-2">
-    <?= $this->Form->create(null, ['type'=>'get','class'=>'row g-2 align-items-end']) ?>
-      <div class="col-md-3">
-        <?= $this->Form->control('q', [
-          'label'=>__('Szukaj'),
-          'value'=>$q,
-          'placeholder'=>__('tytuł / treść / typ...'),
-          'class'=>'form-control'
-        ]) ?>
-      </div>
-      <div class="col-md-2">
-        <?= $this->Form->control('channel', [
-          'label'=>__('Kanał'),
-          'empty'=>__('Wszystkie'),
-          'options'=>['email'=>'E-mail','push'=>'Push','sms'=>'SMS'],
-          'value'=>$channel,
-          'class'=>'form-select'
-        ]) ?>
-      </div>
-      <div class="col-md-2">
-        <?= $this->Form->control('severity', [
-          'label'=>__('Priorytet'),
-          'empty'=>__('Wszystkie'),
-          'options'=>['info'=>'Info','success'=>'Sukces','warning'=>'Ostrzeżenie','danger'=>'Błąd'],
-          'value'=>$severity,
-          'class'=>'form-select'
-        ]) ?>
-      </div>
-      <div class="col-md-2">
-        <?= $this->Form->control('read', [
-          'label'=>__('Status'),
-          'empty'=>__('Wszystkie'),
-          'options'=>['0'=>'Nieprzeczytane','1'=>'Przeczytane'],
-          'value'=>$read,
-          'class'=>'form-select'
-        ]) ?>
-      </div>
-      <div class="col-md-2">
-        <?= $this->Form->control('type', [
-          'label'=>__('Typ'),
-          'placeholder'=>__('np. invoice_received'),
-          'value'=>$type,
-          'class'=>'form-control'
-        ]) ?>
-      </div>
-      <div class="col-md-1 d-grid">
-        <button class="btn btn-primary btn-wave"><i class="ri-search-2-line me-1"></i><?= __('Filtruj') ?></button>
-      </div>
-    <?= $this->Form->end() ?>
-  </div>
-
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-light">
-        <tr>
-          <th><?= __('Tytuł') ?></th>
-          <th class="text-nowrap"><?= __('Kanał') ?></th>
-          <th class="text-nowrap"><?= __('Typ') ?></th>
-          <th class="text-nowrap"><?= __('Priorytet') ?></th>
-          <th class="text-nowrap"><?= __('Status') ?></th>
-          <th class="text-nowrap"><?= __('Utworzono') ?></th>
-          <th class="text-end"><?= __('Akcje') ?></th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php foreach ($notifications as $n): ?>
-        <?php
-          $sevClass = $badgeMap[$n->severity] ?? 'bg-secondary-transparent';
-          $isUnread = !$n->is_read;
-        ?>
-        <tr class="<?= $isUnread ? 'table-warning-subtle' : '' ?>">
-          <td>
-            <div class="d-flex align-items-start gap-3">
-              <span class="avatar avatar-md avatar-rounded <?= h($sevClass) ?>">
-                <i class="ri-notification-3-line fs-16"></i>
-              </span>
-              <div>
-                <div class="fw-semibold"><?= h($n->title) ?></div>
-                <?php if (!empty($n->message)): ?>
-                  <div class="text-muted small text-truncate-2" style="max-width: 560px;">
-                    <?= $this->Text->autoParagraph(h($n->message)) ?>
-                  </div>
-                <?php endif; ?>
-                <?php if (!empty($n->action_url) && !empty($n->action_label)): ?>
-                  <div class="mt-1">
-                    <?= $this->Html->link(h($n->action_label).' <i class="ri-arrow-right-up-line ms-1"></i>', $n->action_url, [
-                      'escape'=>false,'class'=>'small text-primary text-decoration-underline'
-                    ]) ?>
-                  </div>
-                <?php endif; ?>
-              </div>
-            </div>
-          </td>
-          <td class="text-nowrap">
-            <span class="badge bg-secondary-transparent"><?= $channelBadge[$n->channel] ?? strtoupper(h($n->channel)) ?></span>
-          </td>
-          <td class="text-nowrap"><span class="badge bg-light text-muted border"><?= h($n->type) ?></span></td>
-          <td class="text-nowrap">
-            <?php
-              $label = match ($n->severity) {
-                'success' => 'Sukces',
-                'warning' => 'Ostrzeżenie',
-                'danger'  => 'Błąd',
-                default   => 'Info',
-              };
+<div class="card shadow-sm">
+    <?php if (empty($total)): ?>
+        <div class="card-body text-center text-muted py-5">
+            <i class="ri-notification-off-line d-block mb-2" style="font-size:2.4rem"></i>
+            <?= __('Brak powiadomień') ?>
+        </div>
+    <?php else: ?>
+        <ul class="list-group list-group-flush">
+            <?php foreach ($notifications as $n):
+                $unread = !$n->is_read;
+                $created = $n->created instanceof \DateTimeInterface
+                    ? $n->created->format('Y-m-d H:i')
+                    : (string)$n->created;
             ?>
-            <span class="badge <?= h($sevClass) ?>"><?= $label ?></span>
-          </td>
-          <td class="text-nowrap">
-            <?php if ($isUnread): ?>
-              <span class="badge bg-warning"><?= __('Nieprzeczytane') ?></span>
-            <?php else: ?>
-              <span class="badge bg-success"><?= __('Przeczytane') ?></span>
-            <?php endif; ?>
-          </td>
-          <td class="text-nowrap"><?= $n->created?->setTimezone('Europe/Warsaw')->i18nFormat('yyyy-MM-dd HH:mm') ?></td>
-          <td class="text-end">
-            <!-- Pod przyszłe akcje (np. oznacz przeczytane) -->
-            <div class="btn-list">
-              <?= $this->Html->link('<i class="ri-eye-line"></i>', ['action'=>'view', $n->id], [
-                'class'=>'btn btn-sm btn-icon btn-secondary-light', 'escape'=>false, 'title'=>__('Podgląd')
-              ]) ?>
-              <!-- Tu w przyszłości: POST link markAsRead/markAsUnread -->
-            </div>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card-footer">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="text-muted small">
-        <?= $this->Paginator->counter('{{start}}–{{end}} z {{count}}') ?>
-      </div>
-      <div>
-        <ul class="pagination mb-0">
-          <?= $this->Paginator->first('<<') ?>
-          <?= $this->Paginator->prev('<') ?>
-          <?= $this->Paginator->numbers() ?>
-          <?= $this->Paginator->next('>') ?>
-          <?= $this->Paginator->last('>>') ?>
+                <li class="list-group-item <?= $unread ? 'bg-light' : '' ?>">
+                    <div class="d-flex gap-3 align-items-start">
+                        <div class="<?= $sevCls((string)$n->severity) ?> border d-inline-flex align-items-center justify-content-center"
+                             style="width:42px;height:42px;border-radius:50%;flex-shrink:0">
+                            <i class="<?= $sevIcon((string)$n->severity) ?>" style="font-size:1.2rem"></i>
+                        </div>
+                        <div class="flex-grow-1 min-width-0">
+                            <div class="d-flex justify-content-between align-items-start mb-1 gap-2">
+                                <strong class="<?= $unread ? 'text-dark' : 'text-muted' ?>"><?= h($n->title) ?></strong>
+                                <span class="text-muted small text-nowrap"><?= h($created) ?></span>
+                            </div>
+                            <?php if (!empty($n->message)): ?>
+                                <div class="text-muted small mb-1"><?= nl2br(h($n->message)) ?></div>
+                            <?php endif; ?>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <?php if (!empty($n->type)): ?>
+                                    <span class="badge bg-secondary-subtle text-secondary border" style="font-size:.65em"><?= h($n->type) ?></span>
+                                <?php endif; ?>
+                                <?php if (!empty($n->action_url)): ?>
+                                    <a href="<?= h($n->action_url) ?>" class="small text-primary text-decoration-none">
+                                        <?= h(!empty($n->action_label) ? $n->action_label : __('Otwórz')) ?>
+                                        <i class="ri-arrow-right-line"></i>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1 align-items-center" style="flex-shrink:0">
+                            <?php if ($unread): ?>
+                                <form method="post" action="<?= $this->Url->build(['action' => 'markRead', $n->id]) ?>" style="display:inline">
+                                    <input type="hidden" name="_csrfToken" value="<?= h($csrf) ?>">
+                                    <button type="submit" class="btn btn-sm btn-icon btn-outline-secondary"
+                                            title="<?= __('Oznacz jako przeczytane') ?>">
+                                        <i class="ri-check-line"></i>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                            <form method="post" action="<?= $this->Url->build(['action' => 'delete', $n->id]) ?>" style="display:inline"
+                                  onsubmit="return confirm('<?= __('Usunąć to powiadomienie?') ?>')">
+                                <input type="hidden" name="_csrfToken" value="<?= h($csrf) ?>">
+                                <button type="submit" class="btn btn-sm btn-icon btn-outline-danger"
+                                        title="<?= __('Usuń') ?>">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </li>
+            <?php endforeach; ?>
         </ul>
-      </div>
-    </div>
-  </div>
+
+        <?php if ($pages > 1): ?>
+            <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="text-muted small">
+                    <?= __('Strona') ?> <?= (int)$page ?> <?= __('z') ?> <?= (int)$pages ?>
+                    · <?= (int)$total ?> <?= __('powiadomień') ?>
+                </div>
+                <ul class="pagination pagination-sm mb-0">
+                    <?php
+                    $mkUrl = function (int $p) use ($filter) {
+                        return $this->Url->build(['action' => 'index', '?' => array_filter(['page' => $p, 'filter' => $filter])]);
+                    };
+                    ?>
+                    <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+                        <a class="page-link" href="<?= $page > 1 ? $mkUrl($page - 1) : '#' ?>">&laquo;</a>
+                    </li>
+                    <?php
+                    $start = max(1, $page - 3);
+                    $end   = min($pages, $page + 3);
+                    for ($p = $start; $p <= $end; $p++): ?>
+                        <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+                            <a class="page-link" href="<?= $mkUrl($p) ?>"><?= $p ?></a>
+                        </li>
+                    <?php endfor; ?>
+                    <li class="page-item <?= $page >= $pages ? 'disabled' : '' ?>">
+                        <a class="page-link" href="<?= $page < $pages ? $mkUrl($page + 1) : '#' ?>">&raquo;</a>
+                    </li>
+                </ul>
+            </div>
+        <?php endif; ?>
+    <?php endif; ?>
 </div>

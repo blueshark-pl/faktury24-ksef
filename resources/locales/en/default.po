@@ -1770,3 +1770,39 @@ msgstr "Phone"
 
 msgid "np. +48 600 100 200"
 msgstr "e.g. +48 600 100 200"
+
+msgid "Powiadomienia"
+msgstr "Notifications"
+
+msgid "nieprzeczytanych"
+msgstr "unread"
+
+msgid "Oznacz wszystkie"
+msgstr "Mark all"
+
+msgid "Oznacz wszystkie jako przeczytane"
+msgstr "Mark all as read"
+
+msgid "Brak powiadomień"
+msgstr "No notifications"
+
+msgid "Otwórz"
+msgstr "Open"
+
+msgid "Strona"
+msgstr "Page"
+
+msgid "z"
+msgstr "of"
+
+msgid "powiadomień"
+msgstr "notifications"
+
+msgid "Błąd ładowania"
+msgstr "Loading error"
+
+msgid "Usunąć to powiadomienie?"
+msgstr "Delete this notification?"
+
+msgid "Oznacz jako przeczytane"
+msgstr "Mark as read"
