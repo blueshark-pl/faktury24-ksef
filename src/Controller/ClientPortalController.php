@@ -249,14 +249,17 @@ class ClientPortalController extends AppController
 
         // ?inline=1 — wymuszamy 'inline' żeby PDF/IMG zostały wyświetlone
         // w przeglądarce (lightbox preview); bez parametru = 'attachment' (download).
-        $inline = (bool)$this->request->getQuery('inline');
-        $disp   = $inline ? 'inline' : 'attachment';
+        // UWAGA: withFile() nadpisuje Content-Disposition swoim default jeśli nie
+        // przekażemy 'download' option — dlatego ustawiamy go przez opcje, nie header.
+        $inline   = (bool)$this->request->getQuery('inline');
         $safeName = str_replace('"', '', (string)($att->original_name ?: 'cmr'));
 
         return $this->response
             ->withType($att->mime_type ?: 'application/octet-stream')
-            ->withHeader('Content-Disposition', $disp . '; filename="' . $safeName . '"')
-            ->withFile($fullPath);
+            ->withFile($fullPath, [
+                'name'     => $safeName,
+                'download' => !$inline,  // true = attachment, false = inline
+            ]);
     }
 
     // -------------------------------------------------------------------------
@@ -281,7 +284,8 @@ class ClientPortalController extends AppController
         }
 
         $lang = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
-        return $this->redirect('/invoices/print/' . $invoiceId . '?download=1&lang=' . $lang);
+        // print-custom = custom template PDF (firma chciała tę wersję dla klienta).
+        return $this->redirect('/invoices/print-custom/' . $invoiceId . '?download=1&lang=' . $lang);
     }
 
     // -------------------------------------------------------------------------

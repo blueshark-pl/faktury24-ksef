@@ -5566,16 +5566,20 @@ HTML;
         $this->request->allowMethod(['get']);
         $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = $identity?->get('company_id');
+        $role      = (string)($identity?->get('role') ?? '');
 
-        $invoice = $this->Invoices->get($id, [
-            'contain' => [
-                'InvoiceContractors',
-                'InvoiceContents' => ['Vats'],
-                'Companies',
-                'InvoiceCompanyDetails',
-            ],
-            'conditions' => ['Invoices.company_id' => $companyId],
-        ]);
+        // Klient nie ma company_id (jest powiązany przez NIP w client_profiles).
+        // Permissions.php już zweryfikował że faktura wisi przy jego zleceniu (NIP match),
+        // więc tutaj pomijamy filtr company_id dla roli `client`.
+        $contain = [
+            'InvoiceContractors',
+            'InvoiceContents' => ['Vats'],
+            'Companies',
+            'InvoiceCompanyDetails',
+        ];
+        $invoice = ($role === 'client')
+            ? $this->Invoices->get($id, ['contain' => $contain])
+            : $this->Invoices->get($id, ['contain' => $contain, 'conditions' => ['Invoices.company_id' => $companyId]]);
 
         // Dodatkowe opisy (DodatkowyOpis) — nr_wiersza 0/null = do faktury, >0 = do pozycji
         if (!$invoice->has('invoice_additional_descriptions')) {

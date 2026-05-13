@@ -511,34 +511,17 @@ $today = date('Y-m-d');
 
         const elements = files.map(f => {
             const isImg = (f.mime || '').startsWith('image/');
-            const url   = f.path;  // już pełen URL przez Router::url() z controllera
+            const isPdf = (f.mime || '').toLowerCase().includes('pdf');
+            const url   = f.path;  // URL z ?inline=1 (Router::url() z controllera)
 
             if (isImg) {
-                return {
-                    href:        url,
-                    type:        'image',
-                    title:       f.name,
-                    description: '',
-                };
+                return { href: url, type: 'image', title: f.name, description: '' };
             }
-            // PDF — inline <object>
-            const divId = 'pdf-inline-cmr-' + f.id;
-            if (!document.getElementById(divId)) {
-                const div = document.createElement('div');
-                div.id = divId;
-                div.style.display = 'none';
-                div.innerHTML = '<object data="' + url + '" type="application/pdf" style="width:90vw;height:82vh;display:block">'
-                    + '<p class="p-3"><?= __('Twoja przeglądarka nie obsługuje podglądu PDF.') ?> '
-                    + '<a href="' + url + '" target="_blank"><?= __('Pobierz plik') ?></a></p>'
-                    + '</object>';
-                document.body.appendChild(div);
+            if (isPdf) {
+                // iframe — browser użyje built-in PDF viewer'a
+                return { href: url, type: 'iframe', title: f.name, description: '', width: '92vw', height: '88vh' };
             }
-            return {
-                href:        '#' + divId,
-                type:        'inline',
-                title:       f.name,
-                description: '',
-            };
+            return { href: url, type: 'external', title: f.name, description: '' };
         });
 
         if (cmrLightbox) cmrLightbox.destroy();

@@ -543,7 +543,7 @@ return [
         [
             'role'       => 'client',
             'controller' => 'Invoices',
-            'action'     => 'print',
+            'action'     => ['print', 'printCustom'],
             'allowed'    => function ($user, $role, \Cake\Http\ServerRequest $request) {
                 $invoiceId = \Cake\Utility\Hash::get($request->getAttribute('params'), 'pass.0');
                 $userId    = is_array($user)

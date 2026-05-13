@@ -1385,22 +1385,17 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     function buildElements() {
         return files.map(f => {
             const isImg = (f.mime || '').startsWith('image/');
+            const isPdf = (f.mime || '').toLowerCase().includes('pdf');
             const url   = f.path;
             if (isImg) {
                 return { href: url, type: 'image', title: f.name, description: '' };
             }
-            const divId = 'pdf-inline-view-' + f.id;
-            if (!document.getElementById(divId)) {
-                const div = document.createElement('div');
-                div.id = divId;
-                div.style.display = 'none';
-                div.innerHTML = '<object data="' + url + '" type="application/pdf" style="width:90vw;height:82vh;display:block">'
-                    + '<p class="p-3"><?= __('Twoja przeglądarka nie obsługuje podglądu PDF.') ?> '
-                    + '<a href="' + url + '" target="_blank"><?= __('Pobierz plik') ?></a></p>'
-                    + '</object>';
-                document.body.appendChild(div);
+            if (isPdf) {
+                // iframe — browser użyje swojego built-in PDF viewer'a (Chromium/Firefox)
+                return { href: url, type: 'iframe', title: f.name, description: '', width: '92vw', height: '88vh' };
             }
-            return { href: '#' + divId, type: 'inline', title: f.name, description: '' };
+            // Fallback dla innych typów — link do pobrania
+            return { href: url, type: 'external', title: f.name, description: '' };
         });
     }
 
