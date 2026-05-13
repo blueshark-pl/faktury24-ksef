@@ -291,6 +291,30 @@ class AppController extends Controller
             return; // nie zalogowany → nic nie rób
         }
 
+        // Logowanie audytu — raz per sesja. Session flag chroni przed
+        // multi-insertem przy każdym page view. Logout czyści sesję więc
+        // przy kolejnym logowaniu znów wstawiamy.
+        try {
+            $session = $this->request->getSession();
+            if (!$session->read('Login.logged')) {
+                $LoginLogs = $this->fetchTable('UserLoginLogs');
+                $uaRaw = (string)$this->request->getHeaderLine('User-Agent');
+                $logEntity = $LoginLogs->newEntity([
+                    'user_id'    => (string)$identity->getIdentifier(),
+                    'username'   => (string)($identity->get('username') ?? $identity->get('email') ?? $identity->getIdentifier()),
+                    'role'       => (string)($identity->get('role') ?? ''),
+                    'ip'         => $this->request->clientIp() ?: null,
+                    'user_agent' => $uaRaw !== '' ? mb_substr($uaRaw, 0, 500) : null,
+                    'kind'       => 'web',
+                    'logged_at'  => date('Y-m-d H:i:s'),
+                ]);
+                $LoginLogs->save($logEntity);
+                $session->write('Login.logged', true);
+            }
+        } catch (\Throwable) {
+            // tabela może nie istnieć przy pierwszym deploy / migracji w toku
+        }
+
         // Klient (rola `client`) nie ma company_id naszej firmy i nie przechodzi onboardingu —
         // jego portal działa wyłącznie na podstawie client_profiles.nip.
         $role = strtolower((string)($identity->get('role') ?? ''));

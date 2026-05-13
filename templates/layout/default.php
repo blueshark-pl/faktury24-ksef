@@ -1223,6 +1223,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+                            <li class="slide <?= $navActive('AdminLoginLogs', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-login-circle-line side-menu__icon"></i>
+                                    <span class="side-menu__label">' . __('Historia logowań') . '</span>',
+                                    ['plugin' => false, 'controller' => 'AdminLoginLogs', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
                                     '<i class="ri-file-list-3-line side-menu__icon"></i>

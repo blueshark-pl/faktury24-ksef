@@ -198,6 +198,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->post('/admin/uzytkownicy/upload-avatar/{id}', ['controller' => 'AdminUsers', 'action' => 'uploadAvatar'])
             ->setPass(['id']);
+
+        // Admin — historia logowań
+        $builder->get('/admin/logowania', ['controller' => 'AdminLoginLogs', 'action' => 'index']);
         $builder->post('/admin/uzytkownicy/delete-avatar/{id}', ['controller' => 'AdminUsers', 'action' => 'deleteAvatar'])
             ->setPass(['id']);
 
