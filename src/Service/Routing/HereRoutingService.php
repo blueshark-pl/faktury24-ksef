@@ -307,6 +307,31 @@ class HereRoutingService
         if (!empty($opts['avoid'])) {
             $params['avoid[features]'] = is_array($opts['avoid']) ? implode(',', $opts['avoid']) : (string)$opts['avoid'];
         }
+        if (!empty($opts['excludeCountries'])) {
+            // ISO 3166-1 alpha-3, np. POL,DEU,CZE
+            $countries = is_array($opts['excludeCountries']) ? implode(',', $opts['excludeCountries']) : (string)$opts['excludeCountries'];
+            if ($countries !== '') {
+                $params['exclude[countries]'] = $countries;
+            }
+        }
+        if (!empty($opts['adrClass'])) {
+            // ADR class 1-9 → mapping na HERE shippedHazardousGoods
+            $adrMap = [
+                '1' => 'explosive',
+                '2' => 'gas',
+                '3' => 'flammable',
+                '4' => 'combustible',
+                '5' => 'organic',
+                '6' => 'poison',
+                '7' => 'radioactive',
+                '8' => 'corrosive',
+                '9' => 'other',
+            ];
+            $adr = (string)$opts['adrClass'];
+            if (isset($adrMap[$adr])) {
+                $params['vehicle[shippedHazardousGoods]'] = $adrMap[$adr];
+            }
+        }
         if ($vehicle) {
             $map = [
                 'grossWeight'    => 'gross_weight_kg',

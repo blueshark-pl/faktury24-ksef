@@ -106,6 +106,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 <span class="badge bg-secondary-subtle text-secondary border">
                                     <?= h($typeLabel[$v->type] ?? $v->type) ?>
                                 </span>
+                                <?php if ($v->rate_per_km): ?>
+                                    <div class="small text-warning fw-semibold mt-1" style="font-size:.7rem" title="<?= __('Stawka frachtu') ?>">
+                                        <i class="ri-money-pound-circle-line"></i> <?= number_format((float)$v->rate_per_km, 2, ',', ' ') ?> PLN/km
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="text-end">
                                 <?php if ($v->gross_weight_kg): ?>

@@ -104,6 +104,17 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
                         <input name="length_cm" type="number" min="0" class="form-control"
                                value="<?= h($entity->length_cm ?? '') ?>" placeholder="1650">
                     </div>
+                    <div class="col-md-12 mt-2 pt-2 border-top">
+                        <label class="form-label small mb-1">
+                            <i class="ri-money-pound-circle-line text-warning me-1"></i>
+                            <?= __('Stawka frachtu (PLN/km)') ?>
+                        </label>
+                        <input name="rate_per_km" type="number" step="0.01" min="0" class="form-control"
+                               value="<?= h($entity->rate_per_km ?? '') ?>" placeholder="4.50">
+                        <div class="form-text" style="font-size:.7rem">
+                            <?= __('Używane w planerze /trasy do kalkulacji ceny frachtu (stawka × km + opłaty).') ?>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

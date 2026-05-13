@@ -2334,3 +2334,150 @@ msgstr "Stop"
 
 msgid "Dostawa"
 msgstr "Delivery"
+
+msgid "Stawka frachtu (PLN/km)"
+msgstr "Freight rate (PLN/km)"
+
+msgid "Stawka frachtu"
+msgstr "Freight rate"
+
+msgid "Używane w planerze /trasy do kalkulacji ceny frachtu (stawka × km + opłaty)."
+msgstr "Used in /trasy planner to calculate freight price (rate × km + tolls)."
+
+msgid "Klasa ADR"
+msgstr "ADR class"
+
+msgid "— brak ADR —"
+msgstr "— no ADR —"
+
+msgid "Materiały wybuchowe"
+msgstr "Explosives"
+
+msgid "Gazy"
+msgstr "Gases"
+
+msgid "Ciecze łatwopalne"
+msgstr "Flammable liquids"
+
+msgid "Materiały stałe łatwopalne"
+msgstr "Flammable solids"
+
+msgid "Utleniacze"
+msgstr "Oxidizers"
+
+msgid "Toksyczne"
+msgstr "Toxic"
+
+msgid "Radioaktywne"
+msgstr "Radioactive"
+
+msgid "Korozyjne"
+msgstr "Corrosive"
+
+msgid "Inne niebezpieczne"
+msgstr "Other hazardous"
+
+msgid "Wyklucz kraje"
+msgstr "Exclude countries"
+
+msgid "Polska"
+msgstr "Poland"
+
+msgid "Niemcy"
+msgstr "Germany"
+
+msgid "Czechy"
+msgstr "Czechia"
+
+msgid "Słowacja"
+msgstr "Slovakia"
+
+msgid "Ukraina"
+msgstr "Ukraine"
+
+msgid "Białoruś"
+msgstr "Belarus"
+
+msgid "Litwa"
+msgstr "Lithuania"
+
+msgid "Łotwa"
+msgstr "Latvia"
+
+msgid "Austria"
+msgstr "Austria"
+
+msgid "Węgry"
+msgstr "Hungary"
+
+msgid "Francja"
+msgstr "France"
+
+msgid "Włochy"
+msgstr "Italy"
+
+msgid "Hiszpania"
+msgstr "Spain"
+
+msgid "Holandia"
+msgstr "Netherlands"
+
+msgid "Belgia"
+msgstr "Belgium"
+
+msgid "Rumunia"
+msgstr "Romania"
+
+msgid "Bułgaria"
+msgstr "Bulgaria"
+
+msgid "Szwajcaria"
+msgstr "Switzerland"
+
+msgid "Ctrl/Cmd + klik aby wybrać wiele"
+msgstr "Ctrl/Cmd + click for multi-select"
+
+msgid "JJ Price · cena frachtu"
+msgstr "JJ Price · freight cost"
+
+msgid "AI sugeruje"
+msgstr "AI suggests"
+
+msgid "opłat"
+msgstr "tolls"
+
+msgid "historia ({0} tras o ±15% dystansie)"
+msgstr "history ({0} routes ±15% distance)"
+
+msgid "stawka pojazdu × dystans + 10% marża"
+msgstr "vehicle rate × distance + 10% margin"
+
+msgid "UWAGA: trasa > 13h jazdy — niemożliwa w jednym dniu wg AETR"
+msgstr "WARNING: route > 13h drive — impossible in one day per AETR"
+
+msgid "Wymagany odpoczynek dzienny 11h — trasa > 9h jazdy"
+msgstr "Daily 11h rest required — route > 9h drive"
+
+msgid "Wymagana przerwa 45 min co 4.5h jazdy. Liczba przerw:"
+msgstr "Required 45 min break every 4.5h. Break count:"
+
+msgid "Eksport"
+msgstr "Export"
+
+msgid "Garmin/Sygic"
+msgstr "Garmin/Sygic"
+
+msgid "Embed (read-only)"
+msgstr "Embed (read-only)"
+
+msgid "GPX wyeksportowany"
+msgstr "GPX exported"
+
+msgid "KML wyeksportowany"
+msgstr "KML exported"
+
+msgid "Embed link skopiowany — wklej w iframe"
+msgstr "Embed link copied — paste in iframe"
+
+msgid "Brak punktów."
+msgstr "No points."

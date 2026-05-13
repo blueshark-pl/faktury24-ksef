@@ -204,6 +204,8 @@ class RoutePlannerController extends AppController
         $alts      = (int)$this->request->getData('alternatives', $this->request->getQuery('alternatives', 0));
         $instr     = (bool)$this->request->getData('instructions', $this->request->getQuery('instructions', false));
         $departure = (string)$this->request->getData('departure_time', $this->request->getQuery('departure_time', ''));
+        $excludeCountries = (array)$this->request->getData('exclude_countries', $this->request->getQuery('exclude_countries', []));
+        $adrClass  = (string)$this->request->getData('adr_class', $this->request->getQuery('adr_class', ''));
 
         try {
             $here = new HereRoutingService();
@@ -246,6 +248,8 @@ class RoutePlannerController extends AppController
 
             $result = $here->routeMulti($origin, $dest, $vias, $vehicleData, [
                 'avoid'              => $avoid,
+                'excludeCountries'   => $excludeCountries,
+                'adrClass'           => $adrClass,
                 'currency'           => $currency,
                 'alternatives'       => $alts,
                 'returnInstructions' => $instr,
@@ -255,9 +259,21 @@ class RoutePlannerController extends AppController
             $allPoints = array_merge([$origin], $vias, [$dest]);
             $result['points'] = $allPoints;
 
+            // NBP EUR→PLN rate dla tolls
+            $result['eur_pln_rate'] = $this->fetchEurPlnRate();
+
+            // AI sugerowana cena na podstawie historii
+            $firstRoute = $result['routes'][0] ?? [];
+            if (!empty($firstRoute['distance_km'])) {
+                $result['ai_price'] = $this->estimateAiPrice(
+                    (float)$firstRoute['distance_km'],
+                    $vehicleId,
+                    $vehicleData
+                );
+            }
+
             // Auto-zapis do historii (best-effort, błąd nie blokuje response)
             try {
-                $firstRoute = $result['routes'][0] ?? [];
                 $this->saveRouteSearch($allPoints, $vehicleId, $firstRoute);
             } catch (\Throwable $e) {
                 \Cake\Log\Log::warning('RouteSearch save failed: ' . $e->getMessage());
@@ -387,6 +403,85 @@ class RoutePlannerController extends AppController
             ];
         }
         return trim(implode(', ', array_filter($parts)));
+    }
+
+    /**
+     * Pobiera kurs EUR/PLN z NBP (table A). Cache 6h w session.
+     */
+    private function fetchEurPlnRate(): ?float
+    {
+        $session = $this->request->getSession();
+        $cached = $session->read('NbpEurPln');
+        if ($cached && isset($cached['rate'], $cached['t']) && (time() - $cached['t']) < 6 * 3600) {
+            return (float)$cached['rate'];
+        }
+        try {
+            $client = new \Cake\Http\Client(['timeout' => 5]);
+            $resp = $client->get('http://api.nbp.pl/api/exchangerates/rates/A/EUR/?format=json');
+            if (!$resp->isOk()) return null;
+            $data = $resp->getJson();
+            $rate = (float)($data['rates'][0]['mid'] ?? 0);
+            if ($rate <= 0) return null;
+            $session->write('NbpEurPln', ['rate' => $rate, 't' => time()]);
+            return $rate;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * "JJ Price" — sugerowana cena frachtu na podstawie historii.
+     * Mediana stawki PLN/km z route_searches o podobnym dystansie (±15%) i tym samym vehicle_id.
+     * Fallback: domyślna stawka pojazdu × dystans + 10% margin.
+     *
+     * @return array{price: float, basis: string, samples: int}|null
+     */
+    private function estimateAiPrice(float $distanceKm, string $vehicleId, ?array $vehicleData): ?array
+    {
+        $userId = (string)($this->request->getAttribute('identity')?->getIdentifier() ?? '');
+        $companyId = (string)($this->request->getAttribute('identity')?->get('company_id') ?? '');
+        if ($userId === '') return null;
+
+        // Próg dystansu ±15%
+        $minDist = $distanceKm * 0.85;
+        $maxDist = $distanceKm * 1.15;
+
+        $Searches = $this->fetchTable('RouteSearches');
+        $q = $Searches->find()
+            ->where([
+                'user_id' => $userId,
+                'distance_km IS NOT' => null,
+                'distance_km >=' => $minDist,
+                'distance_km <=' => $maxDist,
+            ]);
+        if ($vehicleId !== '') {
+            $q->where(['vehicle_id' => $vehicleId]);
+        }
+        $rows = $q->limit(50)->all();
+
+        // Jeśli mamy historyczne tolls i nasza stawka — szacuj PLN/km
+        $samples = [];
+        foreach ($rows as $r) {
+            if (!$r->distance_km || $r->distance_km <= 0) continue;
+            // Heurystyka: zakładana cena frachtu = (stawka pojazdu × km) + tolls converted to PLN
+            if (!empty($vehicleData['rate_per_km'])) {
+                $estPrice = ((float)$vehicleData['rate_per_km']) * (float)$r->distance_km;
+                $samples[] = $estPrice / (float)$r->distance_km; // = stawka pojazdu
+            }
+        }
+
+        // Fallback: stawka pojazdu × dystans + 10% margin
+        if (!empty($vehicleData['rate_per_km'])) {
+            $price = ((float)$vehicleData['rate_per_km']) * $distanceKm * 1.10;
+            return [
+                'price'   => round($price, 2),
+                'basis'   => count($samples) > 0
+                    ? __('historia ({0} tras o ±15% dystansie)', [count($samples)])
+                    : __('stawka pojazdu × dystans + 10% marża'),
+                'samples' => count($samples),
+            ];
+        }
+        return null;
     }
 
     private function jsonError(string $msg, int $status = 400): Response

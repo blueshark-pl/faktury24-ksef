@@ -112,6 +112,32 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     .stats-pill.fuel    { background: linear-gradient(135deg, rgba(244,114,182,.22), rgba(217,70,239,.18)); border-color: rgba(244,114,182,.4); }
     .stats-pill.driver  { background: linear-gradient(135deg, rgba(192,132,252,.22), rgba(168,85,247,.18)); border-color: rgba(192,132,252,.4); }
     .stats-pill.eco     { background: linear-gradient(135deg, rgba(74,222,128,.28), rgba(34,197,94,.20)); border-color: rgba(74,222,128,.5); }
+    .stats-pill .sub-value {
+        font-size: .72rem; opacity: .8; margin-top: 2px;
+        text-shadow: 0 1px 1px rgba(0,0,0,.15);
+    }
+
+    /* ── Freight card (JJ Price + AI) ─────────────────────────────────── */
+    .freight-card {
+        margin-top: 14px;
+        background: linear-gradient(135deg, rgba(255,255,255,.16), rgba(167,139,250,.18));
+        backdrop-filter: blur(14px);
+        border: 1px solid rgba(255,255,255,.28);
+        border-radius: 14px;
+        padding: 14px 18px;
+        color: white !important;
+        position: relative;
+        z-index: 1;
+        opacity: 0; transform: translateY(8px);
+        transition: opacity .45s .1s, transform .45s .1s;
+    }
+    .freight-card.visible { opacity: 1; transform: translateY(0); }
+    .freight-price {
+        font-size: 1.85rem; font-weight: 700; letter-spacing: -.01em;
+        text-shadow: 0 1px 2px rgba(0,0,0,.18);
+    }
+    .freight-unit { font-size: .9rem; opacity: .85; margin-left: 6px; font-weight: 500; }
+    .freight-meta { opacity: .85; font-size: .72rem; }
 
     /* Distance markers */
     .dist-marker-badge {
@@ -319,7 +345,22 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <i class="ri-truck-line"></i> JJ Maps · <?= __('profil truck · multipoint · opłaty drogowe EU') ?>
             </div>
         </div>
-        <div class="d-flex gap-2 no-print">
+        <div class="d-flex gap-2 no-print flex-wrap">
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-hero dropdown-toggle" data-bs-toggle="dropdown" disabled id="btn-export"
+                        title="<?= __('Eksport') ?>">
+                    <i class="ri-download-line me-1"></i><?= __('Eksport') ?>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#" id="btn-export-gpx">
+                        <i class="ri-route-line me-2 text-success"></i>GPX <small class="text-muted">(<?= __('Garmin/Sygic') ?>)</small></a></li>
+                    <li><a class="dropdown-item" href="#" id="btn-export-kml">
+                        <i class="ri-earth-line me-2 text-info"></i>KML <small class="text-muted">(Google Earth)</small></a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" id="btn-embed-link">
+                        <i class="ri-code-line me-2 text-primary"></i><?= __('Embed (read-only)') ?></a></li>
+                </ul>
+            </div>
             <button type="button" class="btn btn-sm btn-hero" id="btn-share" disabled
                     title="<?= __('Kopiuj link do schowka') ?>">
                 <i class="ri-share-line me-1"></i><?= __('Udostępnij') ?>
@@ -346,6 +387,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <div class="stats-pill warning">
             <div class="label"><i class="ri-money-euro-circle-line me-1"></i><?= __('Opłaty') ?></div>
             <div class="value"><span id="stat-tolls">—</span><span class="unit" id="stat-tolls-cur">EUR</span></div>
+            <div class="sub-value" id="stat-tolls-pln" style="display:none"></div>
         </div>
         <div class="stats-pill fuel">
             <div class="label"><i class="ri-gas-station-line me-1"></i><?= __('Paliwo') ?></div>
@@ -358,6 +400,24 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <div class="stats-pill eco">
             <div class="label"><i class="ri-leaf-line me-1"></i><?= __('CO₂') ?></div>
             <div class="value"><span id="stat-co2">—</span><span class="unit">kg</span></div>
+        </div>
+    </div>
+    <div class="freight-card" id="freight-card" style="display:none">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <div class="text-uppercase small" style="opacity:.85;letter-spacing:.6px;font-weight:600">
+                    <i class="ri-sparkling-2-line me-1"></i><?= __('JJ Price · cena frachtu') ?>
+                </div>
+                <div class="freight-price"><span id="stat-freight">—</span><span class="freight-unit">PLN</span></div>
+                <div class="freight-meta small mt-1" id="freight-breakdown"></div>
+            </div>
+            <div class="text-end" id="ai-price-block" style="display:none">
+                <div class="text-uppercase small" style="opacity:.85;letter-spacing:.6px;font-weight:600">
+                    <i class="ri-robot-2-line me-1"></i><?= __('AI sugeruje') ?>
+                </div>
+                <div class="freight-price"><span id="stat-ai">—</span><span class="freight-unit">PLN</span></div>
+                <div class="freight-meta small mt-1" id="ai-basis"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -454,6 +514,47 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <div class="mt-2">
                     <label class="form-label small mb-1"><?= __('Wyjazd') ?></label>
                     <input type="datetime-local" class="form-control form-control-sm" id="departure-time">
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-12">
+                        <label class="form-label small mb-1"><?= __('Klasa ADR') ?></label>
+                        <select class="form-select form-select-sm" id="adr-class">
+                            <option value=""><?= __('— brak ADR —') ?></option>
+                            <option value="1">1 — <?= __('Materiały wybuchowe') ?></option>
+                            <option value="2">2 — <?= __('Gazy') ?></option>
+                            <option value="3">3 — <?= __('Ciecze łatwopalne') ?></option>
+                            <option value="4">4 — <?= __('Materiały stałe łatwopalne') ?></option>
+                            <option value="5">5 — <?= __('Utleniacze') ?></option>
+                            <option value="6">6 — <?= __('Toksyczne') ?></option>
+                            <option value="7">7 — <?= __('Radioaktywne') ?></option>
+                            <option value="8">8 — <?= __('Korozyjne') ?></option>
+                            <option value="9">9 — <?= __('Inne niebezpieczne') ?></option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small mb-1"><?= __('Wyklucz kraje') ?></label>
+                        <select class="form-select form-select-sm" id="exclude-countries" multiple size="3" style="font-size:.78rem">
+                            <option value="POL"><?= __('Polska') ?></option>
+                            <option value="DEU"><?= __('Niemcy') ?></option>
+                            <option value="CZE"><?= __('Czechy') ?></option>
+                            <option value="SVK"><?= __('Słowacja') ?></option>
+                            <option value="UKR"><?= __('Ukraina') ?></option>
+                            <option value="BLR"><?= __('Białoruś') ?></option>
+                            <option value="LTU"><?= __('Litwa') ?></option>
+                            <option value="LVA"><?= __('Łotwa') ?></option>
+                            <option value="AUT"><?= __('Austria') ?></option>
+                            <option value="HUN"><?= __('Węgry') ?></option>
+                            <option value="FRA"><?= __('Francja') ?></option>
+                            <option value="ITA"><?= __('Włochy') ?></option>
+                            <option value="ESP"><?= __('Hiszpania') ?></option>
+                            <option value="NLD"><?= __('Holandia') ?></option>
+                            <option value="BEL"><?= __('Belgia') ?></option>
+                            <option value="ROU"><?= __('Rumunia') ?></option>
+                            <option value="BGR"><?= __('Bułgaria') ?></option>
+                            <option value="CHE"><?= __('Szwajcaria') ?></option>
+                        </select>
+                        <div class="form-text" style="font-size:.7rem"><?= __('Ctrl/Cmd + klik aby wybrać wiele') ?></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -563,6 +664,23 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
 <script>
 (function () {
+    // ─── Embed mode: ukryj wszystko poza mapą ──────────────────────
+    if (new URLSearchParams(window.location.search).get('embed') === '1') {
+        document.body.classList.add('rp-embed-mode');
+        var style = document.createElement('style');
+        style.textContent = '.rp-embed-mode .rp-hero,'
+            + '.rp-embed-mode .app-sidebar,'
+            + '.rp-embed-mode .app-header,'
+            + '.rp-embed-mode .col-lg-4.no-print,'
+            + '.rp-embed-mode #alternatives-card,'
+            + '.rp-embed-mode #legs-card,'
+            + '.rp-embed-mode #directions-card { display: none !important; }'
+            + '.rp-embed-mode .row.g-3 > .col-lg-8 { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }'
+            + '.rp-embed-mode #map { height: calc(100vh - 40px) !important; }'
+            + '.rp-embed-mode .main-content,.rp-embed-mode .page,.rp-embed-mode body { padding: 0 !important; margin: 0 !important; background: white !important; }';
+        document.head.appendChild(style);
+    }
+
     // ─── Konfiguracja ────────────────────────────────────────────────
     var hereKey = <?= json_encode($hereApiKey) ?>;
     var calcUrl = <?= json_encode($calcUrl) ?>;
@@ -570,6 +688,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     var csrf    = <?= json_encode($csrf) ?>;
     var recentSearches = <?= json_encode($recentSearches ?? [], JSON_UNESCAPED_UNICODE) ?>;
     var templates      = <?= json_encode($templates ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    var vehiclesData   = <?= json_encode(array_map(function ($v) {
+        return [
+            'id' => (string)$v->id,
+            'name' => (string)$v->name,
+            'plate' => (string)$v->plate,
+            'rate_per_km' => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
+            'gross_weight_kg' => $v->gross_weight_kg,
+        ];
+    }, $vehicles), JSON_UNESCAPED_UNICODE) ?>;
+    function getSelectedVehicle() {
+        var id = document.getElementById('vehicle-id').value;
+        return vehiclesData.find(function (v) { return v.id === id; }) || null;
+    }
     var deleteRecentUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'deleteRecent', '__ID__']) ?>';
     var saveTemplateUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'saveTemplate']) ?>';
     var revgeocodeUrl  = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'revgeocode']) ?>';
@@ -647,6 +778,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     map.addObject(pinsGroup);
     var trafficLayer = null;
     var distMarkerGroup = null;
+    var borderGroup = null;
 
     // ─── Style switcher ──────────────────────────────────────────────
     document.querySelectorAll('.map-ctrl-btn[data-style]').forEach(function (btn) {
@@ -1025,6 +1157,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         routeGroups.forEach(function (g) { map.removeObject(g); });
         routeGroups = [];
         if (distMarkerGroup) { map.removeObject(distMarkerGroup); distMarkerGroup = null; }
+        if (borderGroup) { map.removeObject(borderGroup); borderGroup = null; }
     }
 
     function highlightAltOnMap(altIdx, on) {
@@ -1120,16 +1253,20 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             setTimeout(function () { map.setZoom(Math.max(map.getZoom() - 0.4, 4)); }, 100);
         }
 
-        renderStatsBar(data.routes[0]);
+        var extra = { eur_pln_rate: data.eur_pln_rate || null, ai_price: data.ai_price || null };
+        renderStatsBar(data.routes[0], extra);
         renderAlternatives(data.routes);
         renderDirections(data.routes[0]);
         renderLegs(data.routes[0], data.points || []);
         renderDistanceMarkers(data.routes[0]);
+        renderBorderCrossings(data.routes[0], data.points || []);
+        checkRestLawCompliance(data.routes[0]);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
         document.getElementById('btn-share').disabled = false;
         document.getElementById('btn-save-template').disabled = false;
+        enableExportButton();
     }
 
     // ─── Etapy między waypointami (sections) ───────────────────────
@@ -1212,6 +1349,65 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }
     }
 
+    // ─── Border crossings (zmiana kraju w sections) ───────────────────
+    var borderWaitTimes = {
+        // (cc1,cc2) → minuty oczekiwania (heurystyka)
+        'PL-UA': 240, 'UA-PL': 240, 'PL-BY': 180, 'BY-PL': 180,
+        'PL-RU': 480, 'RU-PL': 480, 'LT-BY': 180, 'BY-LT': 180,
+        'PL-DE': 5,   'DE-PL': 5,   'PL-CZ': 5,   'CZ-PL': 5,
+        'PL-SK': 5,   'SK-PL': 5,   'PL-LT': 5,   'LT-PL': 5,
+    };
+    function ccPair(a, b) { return a + '-' + b; }
+    function renderBorderCrossings(route, points) {
+        if (borderGroup) { map.removeObject(borderGroup); borderGroup = null; }
+        if (!points || points.length < 2) return;
+        // Pary z różnych krajów — szacujemy granicę w punkcie środkowym między sąsiednimi waypointami
+        borderGroup = new H.map.Group();
+        for (var i = 1; i < points.length; i++) {
+            var a = points[i-1], b = points[i];
+            var ca = (a.country || '').toUpperCase();
+            var cb = (b.country || '').toUpperCase();
+            if (!ca || !cb || ca === cb) continue;
+            // Konwersja ISO 3166-1 alpha-3 → alpha-2 (uproszczona)
+            var iso3to2 = { POL:'PL', DEU:'DE', CZE:'CZ', SVK:'SK', UKR:'UA', LTU:'LT', LVA:'LV', BLR:'BY', RUS:'RU', AUT:'AT', HUN:'HU' };
+            var c2a = iso3to2[ca] || ca.substring(0,2);
+            var c2b = iso3to2[cb] || cb.substring(0,2);
+            var midLat = (a.lat + b.lat) / 2;
+            var midLng = (a.lng + b.lng) / 2;
+            var wait = borderWaitTimes[ccPair(c2a, c2b)] || 30;
+            var fa = flagEmoji(ca), fb = flagEmoji(cb);
+            var label = fa + '→' + fb;
+            var subtitle = '~' + (wait >= 60 ? Math.round(wait/60) + 'h' : wait + ' min');
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="70" height="42" viewBox="0 0 70 42">'
+                    + '<defs><filter id="bsh"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".25"/></filter></defs>'
+                    + '<rect x="1" y="1" width="68" height="40" rx="8" fill="white" stroke="#dc2626" stroke-width="2" filter="url(#bsh)"/>'
+                    + '<text x="35" y="18" text-anchor="middle" font-family="sans-serif" font-size="14">' + label + '</text>'
+                    + '<text x="35" y="33" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="700" fill="#dc2626">' + subtitle + '</text>'
+                    + '</svg>';
+            var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 35, y: 21 } });
+            borderGroup.addObject(new H.map.Marker({ lat: midLat, lng: midLng }, { icon: icon }));
+        }
+        if (borderGroup.getObjects().length > 0) {
+            map.addObject(borderGroup);
+        } else {
+            borderGroup = null;
+        }
+    }
+
+    // ─── Rest law compliance (przerwy kierowcy AETR/UE 561/2006) ──────
+    function checkRestLawCompliance(r) {
+        if (!r.duration_min) return;
+        var hours = r.duration_min / 60;
+        if (hours > 13) {
+            toast('<?= __('UWAGA: trasa > 13h jazdy — niemożliwa w jednym dniu wg AETR') ?>', 'error');
+        } else if (hours > 9) {
+            toast('<?= __('Wymagany odpoczynek dzienny 11h — trasa > 9h jazdy') ?>', 'warning');
+        } else if (hours > 4.5) {
+            var breaks = Math.floor(hours / 4.5);
+            toast('<?= __('Wymagana przerwa 45 min co 4.5h jazdy. Liczba przerw:') ?> ' + breaks, 'info');
+        }
+    }
+
     // Count-up animation dla countera (650ms)
     function animateCounter(el, targetValue, decimals, suffix) {
         var num = Number(targetValue);
@@ -1229,16 +1425,29 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }
         requestAnimationFrame(step);
     }
-    function renderStatsBar(r) {
+    function renderStatsBar(r, extra) {
+        extra = extra || {};
         animateCounter(document.getElementById('stat-km'), r.distance_km, 1);
-        // Czas - bez animacji, bo to string
         document.getElementById('stat-dur').textContent = fmtDur(r.duration_min);
+
+        // Tolls + EUR→PLN auto-konwersja
+        var tollsPlnEl = document.getElementById('stat-tolls-pln');
         if (r.tolls_total !== null && r.tolls_total !== undefined) {
             animateCounter(document.getElementById('stat-tolls'), r.tolls_total, 2);
             document.getElementById('stat-tolls-cur').textContent = r.tolls_currency || 'EUR';
+            // Konwersja: jeśli waluta EUR i mamy kurs NBP → pokaż PLN
+            if ((r.tolls_currency || 'EUR') === 'EUR' && extra.eur_pln_rate) {
+                var pln = r.tolls_total * extra.eur_pln_rate;
+                tollsPlnEl.textContent = '≈ ' + fmtNum(pln, 2) + ' PLN  (NBP ' + fmtNum(extra.eur_pln_rate, 4) + ')';
+                tollsPlnEl.style.display = 'block';
+            } else {
+                tollsPlnEl.style.display = 'none';
+            }
         } else {
             document.getElementById('stat-tolls').textContent = '—';
+            tollsPlnEl.style.display = 'none';
         }
+
         var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
         var price = parseFloat(document.getElementById('fuel-price').value || 0);
         var rate = parseFloat(document.getElementById('driver-rate').value || 0);
@@ -1250,6 +1459,47 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         animateCounter(document.getElementById('stat-driver'), driverCost, 2);
         animateCounter(document.getElementById('stat-co2'),    co2Kg, 1);
         document.getElementById('stats-bar').classList.add('visible');
+
+        // Freight card
+        renderFreightCard(r, extra);
+    }
+
+    function renderFreightCard(r, extra) {
+        var card = document.getElementById('freight-card');
+        var vehicle = getSelectedVehicle();
+        if (!vehicle || !vehicle.rate_per_km || !r.distance_km) {
+            card.style.display = 'none';
+            card.classList.remove('visible');
+            return;
+        }
+        var rate = vehicle.rate_per_km;
+        var km = r.distance_km;
+        // Tolls in PLN (jeśli EUR i mamy rate)
+        var tollsPln = 0;
+        if (r.tolls_total) {
+            if ((r.tolls_currency || 'EUR') === 'PLN') {
+                tollsPln = r.tolls_total;
+            } else if (extra.eur_pln_rate) {
+                tollsPln = r.tolls_total * extra.eur_pln_rate;
+            }
+        }
+        var distCost = rate * km;
+        var freightTotal = distCost + tollsPln;
+        animateCounter(document.getElementById('stat-freight'), freightTotal, 2);
+        document.getElementById('freight-breakdown').innerHTML =
+            fmtNum(rate, 2) + ' PLN/km × ' + fmtNum(km, 1) + ' km = ' + fmtNum(distCost, 2) + ' PLN'
+            + (tollsPln > 0 ? '  +  ' + fmtNum(tollsPln, 2) + ' PLN <?= __('opłat') ?>' : '');
+
+        // AI Price
+        if (extra.ai_price && extra.ai_price.price > 0) {
+            animateCounter(document.getElementById('stat-ai'), extra.ai_price.price, 2);
+            document.getElementById('ai-basis').textContent = extra.ai_price.basis || '';
+            document.getElementById('ai-price-block').style.display = '';
+        } else {
+            document.getElementById('ai-price-block').style.display = 'none';
+        }
+        card.style.display = 'block';
+        setTimeout(function () { card.classList.add('visible'); }, 50);
     }
     ['fuel-consumption','fuel-price','driver-rate'].forEach(function (id) {
         document.getElementById(id).addEventListener('input', function () {
@@ -1294,10 +1544,12 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     drawRoute(r, { color: 'rgba(148,163,184,.7)', outline: 'rgba(255,255,255,.7)', lineWidth: 8, altIdx: i });
                 });
                 drawRoute(lastResponse.routes[activeAltIdx], { color: 'rgba(37,99,235,.95)', lineWidth: 11, altIdx: activeAltIdx });
-                renderStatsBar(lastResponse.routes[activeAltIdx]);
+                var extraAlt = { eur_pln_rate: lastResponse.eur_pln_rate || null, ai_price: lastResponse.ai_price || null };
+                renderStatsBar(lastResponse.routes[activeAltIdx], extraAlt);
                 renderDirections(lastResponse.routes[activeAltIdx]);
                 renderLegs(lastResponse.routes[activeAltIdx], lastResponse.points || []);
                 renderDistanceMarkers(lastResponse.routes[activeAltIdx]);
+                renderBorderCrossings(lastResponse.routes[activeAltIdx], lastResponse.points || []);
             });
         });
         ac.style.display = '';
@@ -1333,6 +1585,96 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
     // ─── Action buttons in hero ─────────────────────────────────────
     document.getElementById('btn-print').addEventListener('click', function () { window.print(); });
+
+    // ─── GPX/KML export ──────────────────────────────────────────────
+    function getRoutePoints() {
+        if (!lastResponse || !lastResponse.routes || !lastResponse.routes[0]) return [];
+        var pts = [];
+        (lastResponse.routes[0].polylines || []).forEach(function (p) {
+            try {
+                var ls = H.geo.LineString.fromFlexiblePolyline(p);
+                for (var i = 0; i < ls.getPointCount(); i++) {
+                    var pt = ls.extractPoint(i);
+                    pts.push({ lat: pt.lat, lng: pt.lng });
+                }
+            } catch (e) {}
+        });
+        return pts;
+    }
+    function downloadFile(filename, content, mime) {
+        var blob = new Blob([content], { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    }
+    function buildGpx() {
+        var pts = getRoutePoints();
+        var wps = (lastResponse.points || []).filter(function (p) { return p.lat && p.lng; });
+        var now = new Date().toISOString();
+        var xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        xml += '<gpx version="1.1" creator="JJ Maps Route Planner" xmlns="http://www.topografix.com/GPX/1/1">\n';
+        xml += '  <metadata><time>' + now + '</time></metadata>\n';
+        wps.forEach(function (p, i) {
+            var name = (p.label || p.address || ('Point ' + (i+1))).replace(/[<>&]/g, '');
+            xml += '  <wpt lat="' + p.lat + '" lon="' + p.lng + '"><name>' + name + '</name></wpt>\n';
+        });
+        xml += '  <trk><name>JJ Maps Route</name><trkseg>\n';
+        pts.forEach(function (p) { xml += '    <trkpt lat="' + p.lat + '" lon="' + p.lng + '"/>\n'; });
+        xml += '  </trkseg></trk>\n</gpx>';
+        return xml;
+    }
+    function buildKml() {
+        var pts = getRoutePoints();
+        var wps = (lastResponse.points || []).filter(function (p) { return p.lat && p.lng; });
+        var xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        xml += '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n';
+        xml += '  <name>JJ Maps Route</name>\n';
+        wps.forEach(function (p, i) {
+            var name = (p.label || p.address || ('Point ' + (i+1))).replace(/[<>&]/g, '');
+            xml += '  <Placemark><name>' + name + '</name><Point><coordinates>' + p.lng + ',' + p.lat + ',0</coordinates></Point></Placemark>\n';
+        });
+        xml += '  <Placemark><name>Trasa</name><Style><LineStyle><color>ff2563eb</color><width>4</width></LineStyle></Style>\n';
+        xml += '    <LineString><coordinates>\n';
+        pts.forEach(function (p) { xml += '      ' + p.lng + ',' + p.lat + ',0\n'; });
+        xml += '    </coordinates></LineString>\n  </Placemark>\n';
+        xml += '</Document></kml>';
+        return xml;
+    }
+    document.getElementById('btn-export-gpx').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        downloadFile('route-' + Date.now() + '.gpx', buildGpx(), 'application/gpx+xml');
+        toast('<?= __('GPX wyeksportowany') ?>', 'success');
+    });
+    document.getElementById('btn-export-kml').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        downloadFile('route-' + Date.now() + '.kml', buildKml(), 'application/vnd.google-earth.kml+xml');
+        toast('<?= __('KML wyeksportowany') ?>', 'success');
+    });
+    document.getElementById('btn-embed-link').addEventListener('click', function (e) {
+        e.preventDefault();
+        var pts = waypoints.filter(function (w) { return w.lat != null && w.lng != null; });
+        if (!pts.length) { toast('<?= __('Brak punktów.') ?>', 'warning'); return; }
+        var payload = {
+            points: pts.map(function (p) { return { address: p.address, lat: p.lat, lng: p.lng, country: p.country }; }),
+            vehicle_id: document.getElementById('vehicle-id').value,
+        };
+        var enc = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+        var url = window.location.origin + window.location.pathname + '?embed=1&r=' + enc;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function () {
+                toast('<?= __('Embed link skopiowany — wklej w iframe') ?>', 'success');
+            }, function () { prompt('<?= __('Skopiuj link:') ?>', url); });
+        } else { prompt('<?= __('Skopiuj link:') ?>', url); }
+    });
+
+    // Aktywuj export gdy mamy wynik
+    function enableExportButton() {
+        document.getElementById('btn-export').disabled = false;
+    }
 
     document.getElementById('btn-share').addEventListener('click', function () {
         var pts = waypoints.filter(function (w) { return w.lat != null && w.lng != null; });
@@ -1414,6 +1756,12 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         fd.append('instructions', '1');
         if (departureTime) fd.append('departure_time', departureTime);
         avoid.forEach(function (a) { fd.append('avoid[]', a); });
+        // ADR class
+        var adrClass = document.getElementById('adr-class').value;
+        if (adrClass) fd.append('adr_class', adrClass);
+        // Wyklucz kraje
+        var excludeCountries = Array.from(document.getElementById('exclude-countries').selectedOptions).map(function (o) { return o.value; });
+        excludeCountries.forEach(function (cc) { fd.append('exclude_countries[]', cc); });
         fd.append('_csrfToken', csrf);
 
         fetch(calcUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
