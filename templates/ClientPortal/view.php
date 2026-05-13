@@ -858,35 +858,8 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     ];
     $liveLabel = $liveLabels[$effective] ?? __('Aktywne');
 
-    // Pseudo-realistyczna prędkość 65-92 km/h (random per render)
-    // Aby nie skakała przy każdym refreshu, seed na order ID + dzień.
-    $speedSeed = (int)$order->id + (int)date('Ymd');
-    mt_srand($speedSeed);
-    $mockSpeed = mt_rand(68, 89);
-    mt_srand();
-
-    // ETA: ile zostało do date_delivery
-    $etaText = null;
-    if (!empty($order->date_delivery) && $effective === 3) {
-        try {
-            $dlv = $order->date_delivery instanceof \DateTimeInterface
-                ? $order->date_delivery
-                : new \DateTimeImmutable(substr((string)$order->date_delivery, 0, 10));
-            $diff = $dlv->getTimestamp() - time();
-            if ($diff > 0) {
-                $hours = (int)floor($diff / 3600);
-                $minutes = (int)floor(($diff % 3600) / 60);
-                if ($hours >= 24) {
-                    $days = (int)floor($hours / 24);
-                    $etaText = $days . ' ' . __('dni');
-                } elseif ($hours > 0) {
-                    $etaText = $hours . 'h ' . $minutes . 'm';
-                } else {
-                    $etaText = $minutes . ' min';
-                }
-            }
-        } catch (\Throwable) {}
-    }
+    // Bez pseudo-GPS: nie mamy realnych danych o prędkości/pozycji więc nie
+    // sugerujemy klientowi że są — tylko realne info (planowana data, kierowca, status).
 ?>
 <div class="route-header">
     <span class="route-brand">
@@ -1042,23 +1015,21 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             </span>
         <?php endif; ?>
         <?php if ($hasPodFile): ?><span class="route-pod">POD ✓</span><?php endif; ?>
-        <!-- Telemetry panel: prędkość / ETA / kierowca / update -->
-        <?php if ($effective >= 2 && ($driverName !== '' || $effective === 3)): ?>
+        <!-- Telemetry panel: tylko realne info (kierowca + planowana data dostawy) -->
+        <?php
+            $planDeliveryStr = $order->date_delivery ? $fdate($order->date_delivery) : null;
+            $hasPanelData = $driverName !== '' || ($planDeliveryStr !== null && $effective < 4);
+        ?>
+        <?php if ($effective >= 2 && $hasPanelData): ?>
             <div class="telemetry-panel">
-                <?php if ($effective === 3): ?>
+                <?php if ($planDeliveryStr !== null && $effective < 4): ?>
                     <span class="t-item" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                          data-bs-title="<?= h(__('Symulowana prędkość pojazdu')) ?>">
-                        <i class="ri-speed-up-line"></i>
-                        <span class="t-value"><?= $mockSpeed ?></span><span class="t-unit">km/h</span>
+                          data-bs-title="<?= h(__('Planowana data dostawy')) ?>">
+                        <i class="ri-calendar-event-line"></i>
+                        <span class="t-unit"><?= h(__('Planowo')) ?></span><span class="t-value"><?= h($planDeliveryStr) ?></span>
                     </span>
-                    <span class="t-divider"></span>
                 <?php endif; ?>
-                <?php if ($etaText !== null): ?>
-                    <span class="t-item" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                          data-bs-title="<?= h(__('Przewidywany czas dostawy')) ?>">
-                        <i class="ri-time-line"></i>
-                        <span class="t-value">ETA</span><span class="t-unit"><?= h($etaText) ?></span>
-                    </span>
+                <?php if ($planDeliveryStr !== null && $effective < 4 && $driverName !== ''): ?>
                     <span class="t-divider"></span>
                 <?php endif; ?>
                 <?php if ($driverName !== ''): ?>
@@ -1066,13 +1037,6 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                           data-bs-title="<?= h(__('Kierowca')) ?>">
                         <i class="ri-user-line"></i>
                         <span class="t-value"><?= h($driverName) ?></span>
-                    </span>
-                <?php endif; ?>
-                <?php if ($effective === 3): ?>
-                    <span class="t-divider"></span>
-                    <span class="t-update" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                          data-bs-title="<?= h(__('Ostatnia aktualizacja')) ?>">
-                        <span class="update-dot"></span><?= date('H:i') ?>
                     </span>
                 <?php endif; ?>
             </div>

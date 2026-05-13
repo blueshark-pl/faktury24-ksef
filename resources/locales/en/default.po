@@ -289,6 +289,9 @@ msgstr "Driver"
 msgid "Symulowana prędkość pojazdu"
 msgstr "Simulated vehicle speed"
 
+msgid "Planowana data dostawy"
+msgstr "Planned delivery date"
+
 msgid "Przewoźnik"
 msgstr "Carrier"
 
