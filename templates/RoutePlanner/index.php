@@ -453,11 +453,15 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // Główna trasa na wierzchu
         drawRoute(data.routes[0], { color: 'rgba(37,99,235,.95)', lineWidth: 11 });
 
-        // Bounding box wszystkich grup + pins
-        var allGroup = new H.map.Group();
-        routeGroups.forEach(function (g) { g.getObjects().forEach(function (o) { allGroup.addObject(o); }); });
-        pinsGroup.getObjects().forEach(function (o) { allGroup.addObject(o); });
-        var bbox = allGroup.getBoundingBox();
+        // Bounding box ze wszystkich grup (merge bez ruszania obiektów —
+        // przeniesienie objektu między grupami usuwa go z mapy).
+        var bbox = null;
+        routeGroups.forEach(function (g) {
+            var gbb = g.getBoundingBox();
+            if (gbb) bbox = bbox ? bbox.mergeRect(gbb) : gbb;
+        });
+        var pbb = pinsGroup.getBoundingBox();
+        if (pbb) bbox = bbox ? bbox.mergeRect(pbb) : pbb;
         if (bbox) {
             map.getViewModel().setLookAtData({ bounds: bbox }, true);
             setTimeout(function () { map.setZoom(Math.max(map.getZoom() - 0.4, 4)); }, 100);
