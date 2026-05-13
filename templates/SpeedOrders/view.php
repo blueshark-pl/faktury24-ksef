@@ -422,6 +422,11 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 return str_replace(' ', 'T', substr((string)$v, 0, 16));
             };
         ?>
+        <style>
+            .actual-time-input.is-pending { border-color:#f59e0b; box-shadow:0 0 0 .15rem rgba(245,158,11,.18); }
+            .actual-time-input.is-saved   { border-color:#22c55e; box-shadow:0 0 0 .15rem rgba(34,197,94,.18); }
+            .actual-time-input.is-error   { border-color:#ef4444; box-shadow:0 0 0 .15rem rgba(239,68,68,.18); }
+        </style>
         <div class="d-flex gap-2 flex-wrap justify-content-center mb-2" id="actual-times-row">
             <div class="actual-time-box" style="background:rgba(14,165,233,.07);border:1px solid rgba(14,165,233,.25);border-radius:10px;padding:8px 12px;min-width:240px">
                 <div class="small text-muted mb-1"><i class="ri-truck-line text-info"></i> <strong>Rzeczywisty załadunek</strong></div>
@@ -1509,23 +1514,53 @@ document.addEventListener('DOMContentLoaded', function() {
     // ── Rzeczywisty załadunek / rozładunek (datetime-local inputs, debounced save) ──
     document.querySelectorAll('.actual-time-input').forEach(function (inp) {
         var saveTimer = null;
+        var lastSaved = (inp.value || '').trim();
+        function setState(state) {
+            inp.classList.remove('is-pending', 'is-saved', 'is-error');
+            if (state) inp.classList.add(state);
+        }
         function save() {
             var field = inp.dataset.field;
             var val   = (inp.value || '').trim();
+            // Pomijaj walidacyjne pośrednie wartości typu '2026-05-13T' bez godziny.
+            // Akceptujemy pełne YYYY-MM-DDTHH:MM albo pusty (= wyczyść).
+            if (val !== '' && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) {
+                return;
+            }
+            if (val === lastSaved) {
+                return;
+            }
             var payload = { id: orderId };
             payload[field] = val;
+            setState('is-pending');
             post(updateUrl, payload).then(function (data) {
                 if (data.success) {
+                    lastSaved = val;
+                    setState('is-saved');
                     var label = field === 'actual_load_at' ? 'Rzeczywisty załadunek' : 'Rzeczywisty rozładunek';
                     showToast('✔ ' + label + ' ' + (val ? 'zapisany' : 'wyczyszczony'), true);
+                    setTimeout(function () { setState(null); }, 1500);
                 } else {
+                    setState('is-error');
                     showToast(data.error || 'Błąd zapisu', false);
                 }
-            }).catch(function (e) { showToast('Błąd: ' + e.message, false); });
+            }).catch(function (e) {
+                setState('is-error');
+                showToast('Błąd: ' + e.message, false);
+            });
         }
-        inp.addEventListener('change', function () {
+        function scheduleSave(delay) {
             if (saveTimer) clearTimeout(saveTimer);
-            saveTimer = setTimeout(save, 300);
+            saveTimer = setTimeout(save, delay);
+        }
+        // input — fires gdy datepicker zmienia wartość (Chrome/Edge/Firefox);
+        // change — fires po blur/Enter (fallback);
+        // blur   — wymuszamy zapis natychmiast gdy user wychodzi z pola.
+        inp.addEventListener('input',  function () { scheduleSave(600); });
+        inp.addEventListener('change', function () { scheduleSave(150); });
+        inp.addEventListener('blur',   function () {
+            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            save();
         });
     });
 
