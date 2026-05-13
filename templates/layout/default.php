@@ -363,36 +363,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 </head>
 
 <body>
-    <?php
-    // ── Banner impersonacji — gdy admin wcielił się w innego usera ──
-    $impSession = $this->request->getSession();
-    $impOriginalId = $impSession->read('Impersonation.original_user_id');
-    $impOriginalUsername = $impSession->read('Impersonation.original_username');
-    if ($impOriginalId):
-        $impCurrentIdentity = $this->request->getAttribute('identity');
-        $impCurrentName     = (string)($impCurrentIdentity?->get('username') ?? $impCurrentIdentity?->get('email') ?? '');
-        $impCurrentRole     = (string)($impCurrentIdentity?->get('role') ?? '');
-        $impStopUrl         = $this->Url->build(['controller' => 'AdminImpersonate', 'action' => 'stop']);
-    ?>
-    <div id="impersonation-banner" style="position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#fbbf24,#f59e0b);color:#1f2937;padding:.55rem 1rem;font-size:.85rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-        <i class="ri-spy-line fs-5"></i>
-        <span>
-            <?= __('Wcielenie aktywne') ?>:
-            <strong><?= h($impCurrentName) ?></strong>
-            <?php if ($impCurrentRole !== ''): ?>
-                <span class="badge bg-dark text-warning ms-1" style="font-size:.7em"><?= h($impCurrentRole) ?></span>
-            <?php endif; ?>
-            <span class="opacity-75 ms-2"><?= __('Zalogowany jako admin') ?>: <?= h((string)$impOriginalUsername) ?></span>
-        </span>
-        <form method="post" action="<?= h($impStopUrl) ?>" class="ms-auto" style="display:inline">
-            <input type="hidden" name="_csrfToken" value="<?= h($this->request->getAttribute('csrfToken')) ?>">
-            <button type="submit" class="btn btn-sm btn-dark">
-                <i class="ri-logout-circle-r-line me-1"></i><?= __('Wróć do siebie') ?>
-            </button>
-        </form>
-    </div>
-    <?php endif; ?>
-
     <!-- Start Switcher -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="switcher-canvas" aria-labelledby="offcanvasRightLabel">
         <div class="offcanvas-header border-bottom d-block p-0 position-relative">
@@ -1486,6 +1456,38 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             <!--APP-CONTENT START-->
             <div class="main-content app-content">
                 <div class="container-fluid mt-2">
+                                        <?php
+                                            // ── Banner impersonacji — admin wcielony w innego usera ──
+                                            $impSession = $this->request->getSession();
+                                            $impOriginalId       = $impSession->read('Impersonation.original_user_id');
+                                            $impOriginalUsername = $impSession->read('Impersonation.original_username');
+                                        ?>
+                                        <?php if ($impOriginalId):
+                                            $impCurrentIdentity = $this->request->getAttribute('identity');
+                                            $impCurrentName     = (string)($impCurrentIdentity?->get('username') ?? $impCurrentIdentity?->get('email') ?? '');
+                                            $impCurrentRole     = (string)($impCurrentIdentity?->get('role') ?? '');
+                                            $impStopUrl         = $this->Url->build(['controller' => 'AdminImpersonate', 'action' => 'stop']);
+                                        ?>
+                                        <div id="impersonation-banner"
+                                             class="d-flex align-items-center gap-2 flex-wrap mb-2 px-3 py-2 rounded shadow-sm"
+                                             style="background:linear-gradient(90deg,#fbbf24,#f59e0b);color:#1f2937;font-size:.85rem;font-weight:600;border:1px solid rgba(0,0,0,.08)">
+                                            <i class="ri-spy-line fs-5"></i>
+                                            <span>
+                                                <?= __('Wcielenie aktywne') ?>:
+                                                <strong><?= h($impCurrentName) ?></strong>
+                                                <?php if ($impCurrentRole !== ''): ?>
+                                                    <span class="badge bg-dark text-warning ms-1" style="font-size:.7em"><?= h($impCurrentRole) ?></span>
+                                                <?php endif; ?>
+                                                <span class="opacity-75 ms-2 d-none d-md-inline"><?= __('Zalogowany jako admin') ?>: <?= h((string)$impOriginalUsername) ?></span>
+                                            </span>
+                                            <form method="post" action="<?= h($impStopUrl) ?>" class="ms-auto" style="display:inline">
+                                                <input type="hidden" name="_csrfToken" value="<?= h($this->request->getAttribute('csrfToken')) ?>">
+                                                <button type="submit" class="btn btn-sm btn-dark">
+                                                    <i class="ri-logout-circle-r-line me-1"></i><?= __('Wróć do siebie') ?>
+                                                </button>
+                                            </form>
+                                        </div>
+                                        <?php endif; ?>
                                         <?php
                                             // Pasek "Tryb KSeF" usunięty na życzenie — zostaje tylko
                                             // notyfikacja o roboczych fakturach dla pracowników.
