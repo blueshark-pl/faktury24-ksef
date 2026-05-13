@@ -66,7 +66,10 @@ class ClientProfile extends Entity
         if ($value === null || $value === '') {
             return null;
         }
-        if ($value instanceof \DateTimeInterface) {
+        // Cake\I18n\Date (CakePHP 5) NIE implementuje \DateTimeInterface — to wrapper
+        // z polem 'native'. Sprawdzamy bardziej miękko przez method_exists('format').
+        // Pasuje też do natywnego \DateTime/\DateTimeImmutable i Chronos*.
+        if (is_object($value) && method_exists($value, 'format')) {
             return $value->format('Y-m-d');
         }
         return substr((string)$value, 0, 10);
