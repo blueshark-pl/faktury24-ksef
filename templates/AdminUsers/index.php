@@ -73,15 +73,22 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
     <div class="table-responsive">
         <table class="table table-hover mb-0 align-middle" style="font-size:.875rem">
             <thead class="table-light">
+                <?php
+                    $preserveAU = array_filter([
+                        'q'      => $q,
+                        'role'   => $roleFilter,
+                        'active' => $active,
+                    ], fn($v) => $v !== null && $v !== '');
+                ?>
                 <tr>
-                    <th class="ps-3" style="width:280px"><?= __('Użytkownik') ?></th>
-                    <th style="width:180px"><?= __('Rola') ?></th>
+                    <?= $this->element('sort_header', ['field' => 'email',      'label' => __('Użytkownik'),  'sortKey' => $sortKey, 'sortDir' => $sortDir, 'preserve' => $preserveAU, 'extraClass' => 'ps-3']) ?>
+                    <?= $this->element('sort_header', ['field' => 'role',       'label' => __('Rola'),        'sortKey' => $sortKey, 'sortDir' => $sortDir, 'preserve' => $preserveAU]) ?>
                     <th><?= __('Firma / NIP') ?></th>
                     <?php if ($roleFilter === 'client'): ?>
                         <th style="width:200px"><?= __('Opiekun') ?></th>
                     <?php endif; ?>
-                    <th style="width:80px"  class="text-center"><?= __('Aktywny') ?></th>
-                    <th style="width:120px"><?= __('Utworzono') ?></th>
+                    <?= $this->element('sort_header', ['field' => 'active',  'label' => __('Aktywny'),   'sortKey' => $sortKey, 'sortDir' => $sortDir, 'preserve' => $preserveAU, 'extraClass' => 'text-center']) ?>
+                    <?= $this->element('sort_header', ['field' => 'created', 'label' => __('Utworzono'), 'sortKey' => $sortKey, 'sortDir' => $sortDir, 'preserve' => $preserveAU]) ?>
                     <th style="width:160px"><?= __('Ostatnie powitanie') ?></th>
                     <th class="pe-3 text-end text-nowrap" style="width:160px"><?= __('Akcje') ?></th>
                 </tr>
@@ -240,9 +247,11 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
             <nav>
                 <ul class="pagination pagination-sm mb-0">
                     <?php for ($p = 1; $p <= $pages; $p++):
-                        $url = $this->Url->build(['action' => 'index', '?' => [
+                        $url = $this->Url->build(['action' => 'index', '?' => array_filter([
                             'q' => $q, 'role' => $roleFilter, 'active' => $active, 'page' => $p,
-                        ]]);
+                            'sort'      => $sortKey !== 'created' ? $sortKey : null,
+                            'direction' => $sortDir !== 'desc'    ? $sortDir : null,
+                        ], fn($v) => $v !== null && $v !== '')]);
                     ?>
                         <li class="page-item <?= $p === $page ? 'active' : '' ?>">
                             <a href="<?= h($url) ?>" class="page-link"><?= $p ?></a>

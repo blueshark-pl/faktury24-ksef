@@ -38,14 +38,30 @@ class AdminUsersController extends AppController
         $limit      = 50;
 
         $Users = $this->fetchTable('Users');
+
+        // Sortowanie
+        $sortable = [
+            'email'      => 'Users.email',
+            'first_name' => 'Users.first_name',
+            'last_name'  => 'Users.last_name',
+            'role'       => 'Users.role',
+            'active'     => 'Users.active',
+            'created'    => 'Users.created',
+        ];
+        $sortKey = (string)$this->request->getQuery('sort', 'created');
+        $sortDir = strtolower((string)$this->request->getQuery('direction', 'desc'));
+        if (!isset($sortable[$sortKey]))         $sortKey = 'created';
+        if (!in_array($sortDir, ['asc','desc'])) $sortDir = 'desc';
+
         $query = $Users->find()
             ->select([
                 'Users.id', 'Users.email', 'Users.username',
                 'Users.first_name', 'Users.last_name',
                 'Users.role', 'Users.active',
                 'Users.company_id', 'Users.created',
-            ])
-            ->orderByDesc('Users.created');
+            ]);
+        if ($sortDir === 'asc') $query->orderByAsc($sortable[$sortKey]);
+        else                    $query->orderByDesc($sortable[$sortKey]);
 
         if ($roleFilter !== '') {
             $query->where(['Users.role' => $roleFilter]);
@@ -177,7 +193,8 @@ class AdminUsersController extends AppController
         $this->set(compact(
             'users', 'profileMap', 'avatarMap', 'caretakerMap', 'lastWelcomeMap',
             'rolesList', 'roleNameByCode',
-            'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit'
+            'roleFilter', 'q', 'active', 'total', 'page', 'pages', 'limit',
+            'sortKey', 'sortDir'
         ));
     }
 

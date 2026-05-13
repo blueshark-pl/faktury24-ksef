@@ -273,32 +273,36 @@ public function gusLookup()
     public function index()
     {
         $q = trim((string)$this->request->getQuery('q'));
-$active = $this->request->getQuery('active');
+        $active = $this->request->getQuery('active');
 
- $query = $this->Contractors->find()
-     ->where([
-         'company_id' => $this->request->getAttribute('identity')->get('company_id')
-     ]);
+        $query = $this->Contractors->find()
+            ->where([
+                'company_id' => $this->request->getAttribute('identity')->get('company_id')
+            ]);
 
-if ($q !== '') {
-    $query->where([
-        'OR' => [
-            'Contractors.name LIKE' => "%$q%",
-            'Contractors.altname LIKE' => "%$q%",
-            'Contractors.nip LIKE' => "%$q%",
-            'Contractors.email LIKE' => "%$q%",
-            'Contractors.city LIKE' => "%$q%",
-        ]
-    ]);
-}
-if ($active !== null && $active !== '') {
-    $query->where(['Contractors.is_active' => (int)$active]);
-}
+        if ($q !== '') {
+            $query->where([
+                'OR' => [
+                    'Contractors.name LIKE' => "%$q%",
+                    'Contractors.altname LIKE' => "%$q%",
+                    'Contractors.nip LIKE' => "%$q%",
+                    'Contractors.email LIKE' => "%$q%",
+                    'Contractors.city LIKE' => "%$q%",
+                ]
+            ]);
+        }
+        if ($active !== null && $active !== '') {
+            $query->where(['Contractors.is_active' => (int)$active]);
+        }
 
-$this->paginate = ['order' => ['Contractors.created' => 'DESC']];
-$contractors = $this->paginate($query);
-$this->set(compact('contractors'));
-
+        // PaginatorHelper $this->Paginator->sort() w widoku już generuje
+        // klikalne nagłówki; tu whitelist akceptowanych pól.
+        $this->paginate = [
+            'sortableFields' => ['name', 'nip', 'city', 'email', 'phone', 'country', 'is_active', 'created'],
+            'order' => ['Contractors.created' => 'DESC'],
+        ];
+        $contractors = $this->paginate($query);
+        $this->set(compact('contractors'));
     }
 
     /**
