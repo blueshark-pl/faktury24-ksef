@@ -22,37 +22,81 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 <style>
     /* ── Hero header ──────────────────────────────────────────────────── */
     .rp-hero {
-        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 35%, #3b82f6 100%);
-        color: white;
-        border-radius: 16px;
-        padding: 20px 24px;
-        box-shadow: 0 10px 30px rgba(37, 99, 235, .25);
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 30%, #2563eb 70%, #3b82f6 100%);
+        color: #ffffff !important;
+        border-radius: 14px;
+        padding: 14px 22px;
+        box-shadow: 0 8px 24px rgba(37, 99, 235, .25), 0 2px 4px rgba(15,23,42,.06);
         position: relative;
         overflow: hidden;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
+        transition: padding .25s;
     }
+    /* Wyższe paddingi gdy mamy stats bar (po kalkulacji) */
+    .rp-hero:has(.stats-pill-bar.visible) { padding: 20px 26px; }
     .rp-hero::before {
-        content: ''; position: absolute; top: -50%; right: -10%;
-        width: 400px; height: 400px;
-        background: radial-gradient(circle, rgba(255,255,255,.08), transparent 70%);
+        content: ''; position: absolute; top: -60%; right: -12%;
+        width: 500px; height: 500px;
+        background: radial-gradient(circle, rgba(255,255,255,.10), transparent 70%);
         pointer-events: none;
     }
-    .rp-hero h2 { font-weight: 700; margin: 0; font-size: 1.5rem; }
-    .rp-hero .subtitle { opacity: .85; font-size: .85rem; margin-top: 4px; }
-    .rp-hero .btn-hero {
-        background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3);
-        color: white; backdrop-filter: blur(8px); transition: all .15s;
+    .rp-hero::after {
+        content: ''; position: absolute; bottom: -40%; left: -8%;
+        width: 320px; height: 320px;
+        background: radial-gradient(circle, rgba(167,139,250,.18), transparent 70%);
+        pointer-events: none;
     }
-    .rp-hero .btn-hero:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
-    .rp-hero .btn-hero:disabled { opacity: .5; }
+    /* Wymuś biały tekst (Bootstrap nadpisuje h2 default color) */
+    .rp-hero h2,
+    .rp-hero h2 *,
+    .rp-hero .subtitle,
+    .rp-hero .subtitle *,
+    .rp-hero .stats-pill,
+    .rp-hero .stats-pill * { color: #ffffff !important; }
+    .rp-hero h2 {
+        font-weight: 700; margin: 0; font-size: 1.35rem; letter-spacing: -.01em;
+        text-shadow: 0 1px 2px rgba(0,0,0,.18);
+        position: relative; z-index: 1;
+    }
+    .rp-hero:has(.stats-pill-bar.visible) h2 { font-size: 1.55rem; }
+    .rp-hero .subtitle {
+        opacity: .92; font-size: .85rem; margin-top: 6px;
+        text-shadow: 0 1px 2px rgba(0,0,0,.15);
+        position: relative; z-index: 1;
+    }
+    .rp-hero .btn-hero {
+        background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.32);
+        color: #ffffff !important; backdrop-filter: blur(10px); transition: all .18s;
+        font-weight: 500; text-shadow: 0 1px 1px rgba(0,0,0,.15);
+    }
+    .rp-hero .btn-hero:hover:not(:disabled) {
+        background: rgba(255,255,255,.26); transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    }
+    .rp-hero .btn-hero:disabled { opacity: .45; cursor: not-allowed; }
+    .rp-hero .btn-hero i { color: #ffffff !important; }
+    /* Live pulse dot przy "Planer tras" gdy liczy */
+    .live-dot {
+        display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+        background: #4ade80; margin-right: 6px; vertical-align: middle;
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, .7);
+        animation: livePulse 1.6s infinite;
+    }
+    @keyframes livePulse {
+        0%   { box-shadow: 0 0 0 0 rgba(74,222,128,.65); }
+        70%  { box-shadow: 0 0 0 12px rgba(74,222,128,0); }
+        100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+    }
 
     /* ── Hero stats pill bar ─────────────────────────────────────────── */
     .stats-pill-bar {
-        display: flex; gap: 12px; flex-wrap: wrap;
+        display: none; gap: 12px; flex-wrap: wrap;
         margin-top: 16px; opacity: 0; transform: translateY(-8px);
         transition: opacity .4s, transform .4s;
     }
-    .stats-pill-bar.visible { opacity: 1; transform: translateY(0); }
+    .stats-pill-bar.visible {
+        display: flex; opacity: 1; transform: translateY(0);
+    }
     .stats-pill {
         background: rgba(255,255,255,.16); backdrop-filter: blur(12px);
         border: 1px solid rgba(255,255,255,.25); border-radius: 12px;
@@ -101,25 +145,43 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
     /* ── Waypoints ──────────────────────────────────────────────────── */
     .waypoint-row {
-        transition: background .2s; padding: 8px 4px;
-        border-radius: 8px;
+        transition: background .2s, transform .15s, box-shadow .15s;
+        padding: 10px 6px; border-radius: 10px;
+        position: relative;
     }
-    .waypoint-row + .waypoint-row { border-top: 1px dashed #e5e7eb; }
-    .waypoint-row.sortable-chosen { background: #eff6ff; }
+    .waypoint-row + .waypoint-row { border-top: 1px dashed #e5e7eb; margin-top: 4px; }
+    .waypoint-row:hover { background: linear-gradient(90deg, rgba(99,102,241,.04), transparent); }
+    .waypoint-row.sortable-chosen { background: #eff6ff; box-shadow: 0 4px 14px rgba(99,102,241,.18); transform: scale(1.01); }
     .waypoint-row .drag-handle { cursor: grab; color: #9ca3af; transition: color .15s; }
     .waypoint-row .drag-handle:hover { color: #4f46e5; }
+    .waypoint-row .drag-handle:active { cursor: grabbing; }
     .waypoint-marker {
-        width: 28px; height: 28px; border-radius: 50%;
+        width: 30px; height: 30px; border-radius: 50%;
         display: inline-flex; align-items: center; justify-content: center;
-        color: white; font-weight: 700; font-size: .72rem; flex-shrink: 0;
-        box-shadow: 0 2px 6px rgba(0,0,0,.15);
+        color: white; font-weight: 700; font-size: .74rem; flex-shrink: 0;
+        box-shadow: 0 3px 8px rgba(0,0,0,.18);
+        position: relative;
     }
-    .marker-origin { background: linear-gradient(135deg, #16a34a, #15803d); }
-    .marker-via    { background: linear-gradient(135deg, #f59e0b, #d97706); }
-    .marker-dest   { background: linear-gradient(135deg, #dc2626, #b91c1c); }
-    .waypoint-flag { font-size: 1.1rem; line-height: 1; margin-left: 4px; }
-    .waypoint-input { border-radius: 8px; transition: border-color .15s, box-shadow .15s; }
+    .waypoint-marker::after {
+        content: ''; position: absolute; inset: -3px; border-radius: 50%;
+        background: inherit; opacity: .15; z-index: -1;
+    }
+    .marker-origin { background: linear-gradient(135deg, #22c55e, #15803d); }
+    .marker-via    { background: linear-gradient(135deg, #fbbf24, #d97706); }
+    .marker-dest   { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+    .waypoint-flag { font-size: 1.2rem; line-height: 1; margin-left: 4px; }
+    .waypoint-input {
+        border-radius: 8px; transition: border-color .15s, box-shadow .15s;
+        font-weight: 500;
+    }
     .waypoint-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+    .waypoint-date {
+        border-radius: 6px; border: 1px solid #e5e7eb; color: #6b7280;
+        background: #f9fafb; max-width: 200px;
+    }
+    .waypoint-date:focus { background: white; border-color: #6366f1; }
+    .wp-date-icon { font-size: 1rem; }
+    .wp-date-label { font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
 
     /* ── Autosuggest ────────────────────────────────────────────────── */
     .autosuggest-dropdown {
@@ -250,6 +312,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h2>
+                <span class="live-dot"></span>
                 <i class="ri-route-line me-2"></i><?= __('Planer tras') ?>
             </h2>
             <div class="subtitle">
@@ -476,17 +539,25 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
 <!-- Template dla waypoint -->
 <template id="waypoint-tpl">
-    <div class="waypoint-row d-flex align-items-center gap-2" style="position:relative">
-        <i class="ri-drag-move-2-line drag-handle"></i>
-        <span class="waypoint-marker">A</span>
-        <div class="flex-grow-1" style="position:relative">
-            <input type="text" class="form-control form-control-sm waypoint-input" autocomplete="off"
-                   placeholder="<?= __('Wpisz adres lub klik na mapę') ?>">
-            <div class="autosuggest-dropdown" style="display:none"></div>
+    <div class="waypoint-row" style="position:relative">
+        <div class="d-flex align-items-center gap-2">
+            <i class="ri-drag-move-2-line drag-handle"></i>
+            <span class="waypoint-marker">A</span>
+            <div class="flex-grow-1" style="position:relative">
+                <input type="text" class="form-control form-control-sm waypoint-input" autocomplete="off"
+                       placeholder="<?= __('Wpisz adres lub klik na mapę') ?>">
+                <div class="autosuggest-dropdown" style="display:none"></div>
+            </div>
+            <span class="waypoint-flag"></span>
+            <button type="button" class="btn btn-sm btn-link text-danger p-0 btn-remove-wp"
+                    title="<?= __('Usuń') ?>"><i class="ri-close-line"></i></button>
         </div>
-        <span class="waypoint-flag"></span>
-        <button type="button" class="btn btn-sm btn-link text-danger p-0 btn-remove-wp"
-                title="<?= __('Usuń') ?>"><i class="ri-close-line"></i></button>
+        <div class="d-flex align-items-center gap-2 mt-1 ps-4">
+            <i class="ri-calendar-event-line text-muted small wp-date-icon"></i>
+            <input type="datetime-local" class="form-control form-control-sm waypoint-date"
+                   style="font-size:.78rem;padding:.18rem .4rem">
+            <span class="text-muted wp-date-label" style="font-size:.7rem;min-width:70px">Załadunek</span>
+        </div>
     </div>
 </template>
 
@@ -663,6 +734,23 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             var flagEl = row.querySelector('.waypoint-flag');
             flagEl.textContent = flagEmoji(wp.country || '');
 
+            // Date input + label
+            var dateInput = row.querySelector('.waypoint-date');
+            var dateLabel = row.querySelector('.wp-date-label');
+            var dateIcon  = row.querySelector('.wp-date-icon');
+            dateInput.value = wp.date || '';
+            if (idx === 0) {
+                dateLabel.textContent = '<?= __('Wyjazd') ?>';
+                dateIcon.className = 'ri-arrow-up-circle-line text-success wp-date-icon';
+            } else if (idx === waypoints.length - 1) {
+                dateLabel.textContent = '<?= __('Dostawa') ?>';
+                dateIcon.className = 'ri-arrow-down-circle-line text-danger wp-date-icon';
+            } else {
+                dateLabel.textContent = '<?= __('Postój') ?>';
+                dateIcon.className = 'ri-time-line text-warning wp-date-icon';
+            }
+            dateInput.addEventListener('input', function () { wp.date = dateInput.value; });
+
             input.addEventListener('input', function () {
                 wp.address = input.value;
                 wp.lat = null; wp.lng = null; wp.country = '';
@@ -677,7 +765,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             });
             row.querySelector('.btn-remove-wp').addEventListener('click', function () {
                 if (waypoints.length <= 2) {
-                    waypoints[idx] = { address: '', lat: null, lng: null, country: '' };
+                    waypoints[idx] = { address: '', lat: null, lng: null, country: '', date: '' };
                 } else {
                     waypoints.splice(idx, 1);
                 }
@@ -826,7 +914,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (!coord) return;
         var lastIdx = waypoints.length - 1;
         var tmpLabel = '(' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5) + ')';
-        var newWp = { address: tmpLabel, label: tmpLabel, lat: coord.lat, lng: coord.lng, country: '' };
+        var newWp = { address: tmpLabel, label: tmpLabel, lat: coord.lat, lng: coord.lng, country: '', date: '' };
         var insertIdx;
         if (waypoints[lastIdx].lat == null && waypoints[lastIdx].lng == null) {
             insertIdx = lastIdx;
@@ -856,7 +944,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
     document.getElementById('btn-add-waypoint').addEventListener('click', function () {
         var lastIdx = waypoints.length - 1;
-        waypoints.splice(lastIdx, 0, { address: '', lat: null, lng: null, country: '' });
+        waypoints.splice(lastIdx, 0, { address: '', lat: null, lng: null, country: '', date: '' });
         renderWaypoints();
     });
     document.getElementById('btn-reverse').addEventListener('click', function () {
@@ -1124,27 +1212,43 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }
     }
 
+    // Count-up animation dla countera (650ms)
+    function animateCounter(el, targetValue, decimals, suffix) {
+        var num = Number(targetValue);
+        if (!isFinite(num) || num === 0) { el.textContent = '—'; return; }
+        decimals = decimals || 0;
+        var duration = 650;
+        var start = performance.now();
+        var initial = parseFloat((el.textContent || '0').replace(/[^\d.,-]/g, '').replace(',', '.')) || 0;
+        function step(now) {
+            var p = Math.min(1, (now - start) / duration);
+            var ease = 1 - Math.pow(1 - p, 3);
+            var v = initial + (num - initial) * ease;
+            el.textContent = fmtNum(v, decimals);
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
     function renderStatsBar(r) {
-        document.getElementById('stat-km').textContent = fmtNum(r.distance_km, 1);
+        animateCounter(document.getElementById('stat-km'), r.distance_km, 1);
+        // Czas - bez animacji, bo to string
         document.getElementById('stat-dur').textContent = fmtDur(r.duration_min);
         if (r.tolls_total !== null && r.tolls_total !== undefined) {
-            document.getElementById('stat-tolls').textContent = fmtNum(r.tolls_total, 2);
+            animateCounter(document.getElementById('stat-tolls'), r.tolls_total, 2);
             document.getElementById('stat-tolls-cur').textContent = r.tolls_currency || 'EUR';
         } else {
             document.getElementById('stat-tolls').textContent = '—';
         }
-        // Fuel + driver + CO2
         var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
         var price = parseFloat(document.getElementById('fuel-price').value || 0);
         var rate = parseFloat(document.getElementById('driver-rate').value || 0);
         var fuelCost = (r.distance_km / 100) * cons * price;
         var driverCost = (r.duration_min / 60) * rate;
         var liters = (r.distance_km / 100) * cons;
-        // 2.68 kg CO₂ per litr diesla (standardowy współczynnik DEFRA)
         var co2Kg = liters * 2.68;
-        document.getElementById('stat-fuel').textContent = fuelCost > 0 ? fmtNum(fuelCost, 2) : '—';
-        document.getElementById('stat-driver').textContent = driverCost > 0 ? fmtNum(driverCost, 2) : '—';
-        document.getElementById('stat-co2').textContent = co2Kg > 0 ? fmtNum(co2Kg, 1) : '—';
+        animateCounter(document.getElementById('stat-fuel'),   fuelCost, 2);
+        animateCounter(document.getElementById('stat-driver'), driverCost, 2);
+        animateCounter(document.getElementById('stat-co2'),    co2Kg, 1);
         document.getElementById('stats-bar').classList.add('visible');
     }
     ['fuel-consumption','fuel-price','driver-rate'].forEach(function (id) {
@@ -1407,6 +1511,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 lat:     w.lat != null ? Number(w.lat) : null,
                 lng:     w.lng != null ? Number(w.lng) : null,
                 country: w.country || '',
+                date:    w.date    || '',
             };
         });
         if (item.vehicle_id) {
@@ -1506,8 +1611,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
     // ─── Init + Share URL load ───────────────────────────────────────
     waypoints = [
-        { address: '', lat: null, lng: null, country: '' },
-        { address: '', lat: null, lng: null, country: '' },
+        { address: '', lat: null, lng: null, country: '', date: '' },
+        { address: '', lat: null, lng: null, country: '', date: '' },
     ];
 
     // Wczytaj z ?r=encoded jeśli jest

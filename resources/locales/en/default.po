@@ -2325,3 +2325,12 @@ msgstr "CO₂"
 
 msgid "Etapy"
 msgstr "Legs"
+
+msgid "Wyjazd"
+msgstr "Departure"
+
+msgid "Postój"
+msgstr "Stop"
+
+msgid "Dostawa"
+msgstr "Delivery"
