@@ -259,6 +259,39 @@ msgstr "Delivered"
 msgid "Granica"
 msgstr "Border"
 
+msgid "Live Tracking"
+msgstr "Live Tracking"
+
+msgid "Oczekuje"
+msgstr "Waiting"
+
+msgid "W drodze"
+msgstr "In transit"
+
+msgid "Symulowana prędkość"
+msgstr "Simulated speed"
+
+msgid "Przewidywany czas dostawy"
+msgstr "Estimated delivery time"
+
+msgid "Ostatnia aktualizacja"
+msgstr "Last update"
+
+msgid "Tablica"
+msgstr "Plate"
+
+msgid "Przewoźnik"
+msgstr "Carrier"
+
+msgid "Planowo"
+msgstr "Planned"
+
+msgid "Faktyczny"
+msgstr "Actual"
+
+msgid "dni"
+msgstr "days"
+
 msgid "Plan"
 msgstr "Plan"
 

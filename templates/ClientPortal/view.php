@@ -140,7 +140,80 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .kpi-tile .kpi-sub   { font-size:.72rem; color: var(--text-muted); opacity:.8; }
 
 /* ── Route bar ── delikatny gradient w odcieniach primary, w dark mode ciemniejszy */
-.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 0; padding:1.5rem 1.25rem 2rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:.75rem; }
+.route-bar { display:flex; align-items:center; gap:0; padding:1.5rem 1.25rem 2.2rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:0 0 .75rem .75rem; position:relative; overflow:hidden; }
+/* Grain / noise texture na route-bar — premium feel */
+.route-bar::after {
+    content:'';
+    position:absolute; inset:0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+    border-radius:inherit;
+    pointer-events:none;
+    opacity:.5;
+    mix-blend-mode:multiply;
+    z-index:0;
+}
+/* Wszystkie dzieci route-bar powyżej grain'u */
+.route-bar > * { position:relative; z-index:1; }
+
+/* ── Header brand'u nad route-bar ── */
+.route-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:.4rem .9rem;
+    margin-top:.5rem;
+    background:linear-gradient(135deg, #1f2937 0%, #374151 100%);
+    color:#f3f4f6;
+    border-radius:.75rem .75rem 0 0;
+    font-size:.7rem;
+    letter-spacing:.02em;
+    border:1px solid var(--default-border);
+    border-bottom:none;
+}
+.route-brand {
+    display:inline-flex; align-items:center; gap:.4rem;
+}
+.route-brand i { color:#22c55e; font-size:.95rem; animation: brand-radar 2s ease-out infinite; }
+@keyframes brand-radar {
+    0%,100% { opacity:.8; }
+    50%     { opacity:1; filter:drop-shadow(0 0 4px rgba(34,197,94,.6)); }
+}
+.route-brand-name { font-weight:700; letter-spacing:.03em; }
+.route-brand-sub {
+    opacity:.55;
+    font-size:.6rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    margin-left:.2rem;
+}
+.route-live-indicator {
+    display:inline-flex; align-items:center; gap:.4rem;
+    font-weight:600;
+    font-size:.65rem;
+    padding:.1rem .45rem;
+    border-radius:1rem;
+    background:rgba(255,255,255,.08);
+}
+.live-dot {
+    width:8px; height:8px;
+    border-radius:50%;
+    background:#6b7280;
+    flex-shrink:0;
+}
+.route-live-1 .live-dot { background:#9ca3af; }
+.route-live-2 .live-dot { background:#0ea5e9; }
+.route-live-3 .live-dot {
+    background:#22c55e;
+    box-shadow:0 0 0 0 rgba(34,197,94,.7);
+    animation: live-pulse 1.4s ease-out infinite;
+}
+.route-live-4 .live-dot, .route-live-5 .live-dot { background:#22c55e; }
+@keyframes live-pulse {
+    0%   { box-shadow:0 0 0 0   rgba(34,197,94,.7); }
+    70%  { box-shadow:0 0 0 8px rgba(34,197,94,0); }
+    100% { box-shadow:0 0 0 0   rgba(34,197,94,0); }
+}
+.route-bar-wrapper { display:flex; flex-direction:column; margin:.5rem 0 0; }
 [data-theme-mode="dark"] .route-bar { background: linear-gradient(135deg, rgba(var(--primary-rgb), .18) 0%, rgba(34, 197, 94, .15) 100%); }
 .route-node { flex-shrink:0; min-width:180px; }
 .route-node .rn-flag    { font-size:1.6rem; line-height:1; }
@@ -465,26 +538,57 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     z-index:1;
     pointer-events:none;
 }
-/* ── Badge kierowcy (statyczny pod route-line) ── */
-.driver-name-badge {
+/* ── Cień ciężarówki na drodze ── */
+.route-line-truck .truck-shadow {
     position:absolute;
-    top:calc(100% + 12px);
+    bottom:0;
+    left:8%; right:8%;
+    height:10px;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.35) 0%, transparent 70%);
+    border-radius:50%;
+    z-index:-1;
+    filter:blur(2px);
+}
+/* ── Telemetry panel (live indicator pod route-line) ── */
+.telemetry-panel {
+    position:absolute;
+    top:calc(100% + 14px);
     left:50%;
     transform:translateX(-50%);
-    display:inline-flex;
-    gap:.3rem;
-    align-items:center;
-    background:rgba(31,41,55,.85);
-    color:#f3f4f6;
-    padding:.15rem .5rem;
-    border-radius:.3rem;
+    display:flex;
+    gap:.85rem;
+    padding:.3rem .75rem;
+    background:rgba(17,24,39,.94);
+    color:#e5e7eb;
+    border-radius:.4rem;
     font-size:.65rem;
     font-weight:600;
     white-space:nowrap;
     z-index:3;
-    box-shadow:0 2px 4px rgba(0,0,0,.15);
+    box-shadow:0 4px 12px rgba(0,0,0,.22);
+    border:1px solid rgba(99,102,241,.25);
 }
-.driver-name-badge i { opacity:.7; font-size:.85em; }
+.t-item { display:inline-flex; align-items:center; gap:.3rem; }
+.t-item i { color:#a5b4fc; font-size:.85rem; opacity:.9; }
+.t-item .t-value { font-weight:700; color:#fff; letter-spacing:.02em; }
+.t-item .t-unit  { opacity:.55; font-weight:500; margin-left:.05rem; }
+.t-divider {
+    width:1px;
+    background:rgba(255,255,255,.15);
+    margin:0 -.2rem;
+}
+.t-update {
+    color:#86efac;
+    font-size:.6rem;
+}
+.t-update .update-dot {
+    width:5px; height:5px;
+    background:#22c55e;
+    border-radius:50%;
+    display:inline-block;
+    margin-right:.2rem;
+    animation: live-pulse 1.4s ease-out infinite;
+}
 /* ── Granica kraju (gdy load_country != unload_country) ── */
 .border-crossing {
     position:absolute;
@@ -711,6 +815,57 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 <!-- ROUTE BAR                                                              -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <?php if ($loadCity || $unloadCity || $loadCountry || $unloadCountry): ?>
+<?php
+    // Live tracking status labels dla headera
+    $liveLabels = [
+        1 => __('Oczekuje'),
+        2 => __('Zaplanowane'),
+        3 => __('W drodze'),
+        4 => __('Dostarczone'),
+        5 => __('Zafakturowane'),
+    ];
+    $liveLabel = $liveLabels[$effective] ?? __('Aktywne');
+
+    // Pseudo-realistyczna prędkość 65-92 km/h (random per render)
+    // Aby nie skakała przy każdym refreshu, seed na order ID + dzień.
+    $speedSeed = (int)$order->id + (int)date('Ymd');
+    mt_srand($speedSeed);
+    $mockSpeed = mt_rand(68, 89);
+    mt_srand();
+
+    // ETA: ile zostało do date_delivery
+    $etaText = null;
+    if (!empty($order->date_delivery) && $effective === 3) {
+        try {
+            $dlv = $order->date_delivery instanceof \DateTimeInterface
+                ? $order->date_delivery
+                : new \DateTimeImmutable(substr((string)$order->date_delivery, 0, 10));
+            $diff = $dlv->getTimestamp() - time();
+            if ($diff > 0) {
+                $hours = (int)floor($diff / 3600);
+                $minutes = (int)floor(($diff % 3600) / 60);
+                if ($hours >= 24) {
+                    $days = (int)floor($hours / 24);
+                    $etaText = $days . ' ' . __('dni');
+                } elseif ($hours > 0) {
+                    $etaText = $hours . 'h ' . $minutes . 'm';
+                } else {
+                    $etaText = $minutes . ' min';
+                }
+            }
+        } catch (\Throwable) {}
+    }
+?>
+<div class="route-header">
+    <span class="route-brand">
+        <i class="ri-broadcast-line"></i>
+        <span class="route-brand-name">Booklio TMS</span>
+        <span class="route-brand-sub"><?= __('Live Tracking') ?></span>
+    </span>
+    <span class="route-live-indicator route-live-<?= (int)$effective ?>">
+        <span class="live-dot"></span><?= h($liveLabel) ?>
+    </span>
+</div>
 <div class="route-bar shadow-sm mb-3">
     <div class="route-node">
         <div class="d-flex align-items-center gap-2">
@@ -764,13 +919,25 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         <div class="route-line-progress" style="<?= $effective >= 4 ? '' : 'width:' . $progressPct . '%' ?>"></div>
         <!-- Magazyn nadawcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
-            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>" title="<?= __('Załadunek') ?>">
+            <?php
+                $originTooltip = [__('Załadunek')];
+                if ($loadCity)    $originTooltip[] = $loadCity . ($loadCountry ? ' (' . $loadCountry . ')' : '');
+                if ($order->date_deadline) $originTooltip[] = __('Planowo') . ': ' . $fdate($order->date_deadline);
+                if (!empty($order->actual_load_at)) $originTooltip[] = __('Faktyczny') . ': ' . $fdatetime($order->actual_load_at);
+            ?>
+            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>" title="<?= h(implode("\n", $originTooltip)) ?>">
                 <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
             </span>
         <?php endif; ?>
         <!-- Magazyn odbiorcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
-            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>" title="<?= __('Rozładunek') ?>">
+            <?php
+                $destTooltip = [__('Rozładunek')];
+                if ($unloadCity)    $destTooltip[] = $unloadCity . ($unloadCountry ? ' (' . $unloadCountry . ')' : '');
+                if ($order->date_delivery) $destTooltip[] = __('Planowo') . ': ' . $fdate($order->date_delivery);
+                if (!empty($order->actual_unload_at)) $destTooltip[] = __('Faktyczny') . ': ' . $fdatetime($order->actual_unload_at);
+            ?>
+            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>" title="<?= h(implode("\n", $destTooltip)) ?>">
                 <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
             </span>
         <?php endif; ?>
@@ -794,7 +961,18 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             $plateText  = trim((string)($order->vehicle_reg ?? ''));
         ?>
         <?php if ($effective >= 2): ?>
-            <span class="route-line-truck truck-state-<?= (int)$effective ?>" aria-label="<?= h($nlCurrent['label']) ?>">
+            <?php
+                // Tooltip dla głównego trucka
+                $truckTooltip = [];
+                if ($plateText !== '')   $truckTooltip[] = __('Tablica') . ': ' . strtoupper($plateText);
+                if ($driverName !== '')  $truckTooltip[] = __('Kierowca') . ': ' . $driverName;
+                if ($order->carrier)     $truckTooltip[] = __('Przewoźnik') . ': ' . (string)$order->carrier;
+                $truckTooltip[] = __('Status') . ': ' . $nlCurrent['label'];
+            ?>
+            <span class="route-line-truck truck-state-<?= (int)$effective ?>"
+                  aria-label="<?= h($nlCurrent['label']) ?>"
+                  title="<?= h(implode("\n", $truckTooltip)) ?>">
+                <span class="truck-shadow" aria-hidden="true"></span>
                 <img src="/assets/img/truck.png" alt="" class="truck-img">
                 <?php if ($plateText !== ''): ?>
                     <span class="truck-plate"><?= h(strtoupper($plateText)) ?></span>
@@ -811,10 +989,35 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             </span>
         <?php endif; ?>
         <?php if ($hasPodFile): ?><span class="route-pod">POD ✓</span><?php endif; ?>
-        <!-- Badge kierowcy (statyczny pod trasą) -->
-        <?php if ($effective >= 2 && $driverName !== ''): ?>
-            <div class="driver-name-badge">
-                <i class="ri-user-line"></i><?= h($driverName) ?>
+        <!-- Telemetry panel: prędkość / ETA / kierowca / update -->
+        <?php if ($effective >= 2 && ($driverName !== '' || $effective === 3)): ?>
+            <div class="telemetry-panel">
+                <?php if ($effective === 3): ?>
+                    <span class="t-item" title="<?= __('Symulowana prędkość') ?>">
+                        <i class="ri-speed-up-line"></i>
+                        <span class="t-value"><?= $mockSpeed ?></span><span class="t-unit">km/h</span>
+                    </span>
+                    <span class="t-divider"></span>
+                <?php endif; ?>
+                <?php if ($etaText !== null): ?>
+                    <span class="t-item" title="<?= __('Przewidywany czas dostawy') ?>">
+                        <i class="ri-time-line"></i>
+                        <span class="t-value">ETA</span><span class="t-unit"><?= h($etaText) ?></span>
+                    </span>
+                    <span class="t-divider"></span>
+                <?php endif; ?>
+                <?php if ($driverName !== ''): ?>
+                    <span class="t-item" title="<?= __('Kierowca') ?>">
+                        <i class="ri-user-line"></i>
+                        <span class="t-value"><?= h($driverName) ?></span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($effective === 3): ?>
+                    <span class="t-divider"></span>
+                    <span class="t-update" title="<?= __('Ostatnia aktualizacja') ?>">
+                        <span class="update-dot"></span><?= date('H:i') ?>
+                    </span>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
     </div>
