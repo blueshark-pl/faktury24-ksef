@@ -70,6 +70,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 <div class="row g-3">
     <!-- ── LEWA KOLUMNA: PARAMETRY ──────────────────────────────────────── -->
     <div class="col-lg-4">
+        <div class="card shadow-sm mb-3" id="recent-card" style="<?= empty($recentSearches) ? 'display:none' : '' ?>">
+            <div class="card-header py-2 d-flex align-items-center">
+                <strong><i class="ri-history-line me-1"></i><?= __('Ostatnie trasy') ?></strong>
+                <span class="badge bg-secondary-subtle text-secondary border ms-2" style="font-size:.65em" id="recent-count"><?= count($recentSearches ?? []) ?></span>
+                <button type="button" class="btn btn-sm btn-link p-0 ms-auto text-muted small" id="btn-toggle-recent" title="<?= __('Zwiń/rozwiń') ?>">
+                    <i class="ri-arrow-up-s-line"></i>
+                </button>
+            </div>
+            <div class="card-body p-0" id="recent-body">
+                <div style="max-height:260px;overflow-y:auto" id="recent-list"></div>
+            </div>
+        </div>
+
         <div class="card shadow-sm">
             <div class="card-header py-2 d-flex align-items-center">
                 <strong><i class="ri-map-pin-line me-1"></i><?= __('Punkty trasy') ?></strong>
@@ -233,6 +246,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     var calcUrl = <?= json_encode($calcUrl) ?>;
     var autoUrl = <?= json_encode($autoUrl) ?>;
     var csrf    = <?= json_encode($csrf) ?>;
+    var recentSearches = <?= json_encode($recentSearches ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    var deleteRecentUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'deleteRecent', '__ID__']) ?>';
 
     // HERE Maps init
     var platform = new H.service.Platform({ apikey: hereKey });
@@ -642,6 +657,37 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 renderPinsOnMap();
             }
             renderResult(res.data);
+            // Update history — optymistycznie wstaw/aktualizuj nowy entry na górze
+            if (res.data.points && res.data.routes && res.data.routes[0]) {
+                var newEntry = {
+                    id: 'tmp-' + Date.now(),
+                    waypoints: res.data.points.map(function (p) {
+                        return { address: p.address || p.label, label: p.label || p.address, lat: p.lat, lng: p.lng };
+                    }),
+                    vehicle_id: vehicleId,
+                    distance_km: res.data.routes[0].distance_km,
+                    duration_min: res.data.routes[0].duration_min,
+                    tolls_total: res.data.routes[0].tolls_total,
+                    tolls_currency: res.data.routes[0].tolls_currency,
+                    last_used: new Date().toISOString(),
+                };
+                // Dedup po sygnaturze (lat/lng zaokr. + vehicle)
+                var sigOf = function (s) {
+                    return (s.waypoints || []).map(function (w) {
+                        return (w.lat == null ? '?' : Number(w.lat).toFixed(4)) + ',' + (w.lng == null ? '?' : Number(w.lng).toFixed(4));
+                    }).join('|') + '|v:' + (s.vehicle_id || '');
+                };
+                var sigNew = sigOf(newEntry);
+                recentSearches = recentSearches.filter(function (s) { return sigOf(s) !== sigNew; });
+                recentSearches.unshift(newEntry);
+                if (recentSearches.length > 10) recentSearches = recentSearches.slice(0, 10);
+                // Pokaż kartę jeśli była ukryta
+                var rc = document.getElementById('recent-card');
+                if (rc) rc.style.display = '';
+                // Jeśli kart w ogóle nie ma w DOM (server-rendered tylko gdy !empty($recentSearches)),
+                // przeładujemy stronę przy następnej kalkulacji — póki co po prostu pomijamy.
+                renderRecent();
+            }
         })
         .catch(function (e) { alert('<?= __('Błąd sieci') ?>: ' + e.message); })
         .finally(function () {
@@ -650,11 +696,112 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         });
     });
 
+    // ── Recent searches (z bazy) ────────────────────────────────────────
+    function timeAgo(iso) {
+        if (!iso) return '';
+        try {
+            var d = new Date(iso);
+            var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+            if (diff < 60)    return diff + ' s temu';
+            if (diff < 3600)  return Math.floor(diff / 60) + ' min temu';
+            if (diff < 86400) return Math.floor(diff / 3600) + ' h temu';
+            if (diff < 604800) return Math.floor(diff / 86400) + ' d temu';
+            return d.toLocaleDateString('pl-PL');
+        } catch (e) { return ''; }
+    }
+    function shortLabel(addr) {
+        if (!addr) return '?';
+        // Zostaw pierwszą część przed przecinkiem
+        var first = addr.split(',')[0];
+        return first.length > 26 ? first.substring(0, 24) + '…' : first;
+    }
+    function renderRecent() {
+        var list = document.getElementById('recent-list');
+        var card = document.getElementById('recent-card');
+        var cnt  = document.getElementById('recent-count');
+        if (!list) return;
+        if (cnt) cnt.textContent = String(recentSearches.length);
+        if (!recentSearches.length) {
+            if (card) card.style.display = 'none';
+            return;
+        }
+        if (card) card.style.display = '';
+        list.innerHTML = recentSearches.map(function (s) {
+            var wps = (s.waypoints || []).map(shortLabel).join(' → ');
+            var meta = '';
+            if (s.distance_km) meta += fmtNum(s.distance_km, 1) + ' km';
+            if (s.duration_min) meta += (meta ? ' · ' : '') + fmtDur(s.duration_min);
+            if (s.tolls_total != null) meta += (meta ? ' · ' : '') + fmtNum(s.tolls_total, 2) + ' ' + (s.tolls_currency || 'EUR');
+            return '<div class="recent-item d-flex align-items-center gap-2 px-3 py-2 border-bottom" data-id="' + s.id + '" style="cursor:pointer">'
+                + '<div class="flex-grow-1 min-width-0">'
+                +   '<div class="small fw-semibold text-truncate">' + escapeHtml(wps) + '</div>'
+                +   '<div class="text-muted" style="font-size:.7rem">' + meta + ' · ' + timeAgo(s.last_used) + '</div>'
+                + '</div>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 btn-del-recent" title="<?= __('Usuń z historii') ?>" data-id="' + s.id + '"><i class="ri-close-line"></i></button>'
+                + '</div>';
+        }).join('');
+
+        list.querySelectorAll('.recent-item').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                if (e.target.closest('.btn-del-recent')) return;
+                var id = el.dataset.id;
+                var item = recentSearches.find(function (x) { return x.id === id; });
+                if (!item) return;
+                // Wypełnij waypoints
+                waypoints = (item.waypoints || []).map(function (w) {
+                    return {
+                        address: w.address || w.label || '',
+                        label:   w.label   || w.address || '',
+                        lat:     w.lat != null ? Number(w.lat) : null,
+                        lng:     w.lng != null ? Number(w.lng) : null,
+                    };
+                });
+                if (item.vehicle_id) {
+                    var sel = document.getElementById('vehicle-id');
+                    if (sel) sel.value = item.vehicle_id;
+                }
+                renderWaypoints();
+                renderPinsOnMap();
+                // Auto-recalc dla świeżych danych
+                document.getElementById('btn-calc').click();
+            });
+        });
+        list.querySelectorAll('.btn-del-recent').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var id = btn.dataset.id;
+                if (!confirm('<?= __('Usunąć z historii?') ?>')) return;
+                fetch(deleteRecentUrlTpl.replace('__ID__', encodeURIComponent(id)), {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+                }).then(function () {
+                    recentSearches = recentSearches.filter(function (x) { return x.id !== id; });
+                    renderRecent();
+                });
+            });
+        });
+    }
+    var btnToggleRecent = document.getElementById('btn-toggle-recent');
+    if (btnToggleRecent) {
+        btnToggleRecent.addEventListener('click', function () {
+            var body = document.getElementById('recent-body');
+            var ic = btnToggleRecent.querySelector('i');
+            if (body.style.display === 'none') {
+                body.style.display = '';
+                ic.className = 'ri-arrow-up-s-line';
+            } else {
+                body.style.display = 'none';
+                ic.className = 'ri-arrow-down-s-line';
+            }
+        });
+    }
+
     // ── Init: 2 puste waypoints ─────────────────────────────────────────
     waypoints = [
         { address: '', lat: null, lng: null },
         { address: '', lat: null, lng: null },
     ];
     renderWaypoints();
+    renderRecent();
 })();
 </script>

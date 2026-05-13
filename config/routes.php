@@ -218,6 +218,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/trasy',                      ['controller' => 'RoutePlanner', 'action' => 'index']);
         $builder->connect('/trasy/calculate',        ['controller' => 'RoutePlanner', 'action' => 'calculate']);
         $builder->get('/trasy/autosuggest',          ['controller' => 'RoutePlanner', 'action' => 'autosuggest']);
+        $builder->post('/trasy/historia/usun/{id}',  ['controller' => 'RoutePlanner', 'action' => 'deleteRecent'])
+            ->setPass(['id']);
         $builder->get('/trasy/zlecenie/{orderId}',   ['controller' => 'RoutePlanner', 'action' => 'forOrder'])
             ->setPass(['orderId']);
 

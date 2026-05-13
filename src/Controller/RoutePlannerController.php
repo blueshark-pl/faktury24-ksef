@@ -32,7 +32,9 @@ class RoutePlannerController extends AppController
 
     public function index(): void
     {
-        $companyId = (string)($this->request->getAttribute('identity')?->get('company_id') ?? '');
+        $identity = $this->request->getAttribute('identity');
+        $userId = (string)($identity?->getIdentifier() ?? '');
+        $companyId = (string)($identity?->get('company_id') ?? '');
         $vehicles = [];
         if ($companyId !== '') {
             $vehicles = $this->fetchTable('Vehicles')->find()
@@ -42,8 +44,103 @@ class RoutePlannerController extends AppController
                 ->all()
                 ->toArray();
         }
+
+        // Ostatnie wyszukania (per user, top 10 po last_used)
+        $recentSearches = [];
+        if ($userId !== '') {
+            $rows = $this->fetchTable('RouteSearches')->find()
+                ->where(['user_id' => $userId])
+                ->orderByDesc('last_used')
+                ->limit(10)
+                ->all();
+            foreach ($rows as $r) {
+                $waypoints = json_decode((string)$r->waypoints_json, true) ?: [];
+                $recentSearches[] = [
+                    'id'             => (string)$r->id,
+                    'waypoints'      => $waypoints,
+                    'vehicle_id'     => (string)($r->vehicle_id ?? ''),
+                    'distance_km'    => $r->distance_km !== null ? (float)$r->distance_km : null,
+                    'duration_min'   => $r->duration_min !== null ? (int)$r->duration_min : null,
+                    'tolls_total'    => $r->tolls_total !== null ? (float)$r->tolls_total : null,
+                    'tolls_currency' => (string)($r->tolls_currency ?? ''),
+                    'last_used'      => $r->last_used instanceof \DateTimeInterface ? $r->last_used->format('c') : null,
+                ];
+            }
+        }
+
         $hereApiKey = (string)\Cake\Core\Configure::read('Here.apiKey');
-        $this->set(compact('vehicles', 'hereApiKey'));
+        $this->set(compact('vehicles', 'hereApiKey', 'recentSearches'));
+    }
+
+    public function deleteRecent(string $id): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post', 'delete']);
+        $userId = (string)($this->request->getAttribute('identity')?->getIdentifier() ?? '');
+        $this->fetchTable('RouteSearches')->deleteAll(['id' => $id, 'user_id' => $userId]);
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true]));
+    }
+
+    private function saveRouteSearch(array $points, string $vehicleId, array $firstRoute): void
+    {
+        $identity = $this->request->getAttribute('identity');
+        $userId = (string)($identity?->getIdentifier() ?? '');
+        if ($userId === '') return;
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        // Sygnatura: lat/lng zaokr. do 4 miejsc + vehicle_id
+        $sigParts = [];
+        foreach ($points as $p) {
+            $sigParts[] = number_format((float)($p['lat'] ?? 0), 4, '.', '') . ',' . number_format((float)($p['lng'] ?? 0), 4, '.', '');
+        }
+        $sigParts[] = 'v:' . $vehicleId;
+        $signature = sha1(implode('|', $sigParts));
+
+        $waypointsClean = array_map(function ($p) {
+            return [
+                'address' => (string)($p['address'] ?? $p['label'] ?? ''),
+                'label'   => (string)($p['label']   ?? $p['address'] ?? ''),
+                'lat'     => isset($p['lat']) ? (float)$p['lat'] : null,
+                'lng'     => isset($p['lng']) ? (float)$p['lng'] : null,
+            ];
+        }, $points);
+
+        $Searches = $this->fetchTable('RouteSearches');
+        $existing = $Searches->find()->where(['user_id' => $userId, 'signature' => $signature])->first();
+        if ($existing) {
+            $existing->waypoints_json = json_encode($waypointsClean, JSON_UNESCAPED_UNICODE);
+            $existing->distance_km    = $firstRoute['distance_km'] ?? null;
+            $existing->duration_min   = $firstRoute['duration_min'] ?? null;
+            $existing->tolls_total    = $firstRoute['tolls_total']  ?? null;
+            $existing->tolls_currency = $firstRoute['tolls_currency'] ?? null;
+            $Searches->save($existing);
+            return;
+        }
+        $entity = $Searches->newEntity([
+            'id'             => \Cake\Utility\Text::uuid(),
+            'user_id'        => $userId,
+            'company_id'     => $companyId ?: null,
+            'waypoints_json' => json_encode($waypointsClean, JSON_UNESCAPED_UNICODE),
+            'vehicle_id'     => $vehicleId !== '' ? $vehicleId : null,
+            'distance_km'    => $firstRoute['distance_km'] ?? null,
+            'duration_min'   => $firstRoute['duration_min'] ?? null,
+            'tolls_total'    => $firstRoute['tolls_total']  ?? null,
+            'tolls_currency' => $firstRoute['tolls_currency'] ?? null,
+            'signature'      => $signature,
+        ]);
+        $Searches->save($entity);
+
+        // Limit do 50 ostatnich per user — usuwamy starsze
+        $extra = $Searches->find()
+            ->where(['user_id' => $userId])
+            ->orderByDesc('last_used')
+            ->offset(50)
+            ->limit(1000)
+            ->all();
+        foreach ($extra as $row) {
+            $Searches->delete($row);
+        }
     }
 
     public function calculate(): Response
@@ -120,7 +217,16 @@ class RoutePlannerController extends AppController
                 'departureTime'      => $departure !== '' ? $departure : null,
             ]);
 
-            $result['points'] = array_merge([$origin], $vias, [$dest]);
+            $allPoints = array_merge([$origin], $vias, [$dest]);
+            $result['points'] = $allPoints;
+
+            // Auto-zapis do historii (best-effort, błąd nie blokuje response)
+            try {
+                $firstRoute = $result['routes'][0] ?? [];
+                $this->saveRouteSearch($allPoints, $vehicleId, $firstRoute);
+            } catch (\Throwable $e) {
+                \Cake\Log\Log::warning('RouteSearch save failed: ' . $e->getMessage());
+            }
 
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode($result, JSON_UNESCAPED_UNICODE));

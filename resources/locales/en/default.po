@@ -2145,3 +2145,15 @@ msgstr "Point #"
 
 msgid " jest pusty."
 msgstr " is empty."
+
+msgid "Ostatnie trasy"
+msgstr "Recent routes"
+
+msgid "Zwiń/rozwiń"
+msgstr "Collapse/expand"
+
+msgid "Usuń z historii"
+msgstr "Remove from history"
+
+msgid "Usunąć z historii?"
+msgstr "Remove from history?"
