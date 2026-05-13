@@ -638,6 +638,7 @@ class CompaniesController extends AppController
             'currency' => 'Faktura walutowa',
             'margin' => 'Faktura marża',
             'proforma' => 'Faktura proforma',
+            'credit_note' => 'Nota uznaniowa',
             'advance' => 'Faktura zaliczkowa',
             'correction' => 'Faktura korygująca',
             'internal' => 'Dowód wewnętrzny',
