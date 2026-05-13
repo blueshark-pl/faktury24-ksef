@@ -693,6 +693,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         $diskPath = WWW_ROOT . ltrim($hdrAvatarUrl, '/');
                                         if (is_file($diskPath)) {
                                             $hdrAvatarUrl .= '?v=' . filemtime($diskPath);
+                                        } else {
+                                            // Plik pod URL z bazy fizycznie nie istnieje (np. nie zsynchronizowany
+                                            // na prod) — pomijamy, żeby browser nie generował 404 + nie zaśmiecał logu.
+                                            $hdrAvatarUrl = null;
                                         }
                                     }
                                 }
@@ -1844,7 +1848,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 ->where(['id' => (string)$idForAvatar->getIdentifier()])
                 ->disableHydration()
                 ->first();
-            $myAv = $r['avatar'] ?? null;
+            $_av = $r['avatar'] ?? null;
+            // Zapisz do localStorage tylko jeśli plik fizycznie istnieje — żeby ekran
+            // logowania nie próbował wczytać brakującego avatara i nie generował 404.
+            if ($_av && str_starts_with((string)$_av, '/files/avatars/')) {
+                $diskPath = WWW_ROOT . ltrim((string)$_av, '/');
+                if (is_file($diskPath)) {
+                    $myAv = (string)$_av;
+                }
+            } elseif ($_av) {
+                $myAv = (string)$_av;
+            }
         } catch (\Throwable) {}
     ?>
     <script>

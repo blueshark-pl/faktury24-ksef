@@ -484,10 +484,20 @@ class AppController extends Controller
                 $name = (string)$row['email'];
             }
 
+            // Avatar URL — wyzeruj jeśli plik fizycznie nie istnieje (np. nie zsynchronizowany
+            // na prod), żeby template wyświetlił inicjały zamiast generować 404 w browserze.
+            $avatar = !empty($row['avatar']) ? (string)$row['avatar'] : null;
+            if ($avatar && str_starts_with($avatar, '/files/avatars/')) {
+                $diskPath = WWW_ROOT . ltrim($avatar, '/');
+                if (!is_file($diskPath)) {
+                    $avatar = null;
+                }
+            }
+
             return [
                 'name'          => $name,
                 'email'         => (string)$row['email'],
-                'avatar'        => !empty($row['avatar']) ? (string)$row['avatar'] : null,
+                'avatar'        => $avatar,
                 'phone'         => !empty($row['phone'])  ? (string)$row['phone']  : null,
                 'is_substitute' => (bool)$profile->is_substitute_active,
             ];

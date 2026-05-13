@@ -39,6 +39,8 @@ try {
             $diskPath = WWW_ROOT . ltrim($avatarUrl, '/');
             if (is_file($diskPath)) {
                 $avatarUrl .= '?v=' . filemtime($diskPath);
+            } else {
+                $avatarUrl = null;
             }
         }
     }

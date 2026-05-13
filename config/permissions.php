@@ -137,10 +137,13 @@ return [
             'plugin' => 'CakeDC/Users',
             'controller' => 'Users',
             'action' => 'resetOneTimePasswordAuthenticator',
-            'allowed' => function (array $user, $role, \Cake\Http\ServerRequest $request) {
+            'allowed' => function ($user, $role, \Cake\Http\ServerRequest $request) {
                 $userId = \Cake\Utility\Hash::get($request->getAttribute('params'), 'pass.0');
-                if (!empty($userId) && !empty($user)) {
-                    return $userId === $user['id'];
+                $currentId = is_array($user)
+                    ? ($user['id'] ?? null)
+                    : ($user?->id ?? null);
+                if (!empty($userId) && !empty($currentId)) {
+                    return $userId === $currentId;
                 }
 
                 return false;
@@ -541,9 +544,11 @@ return [
             'role'       => 'client',
             'controller' => 'Invoices',
             'action'     => 'print',
-            'allowed'    => function (array $user, $role, \Cake\Http\ServerRequest $request) {
+            'allowed'    => function ($user, $role, \Cake\Http\ServerRequest $request) {
                 $invoiceId = \Cake\Utility\Hash::get($request->getAttribute('params'), 'pass.0');
-                $userId    = $user['id'] ?? null;
+                $userId    = is_array($user)
+                    ? ($user['id'] ?? null)
+                    : ($user?->id ?? null);
                 if (!$invoiceId || !$userId) {
                     return false;
                 }

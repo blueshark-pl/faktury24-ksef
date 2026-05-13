@@ -107,9 +107,19 @@ class AdminUsersController extends AppController
                 ->disableHydration()
                 ->all();
             foreach ($rows as $r) {
-                if (!empty($r['avatar'])) {
-                    $avatarMap[(string)$r['id']] = (string)$r['avatar'];
+                if (empty($r['avatar'])) {
+                    continue;
                 }
+                $url = (string)$r['avatar'];
+                // Pomiń URL, jeśli plik fizycznie nie istnieje — żeby browser nie generował 404
+                // i nie zaśmiecał logu MissingControllerException.
+                if (str_starts_with($url, '/files/avatars/')) {
+                    $diskPath = WWW_ROOT . ltrim($url, '/');
+                    if (!is_file($diskPath)) {
+                        continue;
+                    }
+                }
+                $avatarMap[(string)$r['id']] = $url;
             }
         }
 
