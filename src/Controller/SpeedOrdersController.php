@@ -925,25 +925,39 @@ class SpeedOrdersController extends AppController
         $reqNote   = $reqNote   !== '' ? $reqNote   : null;
 
         // Zmiana statusu operacyjnego (stepper).
-        // Walidacja sekwencji: 4 (Zrealizowane) wymaga 3 (Załadowane);
-        //                      5 (Zafakturowane) wymaga 4 (Zrealizowane).
-        // Admin z force=1 omija blokadę.
+        // Walidacja sekwencji do PRZODU: 4 (Zrealizowane) wymaga 3 (Załadowane);
+        //                                 5 (Zafakturowane) wymaga 4 (Zrealizowane).
+        // Admin może cofać status WSTECZ bez force — to standardowa korekta błędu.
+        // force=1 jest potrzebny tylko żeby zablokować applyAutoNlStatus, które
+        // mogłoby podbić status z powrotem na podstawie istniejących plików/pól.
         $isAdminStepper = (bool)($identity?->get('is_admin') ?? false)
                        || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
         $isForceStepper = $isAdminStepper && (bool)$this->request->getData('force');
+        $adminReversing = false;
         if ($this->request->getData('nordlogis_status') !== null) {
             $ns = (int)$this->request->getData('nordlogis_status');
             if ($ns >= 1 && $ns <= 5) {
                 $oldNs = (int)($order->nordlogis_status ?? 1);
+                // Admin cofa status → traktujemy jak force żeby auto-eskalacja
+                // nie podniosła go z powrotem.
+                if ($isAdminStepper && $ns < $oldNs) {
+                    $adminReversing = true;
+                }
+                // Logiczny "effective" stary status: pol_at oznacza co najmniej 3,
+                // pod_at co najmniej 4 (user mógł zaznaczyć pill bez bumpa statusu,
+                // bo applyAutoNlStatus opiera się na plikach, nie polach _at).
+                $effOldNs = $oldNs;
+                if (!empty($order->pol_at)) $effOldNs = max($effOldNs, 3);
+                if (!empty($order->pod_at)) $effOldNs = max($effOldNs, 4);
                 if (!$isForceStepper && $ns > $oldNs) {
-                    if ($ns === 4 && $oldNs < 3) {
+                    if ($ns === 4 && $effOldNs < 3) {
                         $this->jsonResp([
                             'success' => false,
                             'error'   => 'Niedostępne: najpierw ustaw status "Załadowane".',
                         ]);
                         return;
                     }
-                    if ($ns === 5 && $oldNs < 4) {
+                    if ($ns === 5 && $effOldNs < 4) {
                         $this->jsonResp([
                             'success' => false,
                             'error'   => 'Niedostępne: najpierw ustaw status "Zrealizowane".',
@@ -1036,9 +1050,10 @@ class SpeedOrdersController extends AppController
         // Automatyczne przejścia statusu + is_complete
         // Admin może wymusić cofnięcie statusu/dat (parametr force=1), wtedy
         // pomijamy applyAutoNlStatus żeby nie podbiło z powrotem.
+        // Również gdy admin cofa nordlogis_status — same logic, omijamy auto-bump.
         $isAdmin = (bool)($identity?->get('is_admin') ?? false)
                 || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
-        $forceAdmin = $isAdmin && (bool)$this->request->getData('force');
+        $forceAdmin = ($isAdmin && (bool)$this->request->getData('force')) || $adminReversing;
         if (!$forceAdmin) {
             $this->applyAutoNlStatus($order);
         } else {

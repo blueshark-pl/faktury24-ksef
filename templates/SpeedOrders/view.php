@@ -538,6 +538,27 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
             <?php endforeach; ?>
         </div>
 
+        <!-- Legenda skrótów dokumentów -->
+        <div class="mt-2 d-flex justify-content-center">
+            <button type="button" class="btn btn-link btn-sm text-muted p-0" style="font-size:.72rem;text-decoration:none"
+                    data-bs-toggle="collapse" data-bs-target="#pills-legend" aria-expanded="false">
+                <i class="ri-information-line me-1"></i>Co oznaczają POL / POD / FK / FS?
+            </button>
+        </div>
+        <div class="collapse" id="pills-legend">
+            <div class="mt-2 p-2 rounded" style="background:#f8fafc;border:1px solid #e5e7eb;font-size:.78rem">
+                <div class="d-flex flex-column gap-1">
+                    <div><strong style="color:#6366f1">POL</strong> — <em>Proof of Loading</em> — dokument potwierdzający <strong>załadunek</strong> towaru (zdjęcie, skan CMR ładunkowy itp.).</div>
+                    <div><strong style="color:#22c55e">POD</strong> — <em>Proof of Delivery</em> — dokument potwierdzający <strong>rozładunek</strong> i odbiór towaru przez klienta (podpisany CMR).</div>
+                    <div><strong style="color:#8b5cf6">FK</strong> — <em>Faktura kosztowa</em> — faktura od <strong>przewoźnika</strong> (nasz koszt transportu).</div>
+                    <div><strong style="color:#374151">FS</strong> — <em>Faktura sprzedażowa</em> — faktura wystawiona <strong>dla klienta</strong> (nasz przychód).</div>
+                </div>
+                <div class="mt-2 pt-2 border-top text-muted" style="font-size:.7rem">
+                    <i class="ri-lightbulb-line me-1"></i>To są <strong>dokumenty</strong>, nie statusy zlecenia. Status (Przyjęte → Zaplanowane → Załadowane → Zrealizowane → Zafakturowane) zmienia się na powyższym stepperze lub przyciskami "Zatwierdź i oznacz jako…".
+                </div>
+            </div>
+        </div>
+
         <!-- Dokumenty tylko elektronicznie -->
         <div class="d-flex justify-content-center mt-2">
             <label class="check-pill <?= !empty($order->docs_electronic_only) ? 'checked' : 'unchecked' ?>"
@@ -1704,9 +1725,11 @@ endif;
         }
     };
     function doConfirmMark(target, payload) {
-        // POL → status 3, POD → status 4 (server i tak applyAutoNlStatus podbije,
-        // ale wysyłamy jawnie żeby był 1 log na status).
+        // POL pill + status 3 (Załadowane) lub POD pill + status 4 (Zrealizowane).
+        // Wysyłamy ns jawnie, bo applyAutoNlStatus zależy od plików (nie pól _at),
+        // więc bez pliku status by się nie zmienił. Tu user chce "zatwierdzić" status.
         payload[target] = 1;
+        payload.nordlogis_status = target === 'pol' ? 3 : 4;
         post(updateUrl, payload).then(function (data) {
             if (data.success) {
                 showToast('✔ Oznaczono jako ' + (target === 'pol' ? 'załadowane' : 'zrealizowane'), true);
