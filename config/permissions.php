@@ -205,6 +205,7 @@ return [
                 'addCurrency',
                 'addNoVat',
                 'addProforma',
+                'addCreditNote',
                 'addAdvance',
                 'edit',
                 'editVat',

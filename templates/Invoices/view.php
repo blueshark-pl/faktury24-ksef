@@ -41,6 +41,7 @@ $editActionMap = [
     'vat'              => 'editVat',
     'novat'            => 'editNoVat',
     'proforma'         => 'editProforma',
+    'credit_note'      => 'editCreditNote',
     'currency'         => 'editCurrency',
     'advance'          => 'editAdvance',
     'final'            => 'editAdvance',

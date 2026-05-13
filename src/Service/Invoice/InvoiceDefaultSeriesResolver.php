@@ -42,6 +42,10 @@ class InvoiceDefaultSeriesResolver
             'series_type' => 'proforma',
             'hints'       => ['%proforma%'],
         ],
+        'credit_note' => [
+            'series_type' => 'credit_note',
+            'hints'       => ['%nota uznan%', '%uznan%', '%credit note%', '%nu/%', '%/nu%'],
+        ],
         'advance' => [
             'series_type' => 'advance',
             'hints'       => ['%zaliczka%', '%advance%'],

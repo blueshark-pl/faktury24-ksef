@@ -15,13 +15,14 @@ $type = $this->request->getQuery('type');
 
 $typeLabel = function(string $type): string {
     return match($type) {
-        'vat'        => 'VAT',
-        'proforma'   => 'Proforma',
-        'novat'      => 'Bez VAT',
-        'correction' => 'Korekta',
-        'advance'    => 'Zaliczkowa',
-        'final'      => 'Końcowa',
-        'margin'     => 'Marżowa',
+        'vat'         => 'VAT',
+        'proforma'    => 'Proforma',
+        'credit_note' => 'Nota uznaniowa',
+        'novat'       => 'Bez VAT',
+        'correction'  => 'Korekta',
+        'advance'     => 'Zaliczkowa',
+        'final'       => 'Końcowa',
+        'margin'      => 'Marżowa',
         'currency'   => 'Walutowa',
         'rental'     => 'Najem',
         default      => h($type),

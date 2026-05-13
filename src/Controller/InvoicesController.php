@@ -1387,6 +1387,7 @@ public function add(): Response
             'currency'         => 'addCurrency',
         'novat'            => 'addNoVat',        // ← NOWE
         'proforma'         => 'addProforma',
+        'credit_note'      => 'addCreditNote',   // ← nota uznaniowa
         'advance'          => 'addAdvance',
         'correction'       => 'addCorrection',
         'margin'           => 'addMargin',
@@ -1414,6 +1415,7 @@ public function add(): Response
 public function addVat(): ?Response      { return $this->handleAdd('vat'); }
 public function addCurrency(): ?Response { return $this->handleAdd('currency'); }
 public function addProforma(): ?Response { return $this->handleAdd('proforma'); }
+public function addCreditNote(): ?Response { return $this->handleAdd('credit_note'); }
 public function addAdvance(): ?Response  { return $this->handleAdd('advance'); }
 public function addCorrection(): ?Response { return $this->handleAdd('correction'); }
 public function addMargin(): ?Response   { return $this->handleAdd('margin'); }
@@ -1992,9 +1994,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $data = $this->request->getData();
         $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
         $doSend = $ksefModeEnabled ? $this->shouldSendToKsefNow((array)$data) : false;
-        // Proforma i faktura bez VAT nie trafiają do KSeF — zawsze wydawane od razu jako issued
+        // Proforma, faktura bez VAT i nota uznaniowa nie trafiają do KSeF — zawsze wydawane od razu jako issued
         $saveDraftExplicit = !empty($data['save_draft']);
-        $isDraftWorkflow = !in_array($kind, ['proforma', 'novat'], true) && ($saveDraftExplicit || ($ksefModeEnabled && !$doSend));
+        $isDraftWorkflow = !in_array($kind, ['proforma', 'novat', 'credit_note'], true) && ($saveDraftExplicit || ($ksefModeEnabled && !$doSend));
         $this->hydrateInvoiceDraftFromData($invoice, (array)$data);
 
         // Wstępny patch tylko pól skalarnych (bez asocjacji) — zapewnia, że przy błędzie
@@ -2405,13 +2407,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 else                              { $this->render('add_correct'); }
             } else {
                 $templateMap = [
-                    'novat'    => 'add_no_vat',
-                    'rental'   => 'add_rental',
-                    'advance'  => 'add_advance',
-                    'final'    => 'add_advance',
-                    'proforma' => 'add_proforma',
-                    'margin'   => 'add_margin',
-                    'currency' => 'add_currency',
+                    'novat'       => 'add_no_vat',
+                    'rental'      => 'add_rental',
+                    'advance'     => 'add_advance',
+                    'final'       => 'add_advance',
+                    'proforma'    => 'add_proforma',
+                    'credit_note' => 'add_credit_note',
+                    'margin'      => 'add_margin',
+                    'currency'    => 'add_currency',
                 ];
                 $this->render($templateMap[$kind] ?? 'add');
             }
@@ -2484,13 +2487,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 else                              { $this->render('add_correct'); }
             } else {
                 $renderView = match($kind) {
-                    'novat'    => 'add_no_vat',
-                    'rental'   => 'add_rental',
-                    'margin'   => 'add_margin',
-                    'currency' => 'add_currency',
-                    'proforma' => 'add_proforma',
+                    'novat'       => 'add_no_vat',
+                    'rental'      => 'add_rental',
+                    'margin'      => 'add_margin',
+                    'currency'    => 'add_currency',
+                    'proforma'    => 'add_proforma',
+                    'credit_note' => 'add_credit_note',
                     'advance', 'final' => 'add_advance',
-                    default    => 'add',
+                    default       => 'add',
                 };
                 $this->render($renderView);
             }
@@ -3321,7 +3325,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } else {
                 $this->Flash->success($isDraftWorkflow
                     ? 'Dokument roboczy został zapisany.'
-                    : ($kind === 'proforma' ? 'Faktura proforma została utworzona.' : ($kind === 'novat' ? 'Rachunek został utworzony.' : 'Dokument został utworzony.')));
+                    : ($kind === 'proforma'    ? 'Faktura proforma została utworzona.'
+                    : ($kind === 'credit_note' ? 'Nota uznaniowa została utworzona.'
+                    : ($kind === 'novat'       ? 'Rachunek został utworzony.'
+                    : 'Dokument został utworzony.'))));
             }
 
             return $this->redirect(['action' => 'view', $invoice->id]);
@@ -3343,6 +3350,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $this->render('add_margin');
     } else if ($kind === 'proforma') {
         $this->render('add_proforma');
+    } else if ($kind === 'credit_note') {
+        $this->render('add_credit_note');
     } else if ($kind === 'advance') {
         $this->render('add_advance');
     } else if ($kind === 'vat') {
@@ -3446,6 +3455,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'currency'         => 'add_currency',
             'novat'            => 'add_no_vat',
             'proforma'         => 'add_proforma',
+            'credit_note'      => 'add_credit_note',
             'margin'           => 'add_margin',
             'advance'          => 'add_advance',
             'final'            => 'add_advance',
@@ -4049,6 +4059,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     }
 
     public function editProforma($id = null)
+    {
+        return $this->edit($id);
+    }
+
+    public function editCreditNote($id = null)
     {
         return $this->edit($id);
     }
@@ -5910,7 +5925,7 @@ HTML;
 
                     // Reguła KSeF: jeśli tryb KSeF włączony, faktura musi mieć numer KSeF
                     // (chyba że to proforma lub rachunek — te nie trafiają do KSeF)
-                    $ksefExemptTypes = ['proforma', 'novat', 'rental'];
+                    $ksefExemptTypes = ['proforma', 'novat', 'rental', 'credit_note'];
                     if ($ksefMode && !in_array($type, $ksefExemptTypes, true)) {
                         $ksefNumber = trim((string)($inv->ksef_number ?? ''));
                         if ($ksefNumber === '') {
@@ -6419,7 +6434,7 @@ HTML;
      * - internal/internalEvidence: dokument wewnętrzny
      * - oss: rozliczenie OSS poza krajowym KSeF
      */
-    private const KSEF_BLOCKED_TYPES = ['proforma', 'internal', 'internalEvidence', 'oss'];
+    private const KSEF_BLOCKED_TYPES = ['proforma', 'credit_note', 'internal', 'internalEvidence', 'oss'];
 
     public function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'prod', ?string $xml = null, string $source = 'sendToKsef'): array
     {

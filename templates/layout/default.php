@@ -912,7 +912,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
                                 <!-- Quick create submenu for specific invoice types -->
                                 <?php
-                                $_addActions = ['addvat','addnovat','addproforma','addcurrency','addadvance','addmargin','addrental','addinternal','addinternalevidence','addoss'];
+                                $_addActions = ['addvat','addnovat','addproforma','addcreditnote','addcurrency','addadvance','addmargin','addrental','addinternal','addinternalevidence','addoss'];
                                 ?>
                                 <li class="<?= $liClass(function() use ($_navCtrl, $_navAction, $_addActions) {
                                     return $_navCtrl === 'invoices' && in_array($_navAction, $_addActions, true);
@@ -941,6 +941,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 'Proforma / Oferta',
                                                 ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addProforma'],
                                                 ['class' => trim('side-menu__item ' . $navActive('invoices', 'addProforma'))]
+                                            ) ?>
+                                        </li>
+                                        <li class="slide">
+                                            <?= $this->Html->link(
+                                                'Nota uznaniowa',
+                                                ['plugin' => false, 'controller' => 'Invoices', 'action' => 'addCreditNote'],
+                                                ['class' => trim('side-menu__item ' . $navActive('invoices', 'addCreditNote'))]
                                             ) ?>
                                         </li>
                                         <li class="slide">

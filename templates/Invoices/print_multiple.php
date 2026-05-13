@@ -36,6 +36,7 @@ $isFirst = true;
                     'vat' => 'FAKTURA VAT',
                     'novat' => 'FAKTURA',
                     'proforma' => 'FAKTURA PROFORMA',
+                    'credit_note' => 'NOTA UZNANIOWA',
                     'advance' => 'FAKTURA ZALICZKOWA',
                     'correction' => 'FAKTURA KORYGUJĄCA',
                     'margin' => 'FAKTURA MARŻY',

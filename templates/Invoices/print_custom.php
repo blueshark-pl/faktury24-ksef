@@ -15,7 +15,8 @@
 $t = ($lang === 'en') ? [
     'inv_type_suffix' => [
         'vat'=>'VAT INVOICE','novat'=>'INVOICE','proforma'=>'PROFORMA INVOICE',
-        'advance'=>'ADVANCE INVOICE','correction'=>'CREDIT NOTE','margin'=>'MARGIN INVOICE',
+        'credit_note'=>'CREDIT NOTE',
+        'advance'=>'ADVANCE INVOICE','correction'=>'CORRECTION INVOICE','margin'=>'MARGIN INVOICE',
         'internal'=>'INTERNAL INVOICE','oss'=>'OSS INVOICE','final'=>'FINAL INVOICE','currency'=>'INVOICE',
     ],
     'original'        => 'Original',
@@ -76,6 +77,7 @@ $t = ($lang === 'en') ? [
 ] : [
     'inv_type_suffix' => [
         'vat'=>'FAKTURA VAT','novat'=>'FAKTURA','proforma'=>'FAKTURA PROFORMA',
+        'credit_note'=>'NOTA UZNANIOWA',
         'advance'=>'FAKTURA ZALICZKOWA','correction'=>'FAKTURA KORYGUJĄCA','margin'=>'FAKTURA MARŻY',
         'internal'=>'FAKTURA WEWNĘTRZNA','oss'=>'FAKTURA OSS','final'=>'FAKTURA KOŃCOWA','currency'=>'FAKTURA WALUTOWA',
     ],
