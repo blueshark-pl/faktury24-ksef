@@ -73,7 +73,25 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
                 <i class="ri-printer-line me-1"></i>Drukuj
             </button>
         <?php endif; ?>
-    <?php if (!$isProforma): ?>
+        <?php if ($isCreditNote): ?>
+            <!-- Nota uznaniowa: tylko nasz szablon wewnętrzny (printCustom), bez external API -->
+            <a href="#" class="btn btn-primary btn-sm btn-pdf-custom-lang"
+               data-url-pl="<?= $this->Url->build(['action' => 'printCustom', $invoice->id]) ?>"
+               data-url-en="<?= $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['lang' => 'en']]) ?>"
+               data-url-pdf-pl="<?= $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['render' => 'pdf']]) ?>"
+               data-url-pdf-en="<?= $this->Url->build(['action' => 'printCustom', $invoice->id, '?' => ['render' => 'pdf', 'lang' => 'en']]) ?>"
+               title="Pobierz PDF noty uznaniowej">
+              <i class="ri-printer-line me-1"></i>Pobierz PDF
+            </a>
+            <?php if ($canEdit ?? false): ?>
+            <?= $this->Html->link(
+                '<i class="ri-edit-line me-1"></i>Edytuj notę',
+                ['action' => 'editCreditNote', $invoice->id],
+                ['class' => 'btn btn-outline-secondary btn-sm', 'escape' => false]
+            ) ?>
+            <?php endif; ?>
+        <?php endif; ?>
+    <?php if (!$isProforma && !$isCreditNote): ?>
         <a href="#" class="btn btn-primary btn-sm btn-pdf-lang"
            data-url-pl="<?= $this->Url->build(['action' => 'print', $invoice->id]) ?>"
            data-url-en="<?= $this->Url->build(['action' => 'print', $invoice->id, '?' => ['lang' => 'en']]) ?>">

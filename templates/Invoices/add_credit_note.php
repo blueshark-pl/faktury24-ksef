@@ -280,6 +280,42 @@ $gtuSelectHtml .= '</select>';
               </div>
             </div>
 
+            <!-- Waluta — nota uznaniowa może być w PLN lub walucie obcej -->
+            <div class="col-12 d-flex align-items-center gap-2">
+              <?= $this->Form->control('currency', [
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency',
+                'value' => $invoice->currency ?? (!$__isEdit ? 'PLN' : null),
+                'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
+              ]) ?>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
+                title="Waluta noty uznaniowej"
+                data-bs-content="
+                  <div class='small text-start'>
+                    <p>Nota uznaniowa może być wystawiona w PLN lub walucie obcej.</p>
+                    <p>Przy walucie obcej pole 'Kurs (poglądowo)' pojawi się poniżej — można podać kurs przeliczeniowy lub pobrać średni NBP.</p>
+                  </div>
+                ">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <div class="col-12" id="fx-rate-group" style="display:none;">
+              <div class="row g-2">
+                <div class="col-8">
+                  <?= $this->Form->control('fx_rate', [
+                    'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
+                    'class' => 'form-control', 'id' => 'fx-rate'
+                  ]) ?>
+                </div>
+                <div class="col-4 d-flex align-items-end">
+                  <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btn-fetch-nbp" title="Pobierz średni kurs NBP">
+                    <i class="ri-refresh-line me-1"></i>NBP
+                  </button>
+                </div>
+              </div>
+              <small id="fx-rate-info" class="text-muted d-block mt-1"></small>
+            </div>
+
           </div>
         </div>
 

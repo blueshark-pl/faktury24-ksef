@@ -5110,6 +5110,17 @@ private function makeClient(string $environment): KsefClient
             'conditions' => $loadConditions,
         ]);
 
+        // Nota uznaniowa renderuje się TYLKO przez nasz wewnętrzny szablon
+        // (CakePdf/DomPdf, printCustom) — nie przez external API. Redirect zachowuje
+        // query params (lang, download).
+        if (($invoice->type ?? '') === 'credit_note') {
+            return $this->redirect([
+                'action' => 'printCustom',
+                $id,
+                '?' => array_merge(['render' => 'pdf'], (array)$this->request->getQueryParams()),
+            ]);
+        }
+
         // 1) Zbuduj FA(3) XML
         $xml = '';
         try {
