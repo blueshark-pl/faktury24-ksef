@@ -11,6 +11,7 @@
  * @var string                                  $dateFrom
  * @var string                                  $dateTo
  * @var string[]                                $roles
+ * @var array<string,string>                    $avatarMap user_id → URL avatara (z file_exists guardem)
  * @var array{total:int,today:int,last_24h:int,unique_7d:int} $stats
  */
 $this->assign('title', __('Historia logowań'));
@@ -133,16 +134,34 @@ $roleColor = function (string $r): string {
                     </tr>
                 <?php else: ?>
                     <?php foreach ($logs as $log): ?>
+                    <?php
+                        $avatarUrl = ($log->user_id && !empty($avatarMap[(string)$log->user_id]))
+                            ? $avatarMap[(string)$log->user_id]
+                            : null;
+                        // Inicjał z pierwszego znaku username (lub e-mail)
+                        $initial = mb_strtoupper(mb_substr((string)$log->username, 0, 1));
+                    ?>
                     <tr>
                         <td class="ps-3 text-muted text-nowrap"><?= h($fdt($log->logged_at)) ?></td>
                         <td>
-                            <span class="fw-semibold"><?= h($log->username) ?></span>
-                            <?php if ($log->user_id): ?>
-                                <a href="<?= $this->Url->build(['controller' => 'AdminUsers', 'action' => 'edit', $log->user_id]) ?>"
-                                   class="text-muted ms-1" title="<?= __('Edytuj użytkownika') ?>">
-                                    <i class="ri-external-link-line"></i>
-                                </a>
-                            <?php endif; ?>
+                            <div class="d-flex align-items-center gap-2">
+                                <?php if ($avatarUrl): ?>
+                                    <img src="<?= h($avatarUrl) ?>" alt=""
+                                         style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb">
+                                <?php else: ?>
+                                    <span class="d-inline-flex align-items-center justify-content-center"
+                                          style="width:28px;height:28px;border-radius:50%;background:rgba(var(--primary-rgb),.15);color:rgb(var(--primary-rgb));font-size:.75rem;font-weight:700;flex-shrink:0">
+                                        <?= h($initial) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <span class="fw-semibold"><?= h($log->username) ?></span>
+                                <?php if ($log->user_id): ?>
+                                    <a href="<?= $this->Url->build(['controller' => 'AdminUsers', 'action' => 'edit', $log->user_id]) ?>"
+                                       class="text-muted" title="<?= __('Edytuj użytkownika') ?>">
+                                        <i class="ri-external-link-line"></i>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td>
                             <?php if ($log->role): ?>

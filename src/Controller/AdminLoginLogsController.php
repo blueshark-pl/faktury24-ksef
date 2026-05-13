@@ -55,6 +55,33 @@ class AdminLoginLogsController extends AppController
         $pages = (int)ceil($total / $limit);
         $logs  = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
+        // Avatar map per user_id — jedno query dla wszystkich userów na bieżącej stronie.
+        // file_exists guard żeby brak pliku nie generował 404 (pattern jak w innych
+        // miejscach — CakeDC hydratuje czasem bez avatar, więc disableHydration).
+        $userIds = [];
+        foreach ($logs as $l) {
+            if ($l->user_id) $userIds[(string)$l->user_id] = true;
+        }
+        $avatarMap = [];
+        if (!empty($userIds)) {
+            try {
+                $rows = $this->fetchTable('Users')->find()
+                    ->select(['id', 'avatar'])
+                    ->where(['id IN' => array_keys($userIds), 'avatar IS NOT' => null])
+                    ->disableHydration()
+                    ->all();
+                foreach ($rows as $r) {
+                    if (empty($r['avatar'])) continue;
+                    $url = (string)$r['avatar'];
+                    if (str_starts_with($url, '/files/avatars/')) {
+                        $diskPath = WWW_ROOT . ltrim($url, '/');
+                        if (!is_file($diskPath)) continue;
+                    }
+                    $avatarMap[(string)$r['id']] = $url;
+                }
+            } catch (\Throwable) { /* ignore */ }
+        }
+
         // Lista ról do dropdown'a (unikalna z bazy)
         $roles = $LoginLogs->find()
             ->select(['role'])
@@ -79,7 +106,7 @@ class AdminLoginLogsController extends AppController
                 ->count(),
         ];
 
-        $this->set(compact('logs', 'total', 'page', 'pages', 'limit', 'q', 'role', 'dateFrom', 'dateTo', 'roles', 'stats'));
+        $this->set(compact('logs', 'total', 'page', 'pages', 'limit', 'q', 'role', 'dateFrom', 'dateTo', 'roles', 'stats', 'avatarMap'));
         return null;
     }
 }
