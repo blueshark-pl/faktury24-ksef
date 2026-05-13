@@ -1025,6 +1025,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <!-- Słownik adresów transportowych -->
+                            <li class="slide <?= $navActive('TransportAddresses', 'index') || $navActive('TransportAddresses', 'add') || $navActive('TransportAddresses', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-map-pin-line side-menu__icon"></i><span class="side-menu__label">Słownik adresów</span>',
+                                    ['plugin' => false, 'controller' => 'TransportAddresses', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

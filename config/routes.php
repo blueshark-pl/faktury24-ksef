@@ -218,6 +218,15 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPatterns(['lang' => 'pl|en'])
             ->setPass(['lang']);
 
+        // Słownik adresów transportowych
+        $builder->get('/slownik-adresow',                ['controller' => 'TransportAddresses', 'action' => 'index']);
+        $builder->get('/slownik-adresow/search',         ['controller' => 'TransportAddresses', 'action' => 'search']);
+        $builder->connect('/slownik-adresow/dodaj',      ['controller' => 'TransportAddresses', 'action' => 'add']);
+        $builder->connect('/slownik-adresow/edytuj/{id}', ['controller' => 'TransportAddresses', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/slownik-adresow/usun/{id}',     ['controller' => 'TransportAddresses', 'action' => 'delete'])
+            ->setPass(['id']);
+
         // Portal klienta (rola `client`) — zlecenia transportowe powiązane przez NIP
         $builder->get('/portal',                       ['controller' => 'ClientPortal', 'action' => 'index']);
         $builder->get('/portal/zlecenie/{id}',         ['controller' => 'ClientPortal', 'action' => 'view'])

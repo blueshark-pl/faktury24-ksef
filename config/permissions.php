@@ -302,6 +302,13 @@ return [
             ],
         ],
 
+        // Słownik adresów transportowych — dostępny dla pracowniczych ról
+        [
+            'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
+            'controller' => 'TransportAddresses',
+            'action' => ['index', 'search', 'add', 'edit', 'delete'],
+        ],
+
         // towary i usługi
         [
             'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],
