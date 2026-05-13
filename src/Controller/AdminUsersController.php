@@ -509,7 +509,23 @@ class AdminUsersController extends AppController
             ->all()
             ->toArray();
 
-        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'employeesList', 'orderCount', 'emailLogs'));
+        // Avatar fetch — CakeDC User entity czasem gubi to pole przy hydratacji,
+        // więc bierzemy osobno (analogicznie do AppController::buildClientCaretakerInfo).
+        $avatarUrl = null;
+        try {
+            $row = $this->fetchTable('Users')->find()
+                ->select(['id', 'avatar'])
+                ->where(['id' => $userId])
+                ->disableHydration()
+                ->first();
+            if (!empty($row['avatar'])) {
+                $avatarUrl = (string)$row['avatar'];
+            }
+        } catch (\Throwable) {
+            $avatarUrl = null;
+        }
+
+        $this->set(compact('user', 'profile', 'rolesList', 'companiesList', 'employeesList', 'orderCount', 'emailLogs', 'avatarUrl'));
         return null;
     }
 

@@ -5,6 +5,7 @@
  * @var \App\Model\Entity\ClientProfile  $profile
  * @var \Cake\ORM\ResultSet              $rolesList
  * @var int                              $orderCount
+ * @var string|null                      $avatarUrl Pełny URL avatara z DB (osobne query — CakeDC gubi to pole)
  */
 $this->assign('title', __('Edycja: {0}', $user->email));
 
@@ -192,8 +193,10 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
     <div class="col-lg-4">
         <!-- Avatar użytkownika -->
         <?php
-            $avatarUrl = !empty($user->avatar) ? (string)$user->avatar : '';
-            $avatarOk  = $avatarUrl !== '';
+            // $avatarUrl przychodzi z kontrolera (osobne query bo CakeDC plugin
+            // gubi pole avatar w hydratowanej encji).
+            $avatarUrl = $avatarUrl ?? null;
+            $avatarOk  = !empty($avatarUrl);
             if ($avatarOk && str_starts_with($avatarUrl, '/files/avatars/')) {
                 $diskPath = WWW_ROOT . ltrim($avatarUrl, '/');
                 if (!is_file($diskPath)) {
