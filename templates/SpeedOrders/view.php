@@ -1061,10 +1061,15 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <?php endif; ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
-<!-- MAPA TRASY (HERE Routing v8)                                            -->
+<!-- MAPA TRASY (HERE Maps JS SDK + Routing v8)                              -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <?php if (!empty($order->place_from_name) && !empty($order->place_to_name)): ?>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<?php $_hereKey = (string)\Cake\Core\Configure::read('Here.apiKey'); ?>
+<link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
 <div class="card border-0 shadow-sm mb-3" id="route-card">
     <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">
         <i class="ri-route-line text-primary"></i> <?= __('Trasa i koszty') ?>
@@ -1074,8 +1079,8 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         </button>
     </div>
     <div class="card-body p-0">
-        <div id="route-map" style="height:420px;border-radius:0 0 .5rem .5rem;background:#f4f6fa">
-            <div class="d-flex h-100 align-items-center justify-content-center text-muted small">
+        <div id="route-map" style="height:420px;border-radius:0 0 .5rem .5rem;background:#f4f6fa;position:relative">
+            <div id="route-map-placeholder" class="d-flex h-100 align-items-center justify-content-center text-muted small">
                 <i class="ri-route-line me-2" style="font-size:1.6rem"></i>
                 <?= __('Kliknij "Wyznacz trasę" aby zobaczyć trasę na mapie') ?>
             </div>
@@ -1083,24 +1088,33 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         <div id="route-details" class="p-3 border-top" style="display:none"></div>
     </div>
 </div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function () {
+    var hereKey = <?= json_encode($_hereKey) ?>;
     var orderId = <?= json_encode($order->id) ?>;
     var url     = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'forOrder', '__ID__']) ?>'.replace('__ID__', encodeURIComponent(orderId));
     var $btn    = document.getElementById('btn-calc-route');
-    var $map    = document.getElementById('route-map');
+    var $mapEl  = document.getElementById('route-map');
     var $mini   = document.getElementById('route-summary-mini');
     var $details = document.getElementById('route-details');
-    var map = null, polyLayer = null;
 
+    var map = null, routeGroup = null;
     function ensureMap() {
         if (map) return;
-        $map.innerHTML = '';
-        map = L.map('route-map').setView([52.0, 19.0], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '© OpenStreetMap'
-        }).addTo(map);
+        var ph = document.getElementById('route-map-placeholder');
+        if (ph) ph.remove();
+        var platform = new H.service.Platform({ apikey: hereKey });
+        var defaultLayers = platform.createDefaultLayers();
+        map = new H.Map($mapEl, defaultLayers.vector.normal.map, {
+            center: { lat: 52.0, lng: 19.0 },
+            zoom: 5,
+            pixelRatio: window.devicePixelRatio || 1
+        });
+        window.addEventListener('resize', function () { map.getViewPort().resize(); });
+        new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+        H.ui.UI.createDefault(map, defaultLayers, 'pl-PL');
+        routeGroup = new H.map.Group();
+        map.addObject(routeGroup);
     }
     function fmtNum(v, dec) { return v.toLocaleString('pl-PL', {minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0}); }
     function fmtDur(min) {
@@ -1108,14 +1122,38 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         var h = Math.floor(min/60), m = min%60;
         return (h > 0 ? h + 'h ' : '') + m + 'min';
     }
+    function makeMarker(lat, lng, color, label) {
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48">'
+                + '<path d="M18 0C8 0 0 8 0 18c0 13 18 30 18 30s18-17 18-30C36 8 28 0 18 0z" fill="' + color + '"/>'
+                + '<circle cx="18" cy="18" r="7" fill="white"/>'
+                + '<text x="18" y="22" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="' + color + '">' + label + '</text>'
+                + '</svg>';
+        var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 18, y: 48 } });
+        return new H.map.Marker({ lat: lat, lng: lng }, { icon: icon });
+    }
     function render(data) {
         ensureMap();
-        var path = (data.decoded_path || []).map(function (p) { return [p.lat, p.lng]; });
-        if (polyLayer) map.removeLayer(polyLayer);
-        polyLayer = L.polyline(path, {color: '#2563eb', weight: 5, opacity: .9}).addTo(map);
-        L.marker([data.from.lat, data.from.lng]).addTo(map).bindPopup('<?= __('Załadunek') ?>: ' + data.from.label);
-        L.marker([data.to.lat, data.to.lng]).addTo(map).bindPopup('<?= __('Rozładunek') ?>: ' + data.to.label);
-        map.fitBounds(polyLayer.getBounds(), {padding: [30, 30]});
+        routeGroup.removeAll();
+        if (!data.polyline) return;
+        var line;
+        try {
+            line = H.geo.LineString.fromFlexiblePolyline(data.polyline);
+        } catch (e) {
+            console.error('Polyline decode failed', e);
+            alert('<?= __('Błąd dekodowania trasy.') ?>');
+            return;
+        }
+        var outline = new H.map.Polyline(line, { style: { strokeColor: 'rgba(255,255,255,.95)', lineWidth: 10 } });
+        var routeLine = new H.map.Polyline(line, { style: { strokeColor: 'rgba(37,99,235,.85)', lineWidth: 6 } });
+        routeGroup.addObject(outline);
+        routeGroup.addObject(routeLine);
+        routeGroup.addObject(makeMarker(data.from.lat, data.from.lng, '#16a34a', 'A'));
+        routeGroup.addObject(makeMarker(data.to.lat, data.to.lng, '#dc2626', 'B'));
+        var bbox = routeGroup.getBoundingBox();
+        if (bbox) {
+            map.getViewModel().setLookAtData({ bounds: bbox }, true);
+            setTimeout(function () { map.setZoom(Math.max(map.getZoom() - 0.4, 4)); }, 100);
+        }
 
         $mini.textContent = fmtNum(data.distance_km, 1) + ' km · ' + fmtDur(data.duration_min)
             + (data.tolls_total !== null ? ' · ' + fmtNum(data.tolls_total, 2) + ' ' + data.tolls_currency : '');

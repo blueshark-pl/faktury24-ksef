@@ -42,7 +42,8 @@ class RoutePlannerController extends AppController
                 ->all()
                 ->toArray();
         }
-        $this->set(compact('vehicles'));
+        $hereApiKey = (string)\Cake\Core\Configure::read('Here.apiKey');
+        $this->set(compact('vehicles', 'hereApiKey'));
     }
 
     public function calculate(): Response

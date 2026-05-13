@@ -2064,3 +2064,9 @@ msgstr "Click \"Calculate route\" to display on map"
 
 msgid "Opłaty per kraj"
 msgstr "Tolls per country"
+
+msgid "HERE Maps · profil truck"
+msgstr "HERE Maps · truck profile"
+
+msgid "Błąd dekodowania trasy."
+msgstr "Route decode error."
