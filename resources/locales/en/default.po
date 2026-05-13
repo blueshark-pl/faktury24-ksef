@@ -2070,3 +2070,78 @@ msgstr "HERE Maps · truck profile"
 
 msgid "Błąd dekodowania trasy."
 msgstr "Route decode error."
+
+msgid "Zaawansowany planer tras"
+msgstr "Advanced route planner"
+
+msgid "HERE Maps · profil truck · multipoint"
+msgstr "HERE Maps · truck profile · multipoint"
+
+msgid "Punkty trasy"
+msgstr "Route waypoints"
+
+msgid "Odwróć trasę"
+msgstr "Reverse route"
+
+msgid "Dodaj przystanek"
+msgstr "Add stop"
+
+msgid "Opcje"
+msgstr "Options"
+
+msgid "Autostrady"
+msgstr "Highways"
+
+msgid "Drogi gruntowe"
+msgstr "Dirt roads"
+
+msgid "Waluta"
+msgstr "Currency"
+
+msgid "Alternatywy"
+msgstr "Alternatives"
+
+msgid "Data/godzina wyjazdu"
+msgstr "Departure date/time"
+
+msgid "Puste = teraz. Wpływa na ruch + ETA."
+msgstr "Empty = now. Affects traffic + ETA."
+
+msgid "Kalkulator paliwa"
+msgstr "Fuel calculator"
+
+msgid "Zużycie (l/100km)"
+msgstr "Consumption (l/100km)"
+
+msgid "Cena za litr (PLN)"
+msgstr "Price per liter (PLN)"
+
+msgid "Koszt paliwa"
+msgstr "Fuel cost"
+
+msgid "Klik na mapie = dodaj przystanek"
+msgstr "Click on map = add stop"
+
+msgid "Alternatywne trasy"
+msgstr "Alternative routes"
+
+msgid "Trasa główna"
+msgstr "Main route"
+
+msgid "Alternatywa"
+msgstr "Alternative"
+
+msgid "Instrukcje"
+msgstr "Directions"
+
+msgid "Wpisz adres lub klik na mapę"
+msgstr "Enter address or click map"
+
+msgid "Podaj co najmniej dwa punkty."
+msgstr "Enter at least two points."
+
+msgid "Punkt #"
+msgstr "Point #"
+
+msgid " jest pusty."
+msgstr " is empty."

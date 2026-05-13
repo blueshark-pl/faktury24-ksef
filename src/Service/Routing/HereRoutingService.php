@@ -16,9 +16,10 @@ use RuntimeException;
  */
 class HereRoutingService
 {
-    private const GEOCODE_URL = 'https://geocode.search.hereapi.com/v1/geocode';
-    private const ROUTING_URL = 'https://router.hereapi.com/v8/routes';
-    private const REVGEO_URL  = 'https://revgeocode.search.hereapi.com/v1/revgeocode';
+    private const GEOCODE_URL    = 'https://geocode.search.hereapi.com/v1/geocode';
+    private const ROUTING_URL    = 'https://router.hereapi.com/v8/routes';
+    private const REVGEO_URL     = 'https://revgeocode.search.hereapi.com/v1/revgeocode';
+    private const AUTOSUGGEST_URL = 'https://autosuggest.search.hereapi.com/v1/autosuggest';
 
     private string $apiKey;
     private Client $client;
@@ -176,6 +177,221 @@ class HereRoutingService
                 'polyline'         => $polyline,
                 'raw'              => $data,
             ];
+        } catch (\Throwable $e) {
+            Log::error('HERE routing error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Autosuggest — szybkie podpowiedzi adresów do input'a (typeahead).
+     * @param string $q  częściowy adres (min 1 znak)
+     * @param array{lat: float, lng: float}|null $proximity centrum geograficzne dla rankingu
+     * @return array<int, array{title:string,label:string,lat:?float,lng:?float,country:string,id:string}>
+     */
+    public function autosuggest(string $q, ?array $proximity = null): array
+    {
+        $q = trim($q);
+        if (mb_strlen($q) < 1) return [];
+        $params = [
+            'q'      => $q,
+            'limit'  => 8,
+            'apiKey' => $this->apiKey,
+            'lang'   => 'pl-PL',
+            'at'     => $proximity
+                ? ($proximity['lat'] . ',' . $proximity['lng'])
+                : '52.0,19.0', // domyślnie środek Polski
+            'in'     => 'countryCode:POL,DEU,CZE,SVK,UKR,LTU,LVA,EST,BLR,AUT,HUN,FRA,ESP,ITA,NLD,BEL,DNK,SWE,NOR,FIN,GBR,IRL,CHE,ROU,BGR,GRC,PRT,SVN,HRV,LUX',
+        ];
+        try {
+            $resp = $this->client->get(self::AUTOSUGGEST_URL, $params);
+            if (!$resp->isOk()) {
+                Log::warning('HERE autosuggest HTTP ' . $resp->getStatusCode());
+                return [];
+            }
+            $data = $resp->getJson();
+            $out = [];
+            foreach (($data['items'] ?? []) as $item) {
+                $pos = $item['position'] ?? null;
+                $out[] = [
+                    'id'      => (string)($item['id'] ?? ''),
+                    'title'   => (string)($item['title'] ?? ''),
+                    'label'   => (string)($item['address']['label'] ?? ($item['title'] ?? '')),
+                    'lat'     => $pos ? (float)$pos['lat'] : null,
+                    'lng'     => $pos ? (float)$pos['lng'] : null,
+                    'country' => (string)($item['address']['countryCode'] ?? ''),
+                    'type'    => (string)($item['resultType'] ?? ''),
+                ];
+            }
+            return $out;
+        } catch (\Throwable $e) {
+            Log::error('HERE autosuggest error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Trasa z wieloma punktami (waypoints) i opcjonalnie alternatywami.
+     * Zwraca tablicę tras (każda z polyline, summary, tolls, instructions).
+     *
+     * @param array{lat:float,lng:float}        $from
+     * @param array{lat:float,lng:float}        $to
+     * @param array<int,array{lat:float,lng:float}>  $vias  pośrednie punkty
+     * @param array<string,mixed>|null          $vehicle
+     * @param array{alternatives?:int,avoid?:array|string,currency?:string,departureTime?:string,returnInstructions?:bool}  $opts
+     * @return array{
+     *   routes: array<int, array{
+     *     distance_km: float, duration_min: int,
+     *     tolls_total: float|null, tolls_currency: string, tolls_by_country: array<string,float>,
+     *     polyline: string,
+     *     instructions: array<int, array{text:string,distance_m:int,duration_s:int}>,
+     *     sections: array<int, array{from_lat:float,from_lng:float,to_lat:float,to_lng:float,distance_km:float,duration_min:int}>
+     *   }>
+     * }
+     */
+    public function routeMulti(array $from, array $to, array $vias = [], ?array $vehicle = null, array $opts = []): array
+    {
+        $alternatives = max(0, min(6, (int)($opts['alternatives'] ?? 0)));
+        $currency = (string)($opts['currency'] ?? 'EUR');
+        $returnInstr = !empty($opts['returnInstructions']);
+
+        $returns = ['summary', 'polyline', 'tolls'];
+        if ($returnInstr) {
+            $returns[] = 'actions';
+            $returns[] = 'instructions';
+        }
+
+        $params = [
+            'transportMode' => $vehicle ? 'truck' : 'car',
+            'origin'        => $from['lat'] . ',' . $from['lng'],
+            'destination'   => $to['lat']   . ',' . $to['lng'],
+            'return'        => implode(',', $returns),
+            'currency'      => $currency,
+            'apiKey'        => $this->apiKey,
+            'lang'          => 'pl-PL',
+            'alternatives'  => (string)$alternatives,
+        ];
+        if (!empty($opts['departureTime'])) {
+            $params['departureTime'] = (string)$opts['departureTime'];
+        }
+        if (!empty($opts['avoid'])) {
+            $params['avoid[features]'] = is_array($opts['avoid']) ? implode(',', $opts['avoid']) : (string)$opts['avoid'];
+        }
+        if ($vehicle) {
+            $map = [
+                'grossWeight'    => 'gross_weight_kg',
+                'weightPerAxle'  => 'axle_load_kg',
+                'height'         => 'height_cm',
+                'width'          => 'width_cm',
+                'length'         => 'length_cm',
+                'axleCount'      => 'axle_count',
+                'tunnelCategory' => 'tunnel_category',
+                'emissionType'   => 'emission_class',
+            ];
+            foreach ($map as $hereKey => $vKey) {
+                if (!empty($vehicle[$vKey])) {
+                    $params["vehicle[$hereKey]"] = (string)$vehicle[$vKey];
+                }
+            }
+            if (!empty($vehicle['hazardous_goods'])) {
+                $params['vehicle[shippedHazardousGoods]'] = 'explosive,gas,flammable,combustible,organic,poison,radioactive,corrosive,poisonousInhalation,harmfulToWater,other';
+            }
+        }
+
+        // HERE expects repeated `via=lat,lng` params (NOT via[0]=, via[1]=)
+        // Cake Client uses http_build_query which produces array syntax, so
+        // build the URL manually here.
+        $queryParts = [];
+        foreach ($params as $k => $v) {
+            $queryParts[] = rawurlencode($k) . '=' . rawurlencode((string)$v);
+        }
+        foreach ($vias as $via) {
+            if (!empty($via['lat']) && !empty($via['lng'])) {
+                $queryParts[] = 'via=' . rawurlencode($via['lat'] . ',' . $via['lng']);
+            }
+        }
+        $url = self::ROUTING_URL . '?' . implode('&', $queryParts);
+
+        try {
+            $resp = $this->client->get($url);
+            if (!$resp->isOk()) {
+                $body = $resp->getStringBody();
+                Log::warning('HERE routing HTTP ' . $resp->getStatusCode() . ': ' . $body);
+                throw new RuntimeException('HERE Routing API zwróciło błąd ' . $resp->getStatusCode() . '. ' . $body);
+            }
+            $data = $resp->getJson();
+            if (empty($data['routes'])) {
+                throw new RuntimeException('Brak tras w odpowiedzi HERE API.');
+            }
+
+            $routesOut = [];
+            foreach ($data['routes'] as $route) {
+                $polylines = [];
+                $totalDist = 0;
+                $totalDur  = 0;
+                $tollsTotal = null;
+                $tollsByCountry = [];
+                $tollsCurrency = $currency;
+                $instructions = [];
+                $sections = [];
+
+                foreach (($route['sections'] ?? []) as $sect) {
+                    $summary = $sect['summary'] ?? [];
+                    $sd = (int)($summary['length'] ?? 0);
+                    $st = (int)($summary['duration'] ?? 0);
+                    $totalDist += $sd;
+                    $totalDur  += $st;
+                    if (!empty($sect['polyline'])) {
+                        $polylines[] = (string)$sect['polyline'];
+                    }
+                    $dep = $sect['departure']['place']['location'] ?? null;
+                    $arr = $sect['arrival']['place']['location'] ?? null;
+                    if ($dep && $arr) {
+                        $sections[] = [
+                            'from_lat'     => (float)$dep['lat'],
+                            'from_lng'     => (float)$dep['lng'],
+                            'to_lat'       => (float)$arr['lat'],
+                            'to_lng'       => (float)$arr['lng'],
+                            'distance_km'  => round($sd / 1000, 1),
+                            'duration_min' => (int)round($st / 60),
+                        ];
+                    }
+
+                    foreach (($sect['tolls'] ?? []) as $toll) {
+                        $cc = (string)($toll['countryCode'] ?? '??');
+                        foreach (($toll['fares'] ?? []) as $fare) {
+                            $price = (float)($fare['price']['value'] ?? 0);
+                            $cur   = (string)($fare['price']['currency'] ?? $currency);
+                            $tollsByCountry[$cc] = ($tollsByCountry[$cc] ?? 0.0) + $price;
+                            $tollsTotal = ($tollsTotal ?? 0.0) + $price;
+                            $tollsCurrency = $cur;
+                        }
+                    }
+
+                    if ($returnInstr) {
+                        foreach (($sect['actions'] ?? []) as $act) {
+                            $instructions[] = [
+                                'text'       => (string)($act['instruction'] ?? ''),
+                                'distance_m' => (int)($act['length'] ?? 0),
+                                'duration_s' => (int)($act['duration'] ?? 0),
+                            ];
+                        }
+                    }
+                }
+
+                $routesOut[] = [
+                    'distance_km'      => round($totalDist / 1000, 1),
+                    'duration_min'     => (int)round($totalDur / 60),
+                    'tolls_total'      => $tollsTotal !== null ? round($tollsTotal, 2) : null,
+                    'tolls_currency'   => $tollsCurrency,
+                    'tolls_by_country' => $tollsByCountry,
+                    'polylines'        => $polylines,
+                    'instructions'     => $instructions,
+                    'sections'         => $sections,
+                ];
+            }
+
+            return ['routes' => $routesOut];
         } catch (\Throwable $e) {
             Log::error('HERE routing error: ' . $e->getMessage());
             throw $e;

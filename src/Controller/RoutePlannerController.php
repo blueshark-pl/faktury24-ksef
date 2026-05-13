@@ -51,22 +51,50 @@ class RoutePlannerController extends AppController
         $this->disableAutoRender();
         $this->request->allowMethod(['get', 'post']);
 
-        $fromAddr = trim((string)$this->request->getData('from', $this->request->getQuery('from', '')));
-        $toAddr   = trim((string)$this->request->getData('to',   $this->request->getQuery('to', '')));
-        $vehicleId = (string)$this->request->getData('vehicle_id', $this->request->getQuery('vehicle_id', ''));
-        $avoid = (array)$this->request->getData('avoid', $this->request->getQuery('avoid', []));
-        $currency = (string)$this->request->getData('currency', $this->request->getQuery('currency', 'EUR'));
-
-        if ($fromAddr === '' || $toAddr === '') {
-            return $this->jsonError(__('Podaj punkt początkowy i końcowy.'));
+        // Multipoint waypoints: tablica punktów (>=2)
+        // [{address, lat?, lng?}, ...]
+        $points = (array)($this->request->getData('points', $this->request->getQuery('points', [])));
+        // Wsteczna zgodność: legacy from/to (planer per zlecenie)
+        if (empty($points)) {
+            $fromAddr = trim((string)$this->request->getData('from', $this->request->getQuery('from', '')));
+            $toAddr   = trim((string)$this->request->getData('to',   $this->request->getQuery('to', '')));
+            if ($fromAddr !== '' && $toAddr !== '') {
+                $points = [['address' => $fromAddr], ['address' => $toAddr]];
+            }
         }
+        if (count($points) < 2) {
+            return $this->jsonError(__('Podaj co najmniej dwa punkty.'));
+        }
+
+        $vehicleId = (string)$this->request->getData('vehicle_id', $this->request->getQuery('vehicle_id', ''));
+        $avoid     = (array)$this->request->getData('avoid', $this->request->getQuery('avoid', []));
+        $currency  = (string)$this->request->getData('currency', $this->request->getQuery('currency', 'EUR'));
+        $alts      = (int)$this->request->getData('alternatives', $this->request->getQuery('alternatives', 0));
+        $instr     = (bool)$this->request->getData('instructions', $this->request->getQuery('instructions', false));
+        $departure = (string)$this->request->getData('departure_time', $this->request->getQuery('departure_time', ''));
 
         try {
             $here = new HereRoutingService();
-            $from = $here->geocode($fromAddr);
-            $to   = $here->geocode($toAddr);
-            if (!$from) return $this->jsonError(__('Nie znaleziono adresu: ') . $fromAddr);
-            if (!$to)   return $this->jsonError(__('Nie znaleziono adresu: ') . $toAddr);
+            // Geocode wszystkich punktów które nie mają jeszcze lat/lng
+            $resolved = [];
+            foreach ($points as $i => $p) {
+                $p = (array)$p;
+                if (!empty($p['lat']) && !empty($p['lng'])) {
+                    $resolved[] = [
+                        'lat'   => (float)$p['lat'],
+                        'lng'   => (float)$p['lng'],
+                        'label' => (string)($p['label'] ?? $p['address'] ?? ''),
+                    ];
+                    continue;
+                }
+                $addr = trim((string)($p['address'] ?? ''));
+                if ($addr === '') {
+                    return $this->jsonError(__('Punkt #') . ($i + 1) . __(' jest pusty.'));
+                }
+                $geo = $here->geocode($addr);
+                if (!$geo) return $this->jsonError(__('Nie znaleziono adresu: ') . $addr);
+                $resolved[] = $geo;
+            }
 
             $vehicleData = null;
             if ($vehicleId !== '') {
@@ -76,18 +104,48 @@ class RoutePlannerController extends AppController
                 }
             }
 
-            $result = $here->route($from, $to, $vehicleData, [
-                'avoid'    => $avoid,
-                'currency' => $currency,
+            $origin = array_shift($resolved);
+            $dest   = array_pop($resolved);
+            $vias   = $resolved;
+
+            // Zbieramy oryginalne adresy (po geocode mamy labels)
+            $origin['address'] = $points[0]['address'] ?? $origin['label'];
+            $dest['address']   = $points[count($points) - 1]['address'] ?? $dest['label'];
+
+            $result = $here->routeMulti($origin, $dest, $vias, $vehicleData, [
+                'avoid'              => $avoid,
+                'currency'           => $currency,
+                'alternatives'       => $alts,
+                'returnInstructions' => $instr,
+                'departureTime'      => $departure !== '' ? $departure : null,
             ]);
 
-            unset($result['raw']);
-            $result['from'] = $from;
-            $result['to']   = $to;
-            $result['decoded_path'] = HereRoutingService::decodePolyline($result['polyline']);
+            $result['points'] = array_merge([$origin], $vias, [$dest]);
 
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode($result, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function autosuggest(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+        $q = trim((string)$this->request->getQuery('q', ''));
+        $proximity = null;
+        $lat = $this->request->getQuery('lat');
+        $lng = $this->request->getQuery('lng');
+        if ($lat !== null && $lng !== null && is_numeric($lat) && is_numeric($lng)) {
+            $proximity = ['lat' => (float)$lat, 'lng' => (float)$lng];
+        }
+
+        try {
+            $here = new HereRoutingService();
+            $items = $here->autosuggest($q, $proximity);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['items' => $items], JSON_UNESCAPED_UNICODE));
         } catch (\Throwable $e) {
             return $this->jsonError($e->getMessage());
         }
@@ -138,7 +196,6 @@ class RoutePlannerController extends AppController
             unset($result['raw']);
             $result['from'] = $from;
             $result['to']   = $to;
-            $result['decoded_path'] = HereRoutingService::decodePolyline($result['polyline']);
             $result['vehicle'] = $vehicle ? [
                 'id' => $vehicle->id, 'name' => $vehicle->name, 'plate' => $vehicle->plate
             ] : null;

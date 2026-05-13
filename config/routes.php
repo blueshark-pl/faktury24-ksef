@@ -217,6 +217,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Planer tras (HERE Routing v8)
         $builder->get('/trasy',                      ['controller' => 'RoutePlanner', 'action' => 'index']);
         $builder->connect('/trasy/calculate',        ['controller' => 'RoutePlanner', 'action' => 'calculate']);
+        $builder->get('/trasy/autosuggest',          ['controller' => 'RoutePlanner', 'action' => 'autosuggest']);
         $builder->get('/trasy/zlecenie/{orderId}',   ['controller' => 'RoutePlanner', 'action' => 'forOrder'])
             ->setPass(['orderId']);
 

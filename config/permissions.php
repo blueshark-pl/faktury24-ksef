@@ -166,7 +166,7 @@ return [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
             'plugin'     => false,
             'controller' => 'RoutePlanner',
-            'action'     => ['index', 'calculate', 'forOrder'],
+            'action'     => ['index', 'calculate', 'forOrder', 'autosuggest'],
         ],
         [
             'role' => '*',
