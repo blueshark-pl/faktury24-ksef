@@ -1415,7 +1415,12 @@ public function add(): Response
 public function addVat(): ?Response      { return $this->handleAdd('vat'); }
 public function addCurrency(): ?Response { return $this->handleAdd('currency'); }
 public function addProforma(): ?Response { return $this->handleAdd('proforma'); }
-public function addCreditNote(): ?Response { return $this->handleAdd('credit_note'); }
+public function addCreditNote(): ?Response
+{
+    // Nota uznaniowa — dokument księgowy bez VAT (jak rachunek). $noVat=true wymusza
+    // zerowe stawki VAT, brak vat_code_id, brak vat_amount.
+    return $this->handleAdd('credit_note', true);
+}
 public function addAdvance(): ?Response  { return $this->handleAdd('advance'); }
 public function addCorrection(): ?Response { return $this->handleAdd('correction'); }
 public function addMargin(): ?Response   { return $this->handleAdd('margin'); }

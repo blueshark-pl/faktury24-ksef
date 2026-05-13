@@ -181,7 +181,9 @@ if (empty($allBankAccounts) && ($bankAccount || $bankName)) {
 /* ─── typ faktury ─── */
 $typeName = $t['inv_type_suffix'][$invoice->type ?? ''] ?? ($t['inv_type_suffix']['vat']);
 $isMargin  = ($invoice->type ?? '') === 'margin';
-$isNoVat   = ($invoice->type ?? '') === 'novat';
+// Nota uznaniowa — dokument księgowy bez VAT (jak rachunek/novat): ukrywamy
+// kolumny VAT, sumę VAT i podsumowanie stawek.
+$isNoVat   = in_array(($invoice->type ?? ''), ['novat', 'credit_note'], true);
 $isForeign = ($cur !== 'PLN');
 
 /* ─── odwrotne obciążenie — dodatkowe dane ─── */

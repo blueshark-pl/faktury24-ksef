@@ -30,11 +30,13 @@ try {
 } catch (\Throwable $e) { /* ignore */ }
 
 // Helper flag: proforma documents are not sent to KSeF and use inline preview element
-$isProforma = (strtolower((string)($invoice->type ?? '')) === 'proforma');
-$isNovat    = (strtolower((string)($invoice->type ?? '')) === 'novat');
+$isProforma   = (strtolower((string)($invoice->type ?? '')) === 'proforma');
+$isCreditNote = (strtolower((string)($invoice->type ?? '')) === 'credit_note');
+// Dla widoku traktujemy notę uznaniową jak novat (brak VAT — dokument księgowy).
+$isNovat      = (strtolower((string)($invoice->type ?? '')) === 'novat') || $isCreditNote;
 $__ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
 // Typy dokumentów które nigdy nie trafiają do KSeF
-$canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat;
+$canSendToKsef = $__ksefModeEnabled && !$isProforma && !$isNovat && !$isCreditNote;
 
 // Mapa typ faktury → akcja edycji
 $editActionMap = [

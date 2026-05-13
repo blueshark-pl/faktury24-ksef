@@ -28,6 +28,7 @@ if (!empty($invoice->paymentdate)) {
         $__dueDaysCustom = true;
     }
 }
+$__ksefModeEnabled = false;
 
 $__prefillContractor = null;
 try {
@@ -60,14 +61,12 @@ try {
         'unit'              => (string)($it->unit ?? 'szt.'),
         'price' => $it->price ?? 0,
         'discount_percent' => $it->discount_percent ?? 0,
-        'vat_code_id' => $it->vat_code_id ?? null,
         'gtu_code'          => (string)($it->gtu_code ?? ''),
         'pkwiu'             => (string)($it->pkwiu ?? ''),
         'gtin'              => (string)($it->gtin ?? ''),
         'cn_code'           => (string)($it->cn_code ?? ''),
         'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
         'procedure_marking' => (string)($it->procedure_marking ?? ''),
-        'price_mode' => 'net',
       ];
     }
   }
@@ -75,12 +74,7 @@ try {
   $__prefillItems = [];
 }
 
-// pre-render VAT select do klonowania w wierszach
-$vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
-foreach ($vats as $id => $label) {
-  $vatSelectHtml .= '<option value="' . h($id) . '">' . h($label) . '</option>';
-}
-$vatSelectHtml .= '</select>';
+// no-VAT: brak selektora stawek VAT w tym widoku
 
 // pre-render GTU select do klonowania (opcje możesz podać z kontrolera jako $gtuOptions)
 $gtuOptions = $gtuOptions ?? [
@@ -110,6 +104,7 @@ $gtuSelectHtml .= '</select>';
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons/css/flag-icons.min.css">
 
 <?= $this->Form->create($invoice, ['class' => 'needs-validation', 'novalidate' => true]) ?>
+<?= $this->Form->hidden('kind', ['value' => 'credit_note']) ?>
 
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -117,7 +112,7 @@ $gtuSelectHtml .= '</select>';
     <h1 class="page-title fw-medium fs-18 mb-2"><?= h($__pageTitle) ?></h1>
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
-      <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Faktury</a></li>
+      <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Rachunki</a></li>
       <li class="breadcrumb-item active" aria-current="page"><?= h($__pageTitle) ?></li>
     </ol>
   </div>
@@ -130,29 +125,63 @@ $gtuSelectHtml .= '</select>';
 <!-- End::page-header -->
 
 <div class="row">
-    <div class="col-xxl-12">
+  <div class="col-xxl-12">
     <div class="card custom-card">
-      <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
+      <div class="card-header d-flex align-items-center justify-content-between pe-2">
+        <ul class="nav nav-tabs card-header-tabs flex-grow-1" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
+          <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
         </ul>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
+        <div class="dropdown ms-2 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
+            <i class="ri-settings-3-line"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="inv-extra-tabs-btn">
+            <li><span class="dropdown-header text-muted small px-3 py-1">Dodatkowe zakładki</span></li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-annotations">
+                <i class="ri-file-text-line"></i> Adnotacje
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" data-extra-tab="pane-fa3ext">
+                <i class="ri-government-line"></i> KSeF FA(3)
+              </button>
+            </li>
+          </ul>
+        </div>
+        <?php //endif; ?>
+        <script>
+        $(function(){
+          var $gearBtn = $("#inv-extra-tabs-btn");
+          $(document).on("click", "[data-extra-tab]", function(){
+            var paneId = $(this).data("extra-tab");
+            $("#invTabs .nav-link").removeClass("active").attr("aria-selected", "false");
+            $("#invTabs .nav-link").each(function(){ $(this).attr("tabindex", "-1"); });
+            $(".tab-content > .tab-pane").removeClass("show active");
+            $("#" + paneId).addClass("show active");
+            $gearBtn.removeClass("btn-outline-secondary").addClass("btn-secondary");
+          });
+          $("#invTabs").on("click", ".nav-link", function(){
+            $gearBtn.removeClass("btn-secondary").addClass("btn-outline-secondary");
+            $("[data-extra-tab]").each(function(){ $("#" + $(this).data("extra-tab")).removeClass("show active"); });
+          });
+        });
+        </script>
       </div>
 
       <div class="card-body tab-content">
         <div class="mb-3">
             <div class="invoice-pills d-flex flex-wrap gap-2">
                 <div class="pill">
-                <span class="pill-label">Netto</span>
-                <span class="pill-value" id="pill-net">0,00</span>
-                </div>
-                <div class="pill">
-                <span class="pill-label">VAT</span>
-                <span class="pill-value" id="pill-vat">0,00</span>
+                  <span class="pill-label">Netto</span>
+                  <span class="pill-value" id="pill-net">0,00</span>
                 </div>
                 <div class="pill pill-accent">
-                <span class="pill-label">Brutto</span>
-                <span class="pill-value" id="pill-gross">0,00</span>
+                  <span class="pill-label">Brutto</span>
+                  <span class="pill-value" id="pill-gross">0,00</span>
                 </div>
             </div>
         </div>
@@ -170,18 +199,16 @@ $gtuSelectHtml .= '</select>';
               </small>
             </div>
             <div class="col-lg-4">
-      <?= $this->Form->hidden('invoice_series_id', [
-        'id'    => 'invoice-series-id-hidden',
-        'value' => $invoice->invoice_series_id ?? null,
-      ]) ?>
-      <?= $this->Form->control('series', [
-        'label' => 'Schemat numeracji',
+              <?= $this->Form->control('series', [
+                'label' => 'Seria',
                 'type'  => 'select',
                 'empty' => true,
                 'class' => 'form-select',
                 'id'    => 'series-select',
+            // opcjonalnie: ustaw bieżącą wartość jeśli istnieje
             'value' => $invoice->series ?? null,
             ]) ?>
+            <?= $this->Form->hidden('invoice_series_id', ['id' => 'invoice-series-id-hidden', 'value' => $invoice->invoice_series_id ?? null]) ?>
             </div>
 
             <div class="col-lg-2">
@@ -256,6 +283,59 @@ $gtuSelectHtml .= '</select>';
           </div>
         </div>
 
+        <!-- KSIĘGOWE -->
+        <div class="tab-pane fade" id="pane-accounting" role="tabpanel" aria-labelledby="tab-accounting">
+          <div class="vstack gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="flag-fp" name="flags[fp]" value="1"<?= !empty($invoice->is_receipt_invoice) ? ' checked' : '' ?>>
+              <label class="form-check-label" for="flag-fp">Faktura do paragonu (FP)</label>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="fp-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                title="Faktura do paragonu (FP)"
+                data-bs-content="
+                  <div class='small text-start'>
+                    <p>Po zaznaczeniu faktura otrzyma oznaczenie <strong>FP</strong> i będzie wykazana wyłącznie w części ewidencyjnej JPK_V7 (bez księgowania).</p>
+                    <p><strong>Uwaga:</strong> od 1.01.2020 wystawienie firmie faktury do paragonu bez NIP nabywcy skutkuje <strong>100% sankcją VAT</strong>.</p>
+                  </div>
+                ">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <!-- Mechanizm podzielonej płatności (MPP) -->
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1"<?= !empty($invoice->is_split_payment) ? ' checked' : '' ?>>
+              <label class="form-check-label" for="is-split-payment">Mechanizm podzielonej płatności (MPP)</label>
+            </div>
+
+            <!-- Faktura do paragonu: pola paragonu (pokazywane przy zaznaczonym FP) -->
+            <div id="receipt-extra" class="row g-2 ms-1" style="display:none;">
+              <div class="col-8">
+                <?= $this->Form->control('receipt_number', ['label' => 'Nr paragonu', 'class' => 'form-control']) ?>
+              </div>
+              <div class="col-4">
+                <?= $this->Form->control('receipt_date', ['label' => 'Data paragonu', 'type' => 'date', 'class' => 'form-control']) ?>
+              </div>
+            </div>
+
+            <script>
+            (function(){
+              const $chk = $('#flag-fp');
+              function toggleReceiptExtra(){
+                const on = $chk.is(':checked');
+                $('#receipt-extra').toggle(on);
+                if (!on) {
+                  $('[name="receipt_number"]').val('');
+                  $('[name="receipt_date"]').val('');
+                }
+              }
+              $(document).on('change', '#flag-fp', toggleReceiptExtra);
+              // initialize on load
+              $(toggleReceiptExtra);
+            })();
+            </script>
+          </div>
+        </div>
+
         <!-- ZAAWANSOWANE -->
         <div class="tab-pane fade" id="pane-adv" role="tabpanel" aria-labelledby="tab-adv">
           <div class="row g-3">
@@ -284,6 +364,15 @@ $gtuSelectHtml .= '</select>';
           </div>
         </div>
 
+        <!-- ADNOTACJE -->
+        <?= $this->element('Invoices/tab_annotations') ?>
+
+        <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
+        <?= $this->element('Invoices/tab_identifiers') ?>
+
+        <!-- KSeF FA(3) ROZSZERZONY -->
+        <?= $this->element('Invoices/tab_fa3_extended') ?>
+
       </div>
     </div>
   </div>
@@ -292,9 +381,11 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
         <div class="card-title">Wystaw notę uznaniową</div>
         <div class="ms-auto mt-md-0 mt-2">
-          <?= $this->Form->button('Zapisz Offline <i class="ri-cloud-off-line ms-1 align-middle d-inline-block"></i>', [
-            'class' => 'btn btn-sm btn-warning me-2', 'escapeTitle' => false, 'name' => 'save_offline'
-          ]) ?>
+            <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz Offline', [
+              'class' => 'btn btn-sm btn-primary',
+              'name' => 'save_only',
+              'escapeTitle' => false,
+            ]) ?>
         </div>
       </div>
 
@@ -313,11 +404,11 @@ $gtuSelectHtml .= '</select>';
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCatalog()">
                         <i class="ri-search-line me-1"></i> Szukaj w katalogu
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#contractor-create-modal">
-                        <i class="ri-user-add-line me-1"></i> Nowy kontrahent
+                    <button type="button" class="btn btn-sm btn-outline-success btn-open-contractor-modal">
+                      <i class="ri-user-add-line me-1"></i> Nowy kontrahent
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gus-modal">
-                        <i class="ri-database-2-line me-1"></i> GUS z NIP
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-open-gus-modal">
+                      <i class="ri-database-2-line me-1"></i> GUS z NIP
                     </button>
                     <div class="ms-auto d-flex align-items-center small text-muted">
                         <i class="ri-shield-check-line me-1"></i> dane wypełnisz w 2 kliknięcia
@@ -358,7 +449,7 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                   <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
+                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                 </div>
@@ -425,7 +516,7 @@ $gtuSelectHtml .= '</select>';
         </div>
 
         <div class="card custom-card invoice-compact">
-
+          <!-- Pozycje -->
           <div class="table-responsive">
             <table class="table nowrap text-nowrap border mt-3" id="items-table">
               <thead>
@@ -433,18 +524,7 @@ $gtuSelectHtml .= '</select>';
                     <th style="min-width:260px;">PRODUKT</th>
                     <th style="width:120px;">ILOŚĆ</th>
                     <th style="width:80px;">JM</th>
-                    <th style="width:180px;">CENA</th>
-                    <th style="width:170px;">STAWKA VAT
-                    <button type="button"
-                        id="vat-help"
-                        class="btn btn-link p-0 ms-1 align-baseline"
-                        data-bs-toggle="popover"
-                        data-bs-placement="left"
-                        aria-label="Pomoc: stawki VAT"
-                        title="Stawki VAT — pomoc">
-                        <i class="ri-question-line fs-6"></i>
-                    </button>
-                    </th>
+          <th style="width:140px;">CENA</th>
                     <th style="width:120px;">RABAT %</th>
                     <th style="width:140px;">NETTO</th>
                     <th style="width:140px;">BRUTTO</th>
@@ -477,23 +557,14 @@ $gtuSelectHtml .= '</select>';
   </td>
   <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
-  <td>
-    <div class="input-group">
-      <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
-      <select name="items[0][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
-        <option value="net">netto</option>
-        <option value="gross">brutto</option>
-      </select>
-    </div>
-  </td>
-  <td class="vat-cell"><?= $vatSelectHtml ?></td>
+  <td><input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
   <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="0.00" readonly></td>
   <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
   <td class="gtu-cell"><?= $gtuSelectHtml ?></td>
   <td>
     <div class="d-flex gap-1">
-      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
+      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
       <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
     </div>
   </td>
@@ -510,17 +581,13 @@ $gtuSelectHtml .= '</select>';
 
                 <!-- wiersz: Sumy -->
                <tr>
-  <td colspan="6"></td>
+  <td colspan="5"></td>
   <td colspan="4">
     <table class="table table-sm text-nowrap mb-0 table-borderless">
       <tbody>
         <tr>
           <th scope="row"><div class="fw-medium">Razem netto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-net" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
-        </tr>
-        <tr>
-          <th scope="row"><div class="fw-medium">Razem VAT <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
-          <td><input type="text" id="sum-tax" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
           <th scope="row"><div class="fs-14 fw-medium">Razem brutto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
@@ -545,53 +612,55 @@ $gtuSelectHtml .= '</select>';
         <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
           <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
         </button>
-        <?= $this->Form->button('Zapisz Offline <i class="ri-cloud-off-line ms-1 align-middle d-inline-block"></i>', [
-          'class' => 'btn btn-warning m-1', 'escapeTitle' => false, 'name' => 'save_offline'
-        ]) ?>
+          <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz Offline', [
+            'class' => 'btn btn-primary m-1',
+            'name' => 'save_only',
+            'escapeTitle' => false,
+          ]) ?>
       </div>
     </div>
   </div>
-</div>
-<div id="calc-panel" class="calc-panel shadow rounded d-none" role="dialog" aria-label="Kalkulator">
-  <div class="calc-header d-flex justify-content-between align-items-center px-2 py-1">
-    <div class="fw-medium"><i class="ri-calculator-line me-1"></i> Kalkulator</div>
-    <div class="d-flex align-items-center gap-1">
-      <button type="button" class="btn btn-sm btn-light" id="calc-insert" title="Wstaw do aktywnego pola"><i class="ri-input-cursor-move"></i></button>
-      <button type="button" class="btn btn-sm btn-light" id="calc-close" title="Zamknij"><i class="ri-close-line"></i></button>
-    </div>
-  </div>
-  <div class="calc-body p-2">
-    <input type="text" id="calc-input" class="form-control mb-2" placeholder="Wpisz działanie, np. 10*1.23" autocomplete="off">
-    <div class="calc-grid">
-      <button class="btn btn-light" data-key="7">7</button>
-      <button class="btn btn-light" data-key="8">8</button>
-      <button class="btn btn-light" data-key="9">9</button>
-      <button class="btn btn-secondary" data-key="/">/</button>
 
-      <button class="btn btn-light" data-key="4">4</button>
-      <button class="btn btn-light" data-key="5">5</button>
-      <button class="btn btn-light" data-key="6">6</button>
-      <button class="btn btn-secondary" data-key="*">*</button>
-
-      <button class="btn btn-light" data-key="1">1</button>
-      <button class="btn btn-light" data-key="2">2</button>
-      <button class="btn btn-light" data-key="3">3</button>
-      <button class="btn btn-secondary" data-key="-">-</button>
-
-  <button class="btn btn-warning" id="calc-clear" title="Wyczyść">C</button>
-  <button class="btn btn-light" data-key="0">0</button>
-  <button class="btn btn-secondary" data-key="%" title="Procent">%</button>
-  <button class="btn btn-secondary" data-key="+">+</button>
-
-  <button class="btn btn-light" data-key="(">(</button>
-  <button class="btn btn-light" data-key=")">)</button>
-  <button class="btn btn-light" id="calc-back" title="Kasuj znak">⌫</button>
-  <button class="btn btn-primary" id="calc-eq" title="Oblicz">=</button>
-    </div>
-  </div>
+  <!-- PRAWA KOLUMNA: karty -->
+  
 </div>
 
 <?= $this->Form->end() ?>
+<!-- Modal: KSeF confirm send -->
+<div class="modal fade" id="ksef-confirm-modal" tabindex="-1" aria-labelledby="ksefConfirmLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ksefConfirmLabel">Wyślij do KSeF</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3">Czy na pewno chcesz zapisać tę fakturę i natychmiast wysłać ją do KSeF?</p>
+        <div class="row g-3 align-items-center">
+          <div class="col-sm-5">
+            <label for="ksef-env" class="col-form-label">Środowisko</label>
+          </div>
+          <div class="col-sm-7">
+            <select id="ksef-env" class="form-select form-select-sm">
+              <option value="test">Test</option>
+              <option value="prod">Production</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <div class="form-text">Domyślnie używane będzie środowisko testowe. Zmień na Production tylko jeśli masz pewność.</div>
+          </div>
+        </div>
+        <hr>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
+        <button type="button" class="btn btn-primary" id="ksef-confirm-send-btn">Wyślij do KSeF</button>
+      </div>
+    </div>
+  </div>
+  <input type="hidden" name="ksef_send" id="ksef-send-flag" value="0">
+  <input type="hidden" name="ksef_env" id="ksef-env-hidden" value="test">
+</div>
 <div class="modal fade" id="recipient-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -646,12 +715,12 @@ $gtuSelectHtml .= '</select>';
     </div>
   </div>
 </div>
-<!-- Modal: Nowy schemat numeracji -->
+<!-- Modal: Nowa seria -->
 <div class="modal fade" id="series-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj schemat numeracji</h6>
+        <h6 class="modal-title">Dodaj serię</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -663,7 +732,7 @@ $gtuSelectHtml .= '</select>';
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa/oznaczenie schematu numeracji*',
+          'label' => 'Nazwa/oznaczenie serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-name'
@@ -677,7 +746,7 @@ $gtuSelectHtml .= '</select>';
         
         <div class="alert alert-info small">
           <strong>Instrukcja wzorców numeracji:</strong><br>
-          Możliwe jest definiowanie własnych wzorców numeracji dokumentów.<br><br>
+          Możliwe jest definiowanie własnych wzorców serii dokumentów.<br><br>
           
           <strong>Przykładowe wzorce:</strong><br>
           • <code>[numer]/[rok]</code><br>
@@ -709,7 +778,7 @@ $gtuSelectHtml .= '</select>';
         <div class="row">
           <div class="col-md-6">
             <?= $this->Form->control('invoice_series_type_id', [
-              'label' => 'Typ numeracji (opcjonalnie)',
+              'label' => 'Typ serii (opcjonalnie)',
               'type' => 'select',
               'empty' => '-- Wybierz typ --',
               'class' => 'form-select',
@@ -718,7 +787,7 @@ $gtuSelectHtml .= '</select>';
           </div>
           <div class="col-md-6">
             <?= $this->Form->control('invoice_series_period_id', [
-              'label' => 'Okres numeracji (opcjonalnie)',
+              'label' => 'Okres serii (opcjonalnie)',
               'type' => 'select',
               'empty' => '-- Wybierz okres --',
               'class' => 'form-select',
@@ -733,7 +802,7 @@ $gtuSelectHtml .= '</select>';
             'id' => 'series-is-default'
           ]) ?>
           <label class="form-check-label" for="series-is-default">
-            Ustaw jako domyślny schemat numeracji
+            Ustaw jako domyślną serię
           </label>
         </div>
       </div>
@@ -830,10 +899,13 @@ $gtuSelectHtml .= '</select>';
             ]) ?>
           </div>
 
-          <div class="col-md-4 d-flex align-items-end">
-            <div class="form-check form-switch mt-2">
-              <input class="form-check-input" type="checkbox" id="eu-vat-switch" name="eu_vat" value="1">
-              <label class="form-check-label" for="eu-vat-switch">VAT UE aktywny</label>
+          <div class="col-md-4">
+            <div class="form-check form-switch mt-4">
+              <?= $this->Form->checkbox('eu_vat', [
+                'class' => 'form-check-input',
+                'id' => 'eu-vat-switch'
+              ]) ?>
+              <label for="eu-vat-switch" class="form-check-label">VAT UE (czynny)</label>
             </div>
           </div>
 
@@ -935,12 +1007,12 @@ $gtuSelectHtml .= '</select>';
 
 <?= $this->element('Invoices/product_create_modal') ?>
 
-<!-- Modal: Dodaj typ numeracji -->
+<!-- Modal: Dodaj typ serii -->
 <div class="modal fade" id="series-type-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj typ numeracji</h6>
+        <h6 class="modal-title">Dodaj typ serii</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -952,14 +1024,14 @@ $gtuSelectHtml .= '</select>';
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa typu numeracji*',
+          'label' => 'Nazwa typu serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-type-name'
         ]) ?>
         
         <?= $this->Form->control('invoice_series_period_id', [
-          'label' => 'Okres numeracji (opcjonalnie)',
+          'label' => 'Okres serii (opcjonalnie)',
           'type' => 'select',
           'empty' => '-- Wybierz okres --',
           'class' => 'form-select',
@@ -967,7 +1039,7 @@ $gtuSelectHtml .= '</select>';
         ]) ?>
         
         <?= $this->Form->control('series_template', [
-          'label' => 'Szablon numeracji (opcjonalnie)',
+          'label' => 'Szablon serii (opcjonalnie)',
           'class' => 'form-control',
           'placeholder' => 'np. {YYYY}/{MM}/{NR}',
           'id' => 'series-type-template'
@@ -995,12 +1067,12 @@ $gtuSelectHtml .= '</select>';
   </div>
 </div>
 
-<!-- Modal: Dodaj okres numeracji -->
+<!-- Modal: Dodaj okres serii -->
 <div class="modal fade" id="series-period-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj okres numeracji</h6>
+        <h6 class="modal-title">Dodaj okres serii</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -1012,7 +1084,7 @@ $gtuSelectHtml .= '</select>';
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa okresu numeracji*',
+          'label' => 'Nazwa okresu serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-period-name',
@@ -1040,58 +1112,11 @@ $gtuSelectHtml .= '</select>';
       <div class="toast-body" id="app-toast-body">…</div>
       <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
-   </div>
-   </div>
+  </div>
+</div>
 
-   <!-- Floating Calculator Panel (identical behavior to add.php) -->
-   <div id="calc-panel" class="calc-panel d-none shadow">
-     <div class="calc-header d-flex align-items-center justify-content-between p-2">
-       <div class="fw-medium">Kalkulator</div>
-       <button type="button" class="btn btn-sm btn-light" id="calc-close" aria-label="Zamknij">
-         <i class="ri-close-line"></i>
-       </button>
-     </div>
-     <div class="p-2">
-       <div class="input-group mb-2">
-         <input type="text" id="calc-input" class="form-control" placeholder="np. (100+23%)*2">
-         <button type="button" class="btn btn-outline-secondary" id="calc-back" title="Backspace">
-           <i class="ri-arrow-go-back-line"></i>
-         </button>
-       </div>
-       <div class="calc-grid mb-2">
-         <button type="button" class="btn btn-light" data-key="7">7</button>
-         <button type="button" class="btn btn-light" data-key="8">8</button>
-         <button type="button" class="btn btn-light" data-key="9">9</button>
-         <button type="button" class="btn btn-outline-secondary" data-key="/">÷</button>
-
-         <button type="button" class="btn btn-light" data-key="4">4</button>
-         <button type="button" class="btn btn-light" data-key="5">5</button>
-         <button type="button" class="btn btn-light" data-key="6">6</button>
-         <button type="button" class="btn btn-outline-secondary" data-key="*">×</button>
-
-         <button type="button" class="btn btn-light" data-key="1">1</button>
-         <button type="button" class="btn btn-light" data-key="2">2</button>
-         <button type="button" class="btn btn-light" data-key="3">3</button>
-         <button type="button" class="btn btn-outline-secondary" data-key="-">−</button>
-
-         <button type="button" class="btn btn-light" data-key="0">0</button>
-         <button type="button" class="btn btn-light" data-key=",">,</button>
-         <button type="button" class="btn btn-light" data-key="%">%</button>
-         <button type="button" class="btn btn-outline-secondary" data-key="+">+</button>
-
-         <button type="button" class="btn btn-light" data-key="(">(</button>
-         <button type="button" class="btn btn-light" data-key=")">)</button>
-         <button type="button" class="btn btn-outline-secondary" id="calc-clear">C</button>
-         <button type="button" class="btn btn-primary" id="calc-eq">=</button>
-       </div>
-       <div class="d-flex justify-content-end gap-2">
-         <button type="button" class="btn btn-outline-secondary" id="calc-insert">Wstaw do pola</button>
-       </div>
-     </div>
-   </div>
-
-  <style>
-    #contractors-table tbody tr.catalog-row{ cursor:pointer; }
+<style>
+  #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
   /* Nagłówki grup Select2 */
@@ -1217,30 +1242,6 @@ $gtuSelectHtml .= '</select>';
 /* --- toolbar pod nabywcą --- */
 .ctr-toolbar{ position:sticky; top:0; z-index:2; background:#fff; padding:.5rem; border:1px dashed #e9ecef; border-radius:.5rem; }
 
-  /* === Floating calculator styles (match add.php) === */
-  .calc-panel{
-    position: fixed;
-    right: 20px; bottom: 110px;
-    width: 280px;
-    background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: .5rem;
-    z-index: 1080;
-  }
-  .calc-header{
-    cursor: move;
-    background: #f8f9fa;
-    border-bottom: 1px solid #e9ecef;
-    border-top-left-radius: .5rem;
-    border-top-right-radius: .5rem;
-  }
-  .calc-grid{
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: .4rem;
-  }
-  .calc-grid .btn{ width: 100%; }
-  body.user-select-none{ user-select: none; }
 </style>
 <script>
 (function(){
@@ -1258,16 +1259,27 @@ $gtuSelectHtml .= '</select>';
 
   // — Duplikacja wiersza pozycji
   $('#items-body').on('click', '.btn-dup', function(){
-    const $tr = $(this).closest('tr');
-    const $clone = $tr.clone(true);
-    const idx = $('#items-body tr').length + Math.floor(Math.random()*100);
-    $clone.find('[name]').each(function(){
-      const n = $(this).attr('name'); if (!n) return;
-      $(this).attr('name', n.replace(/\[\d+\]/, '['+idx+']'));
-    });
-    $clone.find('.item-net, .item-gross').val('0.00');
-    $tr.after($clone.addClass('table-ghost'));
-    setTimeout(()=> $clone.removeClass('table-ghost'), 200);
+    const $src = $(this).closest('tr');
+    // Dodaj nowy pusty wiersz jak zwykły plus
+    $('#btn-add-item').trigger('click');
+    const $addRow = $('#btn-add-item').closest('tr');
+    const $dst = $addRow.prev();
+    // Skopiuj wartości
+    $dst.find('.item-qty').val($src.find('.item-qty').val());
+    $dst.find('.item-price').val($src.find('.item-price').val());
+    $dst.find('.item-disc').val($src.find('.item-disc').val());
+    $dst.find('.item-name-hidden').val($src.find('.item-name-hidden').val());
+    // Produkt (Select2) – ustaw tę samą opcję
+    const $srcSel = $src.find('.item-product-select');
+    const pid = $srcSel.val();
+    const ptext = ($srcSel.find('option:selected').text() || $src.find('.item-name-hidden').val() || '').trim();
+    const $dstSel = $dst.find('.item-product-select');
+    if (pid) {
+      $dstSel.find('option[value="'+pid+'"]').remove();
+      const opt = new Option(ptext, pid, true, true);
+      $dstSel.append(opt).trigger('change');
+    }
+    try { if (typeof rowCalc === 'function') rowCalc($dst); if (typeof allCalc === 'function') allCalc(); if (typeof guardMinRows === 'function') guardMinRows(); } catch(_){ }
   });
 
   // — Skróty klawiaturowe: Alt+N (nowa pozycja), Alt+S (submit)
@@ -1381,8 +1393,7 @@ $gtuSelectHtml .= '</select>';
 $(function () {
   // ====== CONFIG / HELPERS ======
   var csrf = $('meta[name="csrfToken"]').attr('content') || '';
-  var vatRates = <?= json_encode($vatRatesMap ?? []) ?>;
-  var vatSelectHtml = <?= json_encode($vatSelectHtml) ?>;
+  var vatRates = {};
   var contractorUrl = '<?= $this->Url->build(['controller'=>'Contractors','action'=>'search','_ext'=>'json']) ?>';
   var productUrl    = '<?= $this->Url->build(['controller'=>'Products','action'=>'search','_ext'=>'json']) ?>';
   var gusUrl        = '<?= $this->Url->build(['controller'=>'Contractors','action'=>'gusLookup','_ext'=>'json']) ?>';
@@ -1447,40 +1458,6 @@ $(function () {
       html: true, content: gtuHelpHtml, trigger: 'focus', container: 'body', sanitize: false
     });
   }
-
-  // ===== Global price mode toolbar (parity with add.php) =====
-  function getDefaultPriceMode(){ try{ return (localStorage.getItem('invoice_price_mode_default')||'net'); }catch(e){ return 'net'; } }
-  function setDefaultPriceMode(mode){ try{ localStorage.setItem('invoice_price_mode_default', mode); }catch(e){} updatePriceModeToolbar(); }
-  function updatePriceModeToolbar(){
-    var cur = getDefaultPriceMode();
-    var $btns = $('#price-mode-toggle [data-mode]');
-    $btns.removeClass('btn-primary active').addClass('btn-outline-secondary').attr('aria-pressed','false');
-    $('#price-mode-toggle [data-mode="'+cur+'"]').removeClass('btn-outline-secondary').addClass('btn-primary active').attr('aria-pressed','true');
-  }
-  function safeConvertRow($tr, newMode){
-    if (typeof convertRowPriceMode === 'function') { convertRowPriceMode($tr, newMode); return; }
-    // Fallback: set select value and trigger recalculation if handlers exist
-    var $sel = $tr.find('.item-price-mode');
-    if ($sel.length) { $sel.val(newMode).trigger('change'); }
-  }
-  // initialize toolbar state
-  updatePriceModeToolbar();
-  // replace older handlers if present
-  $(document).off('click', '#price-mode-toggle [data-mode]');
-  $(document).on('click', '#price-mode-toggle [data-mode]', function(e){
-    var newMode = $(this).data('mode');
-    if (!newMode) return;
-    // Only set default and update UI; do NOT convert existing rows here
-    setDefaultPriceMode(newMode);
-  });
-
-  // Apply to existing rows only when user explicitly clicks the button
-  $(document).off('click', '#apply-mode-to-existing');
-  $(document).on('click', '#apply-mode-to-existing', function(){
-    var mode = getDefaultPriceMode();
-    $('#items-body tr').each(function(){ safeConvertRow($(this), mode); });
-    if (typeof allCalc === 'function') allCalc();
-  });
 
   // === VAT Help Popover (HTML) ===
   var vatHelpHtml = '\
@@ -1615,53 +1592,10 @@ $(function () {
     .on('select2:clear', function(){ clearContractorSnapshot(); hideContractorSnapshot(); });
   }
 
-  // Zapamiętanie ostatniego wpisu w polu wyszukiwania kontrahenta (np. NIP)
-  var lastContractorSearchTerm = '';
-  $(document).on('keyup', '.select2-container--open .select2-search__field', function(){
-    // Tylko jeśli otwarty jest dropdown dla kontrahenta
-    var $dropdown = $(this).closest('.select2-container');
-    // Niektóre wersje select2 trudniej odróżnić – przechowujemy zawsze
-    lastContractorSearchTerm = $(this).val() || '';
-  });
-
-  // Prefill NIP do GUS modal przy otwarciu
-  $('#gus-modal').on('show.bs.modal', function(){
-    var candidate = (lastContractorSearchTerm || '').replace(/\D/g,'');
-    if (candidate.length !== 10) {
-      var alt = ($('[name="invoice_contractor[nip]"]').val()||'').replace(/\D/g,'');
-      if (alt.length === 10) candidate = alt;
-    }
-    if (candidate.length === 10) {
-      $('#gus-nip').val(candidate);
-    }
-  });
-
-  // Prefill danych do modala "Nowy kontrahent" jeśli już coś wpisano w snapshot
-  $('#contractor-create-modal').on('show.bs.modal', function(){
-    var map = {
-      name: $('[name="invoice_contractor[name]"]').val(),
-      nip: $('[name="invoice_contractor[nip]"]').val(),
-      street: $('[name="invoice_contractor[street]"]').val(),
-      postal_code: $('[name="invoice_contractor[zip]"]').val(),
-      city: $('[name="invoice_contractor[city]"]').val(),
-      country: $('[name="invoice_contractor[country]"]').val(),
-      email: $('[name="invoice_contractor[email]"]').val(),
-      phone: $('[name="invoice_contractor[phone]"]').val()
-    };
-    Object.entries(map).forEach(function([k,v]){
-      if (!v) return;
-      var $field = $('#contractor-create-form').find('[name="'+k+'"]');
-      if ($field.length) {
-        if ($field.is(':checkbox')) { $field.prop('checked', !!v); }
-        else { $field.val(v); }
-      }
-    });
-  });
-
-  // ====== SELECT2 TYPÓW NUMERACJI ======
+  // ====== SELECT2 TYPÓW SERII ======
   if ($.fn && $.fn.select2) {
     $('#series-type-select').select2({
-      placeholder: 'Wybierz typ numeracji',
+      placeholder: 'Wybierz typ serii',
       allowClear: true,
       ajax: {
         url: seriesTypesUrl,
@@ -1673,16 +1607,16 @@ $(function () {
         }
       },
       language: { 
-        noResults: ()=> 'Brak typów numeracji',
+        noResults: ()=> 'Brak typów serii',
         searching: ()=> 'Szukam…'
       }
     });
   }
 
-  // ====== SELECT2 OKRESÓW NUMERACJI ======
+  // ====== SELECT2 OKRESÓW SERII ======
   if ($.fn && $.fn.select2) {
     $('#series-period-select').select2({
-      placeholder: 'Wybierz okres numeracji',
+      placeholder: 'Wybierz okres serii',
       allowClear: true,
       ajax: {
         url: seriesPeriodsUrl,
@@ -1694,7 +1628,7 @@ $(function () {
         }
       },
       language: { 
-        noResults: ()=> 'Brak okresów numeracji',
+        noResults: ()=> 'Brak okresów serii',
         searching: ()=> 'Szukam…'
       }
     });
@@ -1770,7 +1704,16 @@ $(function () {
     );
     $search.after(toolbar);
     $dd.find('.ctr-act-add').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); closeSelect2Then(()=> $('#contractor-create-modal').modal('show')); });
-    $dd.find('.ctr-act-gus').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); closeSelect2Then(()=> $('#gus-modal').modal('show')); });
+    $dd.find('.ctr-act-gus').on('mousedown', function(e){
+      e.preventDefault(); e.stopPropagation();
+      try {
+        var inst = $('#contractor-select').data('select2');
+        var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+        var nip = (query||'').replace(/\D/g,'');
+        if (nip.length === 10) { $('#gus-nip').val(nip); }
+      } catch(_){ }
+      closeSelect2Then(()=> $('#gus-modal').modal('show'));
+    });
     $dd.find('.ctr-act-cat').on('mousedown', function(e){ 
       e.preventDefault(); 
       e.stopPropagation(); 
@@ -1855,41 +1798,14 @@ $('#gus-fetch-btn').on('click', function(){
 
   // ====== POZYCJE – OBLICZENIA ======
   function toNum(v, def){ var n=parseFloat(v); return isFinite(n)?n:(def||0); }
-  function getDefaultPriceMode(){ try{ return (localStorage.getItem('invoice_price_mode_default')||'net'); }catch(e){ return 'net'; } }
-  function setDefaultPriceMode(mode){ try{ localStorage.setItem('invoice_price_mode_default', mode); }catch(e){} updatePriceModeToolbar(); }
-  function updatePriceModeToolbar(){
-    var cur = getDefaultPriceMode();
-    var $btns = $('#price-mode-toggle [data-mode]');
-    $btns.removeClass('btn-primary active').addClass('btn-outline-secondary').attr('aria-pressed','false');
-    $('#price-mode-toggle [data-mode="'+cur+'"]').removeClass('btn-outline-secondary').addClass('btn-primary active').attr('aria-pressed','true');
-  }
-  function convertRowPriceMode($tr, newMode){
-    var vatCode = $tr.find('.item-vatcode').val();
-    var rate = toNum(vatRates[vatCode], 0);
-    var curMode = ($tr.find('.item-price-mode').val()||'').trim() || getDefaultPriceMode();
-    if (curMode === newMode) return;
-    var p = toNum($tr.find('.item-price').val(), 0);
-    var newPrice = p;
-    var factor = 1 + (rate/100);
-    if (curMode === 'net' && newMode === 'gross') newPrice = p * factor;
-    if (curMode === 'gross' && newMode === 'net') newPrice = p / factor;
-    $tr.find('.item-price-mode').val(newMode);
-    $tr.find('.item-price').val((+newPrice).toFixed(2));
-    rowCalc($tr);
-  }
   function rowCalc($tr){
     var q = toNum($tr.find('.item-qty').val(), 0);
     var p = toNum($tr.find('.item-price').val(), 0);
     var disc = toNum($tr.find('.item-disc').val(), 0);
-    var vatCode = $tr.find('.item-vatcode').val();
-    var rate = toNum(vatRates[vatCode], 0);
-    var mode = ($tr.find('.item-price-mode').val()||'').trim() || getDefaultPriceMode();
-    var unitNet, unitGross;
-    if (mode === 'gross') { unitGross = p; unitNet = unitGross / (1 + rate/100); }
-    else { unitNet = p; unitGross = unitNet * (1 + rate/100); }
-    var unitNetAfterDisc = unitNet * (1 - disc/100);
-    var net  = +(q * unitNetAfterDisc).toFixed(2);
-    var gross= +(net * (1 + rate/100)).toFixed(2);
+    var unit = p * (1 - disc/100);
+    var net  = +(q * unit).toFixed(2);
+    var tax  = 0; // no-VAT: podatek zawsze 0
+    var gross= net; // no-VAT: brutto = netto
     $tr.find('.item-net').val(net.toFixed(2));
     $tr.find('.item-gross').val(gross.toFixed(2));
   }
@@ -1991,11 +1907,8 @@ $('#gus-fetch-btn').on('click', function(){
         $tr.find('.item-name-hidden').val(p.text || '');
         if (p.vat_id) { $tr.find('.item-vatcode').val(p.vat_id); }
         if (p.unit) { $tr.find('.item-unit').val(p.unit); }
-        var mode = ($tr.find('.item-price-mode').val() || 'net');
-        var rate = toNum(vatRates[p.vat_id], 0);
         var netPrice = toNum(p.price, 0);
-        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
-        $tr.find('.item-price').val(disp.toFixed(2));
+        $tr.find('.item-price').val(netPrice.toFixed(2));
         // Classification fields
         if (p.gtu_code) { $tr.find('.item-gtu').val(p.gtu_code); }
         $tr.find('.item-pkwiu').val(p.pkwiu || '');
@@ -2032,7 +1945,7 @@ $('#gus-fetch-btn').on('click', function(){
               results: $.map(data.results, function (p) { 
                 return $.extend({ 
                   id: p.id, 
-                  text: p.text || (p.code ? p.code + ' - ' + p.name : p.name) 
+                  text: p.name || p.text 
                 }, p); 
               }) 
             };
@@ -2059,6 +1972,8 @@ $('#gus-fetch-btn').on('click', function(){
     })
     .on('select2:open', function(){
       var $dd = $('.select2-container--open .select2-dropdown');
+      // zapamiętaj bieżący wiersz dla późniejszych akcji (np. brak wyników)
+      currentProductRow = $tr;
       if ($dd.find('.prod-toolbar').length === 0) {
         var $search = $dd.find('.select2-search--dropdown');
         $search.after(
@@ -2087,12 +2002,7 @@ $('#gus-fetch-btn').on('click', function(){
       } else {
         $nameHidden.val(d.name || d.text || '');
         if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
-          var mode = ($tr.find('.item-price-mode').val()||'').trim() || getDefaultPriceMode();
-          var effectiveVatId = $tr.find('.item-vatcode').val();
-          var rate = toNum(vatRates[effectiveVatId], 0);
-          var baseNet = Number(d.price) || 0;
-          var disp = (mode === 'gross') ? +(baseNet * (1 + rate/100)).toFixed(2) : +baseNet.toFixed(2);
-          $tr.find('.item-price').val(disp.toFixed(2));
+          $tr.find('.item-price').val(Number(d.price).toFixed(2));
         }
         // Use correct VAT field name - should be vat_id from the search response
         var $vat = $tr.find('.item-vatcode');
@@ -2108,15 +2018,17 @@ $('#gus-fetch-btn').on('click', function(){
       }
     });
 
-    // „Dodaj produkt” w „Brak wyników”
-    $(document).off('mousedown.addProductInline').on('mousedown.addProductInline', '.add-product-inline', function (ev) {
-      ev.preventDefault();
-      var inst = $sel.data('select2');
-      var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+    // „Dodaj produkt” w „Brak wyników” – delegacja bez nadpisywania wcześniejszych
+    $(document).on('mousedown.addProductInline', '.add-product-inline', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      var query = '';
+      try {
+        var inst = currentProductRow && currentProductRow.find('.item-product-select').data('select2');
+        query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+      } catch(_){ }
       $('#product-create-name').val(query || '');
       $('#product-create-modal').modal('show');
-      currentProductRow = $tr;
-      $sel.select2('close');
+      try { currentProductRow && currentProductRow.find('.item-product-select').select2('close'); } catch(_){}
     });
   }
 
@@ -2124,9 +2036,7 @@ $('#gus-fetch-btn').on('click', function(){
   (function initFirstRow(){
     var $tr = $itemsBody.find('tr').first();
     initProductSelectForRow($tr);
-    // set initial price mode for first row
-    $tr.find('.item-price-mode').val(getDefaultPriceMode());
-    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
+  $tr.on('input change', '.item-qty,.item-price,.item-disc', function(){ rowCalc($tr); allCalc(); });
     $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
   })();
@@ -2139,16 +2049,12 @@ $('#gus-fetch-btn').on('click', function(){
     var qty = (typeof item.quantity !== 'undefined' && item.quantity !== null) ? item.quantity : 1;
     var price = (typeof item.price !== 'undefined' && item.price !== null) ? item.price : 0;
     var disc = (typeof item.discount_percent !== 'undefined' && item.discount_percent !== null) ? item.discount_percent : 0;
-    var vatId = (typeof item.vat_code_id !== 'undefined') ? item.vat_code_id : null;
     var gtu = (item.gtu_code || '').toString();
-    var mode = (item.price_mode || 'net').toString();
 
     $tr.find('.item-qty').val(qty);
     if (item.unit) { $tr.find('.item-unit').val(item.unit); }
     $tr.find('.item-price').val(Number(price || 0).toFixed(2));
     $tr.find('.item-disc').val(Number(disc || 0));
-    if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
-    if (vatId !== null && vatId !== '') { $tr.find('.item-vatcode').val(vatId); }
     if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
     $tr.find('.item-pkwiu').val(item.pkwiu || '');
     $tr.find('.item-gtin').val(item.gtin || '');
@@ -2176,6 +2082,21 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   }
 
+  if (isEdit) {
+    try {
+      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
+        applyContractor(editPrefill.contractor);
+      } else {
+        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
+      }
+      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
+        prefillItems(editPrefill.items);
+      }
+    } catch (e) {
+      console.warn('Edit prefill failed', e);
+    }
+  }
+
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
     var $addRow = $('#btn-add-item').closest('tr');
@@ -2192,23 +2113,17 @@ $('#gus-fetch-btn').on('click', function(){
         '</td>' +
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
-        '<td><div class="input-group">'+
-          '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+ 
-          '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px"><option value="net">netto</option><option value="gross">brutto</option></select>'+
-        '</div></td>' +
-        '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>' +
+        '<td><input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>' +
         '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>' +
         '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
         '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
         '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
-        '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>' +
+        '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>' +
       '</tr>';
-    $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
+    $addRow.before(html.replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
     var $tr = $addRow.prev();
     initProductSelectForRow($tr);
-    // set default price mode on new row
-    $tr.find('.item-price-mode').val(getDefaultPriceMode());
-    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
+    $tr.on('input change', '.item-qty,.item-price,.item-disc', function(){ rowCalc($tr); allCalc(); });
     $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
     idx++;
@@ -2216,81 +2131,6 @@ $('#gus-fetch-btn').on('click', function(){
 
   // ====== „Dodaj produkt” (ikona w wierszu) ======
   $itemsBody.on('click', '.btn-new-product', function(){ currentProductRow = $(this).closest('tr'); $('#product-create-modal').modal('show'); });
-
-  // ====== Duplikuj wiersz (identycznie jak w add.php) ======
-  $itemsBody.on('click', '.btn-duplicate', function(){
-    var $src = $(this).closest('tr');
-    var $addRow = $('#btn-add-item').closest('tr');
-    // build a new row like in Add Row
-    var html = '' +
-      '<tr>'+
-      '<td>'+
-      '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>'+
-      '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">'+
-      '</td>'+
-      '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>'+
-      '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>'+
-      '<td><div class="input-group">'+
-      '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+ 
-      '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px"><option value="net">netto</option><option value="gross">brutto</option></select>'+
-      '</div></td>'+
-      '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>'+
-      '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>'+
-      '<td><input class="form-control text-end item-net" value="0.00" readonly></td>'+
-      '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>'+
-      '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>'+
-      '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>'+
-      '</tr>';
-    $src.after(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
-    var $dst = $src.next();
-    initProductSelectForRow($dst);
-    // copy values from src
-    var srcName = $src.find('.item-name-hidden').val()||'';
-    var srcQty = $src.find('.item-qty').val()||'1';
-    var srcPrice = $src.find('.item-price').val()||'0.00';
-    var srcDisc = $src.find('.item-disc').val()||'0';
-    var srcVat = $src.find('.item-vatcode').val();
-    var srcGtu = $src.find('.item-gtu').val();
-    var srcMode = ($src.find('.item-price-mode').val()||'net');
-    $dst.find('.item-name-hidden').val(srcName);
-    $dst.find('.item-qty').val(srcQty);
-    $dst.find('.item-price').val(srcPrice);
-    $dst.find('.item-disc').val(srcDisc);
-    if (srcVat) $dst.find('.item-vatcode').val(srcVat);
-    if (srcGtu !== undefined) $dst.find('.item-gtu').val(srcGtu);
-    $dst.find('.item-price-mode').val(srcMode);
-    // copy product select option
-    var $srcSel = $src.find('.item-product-select');
-    var prodId = $srcSel.val();
-    if (prodId) {
-      var prodText = $srcSel.find('option[value="'+prodId+'"]').text() || $srcSel.find('option:selected').text();
-      if (prodText) {
-        var opt = new Option(prodText, prodId, true, true);
-        $dst.find('.item-product-select').append(opt).trigger('change');
-      }
-    }
-    // listeners and finalize
-    $dst.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($dst); allCalc(); });
-    $dst.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $dst.remove(); allCalc(); guardMinRows(); } });
-    rowCalc($dst); allCalc(); guardMinRows();
-    idx++;
-  });
-
-  // ====== PREFILL: EDIT MODE (musi być po bindowaniu handlera #btn-add-item) ======
-  if (isEdit) {
-    try {
-      if (editPrefill && editPrefill.contractor && typeof applyContractor === 'function') {
-        applyContractor(editPrefill.contractor);
-      } else {
-        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
-      }
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
-    } catch (e) {
-      console.warn('Edit prefill failed', e);
-    }
-  }
 
   // Auto-generate product code from name
   $(document).on('input', '#product-create-name', function() {
@@ -2377,7 +2217,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {
           var $sel        = currentProductRow.find('.item-product-select');
-          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          var displayText = prodName;
           if (product.is_service) displayText += ' (usluga)';
           var opt = new Option(displayText, product.id, true, true);
           $sel.append(opt).trigger('change');
@@ -2713,95 +2553,6 @@ $('#gus-fetch-btn').on('click', function(){
     }
   }
 
-  // ===== Floating Calculator logic (identical to add.php) =====
-  var $panel = $('#calc-panel');
-  var $input = $('#calc-input');
-  var lastFocused = null;
-
-  // Restore position and visibility
-  (function initCalc(){
-    try{
-      var pos = JSON.parse(localStorage.getItem('calcPanelPos')||'null');
-      if (pos && typeof pos.left==='number' && typeof pos.top==='number') {
-        $panel.css({ right:'auto', bottom:'auto', left: pos.left+'px', top: pos.top+'px' });
-      }
-      var open = localStorage.getItem('calcPanelOpen') === '1';
-      if (open) { $panel.removeClass('d-none'); }
-    }catch(e){}
-  })();
-
-  // Toggle via button
-  $('#btn-calc-toggle').on('click', function(){
-    $panel.toggleClass('d-none');
-    try{ localStorage.setItem('calcPanelOpen', $panel.hasClass('d-none') ? '0' : '1'); }catch(e){}
-    if (!$panel.hasClass('d-none')) { $input.focus().select(); }
-  });
-  $('#calc-close').on('click', function(){ $panel.addClass('d-none'); try{ localStorage.setItem('calcPanelOpen','0'); }catch(e){} });
-
-  // Track last focused input
-  $(document).on('focusin', 'input,textarea', function(){ if ($(this).closest('#calc-panel').length) return; lastFocused = this; });
-
-  // Insert into active field
-  $('#calc-insert').on('click', function(){
-    if (!lastFocused) { if (typeof toast==='function') toast('Brak aktywnego pola.'); return; }
-    var val = ($input.val()||'').trim(); if (!val) return;
-    try { $(lastFocused).val(val).trigger('change'); } catch(e){}
-  });
-
-  // Keypad clicks
-  $panel.on('click', '[data-key]', function(){ var k=$(this).data('key'); if (typeof k==='undefined') return; var s=$input.val()||''; $input.val(s+String(k)); $input.focus(); });
-  // Backspace
-  $('#calc-back').on('click', function(){ var s=$input.val()||''; $input.val(s.slice(0,-1)).focus(); });
-  // Clear
-  $('#calc-clear').on('click', function(){ $input.val('').focus(); });
-
-  // Evaluate with % support
-  function evalExpr(expr){
-    var src = String(expr||'').replace(/\s+/g,' ').trim();
-    if (!src) return '';
-    if (!/^[0-9+\-*/().,%\s]+$/.test(src)) throw new Error('Niedozwolone znaki');
-    src = src.replace(/,/g, '.');
-    src = src.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-    var res = Function('return ('+src+')')();
-    if (!isFinite(res)) throw new Error('Błąd obliczeń');
-    return res;
-  }
-  function doEval(){
-    try{
-      var res = evalExpr($input.val());
-      if (res === '') return;
-      var out = (Math.round(res * 100000000) / 100000000).toString();
-      $input.val(out);
-    } catch(e){
-      $input.addClass('is-invalid');
-      setTimeout(function(){ $input.removeClass('is-invalid'); }, 600);
-      if (typeof toast==='function') toast(e.message || 'Błąd');
-    }
-  }
-  $('#calc-eq').on('click', doEval);
-  $input.on('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); doEval(); } if(ev.key==='Escape'){ $panel.addClass('d-none'); try{ localStorage.setItem('calcPanelOpen','0'); }catch(e){} } });
-
-  // Dragging support
-  (function enableDrag(){
-    var dragging=false,sx=0,sy=0,sl=0,st=0;
-    function rectPos(){ var r=$panel[0].getBoundingClientRect(); return { left:r.left, top:r.top }; }
-    function save(){ var r=rectPos(); try{ localStorage.setItem('calcPanelPos', JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top) })); }catch(e){} }
-    $panel.find('.calc-header').on('mousedown', function(ev){ dragging=true; sx=ev.clientX; sy=ev.clientY; var r=rectPos(); sl=r.left; st=r.top; $panel.css({ right:'auto', bottom:'auto', left: sl+'px', top: st+'px' }); $('body').addClass('user-select-none'); ev.preventDefault(); });
-    $(document).on('mousemove.calcdrag', function(ev){ if(!dragging) return; var dx=ev.clientX-sx, dy=ev.clientY-sy; var nl=sl+dx, nt=st+dy; var vw=$(window).width(), vh=$(window).height(); var pw=$panel.outerWidth(), ph=$panel.outerHeight(); nl=Math.max(8, Math.min(vw-pw-8, nl)); nt=Math.max(8, Math.min(vh-ph-8, nt)); $panel.css({ left:nl+'px', top:nt+'px' }); });
-    $(document).on('mouseup.calcdrag', function(){ if(dragging){ dragging=false; $('body').removeClass('user-select-none'); save(); } });
-  })();
-
-  // ===== Global price mode toggle =====
-  updatePriceModeToolbar();
-  $('#price-mode-toggle').on('click', '[data-mode]', function(){
-    var newMode = $(this).data('mode');
-    if (!newMode) return;
-    setDefaultPriceMode(newMode);
-    // Convert all rows to the new mode
-    $itemsBody.find('tr').each(function(){ convertRowPriceMode($(this), newMode); });
-    allCalc();
-  });
-
   // ====== RACHUNEK: Select2 + toolbar + prefill ======
   if ($.fn && $.fn.select2) {
     var $bankSel = $('#bank-account-select').select2({
@@ -2892,10 +2643,10 @@ $('#gus-fetch-btn').on('click', function(){
       recomputeFromPreset();
     }
   }, 0);
-// ====== SELECT2: Seria faktury (tylko typ: credit_note) ======
+// ====== SELECT2: Seria faktury ======
 if ($.fn && $.fn.select2) {
   var $series = $('#series-select').select2({
-    placeholder: 'Wybierz schemat numeracji (nota uznaniowa)',
+    placeholder: 'Wybierz serię',
     allowClear: true,
     width: '100%',
     ajax: {
@@ -2906,15 +2657,27 @@ if ($.fn && $.fn.select2) {
       processResults: function (data) {
         // oczekiwany format: [{id: '2025/10', text:'2025/10', pattern:'...', next_no:123}, ...]
         var items = $.map(data.results || data || [], function (s) {
-          return { 
-            id: s.id || s.name || s.text, 
-            text: s.text || s.name || s.id, 
-            pattern: s.template || s.pattern, 
+          return {
+            id: s.id,
+            text: s.text || s.name || s.id,
+            name: s.name || s.text,
+            pattern: s.template || s.pattern,
             next_no: s.start_no || s.next_no,
             is_default: s.is_default || false
           };
         });
-
+        
+        // Automatycznie wybierz domyślną serię przy pierwszym załadowaniu
+        if (!$('#series-select').val() && items.length > 0) {
+          var defaultItem = items.find(function(item) { return item.is_default; });
+          if (defaultItem) {
+            setTimeout(function() {
+              var opt = new Option(defaultItem.text, defaultItem.id, true, true);
+              $('#series-select').append(opt).trigger('change');
+            }, 100);
+          }
+        }
+        
         return { results: items };
       }
     },
@@ -2928,106 +2691,57 @@ if ($.fn && $.fn.select2) {
       return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0];
     }
   })
-  .on('select2:open', function(){
-    injectSeriesToolbar();
-  })
+  .on('select2:open', function(){ injectSeriesToolbar(); })
   .on('select2:select', function(e){
     var d = (e.params && e.params.data) || {};
     $('#invoice-series-id-hidden').val(d.id || '');
   })
-  .on('select2:clear', function(){
-    $('#invoice-series-id-hidden').val('');
-  });
+  .on('select2:clear', function(){ $('#invoice-series-id-hidden').val(''); });
 
-  // Synchronizuj hidden invoice_series_id przy każdej zmianie selecta
-  // (obsługuje również trigger('change') z loadDefaultSeries)
-  $series.on('change', function(){
-    var val = $(this).val();
-    // Wartość to UUID (id z Select2) — przepisz do hidden field
-    $('#invoice-series-id-hidden').val(val || '');
-  });
-
-  // jeśli mamy w entity bieżącą wartość „series” i nie ma jej na liście, dodać jako wybraną opcję:
+  // Preload: edycja — przywróć UUID; nowa faktura — auto-załaduj domyślną
   (function preloadSeries(){
-    // Na starcie nie przyjmujemy wartości z kontrolera (może być nie-credit_note),
-    // tylko dociągamy listę dla type=credit_note i wybieramy odpowiednią.
-    try { $series.prop('disabled', true); } catch(_) {}
-    loadDefaultSeries();
+    var curId   = '<?= h($invoice->invoice_series_id ?? '') ?>';
+    var curName = '<?= h($invoice->series ?? '') ?>';
+    if (curId) {
+      var opt = new Option(curName || curId, curId, true, true);
+      $series.append(opt).trigger('change');
+      $('#invoice-series-id-hidden').val(curId);
+    } else {
+      loadDefaultSeries();
+    }
   })();
 
-  // Funkcja ładowania domyślnej serii
+  // Ładowanie domyślnej serii — typ credit_note, fallback do wszystkich
   function loadDefaultSeries() {
-    // Najpierw szukamy serii z type=credit_note, fallback: wszystkie serie firmy
-    $.ajax({
-      url: seriesSearchUrl,
-      dataType: 'json',
-      data: { q: '', limit: 50, type: 'credit_note' }
-    }).done(function(data) {
-      var items = data.results || data || [];
-
-      // Jeśli brak wyników credit_note — załaduj wszystkie serie (type=NULL lub dowolny)
-      if (!items.length) {
-        $.ajax({
-          url: seriesSearchUrl,
-          dataType: 'json',
-          data: { q: '', limit: 50 }
-        }).done(function(data2) {
-          applySeriesList(data2.results || data2 || []);
-        }).fail(function(){
-          try { $series.prop('disabled', false); } catch(_) {}
-        });
-        return;
-      }
-
-      applySeriesList(items);
-    }).fail(function(){
-      try { $series.prop('disabled', false); } catch(_) {}
-    });
-  }
-
-  function applySeriesList(items) {
-    var current = $series.val();
-    var controllerCur = '<?= h($invoice->series ?? '') ?>';
-
-    // Jeśli aktualnie wybrana seria jest na liście — zostaw ją, tylko odblokuj
-    if (current) {
-      var found = items.some(function(it){
-        return String(it.id || it.name || it.text) === String(current);
+    $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50, type: 'credit_note' } })
+      .done(function(data) {
+        var items = data.results || data || [];
+        if (!items.length) {
+          $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50 } })
+            .done(function(d2) { applyDefaultSeries(d2.results || d2 || []); });
+          return;
+        }
+        applyDefaultSeries(items);
       });
-      if (found) {
-        try { $series.prop('disabled', false); } catch(_) {}
-        return;
-      }
-    }
-
-    // Wybierz domyślną (is_default) lub pierwszą z listy
-    var pick = items.find(function(item){ return item.is_default; }) || items[0];
-
+  }
+  function applyDefaultSeries(items) {
+    var pick = items.find(function(i){ return i.is_default; }) || items[0] || null;
     if (pick) {
-      var opt = new Option(pick.text || pick.name, pick.id || pick.name, true, true);
-      $series.find('option').remove();
+      var opt = new Option(pick.text || pick.name, pick.id, true, true);
       $series.append(opt).trigger('change');
-      try { $series.prop('disabled', false); } catch(_) {}
-    } else if (controllerCur) {
-      var opt2 = new Option(controllerCur, controllerCur, true, true);
-      $series.find('option').remove();
-      $series.append(opt2).trigger('change');
-      try { $series.prop('disabled', false); } catch(_) {}
-    } else {
-      // Brak serii — odblokuj ale zostaw pusty (użytkownik musi wybrać lub stworzyć)
-      try { $series.prop('disabled', false); } catch(_) {}
+      $('#invoice-series-id-hidden').val(pick.id);
     }
   }
 }
 
-// toolbar w dropdownie: „Dodaj schemat numeracji”
+// toolbar w dropdownie: „Dodaj serię”
 function injectSeriesToolbar(){
   var $dd = $('.select2-container--open .select2-dropdown');
   if (!$dd.length || $dd.find('.series-toolbar').length) return;
   var $search = $dd.find('.select2-search--dropdown');
   var toolbar = $(
     '<div class="series-toolbar p-2 border-bottom bg-white d-flex justify-content-between align-items-center">'+
-      '<button type="button" class="btn btn-sm btn-outline-primary s2-add-series"><i class="ri-add-line"></i> Dodaj schemat numeracji</button>'+
+      '<button type="button" class="btn btn-sm btn-outline-primary s2-add-series"><i class="ri-add-line"></i> Dodaj serię</button>'+
       '<span class="text-muted small">Brak na liście? Utwórz nową.</span>'+
     '</div>'
   );
@@ -3043,7 +2757,7 @@ function injectSeriesToolbar(){
     try { $('#series-select').select2('close'); } catch(_) {}
   });
 }
-// ====== Schemat numeracji: AJAX add ======
+// ====== Seria: AJAX add ======
 $('#series-create-form').on('submit', function(e){
   e.preventDefault();
   var $f = $(this);
@@ -3066,38 +2780,21 @@ $('#series-create-form').on('submit', function(e){
       $series.append(opt).trigger('change');
       $('#series-create-modal').modal('hide');
       $f[0].reset();
-      toast('Schemat numeracji zapisany.');
+      toast('Seria zapisana.');
     } else {
-      toast(res && res.message ? res.message : 'Nie udało się zapisać schematu numeracji.');
+      toast(res && res.message ? res.message : 'Nie udało się zapisać serii.');
     }
   }).fail(function(xhr){
     console.error('series add fail', xhr.status, xhr.responseText);
-    toast('Błąd komunikacji przy zapisie schematu numeracji.');
+    toast('Błąd komunikacji przy zapisie serii.');
   });
-});
-
-// Po otwarciu modala „Dodaj schemat numeracji” – automatycznie wybierz typ numeracji = credit_note (jeśli istnieje)
-$('#series-create-modal').on('shown.bs.modal', function(){
-  var $typeSel = $('#series-type-select');
-  if (!($.fn && $.fn.select2)) return;
-  // Spróbuj odszukać typ po frazie „nota uznaniowa” i wybrać pierwszy wynik
-  $.ajax({ url: seriesTypesUrl, dataType: 'json', data: { q: 'nota uznaniowa', limit: 10 }})
-    .done(function(res){
-      var list = (res && res.results) || [];
-      if (list.length){
-        var it = list[0];
-        var opt = new Option(it.text || it.name || 'nota uznaniowa', it.id || it.value || it.text, true, true);
-        $typeSel.find('option[value="'+ (it.id || it.value || it.text) +'"]').remove();
-        $typeSel.append(opt).trigger('change');
-      }
-    });
 });
 
   // „Zapisz zmiany do katalogu” — zielona podpowiedź
   $('#save-to-catalog').on('change', function(){ $('#save-to-catalog-hint').toggleClass('d-none', !this.checked); });
 });
 
-// ====== OBSŁUGA FORMULARZA TYPU NUMERACJI ======
+// ====== OBSŁUGA FORMULARZA TYPU SERII ======
 $('#series-type-create-form').on('submit', function(e){
   e.preventDefault();
   var $f = $(this);
@@ -3116,17 +2813,17 @@ $('#series-type-create-form').on('submit', function(e){
       $select.append(opt).trigger('change');
       $('#series-type-create-modal').modal('hide');
       $f[0].reset();
-      toast('Typ numeracji zapisany.');
+      toast('Typ serii zapisany.');
     } else {
-      toast(res && res.message ? res.message : 'Nie udało się zapisać typu numeracji.');
+      toast(res && res.message ? res.message : 'Nie udało się zapisać typu serii.');
     }
   }).fail(function(xhr){
     console.error('series type add fail', xhr.status, xhr.responseText);
-    toast('Błąd komunikacji przy zapisie typu numeracji.');
+    toast('Błąd komunikacji przy zapisie typu serii.');
   });
 });
 
-// ====== OBSŁUGA FORMULARZA OKRESU NUMERACJI ======
+// ====== OBSŁUGA FORMULARZA OKRESU SERII ======
 $('#series-period-create-form').on('submit', function(e){
   e.preventDefault();
   var $f = $(this);
@@ -3145,13 +2842,13 @@ $('#series-period-create-form').on('submit', function(e){
       $select.append(opt).trigger('change');
       $('#series-period-create-modal').modal('hide');
       $f[0].reset();
-      toast('Okres numeracji zapisany.');
+      toast('Okres serii zapisany.');
     } else {
-      toast(res && res.message ? res.message : 'Nie udało się zapisać okresu numeracji.');
+      toast(res && res.message ? res.message : 'Nie udało się zapisać okresu serii.');
     }
   }).fail(function(xhr){
     console.error('series period add fail', xhr.status, xhr.responseText);
-    toast('Błąd komunikacji przy zapisie okresu numeracji.');
+    toast('Błąd komunikacji przy zapisie okresu serii.');
   });
 });
 </script>
@@ -3205,9 +2902,56 @@ $('#series-period-create-form').on('submit', function(e){
           $('#bank-account-hidden').val(a.iban||a.text||'');
           $('#bank-account-id-hidden').val(a.id||'');
           $('#bank-account-create-modal').modal('hide'); $f[0].reset();
-          toast(res.message || 'Rachunek dodany.');
+          toast(res.message || 'Nota uznaniowa dodana.');
         } else { toast((res && res.message) || 'Nie udało się dodać rachunku.'); }
       }).fail(function(xhr){ console.error('bank add fail', xhr.status, xhr.responseText); toast('Błąd komunikacji przy dodawaniu rachunku.'); });
     });
   </script>
 </div>
+<script>
+// KSeF modal logic + prefills for GUS / kontrahent
+$(function(){
+  var $form = $('form.needs-validation').first();
+  if ($form.length){
+    // Intercept KSeF send button to open confirmation modal
+    $(document).on('click', 'button[name="save_and_send_ksef"]', function(e){
+      e.preventDefault();
+      var modalEl = document.getElementById('ksef-confirm-modal');
+      if (!modalEl) { $form.trigger('submit'); return; }
+      try { $('#ksef-confirm-modal').modal('show'); } catch(_){ new bootstrap.Modal(modalEl).show(); }
+    });
+    // Confirm KSeF send
+    $(document).on('click', '#ksef-confirm-send-btn', function(){
+      var env = ($('#ksef-env').val()||'test');
+      if ($form.find('input[name="ksef_env"]').length === 0) {
+        $('<input>').attr({type:'hidden', name:'ksef_env', value: env}).appendTo($form);
+      } else { $form.find('input[name="ksef_env"]').val(env); }
+      if ($form.find('input[name="ksef_send"]').length === 0) {
+        $('<input>').attr({type:'hidden', name:'ksef_send', value: '1'}).appendTo($form);
+      } else { $form.find('input[name="ksef_send"]').val('1'); }
+      try { $('#ksef-confirm-modal').modal('hide'); } catch(_){ var me=document.getElementById('ksef-confirm-modal'); if(me) bootstrap.Modal.getInstance(me)?.hide(); }
+      $form.trigger('submit');
+    });
+  }
+
+  function prefillGusNip(){
+    var nip='';
+    var $open=$('.select2-container--open .select2-search__field');
+    if($open.length){ nip=$open.val()||''; }
+    nip=(nip||'').replace(/\D/g,'');
+    if(nip.length===10){ $('#gus-nip').val(nip); return; }
+    var alt=$('[name="invoice_contractor[nip]"]').val()||''; alt=alt.replace(/\D/g,'');
+    if(alt.length===10){ $('#gus-nip').val(alt); }
+  }
+  function prefillContractorCreateModal(){
+    var map={ name:'name', nip:'nip', street:'street', zip:'postal_code', city:'city', country:'country', email:'email', phone:'phone' };
+    Object.keys(map).forEach(function(src){
+      var val=$('[name="invoice_contractor['+src+']"]').val();
+      if(val){ $('#contractor-create-modal [name="'+map[src]+'"]').val(val); }
+    });
+  }
+  // Page-level buttons
+  $(document).on('click','.btn-open-gus-modal', function(e){ e.preventDefault(); prefillGusNip(); $('#gus-modal').modal('show'); });
+  $(document).on('click','.btn-open-contractor-modal', function(e){ e.preventDefault(); prefillContractorCreateModal(); $('#contractor-create-modal').modal('show'); });
+});
+</script>
