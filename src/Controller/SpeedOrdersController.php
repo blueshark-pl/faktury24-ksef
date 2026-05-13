@@ -349,7 +349,7 @@ class SpeedOrdersController extends AppController
             ->contain([
                 'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
                     return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
-                        ->orderByAsc('Invoices.date');
+                        ->orderByAsc('AllInvoices.date');
                 },
             ])
             ->firstOrFail();
@@ -425,7 +425,7 @@ class SpeedOrdersController extends AppController
             ->contain([
                 'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
                     return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
-                        ->orderByAsc('Invoices.date');
+                        ->orderByAsc('AllInvoices.date');
                 },
             ])
             ->firstOrFail();
