@@ -214,6 +214,38 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     100% { box-shadow:0 0 0 0   rgba(34,197,94,0); }
 }
 .route-bar-wrapper { display:flex; flex-direction:column; margin:.5rem 0 0; }
+
+/* Bootstrap tooltips — ciemny premium look pasujący do header brand'u */
+.tooltip.route-tooltip-theme .tooltip-inner,
+[data-bs-toggle="tooltip"][data-bs-html] + .tooltip .tooltip-inner,
+.route-bar .tooltip .tooltip-inner,
+.route-header .tooltip .tooltip-inner,
+.tooltip .tooltip-inner {
+    background: rgba(17,24,39,.97);
+    color: #f3f4f6;
+    border: 1px solid rgba(99,102,241,.35);
+    border-radius: .4rem;
+    padding: .45rem .65rem;
+    font-size: .72rem;
+    text-align: left;
+    line-height: 1.4;
+    box-shadow: 0 6px 16px rgba(0,0,0,.3);
+    max-width: 260px;
+}
+.tooltip .tooltip-inner code {
+    background: rgba(251,191,36,.2);
+    color: #fde68a;
+    padding: 0 .2rem;
+    border-radius: .15rem;
+    font-size: .85em;
+    letter-spacing: .04em;
+    font-family: ui-monospace, monospace;
+}
+.tooltip .tooltip-inner strong { color: #a5b4fc; font-weight:700; }
+.tooltip.bs-tooltip-top .tooltip-arrow::before    { border-top-color: rgba(17,24,39,.97); }
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before { border-bottom-color: rgba(17,24,39,.97); }
+.tooltip.bs-tooltip-start .tooltip-arrow::before  { border-left-color: rgba(17,24,39,.97); }
+.tooltip.bs-tooltip-end .tooltip-arrow::before    { border-right-color: rgba(17,24,39,.97); }
 [data-theme-mode="dark"] .route-bar { background: linear-gradient(135deg, rgba(var(--primary-rgb), .18) 0%, rgba(34, 197, 94, .15) 100%); }
 .route-node { flex-shrink:0; min-width:180px; }
 .route-node .rn-flag    { font-size:1.6rem; line-height:1; }
@@ -917,33 +949,54 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     ?>
     <div class="route-line<?= $effective >= 4 ? ' is-completed' : ($effective === 3 ? ' is-driving' : '') ?>">
         <div class="route-line-progress" style="<?= $effective >= 4 ? '' : 'width:' . $progressPct . '%' ?>"></div>
+        <?php
+            // Helper: builds HTML safe for data-bs-title attribute. User content escaped
+            // via h() (zapobiega XSS), nasze tagi <br>/<strong> zachowane. Na końcu
+            // zamiana " i ' na entity (atrybut HTML).
+            $tipAttr = function (array $lines): string {
+                $html = implode('<br>', $lines);
+                return strtr($html, ['"' => '&quot;', "'" => '&#39;']);
+            };
+        ?>
         <!-- Magazyn nadawcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
             <?php
-                $originTooltip = [__('Załadunek')];
-                if ($loadCity)    $originTooltip[] = $loadCity . ($loadCountry ? ' (' . $loadCountry . ')' : '');
-                if ($order->date_deadline) $originTooltip[] = __('Planowo') . ': ' . $fdate($order->date_deadline);
-                if (!empty($order->actual_load_at)) $originTooltip[] = __('Faktyczny') . ': ' . $fdatetime($order->actual_load_at);
+                $originTooltip = ['<strong>' . h(__('Załadunek')) . '</strong>'];
+                if ($loadCity)    $originTooltip[] = h($loadCity) . ($loadCountry ? ' (' . h($loadCountry) . ')' : '');
+                if ($order->date_deadline) $originTooltip[] = h(__('Planowo')) . ': ' . h($fdate($order->date_deadline));
+                if (!empty($order->actual_load_at)) $originTooltip[] = h(__('Faktyczny')) . ': ' . h($fdatetime($order->actual_load_at));
             ?>
-            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>" title="<?= h(implode("\n", $originTooltip)) ?>">
+            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>"
+                  data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom"
+                  data-bs-title="<?= $tipAttr($originTooltip) ?>">
                 <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
             </span>
         <?php endif; ?>
         <!-- Magazyn odbiorcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
             <?php
-                $destTooltip = [__('Rozładunek')];
-                if ($unloadCity)    $destTooltip[] = $unloadCity . ($unloadCountry ? ' (' . $unloadCountry . ')' : '');
-                if ($order->date_delivery) $destTooltip[] = __('Planowo') . ': ' . $fdate($order->date_delivery);
-                if (!empty($order->actual_unload_at)) $destTooltip[] = __('Faktyczny') . ': ' . $fdatetime($order->actual_unload_at);
+                $destTooltip = ['<strong>' . h(__('Rozładunek')) . '</strong>'];
+                if ($unloadCity)    $destTooltip[] = h($unloadCity) . ($unloadCountry ? ' (' . h($unloadCountry) . ')' : '');
+                if ($order->date_delivery) $destTooltip[] = h(__('Planowo')) . ': ' . h($fdate($order->date_delivery));
+                if (!empty($order->actual_unload_at)) $destTooltip[] = h(__('Faktyczny')) . ': ' . h($fdatetime($order->actual_unload_at));
             ?>
-            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>" title="<?= h(implode("\n", $destTooltip)) ?>">
+            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>"
+                  data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="bottom"
+                  data-bs-title="<?= $tipAttr($destTooltip) ?>">
                 <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
             </span>
         <?php endif; ?>
         <!-- Granica kraju — pin z flagą na 65% trasy -->
         <?php if ($effective >= 2 && $hasBorderCrossing): ?>
-            <span class="border-crossing" style="left:65%" title="<?= __('Granica') ?>: <?= h($unloadCC) ?>">
+            <?php
+                $borderTooltip = [
+                    '<strong>' . h(__('Granica')) . '</strong>',
+                    h($loadCC) . ' &rarr; <strong>' . h($unloadCC) . '</strong>',
+                ];
+            ?>
+            <span class="border-crossing" style="left:65%"
+                  data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top"
+                  data-bs-title="<?= $tipAttr($borderTooltip) ?>">
                 <span class="bc-label"><?= __('Granica') ?></span>
                 <span class="bc-pole"></span>
                 <span class="bc-flag"><?= $flag($unloadCC) ?></span>
@@ -962,15 +1015,16 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         ?>
         <?php if ($effective >= 2): ?>
             <?php
-                // Tooltip dla głównego trucka
-                $truckTooltip = [];
-                if ($plateText !== '')   $truckTooltip[] = __('Tablica') . ': ' . strtoupper($plateText);
-                if ($driverName !== '')  $truckTooltip[] = __('Kierowca') . ': ' . $driverName;
-                $truckTooltip[] = __('Status') . ': ' . $nlCurrent['label'];
+                // Tooltip dla głównego trucka — multi-line HTML
+                $truckTooltip = ['<strong>' . h(__('Pojazd')) . '</strong>'];
+                if ($plateText !== '')   $truckTooltip[] = h(__('Tablica')) . ': <code>' . h(strtoupper($plateText)) . '</code>';
+                if ($driverName !== '')  $truckTooltip[] = h(__('Kierowca')) . ': ' . h($driverName);
+                $truckTooltip[] = h(__('Status')) . ': ' . h($nlCurrent['label']);
             ?>
             <span class="route-line-truck truck-state-<?= (int)$effective ?>"
                   aria-label="<?= h($nlCurrent['label']) ?>"
-                  title="<?= h(implode("\n", $truckTooltip)) ?>">
+                  data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top"
+                  data-bs-title="<?= $tipAttr($truckTooltip) ?>">
                 <span class="truck-shadow" aria-hidden="true"></span>
                 <img src="/assets/img/truck.png" alt="" class="truck-img">
                 <?php if ($plateText !== ''): ?>
@@ -992,28 +1046,32 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         <?php if ($effective >= 2 && ($driverName !== '' || $effective === 3)): ?>
             <div class="telemetry-panel">
                 <?php if ($effective === 3): ?>
-                    <span class="t-item" title="<?= __('Symulowana prędkość') ?>">
+                    <span class="t-item" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                          data-bs-title="<?= h(__('Symulowana prędkość pojazdu')) ?>">
                         <i class="ri-speed-up-line"></i>
                         <span class="t-value"><?= $mockSpeed ?></span><span class="t-unit">km/h</span>
                     </span>
                     <span class="t-divider"></span>
                 <?php endif; ?>
                 <?php if ($etaText !== null): ?>
-                    <span class="t-item" title="<?= __('Przewidywany czas dostawy') ?>">
+                    <span class="t-item" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                          data-bs-title="<?= h(__('Przewidywany czas dostawy')) ?>">
                         <i class="ri-time-line"></i>
                         <span class="t-value">ETA</span><span class="t-unit"><?= h($etaText) ?></span>
                     </span>
                     <span class="t-divider"></span>
                 <?php endif; ?>
                 <?php if ($driverName !== ''): ?>
-                    <span class="t-item" title="<?= __('Kierowca') ?>">
+                    <span class="t-item" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                          data-bs-title="<?= h(__('Kierowca')) ?>">
                         <i class="ri-user-line"></i>
                         <span class="t-value"><?= h($driverName) ?></span>
                     </span>
                 <?php endif; ?>
                 <?php if ($effective === 3): ?>
                     <span class="t-divider"></span>
-                    <span class="t-update" title="<?= __('Ostatnia aktualizacja') ?>">
+                    <span class="t-update" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                          data-bs-title="<?= h(__('Ostatnia aktualizacja')) ?>">
                         <span class="update-dot"></span><?= date('H:i') ?>
                     </span>
                 <?php endif; ?>
@@ -1298,3 +1356,27 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         </div>
     </div>
 </div>
+
+<!-- Bootstrap tooltips init — pełen route-bar + telemetria + landmarks -->
+<script>
+(function () {
+    function initRouteTooltips() {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+        document.querySelectorAll(
+            '.route-bar [data-bs-toggle="tooltip"], .route-header [data-bs-toggle="tooltip"]'
+        ).forEach(function (el) {
+            // jeśli już zainicjalizowany — pomiń (np. AJAX reload)
+            if (bootstrap.Tooltip.getInstance(el)) return;
+            new bootstrap.Tooltip(el, {
+                container: 'body',  // poza route-bar żeby overflow:hidden nie ucinał
+                delay: { show: 200, hide: 80 },
+            });
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initRouteTooltips);
+    } else {
+        initRouteTooltips();
+    }
+})();
+</script>
