@@ -56,8 +56,10 @@ return [
     // Using deprecated `Auth.PasswordRehash.identifiers` causes warnings because the global
     // identifier collection is empty in the service loader.
     'Auth.PasswordRehash.identifiers' => [],
+    // Mapowanie [authenticator => identifierAlias]. IdentifierCollection
+    // używa skróconego aliasu (po pluginSplit): 'Authentication.Password' → 'Password'.
     'Auth.PasswordRehash.authenticators' => [
-        'Form' => 'Authentication.Password',
+        'Form' => 'Password',
     ],
 
     // 2FA (Google Authenticator) – opt-in per user.
