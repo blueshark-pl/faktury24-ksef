@@ -247,19 +247,21 @@ class ClientPortalController extends AppController
             throw new NotFoundException();
         }
 
-        // ?inline=1 — wymuszamy 'inline' żeby PDF/IMG zostały wyświetlone
-        // w przeglądarce (lightbox preview); bez parametru = 'attachment' (download).
-        // UWAGA: withFile() nadpisuje Content-Disposition swoim default jeśli nie
-        // przekażemy 'download' option — dlatego ustawiamy go przez opcje, nie header.
+        // ?inline=1 — wymuszamy 'inline' żeby PDF/IMG zostały wyświetlone w lightboxie.
+        // Cake's withFile() ignoruje nasz Content-Disposition gdy 'download' true,
+        // a przy false czasem nie ustawia żadnego — dlatego budujemy response ręcznie
+        // przez Stream + jawny Content-Disposition: inline.
         $inline   = (bool)$this->request->getQuery('inline');
         $safeName = str_replace('"', '', (string)($att->original_name ?: 'cmr'));
+        $disp     = ($inline ? 'inline' : 'attachment') . '; filename="' . $safeName . '"';
 
+        $stream = new \Laminas\Diactoros\Stream($fullPath, 'rb');
         return $this->response
             ->withType($att->mime_type ?: 'application/octet-stream')
-            ->withFile($fullPath, [
-                'name'     => $safeName,
-                'download' => !$inline,  // true = attachment, false = inline
-            ]);
+            ->withHeader('Content-Disposition', $disp)
+            ->withHeader('Content-Length', (string)filesize($fullPath))
+            ->withHeader('Cache-Control', 'private, max-age=0, must-revalidate')
+            ->withBody($stream);
     }
 
     // -------------------------------------------------------------------------
@@ -285,7 +287,9 @@ class ClientPortalController extends AppController
 
         $lang = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
         // print-custom = custom template PDF (firma chciała tę wersję dla klienta).
-        return $this->redirect('/invoices/print-custom/' . $invoiceId . '?download=1&lang=' . $lang);
+        // Używamy ?render=pdf — to faktycznie wymusza generację PDF przez CakePdf/DomPdf
+        // (?download=1 dla print, ale printCustom ma inny query flag).
+        return $this->redirect('/invoices/print-custom/' . $invoiceId . '?render=pdf&lang=' . $lang);
     }
 
     // -------------------------------------------------------------------------
