@@ -1441,11 +1441,36 @@ endif;
         });
     }
 
+    // Własny toast — Swal toast w trybie modala ma rozjechaną animację ikony (puste kółko).
     function showToast(msg, ok) {
-        if (window.Swal) {
-            Swal.fire({ toast:true, position:'bottom-end', icon: ok?'success':'error',
-                title:msg, showConfirmButton:false, timer:2500, timerProgressBar:true });
-        } else { alert(msg); }
+        var host = document.getElementById('app-toast-host');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'app-toast-host';
+            host.style.cssText = 'position:fixed;right:1rem;bottom:1rem;z-index:11000;display:flex;flex-direction:column;gap:.5rem;pointer-events:none;';
+            document.body.appendChild(host);
+        }
+        var t = document.createElement('div');
+        t.style.cssText = 'pointer-events:auto;background:#fff;border:1px solid '
+            + (ok ? '#22c55e' : '#ef4444') + ';border-left:4px solid '
+            + (ok ? '#22c55e' : '#ef4444')
+            + ';border-radius:.5rem;padding:.6rem .9rem;box-shadow:0 4px 12px rgba(0,0,0,.12);'
+            + 'min-width:240px;max-width:360px;display:flex;align-items:center;gap:.6rem;'
+            + 'font-size:.85rem;color:#1f2937;opacity:0;transform:translateX(20px);'
+            + 'transition:opacity .2s,transform .2s;';
+        t.innerHTML =
+            '<i class="' + (ok ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill') + '" '
+            + 'style="font-size:1.2rem;color:' + (ok ? '#22c55e' : '#ef4444') + ';flex-shrink:0"></i>'
+            + '<span style="flex:1;line-height:1.3">' + String(msg).replace(/[<>&]/g, function (c) {
+                return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
+            }) + '</span>';
+        host.appendChild(t);
+        requestAnimationFrame(function () { t.style.opacity = '1'; t.style.transform = 'translateX(0)'; });
+        setTimeout(function () {
+            t.style.opacity = '0';
+            t.style.transform = 'translateX(20px)';
+            setTimeout(function () { t.remove(); }, 250);
+        }, 2500);
     }
 
     // ── Stepper: zmiana statusu ──
