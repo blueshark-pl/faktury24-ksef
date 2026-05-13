@@ -2157,3 +2157,156 @@ msgstr "Remove from history"
 
 msgid "Usunąć z historii?"
 msgstr "Remove from history?"
+
+msgid "opłaty drogowe EU"
+msgstr "EU tolls"
+
+msgid "Kopiuj link do schowka"
+msgstr "Copy link to clipboard"
+
+msgid "Udostępnij"
+msgstr "Share"
+
+msgid "Drukuj / zapisz PDF"
+msgstr "Print / save PDF"
+
+msgid "Drukuj"
+msgstr "Print"
+
+msgid "Zapisz jako szablon"
+msgstr "Save as template"
+
+msgid "Zapisz szablon"
+msgstr "Save template"
+
+msgid "Opłaty"
+msgstr "Tolls"
+
+msgid "Paliwo"
+msgstr "Fuel"
+
+msgid "Kierowca"
+msgstr "Driver"
+
+msgid "Szablony"
+msgstr "Templates"
+
+msgid "Optymalizuj kolejność (najkrótsza trasa)"
+msgstr "Optimize order (shortest route)"
+
+msgid "Płatne"
+msgstr "Toll"
+
+msgid "Gruntowe"
+msgstr "Dirt"
+
+msgid "Wyjazd"
+msgstr "Departure"
+
+msgid "Koszty operacyjne"
+msgstr "Operating costs"
+
+msgid "Spalanie (l/100km)"
+msgstr "Consumption (l/100km)"
+
+msgid "Cena paliwa (PLN/l)"
+msgstr "Fuel price (PLN/l)"
+
+msgid "Stawka kierowcy (PLN/h)"
+msgstr "Driver rate (PLN/h)"
+
+msgid "Jasna"
+msgstr "Light"
+
+msgid "Ciemna"
+msgstr "Dark"
+
+msgid "Satelita"
+msgstr "Satellite"
+
+msgid "Truck (restrykcje)"
+msgstr "Truck (restrictions)"
+
+msgid "Ruch drogowy"
+msgstr "Traffic"
+
+msgid "Ruch"
+msgstr "Traffic"
+
+msgid "Ruch drogowy wyłączony"
+msgstr "Traffic off"
+
+msgid "Ruch drogowy włączony"
+msgstr "Traffic on"
+
+msgid "Warstwa ruchu niedostępna"
+msgstr "Traffic layer unavailable"
+
+msgid "Błąd warstwy ruchu"
+msgstr "Traffic layer error"
+
+msgid "Liczę trasę…"
+msgstr "Calculating route…"
+
+msgid "Geocoding + HERE Routing v8"
+msgstr "Geocoding + HERE Routing v8"
+
+msgid "Dodano przystanek z mapy"
+msgstr "Stop added from map"
+
+msgid "Trasa odwrócona"
+msgstr "Route reversed"
+
+msgid "Dodaj co najmniej 3 zlokalizowane punkty."
+msgstr "Add at least 3 located points."
+
+msgid "Start i koniec muszą mieć współrzędne."
+msgstr "Start and end need coordinates."
+
+msgid "Brak przystanków pośrednich do optymalizacji."
+msgstr "No intermediate stops to optimize."
+
+msgid "Kolejność zoptymalizowana"
+msgstr "Order optimized"
+
+msgid "Trasa wyznaczona"
+msgstr "Route calculated"
+
+msgid "Brak punktów do udostępnienia."
+msgstr "No points to share."
+
+msgid "Link skopiowany do schowka"
+msgstr "Link copied to clipboard"
+
+msgid "Skopiuj link:"
+msgstr "Copy link:"
+
+msgid "Najpierw wyznacz trasę."
+msgstr "Calculate route first."
+
+msgid "Nazwa szablonu:"
+msgstr "Template name:"
+
+msgid "Szablon zapisany"
+msgstr "Template saved"
+
+msgid "Błąd zapisu szablonu."
+msgstr "Template save error."
+
+msgid "Usunąć ten wpis?"
+msgstr "Delete this entry?"
+
+msgid "Usunięto"
+msgstr "Deleted"
+
+msgid "Trasa wczytana z linka"
+msgstr "Route loaded from link"
+
+msgid "Błąd wczytywania linka"
+msgstr "Link load error"
+
+msgid "Brak ID lub nazwy."
+msgstr "Missing ID or name."
+
+msgid "Wpis nie istnieje."
+msgstr "Entry does not exist."

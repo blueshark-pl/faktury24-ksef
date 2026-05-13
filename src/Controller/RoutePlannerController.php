@@ -45,18 +45,16 @@ class RoutePlannerController extends AppController
                 ->toArray();
         }
 
-        // Ostatnie wyszukania (per user, top 10 po last_used)
+        // Historia + szablony (per user)
         $recentSearches = [];
+        $templates = [];
         if ($userId !== '') {
-            $rows = $this->fetchTable('RouteSearches')->find()
-                ->where(['user_id' => $userId])
-                ->orderByDesc('last_used')
-                ->limit(10)
-                ->all();
-            foreach ($rows as $r) {
+            $Searches = $this->fetchTable('RouteSearches');
+            $mapRow = function ($r) {
                 $waypoints = json_decode((string)$r->waypoints_json, true) ?: [];
-                $recentSearches[] = [
+                return [
                     'id'             => (string)$r->id,
+                    'name'           => (string)($r->name ?? ''),
                     'waypoints'      => $waypoints,
                     'vehicle_id'     => (string)($r->vehicle_id ?? ''),
                     'distance_km'    => $r->distance_km !== null ? (float)$r->distance_km : null,
@@ -65,11 +63,48 @@ class RoutePlannerController extends AppController
                     'tolls_currency' => (string)($r->tolls_currency ?? ''),
                     'last_used'      => $r->last_used instanceof \DateTimeInterface ? $r->last_used->format('c') : null,
                 ];
+            };
+
+            // Szablony (z name) — alfabetycznie
+            foreach ($Searches->find()
+                ->where(['user_id' => $userId, 'name IS NOT' => null])
+                ->orderByAsc('name')
+                ->all() as $r) {
+                $templates[] = $mapRow($r);
+            }
+            // Historia (bez name) — top 10 po last_used
+            foreach ($Searches->find()
+                ->where(['user_id' => $userId, 'name IS' => null])
+                ->orderByDesc('last_used')
+                ->limit(10)
+                ->all() as $r) {
+                $recentSearches[] = $mapRow($r);
             }
         }
 
         $hereApiKey = (string)\Cake\Core\Configure::read('Here.apiKey');
-        $this->set(compact('vehicles', 'hereApiKey', 'recentSearches'));
+        $this->set(compact('vehicles', 'hereApiKey', 'recentSearches', 'templates'));
+    }
+
+    public function saveTemplate(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $userId = (string)($this->request->getAttribute('identity')?->getIdentifier() ?? '');
+        $id = (string)$this->request->getData('id', '');
+        $name = trim((string)$this->request->getData('name', ''));
+        if ($id === '' || $name === '') {
+            return $this->jsonError(__('Brak ID lub nazwy.'));
+        }
+        $Searches = $this->fetchTable('RouteSearches');
+        $entity = $Searches->find()->where(['id' => $id, 'user_id' => $userId])->first();
+        if (!$entity) {
+            return $this->jsonError(__('Wpis nie istnieje.'), 404);
+        }
+        $entity->name = mb_substr($name, 0, 120);
+        $Searches->save($entity);
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true, 'name' => $entity->name]));
     }
 
     public function deleteRecent(string $id): Response
