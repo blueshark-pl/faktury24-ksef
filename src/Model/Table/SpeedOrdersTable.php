@@ -18,9 +18,24 @@ class SpeedOrdersTable extends Table
 
         $this->addBehavior('Timestamp');
 
+        // Legacy 1:1 — pozostawione na czas migracji (kompatybilność wsteczna).
+        // Faza C usunie pole speed_orders.invoice_id i tę asocjację.
         $this->belongsTo('Invoices', [
             'foreignKey' => 'invoice_id',
             'joinType'   => 'LEFT',
+        ]);
+
+        // M:N — wszystkie faktury powiązane ze zleceniem przez pivot
+        // speed_order_invoices. Użycie: $order->invoices (array Invoice entities).
+        $this->belongsToMany('AllInvoices', [
+            'className'        => 'Invoices',
+            'joinTable'        => 'speed_order_invoices',
+            'foreignKey'       => 'speed_order_id',
+            'targetForeignKey' => 'invoice_id',
+            'through'          => 'SpeedOrderInvoices',
+            'propertyName'     => 'invoices',
+            'saveStrategy'     => 'append',
+            'dependent'        => false,
         ]);
 
         $this->hasMany('SpeedOrderStatusLogs', [
