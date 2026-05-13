@@ -214,6 +214,12 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Globalne wyszukiwanie (AJAX z headera)
         $builder->get('/szukaj', ['controller' => 'Search', 'action' => 'query']);
 
+        // Planer tras (HERE Routing v8)
+        $builder->get('/trasy',                      ['controller' => 'RoutePlanner', 'action' => 'index']);
+        $builder->connect('/trasy/calculate',        ['controller' => 'RoutePlanner', 'action' => 'calculate']);
+        $builder->get('/trasy/zlecenie/{orderId}',   ['controller' => 'RoutePlanner', 'action' => 'forOrder'])
+            ->setPass(['orderId']);
+
         // Pojazdy floty
         $builder->get('/pojazdy',                ['controller' => 'Vehicles', 'action' => 'index']);
         $builder->connect('/pojazdy/dodaj',      ['controller' => 'Vehicles', 'action' => 'add']);

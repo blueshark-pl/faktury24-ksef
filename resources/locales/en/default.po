@@ -1968,3 +1968,99 @@ msgstr "No company assigned."
 
 msgid "Słownik adresów"
 msgstr "Address dictionary"
+
+msgid "Planer tras"
+msgstr "Route planner"
+
+msgid "HERE Routing v8 · profil truck"
+msgstr "HERE Routing v8 · truck profile"
+
+msgid "Wyznacz trasę"
+msgstr "Calculate route"
+
+msgid "Trasa"
+msgstr "Route"
+
+msgid "Załadunek"
+msgstr "Pickup"
+
+msgid "Rozładunek"
+msgstr "Delivery"
+
+msgid "np. Kraków, Polska"
+msgstr "e.g. Krakow, Poland"
+
+msgid "np. Berlin, Niemcy"
+msgstr "e.g. Berlin, Germany"
+
+msgid "Pojazd"
+msgstr "Vehicle"
+
+msgid "— bez profilu (osobowy) —"
+msgstr "— no profile (car) —"
+
+msgid "aby liczyć trasy z profilem truck"
+msgstr "to calculate routes with truck profile"
+
+msgid "Unikaj"
+msgstr "Avoid"
+
+msgid "Płatne drogi"
+msgstr "Toll roads"
+
+msgid "Promy"
+msgstr "Ferries"
+
+msgid "Waluta opłat"
+msgstr "Toll currency"
+
+msgid "Podsumowanie"
+msgstr "Summary"
+
+msgid "Dystans"
+msgstr "Distance"
+
+msgid "Czas jazdy"
+msgstr "Drive time"
+
+msgid "Opłaty drogowe"
+msgstr "Tolls"
+
+msgid "Opłaty drogowe (suma)"
+msgstr "Tolls (total)"
+
+msgid "Per kraj"
+msgstr "Per country"
+
+msgid "Podaj punkt początkowy i końcowy."
+msgstr "Provide start and end point."
+
+msgid "Liczę…"
+msgstr "Calculating…"
+
+msgid "Błąd kalkulacji trasy."
+msgstr "Route calculation error."
+
+msgid "Nie znaleziono adresu: "
+msgstr "Address not found: "
+
+msgid "Zlecenie nie istnieje."
+msgstr "Order does not exist."
+
+msgid "Zlecenie nie ma kompletnych adresów załadunku/rozładunku."
+msgstr "Order does not have complete pickup/delivery addresses."
+
+msgid "Nie udało się zlokalizować adresu załadunku: "
+msgstr "Could not locate pickup address: "
+
+msgid "Nie udało się zlokalizować adresu rozładunku: "
+msgstr "Could not locate delivery address: "
+
+msgid "Trasa i koszty"
+msgstr "Route and costs"
+
+msgid "Kliknij \"Wyznacz trasę\" aby zobaczyć trasę na mapie"
+msgstr "Click \"Calculate route\" to display on map"
+
+msgid "Opłaty per kraj"
+msgstr "Tolls per country"

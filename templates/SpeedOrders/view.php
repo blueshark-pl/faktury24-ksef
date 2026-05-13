@@ -1060,6 +1060,108 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 </div>
 <?php endif; ?>
 
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- MAPA TRASY (HERE Routing v8)                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<?php if (!empty($order->place_from_name) && !empty($order->place_to_name)): ?>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<div class="card border-0 shadow-sm mb-3" id="route-card">
+    <div class="card-header fw-semibold bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">
+        <i class="ri-route-line text-primary"></i> <?= __('Trasa i koszty') ?>
+        <span id="route-summary-mini" class="text-muted small ms-auto"></span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btn-calc-route">
+            <i class="ri-route-fill me-1"></i><?= __('Wyznacz trasę') ?>
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div id="route-map" style="height:420px;border-radius:0 0 .5rem .5rem;background:#f4f6fa">
+            <div class="d-flex h-100 align-items-center justify-content-center text-muted small">
+                <i class="ri-route-line me-2" style="font-size:1.6rem"></i>
+                <?= __('Kliknij "Wyznacz trasę" aby zobaczyć trasę na mapie') ?>
+            </div>
+        </div>
+        <div id="route-details" class="p-3 border-top" style="display:none"></div>
+    </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+    var orderId = <?= json_encode($order->id) ?>;
+    var url     = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'forOrder', '__ID__']) ?>'.replace('__ID__', encodeURIComponent(orderId));
+    var $btn    = document.getElementById('btn-calc-route');
+    var $map    = document.getElementById('route-map');
+    var $mini   = document.getElementById('route-summary-mini');
+    var $details = document.getElementById('route-details');
+    var map = null, polyLayer = null;
+
+    function ensureMap() {
+        if (map) return;
+        $map.innerHTML = '';
+        map = L.map('route-map').setView([52.0, 19.0], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19, attribution: '© OpenStreetMap'
+        }).addTo(map);
+    }
+    function fmtNum(v, dec) { return v.toLocaleString('pl-PL', {minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0}); }
+    function fmtDur(min) {
+        if (!min) return '—';
+        var h = Math.floor(min/60), m = min%60;
+        return (h > 0 ? h + 'h ' : '') + m + 'min';
+    }
+    function render(data) {
+        ensureMap();
+        var path = (data.decoded_path || []).map(function (p) { return [p.lat, p.lng]; });
+        if (polyLayer) map.removeLayer(polyLayer);
+        polyLayer = L.polyline(path, {color: '#2563eb', weight: 5, opacity: .9}).addTo(map);
+        L.marker([data.from.lat, data.from.lng]).addTo(map).bindPopup('<?= __('Załadunek') ?>: ' + data.from.label);
+        L.marker([data.to.lat, data.to.lng]).addTo(map).bindPopup('<?= __('Rozładunek') ?>: ' + data.to.label);
+        map.fitBounds(polyLayer.getBounds(), {padding: [30, 30]});
+
+        $mini.textContent = fmtNum(data.distance_km, 1) + ' km · ' + fmtDur(data.duration_min)
+            + (data.tolls_total !== null ? ' · ' + fmtNum(data.tolls_total, 2) + ' ' + data.tolls_currency : '');
+
+        var html = '<div class="row g-3">';
+        html += '<div class="col-md-3 text-center"><div class="text-muted small"><?= __('Dystans') ?></div><div class="fs-4 fw-bold text-primary">' + fmtNum(data.distance_km, 1) + ' <small class="text-muted">km</small></div></div>';
+        html += '<div class="col-md-3 text-center"><div class="text-muted small"><?= __('Czas jazdy') ?></div><div class="fs-4 fw-bold">' + fmtDur(data.duration_min) + '</div></div>';
+        if (data.tolls_total !== null) {
+            html += '<div class="col-md-3 text-center"><div class="text-muted small"><?= __('Opłaty drogowe') ?></div><div class="fs-4 fw-bold text-warning">' + fmtNum(data.tolls_total, 2) + ' <small class="text-muted">' + data.tolls_currency + '</small></div></div>';
+        }
+        if (data.vehicle) {
+            html += '<div class="col-md-3 text-center"><div class="text-muted small"><?= __('Pojazd') ?></div><div class="small fw-semibold">' + data.vehicle.name + (data.vehicle.plate ? '<br><span class="badge bg-light text-dark border" style="font-family:monospace">' + data.vehicle.plate + '</span>' : '') + '</div></div>';
+        }
+        html += '</div>';
+        if (data.tolls_by_country && Object.keys(data.tolls_by_country).length) {
+            html += '<div class="mt-3 pt-3 border-top"><div class="small fw-semibold text-muted mb-2"><?= __('Opłaty per kraj') ?></div><div class="d-flex gap-2 flex-wrap">';
+            Object.keys(data.tolls_by_country).forEach(function (cc) {
+                html += '<span class="badge bg-warning-subtle text-warning border">🏳️ ' + cc + ': ' + fmtNum(data.tolls_by_country[cc], 2) + ' ' + data.tolls_currency + '</span>';
+            });
+            html += '</div></div>';
+        }
+        $details.innerHTML = html;
+        $details.style.display = 'block';
+    }
+    $btn.addEventListener('click', function () {
+        $btn.disabled = true;
+        $btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> <?= __('Liczę…') ?>';
+        fetch(url, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (!res.ok || res.data.error) {
+                    alert(res.data.message || '<?= __('Błąd kalkulacji trasy.') ?>');
+                    return;
+                }
+                render(res.data);
+            })
+            .catch(function (e) { alert('<?= __('Błąd sieci') ?>: ' + e.message); })
+            .finally(function () {
+                $btn.disabled = false;
+                $btn.innerHTML = '<i class="ri-route-fill me-1"></i><?= __('Wyznacz trasę') ?>';
+            });
+    });
+})();
+</script>
+<?php endif; ?>
+
 <!-- GLightbox — CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 

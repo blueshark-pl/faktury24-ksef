@@ -1595,6 +1595,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Planer tras (HERE truck routing) -->
+                            <li class="slide <?= $navActive('RoutePlanner', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-route-line side-menu__icon"></i><span class="side-menu__label">' . __('Planer tras') . '</span>',
+                                    ['plugin' => false, 'controller' => 'RoutePlanner', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

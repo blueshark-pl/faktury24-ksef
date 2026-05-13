@@ -161,6 +161,13 @@ return [
             'controller' => 'Vehicles',
             'action'     => ['index', 'add', 'edit', 'delete'],
         ],
+        // Planer tras (HERE Routing v8)
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'RoutePlanner',
+            'action'     => ['index', 'calculate', 'forOrder'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',
