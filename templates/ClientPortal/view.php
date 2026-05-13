@@ -147,7 +147,29 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .route-node .rn-city    { font-size:.95rem; font-weight:700; color: var(--default-text-color); line-height:1.2; }
 .route-node .rn-country { font-size:.75rem; color: var(--text-muted); margin-top:.15rem; }
 .route-node .rn-date    { font-size:.78rem; opacity:.85; font-weight:600; margin-top:.35rem; }
-.route-line { flex:1; height:4px; background: linear-gradient(to right, #6366f1, #22c55e); border-radius:2px; position:relative; margin:0 1.5rem; min-width:120px; }
+.route-line {
+    flex:1; height:10px;
+    background: linear-gradient(to bottom, #1f2937 0%, #374151 50%, #1f2937 100%);
+    border-radius:5px; position:relative; margin:0 1.5rem; min-width:120px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.4), inset 0 -1px 1px rgba(255,255,255,.05);
+    overflow:visible;
+}
+/* Pas środkowy — białe kreski (jak na asfalcie), animowane gdy w drodze */
+.route-line::before {
+    content:''; position:absolute; top:50%; left:0; right:0; height:2px;
+    transform:translateY(-50%);
+    background-image: linear-gradient(to right, rgba(251,191,36,.85) 50%, transparent 50%);
+    background-size: 14px 2px;
+    background-repeat: repeat-x;
+    pointer-events:none;
+    opacity:.6;
+}
+.route-line.is-driving::before { animation: road-dashes .8s linear infinite; opacity:1; }
+.route-line.is-completed::before { animation: road-dashes .7s linear; opacity:1; animation-duration:4s; animation-timing-function:linear; }
+@keyframes road-dashes {
+    0%   { background-position: 0 0; }
+    100% { background-position: -14px 0; }
+}
 .route-line-truck {
     position:absolute;
     top:-44px;
@@ -339,10 +361,11 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 /* Trasa wypełniona — fill zależny od statusu (subtelny overlay) */
 .route-line-progress {
     position:absolute; top:0; left:0; bottom:0;
-    background:linear-gradient(to right, rgba(99,102,241,.35), rgba(34,197,94,.35));
-    border-radius:2px;
+    background:linear-gradient(to right, rgba(99,102,241,.45), rgba(34,197,94,.55));
+    border-radius:5px 0 0 5px;
     transition:width .8s ease-out;
     pointer-events:none;
+    mix-blend-mode:overlay;
 }
 /* Synchroniczny fill przy playbacku completed-truck */
 .route-line.is-completed .route-line-progress {
@@ -359,7 +382,7 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 /* ── Landmarks: magazyn nadawcy + magazyn odbiorcy ── */
 .route-landmark {
     position:absolute;
-    top:8px;
+    top:14px;
     width:56px;
     height:42px;
     z-index:1;
@@ -415,6 +438,93 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     50%  { left:35%; opacity:1; transform:translateY(-1px); }
     92%  { opacity:.85; }
     100% { left:-100px; opacity:0; transform:translateY(0); }
+}
+/* ── Badge kierowcy + tablica rejestracyjna ── */
+.truck-assignment-badge {
+    position:absolute;
+    top:calc(100% + 10px);
+    left:50%;
+    transform:translateX(-50%);
+    display:flex;
+    gap:.4rem;
+    align-items:center;
+    background:rgba(31,41,55,.92);
+    color:#f3f4f6;
+    padding:.2rem .5rem;
+    border-radius:.35rem;
+    font-size:.65rem;
+    font-weight:600;
+    white-space:nowrap;
+    z-index:3;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+    border:1px solid rgba(255,255,255,.1);
+}
+.truck-assignment-badge .ta-plate {
+    background:linear-gradient(to bottom, #fef3c7 0%, #fbbf24 100%);
+    color:#1f2937;
+    padding:.1rem .35rem;
+    border-radius:.2rem;
+    font-weight:800;
+    letter-spacing:.06em;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size:.7rem;
+    border:1px solid rgba(0,0,0,.15);
+    line-height:1;
+}
+.truck-assignment-badge .ta-driver {
+    display:inline-flex; align-items:center; gap:.2rem;
+    opacity:.9;
+}
+.truck-assignment-badge .ta-driver i { font-size:.85em; opacity:.7; }
+/* ── Granica kraju (gdy load_country != unload_country) ── */
+.border-crossing {
+    position:absolute;
+    top:-30px;
+    z-index:1;
+    pointer-events:none;
+    transform:translateX(-50%);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:1px;
+}
+.border-crossing .bc-pole {
+    width:2px; height:22px;
+    background:linear-gradient(to bottom, #9ca3af 0%, #6b7280 100%);
+    border-radius:1px;
+}
+.border-crossing .bc-flag {
+    width:22px; height:16px;
+    border-radius:2px;
+    box-shadow:0 1px 3px rgba(0,0,0,.25);
+    overflow:hidden;
+}
+.border-crossing .bc-flag img {
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+}
+.border-crossing .bc-label {
+    position:absolute;
+    top:-14px;
+    font-size:.55rem;
+    font-weight:700;
+    letter-spacing:.05em;
+    color:#6b7280;
+    text-transform:uppercase;
+    white-space:nowrap;
+    background:rgba(255,255,255,.85);
+    padding:.05rem .25rem;
+    border-radius:.15rem;
+    border:1px solid rgba(0,0,0,.06);
+}
+.route-line.is-driving .border-crossing,
+.route-line.is-completed .border-crossing {
+    animation: border-wave 2.4s ease-in-out infinite;
+}
+@keyframes border-wave {
+    0%,100% { transform:translateX(-50%) rotate(0deg); }
+    50%     { transform:translateX(-50%) rotate(-3deg); }
 }
 
 /* ── Timeline ── */
@@ -635,6 +745,12 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             $deliveryDateStr = $fdate($order->actual_unload_at ?? null) ?? $fdate($order->date_delivery) ?? '';
         }
     ?>
+    <?php
+        // Granica kraju — pokazujemy tylko gdy załadunek i rozładunek w różnych krajach.
+        $loadCC   = strtoupper(trim((string)$loadCountry));
+        $unloadCC = strtoupper(trim((string)$unloadCountry));
+        $hasBorderCrossing = $loadCC !== '' && $unloadCC !== '' && $loadCC !== $unloadCC;
+    ?>
     <div class="route-line<?= $effective >= 4 ? ' is-completed' : ($effective === 3 ? ' is-driving' : '') ?>">
         <div class="route-line-progress" style="<?= $effective >= 4 ? '' : 'width:' . $progressPct . '%' ?>"></div>
         <!-- Magazyn nadawcy (zawsze od status 2+) -->
@@ -649,12 +765,36 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                 <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
             </span>
         <?php endif; ?>
+        <!-- Granica kraju — pin z flagą na 65% trasy -->
+        <?php if ($effective >= 2 && $hasBorderCrossing): ?>
+            <span class="border-crossing" style="left:65%" title="<?= __('Granica') ?>: <?= h($unloadCC) ?>">
+                <span class="bc-label"><?= __('Granica') ?></span>
+                <span class="bc-pole"></span>
+                <span class="bc-flag"><?= $flag($unloadCC) ?></span>
+            </span>
+        <?php endif; ?>
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
         <!-- Mijająca ciężarówka (tylko gdy w drodze) -->
         <?php if ($effective === 3): ?>
             <span class="oncoming-truck" aria-hidden="true">
                 <img src="/assets/img/truck-2.png" alt="" class="oncoming-img">
             </span>
+        <?php endif; ?>
+        <!-- Badge kierowcy + tablica rejestracyjna (gdy mamy dane) -->
+        <?php
+            $driverName = trim((string)($order->driver ?? ''));
+            $plateText  = trim((string)($order->vehicle_reg ?? ''));
+            $hasTruckInfo = $effective >= 2 && ($driverName !== '' || $plateText !== '');
+        ?>
+        <?php if ($hasTruckInfo): ?>
+            <div class="truck-assignment-badge">
+                <?php if ($plateText !== ''): ?>
+                    <span class="ta-plate"><?= h(strtoupper($plateText)) ?></span>
+                <?php endif; ?>
+                <?php if ($driverName !== ''): ?>
+                    <span class="ta-driver"><i class="ri-user-line"></i><?= h($driverName) ?></span>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
         <?php if ($effective >= 2): ?>
             <span class="route-line-truck truck-state-<?= (int)$effective ?>" aria-label="<?= h($nlCurrent['label']) ?>">

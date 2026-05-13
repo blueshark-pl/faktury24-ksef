@@ -256,6 +256,9 @@ msgstr "Attachments: %d"
 msgid "Dostarczone"
 msgstr "Delivered"
 
+msgid "Granica"
+msgstr "Border"
+
 msgid "Plan"
 msgstr "Plan"
 
