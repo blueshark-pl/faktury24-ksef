@@ -630,10 +630,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 }
                                 var html = '';
 
+                                var invViewTpl = '<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'view', '__ID__']) ?>';
+                                var ctrIdxUrl  = '<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'index']) ?>';
+                                var ordViewTpl = '<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'view', '__ID__']) ?>';
+
                                 if ((data.invoices || []).length) {
                                     html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-file-text-line me-1"></i><?= __('Faktury') ?></div>';
                                     data.invoices.forEach(function (inv) {
-                                        var href = '<?= $this->Url->build('/invoices/view') ?>/' + inv.id;
+                                        var href = invViewTpl.replace('__ID__', encodeURIComponent(inv.id));
                                         var primary = highlight(inv.fullnumber || '—', q);
                                         var sec = highlight(inv.contractor || '—', q) + (inv.nip ? ' · NIP ' + highlight(inv.nip, q) : '');
                                         var meta = fmtMoney(inv.brutto, inv.currency) + (statusBadge(inv.payment) ? '<br>' + statusBadge(inv.payment) : '');
@@ -643,7 +647,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 if ((data.contractors || []).length) {
                                     html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-building-line me-1"></i><?= __('Kontrahenci') ?></div>';
                                     data.contractors.forEach(function (c) {
-                                        var href = '<?= $this->Url->build('/contractors') ?>?q=' + encodeURIComponent(c.nip || c.name);
+                                        var href = ctrIdxUrl + '?q=' + encodeURIComponent(c.nip || c.name);
                                         var primary = highlight(c.name || '—', q);
                                         var sec = (c.nip ? 'NIP ' + highlight(c.nip, q) : '') + (c.city ? ' · ' + highlight(c.city, q) : '');
                                         html += buildItem(href, 'ri-building-line', 'bg-success-subtle text-success', primary, sec, '');
@@ -652,7 +656,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 if ((data.orders || []).length) {
                                     html += '<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="ri-truck-line me-1"></i><?= __('Zlecenia') ?></div>';
                                     data.orders.forEach(function (o) {
-                                        var href = '<?= $this->Url->build('/zlecenia/view') ?>/' + o.id;
+                                        var href = ordViewTpl.replace('__ID__', encodeURIComponent(o.id));
                                         var primary = highlight(o.symbol || '—', q) + ' · ' + escapeHtml(o.buyer || '');
                                         var route = (o.from || '?') + ' → ' + (o.to || '?');
                                         var meta = fmtMoney(o.netto, o.currency);
