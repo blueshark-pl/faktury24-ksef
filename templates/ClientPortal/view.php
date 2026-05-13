@@ -191,14 +191,54 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 @keyframes truck-delivery-playback {
     0%   { left:-16px;              transform:translateY(0)   rotate(0deg)  scale(1); }
     5%   { left:-16px;              transform:translateY(-2px) rotate(-3deg) scale(1); }
-    /* przyspiesza */
+    /* Etap 1: jedzie do POL (środek trasy) */
     20%  { left:calc(20% - 14px);   transform:translateY(-1px) rotate(1deg)  scale(1.02); }
-    50%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(2deg)  scale(1.02); }
-    /* zwalnia przed metą */
+    32%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(-1deg) scale(1); }
+    /* Postojek przy POL — załadunek (~0.5s) z lekkim trzęsieniem */
+    34%  { left:calc(50% - 34px);   transform:translateY(-2px) rotate(-2deg) scale(1.02); }
+    37%  { left:calc(50% - 34px);   transform:translateY(1px)  rotate(2deg)  scale(1); }
+    40%  { left:calc(50% - 34px);   transform:translateY(-1px) rotate(-1deg) scale(1.02); }
+    43%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(0deg)  scale(1); }
+    /* Etap 2: jedzie do mety */
+    60%  { left:calc(75% - 50px);   transform:translateY(-1px) rotate(2deg)  scale(1.02); }
     80%  { left:calc(100% - 68px);  transform:translateY(-3px) rotate(-1deg) scale(1); }
-    /* lekkie hamowanie z bounce */
+    /* Hamowanie z bounce */
     88%  { transform:translateY(3px) scale(1.08) rotate(0deg); }
     100% { left:calc(100% - 68px);  transform:translateY(0)   rotate(0deg)  scale(1); }
+}
+/* POL pulse podczas postojek (32-43% playbacku = ~1.28s-1.72s) */
+.route-line.is-completed .route-pol {
+    animation: pol-pulse .9s 1.2s ease-in-out;
+}
+@keyframes pol-pulse {
+    0%,100% { transform:scale(1); box-shadow:none; }
+    50%     { transform:scale(1.25); box-shadow:0 0 0 4px rgba(99,102,241,.3); }
+}
+/* Badge 'Dostarczone DD.MM.YYYY' — pod miastem rozładunku, wjeżdża po dojechaniu trucka */
+.route-delivered-badge {
+    display:inline-flex;
+    align-items:center;
+    margin-top:.35rem;
+    background:rgba(34,197,94,.15);
+    color:#15803d;
+    padding:.2rem .55rem;
+    border-radius:.35rem;
+    font-size:.7rem;
+    font-weight:700;
+    letter-spacing:.02em;
+    border:1px solid rgba(34,197,94,.3);
+    opacity:0;
+    animation: delivered-fade-in .7s 3.6s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.route-delivered-badge i { margin-right:.3rem; font-size:.9em; }
+@keyframes delivered-fade-in {
+    0%   { opacity:0; transform:translateY(-6px) scale(.85); }
+    100% { opacity:1; transform:translateY(0) scale(1); }
+}
+[data-theme-mode="dark"] .route-delivered-badge {
+    background:rgba(34,197,94,.25);
+    color:#86efac;
+    border-color:rgba(34,197,94,.5);
 }
 /* Speed lines / kreski prędkości za jadącą ciężarówką */
 .truck-state-4 .truck-speedlines,
@@ -528,6 +568,13 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
             default          => 0,
         };
     ?>
+    <?php
+        // Data dostarczenia — preferuj rzeczywisty rozładunek, fallback na planowaną.
+        $deliveryDateStr = '';
+        if ($effective >= 4) {
+            $deliveryDateStr = $fdate($order->actual_unload_at ?? null) ?? $fdate($order->date_delivery) ?? '';
+        }
+    ?>
     <div class="route-line<?= $effective >= 4 ? ' is-completed' : '' ?>">
         <div class="route-line-progress" style="<?= $effective >= 4 ? '' : 'width:' . $progressPct . '%' ?>"></div>
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
@@ -561,6 +608,11 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                 <?php endif; ?>
                 <?php if ($order->date_delivery): ?>
                     <div class="rn-date"><i class="ri-calendar-line me-1 opacity-50"></i><?= h($fdate($order->date_delivery)) ?></div>
+                <?php endif; ?>
+                <?php if ($effective >= 4 && $deliveryDateStr !== ''): ?>
+                    <div class="route-delivered-badge" aria-label="<?= __('Dostarczone') ?> <?= h($deliveryDateStr) ?>">
+                        <i class="ri-checkbox-circle-fill"></i><?= __('Dostarczone') ?> <?= h($deliveryDateStr) ?>
+                    </div>
                 <?php endif; ?>
             </div>
             <span class="rn-flag" title="<?= h($unloadCountry) ?>">
