@@ -528,19 +528,26 @@ if ($order->date_delivery && $order->pod_at) {
             <div class="card-header py-2">
                 <strong><i class="ri-money-euro-circle-line me-1"></i><?= __('Wartość zlecenia') ?></strong>
             </div>
+            <?php
+                // Brutto liczymy z netto+VAT — pole \$order->brutto z Speed ERP
+                // jest często nieprawidłowe (czasem 0, czasem mniejsze niż netto).
+                $netto  = (float)($order->netto ?? 0);
+                $vatAmt = (float)($order->vat   ?? 0);
+                $brutto = $netto + $vatAmt;
+            ?>
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-2">
                     <span class="text-muted small"><?= __('Netto') ?></span>
-                    <span class="fw-semibold"><?= $fnum($order->netto) ?> <?= h($order->currency) ?></span>
+                    <span class="fw-semibold"><?= $fnum($netto) ?> <?= h($order->currency) ?></span>
                 </div>
                 <div class="d-flex justify-content-between mb-2">
                     <span class="text-muted small"><?= __('VAT') ?></span>
-                    <span class="fw-semibold"><?= $fnum($order->vat) ?> <?= h($order->currency) ?></span>
+                    <span class="fw-semibold"><?= $fnum($vatAmt) ?> <?= h($order->currency) ?></span>
                 </div>
                 <hr class="my-2">
                 <div class="d-flex justify-content-between align-items-baseline">
                     <span class="text-muted"><?= __('Brutto') ?></span>
-                    <span class="fw-bold fs-5 text-primary"><?= $fnum($order->brutto) ?> <?= h($order->currency) ?></span>
+                    <span class="fw-bold fs-5 text-primary"><?= $fnum($brutto) ?> <?= h($order->currency) ?></span>
                 </div>
                 <?php if ($order->currency !== 'PLN' && $order->exchange_rate && (float)$order->exchange_rate > 0): ?>
                     <div class="text-muted small mt-2">

@@ -722,12 +722,17 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
     <div class="card-body p-0">
         <table class="table table-sm mb-0">
             <tbody>
+                <?php
+                    // Brutto liczymy z netto+VAT — pole brutto ze Speed ERP
+                    // jest często nieprawidłowe (czasem 0, czasem niezgodne).
+                    $_brutto = (float)($order->netto ?? 0) + (float)($order->vat ?? 0);
+                ?>
                 <tr><th class="ps-3 text-muted fw-normal" style="width:45%">Netto</th>
                     <td><?= $fnum($order->netto) ?> <span class="text-muted"><?= $cur ?></span></td></tr>
                 <tr><th class="ps-3 text-muted fw-normal">VAT</th>
                     <td><?= $fnum($order->vat) ?> <span class="text-muted"><?= $cur ?></span></td></tr>
                 <tr><th class="ps-3 text-muted fw-normal">Brutto</th>
-                    <td class="fw-bold fs-6"><?= $fnum($order->brutto) ?> <span class="fw-normal text-muted"><?= $cur ?></span></td></tr>
+                    <td class="fw-bold fs-6"><?= $fnum($_brutto) ?> <span class="fw-normal text-muted"><?= $cur ?></span></td></tr>
                 <?php if ($order->exchange_rate && $order->exchange_rate != 1): ?>
                 <tr><th class="ps-3 text-muted fw-normal">Kurs</th>
                     <td><?= number_format((float)$order->exchange_rate,6,',','') ?><?= $order->exchange_table?' <span class="text-muted small">('.h($order->exchange_table).')</span>':'' ?></td></tr>
