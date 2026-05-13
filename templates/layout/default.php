@@ -1413,6 +1413,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+                            <li class="slide <?= $navActive('AdminActionLogs', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-history-line side-menu__icon"></i>
+                                    <span class="side-menu__label">' . __('Audyt akcji') . '</span>',
+                                    ['plugin' => false, 'controller' => 'AdminActionLogs', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
                                     '<i class="ri-file-list-3-line side-menu__icon"></i>

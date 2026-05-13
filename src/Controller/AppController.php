@@ -291,6 +291,35 @@ class AppController extends Controller
             return; // nie zalogowany → nic nie rób
         }
 
+        // CRUD audyt — logujemy każdy mutating request (POST/PUT/PATCH/DELETE).
+        // GET pomijamy bo to wyłącznie odczyt + zbyt duża skala.
+        // Pomijamy też niektóre actions które łapią się jako POST ale to AJAX:
+        // updateStatus (Speed), nbpRate, search etc — można rozszerzyć blacklist.
+        try {
+            $method = strtoupper($this->request->getMethod());
+            $skipActions = ['nbprate', 'search']; // case-insensitive
+            $actionName  = strtolower((string)$this->request->getParam('action'));
+            if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && !in_array($actionName, $skipActions, true)) {
+                $passed = $this->request->getParam('pass') ?? [];
+                $entityId = isset($passed[0]) ? (string)$passed[0] : null;
+                $ActionLogs = $this->fetchTable('UserActionLogs');
+                $log = $ActionLogs->newEntity([
+                    'user_id'     => (string)$identity->getIdentifier(),
+                    'username'    => (string)($identity->get('username') ?? $identity->get('email') ?? $identity->getIdentifier()),
+                    'role'        => (string)($identity->get('role') ?? ''),
+                    'method'      => $method,
+                    'controller'  => (string)$this->request->getParam('controller'),
+                    'action'      => (string)$this->request->getParam('action'),
+                    'url'         => mb_substr((string)$this->request->getRequestTarget(), 0, 500),
+                    'entity_id'   => $entityId ? mb_substr($entityId, 0, 100) : null,
+                    'ip'          => $this->request->clientIp() ?: null,
+                    'user_agent'  => mb_substr((string)$this->request->getHeaderLine('User-Agent'), 0, 500) ?: null,
+                    'created'     => date('Y-m-d H:i:s'),
+                ]);
+                $ActionLogs->save($log);
+            }
+        } catch (\Throwable) { /* ignore */ }
+
         // Last activity per user — debounced 5 min żeby nie spamować DB.
         // Session flag 'Activity.last_update_ts' trzyma timestamp ostatniego UPDATE.
         try {
