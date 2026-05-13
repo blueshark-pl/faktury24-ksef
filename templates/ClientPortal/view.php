@@ -140,7 +140,7 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .kpi-tile .kpi-sub   { font-size:.72rem; color: var(--text-muted); opacity:.8; }
 
 /* ── Route bar ── delikatny gradient w odcieniach primary, w dark mode ciemniejszy */
-.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 0; padding:1rem 1.25rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:.75rem; }
+.route-bar { display:flex; align-items:center; gap:0; margin:.5rem 0 0; padding:1.5rem 1.25rem 1rem; background: linear-gradient(135deg, rgba(var(--primary-rgb), .08) 0%, rgba(34, 197, 94, .08) 100%); border:1px solid var(--default-border); border-radius:.75rem; }
 [data-theme-mode="dark"] .route-bar { background: linear-gradient(135deg, rgba(var(--primary-rgb), .18) 0%, rgba(34, 197, 94, .15) 100%); }
 .route-node { flex-shrink:0; min-width:180px; }
 .route-node .rn-flag    { font-size:1.6rem; line-height:1; }
@@ -150,13 +150,13 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .route-line { flex:1; height:4px; background: linear-gradient(to right, #6366f1, #22c55e); border-radius:2px; position:relative; margin:0 1.5rem; min-width:120px; }
 .route-line-truck {
     position:absolute;
-    top:-30px;
-    width:68px;
-    height:51px;
+    top:-44px;
+    width:96px;
+    height:72px;
     line-height:1;
     z-index:2;
     will-change:left,transform;
-    filter:drop-shadow(0 3px 6px rgba(0,0,0,.2));
+    filter:drop-shadow(0 4px 8px rgba(0,0,0,.22));
 }
 .route-line-truck .truck-img {
     width:100%; height:100%;
@@ -164,12 +164,12 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     display:block;
 }
 /* Stan 2 (Zaplanowane) — czeka przy starcie, lekkie podskakiwanie */
-.truck-state-2 { left:-16px; animation: truck-idle 1.8s ease-in-out infinite; }
+.truck-state-2 { left:-22px; animation: truck-idle 1.8s ease-in-out infinite; }
 /* Stan 3 (Załadowane) — w drodze, jedzie tam i z powrotem */
 .truck-state-3 { animation: truck-drive 4.5s ease-in-out infinite; }
 /* Stan 4/5 (Zrealizowane/Zafakturowane) — playback całej trasy w ~4s + bounce na końcu */
 .truck-state-4, .truck-state-5 {
-    left:-16px;
+    left:-22px;
     animation: truck-delivery-playback 4s cubic-bezier(.4,0,.2,1) forwards;
 }
 @keyframes truck-idle {
@@ -177,11 +177,11 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     50%     { transform:translateY(-3px) rotate(-1deg); }
 }
 @keyframes truck-drive {
-    0%   { left:-16px;              transform:translateY(0)   rotate(0deg); }
-    8%   { left:-16px;              transform:translateY(-2px) rotate(-2deg); }
-    50%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(1deg); }
-    92%  { left:calc(100% - 68px);  transform:translateY(-2px) rotate(-1deg); }
-    100% { left:calc(100% - 68px);  transform:translateY(0)   rotate(0deg); }
+    0%   { left:-22px;              transform:translateY(0)   rotate(0deg); }
+    8%   { left:-22px;              transform:translateY(-2px) rotate(-2deg); }
+    50%  { left:calc(50% - 48px);   transform:translateY(0)   rotate(1deg); }
+    92%  { left:calc(100% - 96px);  transform:translateY(-2px) rotate(-1deg); }
+    100% { left:calc(100% - 96px);  transform:translateY(0)   rotate(0deg); }
 }
 @keyframes truck-arrived {
     0%   { transform:translateY(-12px) scale(.5) rotate(-8deg); opacity:0; }
@@ -189,22 +189,22 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     100% { transform:translateY(0)     scale(1); }
 }
 @keyframes truck-delivery-playback {
-    0%   { left:-16px;              transform:translateY(0)   rotate(0deg)  scale(1); }
-    5%   { left:-16px;              transform:translateY(-2px) rotate(-3deg) scale(1); }
+    0%   { left:-22px;              transform:translateY(0)   rotate(0deg)  scale(1); }
+    5%   { left:-22px;              transform:translateY(-2px) rotate(-3deg) scale(1); }
     /* Etap 1: jedzie do POL (środek trasy) */
-    20%  { left:calc(20% - 14px);   transform:translateY(-1px) rotate(1deg)  scale(1.02); }
-    32%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(-1deg) scale(1); }
+    20%  { left:calc(20% - 20px);   transform:translateY(-1px) rotate(1deg)  scale(1.02); }
+    32%  { left:calc(50% - 48px);   transform:translateY(0)   rotate(-1deg) scale(1); }
     /* Postojek przy POL — załadunek (~0.5s) z lekkim trzęsieniem */
-    34%  { left:calc(50% - 34px);   transform:translateY(-2px) rotate(-2deg) scale(1.02); }
-    37%  { left:calc(50% - 34px);   transform:translateY(1px)  rotate(2deg)  scale(1); }
-    40%  { left:calc(50% - 34px);   transform:translateY(-1px) rotate(-1deg) scale(1.02); }
-    43%  { left:calc(50% - 34px);   transform:translateY(0)   rotate(0deg)  scale(1); }
+    34%  { left:calc(50% - 48px);   transform:translateY(-2px) rotate(-2deg) scale(1.02); }
+    37%  { left:calc(50% - 48px);   transform:translateY(1px)  rotate(2deg)  scale(1); }
+    40%  { left:calc(50% - 48px);   transform:translateY(-1px) rotate(-1deg) scale(1.02); }
+    43%  { left:calc(50% - 48px);   transform:translateY(0)   rotate(0deg)  scale(1); }
     /* Etap 2: jedzie do mety */
-    60%  { left:calc(75% - 50px);   transform:translateY(-1px) rotate(2deg)  scale(1.02); }
-    80%  { left:calc(100% - 68px);  transform:translateY(-3px) rotate(-1deg) scale(1); }
+    60%  { left:calc(75% - 70px);   transform:translateY(-1px) rotate(2deg)  scale(1.02); }
+    80%  { left:calc(100% - 96px);  transform:translateY(-3px) rotate(-1deg) scale(1); }
     /* Hamowanie z bounce */
     88%  { transform:translateY(3px) scale(1.08) rotate(0deg); }
-    100% { left:calc(100% - 68px);  transform:translateY(0)   rotate(0deg)  scale(1); }
+    100% { left:calc(100% - 96px);  transform:translateY(0)   rotate(0deg)  scale(1); }
 }
 /* POL pulse podczas postojek (32-43% playbacku = ~1.28s-1.72s) */
 .route-line.is-completed .route-pol {
@@ -307,8 +307,8 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .truck-smoke {
     position:absolute;
     right:100%;
-    top:10px;
-    font-size:1rem;
+    top:18px;
+    font-size:1.2rem;
     pointer-events:none;
     opacity:0;
     animation: smoke-puff 1.4s ease-out infinite;
@@ -322,11 +322,11 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 /* Checkmark przy dojechaniu */
 .truck-check {
     position:absolute;
-    left:calc(100% + 6px);
-    top:10px;
+    left:calc(100% + 8px);
+    top:22px;
     color:#22c55e;
     font-weight:900;
-    font-size:1.5rem;
+    font-size:1.8rem;
     line-height:1;
     /* delay 3.5s — czeka aż truck dojedzie na metę (playback 4s) */
     animation: check-pop .7s 3.5s cubic-bezier(.34,1.8,.64,1) both;
