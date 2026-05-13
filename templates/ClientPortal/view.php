@@ -101,16 +101,16 @@ if ($order->date_deadline && $order->date_delivery) {
     $transportDays = $d1->diff($d2)->days;
 }
 
-// KPI: opóźnienie / w terminie
+// KPI: opóźnienie / w terminie — dostawa "wykonana" liczona z plikiem POD
 $delayDays = null;
 $delayState = 'pending'; // pending | ontime | late | overdue
-if ($order->date_delivery && $order->pod_at) {
+if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery, 0, 10));
     $d2 = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at, 0, 16));
     $diff = $d1->diff($d2);
     $delayDays  = $diff->invert ? -$diff->days : $diff->days;
     $delayState = $delayDays > 0 ? 'late' : 'ontime';
-} elseif ($order->date_delivery && empty($order->pod_at)) {
+} elseif ($order->date_delivery && !$hasPodFile) {
     $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery, 0, 10));
     if ($d1 < $today) {
         $delayDays  = $today->diff($d1)->days;
@@ -228,9 +228,9 @@ if ($order->date_delivery && $order->pod_at) {
                 <i class="<?= $nlCurrent['icon'] ?> me-1" style="font-size:1.3rem"></i><?= h($nlCurrent['label']) ?>
             </span>
             <span class="kpi-sub">
-                <?php if (!empty($order->pod_at)): ?>
+                <?php if ($hasPodFile && !empty($order->pod_at)): ?>
                     <?= __('Dostarczone') ?> <?= h($fdate($order->pod_at)) ?>
-                <?php elseif (!empty($order->pol_at)): ?>
+                <?php elseif ($hasPolFile && !empty($order->pol_at)): ?>
                     <?= __('Załadowane') ?> <?= h($fdate($order->pol_at)) ?>
                 <?php elseif ($order->date_delivery): ?>
                     <?= __('Plan') ?>: <?= h($fdate($order->date_delivery)) ?>
@@ -340,9 +340,9 @@ if ($order->date_delivery && $order->pod_at) {
     </div>
 
     <div class="route-line">
-        <?php if ($order->pol_at): ?><span class="route-pol">POL ✓</span><?php endif; ?>
+        <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
         <span class="route-line-truck">🚛</span>
-        <?php if ($order->pod_at): ?><span class="route-pod">POD ✓</span><?php endif; ?>
+        <?php if ($hasPodFile): ?><span class="route-pod">POD ✓</span><?php endif; ?>
     </div>
 
     <div class="route-node text-end">
