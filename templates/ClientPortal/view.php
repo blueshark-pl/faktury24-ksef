@@ -396,7 +396,6 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     z-index:1;
     pointer-events:none;
     opacity:0;
-    transform:scaleX(-1);
     filter:drop-shadow(0 3px 5px rgba(0,0,0,.18));
     animation: oncoming-pass 6s 2s ease-in-out infinite;
 }
@@ -406,11 +405,11 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     display:block;
 }
 @keyframes oncoming-pass {
-    0%   { left:calc(100% + 30px); opacity:0; }
+    0%   { left:calc(100% + 30px); opacity:0; transform:translateY(0); }
     8%   { opacity:.85; }
-    50%  { left:35%; opacity:1; transform:scaleX(-1) translateY(-1px); }
+    50%  { left:35%; opacity:1; transform:translateY(-1px); }
     92%  { opacity:.85; }
-    100% { left:-100px; opacity:0; }
+    100% { left:-100px; opacity:0; transform:translateY(0); }
 }
 
 /* ── Timeline ── */
