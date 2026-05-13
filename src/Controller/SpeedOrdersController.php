@@ -591,6 +591,25 @@ class SpeedOrdersController extends AppController
 
         $Attachments->delete($entity);
 
+        // Po usunięciu pliku re-evaluate status (mógł spaść z 3 → 2 gdy
+        // usunięto ostatni POL, lub 4 → 3 gdy usunięto ostatni POD).
+        try {
+            $SpeedOrders = $this->fetchTable('SpeedOrders');
+            $order = $SpeedOrders->get($orderId);
+            [$hasPol, $hasPod] = $this->hasPolPodFiles($orderId);
+            // Wyzeruj pol_at/pod_at gdy brak plików (spójność)
+            if (!$hasPol && !empty($order->pol_at)) {
+                $order->set('pol_at', null);
+                $order->set('pol_by', null);
+            }
+            if (!$hasPod && !empty($order->pod_at)) {
+                $order->set('pod_at', null);
+                $order->set('pod_by', null);
+            }
+            $this->applyAutoNlStatus($order);
+            $SpeedOrders->save($order);
+        } catch (\Throwable) { /* best-effort */ }
+
         $this->response->getBody()->write(json_encode(['ok' => true]));
         $this->response = $this->response->withType('json');
     }
@@ -1020,22 +1039,61 @@ class SpeedOrdersController extends AppController
     }
 
     /**
-     * Automatyczne przejścia statusu Nordlogis na podstawie POL/POD/FS.
-     * Wywołuj po ustawieniu pol_at / pod_at / fs_at na encji.
+     * Automatyczne przejścia statusu Nordlogis na podstawie:
+     *  - fizycznych plików POL/POD (z speed_order_attachments + labels.slug)
+     *  - pól fs_at / fk_at (FS/FK dalej z datetime)
+     *
+     * Status:
+     *   3 (Załadowane)   ← gdy istnieje plik POL
+     *   4 (Zrealizowane) ← gdy istnieje plik POD
+     *   5 (Zafakturowane)← gdy fs_at != null
+     *
+     * is_complete: hasPol && hasPod && fk_at && fs_at.
+     *
+     * Wywołuj po zmianach pól lub załączników.
      */
     private function applyAutoNlStatus(\App\Model\Entity\SpeedOrder $entity): void
     {
+        [$hasPol, $hasPod] = $this->hasPolPodFiles((int)$entity->id);
         $ns = (int)($entity->nordlogis_status ?? 1);
 
-        if (!empty($entity->pol_at) && $ns < 3) $ns = 3;
-        if (!empty($entity->pod_at) && $ns < 4) $ns = 4;
-        if (!empty($entity->fs_at)  && $ns < 5) $ns = 5;
+        if ($hasPol && $ns < 3) $ns = 3;
+        if ($hasPod && $ns < 4) $ns = 4;
+        if (!empty($entity->fs_at) && $ns < 5) $ns = 5;
 
         $entity->set('nordlogis_status', $ns);
         $entity->set('is_complete',
-            !empty($entity->pol_at) && !empty($entity->pod_at) &&
-            !empty($entity->fk_at)  && !empty($entity->fs_at)
+            $hasPol && $hasPod &&
+            !empty($entity->fk_at) && !empty($entity->fs_at)
         );
+    }
+
+    /**
+     * Sprawdza czy zlecenie ma załączniki POL i POD (po slug etykiety).
+     *
+     * @return array{0:bool,1:bool} [hasPol, hasPod]
+     */
+    private function hasPolPodFiles(int $orderId): array
+    {
+        if ($orderId <= 0) return [false, false];
+        try {
+            $rows = $this->fetchTable('SpeedOrderAttachments')->find()
+                ->select(['SpeedOrderAttachmentLabels.slug'])
+                ->contain(['SpeedOrderAttachmentLabels'])
+                ->where(['SpeedOrderAttachments.speed_order_id' => $orderId])
+                ->disableHydration()
+                ->all();
+            $hasPol = false; $hasPod = false;
+            foreach ($rows as $r) {
+                $slug = (string)($r['speed_order_attachment_label']['slug'] ?? '');
+                if (str_starts_with($slug, 'pol_')) $hasPol = true;
+                elseif (str_starts_with($slug, 'pod_')) $hasPod = true;
+                if ($hasPol && $hasPod) break;
+            }
+            return [$hasPol, $hasPod];
+        } catch (\Throwable) {
+            return [false, false];
+        }
     }
 
     private function jsonResp(array $data): void
