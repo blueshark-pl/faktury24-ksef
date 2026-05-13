@@ -3924,7 +3924,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 'fullnumber'    => $invoice->fullnumber ?? null, // zachowaj istniejący numer, nie nadpisuj
                 'currency'      => $data['currency'] ?? $invoice->currency,
                 'currency_date' => $data['currency_date'] ?? $invoice->currency_date,
-                'currency_exchange' => $data['currency_exchange'] ?? $invoice->currency_exchange,
+                // Form używa input name='fx_rate' (kompatybilność z templates),
+                // DB ma kolumnę currency_exchange. Mapujemy w obie strony tak jak
+                // handleAdd() na linii ~2714 — inaczej edit dostawał tylko stary
+                // currency_exchange z entity, ignorując fx_rate z POST.
+                'currency_exchange' => $data['currency_exchange']
+                    ?? (isset($data['fx_rate']) && $data['fx_rate'] !== '' ? (float)$data['fx_rate'] : null)
+                    ?? $invoice->currency_exchange,
                 'description'   => $data['description'] ?? $invoice->description,
                 'issuer'        => $data['issuer'] ?? $invoice->issuer,
                 // New flags
