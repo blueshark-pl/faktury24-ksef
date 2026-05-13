@@ -26,6 +26,7 @@ class SpeedOrdersController extends AppController
         $search       = trim((string)$this->request->getQuery('q', ''));
         $status       = $this->request->getQuery('status', '');
         $currency     = strtoupper(trim((string)$this->request->getQuery('currency', '')));
+        $contract     = trim((string)$this->request->getQuery('contract', ''));
         $amountMin    = $this->request->getQuery('amount_min', '');
         $amountMax    = $this->request->getQuery('amount_max', '');
         $deliveryFrom = $this->request->getQuery('delivery_from', '');
@@ -47,6 +48,7 @@ class SpeedOrdersController extends AppController
             'date_delivery'    => 'SpeedOrders.date_delivery',
             'carrier'          => 'SpeedOrders.carrier',
             'driver'           => 'SpeedOrders.driver',
+            'contract'         => 'SpeedOrders.contract',
             'netto'            => 'SpeedOrders.netto',
             'currency'         => 'SpeedOrders.currency',
             'nordlogis_status' => 'SpeedOrders.nordlogis_status',
@@ -102,6 +104,10 @@ class SpeedOrdersController extends AppController
             $query->where(['SpeedOrders.currency' => $currency]);
         }
 
+        if ($contract !== '') {
+            $query->where(['SpeedOrders.contract' => $contract]);
+        }
+
         if ($amountMin !== '') {
             $query->where(['SpeedOrders.netto >=' => (float)$amountMin]);
         }
@@ -149,7 +155,18 @@ class SpeedOrdersController extends AppController
             $cmrMap = [];
         }
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'sortKey', 'sortDir'));
+        // Lista unikalnych kontraktów do dropdown filtra
+        $contractsList = $SpeedOrders->find()
+            ->select(['contract'])
+            ->where(['contract IS NOT' => null, 'contract !=' => ''])
+            ->groupBy('contract')
+            ->orderBy(['contract' => 'ASC'])
+            ->disableHydration()
+            ->all()
+            ->extract('contract')
+            ->toArray();
+
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'sortKey', 'sortDir'));
     }
 
     // -------------------------------------------------------------------------
@@ -689,6 +706,9 @@ class SpeedOrdersController extends AppController
                     // Transport
                     'driver'            => trim((string)($r['GLO_JEDNOSTKA'] ?? '')) ?: null,
                     'carrier'           => trim((string)($r['GLO_NAZ8']      ?? '')) ?: null,
+                    // 'Spedytor 2' w Speed (GLO_NAZ7) używane jako kontrakt operacyjny
+                    // (OWN 1, OWN PL 2, OWN X1 itd.)
+                    'contract'          => trim((string)($r['GLO_NAZ7']      ?? '')) ?: null,
                     'transport_type'    => trim((string)($r['GLO_MIE_RODZAJ'] ?? '')) ?: null,
                     'vehicle_reg'       => trim((string)($r['GLO_KONTO']      ?? '')) ?: null,
                     // Finansowe

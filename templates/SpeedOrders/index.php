@@ -16,6 +16,8 @@
  * @var array $cmrMap   speed_order_id => [{id, path, mime, name, label}]
  * @var string $sortKey
  * @var string $sortDir
+ * @var string $contract
+ * @var string[] $contractsList
  */
 
 $this->assign('title', 'Zlecenia Speed');
@@ -276,7 +278,7 @@ $quickFilters = [
             $isActive = ($status === $qf['status']);
             $cls = $isActive ? "btn-{$qf['cls']} text-white" : "btn-outline-{$qf['cls']}";
           ?>
-          <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'currency' => $currency, 'amount_min' => $amountMin, 'amount_max' => $amountMax, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
+          <a href="<?= $this->Url->build(['action' => 'index', '?' => ['status' => $qf['status'], 'q' => $search, 'currency' => $currency, 'contract' => $contract ?? '', 'amount_min' => $amountMin, 'amount_max' => $amountMax, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo, 'limit' => $limit]]) ?>"
              class="btn btn-sm <?= $cls ?>">
             <i class="<?= $qf['icon'] ?> me-1"></i><?= h($qf['label']) ?>
           </a>
@@ -324,6 +326,17 @@ $quickFilters = [
           <input type="date" name="delivery_to" class="form-control form-control-sm" style="width:140px"
                  value="<?= h($deliveryTo) ?>" title="Do">
         </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-file-list-3-line me-1"></i>Kontrakt
+        </label>
+        <select name="contract" class="form-select form-select-sm" style="width:160px">
+          <option value="">Wszystkie</option>
+          <?php foreach (($contractsList ?? []) as $c): ?>
+            <option value="<?= h($c) ?>" <?= ($contract ?? '') === $c ? 'selected' : '' ?>><?= h($c) ?></option>
+          <?php endforeach; ?>
+        </select>
       </div>
       <div class="col-auto ms-auto d-flex gap-2 align-items-end">
         <?php if ($hasFilters): ?>
@@ -384,6 +397,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
         'q'             => $this->request->getQuery('q'),
         'status'        => $this->request->getQuery('status'),
         'currency'      => $this->request->getQuery('currency'),
+        'contract'      => $this->request->getQuery('contract'),
         'amount_min'    => $this->request->getQuery('amount_min'),
         'amount_max'    => $this->request->getQuery('amount_max'),
         'delivery_from' => $this->request->getQuery('delivery_from'),
@@ -417,6 +431,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
             <?= $sortLink('date_deadline',    'Załadunek') ?>
             <?= $sortLink('date_delivery',    'Rozładunek') ?>
             <?= $sortLink('carrier',          'Kierowca / Przewoźnik') ?>
+            <?= $sortLink('contract',         'Kontrakt') ?>
             <?= $sortLink('netto',            'Netto', 'text-end') ?>
             <?= $sortLink('currency',         'Wal.') ?>
             <?= $sortLink('nordlogis_status', 'Status') ?>
@@ -425,7 +440,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
     </thead>
     <tbody>
     <?php if (count($groups) === 0): ?>
-        <tr><td colspan="10" class="text-center text-muted py-4">
+        <tr><td colspan="11" class="text-center text-muted py-4">
             <?= $total === 0
                 ? 'Brak zleceń w bazie. Kliknij „Synchronizuj ze Speed", aby pobrać dane.'
                 : 'Brak wyników dla podanych kryteriów.' ?>
@@ -453,7 +468,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
                     data-currency="<?= h($groupCurrency) ?>"
                     data-ids="<?= h(implode(',', $groupIds)) ?>">
             </td>
-            <td colspan="7">
+            <td colspan="8">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <strong class="text-dark"><?= h($group['contractor_name']) ?></strong>
                     <?php if ($group['contractor_nip']): ?>
@@ -608,6 +623,15 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
                 <?php if (!$driver && !$carrier): ?><span class="text-muted">—</span><?php endif; ?>
             </td>
 
+            <!-- Kontrakt -->
+            <td>
+                <?php if (!empty($order->contract)): ?>
+                    <span class="badge bg-primary-transparent" style="font-size:.72rem;letter-spacing:.02em"><?= h($order->contract) ?></span>
+                <?php else: ?>
+                    <span class="text-muted small">—</span>
+                <?php endif; ?>
+            </td>
+
             <!-- Netto -->
             <td class="text-end text-nowrap fw-medium" style="font-size:.8rem">
                 <?= $order->netto !== null ? number_format((float)$order->netto, 2, ',', ' ') : '—' ?>
@@ -684,6 +708,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
             $dateTo !== '' ? ['date_to' => $dateTo] : [],
             $deliveryFrom !== '' ? ['delivery_from' => $deliveryFrom] : [],
             $deliveryTo !== '' ? ['delivery_to' => $deliveryTo] : [],
+            ($contract ?? '') !== '' ? ['contract' => $contract] : [],
             $sortKey !== 'date_doc' ? ['sort' => $sortKey] : [],
             $sortDir !== 'desc'     ? ['direction' => $sortDir] : [],
             ['page' => $p, 'limit' => $limit]
