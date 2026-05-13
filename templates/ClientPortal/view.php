@@ -360,15 +360,20 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .route-landmark {
     position:absolute;
     top:8px;
-    font-size:1.7rem;
-    line-height:1;
+    width:56px;
+    height:42px;
     z-index:1;
     pointer-events:none;
-    filter:drop-shadow(0 2px 3px rgba(0,0,0,.12));
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.18));
     transition:transform .3s ease-out, filter .3s ease-out;
 }
-.route-origin      { left:-12px; }
-.route-destination { right:-12px; }
+.route-landmark .landmark-img {
+    width:100%; height:100%;
+    object-fit:contain;
+    display:block;
+}
+.route-origin      { left:-18px; }
+.route-destination { right:-18px; }
 /* Magazyn klienta pulsuje gdy truck dojeżdża (delay zsynchr. z bounce mety) */
 .route-line.is-completed .route-destination {
     animation: warehouse-arrival 1.8s 3.4s cubic-bezier(.34,1.56,.64,1) infinite;
@@ -634,11 +639,15 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         <div class="route-line-progress" style="<?= $effective >= 4 ? '' : 'width:' . $progressPct . '%' ?>"></div>
         <!-- Magazyn nadawcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
-            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>" title="<?= __('Załadunek') ?>">🏭</span>
+            <span class="route-landmark route-origin" aria-label="<?= __('Załadunek') ?>" title="<?= __('Załadunek') ?>">
+                <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
+            </span>
         <?php endif; ?>
         <!-- Magazyn odbiorcy (zawsze od status 2+) -->
         <?php if ($effective >= 2): ?>
-            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>" title="<?= __('Rozładunek') ?>">🏬</span>
+            <span class="route-landmark route-destination" aria-label="<?= __('Rozładunek') ?>" title="<?= __('Rozładunek') ?>">
+                <img src="/assets/img/warehouse.png" alt="" class="landmark-img">
+            </span>
         <?php endif; ?>
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
         <!-- Mijająca ciężarówka (tylko gdy w drodze) -->
