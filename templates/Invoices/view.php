@@ -165,6 +165,72 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 </style>
 
 <?php
+// Historia wysyłek email — audit log z invoice_email_queue (status: sent/failed)
+if (!empty($emailLogs ?? [])): ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-2 d-flex align-items-center gap-2"
+         style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#email-log-body">
+        <i class="ri-mail-send-line text-info"></i>
+        <strong><?= __('Historia wysyłki e-mail') ?></strong>
+        <span class="badge bg-info-subtle text-info ms-1"><?= count($emailLogs) ?></span>
+        <i class="ri-arrow-down-s-line ms-auto text-muted"></i>
+    </div>
+    <div class="collapse show" id="email-log-body">
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0" style="font-size:.82rem">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3" style="width:170px"><?= __('Data i godzina') ?></th>
+                        <th><?= __('Odbiorca') ?></th>
+                        <th><?= __('Temat') ?></th>
+                        <th style="width:140px"><?= __('Wysłał') ?></th>
+                        <th style="width:90px"><?= __('Status') ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($emailLogs as $log):
+                    $when = $log->sent_at ?: $log->created;
+                    $whenStr = $when instanceof \DateTimeInterface ? $when->format('d.m.Y H:i:s') : substr((string)$when, 0, 19);
+                    $isFail  = $log->status === 'failed';
+                ?>
+                    <tr>
+                        <td class="ps-3 text-muted text-nowrap"><?= h($whenStr) ?></td>
+                        <td><code style="font-size:.82em"><?= h($log->email) ?></code></td>
+                        <td class="text-muted" style="max-width:260px"
+                            title="<?= h((string)($log->subject ?? '')) ?>">
+                            <?= h(mb_substr((string)($log->subject ?? '—'), 0, 60)) ?>
+                        </td>
+                        <td>
+                            <?php if ($log->sent_by_username): ?>
+                                <span class="badge bg-light border text-dark">
+                                    <i class="ri-user-line me-1"></i><?= h($log->sent_by_username) ?>
+                                </span>
+                            <?php else: ?>
+                                <span class="text-muted small"><?= h($log->kind ?: 'system') ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($isFail): ?>
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
+                                      title="<?= h((string)($log->last_error ?? '')) ?>">
+                                    <i class="ri-error-warning-line me-1"></i><?= __('Błąd') ?>
+                                </span>
+                            <?php else: ?>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                    <i class="ri-checkbox-circle-line me-1"></i><?= __('Wysłano') ?>
+                                </span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php
 // Baner bankowy: powiązane transakcje
 if (!empty($bankTransactions)):
     $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') : substr((string)$v, 0, 10)) : '—';

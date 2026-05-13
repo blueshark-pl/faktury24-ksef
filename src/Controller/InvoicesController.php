@@ -1359,7 +1359,18 @@ HTML;
             ->orderByDesc('value_date')
             ->all();
 
-        $this->set(compact('invoice', 'bankTransactions'));
+        // Historia wysyłek email (audit log) — wpisy ze statusem sent/failed
+        $emailLogs = [];
+        try {
+            $emailLogs = $this->fetchTable('InvoiceEmailQueue')->find()
+                ->where(['invoice_id' => $id, 'status IN' => ['sent', 'failed']])
+                ->orderByDesc('created')
+                ->limit(50)
+                ->all()
+                ->toArray();
+        } catch (\Throwable) { /* tabela może nie mieć kolumn audit jeszcze */ }
+
+        $this->set(compact('invoice', 'bankTransactions', 'emailLogs'));
     }
 
     /**
@@ -5091,8 +5102,62 @@ private function makeClient(string $environment): KsefClient
             $mailer->deliver();
         } catch (\Throwable $e) {
             \Cake\Log\Log::error('[emailInvoice] Sending failed for invoice ' . $id . ': ' . $e->getMessage());
+
+            // Log błędu wysyłki — zapisujemy mimo wszystko (status=failed)
+            try {
+                $Queue = $this->fetchTable('InvoiceEmailQueue');
+                $now = date('Y-m-d H:i:s');
+                $senderUserId = $identity?->getIdentifier();
+                $senderName   = (string)($identity?->get('username') ?? $identity?->get('email') ?? '');
+                foreach ($emails as $em) {
+                    $entry = $Queue->newEntity([
+                        'id'               => \Cake\Utility\Text::uuid(),
+                        'invoice_id'       => $id,
+                        'company_id'       => $companyId,
+                        'email'            => $em,
+                        'status'           => 'failed',
+                        'attempts'         => 1,
+                        'last_error'       => mb_substr($e->getMessage(), 0, 1000),
+                        'sent_at'          => null,
+                        'scheduled_at'     => $now,
+                        'sent_by_user_id'  => $senderUserId,
+                        'sent_by_username' => $senderName ?: null,
+                        'subject'          => mb_substr($subject ?? '', 0, 500),
+                        'kind'             => 'manual',
+                    ]);
+                    $Queue->save($entry);
+                }
+            } catch (\Throwable) { /* nie wywalaj na user-facing przy błędzie logowania */ }
+
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd wysyłki: ' . $e->getMessage()]));
+        }
+
+        // Log udanej wysyłki — wpis do invoice_email_queue per adres
+        try {
+            $Queue = $this->fetchTable('InvoiceEmailQueue');
+            $now = date('Y-m-d H:i:s');
+            $senderUserId = $identity?->getIdentifier();
+            $senderName   = (string)($identity?->get('username') ?? $identity?->get('email') ?? '');
+            foreach ($emails as $em) {
+                $entry = $Queue->newEntity([
+                    'id'               => \Cake\Utility\Text::uuid(),
+                    'invoice_id'       => $id,
+                    'company_id'       => $companyId,
+                    'email'            => $em,
+                    'status'           => 'sent',
+                    'attempts'         => 1,
+                    'sent_at'          => $now,
+                    'scheduled_at'     => $now,
+                    'sent_by_user_id'  => $senderUserId,
+                    'sent_by_username' => $senderName ?: null,
+                    'subject'          => mb_substr($subject, 0, 500),
+                    'kind'             => 'manual',
+                ]);
+                $Queue->save($entry);
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[emailInvoice] Failed to log email send: ' . $e->getMessage());
         }
 
         return $this->response->withType('application/json')
