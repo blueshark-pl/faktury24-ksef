@@ -11,6 +11,8 @@ use Cake\ORM\Entity;
  * @property string      $field
  * @property string|null $old_value
  * @property string|null $new_value
+ * @property string|null $reason
+ * @property string|null $note
  * @property int|null    $user_id
  * @property string|null $username
  * @property \Cake\I18n\DateTime $created
@@ -22,6 +24,8 @@ class SpeedOrderStatusLog extends Entity
         'field'          => true,
         'old_value'      => true,
         'new_value'      => true,
+        'reason'         => true,
+        'note'           => true,
         'user_id'        => true,
         'username'       => true,
         'created'        => true,

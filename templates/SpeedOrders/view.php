@@ -302,16 +302,27 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         $d2 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
         $transportDays = $d1->diff($d2)->days;
     }
-    // Opóźnienie (delivery vs POD)
+    // Opóźnienie (planowana data dostawy vs Rzeczywisty rozładunek) — pad_at to tylko
+    // potwierdzenie checkboxu, więc opieramy terminowość na actual_unload_at.
+    // Fallback na pod_at (legacy zlecenia) i na "dziś" gdy przeterminowane bez POD.
     $delayDays = null;
-    if ($order->date_delivery && $order->pod_at) {
+    $delayBasis = null; // dla podpisu KPI
+    if ($order->date_delivery && !empty($order->actual_unload_at)) {
+        $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
+        $d2 = $order->actual_unload_at instanceof \DateTimeInterface ? $order->actual_unload_at : new \DateTimeImmutable(substr((string)$order->actual_unload_at,0,16));
+        $diff = $d1->diff($d2);
+        $delayDays = $diff->invert ? -$diff->days : $diff->days;
+        $delayBasis = 'actual';
+    } elseif ($order->date_delivery && $order->pod_at) {
+        // Fallback dla starych zleceń bez actual_unload_at
         $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
         $d2 = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
         $diff = $d1->diff($d2);
-        $delayDays = $diff->invert ? -$diff->days : $diff->days; // ujemny = wcześniej
+        $delayDays = $diff->invert ? -$diff->days : $diff->days;
+        $delayBasis = 'pod';
     } elseif ($order->date_delivery && empty($order->pod_at)) {
         $d1 = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
-        if ($d1 < $today) { $delayDays = $today->diff($d1)->days; } // przeterminowane
+        if ($d1 < $today) { $delayDays = $today->diff($d1)->days; $delayBasis = 'overdue'; }
     }
     ?>
     <div class="col-6 col-md-3">
@@ -346,7 +357,15 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
             <div class="kpi-val <?= $delayDays <= 0 ? 'text-success' : 'text-danger' ?>">
                 <?= $delayDays <= 0 ? ($delayDays==0?'W terminie':abs($delayDays).'d wcześniej') : $delayDays.'d opóźnienia' ?>
             </div>
-            <div class="kpi-sub"><?= $delayDays <= 0 ? '✔ OK' : '⚠ Opóźnienie' ?></div>
+            <div class="kpi-sub">
+                <?php if ($delayBasis === 'actual'): ?>
+                    <?= $delayDays <= 0 ? '✔ OK' : '⚠ Opóźnienie' ?> · <span class="text-muted">rzeczywisty rozładunek</span>
+                <?php elseif ($delayBasis === 'pod'): ?>
+                    <?= $delayDays <= 0 ? '✔ OK' : '⚠ Opóźnienie' ?> · <span class="text-muted">POD (legacy)</span>
+                <?php else: ?>
+                    <?= $delayDays <= 0 ? '✔ OK' : '⚠ Opóźnienie' ?>
+                <?php endif; ?>
+            </div>
             <?php else: ?>
             <div class="kpi-val text-muted">—</div>
             <div class="kpi-sub">brak danych</div>
@@ -446,6 +465,28 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                     <div class="text-muted" style="font-size:.7em">Planowany: <?= h($fdate($order->date_delivery)) ?></div>
                 <?php endif; ?>
             </div>
+        </div>
+
+        <!-- Przyciski "Zatwierdź i oznacz jako…" -->
+        <?php
+            $plannedLoadDate   = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline->format('Y-m-d') : substr((string)($order->date_deadline ?? ''), 0, 10);
+            $plannedUnloadDate = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery->format('Y-m-d') : substr((string)($order->date_delivery ?? ''), 0, 10);
+        ?>
+        <div class="d-flex gap-2 flex-wrap justify-content-center mb-3" id="confirm-buttons-row">
+            <button type="button" class="btn btn-sm btn-outline-primary confirm-and-mark-btn"
+                    data-target="pol"
+                    data-time-field="actual_load_at"
+                    data-planned-date="<?= h($plannedLoadDate ?? '') ?>"
+                    <?= !empty($order->pol_at) ? 'disabled title="Już oznaczone jako załadowane"' : '' ?>>
+                <i class="ri-check-double-line me-1"></i>Zatwierdź i oznacz jako <strong>załadowany</strong>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success confirm-and-mark-btn"
+                    data-target="pod"
+                    data-time-field="actual_unload_at"
+                    data-planned-date="<?= h($plannedUnloadDate ?? '') ?>"
+                    <?= !empty($order->pod_at) ? 'disabled title="Już oznaczone jako zrealizowane"' : '' ?>>
+                <i class="ri-flag-2-line me-1"></i>Zatwierdź i oznacz jako <strong>zrealizowany</strong>
+            </button>
         </div>
 
         <!-- POL/POD/FK/FS pills -->
@@ -1335,6 +1376,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                     <th class="ps-3" style="width:150px">Data i godzina</th>
                     <th style="width:140px">Pole</th>
                     <th>Zmiana</th>
+                    <th>Powód / notatka</th>
                     <th style="width:180px"><i class="ri-user-line me-1"></i>Użytkownik</th>
                 </tr>
             </thead>
@@ -1348,6 +1390,12 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 'nordlogis_status'=> 'Status Nordlogis',
             ];
             $nlLabels = [1=>'Przyjęte',2=>'Zaplanowane',3=>'Załadowane',4=>'Zrealizowane',5=>'Zafakturowane'];
+            $reasonLabels = [
+                'downtime'        => 'Przestój',
+                'cargo_not_ready' => 'Brak gotowości towaru',
+                'driver_late'     => 'Opóźnienie kierowcy',
+                'no_avisation'    => 'Brak awizacji',
+            ];
             foreach (array_reverse($statusLogs) as $log):
                 $fieldLabel = $fieldLabels[$log->field] ?? h($log->field);
                 $isCheck    = str_ends_with($log->field, '_at');
@@ -1373,6 +1421,23 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 <td class="ps-3 text-muted"><?= h($createdStr) ?></td>
                 <td class="fw-semibold"><?= $fieldLabel ?></td>
                 <td><?= $changeHtml ?></td>
+                <td>
+                    <?php
+                        $logReason = (string)($log->reason ?? '');
+                        $logNote   = (string)($log->note ?? '');
+                    ?>
+                    <?php if ($logReason !== ''): ?>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                            <i class="ri-alert-line me-1"></i><?= h($reasonLabels[$logReason] ?? $logReason) ?>
+                        </span>
+                    <?php endif; ?>
+                    <?php if ($logNote !== ''): ?>
+                        <div class="text-muted mt-1" style="font-size:.72rem;white-space:pre-wrap"><?= h($logNote) ?></div>
+                    <?php endif; ?>
+                    <?php if ($logReason === '' && $logNote === ''): ?>
+                        <span class="text-muted">—</span>
+                    <?php endif; ?>
+                </td>
                 <td>
                     <?php if ($log->username): ?>
                     <span class="badge bg-light border text-dark">
@@ -1593,6 +1658,115 @@ endif;
         inp.addEventListener('blur',   function () {
             if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
             save();
+        });
+    });
+
+    // ── Przyciski "Zatwierdź i oznacz jako załadowany/zrealizowany" ──
+    // Jeśli data rzeczywista zgodna z planowaną (dzień) — wysyłamy od razu.
+    // Inaczej Swal z dropdownem powodu + obowiązkową notatką.
+    var reasonOptions = {
+        'pol': {
+            'downtime':       'Przestój na załadunku',
+            'cargo_not_ready':'Brak gotowości towaru',
+            'driver_late':    'Opóźnienie w przyjeździe na załadunek',
+            'no_avisation':   'Brak awizacji',
+        },
+        'pod': {
+            'downtime':       'Przestój na rozładunku',
+            'cargo_not_ready':'Brak gotowości towaru',
+            'driver_late':    'Opóźnienie w przyjeździe na rozładunek',
+            'no_avisation':   'Brak awizacji',
+        }
+    };
+    function doConfirmMark(target, payload) {
+        // POL → status 3, POD → status 4 (server i tak applyAutoNlStatus podbije,
+        // ale wysyłamy jawnie żeby był 1 log na status).
+        payload[target] = 1;
+        post(updateUrl, payload).then(function (data) {
+            if (data.success) {
+                showToast('✔ Oznaczono jako ' + (target === 'pol' ? 'załadowane' : 'zrealizowane'), true);
+                setTimeout(function () {
+                    // W trybie modala — zamykamy go (parent się sam nie reloaduje,
+                    // ale przy następnym otwarciu zobaczysz świeży stan).
+                    var modalEl = document.querySelector('#orderViewModal.show');
+                    if (modalEl && window.bootstrap) {
+                        var inst = bootstrap.Modal.getInstance(modalEl);
+                        if (inst) { inst.hide(); return; }
+                    }
+                    location.reload();
+                }, 1000);
+            } else {
+                showToast(data.error || 'Błąd zapisu', false);
+            }
+        }).catch(function (e) { showToast('Błąd: ' + e.message, false); });
+    }
+    document.querySelectorAll('.confirm-and-mark-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var target      = btn.dataset.target;          // 'pol' | 'pod'
+            var timeField   = btn.dataset.timeField;        // 'actual_load_at' | 'actual_unload_at'
+            var plannedDate = (btn.dataset.plannedDate || '').slice(0, 10); // YYYY-MM-DD
+            var inp         = document.querySelector('.actual-time-input[data-field="' + timeField + '"]');
+            var actualVal   = inp ? (inp.value || '').trim() : '';
+            var actualDate  = actualVal.slice(0, 10);
+
+            // Stała część payloadu — zawsze wysyłamy faktyczną datetime żeby zapisać ją
+            // razem z oznaczeniem (UX: button = "zatwierdź czas i oznacz").
+            var basePayload = { id: orderId };
+            if (actualVal) basePayload[timeField] = actualVal;
+
+            // Daty się zgadzają (lub user nie wpisał faktycznej daty == nieinformacyjne,
+            // ale planowane > 0 → pytamy o powód jak przy mismatchu).
+            if (actualDate && plannedDate && actualDate === plannedDate) {
+                doConfirmMark(target, basePayload);
+                return;
+            }
+            // Brak faktycznej daty albo mismatch — wymuszamy uzasadnienie.
+            if (!window.Swal) {
+                var note = window.prompt('Daty się nie zgadzają. Wpisz powód (obowiązkowe):');
+                if (!note || !note.trim()) return;
+                basePayload.note = note.trim();
+                doConfirmMark(target, basePayload);
+                return;
+            }
+            var optMap = reasonOptions[target] || {};
+            var optsHtml = '<option value="">— Wybierz powód —</option>';
+            Object.keys(optMap).forEach(function (k) {
+                optsHtml += '<option value="' + k + '">' + optMap[k] + '</option>';
+            });
+            var planTxt   = plannedDate || '—';
+            var actualTxt = actualDate || '<em class="text-muted">nie podano</em>';
+            Swal.fire({
+                title: 'Daty się nie zgadzają',
+                html:
+                    '<div style="text-align:left;font-size:.9rem">'
+                    + '<p class="mb-2">Planowana data: <strong>' + planTxt + '</strong><br>'
+                    + 'Rzeczywista data: <strong>' + actualTxt + '</strong></p>'
+                    + '<label class="form-label small mb-1">Powód</label>'
+                    + '<select id="swal-reason" class="form-select form-select-sm mb-2">' + optsHtml + '</select>'
+                    + '<label class="form-label small mb-1">Notatka <span class="text-muted">(opcjonalna gdy wybrany powód)</span></label>'
+                    + '<textarea id="swal-note" class="form-control form-control-sm" rows="3" placeholder="Dodatkowy opis…"></textarea>'
+                    + '</div>',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Zatwierdź i zapisz',
+                cancelButtonText:  'Anuluj',
+                confirmButtonColor: target === 'pol' ? '#6366f1' : '#22c55e',
+                focusConfirm: false,
+                preConfirm: function () {
+                    var reason = (document.getElementById('swal-reason') || {}).value || '';
+                    var note   = ((document.getElementById('swal-note') || {}).value || '').trim();
+                    if (!reason && !note) {
+                        Swal.showValidationMessage('Wybierz powód lub wpisz notatkę');
+                        return false;
+                    }
+                    return { reason: reason, note: note };
+                }
+            }).then(function (res) {
+                if (!res || !res.value) return;
+                if (res.value.reason) basePayload.reason = res.value.reason;
+                if (res.value.note)   basePayload.note   = res.value.note;
+                doConfirmMark(target, basePayload);
+            });
         });
     });
 

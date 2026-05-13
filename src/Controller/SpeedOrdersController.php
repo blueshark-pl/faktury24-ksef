@@ -917,6 +917,13 @@ class SpeedOrdersController extends AppController
         $Logs = $this->fetchTable('SpeedOrderStatusLogs');
         $logEntries = [];
 
+        // Powód + notatka (z modalu "Zatwierdź i oznacz jako…") — dopinane do wszystkich
+        // wpisów logów generowanych w tym requeście. Pusta wartość = NULL w logach.
+        $reqReason = trim((string)$this->request->getData('reason', ''));
+        $reqNote   = trim((string)$this->request->getData('note', ''));
+        $reqReason = $reqReason !== '' ? $reqReason : null;
+        $reqNote   = $reqNote   !== '' ? $reqNote   : null;
+
         // Zmiana statusu operacyjnego
         if ($this->request->getData('nordlogis_status') !== null) {
             $ns = (int)$this->request->getData('nordlogis_status');
@@ -1006,13 +1013,16 @@ class SpeedOrdersController extends AppController
         }
 
         if ($SpeedOrders->save($order)) {
-            // Zapisz logi
+            // Zapisz logi — reason/note z requestu trafiają do KAŻDEGO wpisu wygenerowanego
+            // w tej zmianie (np. POL → status=3 → 2 logi, oba z tym samym reason/note).
             foreach ($logEntries as $entry) {
                 $log = $Logs->newEntity([
                     'speed_order_id' => $order->id,
                     'field'          => $entry['field'],
                     'old_value'      => $entry['old'],
                     'new_value'      => $entry['new'],
+                    'reason'         => $reqReason,
+                    'note'           => $reqNote,
                     'user_id'        => $userId,
                     'username'       => $username,
                     'created'        => $now,
