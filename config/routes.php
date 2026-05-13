@@ -218,6 +218,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/trasy',                      ['controller' => 'RoutePlanner', 'action' => 'index']);
         $builder->connect('/trasy/calculate',        ['controller' => 'RoutePlanner', 'action' => 'calculate']);
         $builder->get('/trasy/autosuggest',          ['controller' => 'RoutePlanner', 'action' => 'autosuggest']);
+        $builder->get('/trasy/revgeocode',           ['controller' => 'RoutePlanner', 'action' => 'revgeocode']);
         $builder->post('/trasy/historia/usun/{id}',  ['controller' => 'RoutePlanner', 'action' => 'deleteRecent'])
             ->setPass(['id']);
         $builder->post('/trasy/szablon/zapisz',       ['controller' => 'RoutePlanner', 'action' => 'saveTemplate']);

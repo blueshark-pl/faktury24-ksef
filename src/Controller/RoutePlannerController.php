@@ -270,6 +270,29 @@ class RoutePlannerController extends AppController
         }
     }
 
+    public function revgeocode(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+        $lat = $this->request->getQuery('lat');
+        $lng = $this->request->getQuery('lng');
+        if (!is_numeric($lat) || !is_numeric($lng)) {
+            return $this->jsonError(__('Brak współrzędnych.'));
+        }
+        try {
+            $here = new HereRoutingService();
+            $res = $here->reverseGeocode((float)$lat, (float)$lng);
+            if (!$res) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['label' => '', 'country' => '']));
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode($res, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function autosuggest(): Response
     {
         $this->disableAutoRender();

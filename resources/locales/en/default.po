@@ -2316,3 +2316,12 @@ msgstr "truck profile · multipoint · EU tolls"
 
 msgid "JJ Maps · liczę optymalną trasę"
 msgstr "JJ Maps · finding optimal route"
+
+msgid "Brak współrzędnych."
+msgstr "Missing coordinates."
+
+msgid "CO₂"
+msgstr "CO₂"
+
+msgid "Etapy"
+msgstr "Legs"

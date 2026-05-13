@@ -67,6 +67,25 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     .stats-pill.success { background: linear-gradient(135deg, rgba(34,197,94,.25), rgba(22,163,74,.18)); border-color: rgba(74,222,128,.4); }
     .stats-pill.fuel    { background: linear-gradient(135deg, rgba(244,114,182,.22), rgba(217,70,239,.18)); border-color: rgba(244,114,182,.4); }
     .stats-pill.driver  { background: linear-gradient(135deg, rgba(192,132,252,.22), rgba(168,85,247,.18)); border-color: rgba(192,132,252,.4); }
+    .stats-pill.eco     { background: linear-gradient(135deg, rgba(74,222,128,.28), rgba(34,197,94,.20)); border-color: rgba(74,222,128,.5); }
+
+    /* Distance markers */
+    .dist-marker-badge {
+        background: white; color: #1e3a8a; border: 2px solid #2563eb;
+        border-radius: 999px; padding: 2px 10px; font-size: .7rem; font-weight: 700;
+        box-shadow: 0 2px 6px rgba(0,0,0,.18);
+    }
+
+    /* Section breakdown */
+    .leg-row { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; }
+    .leg-row:last-child { border-bottom: none; }
+    .leg-num { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#dbeafe,#bfdbfe); color: #1e40af; font-weight: 700; display:inline-flex; align-items:center; justify-content:center; font-size: .72rem; }
+
+    /* Hover highlight effect on map (animated dash) */
+    @keyframes routePulse {
+        0%, 100% { stroke-width: 6; }
+        50%      { stroke-width: 9; }
+    }
 
     /* ── Glassmorphism cards ─────────────────────────────────────────── */
     .glass-card {
@@ -273,6 +292,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             <div class="label"><i class="ri-user-line me-1"></i><?= __('Kierowca') ?></div>
             <div class="value"><span id="stat-driver">—</span><span class="unit">PLN</span></div>
         </div>
+        <div class="stats-pill eco">
+            <div class="label"><i class="ri-leaf-line me-1"></i><?= __('CO₂') ?></div>
+            <div class="value"><span id="stat-co2">—</span><span class="unit">kg</span></div>
+        </div>
     </div>
 </div>
 
@@ -426,13 +449,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         </div>
 
         <div class="row g-3 mt-0">
-            <div class="col-lg-6">
+            <div class="col-lg-4">
                 <div class="card glass-card" id="alternatives-card" style="display:none">
                     <div class="card-header py-2"><strong><i class="ri-git-branch-line me-1 text-primary"></i><?= __('Alternatywne trasy') ?></strong></div>
                     <div class="card-body p-0" id="alternatives-list"></div>
                 </div>
             </div>
-            <div class="col-lg-6">
+            <div class="col-lg-4">
+                <div class="card glass-card" id="legs-card" style="display:none">
+                    <div class="card-header py-2"><strong><i class="ri-route-fill me-1 text-primary"></i><?= __('Etapy') ?></strong></div>
+                    <div class="card-body p-0" id="legs-body"></div>
+                </div>
+            </div>
+            <div class="col-lg-4">
                 <div class="card glass-card" id="directions-card" style="display:none">
                     <div class="card-header py-2 d-flex align-items-center">
                         <strong><i class="ri-navigation-line me-1 text-primary"></i><?= __('Instrukcje') ?></strong>
@@ -472,6 +501,37 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     var templates      = <?= json_encode($templates ?? [], JSON_UNESCAPED_UNICODE) ?>;
     var deleteRecentUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'deleteRecent', '__ID__']) ?>';
     var saveTemplateUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'saveTemplate']) ?>';
+    var revgeocodeUrl  = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'revgeocode']) ?>';
+
+    // ─── localStorage cache dla geocodingu ───────────────────────────
+    var GEOCACHE_KEY = 'rp_geocache_v1';
+    var GEOCACHE_TTL = 14 * 24 * 3600 * 1000; // 14 dni
+    var geoCache = {};
+    try {
+        var raw = localStorage.getItem(GEOCACHE_KEY);
+        if (raw) {
+            var parsed = JSON.parse(raw);
+            var now = Date.now();
+            Object.keys(parsed).forEach(function (k) {
+                if (parsed[k] && parsed[k].t && (now - parsed[k].t) < GEOCACHE_TTL) {
+                    geoCache[k] = parsed[k];
+                }
+            });
+        }
+    } catch (e) {}
+    function saveCache() {
+        try { localStorage.setItem(GEOCACHE_KEY, JSON.stringify(geoCache)); } catch (e) {}
+    }
+    function cacheGet(key) {
+        var entry = geoCache[key];
+        if (!entry) return null;
+        if ((Date.now() - entry.t) > GEOCACHE_TTL) { delete geoCache[key]; return null; }
+        return entry.v;
+    }
+    function cacheSet(key, value) {
+        geoCache[key] = { t: Date.now(), v: value };
+        saveCache();
+    }
 
     // ─── Toast ───────────────────────────────────────────────────────
     var toastContainer = document.getElementById('toast-container');
@@ -508,13 +568,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         pixelRatio: window.devicePixelRatio || 1
     });
     window.addEventListener('resize', function () { map.getViewPort().resize(); });
-    new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+    window.__rpBehavior = new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
     var ui = H.ui.UI.createDefault(map, defaultLayers, 'pl-PL');
 
     var routeGroups = [];
     var pinsGroup = new H.map.Group();
     map.addObject(pinsGroup);
     var trafficLayer = null;
+    var distMarkerGroup = null;
 
     // ─── Style switcher ──────────────────────────────────────────────
     document.querySelectorAll('.map-ctrl-btn[data-style]').forEach(function (btn) {
@@ -641,9 +702,60 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         waypoints.forEach(function (wp, idx) {
             if (wp.lat == null || wp.lng == null) return;
             var icon = makeMarkerIcon(letterForIdx(idx, waypoints.length), colorForIdx(idx, waypoints.length), flagEmoji(wp.country || ''));
-            pinsGroup.addObject(new H.map.Marker({ lat: wp.lat, lng: wp.lng }, { icon: icon }));
+            var m = new H.map.Marker({ lat: wp.lat, lng: wp.lng }, { icon: icon, volatility: true });
+            m.draggable = true;
+            m.setData({ wpIdx: idx });
+            pinsGroup.addObject(m);
         });
     }
+
+    // ─── Draggable markery: drag z mapy aktualizuje waypoint ─────
+    var behavior = window.__rpBehavior; // marker — bo behavior był stworzony wcześniej
+    // (behavior już istnieje, używamy referencji z mapy)
+    map.addEventListener('dragstart', function (ev) {
+        var target = ev.target;
+        if (target instanceof H.map.Marker && target.draggable) {
+            window.__rpDraggedMarker = target;
+            // Wyłącz pan mapy podczas dragu markera
+            map.getViewPort().element.style.cursor = 'grabbing';
+            // Behavior zapisany globalnie:
+            if (window.__rpBehavior) window.__rpBehavior.disable(H.mapevents.Behavior.Feature.DRAG_PAN);
+        }
+    });
+    map.addEventListener('drag', function (ev) {
+        var m = window.__rpDraggedMarker;
+        if (!m) return;
+        var p = ev.currentPointer;
+        var coord = map.screenToGeo(p.viewportX, p.viewportY);
+        if (coord) m.setGeometry(coord);
+    });
+    map.addEventListener('dragend', function (ev) {
+        var m = window.__rpDraggedMarker;
+        if (!m) return;
+        var d = m.getData();
+        var geo = m.getGeometry();
+        if (d && d.wpIdx != null && waypoints[d.wpIdx]) {
+            var idx = d.wpIdx;
+            waypoints[idx].lat = geo.lat;
+            waypoints[idx].lng = geo.lng;
+            // tymczasowy label
+            waypoints[idx].address = '(' + geo.lat.toFixed(5) + ', ' + geo.lng.toFixed(5) + ')';
+            waypoints[idx].label = waypoints[idx].address;
+            renderWaypoints();
+            reverseGeocode(geo.lat, geo.lng).then(function (data) {
+                if (data && data.label && waypoints[idx]) {
+                    waypoints[idx].address = data.label;
+                    waypoints[idx].label = data.label;
+                    waypoints[idx].country = data.country || '';
+                    renderWaypoints();
+                    renderPinsOnMap();
+                }
+            }).catch(function () {});
+        }
+        window.__rpDraggedMarker = null;
+        map.getViewPort().element.style.cursor = '';
+        if (window.__rpBehavior) window.__rpBehavior.enable(H.mapevents.Behavior.Feature.DRAG_PAN);
+    });
 
     // ─── Autosuggest ─────────────────────────────────────────────────
     var autosuggestTimers = new WeakMap();
@@ -653,9 +765,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (q.length < 2) { dropdown.style.display = 'none'; return; }
         var t = setTimeout(function () {
             var center = map.getCenter();
-            fetch(autoUrl + '?q=' + encodeURIComponent(q) + '&lat=' + center.lat + '&lng=' + center.lng, {
-                headers: { 'Accept': 'application/json' }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            var cacheKey = 'as:' + q.toLowerCase();
+            var cached = cacheGet(cacheKey);
+            var prom = cached
+                ? Promise.resolve(cached)
+                : fetch(autoUrl + '?q=' + encodeURIComponent(q) + '&lat=' + center.lat + '&lng=' + center.lng, {
+                      headers: { 'Accept': 'application/json' }
+                  }).then(function (r) { return r.json(); }).then(function (d) { cacheSet(cacheKey, d); return d; });
+            prom.then(function (data) {
                 var items = data.items || [];
                 if (!items.length) { dropdown.style.display = 'none'; return; }
                 dropdown.innerHTML = items.map(function (it, i) {
@@ -689,23 +806,52 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         autosuggestTimers.set(input, t);
     }
 
-    // ─── Map click → dodaj waypoint ─────────────────────────────────
+    // ─── Reverse geocoding helper z cache ──────────────────────────
+    function reverseGeocode(lat, lng) {
+        var key = 'rg:' + lat.toFixed(4) + ',' + lng.toFixed(4);
+        var cached = cacheGet(key);
+        if (cached) return Promise.resolve(cached);
+        return fetch(revgeocodeUrl + '?lat=' + lat + '&lng=' + lng, {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            cacheSet(key, data);
+            return data;
+        });
+    }
+
+    // ─── Map click → dodaj waypoint z reverse geocode ──────────────
     map.addEventListener('tap', function (evt) {
         if (evt.target !== map) return;
         var coord = map.screenToGeo(evt.currentPointer.viewportX, evt.currentPointer.viewportY);
         if (!coord) return;
         var lastIdx = waypoints.length - 1;
-        var newWp = { address: '(' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5) + ')', lat: coord.lat, lng: coord.lng, country: '' };
+        var tmpLabel = '(' + coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5) + ')';
+        var newWp = { address: tmpLabel, label: tmpLabel, lat: coord.lat, lng: coord.lng, country: '' };
+        var insertIdx;
         if (waypoints[lastIdx].lat == null && waypoints[lastIdx].lng == null) {
+            insertIdx = lastIdx;
             waypoints[lastIdx] = newWp;
         } else if (waypoints[0].lat == null && waypoints[0].lng == null) {
+            insertIdx = 0;
             waypoints[0] = newWp;
         } else {
+            insertIdx = lastIdx;
             waypoints.splice(lastIdx, 0, newWp);
         }
         renderWaypoints();
         renderPinsOnMap();
         toast('<?= __('Dodano przystanek z mapy') ?>', 'success');
+        // Async reverse geocode → uzupełnij adres + flagę
+        reverseGeocode(coord.lat, coord.lng).then(function (data) {
+            if (!data || !data.label) return;
+            if (waypoints[insertIdx]) {
+                waypoints[insertIdx].address = data.label;
+                waypoints[insertIdx].label = data.label;
+                waypoints[insertIdx].country = data.country || '';
+                renderWaypoints();
+                renderPinsOnMap();
+            }
+        }).catch(function () {});
     });
 
     document.getElementById('btn-add-waypoint').addEventListener('click', function () {
@@ -790,19 +936,48 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     function clearRoutes() {
         routeGroups.forEach(function (g) { map.removeObject(g); });
         routeGroups = [];
+        if (distMarkerGroup) { map.removeObject(distMarkerGroup); distMarkerGroup = null; }
+    }
+
+    function highlightAltOnMap(altIdx, on) {
+        routeGroups.forEach(function (g) {
+            var d = g.getData() || {};
+            if (d.altIdx !== altIdx) return;
+            g.getObjects().forEach(function (o, i) {
+                var s = o.getStyle();
+                if (on) {
+                    // outline (parzysty index 0) zostaje biały; stroke (nieparzysty 1) na pomarańczowy
+                    if (i % 2 === 1) {
+                        o.setStyle({ strokeColor: '#f59e0b', lineWidth: (d.origWidth - 2) });
+                    } else {
+                        o.setStyle({ strokeColor: 'rgba(255,255,255,1)', lineWidth: d.origWidth + 2 });
+                    }
+                } else {
+                    if (i % 2 === 1) {
+                        o.setStyle({ strokeColor: d.origColor, lineWidth: d.origWidth - 4 });
+                    } else {
+                        o.setStyle({ strokeColor: 'rgba(255,255,255,.7)', lineWidth: d.origWidth });
+                    }
+                }
+            });
+        });
     }
     function drawRoute(routeData, opts) {
         opts = opts || {};
         var group = new H.map.Group();
+        var lineWidth = opts.lineWidth || 10;
+        var strokeColor = opts.color || 'rgba(37,99,235,.92)';
+        var outlineColor = opts.outline || 'rgba(255,255,255,.95)';
         (routeData.polylines || []).forEach(function (polyStr) {
             try {
                 var line = H.geo.LineString.fromFlexiblePolyline(polyStr);
-                var outline = new H.map.Polyline(line, { style: { strokeColor: opts.outline || 'rgba(255,255,255,.95)', lineWidth: opts.lineWidth || 10 } });
-                var stroke = new H.map.Polyline(line, { style: { strokeColor: opts.color || 'rgba(37,99,235,.92)', lineWidth: (opts.lineWidth || 10) - 4 } });
+                var outline = new H.map.Polyline(line, { style: { strokeColor: outlineColor, lineWidth: lineWidth } });
+                var stroke = new H.map.Polyline(line, { style: { strokeColor: strokeColor, lineWidth: lineWidth - 4 } });
                 group.addObject(outline);
                 group.addObject(stroke);
             } catch (e) { console.error('Polyline decode failed', e); }
         });
+        group.setData({ altIdx: opts.altIdx, origColor: strokeColor, origWidth: lineWidth });
         map.addObject(group);
         routeGroups.push(group);
 
@@ -841,9 +1016,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         data.routes.forEach(function (r, idx) {
             if (idx === 0) return;
-            drawRoute(r, { color: 'rgba(148,163,184,.7)', outline: 'rgba(255,255,255,.7)', lineWidth: 8 });
+            drawRoute(r, { color: 'rgba(148,163,184,.7)', outline: 'rgba(255,255,255,.7)', lineWidth: 8, altIdx: idx });
         });
-        drawRoute(data.routes[0], { color: 'rgba(37,99,235,.95)', lineWidth: 11, animate: !!animate });
+        drawRoute(data.routes[0], { color: 'rgba(37,99,235,.95)', lineWidth: 11, animate: !!animate, altIdx: 0 });
 
         var bbox = null;
         routeGroups.forEach(function (g) {
@@ -860,11 +1035,93 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderStatsBar(data.routes[0]);
         renderAlternatives(data.routes);
         renderDirections(data.routes[0]);
+        renderLegs(data.routes[0], data.points || []);
+        renderDistanceMarkers(data.routes[0]);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
         document.getElementById('btn-share').disabled = false;
         document.getElementById('btn-save-template').disabled = false;
+    }
+
+    // ─── Etapy między waypointami (sections) ───────────────────────
+    function renderLegs(route, points) {
+        var card = document.getElementById('legs-card');
+        var body = document.getElementById('legs-body');
+        if (!route.sections || route.sections.length < 1 || !points.length) {
+            card.style.display = 'none';
+            return;
+        }
+        body.innerHTML = route.sections.map(function (sect, i) {
+            var fromLabel = shortLabel((points[i] || {}).label || (points[i] || {}).address || '?');
+            var toLabel   = shortLabel((points[i+1] || {}).label || (points[i+1] || {}).address || '?');
+            var marker = String.fromCharCode(65 + Math.min(25, i)) + ' → ' + String.fromCharCode(65 + Math.min(25, i+1));
+            return '<div class="leg-row d-flex align-items-center gap-2">'
+                + '<span class="leg-num">' + (i + 1) + '</span>'
+                + '<div class="flex-grow-1 min-width-0">'
+                +   '<div class="small fw-semibold text-truncate">' + escapeHtml(fromLabel) + ' → ' + escapeHtml(toLabel) + '</div>'
+                +   '<div class="text-muted" style="font-size:.72rem">' + marker + ' · ' + fmtNum(sect.distance_km, 1) + ' km · ' + fmtDur(sect.duration_min) + '</div>'
+                + '</div>'
+                + '</div>';
+        }).join('');
+        card.style.display = '';
+    }
+
+    // ─── Distance markers wzdłuż trasy (co 100 km) ─────────────────
+    function haversineKm(a, b) {
+        var R = 6371;
+        var toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(b.lat - a.lat);
+        var dLng = toRad(b.lng - a.lng);
+        var s = Math.sin(dLat/2);
+        var t = Math.sin(dLng/2);
+        var x = s*s + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * t*t;
+        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+    }
+    function renderDistanceMarkers(route) {
+        if (distMarkerGroup) { map.removeObject(distMarkerGroup); distMarkerGroup = null; }
+        if (!route.polylines || !route.polylines.length || !route.distance_km) return;
+        // Nie pokazuj dla bardzo krótkich tras
+        if (route.distance_km < 60) return;
+        var step = 100; // co 100 km
+        if (route.distance_km > 1000) step = 200;
+        if (route.distance_km > 2000) step = 500;
+
+        // Zbuduj listę wszystkich punktów polylines
+        var pts = [];
+        route.polylines.forEach(function (p) {
+            try {
+                var ls = H.geo.LineString.fromFlexiblePolyline(p);
+                for (var i = 0; i < ls.getPointCount(); i++) {
+                    var pt = ls.extractPoint(i);
+                    pts.push({ lat: pt.lat, lng: pt.lng });
+                }
+            } catch (e) {}
+        });
+        if (pts.length < 2) return;
+
+        distMarkerGroup = new H.map.Group();
+        var cum = 0;
+        var nextMark = step;
+        for (var i = 1; i < pts.length && nextMark < route.distance_km; i++) {
+            var d = haversineKm(pts[i-1], pts[i]);
+            while (cum + d >= nextMark && nextMark < route.distance_km) {
+                var ratio = (nextMark - cum) / d;
+                var lat = pts[i-1].lat + (pts[i].lat - pts[i-1].lat) * ratio;
+                var lng = pts[i-1].lng + (pts[i].lng - pts[i-1].lng) * ratio;
+                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="22" viewBox="0 0 56 22">'
+                        + '<rect x="1" y="1" width="54" height="20" rx="10" fill="white" stroke="#2563eb" stroke-width="2"/>'
+                        + '<text x="28" y="15" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="700" fill="#1e3a8a">'
+                        + nextMark + ' km</text></svg>';
+                var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 28, y: 11 } });
+                distMarkerGroup.addObject(new H.map.Marker({ lat: lat, lng: lng }, { icon: icon }));
+                nextMark += step;
+            }
+            cum += d;
+        }
+        if (distMarkerGroup.getObjects().length > 0) {
+            map.addObject(distMarkerGroup);
+        }
     }
 
     function renderStatsBar(r) {
@@ -876,14 +1133,18 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         } else {
             document.getElementById('stat-tolls').textContent = '—';
         }
-        // Fuel + driver
+        // Fuel + driver + CO2
         var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
         var price = parseFloat(document.getElementById('fuel-price').value || 0);
         var rate = parseFloat(document.getElementById('driver-rate').value || 0);
         var fuelCost = (r.distance_km / 100) * cons * price;
         var driverCost = (r.duration_min / 60) * rate;
+        var liters = (r.distance_km / 100) * cons;
+        // 2.68 kg CO₂ per litr diesla (standardowy współczynnik DEFRA)
+        var co2Kg = liters * 2.68;
         document.getElementById('stat-fuel').textContent = fuelCost > 0 ? fmtNum(fuelCost, 2) : '—';
         document.getElementById('stat-driver').textContent = driverCost > 0 ? fmtNum(driverCost, 2) : '—';
+        document.getElementById('stat-co2').textContent = co2Kg > 0 ? fmtNum(co2Kg, 1) : '—';
         document.getElementById('stats-bar').classList.add('visible');
     }
     ['fuel-consumption','fuel-price','driver-rate'].forEach(function (id) {
@@ -908,6 +1169,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             list.insertAdjacentHTML('beforeend', html);
         });
         list.querySelectorAll('.alt-route-card').forEach(function (el) {
+            el.addEventListener('mouseenter', function () {
+                var idx = parseInt(el.dataset.idx, 10);
+                if (idx === activeAltIdx) return;
+                highlightAltOnMap(idx, true);
+            });
+            el.addEventListener('mouseleave', function () {
+                var idx = parseInt(el.dataset.idx, 10);
+                if (idx === activeAltIdx) return;
+                highlightAltOnMap(idx, false);
+            });
             el.addEventListener('click', function () {
                 var idx = parseInt(el.dataset.idx, 10);
                 activeAltIdx = idx;
@@ -916,11 +1187,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 clearRoutes();
                 lastResponse.routes.forEach(function (r, i) {
                     if (i === activeAltIdx) return;
-                    drawRoute(r, { color: 'rgba(148,163,184,.7)', outline: 'rgba(255,255,255,.7)', lineWidth: 8 });
+                    drawRoute(r, { color: 'rgba(148,163,184,.7)', outline: 'rgba(255,255,255,.7)', lineWidth: 8, altIdx: i });
                 });
-                drawRoute(lastResponse.routes[activeAltIdx], { color: 'rgba(37,99,235,.95)', lineWidth: 11 });
+                drawRoute(lastResponse.routes[activeAltIdx], { color: 'rgba(37,99,235,.95)', lineWidth: 11, altIdx: activeAltIdx });
                 renderStatsBar(lastResponse.routes[activeAltIdx]);
                 renderDirections(lastResponse.routes[activeAltIdx]);
+                renderLegs(lastResponse.routes[activeAltIdx], lastResponse.points || []);
+                renderDistanceMarkers(lastResponse.routes[activeAltIdx]);
             });
         });
         ac.style.display = '';

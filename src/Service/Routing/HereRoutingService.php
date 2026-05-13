@@ -184,6 +184,36 @@ class HereRoutingService
     }
 
     /**
+     * Reverse geocoding — współrzędne → adres tekstowy.
+     * @return array{lat: float, lng: float, label: string, country: string}|null
+     */
+    public function reverseGeocode(float $lat, float $lng): ?array
+    {
+        try {
+            $resp = $this->client->get(self::REVGEO_URL, [
+                'at'     => $lat . ',' . $lng,
+                'limit'  => 1,
+                'apiKey' => $this->apiKey,
+                'lang'   => 'pl-PL',
+            ]);
+            if (!$resp->isOk()) return null;
+            $data = $resp->getJson();
+            $item = $data['items'][0] ?? null;
+            if (!$item) return null;
+            $pos = $item['position'] ?? ['lat' => $lat, 'lng' => $lng];
+            return [
+                'lat'     => (float)$pos['lat'],
+                'lng'     => (float)$pos['lng'],
+                'label'   => (string)($item['address']['label'] ?? ($item['title'] ?? '')),
+                'country' => (string)($item['address']['countryCode'] ?? ''),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('HERE reverseGeocode error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Autosuggest — szybkie podpowiedzi adresów do input'a (typeahead).
      * @param string $q  częściowy adres (min 1 znak)
      * @param array{lat: float, lng: float}|null $proximity centrum geograficzne dla rankingu
