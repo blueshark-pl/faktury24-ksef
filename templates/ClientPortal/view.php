@@ -390,25 +390,27 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 /* ── Mijająca ciężarówka (state 3 — w drodze) ── */
 .oncoming-truck {
     position:absolute;
-    top:-22px;
-    width:48px;
-    height:36px;
+    top:-30px;
+    width:68px;
+    height:51px;
     z-index:1;
     pointer-events:none;
     opacity:0;
     transform:scaleX(-1);
-    filter:drop-shadow(0 2px 4px rgba(0,0,0,.15));
-    font-size:2rem;
-    line-height:36px;
-    text-align:center;
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.18));
     animation: oncoming-pass 6s 2s ease-in-out infinite;
 }
+.oncoming-truck .oncoming-img {
+    width:100%; height:100%;
+    object-fit:contain;
+    display:block;
+}
 @keyframes oncoming-pass {
-    0%   { left:calc(100% + 20px); opacity:0; }
-    8%   { opacity:.7; }
-    50%  { left:35%; opacity:.85; transform:scaleX(-1) translateY(-1px); }
-    92%  { opacity:.7; }
-    100% { left:-80px; opacity:0; }
+    0%   { left:calc(100% + 30px); opacity:0; }
+    8%   { opacity:.85; }
+    50%  { left:35%; opacity:1; transform:scaleX(-1) translateY(-1px); }
+    92%  { opacity:.85; }
+    100% { left:-100px; opacity:0; }
 }
 
 /* ── Timeline ── */
@@ -642,7 +644,9 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
         <!-- Mijająca ciężarówka (tylko gdy w drodze) -->
         <?php if ($effective === 3): ?>
-            <span class="oncoming-truck" aria-hidden="true">🚛</span>
+            <span class="oncoming-truck" aria-hidden="true">
+                <img src="/assets/img/truck-2.png" alt="" class="oncoming-img">
+            </span>
         <?php endif; ?>
         <?php if ($effective >= 2): ?>
             <span class="route-line-truck truck-state-<?= (int)$effective ?>" aria-label="<?= h($nlCurrent['label']) ?>">
