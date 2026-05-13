@@ -40,6 +40,16 @@ $nlCurrent = $nlStatusMap[$nlStatus] ?? $nlStatusMap[1];
 $speedLabel= $speedStatusMap[(int)($order->status ?? 1)] ?? '';
 $cur       = h($order->currency ?? 'PLN');
 
+// Flagi POL/POD na podstawie ZAŁĄCZNIKÓW (nie pol_at/pod_at z DB).
+// Etykieta slug pol_photo/pol_scan → POL ✓; pod_photo/pod_scan → POD ✓.
+$hasPolFile = false;
+$hasPodFile = false;
+foreach (($attachments ?? []) as $_att) {
+    $_slug = (string)($_att->speed_order_attachment_label->slug ?? '');
+    if (str_starts_with($_slug, 'pol_')) $hasPolFile = true;
+    elseif (str_starts_with($_slug, 'pod_')) $hasPodFile = true;
+}
+
 // Załadunek / rozładunek
 $loadCountry = (string)($order->load_country     ?? $rawData['GLO_MIE_KRAJ']    ?? '');
 $loadCode    = (string)($order->load_postal_code ?? $rawData['GLO_MIE_KOD']     ?? '');
@@ -58,10 +68,10 @@ if ($order->date_doc) {
     $d = $order->date_doc instanceof \DateTimeInterface ? $order->date_doc : new \DateTimeImmutable(substr((string)$order->date_doc,0,10));
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Zlecenie przyjęte', 'sub' => $order->nick_created ? 'Wystawił: '.$order->nick_created : null, 'icon' => 'ri-file-add-line', 'color' => '#64748b', 'done' => true];
 }
-// 2. Planowany załadunek
+// 2. Planowany załadunek (oznaczony jako 'done' gdy istnieje plik POL)
 if ($order->date_deadline) {
     $d = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline : new \DateTimeImmutable(substr((string)$order->date_deadline,0,10));
-    $done = !empty($order->pol_at);
+    $done = $hasPolFile;
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany załadunek', 'sub' => $fdate($order->date_deadline), 'icon' => 'ri-upload-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
@@ -88,18 +98,18 @@ if (!empty($order->actual_load_at)) {
         'sub' => $fdatetime($order->actual_load_at),
         'icon' => 'ri-truck-line', 'color' => '#0ea5e9', 'done' => true];
 }
-// 3. POL — załadunek potwierdzony dokumentem
-if ($order->pol_at) {
+// 3. POL — załadunek potwierdzony dokumentem (gdy plik istnieje)
+if ($hasPolFile && $order->pol_at) {
     $d = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at : new \DateTimeImmutable(substr((string)$order->pol_at,0,16));
     $by = $byUser('pol_at');
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POL — załadunek potwierdzony dokumentem',
         'sub' => $fdatetime($order->pol_at), 'by' => $by,
         'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
 }
-// 4. Planowany rozładunek
+// 4. Planowany rozładunek (oznaczony 'done' gdy istnieje plik POD)
 if ($order->date_delivery) {
     $d = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery,0,10));
-    $done = !empty($order->pod_at);
+    $done = $hasPodFile;
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'Planowany rozładunek', 'sub' => $fdate($order->date_delivery), 'icon' => 'ri-download-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
@@ -110,8 +120,8 @@ if (!empty($order->actual_unload_at)) {
         'sub' => $fdatetime($order->actual_unload_at),
         'icon' => 'ri-truck-line', 'color' => '#0ea5e9', 'done' => true];
 }
-// 5. POD — rozładunek potwierdzony dokumentem
-if ($order->pod_at) {
+// 5. POD — rozładunek potwierdzony dokumentem (gdy plik istnieje)
+if ($hasPodFile && $order->pod_at) {
     $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at,0,16));
     $by = $byUser('pod_at');
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => 'POD — rozładunek potwierdzony dokumentem',
@@ -146,7 +156,15 @@ $checks = [
 ];
 foreach ($checks as &$chk) {
     $val = $order->{$chk['field']} ?? null;
-    $chk['checked'] = !empty($val);
+    // POL/POD: zielone TYLKO gdy istnieje fizyczny plik z odpowiednią etykietą.
+    // FK/FS: dalej z pól datetime jak wcześniej.
+    if ($chk['field'] === 'pol_at') {
+        $chk['checked'] = $hasPolFile;
+    } elseif ($chk['field'] === 'pod_at') {
+        $chk['checked'] = $hasPodFile;
+    } else {
+        $chk['checked'] = !empty($val);
+    }
     $chk['date']    = $fdatetime($val);
     $chk['by']      = $byUser($chk['field']);
 }

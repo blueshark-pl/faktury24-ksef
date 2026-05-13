@@ -130,13 +130,15 @@ class SpeedOrdersController extends AppController
         $orders = $query->limit($limit)->offset(($page - 1) * $limit)->all();
 
         // Mapa załączników CMR: speed_order_id → [[file_path, mime_type, label, original_name], …]
+        // + flagi POL/POD per zlecenie (true gdy istnieje attachment z odpowiednią etykietą)
         $cmrMap = [];
+        $hasPolPodMap = []; // speed_order_id → ['pol' => bool, 'pod' => bool]
         try {
             $orderIds = array_map(fn($o) => $o->id, $orders->toArray());
             if (!empty($orderIds)) {
                 $attachRows = $this->fetchTable('SpeedOrderAttachments')
                     ->find()
-                    ->select(['SpeedOrderAttachments.id', 'SpeedOrderAttachments.speed_order_id', 'SpeedOrderAttachments.file_path', 'SpeedOrderAttachments.mime_type', 'SpeedOrderAttachments.original_name', 'SpeedOrderAttachmentLabels.name'])
+                    ->select(['SpeedOrderAttachments.id', 'SpeedOrderAttachments.speed_order_id', 'SpeedOrderAttachments.file_path', 'SpeedOrderAttachments.mime_type', 'SpeedOrderAttachments.original_name', 'SpeedOrderAttachmentLabels.name', 'SpeedOrderAttachmentLabels.slug'])
                     ->contain(['SpeedOrderAttachmentLabels'])
                     ->where(['SpeedOrderAttachments.speed_order_id IN' => $orderIds])
                     ->orderByAsc('SpeedOrderAttachments.created')
@@ -149,10 +151,17 @@ class SpeedOrdersController extends AppController
                         'name'  => $att->original_name,
                         'label' => $att->speed_order_attachment_label->name ?? '',
                     ];
+                    $slug = (string)($att->speed_order_attachment_label->slug ?? '');
+                    if (str_starts_with($slug, 'pol_')) {
+                        $hasPolPodMap[$att->speed_order_id]['pol'] = true;
+                    } elseif (str_starts_with($slug, 'pod_')) {
+                        $hasPolPodMap[$att->speed_order_id]['pod'] = true;
+                    }
                 }
             }
         } catch (\Throwable) {
             $cmrMap = [];
+            $hasPolPodMap = [];
         }
 
         // Lista unikalnych kontraktów do dropdown filtra
@@ -166,7 +175,7 @@ class SpeedOrdersController extends AppController
             ->extract('contract')
             ->toArray();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'sortKey', 'sortDir'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'hasPolPodMap', 'sortKey', 'sortDir'));
     }
 
     // -------------------------------------------------------------------------

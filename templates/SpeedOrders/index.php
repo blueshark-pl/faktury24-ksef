@@ -54,12 +54,12 @@ $nlStatusBadge = function(int $s, ?string $speedLabel = null) use ($nlStatusMap)
         . '</span>';
 };
 
-// Checkboxy techniczne — ikony
-$checkIcon = function(?string $dt, string $label): string {
-    if ($dt) {
-        return '<span class="badge bg-success-subtle text-success me-1" title="' . htmlspecialchars($label) . ': ' . substr($dt, 0, 10) . '">✔ ' . $label . '</span>';
+// Checkboxy techniczne — ikony POL/POD (zielona = plik z odpowiednią etykietą istnieje)
+$checkIcon = function(?string $hasFile, string $label): string {
+    if ($hasFile) {
+        return '<span class="badge bg-success-subtle text-success me-1" title="' . htmlspecialchars($label) . ' — plik wgrany">✔ ' . $label . '</span>';
     }
-    return '<span class="badge bg-light text-muted border me-1" title="Brak ' . htmlspecialchars($label) . '">· ' . $label . '</span>';
+    return '<span class="badge bg-light text-muted border me-1" title="Brak pliku ' . htmlspecialchars($label) . '">· ' . $label . '</span>';
 };
 
 // Helper: parsuj raw_json → tablica
@@ -651,15 +651,15 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
             <!-- Status Nordlogis + POL/POD + Speed w tooltipie -->
             <td>
                 <?= $nlStatusBadge(!empty($order->invoice_id) ? 5 : $nlStatus, $speedLabel) ?>
+                <?php
+                    // POL/POD zielone TYLKO gdy istnieją pliki z odpowiednią etykietą
+                    // (slugi pol_photo/pol_scan, pod_photo/pod_scan w speed_order_attachments).
+                    $_polOk = !empty($hasPolPodMap[$order->id]['pol']);
+                    $_podOk = !empty($hasPolPodMap[$order->id]['pod']);
+                ?>
                 <div class="mt-1">
-                    <?= $checkIcon(
-                        $order->pol_at instanceof \DateTimeInterface ? $order->pol_at->format('Y-m-d H:i') : (string)($order->pol_at ?? ''),
-                        'POL'
-                    ) ?>
-                    <?= $checkIcon(
-                        $order->pod_at instanceof \DateTimeInterface ? $order->pod_at->format('Y-m-d H:i') : (string)($order->pod_at ?? ''),
-                        'POD'
-                    ) ?>
+                    <?= $checkIcon($_polOk ? 'yes' : null, 'POL') ?>
+                    <?= $checkIcon($_podOk ? 'yes' : null, 'POD') ?>
                 </div>
             </td>
 

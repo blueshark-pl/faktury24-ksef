@@ -52,27 +52,36 @@ $unloadCountry= (string)($order->unload_country   ?? $order->place_to_country   
 $today = new \DateTimeImmutable('today');
 $tlEvents = [];
 
+// POL/POD potwierdzone tylko gdy istnieje plik z odpowiednią etykietą.
+$hasPolFile = false;
+$hasPodFile = false;
+foreach (($attachments ?? []) as $_att) {
+    $_slug = (string)($_att->speed_order_attachment_label->slug ?? '');
+    if (str_starts_with($_slug, 'pol_')) $hasPolFile = true;
+    elseif (str_starts_with($_slug, 'pod_')) $hasPodFile = true;
+}
+
 if ($order->date_doc) {
     $d = $order->date_doc instanceof \DateTimeInterface ? $order->date_doc : new \DateTimeImmutable(substr((string)$order->date_doc, 0, 10));
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Zlecenie przyjęte'), 'sub' => $fdate($order->date_doc), 'icon' => 'ri-file-add-line', 'color' => '#64748b', 'done' => true];
 }
 if ($order->date_deadline) {
     $d    = $order->date_deadline instanceof \DateTimeInterface ? $order->date_deadline : new \DateTimeImmutable(substr((string)$order->date_deadline, 0, 10));
-    $done = !empty($order->pol_at);
+    $done = $hasPolFile;
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Planowany załadunek'), 'sub' => $fdate($order->date_deadline), 'icon' => 'ri-upload-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
-if ($order->pol_at) {
+if ($hasPolFile && $order->pol_at) {
     $d = $order->pol_at instanceof \DateTimeInterface ? $order->pol_at : new \DateTimeImmutable(substr((string)$order->pol_at, 0, 16));
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Załadunek potwierdzony') . ' (POL)', 'sub' => $fdatetime($order->pol_at), 'icon' => 'ri-checkbox-circle-line', 'color' => '#6366f1', 'done' => true];
 }
 if ($order->date_delivery) {
     $d    = $order->date_delivery instanceof \DateTimeInterface ? $order->date_delivery : new \DateTimeImmutable(substr((string)$order->date_delivery, 0, 10));
-    $done = !empty($order->pod_at);
+    $done = $hasPodFile;
     $late = !$done && $d < $today;
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Planowany rozładunek'), 'sub' => $fdate($order->date_delivery), 'icon' => 'ri-download-2-line', 'color' => $late ? '#ef4444' : '#f59e0b', 'done' => $done, 'late' => $late];
 }
-if ($order->pod_at) {
+if ($hasPodFile && $order->pod_at) {
     $d = $order->pod_at instanceof \DateTimeInterface ? $order->pod_at : new \DateTimeImmutable(substr((string)$order->pod_at, 0, 16));
     $tlEvents[] = ['ts' => $d->getTimestamp(), 'label' => __('Rozładunek potwierdzony') . ' (POD)', 'sub' => $fdatetime($order->pod_at), 'icon' => 'ri-map-pin-2-line', 'color' => '#22c55e', 'done' => true];
 }
