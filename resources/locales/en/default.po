@@ -2310,3 +2310,9 @@ msgstr "Missing ID or name."
 
 msgid "Wpis nie istnieje."
 msgstr "Entry does not exist."
+
+msgid "profil truck · multipoint · opłaty drogowe EU"
+msgstr "truck profile · multipoint · EU tolls"
+
+msgid "JJ Maps · liczę optymalną trasę"
+msgstr "JJ Maps · finding optimal route"

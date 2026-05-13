@@ -234,7 +234,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <i class="ri-route-line me-2"></i><?= __('Planer tras') ?>
             </h2>
             <div class="subtitle">
-                <i class="ri-truck-line"></i> HERE Maps · profil truck · multipoint · <?= __('opłaty drogowe EU') ?>
+                <i class="ri-truck-line"></i> JJ Maps · <?= __('profil truck · multipoint · opłaty drogowe EU') ?>
             </div>
         </div>
         <div class="d-flex gap-2 no-print">
@@ -419,7 +419,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <div class="shimmer-box">
                     <div class="shimmer-icon"><i class="ri-route-line"></i></div>
                     <div class="mt-2 fw-semibold"><?= __('Liczę trasę…') ?></div>
-                    <div class="text-muted small"><?= __('Geocoding + HERE Routing v8') ?></div>
+                    <div class="text-muted small"><?= __('JJ Maps · liczę optymalną trasę') ?></div>
                 </div>
             </div>
             <div id="map" style="height:520px;background:#f4f6fa"></div>
