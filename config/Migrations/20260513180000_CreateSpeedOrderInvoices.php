@@ -8,11 +8,13 @@ use Migrations\AbstractMigration;
  *
  * Wzorzec skopiowany z cost_invoice_orders (M:N dla faktur kosztowych).
  *
- * Strategia migracji:
- *  1. Tworzymy pivot speed_order_invoices
+ * Strategia:
+ *  1. Tworzymy pivot speed_order_invoices (źródło prawdy o powiązaniach)
  *  2. Backfill: każdy speed_orders.invoice_id IS NOT NULL → wpis w pivot
- *  3. Pole speed_orders.invoice_id ZOSTAJE na razie (drop w osobnej migracji
- *     po refactoringu kodu na pivot — minimalizuje ryzyko regresji)
+ *  3. Pole speed_orders.invoice_id ZOSTAJE jako DEPRECATED alias (patrz
+ *     migracja MarkInvoiceIdDeprecated) — utrzymane dla wstecznej
+ *     kompatybilności ze starszymi eksportami/raportami/SQL queries.
+ *     Nie planowane do dropowania.
  */
 class CreateSpeedOrderInvoices extends AbstractMigration
 {

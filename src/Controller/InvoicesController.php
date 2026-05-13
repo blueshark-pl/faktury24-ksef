@@ -3169,9 +3169,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $conn->commit();
 
             // ── Powiąż zlecenia Speed ERP z fakturą ──
-            // Faza B: zapisujemy do PIVOT speed_order_invoices (M:N) ORAZ do starej
-            // kolumny speed_orders.invoice_id (kompatybilność wsteczna — niektóre
-            // moduły jeszcze czytają legacy pole; drop w fazie D).
+            // Zapisujemy do PIVOT speed_order_invoices (M:N — źródło prawdy).
+            // Stara kolumna speed_orders.invoice_id [DEPRECATED] aktualizowana
+            // tylko przy PIERWSZEJ fakturze (alias dla backward compat — eksporty,
+            // raporty, legacy SQL queries z 'invoice_id IS NULL').
             try {
                 $speedOrderIds = [];
                 $fromId  = $this->request->getQuery('from_order_id');
