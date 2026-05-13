@@ -104,6 +104,14 @@ return [
             'controller' => '*',
             'action' => '*',
         ],
+        // Impersonation 'stop' — DOSTĘPNE dla każdej roli żeby admin
+        // wcielony w klienta/pracownika mógł wrócić do siebie. Walidacja
+        // wewnątrz akcji sprawdza session.Impersonation.original_user_id.
+        [
+            'role' => '*',
+            'controller' => 'AdminImpersonate',
+            'action' => 'stop',
+        ],
         //specific actions allowed for the all roles in Users plugin
         [
             'role' => '*',

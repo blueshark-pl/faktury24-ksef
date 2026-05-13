@@ -201,6 +201,12 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
 
         // Admin — historia logowań
         $builder->get('/admin/logowania', ['controller' => 'AdminLoginLogs', 'action' => 'index']);
+
+        // Admin — wcielanie się w użytkownika (impersonation)
+        $builder->post('/admin/impersonate/start/{userId}', ['controller' => 'AdminImpersonate', 'action' => 'start'])
+            ->setPass(['userId']);
+        $builder->post('/admin/impersonate/stop',           ['controller' => 'AdminImpersonate', 'action' => 'stop']);
+        $builder->get('/admin/impersonate/search',          ['controller' => 'AdminImpersonate', 'action' => 'search']);
         $builder->post('/admin/uzytkownicy/delete-avatar/{id}', ['controller' => 'AdminUsers', 'action' => 'deleteAvatar'])
             ->setPass(['id']);
 

@@ -363,6 +363,36 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 </head>
 
 <body>
+    <?php
+    // ── Banner impersonacji — gdy admin wcielił się w innego usera ──
+    $impSession = $this->request->getSession();
+    $impOriginalId = $impSession->read('Impersonation.original_user_id');
+    $impOriginalUsername = $impSession->read('Impersonation.original_username');
+    if ($impOriginalId):
+        $impCurrentIdentity = $this->request->getAttribute('identity');
+        $impCurrentName     = (string)($impCurrentIdentity?->get('username') ?? $impCurrentIdentity?->get('email') ?? '');
+        $impCurrentRole     = (string)($impCurrentIdentity?->get('role') ?? '');
+        $impStopUrl         = $this->Url->build(['controller' => 'AdminImpersonate', 'action' => 'stop']);
+    ?>
+    <div id="impersonation-banner" style="position:sticky;top:0;z-index:9999;background:linear-gradient(90deg,#fbbf24,#f59e0b);color:#1f2937;padding:.55rem 1rem;font-size:.85rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <i class="ri-spy-line fs-5"></i>
+        <span>
+            <?= __('Wcielenie aktywne') ?>:
+            <strong><?= h($impCurrentName) ?></strong>
+            <?php if ($impCurrentRole !== ''): ?>
+                <span class="badge bg-dark text-warning ms-1" style="font-size:.7em"><?= h($impCurrentRole) ?></span>
+            <?php endif; ?>
+            <span class="opacity-75 ms-2"><?= __('Zalogowany jako admin') ?>: <?= h((string)$impOriginalUsername) ?></span>
+        </span>
+        <form method="post" action="<?= h($impStopUrl) ?>" class="ms-auto" style="display:inline">
+            <input type="hidden" name="_csrfToken" value="<?= h($this->request->getAttribute('csrfToken')) ?>">
+            <button type="submit" class="btn btn-sm btn-dark">
+                <i class="ri-logout-circle-r-line me-1"></i><?= __('Wróć do siebie') ?>
+            </button>
+        </form>
+    </div>
+    <?php endif; ?>
+
     <!-- Start Switcher -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="switcher-canvas" aria-labelledby="offcanvasRightLabel">
         <div class="offcanvas-header border-bottom d-block p-0 position-relative">
@@ -553,6 +583,115 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
+
+                        <?php
+                            // ── Impersonacja: wyszukiwarka userów (tylko admin) ──
+                            // Wcielanie się żeby zobaczyć system z perspektywy innego usera.
+                            // Aktywna gdy currentRole = admin AND nie jesteśmy aktualnie wcieleni.
+                            $sessionImp = $this->request->getSession();
+                            $isImpersonating = (bool)$sessionImp->read('Impersonation.original_user_id');
+                            $currentRoleImp  = strtolower((string)($this->request->getAttribute('identity')?->get('role') ?? ''));
+                            $showImpSearch   = ($currentRoleImp === 'admin') && !$isImpersonating;
+                        ?>
+                        <?php if ($showImpSearch): ?>
+                        <li class="header-element search-dropdown dropdown d-md-block d-none">
+                            <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret"
+                               data-bs-auto-close="outside" data-bs-toggle="dropdown" aria-expanded="false"
+                               title="<?= __('Wciel się w użytkownika (impersonate)') ?>">
+                                <i class="ri-user-search-line fs-5"></i>
+                            </a>
+                            <ul class="main-header-dropdown dropdown-menu dropdown-menu-end p-0 shadow"
+                                style="min-width:340px;max-width:420px">
+                                <li class="px-3 py-2 border-bottom">
+                                    <div class="small text-muted mb-1 fw-semibold">
+                                        <i class="ri-spy-line me-1"></i><?= __('Wcielenie w użytkownika') ?>
+                                    </div>
+                                    <input type="text" class="form-control form-control-sm" id="imp-search-input"
+                                           placeholder="<?= __('Login, e-mail lub imię…') ?>" autocomplete="off">
+                                </li>
+                                <li>
+                                    <div id="imp-search-results" style="max-height:380px;overflow-y:auto">
+                                        <div class="p-3 text-muted small text-center"><?= __('Zacznij wpisywać…') ?></div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </li>
+                        <script>
+                        (function () {
+                            var $inp = document.getElementById('imp-search-input');
+                            var $res = document.getElementById('imp-search-results');
+                            if (!$inp || !$res) return;
+                            var searchUrl = '<?= $this->Url->build(['controller' => 'AdminImpersonate', 'action' => 'search']) ?>';
+                            var startUrlBase = '<?= $this->Url->build(['controller' => 'AdminImpersonate', 'action' => 'start']) ?>';
+                            var csrfToken = '<?= h($this->request->getAttribute('csrfToken')) ?>';
+                            var debounceTimer = null;
+
+                            function roleColor(r) {
+                                r = (r || '').toLowerCase();
+                                if (r === 'admin') return 'bg-danger-subtle text-danger';
+                                if (r === 'client') return 'bg-info-subtle text-info';
+                                return 'bg-secondary-subtle text-secondary';
+                            }
+                            function renderResults(items) {
+                                if (!items.length) {
+                                    $res.innerHTML = '<div class="p-3 text-muted small text-center"><?= __('Brak wyników') ?></div>';
+                                    return;
+                                }
+                                var html = '<ul class="list-unstyled mb-0">';
+                                items.forEach(function (u) {
+                                    var initial = (u.username || u.email || '?').substring(0,1).toUpperCase();
+                                    var avatarHtml = u.avatar
+                                        ? '<img src="'+ u.avatar +'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb">'
+                                        : '<span style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,.15);color:#6366f1;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700">'+ initial +'</span>';
+                                    var inactive = u.active ? '' : ' opacity-50';
+                                    html += '<li class="border-bottom">'
+                                          + '<button type="button" class="btn btn-link text-decoration-none w-100 py-2 px-3 d-flex align-items-center gap-2 imp-pick'+ inactive +'" data-user-id="'+ u.id +'">'
+                                          +   avatarHtml
+                                          +   '<div class="flex-grow-1 text-start min-width-0">'
+                                          +     '<div class="fw-semibold text-truncate">'+ (u.name || u.username) +'</div>'
+                                          +     '<div class="small text-muted text-truncate">'+ (u.email || '—') +'</div>'
+                                          +   '</div>'
+                                          +   '<span class="badge '+ roleColor(u.role) +' border" style="font-size:.62em">'+ (u.role || '?') +'</span>'
+                                          + '</button>'
+                                          + '</li>';
+                                });
+                                html += '</ul>';
+                                $res.innerHTML = html;
+                            }
+                            function doSearch(q) {
+                                if (q.length < 1) {
+                                    $res.innerHTML = '<div class="p-3 text-muted small text-center"><?= __('Zacznij wpisywać…') ?></div>';
+                                    return;
+                                }
+                                fetch(searchUrl + '?q=' + encodeURIComponent(q), { headers: {'Accept': 'application/json'} })
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (data) { renderResults(data.results || []); })
+                                    .catch(function () { $res.innerHTML = '<div class="p-3 text-danger small text-center"><?= __('Błąd wyszukiwania') ?></div>'; });
+                            }
+                            $inp.addEventListener('input', function () {
+                                clearTimeout(debounceTimer);
+                                debounceTimer = setTimeout(function () { doSearch($inp.value.trim()); }, 250);
+                            });
+                            $res.addEventListener('click', function (e) {
+                                var btn = e.target.closest('.imp-pick');
+                                if (!btn) return;
+                                var userId = btn.dataset.userId;
+                                if (!userId) return;
+                                if (!confirm('<?= __('Wcielić się w tego użytkownika? Będziesz widzieć aplikację z jego perspektywy.') ?>')) return;
+                                var form = document.createElement('form');
+                                form.method = 'POST';
+                                form.action = startUrlBase + '/' + userId;
+                                var csrf = document.createElement('input');
+                                csrf.type = 'hidden';
+                                csrf.name = '_csrfToken';
+                                csrf.value = csrfToken;
+                                form.appendChild(csrf);
+                                document.body.appendChild(form);
+                                form.submit();
+                            });
+                        })();
+                        </script>
+                        <?php endif; ?>
 
                         <?php
                             // ── Język portalu (tylko dla klienta — pracownicy mają PL hardcoded) ──
