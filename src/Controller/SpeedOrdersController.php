@@ -356,6 +356,7 @@ class SpeedOrdersController extends AppController
         } catch (\Throwable) {
             $statusLogs = [];
         }
+        $logAvatarMap = $this->buildLogAvatarMap($statusLogs);
 
         // Załączniki CMR
         try {
@@ -376,7 +377,7 @@ class SpeedOrdersController extends AppController
             $attachmentLabels = [];
         }
 
-        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'attachments', 'attachmentLabels'));
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'logAvatarMap', 'attachments', 'attachmentLabels'));
     }
 
     // -------------------------------------------------------------------------
@@ -420,6 +421,7 @@ class SpeedOrdersController extends AppController
         } catch (\Throwable) {
             $statusLogs = [];
         }
+        $logAvatarMap = $this->buildLogAvatarMap($statusLogs);
 
         try {
             $attachments = $this->fetchTable('SpeedOrderAttachments')
@@ -439,7 +441,7 @@ class SpeedOrdersController extends AppController
             $attachmentLabels = [];
         }
 
-        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'attachments', 'attachmentLabels'));
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'logAvatarMap', 'attachments', 'attachmentLabels'));
         $this->set('isModal', true);
         $this->viewBuilder()->setTemplate('view');
         $this->viewBuilder()->disableAutoLayout();
@@ -1156,6 +1158,44 @@ class SpeedOrdersController extends AppController
         } catch (\Throwable) {
             return [false, false];
         }
+    }
+
+    /**
+     * Zwraca mapę avatarów [user_id => '/files/avatars/...'] dla unikalnych user_id
+     * w podanej liście logów. Pomija wpisy, w których plik avatara nie istnieje.
+     */
+    private function buildLogAvatarMap(array $statusLogs): array
+    {
+        $ids = [];
+        foreach ($statusLogs as $log) {
+            $uid = $log->user_id ?? null;
+            if ($uid) {
+                $ids[(string)$uid] = true;
+            }
+        }
+        if (empty($ids)) {
+            return [];
+        }
+        $map = [];
+        try {
+            $rows = $this->fetchTable('Users')->find()
+                ->select(['id', 'avatar'])
+                ->where(['id IN' => array_keys($ids), 'avatar IS NOT' => null])
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) {
+                if (empty($r['avatar'])) continue;
+                $url = (string)$r['avatar'];
+                if (str_starts_with($url, '/files/avatars/')) {
+                    $diskPath = WWW_ROOT . ltrim($url, '/');
+                    if (!is_file($diskPath)) continue;
+                }
+                $map[(string)$r['id']] = $url;
+            }
+        } catch (\Throwable) {
+            // brak tabeli/avatara — zwracamy pustą mapę
+        }
+        return $map;
     }
 
     private function jsonResp(array $data): void

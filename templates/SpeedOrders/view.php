@@ -5,12 +5,14 @@
  * @var array|null $rawData
  * @var \App\Model\Entity\CostInvoice[] $costInvoices
  * @var \App\Model\Entity\SpeedOrderStatusLog[] $statusLogs
+ * @var array<string,string> $logAvatarMap user_id => avatar URL
  * @var \App\Model\Entity\SpeedOrderAttachment[] $attachments
  * @var \App\Model\Entity\SpeedOrderAttachmentLabel[] $attachmentLabels
  * @var bool $isModal
  */
 
-$isModal = $isModal ?? false;
+$isModal      = $isModal ?? false;
+$logAvatarMap = $logAvatarMap ?? [];
 if (!$isModal) {
     $this->assign('title', 'Zlecenie ' . h($order->symbol));
 }
@@ -1503,11 +1505,21 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 </td>
                 <td>
                     <?php if ($log->username): ?>
-                    <span class="badge bg-light border text-dark">
-                        <i class="ri-user-line me-1"></i><?= h($log->username) ?>
-                    </span>
+                        <?php
+                            $logAvatar = !empty($log->user_id) ? ($logAvatarMap[(string)$log->user_id] ?? null) : null;
+                            $logInitial = mb_strtoupper(mb_substr((string)$log->username, 0, 1));
+                        ?>
+                        <span class="d-inline-flex align-items-center gap-1">
+                            <?php if ($logAvatar): ?>
+                                <img src="<?= h($logAvatar) ?>" alt=""
+                                     style="width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb">
+                            <?php else: ?>
+                                <span style="width:20px;height:20px;border-radius:50%;background:#e5e7eb;color:#6b7280;display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700"><?= h($logInitial) ?></span>
+                            <?php endif; ?>
+                            <span class="text-dark"><?= h($log->username) ?></span>
+                        </span>
                     <?php else: ?>
-                    <span class="text-muted">—</span>
+                        <span class="text-muted">—</span>
                     <?php endif; ?>
                 </td>
             </tr>
