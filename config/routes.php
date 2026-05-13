@@ -196,6 +196,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->get('/admin/uzytkownicy/welcome-history/{id}', ['controller' => 'AdminUsers', 'action' => 'welcomeHistory'])
             ->setPass(['id']);
+        $builder->post('/admin/uzytkownicy/upload-avatar/{id}', ['controller' => 'AdminUsers', 'action' => 'uploadAvatar'])
+            ->setPass(['id']);
+        $builder->post('/admin/uzytkownicy/delete-avatar/{id}', ['controller' => 'AdminUsers', 'action' => 'deleteAvatar'])
+            ->setPass(['id']);
 
         // Admin — role i uprawnienia
         $builder->get('/admin/role',                  ['controller' => 'Roles', 'action' => 'index']);

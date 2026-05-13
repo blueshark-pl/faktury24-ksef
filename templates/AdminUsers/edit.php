@@ -190,6 +190,123 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y H:
     </div>
 
     <div class="col-lg-4">
+        <!-- Avatar użytkownika -->
+        <?php
+            $avatarUrl = !empty($user->avatar) ? (string)$user->avatar : '';
+            $avatarOk  = $avatarUrl !== '';
+            if ($avatarOk && str_starts_with($avatarUrl, '/files/avatars/')) {
+                $diskPath = WWW_ROOT . ltrim($avatarUrl, '/');
+                if (!is_file($diskPath)) {
+                    $avatarOk = false;
+                } else {
+                    $avatarUrl .= '?v=' . filemtime($diskPath);
+                }
+            }
+            $initial = mb_strtoupper(mb_substr(($user->first_name ?: $user->email), 0, 1));
+            $csrf = $this->request->getAttribute('csrfToken');
+        ?>
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-transparent"><strong><?= __('Zdjęcie profilowe') ?></strong></div>
+            <div class="card-body text-center">
+                <div id="avatar-preview-wrap" class="d-flex justify-content-center mb-3">
+                    <?php if ($avatarOk): ?>
+                        <img id="avatar-preview" src="<?= h($avatarUrl) ?>" alt=""
+                             style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid #e5e7eb">
+                    <?php else: ?>
+                        <div id="avatar-preview-initials"
+                             style="width:120px;height:120px;border-radius:50%;background:rgba(var(--primary-rgb),.15);color:rgb(var(--primary-rgb));display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:700;border:3px solid #e5e7eb">
+                            <?= h($initial) ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="d-flex gap-2 justify-content-center">
+                    <label class="btn btn-sm btn-primary mb-0" for="avatar-file-input">
+                        <i class="ri-upload-2-line me-1"></i><?= __('Wgraj nowy') ?>
+                    </label>
+                    <input type="file" id="avatar-file-input" accept="image/jpeg,image/png,image/webp" class="d-none">
+                    <button type="button" id="avatar-delete-btn" class="btn btn-sm btn-outline-danger"
+                            <?= !$avatarOk ? 'style="display:none"' : '' ?>>
+                        <i class="ri-delete-bin-line me-1"></i><?= __('Usuń') ?>
+                    </button>
+                </div>
+                <div class="form-text mt-2 small">
+                    <?= __('JPG / PNG / WebP. Obraz zostanie wykadrowany na kwadrat 400×400.') ?>
+                </div>
+                <div id="avatar-status" class="mt-2 small" style="min-height:1.2em"></div>
+            </div>
+        </div>
+
+        <script>
+        (function () {
+            var userId    = <?= json_encode((string)$user->id) ?>;
+            var csrfToken = <?= json_encode((string)$csrf) ?>;
+            var uploadUrl = '<?= $this->Url->build(['action' => 'uploadAvatar', $user->id]) ?>';
+            var deleteUrl = '<?= $this->Url->build(['action' => 'deleteAvatar', $user->id]) ?>';
+
+            var fileInput = document.getElementById('avatar-file-input');
+            var delBtn    = document.getElementById('avatar-delete-btn');
+            var wrap      = document.getElementById('avatar-preview-wrap');
+            var status    = document.getElementById('avatar-status');
+
+            function setStatus(msg, ok) {
+                if (!status) return;
+                status.textContent = msg || '';
+                status.className   = 'mt-2 small ' + (ok ? 'text-success' : (msg ? 'text-danger' : ''));
+            }
+
+            function replacePreviewWithImage(url) {
+                wrap.innerHTML = '<img id="avatar-preview" src="' + url + '?v=' + Date.now()
+                    + '" alt="" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid #e5e7eb">';
+                if (delBtn) delBtn.style.display = '';
+            }
+            function replacePreviewWithInitials() {
+                wrap.innerHTML = '<div style="width:120px;height:120px;border-radius:50%;background:rgba(var(--primary-rgb),.15);color:rgb(var(--primary-rgb));display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:700;border:3px solid #e5e7eb"><?= h($initial) ?></div>';
+                if (delBtn) delBtn.style.display = 'none';
+            }
+
+            fileInput?.addEventListener('change', function () {
+                var f = fileInput.files && fileInput.files[0];
+                if (!f) return;
+                setStatus('<?= __('Wysyłam…') ?>', true);
+                var fd = new FormData();
+                fd.append('avatar', f);
+                fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: fd,
+                }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+                  .then(function (res) {
+                      if (res.body && res.body.ok) {
+                          replacePreviewWithImage(res.body.avatar);
+                          setStatus('<?= __('Zapisano.') ?>', true);
+                      } else {
+                          setStatus((res.body && res.body.error) || '<?= __('Błąd podczas zapisu.') ?>', false);
+                      }
+                  })
+                  .catch(function (e) { setStatus('<?= __('Błąd sieci') ?>: ' + e.message, false); })
+                  .finally(function () { fileInput.value = ''; });
+            });
+
+            delBtn?.addEventListener('click', function () {
+                if (!window.confirm('<?= __('Usunąć avatar tego użytkownika?') ?>')) return;
+                setStatus('<?= __('Usuwam…') ?>', true);
+                fetch(deleteUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+                  .then(function (res) {
+                      if (res.body && res.body.ok) {
+                          replacePreviewWithInitials();
+                          setStatus('<?= __('Usunięto.') ?>', true);
+                      } else {
+                          setStatus((res.body && res.body.error) || '<?= __('Błąd usuwania.') ?>', false);
+                      }
+                  })
+                  .catch(function (e) { setStatus('<?= __('Błąd sieci') ?>: ' + e.message, false); });
+            });
+        })();
+        </script>
+
         <div class="card shadow-sm mb-3">
             <div class="card-header bg-transparent"><strong><?= __('Akcje e-mailowe') ?></strong></div>
             <div class="card-body">

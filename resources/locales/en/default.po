@@ -1681,6 +1681,39 @@ msgstr "Your caretaker"
 msgid "Twój kontakt"
 msgstr "Your contact"
 
+msgid "Zdjęcie profilowe"
+msgstr "Profile picture"
+
+msgid "Wgraj nowy"
+msgstr "Upload new"
+
+msgid "JPG / PNG / WebP. Obraz zostanie wykadrowany na kwadrat 400×400."
+msgstr "JPG / PNG / WebP. Image will be cropped to 400×400 square."
+
+msgid "Wysyłam…"
+msgstr "Uploading…"
+
+msgid "Zapisano."
+msgstr "Saved."
+
+msgid "Błąd podczas zapisu."
+msgstr "Save error."
+
+msgid "Błąd sieci"
+msgstr "Network error"
+
+msgid "Usunąć avatar tego użytkownika?"
+msgstr "Delete this user's avatar?"
+
+msgid "Usuwam…"
+msgstr "Deleting…"
+
+msgid "Usunięto."
+msgstr "Deleted."
+
+msgid "Błąd usuwania."
+msgstr "Delete error."
+
 msgid "Aktualnie obsługuje Cię zastępca głównego opiekuna"
 msgstr "You're currently being assisted by your caretaker's substitute"
 

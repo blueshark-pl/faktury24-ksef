@@ -627,4 +627,145 @@ class AdminUsersController extends AppController
         }
         return $v;
     }
+
+    /**
+     * POST /admin/uzytkownicy/upload-avatar/{id} — admin wgrywa avatar dla
+     * dowolnego użytkownika. Plik JPG/PNG/WebP ≤ upload_max_filesize, skalowany
+     * do 400×400 i zapisany jako JPG. Wymaga ról admin (beforeFilter).
+     */
+    public function uploadAvatar(string $userId): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+        $this->disableAutoRender();
+
+        $Users = $this->fetchTable('Users');
+        $user  = $Users->find()->where(['Users.id' => $userId])->disableHydration()->first();
+        if (!$user) {
+            return $this->jsonAvatarError('Użytkownik nie istnieje.', 404);
+        }
+
+        $uploaded = $this->request->getUploadedFile('avatar');
+        $errCode  = $uploaded ? $uploaded->getError() : UPLOAD_ERR_NO_FILE;
+        if (!$uploaded || $errCode !== UPLOAD_ERR_OK) {
+            $iniLimit = (string)(ini_get('upload_max_filesize') ?: '?');
+            $msg = match ($errCode) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                    sprintf('Plik za duży — serwer akceptuje maks. %s.', $iniLimit),
+                UPLOAD_ERR_PARTIAL   => 'Plik wgrany tylko częściowo.',
+                UPLOAD_ERR_NO_FILE   => 'Nie wybrano pliku.',
+                UPLOAD_ERR_NO_TMP_DIR=> 'Brak katalogu tymczasowego na serwerze.',
+                UPLOAD_ERR_CANT_WRITE=> 'Nie można zapisać pliku tymczasowego na serwerze.',
+                default              => sprintf('Nie udało się odebrać pliku (kod %d).', (int)$errCode),
+            };
+            return $this->jsonAvatarError($msg);
+        }
+
+        $mime = (string)$uploaded->getClientMediaType();
+        $allowed = ['image/jpeg' => true, 'image/png' => true, 'image/webp' => true];
+        if (!isset($allowed[$mime])) {
+            return $this->jsonAvatarError('Dozwolone formaty: JPG, PNG, WebP.');
+        }
+
+        $tmpPath = $uploaded->getStream()->getMetadata('uri');
+        $src = match ($mime) {
+            'image/jpeg' => @imagecreatefromjpeg($tmpPath),
+            'image/png'  => @imagecreatefrompng($tmpPath),
+            'image/webp' => @imagecreatefromwebp($tmpPath),
+        };
+        if (!$src) {
+            return $this->jsonAvatarError('Nie udało się odczytać obrazu.');
+        }
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $target = 400;
+        $side   = min($w, $h);
+        $sx     = (int)(($w - $side) / 2);
+        $sy     = (int)(($h - $side) / 2);
+        $dst    = imagecreatetruecolor($target, $target);
+        imagecopyresampled($dst, $src, 0, 0, $sx, $sy, $target, $target, $side, $side);
+        imagedestroy($src);
+
+        $dir = WWW_ROOT . 'files' . DS . 'avatars';
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            imagedestroy($dst);
+            return $this->jsonAvatarError('Nie udało się utworzyć katalogu avatarów.');
+        }
+        if (!is_writable($dir)) {
+            imagedestroy($dst);
+            return $this->jsonAvatarError('Katalog avatarów nie ma uprawnień zapisu.');
+        }
+
+        $ts       = time();
+        $cleanUid = preg_replace('/[^a-zA-Z0-9_-]/', '', $userId);
+        $filename = 'avatar_' . $cleanUid . '_' . $ts . '.jpg';
+        $fullPath = $dir . DS . $filename;
+        $relUrl   = '/files/avatars/' . $filename;
+
+        $saved = imagejpeg($dst, $fullPath, 88);
+        imagedestroy($dst);
+        if (!$saved || !is_file($fullPath) || filesize($fullPath) < 1) {
+            return $this->jsonAvatarError('Nie udało się zapisać pliku na dysku.');
+        }
+
+        $oldAvatar = (string)($user['avatar'] ?? '');
+        if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
+            $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
+            if (is_file($oldPath) && $oldPath !== $fullPath) { @unlink($oldPath); }
+        }
+
+        $updated = $Users->updateAll(['avatar' => $relUrl], ['id' => $userId]);
+        if ($updated < 1) {
+            @unlink($fullPath);
+            return $this->jsonAvatarError('Nie udało się zapisać profilu.');
+        }
+
+        $body = json_encode(['ok' => true, 'avatar' => $relUrl]);
+        $this->response = $this->response->withType('application/json')->withStringBody($body);
+        return $this->response;
+    }
+
+    /**
+     * POST /admin/uzytkownicy/delete-avatar/{id} — admin usuwa avatar dowolnego
+     * użytkownika.
+     */
+    public function deleteAvatar(string $userId): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+        $this->disableAutoRender();
+
+        $Users = $this->fetchTable('Users');
+        $row = $Users->find()
+            ->select(['id', 'avatar'])
+            ->where(['id' => $userId])
+            ->disableHydration()
+            ->first();
+        if (!$row) {
+            return $this->jsonAvatarError('Użytkownik nie istnieje.', 404);
+        }
+
+        $oldAvatar = (string)($row['avatar'] ?? '');
+        if ($oldAvatar !== '' && str_starts_with($oldAvatar, '/files/avatars/')) {
+            $oldPath = WWW_ROOT . ltrim($oldAvatar, '/');
+            if (is_file($oldPath)) { @unlink($oldPath); }
+        }
+
+        $Users->updateAll(['avatar' => null], ['id' => $userId]);
+
+        $body = json_encode(['ok' => true]);
+        $this->response = $this->response->withType('application/json')->withStringBody($body);
+        return $this->response;
+    }
+
+    private function jsonAvatarError(string $msg, int $status = 400): Response
+    {
+        $body = json_encode(['ok' => false, 'error' => $msg]);
+        $this->response = $this->response
+            ->withType('application/json')
+            ->withStatus($status)
+            ->withStringBody($body);
+        return $this->response;
+    }
 }
