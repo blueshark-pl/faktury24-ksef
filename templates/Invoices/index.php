@@ -727,17 +727,25 @@ $stateLabels = [
             <td class="col-sent text-center" style="white-space:nowrap">
               <?php if (!empty($inv->sent_at)): ?>
                 <span class="badge bg-success-subtle text-success border border-success-subtle sent-badge"
+                <?php
+                  // Pobieramy datę w formacie ISO niezależnie czy sent_at jest DateTime
+                  // (Cake DateTime ma zlokalizowany __toString → 'M/D/YY' → DateMalformedString)
+                  $sentAtIso = $inv->sent_at instanceof \DateTimeInterface
+                      ? $inv->sent_at->format('Y-m-d')
+                      : substr((string)$inv->sent_at, 0, 10);
+                ?>
                       data-id="<?= h($inv->id) ?>"
-                      title="Wysłano: <?= h(substr((string)$inv->sent_at, 0, 10)) ?><?= $inv->sent_by ? ' przez ' . h($inv->sent_by) : '' ?>"
+                      title="Wysłano: <?= h($sentAtIso) ?><?= $inv->sent_by ? ' przez ' . h($inv->sent_by) : '' ?>"
                       style="cursor:pointer">
-                  <i class="ri-mail-check-line me-1"></i><?= h(substr((string)$inv->sent_at, 0, 10)) ?>
+                  <i class="ri-mail-check-line me-1"></i><?= h($sentAtIso) ?>
                 </span>
                 <?php
                   // Termin płatności od daty wysłania = sent_at + (paymentdate - date)
                   if (!empty($inv->paymentdate) && !empty($inv->date)):
-                    $invDate     = $inv->date instanceof \DateTimeInterface ? $inv->date : new \DateTime((string)$inv->date);
-                    $payDate     = $inv->paymentdate instanceof \DateTimeInterface ? $inv->paymentdate : new \DateTime((string)$inv->paymentdate);
-                    $sentDate    = new \DateTime(substr((string)$inv->sent_at, 0, 10));
+                    $toIso = fn($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : substr((string)$v, 0, 10);
+                    $invDate     = new \DateTime($toIso($inv->date));
+                    $payDate     = new \DateTime($toIso($inv->paymentdate));
+                    $sentDate    = new \DateTime($sentAtIso);
                     $termDays    = (int)$invDate->diff($payDate)->days;
                     $dueFromSent = (clone $sentDate)->modify("+{$termDays} days");
                     $isPast      = $dueFromSent < new \DateTime('today');

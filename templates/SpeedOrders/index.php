@@ -22,6 +22,11 @@
 
 $this->assign('title', 'Zlecenia Speed');
 
+// Defaulty dla zmiennych nie ustawianych przez index() (są w exportCsv())
+$dateFrom = $dateFrom ?? '';
+$dateTo   = $dateTo ?? '';
+$contract = $contract ?? '';
+
 // Status Speed ERP (importowany)
 $speedStatusMap = [
     1 => ['label' => 'Przyjęte',     'cls' => 'bg-secondary-subtle text-secondary'],
