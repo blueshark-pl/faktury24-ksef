@@ -594,11 +594,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             $showImpSearch   = ($currentRoleImp === 'admin') && !$isImpersonating;
                         ?>
                         <?php if ($showImpSearch): ?>
-                        <li class="header-element search-dropdown dropdown d-md-block d-none">
+                        <li class="header-element header-impersonate dropdown">
                             <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret"
                                data-bs-auto-close="outside" data-bs-toggle="dropdown" aria-expanded="false"
-                               title="<?= __('Wciel się w użytkownika (impersonate)') ?>">
-                                <i class="ri-user-search-line fs-5"></i>
+                               id="impersonateDropdown"
+                               title="<?= __('Wcielenie w użytkownika') ?>"
+                               aria-label="<?= __('Wcielenie w użytkownika') ?>">
+                                <!-- Phosphor MagnifyingGlass — w stylu Zynix header-link-icon -->
+                                <svg xmlns="http://www.w3.org/2000/svg" class="header-link-icon" viewBox="0 0 256 256">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <circle cx="112" cy="112" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></circle>
+                                    <line x1="168.57" y1="168.57" x2="224" y2="224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                </svg>
                             </a>
                             <ul class="main-header-dropdown dropdown-menu dropdown-menu-end p-0 shadow"
                                 style="min-width:340px;max-width:420px">
