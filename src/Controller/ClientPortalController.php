@@ -152,6 +152,10 @@ class ClientPortalController extends AppController
                         'id'   => $att->id,
                         'mime' => $att->mime_type,
                         'name' => $att->original_name,
+                        // Dwa URL-e: 'path' dla podglądu inline (lightbox), 'download'
+                        // wymusza Content-Disposition: attachment (przycisk Pobierz).
+                        'path'     => \Cake\Routing\Router::url(['action' => 'downloadAttachment', $att->id, '?' => ['inline' => 1]]),
+                        'download' => \Cake\Routing\Router::url(['action' => 'downloadAttachment', $att->id]),
                     ];
                 }
             } catch (\Throwable) { /* tabela może nie istnieć */ }
@@ -243,12 +247,15 @@ class ClientPortalController extends AppController
             throw new NotFoundException();
         }
 
+        // ?inline=1 — wymuszamy 'inline' żeby PDF/IMG zostały wyświetlone
+        // w przeglądarce (lightbox preview); bez parametru = 'attachment' (download).
+        $inline = (bool)$this->request->getQuery('inline');
+        $disp   = $inline ? 'inline' : 'attachment';
+        $safeName = str_replace('"', '', (string)($att->original_name ?: 'cmr'));
+
         return $this->response
             ->withType($att->mime_type ?: 'application/octet-stream')
-            ->withHeader(
-                'Content-Disposition',
-                'attachment; filename="' . str_replace('"', '', (string)($att->original_name ?: 'cmr')) . '"'
-            )
+            ->withHeader('Content-Disposition', $disp . '; filename="' . $safeName . '"')
             ->withFile($fullPath);
     }
 

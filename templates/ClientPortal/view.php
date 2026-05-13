@@ -1189,8 +1189,21 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                         <div class="small mt-2 fst-italic"><?= __('Brak załączników.') ?></div>
                     </div>
                 <?php else: ?>
-                    <div class="row g-2">
-                        <?php foreach ($attachments as $att): ?>
+                    <?php
+                        // Budujemy JSON dla GLightboxa — wszystkie załączniki naraz.
+                        // 'path' z ?inline=1 — browser renderuje inline (nie wymusza pobierania).
+                        $cmrLightboxFiles = [];
+                        foreach ($attachments as $_a) {
+                            $cmrLightboxFiles[] = [
+                                'id'   => $_a->id,
+                                'mime' => $_a->mime_type,
+                                'name' => $_a->original_name ?: 'cmr-' . $_a->id,
+                                'path' => $this->Url->build(['action' => 'downloadAttachment', $_a->id, '?' => ['inline' => 1]]),
+                            ];
+                        }
+                    ?>
+                    <div class="row g-2" data-cmr-gallery="<?= h(json_encode($cmrLightboxFiles)) ?>">
+                        <?php foreach ($attachments as $i => $att): ?>
                         <?php
                             $isImage = str_starts_with((string)$att->mime_type, 'image/');
                             $isPdf   = str_contains((string)$att->mime_type, 'pdf');
@@ -1200,11 +1213,13 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                             $size    = $att->file_size ? round((int)$att->file_size / 1024, 1) . ' KB' : '';
                         ?>
                         <div class="col-md-6">
-                            <div class="cp-att-tile <?= $tileCls ?>">
+                            <div class="cp-att-tile <?= $tileCls ?> cp-att-clickable"
+                                 data-cmr-index="<?= (int)$i ?>"
+                                 role="button" tabindex="0"
+                                 title="<?= __('Podgląd') ?>">
                                 <div class="att-icon"><i class="<?= $iconCls ?>"></i></div>
                                 <div class="flex-grow-1 min-width-0">
-                                    <div class="text-truncate fw-semibold" style="font-size:.85rem"
-                                         title="<?= h($att->original_name) ?>">
+                                    <div class="text-truncate fw-semibold" style="font-size:.85rem">
                                         <?= h($att->original_name ?: 'cmr-' . $att->id) ?>
                                     </div>
                                     <div class="text-muted small d-flex gap-2 mt-1">
@@ -1220,8 +1235,9 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
                                     </div>
                                 </div>
                                 <a href="<?= $this->Url->build(['action' => 'downloadAttachment', $att->id]) ?>"
-                                   class="btn btn-sm btn-outline-primary flex-shrink-0"
-                                   title="<?= __('Pobierz') ?>">
+                                   class="btn btn-sm btn-outline-primary flex-shrink-0 cp-att-download"
+                                   title="<?= __('Pobierz') ?>"
+                                   onclick="event.stopPropagation()">
                                     <i class="ri-download-line"></i>
                                 </a>
                             </div>
@@ -1342,5 +1358,79 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
     } else {
         initRouteTooltips();
     }
+})();
+</script>
+
+<style>
+/* Klikalne kafelki CMR — wskaźnik + hover */
+.cp-att-clickable { cursor: pointer; transition: transform .15s ease-out, box-shadow .15s ease-out; }
+.cp-att-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.cp-att-clickable:focus { outline: 2px solid rgba(99,102,241,.4); outline-offset: 2px; }
+.cp-att-clickable .att-icon { color: rgb(var(--primary-rgb)); transition: transform .2s; }
+.cp-att-clickable:hover .att-icon { transform: scale(1.1); }
+</style>
+
+<!-- GLightbox — podgląd CMR w widoku zlecenia (klienta) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+<script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+<script>
+(function () {
+    let cmrLightbox = null;
+    const gallery = document.querySelector('[data-cmr-gallery]');
+    if (!gallery) return;
+    let files = [];
+    try { files = JSON.parse(gallery.dataset.cmrGallery || '[]'); } catch (e) {}
+    if (!files.length) return;
+
+    function buildElements() {
+        return files.map(f => {
+            const isImg = (f.mime || '').startsWith('image/');
+            const url   = f.path;
+            if (isImg) {
+                return { href: url, type: 'image', title: f.name, description: '' };
+            }
+            const divId = 'pdf-inline-view-' + f.id;
+            if (!document.getElementById(divId)) {
+                const div = document.createElement('div');
+                div.id = divId;
+                div.style.display = 'none';
+                div.innerHTML = '<object data="' + url + '" type="application/pdf" style="width:90vw;height:82vh;display:block">'
+                    + '<p class="p-3"><?= __('Twoja przeglądarka nie obsługuje podglądu PDF.') ?> '
+                    + '<a href="' + url + '" target="_blank"><?= __('Pobierz plik') ?></a></p>'
+                    + '</object>';
+                document.body.appendChild(div);
+            }
+            return { href: '#' + divId, type: 'inline', title: f.name, description: '' };
+        });
+    }
+
+    function openAt(index) {
+        const elements = buildElements();
+        if (cmrLightbox) cmrLightbox.destroy();
+        cmrLightbox = GLightbox({
+            elements,
+            startAt: index,
+            touchNavigation: true,
+            loop: elements.length > 1,
+            zoomable: true,
+            width: '92vw',
+            height: '88vh',
+        });
+        cmrLightbox.open();
+    }
+
+    document.querySelectorAll('.cp-att-clickable').forEach(function (tile) {
+        tile.addEventListener('click', function (e) {
+            // klik w przycisk Pobierz — nie otwieraj lightboxa (stopPropagation w onclick)
+            const idx = parseInt(tile.dataset.cmrIndex || '0', 10);
+            openAt(idx);
+        });
+        tile.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openAt(parseInt(tile.dataset.cmrIndex || '0', 10));
+            }
+        });
+    });
 })();
 </script>

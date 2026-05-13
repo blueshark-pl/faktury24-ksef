@@ -412,12 +412,14 @@ $today = date('Y-m-d');
                                 <i class="ri-eye-line"></i>
                             </a>
                             <?php if (!empty($cmrs)): ?>
-                                <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>#attachments"
-                                   class="btn btn-sm btn-outline-success position-relative ms-1"
-                                   title="<?= sprintf(__('CMR — %d plików'), count($cmrs)) ?>">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-success position-relative ms-1 cmr-list-btn"
+                                        title="<?= sprintf(__('CMR — %d plików'), count($cmrs)) ?>"
+                                        data-order-id="<?= $order->id ?>"
+                                        data-cmr="<?= h(json_encode($cmrs)) ?>">
                                     <i class="ri-attachment-2"></i>
                                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success" style="font-size:.55em"><?= count($cmrs) ?></span>
-                                </a>
+                                </button>
                             <?php endif; ?>
                             <?php if ($invoice): ?>
                                 <a href="<?= $this->Url->build(['action' => 'downloadInvoice', $order->invoice_id]) ?>"
@@ -491,3 +493,64 @@ $today = date('Y-m-d');
 [data-theme-mode="dark"] .client-orders-table tr.row-overdue td { background: rgba(239, 68, 68, 0.15); }
 [data-theme-mode="dark"] .client-orders-table tr.row-overdue:hover td { background: rgba(239, 68, 68, 0.22); }
 </style>
+
+<!-- GLightbox — podgląd CMR na liście zleceń (klienta) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+<script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+<script>
+(function () {
+    let cmrLightbox = null;
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.cmr-list-btn');
+        if (!btn) return;
+        e.preventDefault();
+
+        const files = JSON.parse(btn.dataset.cmr || '[]');
+        if (!files.length) return;
+
+        const elements = files.map(f => {
+            const isImg = (f.mime || '').startsWith('image/');
+            const url   = f.path;  // już pełen URL przez Router::url() z controllera
+
+            if (isImg) {
+                return {
+                    href:        url,
+                    type:        'image',
+                    title:       f.name,
+                    description: '',
+                };
+            }
+            // PDF — inline <object>
+            const divId = 'pdf-inline-cmr-' + f.id;
+            if (!document.getElementById(divId)) {
+                const div = document.createElement('div');
+                div.id = divId;
+                div.style.display = 'none';
+                div.innerHTML = '<object data="' + url + '" type="application/pdf" style="width:90vw;height:82vh;display:block">'
+                    + '<p class="p-3"><?= __('Twoja przeglądarka nie obsługuje podglądu PDF.') ?> '
+                    + '<a href="' + url + '" target="_blank"><?= __('Pobierz plik') ?></a></p>'
+                    + '</object>';
+                document.body.appendChild(div);
+            }
+            return {
+                href:        '#' + divId,
+                type:        'inline',
+                title:       f.name,
+                description: '',
+            };
+        });
+
+        if (cmrLightbox) cmrLightbox.destroy();
+        cmrLightbox = GLightbox({
+            elements,
+            touchNavigation: true,
+            loop: elements.length > 1,
+            zoomable: true,
+            width: '92vw',
+            height: '88vh',
+        });
+        cmrLightbox.open();
+    });
+})();
+</script>
