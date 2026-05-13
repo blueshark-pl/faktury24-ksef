@@ -238,8 +238,9 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 .check-pill.checked  { border-color:var(--pill-color); background:color-mix(in srgb,var(--pill-color) 12%,white); color:var(--pill-color); }
 .check-pill.unchecked{ border-color:#e5e7eb; background:#f9fafb; color:#9ca3af; }
 .check-pill.unchecked:hover { border-color:var(--pill-color); color:var(--pill-color); }
-.check-pill.pill-locked { opacity:.5; cursor:not-allowed !important; }
-.check-pill.pill-locked:hover { border-color:#e5e7eb; color:#9ca3af; background:#f9fafb; }
+.stepper-step.locked { opacity:.35 !important; cursor:not-allowed !important; }
+.stepper-step.locked:hover { background:transparent; }
+.stepper-step.locked .stepper-dot { background:#e5e7eb !important; color:#9ca3af !important; }
 </style>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -401,9 +402,17 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
         <div class="stepper mb-4" id="status-stepper">
             <?php foreach ($nlStatusMap as $val => $s):
                 $state = $val < $nlStatus ? 'past' : ($val === $nlStatus ? 'active' : 'future');
+                // Zrealizowane (4) wymaga Załadowane (3) — nie pozwalamy przeskoczyć.
+                // Zafakturowane (5) wymaga Zrealizowane (4) analogicznie.
+                $isLocked = ($val === 4 && $nlStatus < 3)
+                         || ($val === 5 && $nlStatus < 4);
+                $lockTitle = $val === 4 ? 'Najpierw ustaw "Załadowane"' : 'Najpierw ustaw "Zrealizowane"';
+                $tipText   = $isLocked ? $lockTitle : ('Ustaw: ' . $s['label']);
             ?>
-            <div class="stepper-step <?= $state ?>" data-status="<?= $val ?>"
-                 style="--step-color:<?= $s['color'] ?>" title="Ustaw: <?= h($s['label']) ?>">
+            <div class="stepper-step <?= $state ?><?= $isLocked ? ' locked' : '' ?>"
+                 data-status="<?= $val ?>"
+                 <?= $isLocked ? 'data-locked="1"' : '' ?>
+                 style="--step-color:<?= $s['color'] ?>" title="<?= h($tipText) ?>">
                 <div class="stepper-dot" style="background:<?= $state !== 'future' ? $s['color'] : '#e5e7eb' ?>;color:<?= $state!=='future'?'white':'#9ca3af' ?>">
                     <i class="<?= $s['icon'] ?>"></i>
                 </div>
@@ -502,22 +511,15 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 
         <!-- POL/POD/FK/FS pills -->
         <div class="d-flex gap-2 flex-wrap justify-content-center" id="checks-row">
-            <?php foreach ($checks as $chk):
-                // POD wymaga POL — pill zablokowany dopóki POL nie jest zaznaczony.
-                $isPillLocked = $chk['field'] === 'pod_at' && empty($order->pol_at);
-                $pillTitle    = $isPillLocked
-                    ? 'Najpierw oznacz POL — załadunek (POD wymaga załadunku).'
-                    : $chk['desc'];
-            ?>
-            <label class="check-pill <?= $chk['checked'] ? 'checked' : 'unchecked' ?><?= $isPillLocked ? ' pill-locked' : '' ?>"
+            <?php foreach ($checks as $chk): ?>
+            <label class="check-pill <?= $chk['checked'] ? 'checked' : 'unchecked' ?>"
                    style="--pill-color:<?= $chk['color'] ?>"
-                   title="<?= h($pillTitle) ?>"
+                   title="<?= h($chk['desc']) ?>"
                    for="chk-<?= $chk['field'] ?>">
                 <input type="checkbox" class="d-none check-toggle"
                        id="chk-<?= $chk['field'] ?>"
                        data-field="<?= $chk['field'] ?>"
-                       <?= $chk['checked'] ? 'checked' : '' ?>
-                       <?= $isPillLocked ? 'disabled' : '' ?>>
+                       <?= $chk['checked'] ? 'checked' : '' ?>>
                 <i class="<?= $chk['icon'] ?>"></i>
                 <span class="d-flex flex-column gap-0" style="line-height:1.2">
                     <span><?= $chk['label'] ?> — <?= $chk['title'] ?></span>
@@ -1559,6 +1561,11 @@ endif;
     // ── Stepper: zmiana statusu ──
     document.querySelectorAll('.stepper-step').forEach(function(btn) {
         btn.addEventListener('click', function() {
+            // Zablokowany krok — nie wysyłamy, tylko toast wyjaśniający.
+            if (this.dataset.locked === '1') {
+                showToast(this.getAttribute('title') || 'Niedostępne — wykonaj wcześniejsze kroki', false);
+                return;
+            }
             var ns = parseInt(this.dataset.status);
             post(updateUrl, { id: orderId, nordlogis_status: ns }).then(function(data) {
                 if (data.success) {

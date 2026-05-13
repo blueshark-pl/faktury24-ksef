@@ -924,11 +924,33 @@ class SpeedOrdersController extends AppController
         $reqReason = $reqReason !== '' ? $reqReason : null;
         $reqNote   = $reqNote   !== '' ? $reqNote   : null;
 
-        // Zmiana statusu operacyjnego
+        // Zmiana statusu operacyjnego (stepper).
+        // Walidacja sekwencji: 4 (Zrealizowane) wymaga 3 (Załadowane);
+        //                      5 (Zafakturowane) wymaga 4 (Zrealizowane).
+        // Admin z force=1 omija blokadę.
+        $isAdminStepper = (bool)($identity?->get('is_admin') ?? false)
+                       || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
+        $isForceStepper = $isAdminStepper && (bool)$this->request->getData('force');
         if ($this->request->getData('nordlogis_status') !== null) {
             $ns = (int)$this->request->getData('nordlogis_status');
             if ($ns >= 1 && $ns <= 5) {
                 $oldNs = (int)($order->nordlogis_status ?? 1);
+                if (!$isForceStepper && $ns > $oldNs) {
+                    if ($ns === 4 && $oldNs < 3) {
+                        $this->jsonResp([
+                            'success' => false,
+                            'error'   => 'Niedostępne: najpierw ustaw status "Załadowane".',
+                        ]);
+                        return;
+                    }
+                    if ($ns === 5 && $oldNs < 4) {
+                        $this->jsonResp([
+                            'success' => false,
+                            'error'   => 'Niedostępne: najpierw ustaw status "Zrealizowane".',
+                        ]);
+                        return;
+                    }
+                }
                 if ($oldNs !== $ns) {
                     $logEntries[] = ['field' => 'nordlogis_status', 'old' => (string)$oldNs, 'new' => (string)$ns];
                 }
@@ -978,7 +1000,7 @@ class SpeedOrdersController extends AppController
         if ($podRequested !== null && (bool)$podRequested && empty($order->pol_at) && !$isForceEarly) {
             $this->jsonResp([
                 'success' => false,
-                'error'   => 'Nie można oznaczyć jako zrealizowane: najpierw oznacz jako załadowane (POL).',
+                'error'   => 'Niedostępne: najpierw oznacz jako "Załadowane".',
             ]);
             return;
         }
