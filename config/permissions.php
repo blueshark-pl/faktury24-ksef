@@ -154,6 +154,13 @@ return [
             'controller' => 'Search',
             'action'     => ['query'],
         ],
+        // Pojazdy floty — zarządzanie przez spedycję i sales
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'Vehicles',
+            'action'     => ['index', 'add', 'edit', 'delete'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',

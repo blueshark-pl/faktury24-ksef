@@ -1836,3 +1836,135 @@ msgstr "↑↓ to navigate · Enter to open · Esc to close"
 
 msgid "Błąd wyszukiwania"
 msgstr "Search error"
+
+msgid "Pojazdy"
+msgstr "Vehicles"
+
+msgid "Dodaj pojazd"
+msgstr "Add vehicle"
+
+msgid "Edycja pojazdu"
+msgstr "Edit vehicle"
+
+msgid "Pojazd dodany."
+msgstr "Vehicle added."
+
+msgid "Pojazd usunięty."
+msgstr "Vehicle deleted."
+
+msgid "Pojazd nie istnieje."
+msgstr "Vehicle does not exist."
+
+msgid "Nie udało się zapisać pojazdu."
+msgstr "Could not save vehicle."
+
+msgid "Brak pojazdów. Dodaj pierwszy aby liczyć trasy z profilem truck."
+msgstr "No vehicles. Add one to calculate routes with truck profile."
+
+msgid "Nazwa, rejestracja, VIN…"
+msgstr "Name, plate, VIN…"
+
+msgid "Typ pojazdu"
+msgstr "Vehicle type"
+
+msgid "Samochód ciężarowy"
+msgstr "Truck"
+
+msgid "Ciągnik siodłowy"
+msgstr "Tractor unit"
+
+msgid "Van / dostawczy"
+msgstr "Van / delivery"
+
+msgid "Naczepa / przyczepa"
+msgstr "Trailer"
+
+msgid "DMC"
+msgstr "GVW"
+
+msgid "DMC (kg)"
+msgstr "Gross weight (kg)"
+
+msgid "Liczba osi"
+msgstr "Number of axles"
+
+msgid "Max nacisk na oś (kg)"
+msgstr "Max axle load (kg)"
+
+msgid "Wysokość (cm)"
+msgstr "Height (cm)"
+
+msgid "Szerokość (cm)"
+msgstr "Width (cm)"
+
+msgid "Długość (cm)"
+msgstr "Length (cm)"
+
+msgid "Wymiary"
+msgstr "Dimensions"
+
+msgid "Emisja"
+msgstr "Emission"
+
+msgid "Norma emisji"
+msgstr "Emission class"
+
+msgid "Kategoria tunelu (ADR)"
+msgstr "Tunnel category (ADR)"
+
+msgid "Przewozi materiały niebezpieczne (ADR)"
+msgstr "Carries hazardous materials (ADR)"
+
+msgid "Domyślny pojazd firmy"
+msgstr "Company default vehicle"
+
+msgid "Domyślny pojazd"
+msgstr "Default vehicle"
+
+msgid "Identyfikacja"
+msgstr "Identification"
+
+msgid "Masa i wymiary"
+msgstr "Weight and dimensions"
+
+msgid "Emisja i ADR"
+msgstr "Emission and ADR"
+
+msgid "Aktywny"
+msgstr "Active"
+
+msgid "Rejestracja"
+msgstr "Plate"
+
+msgid "Notatki"
+msgstr "Notes"
+
+msgid "Dodatkowe informacje o pojeździe, ograniczenia, uwagi…"
+msgstr "Additional info, restrictions, notes…"
+
+msgid "np. Volvo FH 16 #4"
+msgstr "e.g. Volvo FH 16 #4"
+
+msgid "— wybierz —"
+msgstr "— select —"
+
+msgid "— brak —"
+msgstr "— none —"
+
+msgid "Usunąć pojazd?"
+msgstr "Delete vehicle?"
+
+msgid "domyślny"
+msgstr "default"
+
+msgid "aktywny"
+msgstr "active"
+
+msgid "nieaktywny"
+msgstr "inactive"
+
+msgid "Brak przypisanej firmy."
+msgstr "No company assigned."
+
+msgid "Słownik adresów"
+msgstr "Address dictionary"

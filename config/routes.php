@@ -214,6 +214,14 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Globalne wyszukiwanie (AJAX z headera)
         $builder->get('/szukaj', ['controller' => 'Search', 'action' => 'query']);
 
+        // Pojazdy floty
+        $builder->get('/pojazdy',                ['controller' => 'Vehicles', 'action' => 'index']);
+        $builder->connect('/pojazdy/dodaj',      ['controller' => 'Vehicles', 'action' => 'add']);
+        $builder->connect('/pojazdy/edytuj/{id}', ['controller' => 'Vehicles', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/pojazdy/usun/{id}',     ['controller' => 'Vehicles', 'action' => 'delete'])
+            ->setPass(['id']);
+
         // Powiadomienia (per user)
         $builder->get('/powiadomienia',                 ['controller' => 'Notifications', 'action' => 'index']);
         $builder->get('/powiadomienia/recent',          ['controller' => 'Notifications', 'action' => 'recent']);

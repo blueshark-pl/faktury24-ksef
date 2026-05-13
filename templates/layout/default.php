@@ -1580,8 +1580,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             <!-- Słownik adresów transportowych -->
                             <li class="slide <?= $navActive('TransportAddresses', 'index') || $navActive('TransportAddresses', 'add') || $navActive('TransportAddresses', 'edit') ?>">
                                 <?= $this->Html->link(
-                                    '<i class="ri-map-pin-line side-menu__icon"></i><span class="side-menu__label">Słownik adresów</span>',
+                                    '<i class="ri-map-pin-line side-menu__icon"></i><span class="side-menu__label">' . __('Słownik adresów') . '</span>',
                                     ['plugin' => false, 'controller' => 'TransportAddresses', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Pojazdy floty -->
+                            <li class="slide <?= $navActive('Vehicles', 'index') || $navActive('Vehicles', 'add') || $navActive('Vehicles', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-truck-line side-menu__icon"></i><span class="side-menu__label">' . __('Pojazdy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'Vehicles', 'action' => 'index'],
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
