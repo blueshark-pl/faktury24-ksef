@@ -28,6 +28,9 @@ $t = ($lang === 'en') ? [
     'buyer'           => 'Buyer',
     'no'              => 'No.',
     'item_name'       => 'Description',
+    'cn_content'      => 'Description',
+    'cn_credited'     => 'Credited',
+    'cn_total'        => 'Total',
     'qty'             => 'Qty',
     'unit'            => 'Unit',
     'price_net'       => 'Unit price',
@@ -90,6 +93,9 @@ $t = ($lang === 'en') ? [
     'buyer'           => 'Nabywca',
     'no'              => 'Lp',
     'item_name'       => 'Nazwa towaru / usługi',
+    'cn_content'      => 'Treść',
+    'cn_credited'     => 'Uznaliśmy',
+    'cn_total'        => 'Razem',
     'qty'             => 'Ilość',
     'unit'            => 'J.m.',
     'price_net'       => 'Cena netto',
@@ -180,7 +186,8 @@ if (empty($allBankAccounts) && ($bankAccount || $bankName)) {
 
 /* ─── typ faktury ─── */
 $typeName = $t['inv_type_suffix'][$invoice->type ?? ''] ?? ($t['inv_type_suffix']['vat']);
-$isMargin  = ($invoice->type ?? '') === 'margin';
+$isMargin     = ($invoice->type ?? '') === 'margin';
+$isCreditNote = ($invoice->type ?? '') === 'credit_note';
 // Nota uznaniowa — dokument księgowy bez VAT (jak rachunek/novat): ukrywamy
 // kolumny VAT, sumę VAT i podsumowanie stawek.
 $isNoVat   = in_array(($invoice->type ?? ''), ['novat', 'credit_note'], true);
@@ -593,7 +600,43 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
 </div>
 
 <!-- ════ TABELA POZYCJI ════ -->
-<?php if (!$isMargin): ?>
+<?php if ($isCreditNote): /* NOTA UZNANIOWA — uproszczony layout: Treść | Uznaliśmy */ ?>
+<table class="items-table">
+    <thead>
+        <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>
+        <tr>
+            <th class="left" style="width:80%;<?= $f ?>"><?= h($t['cn_content']) ?></th>
+            <th style="width:20%;<?= $f ?>"><?= h($t['cn_credited']) ?></th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php foreach ($invoice->invoice_contents as $it):
+        $itemName  = (string)($it->name ?? '');
+        $itemDesc  = (string)($it->product_desc ?? '');
+        $amount    = (float)$it->netto;  // dla credit_note netto = brutto = wartość
+    ?>
+    <tr>
+        <td class="left">
+            <?php if ($itemName !== ''): ?>
+                <?= h($translatePhrase($itemName)) ?>
+            <?php endif; ?>
+            <?php if ($itemDesc !== ''): ?>
+                <?php if ($itemName !== ''): ?><br><?php endif; ?>
+                <span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($itemDesc)) ?></span>
+            <?php endif; ?>
+        </td>
+        <td style="text-align:right;font-weight:700"><?= $num2($amount) ?></td>
+    </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot>
+        <tr>
+            <td style="text-align:right;font-size:10pt;font-weight:700"><?= h($t['cn_total']) ?>:</td>
+            <td style="text-align:right;font-size:10pt;font-weight:700;white-space:nowrap"><?= $money($invoice->total ?? $invoice->netto ?? 0, $cur) ?></td>
+        </tr>
+    </tfoot>
+</table>
+<?php elseif (!$isMargin): ?>
 <table class="items-table">
     <thead>
         <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>

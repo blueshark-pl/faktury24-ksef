@@ -557,24 +557,14 @@ $gtuSelectHtml .= '</select>';
             <table class="table nowrap text-nowrap border mt-3" id="items-table">
               <thead>
                 <tr>
-                    <th style="min-width:260px;">PRODUKT</th>
+                    <th style="min-width:260px;">TREŚĆ</th>
                     <th style="width:120px;">ILOŚĆ</th>
                     <th style="width:80px;">JM</th>
           <th style="width:140px;">CENA</th>
                     <th style="width:120px;">RABAT %</th>
-                    <th style="width:140px;">NETTO</th>
-                    <th style="width:140px;">BRUTTO</th>
-                    <th style="width:120px;">GTU
-                    <button type="button"
-                        id="gtu-help"
-                        class="btn btn-link p-0 ms-1 align-baseline"
-                        data-bs-toggle="popover"
-                        data-bs-placement="left"
-                        aria-label="Pomoc: GTU"
-                        title="Kody GTU — pomoc">
-                        <i class="ri-question-line fs-6"></i>
-                    </button>
-                    </th>
+                    <th style="width:140px;">UZNALIŚMY</th>
+                    <th style="width:140px;display:none">BRUTTO</th>
+                    <th style="width:120px;display:none">GTU</th>
                     <th style="width:120px;">AKCJA</th>
                 </tr>
                 </thead>
@@ -596,8 +586,8 @@ $gtuSelectHtml .= '</select>';
   <td><input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
   <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="0.00" readonly></td>
-  <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
-  <td class="gtu-cell"><?= $gtuSelectHtml ?></td>
+  <td style="display:none"><input class="form-control text-end item-gross" value="0.00" readonly></td>
+  <td class="gtu-cell" style="display:none"><?= $gtuSelectHtml ?></td>
   <td>
     <div class="d-flex gap-1">
       <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
@@ -615,19 +605,17 @@ $gtuSelectHtml .= '</select>';
 </tr>
 
 
-                <!-- wiersz: Sumy -->
+                <!-- wiersz: Sumy — w nocie uznaniowej tylko 'Razem' -->
                <tr>
   <td colspan="5"></td>
   <td colspan="4">
     <table class="table table-sm text-nowrap mb-0 table-borderless">
       <tbody>
         <tr>
-          <th scope="row"><div class="fw-medium">Razem netto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
+          <th scope="row"><div class="fs-14 fw-medium">Razem <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-net" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
-        </tr>
-        <tr>
-          <th scope="row"><div class="fs-14 fw-medium">Razem brutto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
-          <td><input type="text" id="sum-gross" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
+          <!-- sum-gross trzymamy ukryty żeby istniejący JS sum() nie pluł error'ami -->
+          <input type="hidden" id="sum-gross" value="0.00">
         </tr>
       </tbody>
     </table>
@@ -2152,8 +2140,8 @@ $('#gus-fetch-btn').on('click', function(){
         '<td><input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>' +
         '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>' +
         '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
-        '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
-        '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
+        '<td style="display:none"><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
+        '<td class="gtu-cell" style="display:none"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
         '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>' +
       '</tr>';
     $addRow.before(html.replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
