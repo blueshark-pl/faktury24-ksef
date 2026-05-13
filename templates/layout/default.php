@@ -1421,6 +1421,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+                            <li class="slide <?= $navActive('AdminPerformance', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-bar-chart-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">' . __('Wydajność') . '</span>',
+                                    ['plugin' => false, 'controller' => 'AdminPerformance', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
                                     '<i class="ri-file-list-3-line side-menu__icon"></i>
