@@ -147,10 +147,82 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
 .route-node .rn-city    { font-size:.95rem; font-weight:700; color: var(--default-text-color); line-height:1.2; }
 .route-node .rn-country { font-size:.75rem; color: var(--text-muted); margin-top:.15rem; }
 .route-node .rn-date    { font-size:.78rem; opacity:.85; font-weight:600; margin-top:.35rem; }
-.route-line { flex:1; height:4px; background: linear-gradient(to right, #6366f1, #22c55e); border-radius:2px; position:relative; margin:0 .75rem; min-width:120px; }
-.route-line-truck { position:absolute; top:-12px; left:50%; transform:translateX(-50%); font-size:1.4rem; }
-.route-pol { color:#fff; background:#6366f1; padding:.1rem .35rem; border-radius:.25rem; font-size:.6rem; font-weight:700; position:absolute; top:-22px; left:0; }
-.route-pod { color:#fff; background:#22c55e; padding:.1rem .35rem; border-radius:.25rem; font-size:.6rem; font-weight:700; position:absolute; top:-22px; right:0; }
+.route-line { flex:1; height:4px; background: linear-gradient(to right, #6366f1, #22c55e); border-radius:2px; position:relative; margin:0 1.5rem; min-width:120px; }
+.route-line-truck {
+    position:absolute;
+    top:-18px;
+    font-size:1.6rem;
+    line-height:1;
+    z-index:2;
+    will-change:left,transform;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.15));
+}
+/* Stan 2 (Zaplanowane) — czeka przy starcie, lekkie podskakiwanie */
+.truck-state-2 { left:-.4em; animation: truck-idle 1.8s ease-in-out infinite; }
+/* Stan 3 (Załadowane) — w drodze, jedzie tam i z powrotem */
+.truck-state-3 { animation: truck-drive 4.5s ease-in-out infinite; }
+/* Stan 4/5 (Zrealizowane/Zafakturowane) — dojechało na metę */
+.truck-state-4, .truck-state-5 {
+    left:calc(100% - 1.2em);
+    animation: truck-arrived 1.6s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes truck-idle {
+    0%,100% { transform:translateY(0) rotate(0deg); }
+    50%     { transform:translateY(-3px) rotate(-1deg); }
+}
+@keyframes truck-drive {
+    0%   { left:-.4em;                 transform:translateY(0)   rotate(0deg); }
+    8%   { left:-.4em;                 transform:translateY(-2px) rotate(-2deg); }
+    50%  { left:calc(50% - .6em);      transform:translateY(0)   rotate(1deg); }
+    92%  { left:calc(100% - 1.2em);    transform:translateY(-2px) rotate(-1deg); }
+    100% { left:calc(100% - 1.2em);    transform:translateY(0)   rotate(0deg); }
+}
+@keyframes truck-arrived {
+    0%   { transform:translateY(-12px) scale(.5) rotate(-8deg); opacity:0; }
+    60%  { transform:translateY(2px)   scale(1.15); opacity:1; }
+    100% { transform:translateY(0)     scale(1); }
+}
+/* Puff spalin gdy w drodze */
+.truck-smoke {
+    position:absolute;
+    right:100%;
+    top:.2em;
+    font-size:.7em;
+    pointer-events:none;
+    opacity:0;
+    animation: smoke-puff 1.4s ease-out infinite;
+}
+.truck-smoke:nth-child(3) { animation-delay:.6s; }
+@keyframes smoke-puff {
+    0%   { opacity:0;  transform:translate(0,0) scale(.4); }
+    30%  { opacity:.65; transform:translate(-6px,-3px) scale(.9); }
+    100% { opacity:0;  transform:translate(-18px,-10px) scale(1.4); }
+}
+/* Checkmark przy dojechaniu */
+.truck-check {
+    position:absolute;
+    left:110%;
+    top:-.05em;
+    color:#22c55e;
+    font-weight:900;
+    font-size:.85em;
+    animation: check-pop .7s .4s cubic-bezier(.34,1.8,.64,1) both;
+    text-shadow:0 1px 2px rgba(34,197,94,.4);
+}
+@keyframes check-pop {
+    0%   { transform:scale(0) rotate(-90deg); opacity:0; }
+    100% { transform:scale(1) rotate(0deg);   opacity:1; }
+}
+/* Trasa wypełniona — fill zależny od statusu (subtelny overlay) */
+.route-line-progress {
+    position:absolute; top:0; left:0; bottom:0;
+    background:linear-gradient(to right, rgba(99,102,241,.35), rgba(34,197,94,.35));
+    border-radius:2px;
+    transition:width .8s ease-out;
+    pointer-events:none;
+}
+.route-pol { color:#fff; background:#6366f1; padding:.1rem .35rem; border-radius:.25rem; font-size:.6rem; font-weight:700; position:absolute; top:-22px; left:0; z-index:1; }
+.route-pod { color:#fff; background:#22c55e; padding:.1rem .35rem; border-radius:.25rem; font-size:.6rem; font-weight:700; position:absolute; top:-22px; right:0; z-index:1; }
 
 /* ── Timeline ── */
 .tl { position:relative; padding-left:2.4rem; }
@@ -348,9 +420,35 @@ if ($order->date_delivery && $hasPodFile && $order->pod_at) {
         </div>
     </div>
 
+    <?php
+        // Truck animation:
+        //  1 (Przyjęte)     — brak ciężarówki, brak fillu
+        //  2 (Zaplanowane)  — ciężarówka przy starcie, lekkie podskakiwanie
+        //  3 (Załadowane)   — w drodze, animacja drive + puff spalin
+        //  4 (Zrealizowane) — dojechało, pojawia się z bounce + checkmark
+        //  5 (Zafakturowane)— jak 4, sam stan
+        $progressPct = match (true) {
+            $effective <= 1 => 0,
+            $effective === 2 => 10,
+            $effective === 3 => 60,
+            $effective >= 4  => 100,
+            default          => 0,
+        };
+    ?>
     <div class="route-line">
+        <div class="route-line-progress" style="width:<?= $progressPct ?>%"></div>
         <?php if ($hasPolFile): ?><span class="route-pol">POL ✓</span><?php endif; ?>
-        <span class="route-line-truck">🚛</span>
+        <?php if ($effective >= 2): ?>
+            <span class="route-line-truck truck-state-<?= (int)$effective ?>" aria-label="<?= h($nlCurrent['label']) ?>">
+                <span class="truck-emoji">🚛</span>
+                <?php if ($effective === 3): ?>
+                    <span class="truck-smoke" aria-hidden="true">💨</span>
+                    <span class="truck-smoke" aria-hidden="true">💨</span>
+                <?php elseif ($effective >= 4): ?>
+                    <span class="truck-check" aria-hidden="true">✓</span>
+                <?php endif; ?>
+            </span>
+        <?php endif; ?>
         <?php if ($hasPodFile): ?><span class="route-pod">POD ✓</span><?php endif; ?>
     </div>
 
