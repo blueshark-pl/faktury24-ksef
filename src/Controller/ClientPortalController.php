@@ -265,13 +265,12 @@ class ClientPortalController extends AppController
     }
 
     // -------------------------------------------------------------------------
-    // Pobranie faktury sprzedażowej w PDF
-    // — przekierowanie do /invoices/print/{id}?download=1.
-    // Weryfikacja dostępu odbywa się tu (faktura musi wisieć przy zleceniu klienta);
-    // permissions.php pozwala roli `client` na akcję Invoices/print z closure
-    // sprawdzającym ten sam warunek (defense in depth).
+    // Pobranie faktury sprzedażowej w PDF — wersja custom (CakePdf + print_custom).
+    // Weryfikacja dostępu: faktura musi wisieć przy zleceniu klienta (NIP match).
+    // Renderowanie inline (bez redirectu) żeby pominąć drugą warstwę permissions
+    // dla /invoices/print-custom.
     // -------------------------------------------------------------------------
-    public function downloadInvoice(string $invoiceId): Response
+    public function downloadInvoice(string $invoiceId): ?Response
     {
         if ($r = $this->ensureProfile()) { return $r; }
 
@@ -286,10 +285,76 @@ class ClientPortalController extends AppController
         }
 
         $lang = $this->request->getSession()->read('Config.locale') === 'en' ? 'en' : 'pl';
-        // print-custom = custom template PDF (firma chciała tę wersję dla klienta).
-        // Używamy ?render=pdf — to faktycznie wymusza generację PDF przez CakePdf/DomPdf
-        // (?download=1 dla print, ale printCustom ma inny query flag).
-        return $this->redirect('/invoices/print-custom/' . $invoiceId . '?render=pdf&lang=' . $lang);
+
+        // Renderujemy custom template PDF lokalnie (CakePdf/DomPdf) zamiast redirectu
+        // na /invoices/print-custom — pomija permission redirect chain i podaje
+        // klientowi bezpośredni download.
+        $invoice = $this->fetchTable('Invoices')->get($invoiceId, [
+            'contain' => [
+                'InvoiceContractors',
+                'InvoiceContents' => ['Vats'],
+                'Companies',
+                'InvoiceCompanyDetails',
+            ],
+        ]);
+
+        // Dodatkowe opisy (DodatkowyOpis) — jak w InvoicesController::printCustom
+        if (!$invoice->has('invoice_additional_descriptions')) {
+            $invoice->invoice_additional_descriptions = $this->fetchTable('InvoiceAdditionalDescriptions')
+                ->find()
+                ->where(['invoice_id' => $invoice->id])
+                ->orderByAsc('nr_wiersza')
+                ->all()
+                ->toArray();
+        }
+
+        // Kurs waluty
+        $cur     = strtoupper((string)($invoice->currency ?? 'PLN'));
+        $fxRate  = (float)($invoice->currency_exchange ?? $invoice->fx_rate ?? 0);
+        $fxDate  = $invoice->currency_date ?? null;
+        $fxTable = (string)($invoice->exchange_table ?? '');
+
+        // Adnotacje (reverse_charge itp.)
+        $ann = [];
+        if (!empty($invoice->annotations)) {
+            $ann = is_array($invoice->annotations)
+                ? $invoice->annotations
+                : (json_decode((string)$invoice->annotations, true) ?: []);
+        }
+        $hasReverseCharge = !empty($ann['reverse_charge']);
+        if (!$hasReverseCharge && !empty($invoice->invoice_contents)) {
+            foreach ($invoice->invoice_contents as $it) {
+                $vatName = strtolower(trim((string)($it->vat->name ?? '')));
+                if (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl') || str_starts_with($vatName, 'np')) {
+                    $hasReverseCharge = true;
+                    break;
+                }
+            }
+        }
+
+        $renderPdf  = true;
+        $safeNumber = preg_replace('/[^A-Za-z0-9_\-]/', '_', (string)($invoice->fullnumber ?: $invoice->id));
+        $filename   = 'faktura_custom_' . $safeNumber . ($lang === 'en' ? '_EN' : '') . '.pdf';
+
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf'));
+
+        $this->viewBuilder()
+            ->setClassName('CakePdf.Pdf')
+            ->setTemplate('print_custom')
+            ->setTemplatePath('Invoices')      // template w templates/Invoices/print_custom.php
+            ->setLayout('ajax')
+            ->setOptions([
+                'pdfConfig' => [
+                    'filename'    => $filename,
+                    'download'    => true,
+                    'orientation' => 'portrait',
+                    'paper'       => 'A4',
+                    'engine'      => 'CakePdf.DomPdf',
+                ],
+            ]);
+        // disableAutoLayout? — print_custom używa setLayout('ajax') jak printCustom.
+
+        return null;
     }
 
     // -------------------------------------------------------------------------
