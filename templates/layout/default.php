@@ -1283,7 +1283,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     ?>
                     <div class="sidebar-caretaker">
                         <div class="sidebar-caretaker__label">
-                            <i class="ri-user-heart-line"></i> <?= __('Twój opiekun') ?>
+                            <i class="ri-user-heart-line"></i> <?= __('Twój kontakt') ?>
                         </div>
                         <div class="sidebar-caretaker__card">
                             <?php if (!empty($_ct['avatar'])): ?>
@@ -1299,10 +1299,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <i class="ri-mail-line me-1"></i><?= h($_ct['email']) ?>
                                 </a>
                                 <?php if (!empty($_ct['phone'])):
-                                    $_telLink = 'tel:' . preg_replace('/[^+\d]/', '', $_ct['phone']);
+                                    // Numer z bazy może być bez prefixu — dodajemy +48 gdy brak jakiegokolwiek
+                                    // prefixu kraju (czyli nie zaczyna się od '+'). Trzymamy spacje wizualne.
+                                    $_phoneRaw     = trim((string)$_ct['phone']);
+                                    $_phoneDisplay = str_starts_with($_phoneRaw, '+') ? $_phoneRaw : ('+48 ' . $_phoneRaw);
+                                    $_telLink      = 'tel:' . preg_replace('/[^+\d]/', '', $_phoneDisplay);
                                 ?>
-                                    <a href="<?= h($_telLink) ?>" class="sidebar-caretaker__contact" title="<?= h($_ct['phone']) ?>">
-                                        <i class="ri-phone-line me-1"></i><?= h($_ct['phone']) ?>
+                                    <a href="<?= h($_telLink) ?>" class="sidebar-caretaker__contact" title="<?= h($_phoneDisplay) ?>">
+                                        <i class="ri-phone-line me-1"></i><?= h($_phoneDisplay) ?>
                                     </a>
                                 <?php endif; ?>
                                 <?php if ($_ct['is_substitute']): ?>
