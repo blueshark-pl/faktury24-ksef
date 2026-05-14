@@ -2404,13 +2404,22 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }).join(' ');
     }
 
+    // Normalizuj wartość emission_class do "EURO N" / "EURO EEV"
+    function formatEuro(raw) {
+        if (!raw) return '';
+        var s = String(raw).toLowerCase().replace(/[\s_\-]+/g, '');
+        if (s.includes('eev')) return 'EURO EEV';
+        var m = s.match(/(?:euro?|eu|e)?([1-6])$/);
+        return m ? 'EURO ' + m[1] : raw.toUpperCase();
+    }
+
     // Klasyfikacja pojazdu per kraj (orientacyjne — HERE może mieć inną logikę)
     function vehicleTollClasses(v) {
         if (!v) return null;
         var axles = v.axle_count || 0;
         var weight = v.gross_weight_kg || 0;
         var weightT = weight / 1000;
-        var euro = v.emission_class || '';
+        var euroLabel = formatEuro(v.emission_class);
 
         // Italia (Autostrade): A=lekkie auto, B=van 2osie<2m wys, 3=2-osi heavy/bus, 4=3-osi, 5=4+ osi
         var it;
@@ -2434,7 +2443,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         else if (axles === 3) de = '3 osi';
         else if (axles === 2) de = '2 osi';
         else de = 'brak danych osi';
-        if (euro) de += ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro);
+        if (euroLabel) de += ' · ' + euroLabel;
         // Maut: dodatkowo kategoria masy
         if (weightT >= 18)       de += ' · Gewichtsklasse C (≥18t)';
         else if (weightT >= 7.5) de += ' · Gewichtsklasse B (7,5–18t)';
@@ -2448,12 +2457,20 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         else if (axles === 2) at = 'A1 (2 osi ≤3,5t)';
         else at = 'lekkie';
 
-        // Polska (e-TOLL): kategorie wg masy. >3.5t = ciężarowy, plus EURO.
+        // Polska — autostrady płatne (A1/A2/A4 Stalexport/AWSA): 5 klas
+        //   1 — motocykle
+        //   2 — osobowe ≤3,5t
+        //   3 — 3,5-12t (2 osi)
+        //   4 — >12t 2-3 osi
+        //   5 — >12t 4+ osi (typowe TIRy 5-osiowe)
+        // Plus e-TOLL na drogach krajowych — kategoria wg masy + EURO.
         var pl;
-        if (weightT >= 12) pl = 'kat. 4 (≥12t)';
-        else if (weightT >= 3.5) pl = 'kat. 3 (3,5–12t)';
-        else pl = 'lekkie (≤3,5t, bez e-TOLL)';
-        if (euro) pl += ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro);
+        if (weightT > 12 && axles >= 4) pl = 'kat. 5 (>12t · 4+ osi)';
+        else if (weightT > 12)          pl = 'kat. 4 (>12t · 2–3 osi)';
+        else if (weightT >= 3.5)        pl = 'kat. 3 (3,5–12t)';
+        else if (weight > 0)            pl = 'kat. 2 (osob. ≤3,5t)';
+        else                            pl = 'brak danych';
+        if (euroLabel) pl += ' · ' + euroLabel;
 
         // Czechy (MYTO CZ) — kategoria osi + EURO
         var cz;
@@ -2462,10 +2479,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         else if (axles >= 3) cz = '2 (3 osi)';
         else if (axles >= 2) cz = '1 (2 osi)';
         else cz = 'brak';
+        if (euroLabel) cz += ' · ' + euroLabel;
 
-        // Szwajcaria (LSVA) — wagomierz; klasa wg EURO + 28-32-40t
+        // Szwajcaria (LSVA) — wagomierz; klasa wg EURO + masa
         var ch;
-        if (weightT > 0) ch = 'LSVA · ' + weightT.toFixed(1) + 't' + (euro ? ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro) : '');
+        if (weightT > 0) ch = 'LSVA · ' + weightT.toFixed(1) + 't' + (euroLabel ? ' · ' + euroLabel : '');
         else ch = 'brak';
 
         return { it: it, fr: fr, de: de, at: at, pl: pl, cz: cz, ch: ch };
