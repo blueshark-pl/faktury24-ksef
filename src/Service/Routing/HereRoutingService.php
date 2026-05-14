@@ -285,7 +285,10 @@ class HereRoutingService
         $currency = (string)($opts['currency'] ?? 'EUR');
         $returnInstr = !empty($opts['returnInstructions']);
 
-        $returns = ['summary', 'polyline', 'tolls', 'tollSystems', 'tollLocations'];
+        // HERE Routing v8 — valid `return` values include: summary, polyline, tolls, actions, instructions.
+        // tollSystems/tollLocations to były ZŁE nazwy (HERE 400 E605001). Locations bramek
+        // przychodzą wewnątrz każdego toll[] jako tollSegments[].entry/exit jeśli są dostępne.
+        $returns = ['summary', 'polyline', 'tolls'];
         if ($returnInstr) {
             $returns[] = 'actions';
             $returns[] = 'instructions';
@@ -421,6 +424,22 @@ class HereRoutingService
                         $cc = (string)($toll['countryCode'] ?? '??');
                         $tollSystem  = (string)($toll['tollSystem'] ?? '');
                         $paymentMethods = (array)($toll['paymentMethods'] ?? []);
+
+                        // L3: lokalizacje bramek — HERE czasem zwraca je w toll.tollSegments[]
+                        foreach (($toll['tollSegments'] ?? []) as $seg) {
+                            foreach (['entry', 'exit'] as $point) {
+                                $loc = $seg[$point]['location'] ?? null;
+                                if ($loc && isset($loc['lat'], $loc['lng'])) {
+                                    $tollLocations[] = [
+                                        'lat'     => (float)$loc['lat'],
+                                        'lng'     => (float)$loc['lng'],
+                                        'country' => $cc,
+                                        'name'    => (string)($seg['name'] ?? ($point === 'entry' ? 'Wjazd' : 'Wyjazd')),
+                                        'system'  => $tollSystem,
+                                    ];
+                                }
+                            }
+                        }
                         foreach (($toll['fares'] ?? []) as $fare) {
                             $price = (float)($fare['price']['value'] ?? 0);
                             $cur   = (string)($fare['price']['currency'] ?? $currency);
@@ -470,20 +489,6 @@ class HereRoutingService
                         }
                     }
 
-                    // L3: lokalizacje bramek na trasie (tollLocations w sekcji)
-                    foreach (($sect['tollLocations'] ?? []) as $loc) {
-                        $lat = $loc['location']['lat'] ?? null;
-                        $lng = $loc['location']['lng'] ?? null;
-                        if ($lat !== null && $lng !== null) {
-                            $tollLocations[] = [
-                                'lat'     => (float)$lat,
-                                'lng'     => (float)$lng,
-                                'country' => (string)($loc['countryCode'] ?? ''),
-                                'name'    => (string)($loc['name'] ?? ''),
-                                'system'  => (string)($loc['tollSystemRef']['name'] ?? ''),
-                            ];
-                        }
-                    }
 
                     if ($returnInstr) {
                         foreach (($sect['actions'] ?? []) as $act) {

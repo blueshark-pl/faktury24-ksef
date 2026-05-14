@@ -1858,7 +1858,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         card.style.display = '';
 
-        // L3: jeśli już mieliśmy bramki na mapie — odśwież
+        // L3: ukryj przycisk "Bramki na mapie" jeśli HERE nie zwrócił lokalizacji
+        var btnMarkers = document.getElementById('btn-toll-markers');
+        if (btnMarkers) {
+            btnMarkers.style.display = (currentTollsData.locations.length ? '' : 'none');
+        }
         if (tollMarkersVisible) renderTollMarkers(true);
     }
 
