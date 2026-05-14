@@ -2461,20 +2461,29 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         else if (axles === 2) at = 'A1 (2 osi ≤3,5t)';
         else at = 'lekkie';
 
-        // Polska — autostrady płatne (A1/A2/A4 Stalexport/AWSA): 5 klas
-        //   1 — motocykle
-        //   2 — osobowe ≤3,5t
-        //   3 — 3,5-12t (2 osi)
-        //   4 — >12t 2-3 osi
-        //   5 — >12t 4+ osi (typowe TIRy 5-osiowe)
-        // Plus e-TOLL na drogach krajowych — kategoria wg masy + EURO.
-        var pl;
-        if (weightT > 12 && axles >= 4) pl = 'kat. 5 (>12t · 4+ osi)';
-        else if (weightT > 12)          pl = 'kat. 4 (>12t · 2–3 osi)';
-        else if (weightT >= 3.5)        pl = 'kat. 3 (3,5–12t)';
-        else if (weight > 0)            pl = 'kat. 2 (osob. ≤3,5t)';
-        else                            pl = 'brak danych';
-        if (euroLabel) pl += ' · ' + euroLabel;
+        // Polska — różne systemy w zależności od OPERATORA:
+        //   A2 AWSA (Konin-Świecko): 4 kategorie — kat. 4 = 4+ osi
+        //   A1 Stalexport (Toruń-Gdańsk), A4 Stalexport (Katowice-Kraków): 5 kategorii — kat. 5 = >12t 4+ osi
+        //   e-TOLL (drogi krajowe + niektóre autostrady GDDKiA): kat. wg masy + EURO
+        // Pokazujemy WSZYSTKIE bo trasa może iść przez różne odcinki.
+        var pl = [];
+        // A2 AWSA — 4 klasy
+        if (axles >= 4)            pl.push('A2 AWSA: kat. 4 (' + axles + ' osi)');
+        else if (axles === 3)      pl.push('A2 AWSA: kat. 3 (3 osi)');
+        else if (weight >= 3500)   pl.push('A2 AWSA: kat. 3 (>3,5t 2 osi)');
+        else                       pl.push('A2 AWSA: kat. 2 (osob.)');
+        // A1/A4 Stalexport — 5 klas
+        if (weightT > 12 && axles >= 4)  pl.push('A1·A4 Stalexport: kat. 5 (>12t · 4+ osi)');
+        else if (weightT > 12)           pl.push('A1·A4 Stalexport: kat. 4 (>12t · 2–3 osi)');
+        else if (weightT >= 3.5)         pl.push('A1·A4 Stalexport: kat. 3 (3,5–12t)');
+        else                             pl.push('A1·A4 Stalexport: kat. 2 (≤3,5t)');
+        // e-TOLL — wg masy
+        var etoll;
+        if (weightT >= 12)        etoll = 'e-TOLL: kat. 3 (≥12t)';
+        else if (weightT >= 3.5)  etoll = 'e-TOLL: kat. 2 (3,5–12t)';
+        else                      etoll = 'e-TOLL: lekki (≤3,5t, bez opłat)';
+        if (euroLabel) etoll += ' · ' + euroLabel;
+        pl.push(etoll);
 
         // Czechy (MYTO CZ) — kategoria osi + EURO
         var cz;
@@ -2564,7 +2573,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('tolls-veh-params').innerHTML = paramParts.join(' · ')
             + (statusHtml ? '<div class="mt-1">' + statusHtml + '</div>' : '');
 
-        // Klasy per kraj
+        // Klasy per kraj — wartość może być string lub array (wtedy każdy element to osobna linia)
         var countryMap = [
             ['pl', 'Polska',     classes.pl],
             ['de', 'Niemcy',     classes.de],
@@ -2575,9 +2584,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             ['it', 'Włochy',     classes.it],
         ];
         document.getElementById('tolls-classes').innerHTML = countryMap.map(function (cc) {
-            return '<div class="border rounded p-2 d-flex flex-column" style="min-width:160px;background:white">'
+            var lines = Array.isArray(cc[2]) ? cc[2] : [cc[2]];
+            var linesHtml = lines.map(function (l) {
+                return '<div class="small mt-1">' + escapeHtml(l) + '</div>';
+            }).join('');
+            return '<div class="border rounded p-2 d-flex flex-column" style="min-width:200px;background:white">'
                  + '<div><span class="fi fi-' + cc[0] + '"></span> <strong>' + escapeHtml(cc[1]) + '</strong></div>'
-                 + '<div class="small mt-1">' + escapeHtml(cc[2]) + '</div>'
+                 + linesHtml
                  + '</div>';
         }).join('');
     }
