@@ -727,6 +727,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             </div>
         </div>
 
+        <!-- #10 Truck ban kalendarz (zakazy weekendowe/świąteczne) -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card border-danger" id="truckban-card" style="display:none">
+                    <div class="card-header py-2" style="background:linear-gradient(135deg,#fef2f2,#fee2e2)">
+                        <strong class="text-danger"><i class="ri-forbid-line me-1"></i><?= __('Zakazy dla ciężarówek') ?></strong>
+                        <span class="text-muted small ms-2"><?= __('Niedziele i święta — DE/AT/FR/IT (>7.5t)') ?></span>
+                    </div>
+                    <div class="card-body py-2" id="truckban-body"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- #3 Tachograph planner -->
         <div class="row g-3 mt-0">
             <div class="col-lg-12">
@@ -1616,6 +1629,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         checkRestLawCompliance(data.routes[0]);
         renderEtaBadges(data.routes[0]);
         renderTollsBreakdown(data.routes[0]);
+        renderTruckBans(data.routes[0], data.points || []);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
@@ -1965,6 +1979,159 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
             }
         });
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    // #10 Truck ban kalendarz — niedziele i święta z zakazem >7.5t
+    // ═════════════════════════════════════════════════════════════════
+    // Bazowy zestaw świąt 2026 (uzupełnij w razie potrzeby co rok)
+    var TRUCK_BAN_HOLIDAYS = {
+        // ISO date → {name, countries: array (kraje gdzie obowiązuje)}
+        '2026-01-01': { name: 'Nowy Rok',                      countries: ['DE','AT','FR','IT','CH','PL'] },
+        '2026-01-06': { name: 'Trzech Króli',                  countries: ['AT','IT','PL'] },
+        '2026-04-03': { name: 'Wielki Piątek',                 countries: ['DE','AT','CH'] },
+        '2026-04-05': { name: 'Wielkanoc',                     countries: ['DE','AT','FR','IT','CH','PL'] },
+        '2026-04-06': { name: 'Poniedziałek Wielkanocny',      countries: ['DE','AT','FR','IT','CH','PL'] },
+        '2026-05-01': { name: 'Święto Pracy',                  countries: ['DE','AT','FR','IT','PL'] },
+        '2026-05-03': { name: 'Konstytucja 3 Maja',            countries: ['PL'] },
+        '2026-05-08': { name: 'Dzień Zwycięstwa',              countries: ['FR'] },
+        '2026-05-14': { name: 'Wniebowstąpienie',              countries: ['DE','AT','FR','CH'] },
+        '2026-05-24': { name: 'Zielone Świątki',               countries: ['DE','AT','FR','IT','CH'] },
+        '2026-05-25': { name: 'Pon. Zielonoświątkowy',         countries: ['DE','AT','FR','CH'] },
+        '2026-06-04': { name: 'Boże Ciało',                    countries: ['DE','AT','PL'] },
+        '2026-07-14': { name: 'Święto Narodowe',               countries: ['FR'] },
+        '2026-08-15': { name: 'Wniebowzięcie NMP',             countries: ['AT','FR','IT','PL'] },
+        '2026-10-03': { name: 'Dzień Jedności Niemiec',        countries: ['DE'] },
+        '2026-10-26': { name: 'Święto Narodowe Austrii',       countries: ['AT'] },
+        '2026-11-01': { name: 'Wszystkich Świętych',           countries: ['AT','FR','IT','PL'] },
+        '2026-11-11': { name: 'Dzień Niepodległości',          countries: ['FR','PL'] },
+        '2026-12-08': { name: 'Niepokalane Poczęcie',          countries: ['AT','IT'] },
+        '2026-12-25': { name: 'Boże Narodzenie',               countries: ['DE','AT','FR','IT','CH','PL'] },
+        '2026-12-26': { name: 'Drugi dzień Św.',               countries: ['DE','AT','IT','CH','PL'] }
+    };
+    // Kraje z zakazem niedzielnym (DE/AT zazwyczaj 00-22, FR/IT 08-22)
+    var SUNDAY_BAN_COUNTRIES = {
+        'DEU': { name: 'Niemcy',  hours: '00–22', alpha2: 'de' },
+        'AUT': { name: 'Austria', hours: '00–22', alpha2: 'at' },
+        'FRA': { name: 'Francja', hours: '22(sob) – 22(niedz.)', alpha2: 'fr' },
+        'ITA': { name: 'Włochy',  hours: '08–22', alpha2: 'it' },
+        'CHE': { name: 'Szwajcaria', hours: '00–22', alpha2: 'ch' }
+    };
+    // Konwersja alpha-3 → alpha-2 dla flagi
+    var ISO3_TO_ISO2 = { POL:'pl', DEU:'de', CZE:'cz', SVK:'sk', UKR:'ua', LTU:'lt', LVA:'lv', BLR:'by', AUT:'at', HUN:'hu', FRA:'fr', ESP:'es', ITA:'it', NLD:'nl', BEL:'be', DNK:'dk', SWE:'se', NOR:'no', FIN:'fi', GBR:'gb', IRL:'ie', CHE:'ch', ROU:'ro', BGR:'bg', GRC:'gr' };
+
+    function renderTruckBans(route, points) {
+        var card = document.getElementById('truckban-card');
+        var body = document.getElementById('truckban-body');
+        // Bez pojazdu lub trasa krótka — nie pokazuj
+        var vehicle = getSelectedVehicle();
+        if (!vehicle || !vehicle.gross_weight_kg || vehicle.gross_weight_kg < 7500) {
+            card.style.display = 'none';
+            return;
+        }
+        if (!route || !route.sections || !points || points.length < 2) {
+            card.style.display = 'none';
+            return;
+        }
+        // Zbieramy kraje na trasie (z waypoints + można wnioskować z tolls_by_country)
+        var countriesOnRoute = new Set();
+        points.forEach(function (p) { if (p.country) countriesOnRoute.add(p.country); });
+        Object.keys(route.tolls_by_country || {}).forEach(function (cc) {
+            if (cc.length === 2) {
+                // Znajdź alpha-3
+                for (var iso3 in ISO3_TO_ISO2) {
+                    if (ISO3_TO_ISO2[iso3] === cc.toLowerCase()) { countriesOnRoute.add(iso3); break; }
+                }
+            } else {
+                countriesOnRoute.add(cc);
+            }
+        });
+
+        // Daty trasy: od pierwszej arrival/departure_time
+        var startISO = (route.sections[0] && route.sections[0].departure_time) || null;
+        var endISO   = (route.sections[route.sections.length - 1] && route.sections[route.sections.length - 1].arrival_time) || null;
+        if (!startISO || !endISO) {
+            card.style.display = 'none';
+            return;
+        }
+        var start = new Date(startISO);
+        var end   = new Date(endISO);
+
+        // Iteruj dzień po dniu między start a end
+        var warnings = [];
+        var cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        var endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        while (cur <= endDay) {
+            var dow = cur.getDay(); // 0 = niedziela
+            var iso = cur.toISOString().substring(0, 10);
+            var dateLabel = cur.toLocaleDateString('pl-PL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            // Niedziela — sprawdź kraje z banem
+            if (dow === 0) {
+                var bannedCountries = [];
+                countriesOnRoute.forEach(function (cc) {
+                    if (SUNDAY_BAN_COUNTRIES[cc]) bannedCountries.push(cc);
+                });
+                if (bannedCountries.length) {
+                    warnings.push({
+                        type: 'sunday',
+                        date: dateLabel,
+                        countries: bannedCountries.map(function (cc) {
+                            return { code: cc, info: SUNDAY_BAN_COUNTRIES[cc] };
+                        })
+                    });
+                }
+            }
+
+            // Święto
+            var hol = TRUCK_BAN_HOLIDAYS[iso];
+            if (hol) {
+                var matched = [];
+                hol.countries.forEach(function (cc2) {
+                    // cc2 to alpha-2 — sprawdź czy mamy ten kraj na trasie (alpha-3 lub alpha-2)
+                    countriesOnRoute.forEach(function (rc) {
+                        if (rc === cc2) matched.push(cc2);
+                        if (ISO3_TO_ISO2[rc] === cc2.toLowerCase()) matched.push(cc2);
+                    });
+                });
+                if (matched.length) {
+                    warnings.push({
+                        type: 'holiday',
+                        date: dateLabel,
+                        name: hol.name,
+                        countries: matched
+                    });
+                }
+            }
+
+            cur.setDate(cur.getDate() + 1);
+        }
+
+        if (!warnings.length) {
+            card.style.display = 'none';
+            return;
+        }
+
+        // Render
+        body.innerHTML = warnings.map(function (w) {
+            var icon = w.type === 'sunday' ? '<i class="ri-calendar-event-line text-danger me-1"></i>' : '<i class="ri-star-fill text-warning me-1"></i>';
+            var headline = w.type === 'sunday' ? '<?= __('Zakaz niedzielny') ?>' : '<?= __('Święto') ?> · ' + escapeHtml(w.name);
+            var countries = w.countries.map(function (c) {
+                if (w.type === 'sunday') {
+                    var iso2 = c.info.alpha2;
+                    return '<span class="badge bg-danger-subtle text-danger border me-1"><span class="fi fi-' + iso2 + '"></span> ' + escapeHtml(c.info.name) + ' (' + c.info.hours + ')</span>';
+                } else {
+                    return '<span class="badge bg-warning-subtle text-warning-emphasis border me-1"><span class="fi fi-' + c.toLowerCase() + '"></span> ' + c.toUpperCase() + '</span>';
+                }
+            }).join(' ');
+            return '<div class="d-flex flex-wrap align-items-center gap-2 py-2" style="border-bottom:1px solid #fee2e2">'
+                 + '<div style="min-width:200px">' + icon + '<strong>' + headline + '</strong></div>'
+                 + '<div style="min-width:180px">' + escapeHtml(w.date) + '</div>'
+                 + '<div>' + countries + '</div>'
+                 + '</div>';
+        }).join('');
+
+        card.style.display = '';
     }
 
     // ═════════════════════════════════════════════════════════════════
