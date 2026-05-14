@@ -205,10 +205,10 @@ class ClientPortalController extends AppController
                 'SpeedOrders.buyer_nip' => $this->profile->nip,
             ])
             ->contain([
-                // UWAGA: bez select() restriction — belongsToMany potrzebuje pełnego SELECT
-                // żeby SelectWithPivotLoader poprawnie zbudował result map (pivot keys).
+                // UWAGA: alias asocjacji to 'AllInvoices' (className=Invoices),
+                // więc orderBy musi używać aliasu — nie 'Invoices.date'!
                 'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
-                    return $q->orderByAsc('Invoices.date');
+                    return $q->orderByAsc('AllInvoices.date');
                 },
             ])
             ->first();
