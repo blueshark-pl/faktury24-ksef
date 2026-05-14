@@ -383,6 +383,44 @@ class RoutePlannerController extends AppController
         }
     }
 
+    public function aiRouteOptimizer(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $alternatives = (array)$this->request->getData('alternatives', []);
+        $criteria = (array)$this->request->getData('criteria', []);
+        if (count($alternatives) < 2) {
+            return $this->jsonError(__('Potrzebne minimum 2 alternatywy.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->routeOptimizer($alternatives, $criteria);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function aiEmailReply(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $email = trim((string)$this->request->getData('email', ''));
+        $routeCtx = (array)$this->request->getData('route', []);
+        if ($email === '') {
+            return $this->jsonError(__('Brak treści emaila.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->emailReply($email, $routeCtx);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function aiDriverBrief(): Response
     {
         $this->disableAutoRender();

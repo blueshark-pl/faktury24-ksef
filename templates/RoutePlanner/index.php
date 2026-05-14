@@ -403,6 +403,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <i class="ri-robot-2-line me-2 text-danger"></i><?= __('AI Pricing Advisor') ?></a></li>
                     <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-brief-open">
                         <i class="ri-user-voice-line me-2 text-warning"></i><?= __('Brief dla kierowcy') ?></a></li>
+                    <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-optimizer-open">
+                        <i class="ri-compass-3-line me-2 text-info"></i><?= __('Wybierz najlepszą alternatywę') ?></a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aiEmailModal">
+                        <i class="ri-mail-line me-2 text-secondary"></i><?= __('Odpowiedź na email klienta') ?></a></li>
                 </ul>
             </div>
             <div class="btn-group">
@@ -892,6 +897,71 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         </button>
         <button type="button" class="btn btn-warning text-white" id="btn-ai-brief-run">
           <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Route Optimizer modal -->
+<div class="modal fade" id="aiOptimizerModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0891b2, #06b6d4); color: white;">
+        <h5 class="modal-title"><i class="ri-compass-3-line me-2"></i><?= __('AI — Najlepsza alternatywa') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small mb-1"><?= __('Priorytet') ?></label>
+          <select class="form-select form-select-sm" id="ai-optimizer-priority" style="max-width:280px">
+            <option value="balanced"><?= __('Zrównoważony (czas + koszt)') ?></option>
+            <option value="time"><?= __('Czas (najszybciej)') ?></option>
+            <option value="cost"><?= __('Koszt (najtaniej)') ?></option>
+            <option value="comfort"><?= __('Komfort (autostrady)') ?></option>
+            <option value="risk"><?= __('Bezpieczeństwo (mało granic)') ?></option>
+          </select>
+        </div>
+        <div id="ai-optimizer-loading" style="display:none" class="text-center py-4">
+          <div class="spinner-border text-info"></div>
+          <div class="mt-2 small text-muted"><?= __('Analizuję alternatywy…') ?></div>
+        </div>
+        <div id="ai-optimizer-result" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-info text-white" id="btn-ai-optimizer-run">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Email Reply modal -->
+<div class="modal fade" id="aiEmailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #475569, #64748b); color: white;">
+        <h5 class="modal-title"><i class="ri-mail-line me-2"></i><?= __('Odpowiedź na email klienta') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2">
+          <i class="ri-information-line me-1"></i>
+          <?= __('Wklej treść emaila od klienta. AI rozpozna intencję, wygeneruje odpowiedź PL+EN i wskaże następne kroki.') ?>
+        </div>
+        <textarea class="form-control" id="ai-email-input" rows="6"
+                  placeholder="<?= __('Dzień dobry, proszę o ofertę na transport ładunku z Warszawy do Berlina, 24 tony, paliwo, 17.05…') ?>"></textarea>
+        <div id="ai-email-loading" style="display:none" class="text-center py-4">
+          <div class="spinner-border text-secondary"></div>
+        </div>
+        <div id="ai-email-result" class="mt-3" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-secondary" id="btn-ai-email-run">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj odpowiedź') ?>
         </button>
       </div>
     </div>
@@ -2528,10 +2598,12 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     // AI FICZERY (OpenAI gpt-4o-mini)
     // ═════════════════════════════════════════════════════════════════
     var aiUrls = {
-        parse:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiParseAddress']) ?>',
-        cargo:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiCargoWizard']) ?>',
-        pricing: '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiPricing']) ?>',
-        brief:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']) ?>',
+        parse:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiParseAddress']) ?>',
+        cargo:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiCargoWizard']) ?>',
+        pricing:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiPricing']) ?>',
+        brief:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']) ?>',
+        optimizer: '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiRouteOptimizer']) ?>',
+        email:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiEmailReply']) ?>'
     };
     function aiPost(url, payload) {
         var fd = new FormData();
@@ -2780,6 +2852,145 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 toast('<?= __('Brief skopiowany') ?>', 'success');
             });
         }
+    });
+
+    // ── #12 AI Route Optimizer ───────────────────────────────────────
+    document.getElementById('btn-ai-optimizer-open').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse || !lastResponse.routes || lastResponse.routes.length < 2) {
+            toast('<?= __('Najpierw wyznacz trasę z >=2 alternatywami.') ?>', 'warning');
+            return;
+        }
+        new bootstrap.Modal(document.getElementById('aiOptimizerModal')).show();
+    });
+    document.getElementById('btn-ai-optimizer-run').addEventListener('click', function () {
+        var btn = this;
+        if (!lastResponse) return;
+        var alts = lastResponse.routes.map(function (r, idx) {
+            var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
+            var price = parseFloat(document.getElementById('fuel-price').value || 0);
+            var rate = parseFloat(document.getElementById('driver-rate').value || 0);
+            var fuelPln = (r.distance_km / 100) * cons * price;
+            var driverPln = (r.duration_min / 60) * rate;
+            var tollsPln = r.tolls_total
+                ? ((r.tolls_currency === 'EUR' && lastResponse.eur_pln_rate) ? r.tolls_total * lastResponse.eur_pln_rate : r.tolls_total)
+                : 0;
+            return {
+                idx: idx,
+                distance_km: r.distance_km,
+                duration_min: r.duration_min,
+                tolls_pln: Math.round(tollsPln),
+                fuel_pln: Math.round(fuelPln),
+                driver_pln: Math.round(driverPln),
+                total_cost_pln: Math.round(tollsPln + fuelPln + driverPln),
+                countries: (lastResponse.points || []).map(function (p) { return p.country; }).filter(Boolean).join(','),
+                tolls_by_country: r.tolls_by_country || {}
+            };
+        });
+        var criteria = { priority: document.getElementById('ai-optimizer-priority').value };
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+        document.getElementById('ai-optimizer-loading').style.display = 'block';
+        document.getElementById('ai-optimizer-result').style.display = 'none';
+
+        aiPost(aiUrls.optimizer, { alternatives: alts, criteria: criteria }).then(function (res) {
+            document.getElementById('ai-optimizer-loading').style.display = 'none';
+            if (!res.ok || !res.data.ok) { toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error'); return; }
+            var d = res.data.data;
+            var winner = d.recommended_idx;
+            var html = '<div class="alert alert-info py-2 mb-3"><i class="ri-checkbox-circle-line me-1"></i>'
+                     + '<strong><?= __('Polecam') ?>: ' + '<?= __('Trasa') ?> ' + (winner === 0 ? '<?= __('główna') ?>' : '<?= __('alternatywa') ?> ' + winner)
+                     + '</strong></div>';
+            html += '<div class="small mb-3"><i class="ri-quill-pen-line me-1"></i>' + escapeHtml(d.reasoning || '') + '</div>';
+            html += '<table class="table table-sm"><thead><tr><th>#</th><th><?= __('Szybkość') ?></th><th><?= __('Koszt') ?></th><th><?= __('Komfort') ?></th><th><?= __('Bezpieczeństwo') ?></th><th><?= __('Razem') ?></th><th></th></tr></thead><tbody>';
+            (d.scores || []).forEach(function (s) {
+                var isW = s.idx === winner;
+                html += '<tr' + (isW ? ' class="table-success"' : '') + '>'
+                     + '<td><strong>' + s.idx + '</strong>' + (isW ? ' 🏆' : '') + '</td>'
+                     + '<td>' + s.speed + '/10</td>'
+                     + '<td>' + s.cost + '/10</td>'
+                     + '<td>' + s.comfort + '/10</td>'
+                     + '<td>' + s.risk + '/10</td>'
+                     + '<td><strong>' + (s.overall || 0).toFixed(1) + '</strong></td>'
+                     + '<td class="small text-muted">' + escapeHtml(s.note || '') + '</td>'
+                     + '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '<button class="btn btn-info text-white btn-sm" id="btn-ai-optimizer-apply"><i class="ri-check-line me-1"></i><?= __('Zastosuj wybór') ?></button>';
+            document.getElementById('ai-optimizer-result').innerHTML = html;
+            document.getElementById('ai-optimizer-result').style.display = 'block';
+            document.getElementById('btn-ai-optimizer-apply').addEventListener('click', function () {
+                // Kliknij odpowiednią alternatywę z listy
+                var altCards = document.querySelectorAll('.alt-route-card');
+                if (altCards[winner]) altCards[winner].click();
+                bootstrap.Modal.getInstance(document.getElementById('aiOptimizerModal')).hide();
+                toast('<?= __('Zastosowano rekomendację AI') ?>', 'success');
+            });
+        }).catch(function (e) { toast('<?= __('Błąd AI:') ?> ' + e.message, 'error'); })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>';
+        });
+    });
+
+    // ── #11 AI Email Reply ───────────────────────────────────────────
+    document.getElementById('btn-ai-email-run').addEventListener('click', function () {
+        var btn = this;
+        var emailText = document.getElementById('ai-email-input').value.trim();
+        if (emailText.length < 10) { toast('<?= __('Wklej dłuższy email.') ?>', 'warning'); return; }
+        var routeCtx = null;
+        if (lastResponse && lastResponse.routes && lastResponse.routes[0]) {
+            var r = lastResponse.routes[0];
+            routeCtx = {
+                from: (lastResponse.points || [])[0],
+                to: (lastResponse.points || [])[(lastResponse.points || []).length - 1],
+                distance_km: r.distance_km,
+                duration_min: r.duration_min,
+                price_pln: parseFloat(document.getElementById('freight-revenue').value || 0) || null,
+            };
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+        document.getElementById('ai-email-loading').style.display = 'block';
+        document.getElementById('ai-email-result').style.display = 'none';
+
+        aiPost(aiUrls.email, { email: emailText, route: routeCtx || {} }).then(function (res) {
+            document.getElementById('ai-email-loading').style.display = 'none';
+            if (!res.ok || !res.data.ok) { toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error'); return; }
+            var d = res.data.data;
+            var intentLabels = {
+                'quote_request': '<span class="badge bg-primary">📋 <?= __('Zapytanie ofertowe') ?></span>',
+                'status_check': '<span class="badge bg-info">📍 <?= __('Sprawdzenie statusu') ?></span>',
+                'complaint': '<span class="badge bg-warning">⚠️ <?= __('Reklamacja') ?></span>',
+                'other': '<span class="badge bg-secondary">📨 <?= __('Inne') ?></span>'
+            };
+            var html = '<div class="mb-3">' + (intentLabels[d.intent] || intentLabels.other);
+            if (d.next_action) html += ' <span class="text-muted small ms-2">→ ' + escapeHtml(d.next_action) + '</span>';
+            html += '</div>';
+            html += '<div class="mb-2"><strong>' + escapeHtml(d.subject || '') + '</strong></div>';
+            html += '<ul class="nav nav-tabs nav-tabs-sm mb-2">'
+                  + '<li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#email-tab-pl">🇵🇱 PL</a></li>'
+                  + '<li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#email-tab-en">🇬🇧 EN</a></li>'
+                  + '</ul>'
+                  + '<div class="tab-content">'
+                  + '<div class="tab-pane fade show active" id="email-tab-pl"><pre class="p-3 bg-light border rounded" style="white-space:pre-wrap;font-family:inherit;font-size:.85rem">' + escapeHtml(d.body_pl || '') + '</pre></div>'
+                  + '<div class="tab-pane fade" id="email-tab-en"><pre class="p-3 bg-light border rounded" style="white-space:pre-wrap;font-family:inherit;font-size:.85rem">' + escapeHtml(d.body_en || '') + '</pre></div>'
+                  + '</div>';
+            html += '<button class="btn btn-secondary btn-sm mt-2" id="btn-ai-email-copy"><i class="ri-clipboard-line me-1"></i><?= __('Kopiuj odpowiedź') ?></button>';
+            document.getElementById('ai-email-result').innerHTML = html;
+            document.getElementById('ai-email-result').style.display = 'block';
+            document.getElementById('btn-ai-email-copy').addEventListener('click', function () {
+                var active = document.querySelector('#ai-email-result .tab-pane.active pre');
+                var text = active ? active.textContent : (d.body_pl || '');
+                if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
+                    toast('<?= __('Skopiowane') ?>', 'success');
+                });
+            });
+        }).catch(function (e) { toast('<?= __('Błąd AI:') ?> ' + e.message, 'error'); })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Generuj odpowiedź') ?>';
+        });
     });
 
     // Aktywuj/dezaktywuj AI buttons zależnie od stanu trasy

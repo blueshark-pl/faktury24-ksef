@@ -188,6 +188,59 @@ SYS;
     }
 
     /**
+     * Route optimizer: analizuje N alternatyw i rekomenduje najlepszą.
+     *
+     * @param array $alternatives Array of { idx, distance_km, duration_min, tolls_pln, fuel_pln, driver_pln, countries }
+     * @param array $criteria     ['priority' => 'time'|'cost'|'comfort'|'risk']
+     */
+    public function routeOptimizer(array $alternatives, array $criteria = []): array
+    {
+        $ctx = json_encode(['alternatives' => $alternatives, 'criteria' => $criteria], JSON_UNESCAPED_UNICODE);
+        $system = <<<SYS
+Jesteś dyspozytorem flot z 20 letnim doświadczeniem. Otrzymujesz N alternatyw trasy
+z metrykami (czas, koszt, kraje). Oceniasz każdą po 4 kryteriach (1-10):
+- speed: szybkość
+- cost: ekonomia
+- comfort: komfort jazdy (autostrady, dobre drogi)
+- risk: brak ryzyka (mało przejść granicznych, dobre kraje)
+
+Zwracasz JSON:
+{
+  "recommended_idx": <0-based index>,
+  "scores": [
+    {"idx": 0, "speed": 8, "cost": 6, "comfort": 9, "risk": 7, "overall": 7.5, "note": "krótkie 1-zd uzasadnienie"},
+    ...
+  ],
+  "reasoning": "Dlaczego polecam idx=N — 2-3 zdania po polsku."
+}
+SYS;
+        return $this->chatJson($system, $ctx, 1000);
+    }
+
+    /**
+     * AI email reply: na wklejony email klienta sugeruje odpowiedź z kalkulacją.
+     */
+    public function emailReply(string $clientEmail, array $routeCtx = []): array
+    {
+        $ctx = json_encode(['email' => $clientEmail, 'route' => $routeCtx], JSON_UNESCAPED_UNICODE);
+        $system = <<<SYS
+Jesteś dyspozytorem firmy transportowej. Otrzymujesz email od klienta (możliwe
+zapytanie o ofertę, status zlecenia, fakturę). Zwracasz JSON:
+{
+  "intent": "quote_request"|"status_check"|"complaint"|"other",
+  "subject": "PL temat odpowiedzi",
+  "body_pl": "PL pełna odpowiedź (form. grzecznościowa, ze stawką/ETA jeśli intent=quote_request)",
+  "body_en": "EN tłumaczenie tej samej odpowiedzi",
+  "extracted_route": {"from": "...", "to": "...", "weight_t": null|liczba, "date": "..."},
+  "next_action": "<co dyspozytor powinien teraz zrobić, krótko>"
+}
+Jeśli intent=quote_request i mamy kontekst route z ceną/dystansem — wpleć w body.
+Zachowuj profesjonalny ale przyjazny ton.
+SYS;
+        return $this->chatJson($system, $ctx, 1500);
+    }
+
+    /**
      * Driver brief: trasa → dokument-instrukcja dla kierowcy w wybranym języku.
      */
     public function driverBrief(array $routeContext, string $language = 'pl'): string
