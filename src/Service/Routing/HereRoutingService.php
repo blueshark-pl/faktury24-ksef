@@ -565,57 +565,54 @@ class HereRoutingService
 
         $stops = [];
         $seen = [];
-        $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
-        // HERE Places taxonomy:
-        //  700-7200 = Parking (regular)
-        //  700-7400 = Fuel / Gas Station (z 700-7400-0117 = truck-friendly fuel)
-        //  700-7600 = Rest Area / Truck Stop (z 700-7600-0116 = truck stop)
-        $categories = '700-7200,700-7400,700-7600';
-        $radiusM = 15000; // 15 km od sample point (domyślny zasięg Browse jest <1km)
-        foreach ($points as $pt) {
-            try {
-                $params = [
-                    'at'         => $pt['lat'] . ',' . $pt['lng'],
-                    'in'         => 'circle:' . $pt['lat'] . ',' . $pt['lng'] . ';r=' . $radiusM,
-                    'categories' => $categories,
-                    'limit'      => 20,
-                    'apiKey'     => $this->apiKey,
-                    'lang'       => 'pl-PL',
-                ];
-                $resp = $this->client->get($browseUrl, $params);
-                if (!$resp->isOk()) {
-                    Log::warning('HERE browse HTTP ' . $resp->getStatusCode() . ' at ' . $pt['lat'] . ',' . $pt['lng'] . ': ' . $resp->getStringBody());
-                    continue;
+        // Discover API — text search z lepszym zasięgiem. 3 queries per sample dla różnych typów.
+        $discoverUrl = 'https://discover.search.hereapi.com/v1/discover';
+        $queries = [
+            ['q' => 'truck stop',    'type' => 'truck_stop'],
+            ['q' => 'gas station',   'type' => 'fuel_station'],
+            ['q' => 'parking',       'type' => 'parking'],
+        ];
+        foreach ($points as $ptIdx => $pt) {
+            foreach ($queries as $qInfo) {
+                try {
+                    $resp = $this->client->get($discoverUrl, [
+                        'at'     => $pt['lat'] . ',' . $pt['lng'],
+                        'q'      => $qInfo['q'],
+                        'limit'  => 5,
+                        'apiKey' => $this->apiKey,
+                        'lang'   => 'pl-PL',
+                    ]);
+                    if (!$resp->isOk()) {
+                        Log::warning('HERE discover HTTP ' . $resp->getStatusCode() . ' (q=' . $qInfo['q'] . ') at ' . $pt['lat'] . ',' . $pt['lng'] . ': ' . $resp->getStringBody());
+                        continue;
+                    }
+                    $data = $resp->getJson();
+                    $items = $data['items'] ?? [];
+                    Log::debug('  Discover q=' . $qInfo['q'] . ' at sample #' . $ptIdx . ': ' . count($items) . ' items');
+                    foreach ($items as $item) {
+                        $id = (string)($item['id'] ?? '');
+                        if ($id === '' || isset($seen[$id])) continue;
+                        $seen[$id] = true;
+                        $catName = (string)($item['categories'][0]['name'] ?? '');
+                        $catId   = (string)($item['categories'][0]['id'] ?? '');
+                        $stops[] = [
+                            'id'          => $id,
+                            'title'       => (string)($item['title'] ?? ''),
+                            'address'     => (string)($item['address']['label'] ?? ''),
+                            'lat'         => (float)($item['position']['lat'] ?? 0),
+                            'lng'         => (float)($item['position']['lng'] ?? 0),
+                            'category'    => $catName,
+                            'category_id' => $catId,
+                            'distance'    => $item['distance'] ?? null,
+                            'type'        => $qInfo['type'],
+                        ];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('HERE discover error: ' . $e->getMessage());
                 }
-                $data = $resp->getJson();
-                foreach (($data['items'] ?? []) as $item) {
-                    $id = (string)($item['id'] ?? '');
-                    if ($id === '' || isset($seen[$id])) continue;
-                    $seen[$id] = true;
-                    $catId = (string)($item['categories'][0]['id'] ?? '');
-                    $catName = (string)($item['categories'][0]['name'] ?? '');
-                    // Detekcja typu po prefiksie kategorii
-                    $type = 'other';
-                    if (str_starts_with($catId, '700-7600')) $type = 'truck_stop';
-                    elseif (str_starts_with($catId, '700-7400')) $type = 'fuel_station';
-                    elseif (str_starts_with($catId, '700-7200')) $type = 'parking';
-                    $stops[] = [
-                        'id'          => $id,
-                        'title'       => (string)($item['title'] ?? ''),
-                        'address'     => (string)($item['address']['label'] ?? ''),
-                        'lat'         => (float)($item['position']['lat'] ?? 0),
-                        'lng'         => (float)($item['position']['lng'] ?? 0),
-                        'category'    => $catName,
-                        'category_id' => $catId,
-                        'distance'    => $item['distance'] ?? null,
-                        'type'        => $type,
-                    ];
-                }
-            } catch (\Throwable $e) {
-                Log::warning('HERE browse error: ' . $e->getMessage());
             }
         }
-        Log::debug('Truck POI search: ' . count($points) . ' samples, ' . count($stops) . ' results');
+        Log::debug('Truck POI search: ' . count($points) . ' samples × 3 queries, ' . count($stops) . ' unique results');
         return $stops;
     }
 
