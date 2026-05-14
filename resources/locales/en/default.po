@@ -2601,3 +2601,42 @@ msgstr "Factors"
 
 msgid "Brief skopiowany"
 msgstr "Brief copied"
+
+msgid "Euro"
+msgstr "Euro"
+
+msgid "Złoty polski"
+msgstr "Polish złoty"
+
+msgid "Dolar amerykański"
+msgstr "US Dollar"
+
+msgid "Funt brytyjski"
+msgstr "British Pound"
+
+msgid "Korona czeska"
+msgstr "Czech Koruna"
+
+msgid "Frank szwajcarski"
+msgstr "Swiss Franc"
+
+msgid "Korona norweska"
+msgstr "Norwegian Krone"
+
+msgid "Korona szwedzka"
+msgstr "Swedish Krona"
+
+msgid "Korona duńska"
+msgstr "Danish Krone"
+
+msgid "Forint węgierski"
+msgstr "Hungarian Forint"
+
+msgid "Lej rumuński"
+msgstr "Romanian Leu"
+
+msgid "Hrywna ukraińska"
+msgstr "Ukrainian Hryvnia"
+
+msgid "Kliknij i wybierz kraje…"
+msgstr "Click to select countries…"

@@ -81,6 +81,30 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     /* Dropdownów w hero nie obcinaj — Popper position:fixed (data-bs-strategy="fixed") */
     .rp-hero .dropdown-menu { z-index: 1080; }
 
+    /* Flag-icons w Select2 (waluty + kraje wykluczone) */
+    .fi { width: 1.2em; height: .9em; display: inline-block; vertical-align: middle; margin-right: .3em; border-radius: 2px;
+          box-shadow: 0 0 1px rgba(0,0,0,.4); }
+    .select2-results__option .fi { margin-right: .5em; }
+    /* Select2 dla planera: kompaktowy rozmiar dopasowany do form-control-sm */
+    .planer-select2 + .select2-container--default .select2-selection--single {
+        height: 31px; border-color: #ced4da; font-size: .875rem;
+    }
+    .planer-select2 + .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 29px; padding-left: .55rem; padding-right: 1.8rem;
+    }
+    .planer-select2 + .select2-container--default .select2-selection--single .select2-selection__arrow { height: 29px; }
+    .planer-select2 + .select2-container--default .select2-selection--multiple {
+        min-height: 31px; border-color: #ced4da; font-size: .8rem; padding: 1px 4px;
+    }
+    .planer-select2 + .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        font-size: .78rem; padding: 1px 6px 1px 4px; line-height: 1.45;
+        background: #eef2ff; border-color: #c7d2fe; color: #3730a3; margin-top: 3px;
+    }
+    .planer-select2 + .select2-container--default .select2-selection--multiple .select2-selection__choice__remove { color: #4f46e5; margin-right: 3px; }
+    .planer-select2 + .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+        font-size: .8rem; margin-top: 4px;
+    }
+
     /* Live pulse dot przy "Planer tras" gdy liczy */
     .live-dot {
         display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -530,7 +554,20 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small mb-1"><?= __('Waluta') ?></label>
-                        <select class="form-select form-select-sm" id="currency"><option value="EUR">EUR</option><option value="PLN">PLN</option></select>
+                        <select class="form-select form-select-sm planer-select2" id="currency">
+                            <option value="EUR" data-cc="eu" data-name="<?= __('Euro') ?>" selected>EUR</option>
+                            <option value="PLN" data-cc="pl" data-name="<?= __('Złoty polski') ?>">PLN</option>
+                            <option value="USD" data-cc="us" data-name="<?= __('Dolar amerykański') ?>">USD</option>
+                            <option value="GBP" data-cc="gb" data-name="<?= __('Funt brytyjski') ?>">GBP</option>
+                            <option value="CZK" data-cc="cz" data-name="<?= __('Korona czeska') ?>">CZK</option>
+                            <option value="CHF" data-cc="ch" data-name="<?= __('Frank szwajcarski') ?>">CHF</option>
+                            <option value="NOK" data-cc="no" data-name="<?= __('Korona norweska') ?>">NOK</option>
+                            <option value="SEK" data-cc="se" data-name="<?= __('Korona szwedzka') ?>">SEK</option>
+                            <option value="DKK" data-cc="dk" data-name="<?= __('Korona duńska') ?>">DKK</option>
+                            <option value="HUF" data-cc="hu" data-name="<?= __('Forint węgierski') ?>">HUF</option>
+                            <option value="RON" data-cc="ro" data-name="<?= __('Lej rumuński') ?>">RON</option>
+                            <option value="UAH" data-cc="ua" data-name="<?= __('Hrywna ukraińska') ?>">UAH</option>
+                        </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1"><?= __('Alternatywy') ?></label>
@@ -559,27 +596,27 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     </div>
                     <div class="col-12">
                         <label class="form-label small mb-1"><?= __('Wyklucz kraje') ?></label>
-                        <select class="form-select form-select-sm" id="exclude-countries" multiple size="3" style="font-size:.78rem">
-                            <option value="POL"><?= __('Polska') ?></option>
-                            <option value="DEU"><?= __('Niemcy') ?></option>
-                            <option value="CZE"><?= __('Czechy') ?></option>
-                            <option value="SVK"><?= __('Słowacja') ?></option>
-                            <option value="UKR"><?= __('Ukraina') ?></option>
-                            <option value="BLR"><?= __('Białoruś') ?></option>
-                            <option value="LTU"><?= __('Litwa') ?></option>
-                            <option value="LVA"><?= __('Łotwa') ?></option>
-                            <option value="AUT"><?= __('Austria') ?></option>
-                            <option value="HUN"><?= __('Węgry') ?></option>
-                            <option value="FRA"><?= __('Francja') ?></option>
-                            <option value="ITA"><?= __('Włochy') ?></option>
-                            <option value="ESP"><?= __('Hiszpania') ?></option>
-                            <option value="NLD"><?= __('Holandia') ?></option>
-                            <option value="BEL"><?= __('Belgia') ?></option>
-                            <option value="ROU"><?= __('Rumunia') ?></option>
-                            <option value="BGR"><?= __('Bułgaria') ?></option>
-                            <option value="CHE"><?= __('Szwajcaria') ?></option>
+                        <select class="form-select form-select-sm planer-select2" id="exclude-countries" multiple style="font-size:.78rem"
+                                data-placeholder="<?= __('Kliknij i wybierz kraje…') ?>">
+                            <option value="POL" data-cc="pl"><?= __('Polska') ?></option>
+                            <option value="DEU" data-cc="de"><?= __('Niemcy') ?></option>
+                            <option value="CZE" data-cc="cz"><?= __('Czechy') ?></option>
+                            <option value="SVK" data-cc="sk"><?= __('Słowacja') ?></option>
+                            <option value="UKR" data-cc="ua"><?= __('Ukraina') ?></option>
+                            <option value="BLR" data-cc="by"><?= __('Białoruś') ?></option>
+                            <option value="LTU" data-cc="lt"><?= __('Litwa') ?></option>
+                            <option value="LVA" data-cc="lv"><?= __('Łotwa') ?></option>
+                            <option value="AUT" data-cc="at"><?= __('Austria') ?></option>
+                            <option value="HUN" data-cc="hu"><?= __('Węgry') ?></option>
+                            <option value="FRA" data-cc="fr"><?= __('Francja') ?></option>
+                            <option value="ITA" data-cc="it"><?= __('Włochy') ?></option>
+                            <option value="ESP" data-cc="es"><?= __('Hiszpania') ?></option>
+                            <option value="NLD" data-cc="nl"><?= __('Holandia') ?></option>
+                            <option value="BEL" data-cc="be"><?= __('Belgia') ?></option>
+                            <option value="ROU" data-cc="ro"><?= __('Rumunia') ?></option>
+                            <option value="BGR" data-cc="bg"><?= __('Bułgaria') ?></option>
+                            <option value="CHE" data-cc="ch"><?= __('Szwajcaria') ?></option>
                         </select>
-                        <div class="form-text" style="font-size:.7rem"><?= __('Ctrl/Cmd + klik aby wybrać wiele') ?></div>
                     </div>
                 </div>
             </div>
@@ -1817,6 +1854,60 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     function enableExportButton() {
         document.getElementById('btn-export').disabled = false;
     }
+
+    // ═════════════════════════════════════════════════════════════════
+    // Select2 dla waluty i wykluczonych krajów (z flagami)
+    // ═════════════════════════════════════════════════════════════════
+    (function initFlagSelect2() {
+        if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.select2) return;
+
+        // Renderery używają data-cc z <option>, więc nie trzeba mapować w JS
+        function flagFromOption(option) {
+            if (!option || !option.element) return null;
+            return option.element.getAttribute('data-cc');
+        }
+        function tplCurrency(state) {
+            if (!state.id) return state.text;
+            var $el = jQuery(state.element);
+            var cc   = flagFromOption(state) || '';
+            var name = $el.attr('data-name') || '';
+            var code = (state.id || '').toUpperCase();
+            var html = '';
+            if (cc) html += '<span class="fi fi-' + cc + '"></span>';
+            html += '<strong>' + code + '</strong>';
+            if (name) html += ' <span class="text-muted small">' + name + '</span>';
+            return jQuery('<span>' + html + '</span>');
+        }
+        function tplCurrencySelected(state) {
+            if (!state.id) return state.text;
+            var cc = flagFromOption(state) || '';
+            var code = (state.id || '').toUpperCase();
+            return jQuery('<span>' + (cc ? '<span class="fi fi-' + cc + '"></span>' : '') + code + '</span>');
+        }
+        function tplCountry(state) {
+            if (!state.id) return state.text;
+            var cc = flagFromOption(state) || '';
+            return jQuery('<span>' + (cc ? '<span class="fi fi-' + cc + '"></span>' : '') + (state.text || '') + '</span>');
+        }
+
+        jQuery('#currency').select2({
+            width: '100%',
+            minimumResultsForSearch: Infinity,
+            templateResult: tplCurrency,
+            templateSelection: tplCurrencySelected,
+            dropdownParent: jQuery('#currency').closest('.collapse, .card, body')
+        });
+
+        jQuery('#exclude-countries').select2({
+            width: '100%',
+            placeholder: jQuery('#exclude-countries').attr('data-placeholder') || '',
+            allowClear: false,
+            closeOnSelect: false,
+            templateResult: tplCountry,
+            templateSelection: tplCountry,
+            dropdownParent: jQuery('#exclude-countries').closest('.collapse, .card, body')
+        });
+    })();
 
     // ═════════════════════════════════════════════════════════════════
     // AI FICZERY (OpenAI gpt-4o-mini)
