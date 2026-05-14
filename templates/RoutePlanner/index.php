@@ -814,8 +814,27 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 <i class="ri-truck-line me-1"></i>
                                 <?= __('Pojazd to ZESPÓŁ — wprowadź sumy: liczbę osi (ciągnik + naczepa), DMC zespołu, max nacisk osi. EU normatywny zespół: 16,5 m × 2,55 m × 4 m, 40 t, 11,5 t/oś napędowa (Dyr. 96/53/EC).') ?>
                             </div>
+                            <div class="mt-2 small">
+                                <strong><i class="ri-external-link-line me-1"></i><?= __('Zweryfikuj stawki na oficjalnych cennikach') ?>:</strong>
+                                <div class="d-flex flex-wrap gap-2 mt-1">
+                                    <a href="https://www.autostrada-a2.pl/Cennik-oplat,4" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇵🇱 A2 AWSA cennik</a>
+                                    <a href="https://www.stalexport-autostrady.pl/cenniki" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇵🇱 A4 Stalexport</a>
+                                    <a href="https://www.etoll.gov.pl/pojazdy-ciezarowe/oplaty/" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇵🇱 e-TOLL stawki</a>
+                                    <a href="https://www.toll-collect.de/de/toll_collect/bezahlen/maut_tarife/maut_tarife.html" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇩🇪 DE Toll Collect</a>
+                                    <a href="https://www.asfinag.at/maut/lkw-maut/" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇦🇹 AT ASFINAG</a>
+                                    <a href="https://mytocz.eu/pl/cennik" target="_blank" rel="noopener" class="badge bg-light text-primary text-decoration-none border">🇨🇿 CZ MYTO</a>
+                                </div>
+                            </div>
+                            <div class="mt-2 small text-warning">
+                                <i class="ri-alert-line me-1"></i>
+                                <strong>UWAGA:</strong> HERE Routing API nie zwraca informacji o ZASTOSOWANEJ kategorii pojazdu per opłata (pole <code>vehicle_category</code> puste).
+                                Stawki mogą się różnić od oficjalnych cenników — porównaj z linkami powyżej dla weryfikacji.
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Stawki referencyjne dla PL operatorów (gdy występują) -->
+                    <div id="tolls-ref-rates" style="display:none"></div>
 
                     <!-- Winiety -->
                     <div id="vignettes-section" class="px-3 pt-3 pb-2" style="display:none">
@@ -2663,6 +2682,37 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             vigList.innerHTML = '';
         }
 
+        // Wykryj A2 AWSA i Stalexport — pokaż info porównawcze
+        var hasAwsa = route.tolls_breakdown.some(function (f) {
+            return /AUTOSTRADA WIELKOPOLSKA|AWSA|A2/i.test(f.system || '');
+        });
+        var hasStalexport = route.tolls_breakdown.some(function (f) {
+            return /STALEXPORT|A4 KAT|A1 KAT/i.test(f.system || '');
+        });
+        var refSection = document.getElementById('tolls-ref-rates');
+        if (refSection) {
+            if (hasAwsa || hasStalexport) {
+                var refText = '<div class="alert alert-light border py-2 mb-2 small mx-3 mt-2">'
+                    + '<strong><i class="ri-information-line me-1"></i><?= __('Stawki referencyjne dla zespołu ciężarowego 5-osi (źródło: cenniki operatorów 2024)') ?></strong>';
+                if (hasAwsa) {
+                    refText += '<div class="mt-1"><strong>A2 AWSA Świecko-Konin</strong> (pełna trasa ~250 km): '
+                            + 'kat. 4 (2-3 osi) ≈ <strong>340 PLN</strong> · '
+                            + 'kat. 5 (4+ osi) ≈ <strong>570 PLN</strong></div>';
+                }
+                if (hasStalexport) {
+                    refText += '<div class="mt-1"><strong>A4 Stalexport Kraków-Katowice</strong> (61 km): '
+                            + 'kat. 4 (2-3 osi) ≈ <strong>33 PLN</strong> · '
+                            + 'kat. 5 (4+ osi) ≈ <strong>55 PLN</strong></div>';
+                }
+                refText += '<div class="text-muted small mt-1">Sprawdź linki do cenników w sekcji wyżej. Jeśli stawki HERE znacznie odbiegają — to może być stary cennik HERE lub inna kategoria.</div>';
+                refText += '</div>';
+                refSection.innerHTML = refText;
+                refSection.style.display = '';
+            } else {
+                refSection.style.display = 'none';
+            }
+        }
+
         // L1: Tabela opłat
         var tbody = document.getElementById('tolls-tbody');
         tbody.innerHTML = '';
@@ -2691,11 +2741,12 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             }
             var priceCell = '<strong>' + fmtNum(mainPrice, 2) + '</strong> ' + escapeHtml(mainCur) + origDisplay;
             // Klasa HERE (vehicle_category) + pricing method
+            // Dla PL/DE HERE NIE zwraca tej informacji (puste pole) — informujemy o tym
             var classCell = '';
             if (f.vehicle_category) {
                 classCell = '<span class="badge bg-info-subtle text-info border">' + escapeHtml(f.vehicle_category) + '</span>';
             } else {
-                classCell = '<span class="text-muted small">—</span>';
+                classCell = '<span class="text-muted small" title="<?= __('HERE nie ujawnia kategorii dla tego operatora') ?>">— <i class="ri-question-line"></i></span>';
             }
             if (f.pricing_method) {
                 var methodLabel = ({
