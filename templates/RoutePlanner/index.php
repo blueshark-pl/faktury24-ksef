@@ -781,6 +781,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <div class="card-header py-2 d-flex align-items-center flex-wrap gap-2">
                         <strong><i class="ri-coin-line me-1 text-warning"></i><?= __('Szczegółowe opłaty drogowe') ?></strong>
                         <span id="tolls-summary" class="text-muted small ms-2"></span>
+                        <button type="button" class="btn btn-sm btn-outline-info" id="btn-toll-categories" title="<?= __('Pokaż klasyfikację pojazdu per kraj') ?>" style="display:none">
+                            <i class="ri-information-line me-1"></i><?= __('Klasy pojazdu') ?>
+                        </button>
                         <div class="ms-auto d-flex gap-2">
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-toll-markers" title="<?= __('Pokaż bramki na mapie') ?>">
                                 <i class="ri-map-pin-line me-1"></i><?= __('Bramki na mapie') ?>
@@ -793,6 +796,23 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                             </button>
                         </div>
                     </div>
+                    <!-- Klasyfikacja pojazdu per kraj (collapse) -->
+                    <div id="tolls-categories" class="px-3 pt-3" style="display:none">
+                        <div class="alert alert-info py-2 mb-2 small">
+                            <div class="mb-2"><strong><i class="ri-truck-line me-1"></i><?= __('Parametry pojazdu wysłane do HERE') ?>:</strong>
+                                <span id="tolls-veh-params" class="ms-2"></span>
+                            </div>
+                            <div><strong><i class="ri-shield-check-line me-1"></i><?= __('Klasyfikacja per kraj') ?>:</strong>
+                                <span class="text-muted">(<?= __('orientacyjnie wg standardów krajowych') ?>)</span>
+                            </div>
+                            <div id="tolls-classes" class="d-flex flex-wrap gap-2 mt-2"></div>
+                            <div class="mt-2 small text-muted">
+                                <i class="ri-information-line me-1"></i>
+                                <?= __('HERE wylicza opłaty automatycznie na podstawie tych parametrów. Jeśli klasa nie zgadza się z oczekiwaniami — sprawdź ustawienia pojazdu (liczba osi, masa, EURO).') ?>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Winiety -->
                     <div id="vignettes-section" class="px-3 pt-3 pb-2" style="display:none">
                         <div class="alert alert-warning py-2 mb-2 small d-flex align-items-start gap-2">
@@ -1098,8 +1118,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             'id' => (string)$v->id,
             'name' => (string)$v->name,
             'plate' => (string)$v->plate,
-            'rate_per_km' => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
+            'rate_per_km'     => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
             'gross_weight_kg' => $v->gross_weight_kg,
+            'axle_load_kg'    => $v->axle_load_kg     ?? null,
+            'height_cm'       => $v->height_cm        ?? null,
+            'width_cm'        => $v->width_cm         ?? null,
+            'length_cm'       => $v->length_cm        ?? null,
+            'axle_count'      => $v->axle_count       ?? null,
+            'tunnel_category' => $v->tunnel_category  ?? null,
+            'emission_class'  => $v->emission_class   ?? null,
+            'hazardous_goods' => $v->hazardous_goods  ?? null,
         ];
     }, $vehicles), JSON_UNESCAPED_UNICODE) ?>;
     function getSelectedVehicle() {
@@ -2376,6 +2404,126 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }).join(' ');
     }
 
+    // Klasyfikacja pojazdu per kraj (orientacyjne — HERE może mieć inną logikę)
+    function vehicleTollClasses(v) {
+        if (!v) return null;
+        var axles = v.axle_count || 0;
+        var weight = v.gross_weight_kg || 0;
+        var weightT = weight / 1000;
+        var euro = v.emission_class || '';
+
+        // Italia (Autostrade): A=lekkie auto, B=van 2osie<2m wys, 3=2-osi heavy/bus, 4=3-osi, 5=4+ osi
+        var it;
+        if (axles >= 4) it = '5 (4+ osi)';
+        else if (axles === 3) it = '4 (3 osi)';
+        else if (axles === 2 && weight >= 3500) it = '3 (2 osi ciężki/bus)';
+        else if (axles === 2) it = 'B (2 osi ≤3,5t)';
+        else it = 'A (lekkie)';
+
+        // Francja (ASFA péages): 1=auto, 2=2-osi 2-3.5t, 3=2-osi >3.5t lub bus, 4=3+ osi ciężarówka, 5=motocykl
+        var fr;
+        if (axles >= 3) fr = '4 (3+ osi)';
+        else if (axles === 2 && weight > 3500) fr = '3 (2 osi >3,5t/bus)';
+        else if (weight > 3500) fr = '3 (≥3,5t)';
+        else fr = '2 (osob./van)';
+
+        // Niemcy (Maut): kategoria osi: Achsklasse 2, 3, 4, 5+. Plus EURO class i Gewichtsklasse.
+        var de;
+        if (axles >= 5) de = '5+ osi (' + axles + ')';
+        else if (axles >= 4) de = '4 osi';
+        else if (axles === 3) de = '3 osi';
+        else if (axles === 2) de = '2 osi';
+        else de = 'brak danych osi';
+        if (euro) de += ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro);
+        // Maut: dodatkowo kategoria masy
+        if (weightT >= 18)       de += ' · Gewichtsklasse C (≥18t)';
+        else if (weightT >= 7.5) de += ' · Gewichtsklasse B (7,5–18t)';
+        else if (weightT >= 3.5) de += ' · Gewichtsklasse A (3,5–7,5t)';
+
+        // Austria (GO-Box): Kategoria A1 (2-osi ≤3,5t), A2 (2-osi >3,5t), 3 (3-osi), 4+ (4+ osi)
+        var at;
+        if (axles >= 4) at = 'Kat. 4+ (' + axles + ' osi)';
+        else if (axles === 3) at = 'Kat. 3 (3 osi)';
+        else if (axles === 2 && weight > 3500) at = 'Kat. 2 (2 osi >3,5t)';
+        else if (axles === 2) at = 'A1 (2 osi ≤3,5t)';
+        else at = 'lekkie';
+
+        // Polska (e-TOLL): kategorie wg masy. >3.5t = ciężarowy, plus EURO.
+        var pl;
+        if (weightT >= 12) pl = 'kat. 4 (≥12t)';
+        else if (weightT >= 3.5) pl = 'kat. 3 (3,5–12t)';
+        else pl = 'lekkie (≤3,5t, bez e-TOLL)';
+        if (euro) pl += ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro);
+
+        // Czechy (MYTO CZ) — kategoria osi + EURO
+        var cz;
+        if (axles >= 5) cz = '4 (5+ osi)';
+        else if (axles >= 4) cz = '3 (4 osi)';
+        else if (axles >= 3) cz = '2 (3 osi)';
+        else if (axles >= 2) cz = '1 (2 osi)';
+        else cz = 'brak';
+
+        // Szwajcaria (LSVA) — wagomierz; klasa wg EURO + 28-32-40t
+        var ch;
+        if (weightT > 0) ch = 'LSVA · ' + weightT.toFixed(1) + 't' + (euro ? ' · ' + (euro.toUpperCase().includes('EURO') ? euro : 'EURO ' + euro) : '');
+        else ch = 'brak';
+
+        return { it: it, fr: fr, de: de, at: at, pl: pl, cz: cz, ch: ch };
+    }
+
+    function renderTollCategories(vehicle) {
+        var btn = document.getElementById('btn-toll-categories');
+        if (!vehicle) { btn.style.display = 'none'; return; }
+        btn.style.display = '';
+        var classes = vehicleTollClasses(vehicle);
+        if (!classes) return;
+
+        // Parametry pojazdu — tylko te które są
+        var paramParts = [];
+        if (vehicle.axle_count) paramParts.push('<strong>' + vehicle.axle_count + ' osi</strong>');
+        if (vehicle.gross_weight_kg) paramParts.push((vehicle.gross_weight_kg / 1000).toFixed(1) + 't');
+        if (vehicle.axle_load_kg) paramParts.push((vehicle.axle_load_kg / 1000).toFixed(1) + 't/oś');
+        if (vehicle.height_cm) paramParts.push('h=' + (vehicle.height_cm / 100).toFixed(1) + 'm');
+        if (vehicle.length_cm) paramParts.push('L=' + (vehicle.length_cm / 100).toFixed(1) + 'm');
+        if (vehicle.width_cm)  paramParts.push('w=' + (vehicle.width_cm / 100).toFixed(1) + 'm');
+        if (vehicle.emission_class) paramParts.push('<span class="badge bg-success">' + (vehicle.emission_class.toUpperCase().includes('EURO') ? vehicle.emission_class : 'EURO ' + vehicle.emission_class) + '</span>');
+        if (vehicle.tunnel_category) paramParts.push('Tunel ' + vehicle.tunnel_category);
+        if (vehicle.hazardous_goods) paramParts.push('<span class="badge bg-danger-subtle text-danger border">ADR</span>');
+        if (!paramParts.length) paramParts.push('<em class="text-muted">brak danych pojazdu — HERE traktuje jako osobowy</em>');
+        document.getElementById('tolls-veh-params').innerHTML = paramParts.join(' · ');
+
+        // Klasy per kraj
+        var countryMap = [
+            ['pl', 'Polska',     classes.pl],
+            ['de', 'Niemcy',     classes.de],
+            ['cz', 'Czechy',     classes.cz],
+            ['at', 'Austria',    classes.at],
+            ['ch', 'Szwajcaria', classes.ch],
+            ['fr', 'Francja',    classes.fr],
+            ['it', 'Włochy',     classes.it],
+        ];
+        document.getElementById('tolls-classes').innerHTML = countryMap.map(function (cc) {
+            return '<div class="border rounded p-2 d-flex flex-column" style="min-width:160px;background:white">'
+                 + '<div><span class="fi fi-' + cc[0] + '"></span> <strong>' + escapeHtml(cc[1]) + '</strong></div>'
+                 + '<div class="small mt-1">' + escapeHtml(cc[2]) + '</div>'
+                 + '</div>';
+        }).join('');
+    }
+
+    // Toggle przycisku „Klasy pojazdu"
+    (function bindTollCategoriesToggle() {
+        var btn = document.getElementById('btn-toll-categories');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var sec = document.getElementById('tolls-categories');
+            var visible = sec.style.display !== 'none';
+            sec.style.display = visible ? 'none' : '';
+            btn.classList.toggle('btn-info', !visible);
+            btn.classList.toggle('btn-outline-info', visible);
+            btn.classList.toggle('text-white', !visible);
+        });
+    })();
+
     function renderTollsBreakdown(route) {
         currentTollsData = null;
         var card = document.getElementById('tolls-card');
@@ -2391,6 +2539,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             total: route.tolls_total,
             currency: route.tolls_currency || 'EUR'
         };
+
+        // Klasyfikacja pojazdu per kraj (do toggle'a)
+        renderTollCategories(getSelectedVehicle());
 
         // Summary po nagłówku
         var summary = document.getElementById('tolls-summary');

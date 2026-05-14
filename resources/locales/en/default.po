@@ -2952,3 +2952,21 @@ msgstr "Error fetching booths."
 
 msgid "Brak bramek na tej trasie (autostrady bezbramkowe)"
 msgstr "No toll booths on this route (gateless tolling)"
+
+msgid "Pokaż klasyfikację pojazdu per kraj"
+msgstr "Show vehicle classification per country"
+
+msgid "Klasy pojazdu"
+msgstr "Vehicle classes"
+
+msgid "Parametry pojazdu wysłane do HERE"
+msgstr "Vehicle parameters sent to HERE"
+
+msgid "Klasyfikacja per kraj"
+msgstr "Classification per country"
+
+msgid "orientacyjnie wg standardów krajowych"
+msgstr "approximated per national standards"
+
+msgid "HERE wylicza opłaty automatycznie na podstawie tych parametrów. Jeśli klasa nie zgadza się z oczekiwaniami — sprawdź ustawienia pojazdu (liczba osi, masa, EURO)."
+msgstr "HERE auto-calculates tolls from these parameters. If the class differs from expectation, check vehicle settings (axle count, weight, EURO)."
