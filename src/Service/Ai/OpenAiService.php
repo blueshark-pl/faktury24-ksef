@@ -241,6 +241,45 @@ SYS;
     }
 
     /**
+     * Predykcja realnego ETA — AI ocenia o ile HERE ETA się myli na bazie
+     * sezonu, dnia tygodnia, godziny startu, krajów, ADR, charakteru trasy.
+     *
+     * @param array $context  ['distance_km', 'duration_min_here', 'departure_time', 'countries',
+     *                         'border_crossings', 'adr_class', 'season', 'day_of_week', 'hour',
+     *                         'highway_pct', 'weather_warnings']
+     */
+    public function predictDelay(array $context): array
+    {
+        $ctx = json_encode($context, JSON_UNESCAPED_UNICODE);
+        $system = <<<SYS
+Jesteś dyspozytorem floty z 20-letnim doświadczeniem. Otrzymujesz parametry trasy.
+HERE Maps szacuje czas tylko z perspektywy warunków drogowych (limit prędkości,
+typ drogi). NIE uwzględnia:
+- Korków w godzinach szczytu (7-9, 16-19 w dni robocze)
+- Oczekiwań na przejściach granicznych (UA/BLR + 4h średnio, CH +30min)
+- Czasu załadunku/rozładunku w magazynach (60-120min per stop)
+- AETR przerw (kierowca musi się zatrzymać co 4,5h)
+- Pogody (zimą deszcz/śnieg +20%, lato upały +5%)
+- Niedziel/świąt z zakazami truck (musi czekać do 22)
+
+Zwracasz JSON:
+{
+  "predicted_total_min": <int — realny czas całkowity W MINUTACH>,
+  "delay_min": <int — różnica vs HERE (dodatnie = wolniej)>,
+  "delay_pct": <float — % różnica vs HERE>,
+  "confidence": "low|medium|high",
+  "factors": [
+    {"name": "Korki w Warszawie 16-19", "impact_min": 45, "type": "traffic|border|weather|loading|rest|ban"},
+    ...
+  ],
+  "reasoning": "2-3 zdania po polsku wyjaśniające główne czynniki",
+  "recommendation": "konkretna sugestia np. 'startuj o 22:00 żeby uniknąć korków DE'"
+}
+SYS;
+        return $this->chatJson($system, $ctx, 1200);
+    }
+
+    /**
      * Driver brief: trasa → dokument-instrukcja dla kierowcy w wybranym języku.
      */
     public function driverBrief(array $routeContext, string $language = 'pl'): string

@@ -225,6 +225,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/trasy/ai/driver-brief',     ['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']);
         $builder->post('/trasy/ai/route-optimizer',  ['controller' => 'RoutePlanner', 'action' => 'aiRouteOptimizer']);
         $builder->post('/trasy/ai/email-reply',      ['controller' => 'RoutePlanner', 'action' => 'aiEmailReply']);
+        $builder->post('/trasy/ai/delay-prediction', ['controller' => 'RoutePlanner', 'action' => 'aiDelayPrediction']);
+        $builder->post('/trasy/optimize-multileg',   ['controller' => 'RoutePlanner', 'action' => 'optimizeMultileg']);
         $builder->post('/trasy/weather',             ['controller' => 'RoutePlanner', 'action' => 'weather']);
         $builder->post('/trasy/truck-pois',           ['controller' => 'RoutePlanner', 'action' => 'truckPois']);
         $builder->post('/trasy/toll-booths',           ['controller' => 'RoutePlanner', 'action' => 'tollBooths']);

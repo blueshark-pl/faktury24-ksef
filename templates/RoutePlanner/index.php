@@ -405,6 +405,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <i class="ri-user-voice-line me-2 text-warning"></i><?= __('Brief dla kierowcy') ?></a></li>
                     <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-optimizer-open">
                         <i class="ri-compass-3-line me-2 text-info"></i><?= __('Wybierz najlepszą alternatywę') ?></a></li>
+                    <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-delay-open">
+                        <i class="ri-time-line me-2 text-danger"></i><?= __('Predykcja realnego ETA') ?></a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aiEmailModal">
                         <i class="ri-mail-line me-2 text-secondary"></i><?= __('Odpowiedź na email klienta') ?></a></li>
@@ -443,6 +445,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             <button type="button" class="btn btn-sm btn-hero" id="btn-cmr" disabled
                     title="<?= __('Generator listu przewozowego CMR') ?>">
                 <i class="ri-file-list-3-line me-1"></i>CMR
+            </button>
+            <button type="button" class="btn btn-sm btn-hero" id="btn-multileg"
+                    title="<?= __('Optymalizator wielu zleceń (TSP/PDP)') ?>">
+                <i class="ri-shuffle-line me-1"></i><?= __('Multi-leg') ?>
             </button>
             <button type="button" class="btn btn-sm btn-hero" id="btn-share" disabled
                     title="<?= __('Kopiuj link do schowka') ?>">
@@ -1171,6 +1177,54 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
   </div>
 </div>
 
+<!-- #5 Multi-leg optimizer modal -->
+<div class="modal fade" id="multilegModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #8b5cf6, #a855f7); color: white;">
+        <h5 class="modal-title"><i class="ri-shuffle-line me-2"></i><?= __('Optymalizator multi-leg (2-4 ładunki)') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-3">
+          <i class="ri-information-line me-1"></i>
+          <?= __('Dodaj kilka zleceń (każde = pickup + dropoff). Algorytm znajdzie kolejność z minimum empty miles, respektując zasadę: pickup MUSI być przed dropoff.') ?>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label small mb-1"><i class="ri-home-line me-1"></i><?= __('Punkt startowy (opcjonalnie)') ?></label>
+            <input type="text" class="form-control form-control-sm" id="ml-start" placeholder="<?= __('Baza / aktualna pozycja') ?>">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1"><i class="ri-map-pin-line me-1"></i><?= __('Punkt powrotu (opcjonalnie)') ?></label>
+            <input type="text" class="form-control form-control-sm" id="ml-end" placeholder="<?= __('Najczęściej ta sama baza') ?>">
+          </div>
+        </div>
+
+        <div id="ml-loads-list"></div>
+
+        <button type="button" class="btn btn-outline-primary btn-sm w-100 mt-2" id="btn-ml-add">
+            <i class="ri-add-line me-1"></i><?= __('Dodaj zlecenie') ?>
+        </button>
+
+        <div id="ml-loading" style="display:none" class="text-center py-4 mt-3">
+          <div class="spinner-border text-primary"></div>
+          <div class="mt-2 small text-muted"><?= __('Optymalizuję trasy…') ?></div>
+        </div>
+
+        <div id="ml-result" style="display:none" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-primary" id="btn-ml-optimize">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Optymalizuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- #17 Compare routes modal -->
 <div class="modal fade" id="compareModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -1181,6 +1235,32 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
       </div>
       <div class="modal-body">
         <div id="compare-modal-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- #13 AI Delay Prediction modal -->
+<div class="modal fade" id="aiDelayModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #dc2626, #ef4444); color: white;">
+        <h5 class="modal-title"><i class="ri-time-line me-2"></i><?= __('AI — Predykcja realnego ETA') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2">
+          <i class="ri-information-line me-1"></i>
+          <?= __('HERE szacuje czas tylko po warunkach drogowych. AI uwzględnia korki, granice, czas załadunku, pogodę, AETR przerwy.') ?>
+        </div>
+        <div id="ai-delay-loading" style="display:none" class="text-center py-4">
+          <div class="spinner-border text-danger"></div>
+          <div class="mt-2 small text-muted"><?= __('Analizuję historię i warunki…') ?></div>
+        </div>
+        <div id="ai-delay-result" style="display:none"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
@@ -3960,6 +4040,193 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // CRLF — zgodnie z RFC 5545
         return lines.join('\r\n');
     }
+    // #5 Multi-leg optimization — TSP/PDP dla wielu zleceń
+    var mlLoadsCount = 0;
+    var multilegUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'optimizeMultileg']) ?>';
+
+    function renderMlLoad(idx) {
+        return '<div class="card mb-2" data-load-idx="' + idx + '">'
+            + '<div class="card-body py-2">'
+            + '<div class="d-flex align-items-center mb-2">'
+            +   '<strong class="text-primary"><?= __('Zlecenie') ?> #' + (idx + 1) + '</strong>'
+            +   '<input type="text" class="form-control form-control-sm ms-2 ml-load-name" placeholder="<?= __('Nazwa (np. ABC Sp. z o.o.)') ?>" style="max-width:250px">'
+            +   '<button type="button" class="btn btn-sm btn-link text-danger ms-auto ml-remove-load"><i class="ri-close-line"></i></button>'
+            + '</div>'
+            + '<div class="row g-2">'
+            +   '<div class="col-md-5">'
+            +     '<label class="form-label small mb-1 text-success"><i class="ri-arrow-up-circle-line"></i> <?= __('Załadunek') ?></label>'
+            +     '<input type="text" class="form-control form-control-sm ml-pickup" placeholder="<?= __('Adres załadunku') ?>">'
+            +   '</div>'
+            +   '<div class="col-md-5">'
+            +     '<label class="form-label small mb-1 text-danger"><i class="ri-arrow-down-circle-line"></i> <?= __('Rozładunek') ?></label>'
+            +     '<input type="text" class="form-control form-control-sm ml-dropoff" placeholder="<?= __('Adres rozładunku') ?>">'
+            +   '</div>'
+            +   '<div class="col-md-2">'
+            +     '<label class="form-label small mb-1"><i class="ri-weight-line"></i> <?= __('Masa (kg)') ?></label>'
+            +     '<input type="number" class="form-control form-control-sm ml-weight" placeholder="np. 12000">'
+            +   '</div>'
+            + '</div></div></div>';
+    }
+
+    function addMlLoad() {
+        if (mlLoadsCount >= 4) { toast('<?= __('Maksymalnie 4 zlecenia.') ?>', 'warning'); return; }
+        document.getElementById('ml-loads-list').insertAdjacentHTML('beforeend', renderMlLoad(mlLoadsCount));
+        mlLoadsCount++;
+        bindMlRemoveHandlers();
+    }
+    function bindMlRemoveHandlers() {
+        document.querySelectorAll('.ml-remove-load').forEach(function (btn) {
+            btn.onclick = function () {
+                btn.closest('[data-load-idx]').remove();
+                mlLoadsCount--;
+                // Renumeracja
+                document.querySelectorAll('#ml-loads-list [data-load-idx]').forEach(function (el, i) {
+                    el.dataset.loadIdx = i;
+                    el.querySelector('strong').textContent = '<?= __('Zlecenie') ?> #' + (i + 1);
+                });
+            };
+        });
+    }
+
+    document.getElementById('btn-multileg').addEventListener('click', function () {
+        // Reset modala
+        document.getElementById('ml-loads-list').innerHTML = '';
+        mlLoadsCount = 0;
+        document.getElementById('ml-result').style.display = 'none';
+        document.getElementById('ml-start').value = '';
+        document.getElementById('ml-end').value = '';
+        // Pre-fill 2 zlecenia
+        addMlLoad(); addMlLoad();
+        new bootstrap.Modal(document.getElementById('multilegModal')).show();
+    });
+
+    document.getElementById('btn-ml-add').addEventListener('click', addMlLoad);
+
+    document.getElementById('btn-ml-optimize').addEventListener('click', function () {
+        var btn = this;
+        var loadCards = document.querySelectorAll('#ml-loads-list [data-load-idx]');
+        if (loadCards.length < 1) { toast('<?= __('Dodaj minimum 1 zlecenie.') ?>', 'warning'); return; }
+
+        var loads = [];
+        var hasError = false;
+        loadCards.forEach(function (card, i) {
+            var pickup = card.querySelector('.ml-pickup').value.trim();
+            var dropoff = card.querySelector('.ml-dropoff').value.trim();
+            if (!pickup || !dropoff) {
+                hasError = true;
+                toast('<?= __('Wpisz adresy załadunku/rozładunku dla zlecenia #') ?>' + (i + 1), 'error');
+                return;
+            }
+            loads.push({
+                name: card.querySelector('.ml-load-name').value || ('Load ' + (i + 1)),
+                pickup: { address: pickup },
+                dropoff: { address: dropoff },
+                weight_kg: parseFloat(card.querySelector('.ml-weight').value) || null,
+            });
+        });
+        if (hasError) return;
+
+        var startAddr = document.getElementById('ml-start').value.trim();
+        var endAddr = document.getElementById('ml-end').value.trim();
+
+        var fd = new FormData();
+        loads.forEach(function (L, idx) {
+            fd.append('loads[' + idx + '][name]', L.name);
+            fd.append('loads[' + idx + '][pickup][address]', L.pickup.address);
+            fd.append('loads[' + idx + '][dropoff][address]', L.dropoff.address);
+            if (L.weight_kg) fd.append('loads[' + idx + '][weight_kg]', String(L.weight_kg));
+        });
+        if (startAddr) fd.append('start[address]', startAddr);
+        if (endAddr) fd.append('end[address]', endAddr);
+        fd.append('_csrfToken', csrf);
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+        document.getElementById('ml-loading').style.display = 'block';
+        document.getElementById('ml-result').style.display = 'none';
+
+        fetch(multilegUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            document.getElementById('ml-loading').style.display = 'none';
+            if (!res || !res.ok) {
+                toast((res && res.message) || '<?= __('Błąd optymalizacji') ?>', 'error');
+                return;
+            }
+            renderMlResult(res.data);
+        })
+        .catch(function (e) { toast('<?= __('Błąd:') ?> ' + e.message, 'error'); })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Optymalizuj') ?>';
+            document.getElementById('ml-loading').style.display = 'none';
+        });
+    });
+
+    function renderMlResult(data) {
+        var result = document.getElementById('ml-result');
+        var best = data.best;
+        if (!best) { result.innerHTML = '<div class="alert alert-warning">Brak optymalnego rozwiązania.</div>'; result.style.display = 'block'; return; }
+
+        var savings = data.best_savings_km;
+        var savingsPct = data.best_savings_pct;
+        var savingsColor = savingsPct >= 10 ? 'success' : savingsPct >= 3 ? 'info' : 'secondary';
+
+        var html = '<div class="alert alert-' + savingsColor + ' py-2">'
+            + '<i class="ri-trophy-line me-1"></i>'
+            + '<strong><?= __('Oszczędność') ?>: ' + fmtNum(savings, 1) + ' km (' + fmtNum(savingsPct, 1) + '%)</strong>'
+            + ' &nbsp;vs naive order: ' + fmtNum(data.baseline_km, 1) + ' km'
+            + ' &nbsp;|&nbsp; Optymalna: <strong>' + fmtNum(best.distance_km, 1) + ' km</strong>'
+            + ' &nbsp;|&nbsp; Sprawdzono <strong>' + data.orderings_evaluated + '</strong> kombinacji'
+            + '</div>';
+
+        html += '<h6 class="mb-2"><i class="ri-route-fill text-primary me-1"></i><?= __('Optymalna kolejność') ?>:</h6>';
+        html += '<div class="list-group mb-3">';
+        best.waypoints.forEach(function (wp, i) {
+            var icon, color, label;
+            if (wp.type === 'start')   { icon = 'ri-home-line';            color = 'primary';   label = '<?= __('Start') ?>'; }
+            else if (wp.type === 'end'){ icon = 'ri-map-pin-line';         color = 'primary';   label = '<?= __('Powrót') ?>'; }
+            else if (wp.type === 'pickup'){ icon = 'ri-arrow-up-circle-line'; color = 'success'; label = '<?= __('ZAŁADUNEK') ?> · ' + escapeHtml(wp.load_name); }
+            else { icon = 'ri-arrow-down-circle-line'; color = 'danger'; label = '<?= __('ROZŁADUNEK') ?> · ' + escapeHtml(wp.load_name); }
+            html += '<div class="list-group-item d-flex align-items-center">'
+                + '<span class="badge bg-' + color + ' me-2">' + (i + 1) + '</span>'
+                + '<i class="' + icon + ' text-' + color + ' me-2"></i>'
+                + '<div class="flex-grow-1"><strong>' + label + '</strong><div class="text-muted small">' + escapeHtml(wp.address) + '</div></div>'
+                + '</div>';
+        });
+        html += '</div>';
+
+        if (data.alternatives && data.alternatives.length) {
+            html += '<details class="mb-3"><summary class="text-muted small"><?= __('Pokaż') ?> ' + data.alternatives.length + ' <?= __('alternatywnych rozwiązań') ?></summary>';
+            data.alternatives.forEach(function (alt, i) {
+                html += '<div class="ms-3 mt-2 small text-muted">'
+                    + '<strong>Alt #' + (i + 1) + ':</strong> ' + fmtNum(alt.distance_km, 1) + ' km '
+                    + '(<?= __('oszczędność') ?>: ' + fmtNum(alt.savings_km, 1) + ' km / ' + fmtNum(alt.savings_pct, 1) + '%)<br>'
+                    + alt.waypoints.map(function (w) { return w.type === 'pickup' ? 'P' : (w.type === 'dropoff' ? 'D' : (w.type === 'start' ? 'S' : 'E')) + (w.load_name ? ('(' + w.load_name + ')') : ''); }).join(' → ')
+                    + '</div>';
+            });
+            html += '</details>';
+        }
+
+        html += '<button class="btn btn-success" id="btn-ml-apply"><i class="ri-check-line me-1"></i><?= __('Zastosuj do planera') ?></button>';
+        result.innerHTML = html;
+        result.style.display = 'block';
+
+        document.getElementById('btn-ml-apply').addEventListener('click', function () {
+            // Zastosuj waypoints (pomiń start i end żeby user mógł je wpisać ręcznie)
+            waypoints = best.waypoints.map(function (wp) {
+                return {
+                    address: wp.address, label: wp.address,
+                    lat: wp.lat, lng: wp.lng, country: '', date: ''
+                };
+            });
+            renderWaypoints();
+            renderPinsOnMap();
+            bootstrap.Modal.getInstance(document.getElementById('multilegModal')).hide();
+            toast('<?= __('Zastosowano optymalną kolejność — kliknij Wyznacz trasę') ?>', 'success');
+        });
+    }
+
     // #9 CMR generator — multilang print view
     var CMR_L10N = {
         pl: {
@@ -4450,7 +4717,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         pricing:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiPricing']) ?>',
         brief:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']) ?>',
         optimizer: '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiRouteOptimizer']) ?>',
-        email:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiEmailReply']) ?>'
+        email:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiEmailReply']) ?>',
+        delay:     '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiDelayPrediction']) ?>'
     };
     function aiPost(url, payload) {
         var fd = new FormData();
@@ -4898,6 +5166,94 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         .finally(function () {
             btn.disabled = false;
             btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Generuj odpowiedź') ?>';
+        });
+    });
+
+    // ── #13 AI Delay Prediction ─────────────────────────────────────
+    document.getElementById('btn-ai-delay-open').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var r = lastResponse.routes[activeAltIdx];
+        var dep = (r.sections && r.sections[0] && r.sections[0].departure_time)
+            ? new Date(r.sections[0].departure_time) : new Date();
+        var month = dep.getMonth() + 1;
+        var season = (month >= 12 || month <= 2) ? 'zima' : (month <= 5) ? 'wiosna' : (month <= 8) ? 'lato' : 'jesień';
+        var dayOfWeek = ['niedziela', 'poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota'][dep.getDay()];
+
+        var countries = Object.keys(r.tolls_by_country || {});
+        // Dodaj z waypoints
+        (lastResponse.points || []).forEach(function (p) {
+            if (p.country && countries.indexOf(p.country) === -1) countries.push(p.country);
+        });
+
+        // Liczba przekroczeń granic = liczba unikatowych krajów - 1
+        var bordersCount = Math.max(0, countries.length - 1);
+
+        var context = {
+            distance_km: r.distance_km,
+            duration_min_here: r.duration_min,
+            departure_time: dep.toISOString(),
+            countries: countries.join(','),
+            border_crossings: bordersCount,
+            adr_class: document.getElementById('adr-class').value || null,
+            season: season,
+            day_of_week: dayOfWeek,
+            hour: dep.getHours(),
+            stops_count: (lastResponse.points || []).length,
+        };
+
+        new bootstrap.Modal(document.getElementById('aiDelayModal')).show();
+        document.getElementById('ai-delay-loading').style.display = 'block';
+        document.getElementById('ai-delay-result').style.display = 'none';
+
+        aiPost(aiUrls.delay, { context: context }).then(function (res) {
+            document.getElementById('ai-delay-loading').style.display = 'none';
+            if (!res.ok || !res.data.ok) {
+                toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error');
+                return;
+            }
+            var d = res.data.data;
+            var delayClass = d.delay_min > 60 ? 'danger' : d.delay_min > 30 ? 'warning' : d.delay_min > 0 ? 'info' : 'success';
+            var hereH = Math.floor(r.duration_min / 60);
+            var hereM = r.duration_min % 60;
+            var predH = Math.floor(d.predicted_total_min / 60);
+            var predM = d.predicted_total_min % 60;
+            var delaySign = d.delay_min > 0 ? '+' : '';
+
+            var factorTypeIcons = {
+                'traffic': '🚦', 'border': '🛂', 'weather': '🌧️',
+                'loading': '📦', 'rest': '😴', 'ban': '⛔'
+            };
+            var factorsHtml = (d.factors || []).map(function (f) {
+                var icon = factorTypeIcons[f.type] || '⏱️';
+                return '<tr>'
+                    + '<td>' + icon + ' ' + escapeHtml(f.name) + '</td>'
+                    + '<td class="text-end"><strong>+' + f.impact_min + ' min</strong></td>'
+                    + '</tr>';
+            }).join('');
+
+            var html = ''
+                + '<div class="row g-3 mb-3">'
+                +   '<div class="col-6"><div class="card border-secondary"><div class="card-body text-center py-3">'
+                +     '<div class="text-muted small">HERE Maps ETA</div>'
+                +     '<div class="display-6 fw-bold">' + hereH + 'h ' + hereM + 'min</div>'
+                +     '<div class="text-muted small">' + fmtNum(r.distance_km, 1) + ' km</div>'
+                +   '</div></div></div>'
+                +   '<div class="col-6"><div class="card border-' + delayClass + '"><div class="card-body text-center py-3">'
+                +     '<div class="text-' + delayClass + ' small fw-bold">AI predykcja</div>'
+                +     '<div class="display-6 fw-bold text-' + delayClass + '">' + predH + 'h ' + predM + 'min</div>'
+                +     '<div class="text-' + delayClass + ' small">' + delaySign + d.delay_min + ' min (' + delaySign + fmtNum(d.delay_pct || 0, 1) + '%)</div>'
+                +   '</div></div></div>'
+                + '</div>'
+                + '<div class="alert alert-light border mb-3 small"><i class="ri-quill-pen-line me-1"></i>' + escapeHtml(d.reasoning || '') + '</div>'
+                + (factorsHtml ? '<table class="table table-sm mb-3"><thead><tr><th><?= __('Czynnik') ?></th><th class="text-end"><?= __('Wpływ') ?></th></tr></thead><tbody>' + factorsHtml + '</tbody></table>' : '')
+                + (d.recommendation ? '<div class="alert alert-success py-2 small"><i class="ri-lightbulb-line me-1"></i><strong><?= __('Rekomendacja') ?>:</strong> ' + escapeHtml(d.recommendation) + '</div>' : '')
+                + '<div class="text-muted small text-end"><?= __('Pewność predykcji') ?>: <span class="badge bg-secondary">' + (d.confidence || 'medium') + '</span></div>';
+            document.getElementById('ai-delay-result').innerHTML = html;
+            document.getElementById('ai-delay-result').style.display = 'block';
+        }).catch(function (e) {
+            document.getElementById('ai-delay-loading').style.display = 'none';
+            toast('<?= __('Błąd AI:') ?> ' + e.message, 'error');
         });
     });
 

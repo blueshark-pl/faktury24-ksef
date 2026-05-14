@@ -3279,3 +3279,132 @@ msgstr "Auto-fill ADR/vehicle/route from planner"
 
 msgid "Generuj CMR (drukuj/PDF)"
 msgstr "Generate CMR (print/PDF)"
+
+msgid "Predykcja realnego ETA"
+msgstr "Real ETA prediction"
+
+msgid "AI — Predykcja realnego ETA"
+msgstr "AI — Real ETA prediction"
+
+msgid "HERE szacuje czas tylko po warunkach drogowych. AI uwzględnia korki, granice, czas załadunku, pogodę, AETR przerwy."
+msgstr "HERE estimates time from road conditions only. AI factors in traffic, borders, loading time, weather, AETR breaks."
+
+msgid "Analizuję historię i warunki…"
+msgstr "Analyzing history and conditions…"
+
+msgid "Czynnik"
+msgstr "Factor"
+
+msgid "Wpływ"
+msgstr "Impact"
+
+msgid "Rekomendacja"
+msgstr "Recommendation"
+
+msgid "Pewność predykcji"
+msgstr "Prediction confidence"
+
+msgid "Multi-leg"
+msgstr "Multi-leg"
+
+msgid "Optymalizator wielu zleceń (TSP/PDP)"
+msgstr "Multiple load optimizer (TSP/PDP)"
+
+msgid "Optymalizator multi-leg (2-4 ładunki)"
+msgstr "Multi-leg optimizer (2-4 loads)"
+
+msgid "Dodaj kilka zleceń (każde = pickup + dropoff). Algorytm znajdzie kolejność z minimum empty miles, respektując zasadę: pickup MUSI być przed dropoff."
+msgstr "Add multiple loads (each = pickup + dropoff). Algorithm finds order with minimum empty miles, respecting pickup-before-dropoff rule."
+
+msgid "Punkt startowy (opcjonalnie)"
+msgstr "Starting point (optional)"
+
+msgid "Punkt powrotu (opcjonalnie)"
+msgstr "Return point (optional)"
+
+msgid "Baza / aktualna pozycja"
+msgstr "Base / current location"
+
+msgid "Najczęściej ta sama baza"
+msgstr "Usually same as base"
+
+msgid "Dodaj zlecenie"
+msgstr "Add load"
+
+msgid "Optymalizuję trasy…"
+msgstr "Optimizing routes…"
+
+msgid "Optymalizuj"
+msgstr "Optimize"
+
+msgid "Zlecenie"
+msgstr "Load"
+
+msgid "Nazwa (np. ABC Sp. z o.o.)"
+msgstr "Name (e.g. ABC Ltd.)"
+
+msgid "Załadunek"
+msgstr "Pickup"
+
+msgid "Rozładunek"
+msgstr "Dropoff"
+
+msgid "Adres załadunku"
+msgstr "Pickup address"
+
+msgid "Adres rozładunku"
+msgstr "Dropoff address"
+
+msgid "Masa (kg)"
+msgstr "Weight (kg)"
+
+msgid "Maksymalnie 4 zlecenia."
+msgstr "Maximum 4 loads."
+
+msgid "Dodaj minimum 1 zlecenie."
+msgstr "Add at least 1 load."
+
+msgid "Wpisz adresy załadunku/rozładunku dla zlecenia #"
+msgstr "Enter pickup/dropoff addresses for load #"
+
+msgid "Błąd optymalizacji"
+msgstr "Optimization error"
+
+msgid "Oszczędność"
+msgstr "Savings"
+
+msgid "Optymalna kolejność"
+msgstr "Optimal order"
+
+msgid "Start"
+msgstr "Start"
+
+msgid "Powrót"
+msgstr "Return"
+
+msgid "ZAŁADUNEK"
+msgstr "PICKUP"
+
+msgid "ROZŁADUNEK"
+msgstr "DROPOFF"
+
+msgid "Pokaż"
+msgstr "Show"
+
+msgid "alternatywnych rozwiązań"
+msgstr "alternative solutions"
+
+msgid "oszczędność"
+msgstr "savings"
+
+msgid "Zastosuj do planera"
+msgstr "Apply to planner"
+
+msgid "Zastosowano optymalną kolejność — kliknij Wyznacz trasę"
+msgstr "Optimal order applied — click Calculate route"
+
+msgid "Brak ładunków do optymalizacji."
+msgstr "No loads to optimize."
+
+msgid "Nie znaleziono adresu dla ładunku #"
+msgstr "Address not found for load #"

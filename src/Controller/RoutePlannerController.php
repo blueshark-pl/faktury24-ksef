@@ -643,6 +643,82 @@ class RoutePlannerController extends AppController
         }
     }
 
+    /**
+     * #5 Multi-leg optimization — PDP solver dla 2-4 ładunków.
+     */
+    public function optimizeMultileg(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $loadsRaw = $this->request->getData('loads', []);
+        $start    = $this->request->getData('start');
+        $end      = $this->request->getData('end');
+        if (!is_array($loadsRaw) || count($loadsRaw) < 1) {
+            return $this->jsonError(__('Brak ładunków do optymalizacji.'));
+        }
+        try {
+            $here = new HereRoutingService();
+
+            // Geocode adresów które nie mają lat/lng
+            $geocode = function ($pt) use ($here) {
+                if (!is_array($pt)) return null;
+                if (!empty($pt['lat']) && !empty($pt['lng'])) {
+                    return ['lat' => (float)$pt['lat'], 'lng' => (float)$pt['lng'],
+                            'label' => (string)($pt['label'] ?? $pt['address'] ?? '')];
+                }
+                $addr = trim((string)($pt['address'] ?? ''));
+                if ($addr === '') return null;
+                $geo = $here->geocode($addr);
+                return $geo ? ['lat' => $geo['lat'], 'lng' => $geo['lng'], 'label' => $geo['label']] : null;
+            };
+
+            $loads = [];
+            foreach ($loadsRaw as $i => $L) {
+                $L = (array)$L;
+                $p = $geocode($L['pickup'] ?? null);
+                $d = $geocode($L['dropoff'] ?? null);
+                if (!$p || !$d) {
+                    return $this->jsonError(__('Nie znaleziono adresu dla ładunku #') . ($i + 1));
+                }
+                $loads[] = [
+                    'pickup'  => $p,
+                    'dropoff' => $d,
+                    'name'    => (string)($L['name'] ?? 'Load ' . ($i + 1)),
+                    'weight_kg' => isset($L['weight_kg']) ? (float)$L['weight_kg'] : null,
+                ];
+            }
+
+            $startPt = $start ? $geocode($start) : null;
+            $endPt   = $end   ? $geocode($end)   : null;
+
+            $optimizer = new \App\Service\Routing\MultiLegOptimizer();
+            $result = $optimizer->optimize($loads, $startPt, $endPt, 3);
+
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function aiDelayPrediction(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $context = (array)$this->request->getData('context', []);
+        if (empty($context['distance_km'])) {
+            return $this->jsonError(__('Brak kontekstu trasy.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->predictDelay($context);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function aiEmailReply(): Response
     {
         $this->disableAutoRender();
