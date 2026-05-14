@@ -205,9 +205,10 @@ class ClientPortalController extends AppController
                 'SpeedOrders.buyer_nip' => $this->profile->nip,
             ])
             ->contain([
+                // UWAGA: bez select() restriction — belongsToMany potrzebuje pełnego SELECT
+                // żeby SelectWithPivotLoader poprawnie zbudował result map (pivot keys).
                 'AllInvoices' => function (\Cake\ORM\Query\SelectQuery $q) {
-                    return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate', 'paymentdate'])
-                        ->orderByAsc('Invoices.date');
+                    return $q->orderByAsc('Invoices.date');
                 },
             ])
             ->first();
