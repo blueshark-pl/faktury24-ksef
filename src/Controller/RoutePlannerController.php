@@ -46,11 +46,25 @@ class RoutePlannerController extends AppController
         $userId = (string)($identity?->getIdentifier() ?? '');
         $companyId = (string)($identity?->get('company_id') ?? '');
         $vehicles = [];
+        $trailers = [];
+        $drivers = [];
         if ($companyId !== '') {
             $vehicles = $this->fetchTable('Vehicles')->find()
                 ->where(['company_id' => $companyId, 'is_active' => true])
                 ->orderByDesc('is_default')
                 ->orderByAsc('name')
+                ->all()
+                ->toArray();
+            $trailers = $this->fetchTable('Trailers')->find()
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByDesc('is_default')
+                ->orderByAsc('name')
+                ->all()
+                ->toArray();
+            $drivers = $this->fetchTable('Drivers')->find()
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByDesc('is_default')
+                ->orderByAsc('full_name')
                 ->all()
                 ->toArray();
         }
@@ -93,7 +107,7 @@ class RoutePlannerController extends AppController
         }
 
         $hereApiKey = (string)\Cake\Core\Configure::read('Here.apiKey');
-        $this->set(compact('vehicles', 'hereApiKey', 'recentSearches', 'templates'));
+        $this->set(compact('vehicles', 'trailers', 'drivers', 'hereApiKey', 'recentSearches', 'templates'));
     }
 
     public function saveTemplate(): Response
@@ -265,6 +279,47 @@ class RoutePlannerController extends AppController
                 }
             }
 
+            // Hogis-style: jeśli wybrana naczepa → sumujemy parametry z ciągnikiem
+            // (HERE musi dostać total weight + total axles dla poprawnej klasyfikacji toll)
+            $trailerId = (string)$this->request->getData('trailer_id', '');
+            if ($trailerId !== '' && $vehicleData) {
+                $trailer = $this->fetchTable('Trailers')->find()->where(['id' => $trailerId])->first();
+                if ($trailer) {
+                    $t = $trailer->toArray();
+                    // Sumy dla HERE Routing
+                    $vehicleData['gross_weight_kg'] = ((int)($vehicleData['gross_weight_kg'] ?? 0))
+                        + ((int)($t['gross_weight_kg'] ?? 0));
+                    $vehicleData['axle_count'] = ((int)($vehicleData['axle_count'] ?? 0))
+                        + ((int)($t['axle_count'] ?? 0));
+                    // Length zestawu = ciągnik + naczepa (ale max EU 16.50 m dla truck+semi)
+                    if (!empty($t['length_cm'])) {
+                        $combined = ((int)($vehicleData['length_cm'] ?? 0)) + (int)$t['length_cm'];
+                        $vehicleData['length_cm'] = min($combined, 1875); // cap na EU max tandem
+                    }
+                    // Width/height z naczepy gdy > ciągnika
+                    foreach (['width_cm', 'height_cm'] as $dim) {
+                        if (!empty($t[$dim]) && (int)$t[$dim] > (int)($vehicleData[$dim] ?? 0)) {
+                            $vehicleData[$dim] = (int)$t[$dim];
+                        }
+                    }
+                    // ADR-certified flag z naczepy
+                    if (!empty($t['adr_certified'])) {
+                        $vehicleData['hazardous_goods'] = true;
+                    }
+                    // Zachowaj nazwę naczepy dla informacji w response
+                    $vehicleData['_trailer_name'] = $t['name'];
+                    $vehicleData['_trailer_id'] = $t['id'];
+                }
+            }
+
+            // Hogis-style: kierowca — zapisujemy jego dane (planer JS użyje stawki)
+            $driverId = (string)$this->request->getData('driver_id', '');
+            $driverData = null;
+            if ($driverId !== '') {
+                $driver = $this->fetchTable('Drivers')->find()->where(['id' => $driverId])->first();
+                if ($driver) $driverData = $driver->toArray();
+            }
+
             $origin = array_shift($resolved);
             $dest   = array_pop($resolved);
             $vias   = $resolved;
@@ -288,6 +343,26 @@ class RoutePlannerController extends AppController
 
             // NBP EUR→PLN rate dla tolls
             $result['eur_pln_rate'] = $this->fetchEurPlnRate();
+
+            // Hogis-style: zwracaj zsumowane parametry zestawu + dane kierowcy
+            if ($vehicleData) {
+                $result['combination'] = [
+                    'total_gross_weight_kg' => $vehicleData['gross_weight_kg'] ?? null,
+                    'total_axle_count'      => $vehicleData['axle_count']      ?? null,
+                    'total_length_cm'       => $vehicleData['length_cm']       ?? null,
+                    'trailer_name'          => $vehicleData['_trailer_name']   ?? null,
+                ];
+            }
+            if ($driverData) {
+                $result['driver'] = [
+                    'id'              => $driverData['id'] ?? null,
+                    'full_name'       => $driverData['full_name'] ?? null,
+                    'hourly_rate_pln' => $driverData['hourly_rate_pln'] ?? null,
+                    'per_diem_pln'    => $driverData['per_diem_pln'] ?? null,
+                    'phone'           => $driverData['phone'] ?? null,
+                    'adr_certified'   => (bool)($driverData['adr_certified'] ?? false),
+                ];
+            }
 
             // AI sugerowana cena na podstawie historii
             $firstRoute = $result['routes'][0] ?? [];

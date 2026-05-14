@@ -252,6 +252,22 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/pojazdy/usun/{id}',     ['controller' => 'Vehicles', 'action' => 'delete'])
             ->setPass(['id']);
 
+        // Naczepy / przyczepy
+        $builder->get('/naczepy',                ['controller' => 'Trailers', 'action' => 'index']);
+        $builder->connect('/naczepy/dodaj',      ['controller' => 'Trailers', 'action' => 'add']);
+        $builder->connect('/naczepy/edytuj/{id}', ['controller' => 'Trailers', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/naczepy/usun/{id}',     ['controller' => 'Trailers', 'action' => 'delete'])
+            ->setPass(['id']);
+
+        // Kierowcy
+        $builder->get('/kierowcy',                ['controller' => 'Drivers', 'action' => 'index']);
+        $builder->connect('/kierowcy/dodaj',      ['controller' => 'Drivers', 'action' => 'add']);
+        $builder->connect('/kierowcy/edytuj/{id}', ['controller' => 'Drivers', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/kierowcy/usun/{id}',     ['controller' => 'Drivers', 'action' => 'delete'])
+            ->setPass(['id']);
+
         // Powiadomienia (per user)
         $builder->get('/powiadomienia',                 ['controller' => 'Notifications', 'action' => 'index']);
         $builder->get('/powiadomienia/recent',          ['controller' => 'Notifications', 'action' => 'recent']);

@@ -161,6 +161,20 @@ return [
             'controller' => 'Vehicles',
             'action'     => ['index', 'add', 'edit', 'delete'],
         ],
+        // Naczepy
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'Trailers',
+            'action'     => ['index', 'add', 'edit', 'delete'],
+        ],
+        // Kierowcy
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'Drivers',
+            'action'     => ['index', 'add', 'edit', 'delete'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],

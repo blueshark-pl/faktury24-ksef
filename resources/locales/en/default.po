@@ -3474,3 +3474,60 @@ msgstr "Oversize (requires permit)"
 
 msgid "Wybór typu auto-wypełni wymiary, masę i osie zgodnie ze standardami EU."
 msgstr "Selecting type auto-fills dimensions, weight, and axles per EU standards."
+
+msgid "Naczepy"
+msgstr "Trailers"
+
+msgid "Kierowcy"
+msgstr "Drivers"
+
+msgid "Naczepy / przyczepy"
+msgstr "Trailers / drawbar"
+
+msgid "Dodaj naczepę"
+msgstr "Add trailer"
+
+msgid "Dodaj kierowcę"
+msgstr "Add driver"
+
+msgid "Edytuj naczepę"
+msgstr "Edit trailer"
+
+msgid "Edytuj kierowcę"
+msgstr "Edit driver"
+
+msgid "Naczepa dodana."
+msgstr "Trailer added."
+
+msgid "Naczepa nie istnieje."
+msgstr "Trailer not found."
+
+msgid "Naczepa usunięta."
+msgstr "Trailer deleted."
+
+msgid "Kierowca dodany."
+msgstr "Driver added."
+
+msgid "Kierowca nie istnieje."
+msgstr "Driver not found."
+
+msgid "Kierowca usunięty."
+msgstr "Driver deleted."
+
+msgid "Typ naczepy"
+msgstr "Trailer type"
+
+msgid "Ciągnik / pojazd"
+msgstr "Tractor / vehicle"
+
+msgid "Naczepa"
+msgstr "Trailer"
+
+msgid "Kierowca"
+msgstr "Driver"
+
+msgid "— brak naczepy —"
+msgstr "— no trailer —"
+
+msgid "— ręczna stawka z Kosztów —"
+msgstr "— manual rate from Costs —"

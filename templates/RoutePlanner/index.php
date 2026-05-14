@@ -573,8 +573,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <div class="card glass-card mt-3">
             <div class="card-header py-2"><strong><i class="ri-settings-3-line me-1 text-primary"></i><?= __('Opcje') ?></strong></div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label small mb-1"><?= __('Pojazd') ?></label>
+                <div class="mb-2">
+                    <label class="form-label small mb-1"><i class="ri-truck-line text-primary me-1"></i><?= __('Ciągnik / pojazd') ?></label>
                     <select class="form-select form-select-sm" id="vehicle-id">
                         <option value=""><?= __('— bez profilu (osobowy) —') ?></option>
                         <?php foreach ($vehicles as $v): ?>
@@ -586,6 +586,36 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <?php if (!empty($trailers)): ?>
+                <div class="mb-2">
+                    <label class="form-label small mb-1"><i class="ri-roadster-line text-info me-1"></i><?= __('Naczepa') ?></label>
+                    <select class="form-select form-select-sm" id="trailer-id">
+                        <option value=""><?= __('— brak naczepy —') ?></option>
+                        <?php foreach ($trailers as $t): ?>
+                            <option value="<?= h($t->id) ?>" <?= $t->is_default ? 'selected' : '' ?>>
+                                <?= h($t->name) ?>
+                                <?php if ($t->plate): ?> (<?= h($t->plate) ?>)<?php endif; ?>
+                                <?php if ($t->gross_weight_kg): ?> — <?= number_format($t->gross_weight_kg / 1000, 1, ',', '') ?>t<?php endif; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($drivers)): ?>
+                <div class="mb-3">
+                    <label class="form-label small mb-1"><i class="ri-user-3-line text-success me-1"></i><?= __('Kierowca') ?></label>
+                    <select class="form-select form-select-sm" id="driver-id">
+                        <option value=""><?= __('— ręczna stawka z Kosztów —') ?></option>
+                        <?php foreach ($drivers as $d): ?>
+                            <option value="<?= h($d->id) ?>" <?= $d->is_default ? 'selected' : '' ?>>
+                                <?= h($d->full_name) ?>
+                                <?php if ($d->hourly_rate_pln): ?> — <?= number_format((float)$d->hourly_rate_pln, 0, ',', '') ?> PLN/h<?php endif; ?>
+                                <?php if ($d->adr_certified): ?> · ADR<?php endif; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
                 <div class="mb-3">
                     <label class="form-label small mb-1"><?= __('Unikaj') ?></label>
                     <div class="d-flex gap-2 flex-wrap">
@@ -1369,6 +1399,62 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var id = document.getElementById('vehicle-id').value;
         return vehiclesData.find(function (v) { return v.id === id; }) || null;
     }
+    var trailersData = <?= json_encode(array_map(function ($t) {
+        return [
+            'id' => (string)$t->id,
+            'name' => (string)$t->name,
+            'plate' => (string)$t->plate,
+            'type' => (string)$t->type,
+            'axle_count' => $t->axle_count ?? null,
+            'gross_weight_kg' => $t->gross_weight_kg ?? null,
+            'payload_kg' => $t->payload_kg ?? null,
+            'length_cm' => $t->length_cm ?? null,
+            'width_cm'  => $t->width_cm ?? null,
+            'height_cm' => $t->height_cm ?? null,
+            'volume_m3' => $t->volume_m3 !== null ? (float)$t->volume_m3 : null,
+            'amortization_per_day_pln' => $t->amortization_per_day_pln !== null ? (float)$t->amortization_per_day_pln : null,
+            'adr_certified' => (bool)($t->adr_certified ?? false),
+        ];
+    }, $trailers ?? []), JSON_UNESCAPED_UNICODE) ?>;
+    var driversData = <?= json_encode(array_map(function ($d) {
+        return [
+            'id' => (string)$d->id,
+            'full_name' => (string)$d->full_name,
+            'hourly_rate_pln' => $d->hourly_rate_pln !== null ? (float)$d->hourly_rate_pln : null,
+            'per_diem_pln'    => $d->per_diem_pln !== null ? (float)$d->per_diem_pln : null,
+            'km_rate_pln'     => $d->km_rate_pln !== null ? (float)$d->km_rate_pln : null,
+            'license_categories' => (string)$d->license_categories,
+            'adr_certified' => (bool)($d->adr_certified ?? false),
+            'languages' => (string)$d->languages,
+            'phone' => (string)$d->phone,
+        ];
+    }, $drivers ?? []), JSON_UNESCAPED_UNICODE) ?>;
+    function getSelectedTrailer() {
+        var sel = document.getElementById('trailer-id');
+        if (!sel) return null;
+        return trailersData.find(function (t) { return t.id === sel.value; }) || null;
+    }
+    function getSelectedDriver() {
+        var sel = document.getElementById('driver-id');
+        if (!sel) return null;
+        return driversData.find(function (d) { return d.id === sel.value; }) || null;
+    }
+    // Auto-fill stawki kierowcy gdy user wybierze konkretnego
+    document.addEventListener('DOMContentLoaded', function () {
+        var driverSel = document.getElementById('driver-id');
+        if (driverSel) {
+            driverSel.addEventListener('change', function () {
+                var d = getSelectedDriver();
+                if (d && d.hourly_rate_pln) {
+                    var input = document.getElementById('driver-rate');
+                    if (input) {
+                        input.value = d.hourly_rate_pln;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+            });
+        }
+    });
     var deleteRecentUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'deleteRecent', '__ID__']) ?>';
     var saveTemplateUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'saveTemplate']) ?>';
     var revgeocodeUrl  = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'revgeocode']) ?>';
@@ -5625,6 +5711,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             } catch (_) { /* invalid date — pomiń */ }
         }
         fd.append('vehicle_id', vehicleId);
+        // Hogis-style: jeśli wybrana naczepa → wysyłaj jej ID do backendu który sumuje wagę/osie z ciągnikiem
+        var trailerSel = document.getElementById('trailer-id');
+        if (trailerSel && trailerSel.value) fd.append('trailer_id', trailerSel.value);
+        var driverSel = document.getElementById('driver-id');
+        if (driverSel && driverSel.value) fd.append('driver_id', driverSel.value);
         fd.append('currency', currency);
         fd.append('alternatives', String(alternatives));
         fd.append('instructions', '1');

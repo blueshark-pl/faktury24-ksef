@@ -1595,6 +1595,24 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Naczepy / przyczepy -->
+                            <li class="slide <?= $navActive('Trailers', 'index') || $navActive('Trailers', 'add') || $navActive('Trailers', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-roadster-line side-menu__icon"></i><span class="side-menu__label">' . __('Naczepy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'Trailers', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Kierowcy -->
+                            <li class="slide <?= $navActive('Drivers', 'index') || $navActive('Drivers', 'add') || $navActive('Drivers', 'edit') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-user-3-line side-menu__icon"></i><span class="side-menu__label">' . __('Kierowcy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'Drivers', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <!-- Planer tras (HERE truck routing) -->
                             <li class="slide <?= $navActive('RoutePlanner', 'index') ?>">
                                 <?= $this->Html->link(
