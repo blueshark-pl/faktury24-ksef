@@ -9,6 +9,17 @@ $typeOptions = [
     'van'     => __('Van / dostawczy'),
     'trailer' => __('Naczepa / przyczepa'),
 ];
+// Typ zestawu — kategoria z auto-fill wymiarów + automatyczną klasyfikacją toll
+$combinationOptions = [
+    ''         => '— ' . __('wybierz typ zestawu') . ' —',
+    'standard' => __('Zestaw standard (16,5 m × 2,55 m × 4,0 m, 40t, 5 osi)'),
+    'mega'     => __('Mega (niska naczepa 3,0 m wys., maks. objętość ~100 m³)'),
+    'fridge'   => __('Chłodnia (2,60 m szer. dozwolone, 40t, 5 osi)'),
+    'tandem'   => __('Tandem (ciężarówka + przyczepa drawbar, 18,75 m max)'),
+    'solo'     => __('Solo (pojedyncza ciężarówka 12 m, 2-3 osi)'),
+    'bus'      => __('Autobus'),
+    'oversize' => __('Ponadnormatywny (wymaga zezwolenia)'),
+];
 $emissionOptions = [
     'euro_6' => 'Euro 6',
     'euro_5' => 'Euro 5',
@@ -51,6 +62,21 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <div class="mt-2">
+                    <label class="form-label small mb-1">
+                        <i class="ri-stack-line text-primary me-1"></i>
+                        <?= __('Typ zestawu') ?>
+                    </label>
+                    <select name="combination_type" id="combination_type" class="form-select">
+                        <?php foreach ($combinationOptions as $k => $v): ?>
+                            <option value="<?= h($k) ?>" <?= ($entity->combination_type ?? '') === $k ? 'selected' : '' ?>><?= h($v) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text" style="font-size:.7rem">
+                        <i class="ri-magic-line me-1 text-warning"></i>
+                        <?= __('Wybór typu auto-wypełni wymiary, masę i osie zgodnie ze standardami EU.') ?>
+                    </div>
+                </div>
                 <div class="mt-3 d-flex gap-3 flex-wrap">
                     <div class="form-check form-switch">
                         <input type="hidden" name="is_active" value="0">
@@ -90,19 +116,31 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
                                value="<?= h($entity->axle_load_kg ?? '') ?>" placeholder="11500">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small mb-1"><?= __('Wysokość (cm)') ?></label>
-                        <input name="height_cm" type="number" min="0" class="form-control"
-                               value="<?= h($entity->height_cm ?? '') ?>" placeholder="400">
+                        <label class="form-label small mb-1"><?= __('Wysokość (m)') ?></label>
+                        <div class="input-group">
+                            <input name="height_m" type="number" step="0.01" min="0" max="5" class="form-control"
+                                   value="<?= $entity->height_cm ? number_format($entity->height_cm / 100, 2, '.', '') : '' ?>" placeholder="4.00">
+                            <span class="input-group-text">m</span>
+                        </div>
+                        <div class="form-text" style="font-size:.7rem"><?= __('EU max 4,00 m') ?></div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small mb-1"><?= __('Szerokość (cm)') ?></label>
-                        <input name="width_cm" type="number" min="0" class="form-control"
-                               value="<?= h($entity->width_cm ?? '') ?>" placeholder="255">
+                        <label class="form-label small mb-1"><?= __('Szerokość (m)') ?></label>
+                        <div class="input-group">
+                            <input name="width_m" type="number" step="0.01" min="0" max="3" class="form-control"
+                                   value="<?= $entity->width_cm ? number_format($entity->width_cm / 100, 2, '.', '') : '' ?>" placeholder="2.55">
+                            <span class="input-group-text">m</span>
+                        </div>
+                        <div class="form-text" style="font-size:.7rem"><?= __('EU max 2,55 m (2,60 chłodnie)') ?></div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small mb-1"><?= __('Długość (cm)') ?></label>
-                        <input name="length_cm" type="number" min="0" class="form-control"
-                               value="<?= h($entity->length_cm ?? '') ?>" placeholder="1650">
+                        <label class="form-label small mb-1"><?= __('Długość (m)') ?></label>
+                        <div class="input-group">
+                            <input name="length_m" type="number" step="0.01" min="0" max="25" class="form-control"
+                                   value="<?= $entity->length_cm ? number_format($entity->length_cm / 100, 2, '.', '') : '' ?>" placeholder="16.50">
+                            <span class="input-group-text">m</span>
+                        </div>
+                        <div class="form-text" style="font-size:.7rem"><?= __('EU max 16,50 m (zestaw) / 12,00 m (solo) / 18,75 m (tandem)') ?></div>
                     </div>
                     <div class="col-md-12 mt-2 pt-2 border-top">
                         <label class="form-label small mb-1">
@@ -177,3 +215,36 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
 </div>
 
 <?= $this->Form->end() ?>
+
+<script>
+// Auto-fill wymiarów + masy + osi po wyborze typu zestawu
+(function () {
+    var sel = document.getElementById('combination_type');
+    if (!sel) return;
+    // Definicje EU normatywnych zestawów (Dyr. 96/53/EC)
+    var COMBINATION_PRESETS = {
+        'standard': { length_m: 16.50, width_m: 2.55, height_m: 4.00, gross_weight_kg: 40000, axle_count: 5, axle_load_kg: 11500 },
+        'mega':     { length_m: 16.50, width_m: 2.55, height_m: 3.00, gross_weight_kg: 40000, axle_count: 5, axle_load_kg: 11500 },
+        'fridge':   { length_m: 16.50, width_m: 2.60, height_m: 4.00, gross_weight_kg: 40000, axle_count: 5, axle_load_kg: 11500 },
+        'tandem':   { length_m: 18.75, width_m: 2.55, height_m: 4.00, gross_weight_kg: 40000, axle_count: 6, axle_load_kg: 11500 },
+        'solo':     { length_m: 12.00, width_m: 2.55, height_m: 4.00, gross_weight_kg: 18000, axle_count: 3, axle_load_kg: 11500 },
+        'bus':      { length_m: 13.50, width_m: 2.55, height_m: 4.00, gross_weight_kg: 18000, axle_count: 3, axle_load_kg: 11500 },
+        // oversize: nie auto-fill, user wypełnia ręcznie
+    };
+    function applyPreset(p) {
+        if (!p) return;
+        var map = {
+            'length_m': p.length_m, 'width_m': p.width_m, 'height_m': p.height_m,
+            'gross_weight_kg': p.gross_weight_kg, 'axle_count': p.axle_count, 'axle_load_kg': p.axle_load_kg,
+        };
+        Object.keys(map).forEach(function (name) {
+            var input = document.querySelector('[name="' + name + '"]');
+            if (input && !input.value) input.value = map[name];
+        });
+    }
+    sel.addEventListener('change', function () {
+        var preset = COMBINATION_PRESETS[sel.value];
+        if (preset) applyPreset(preset);
+    });
+})();
+</script>

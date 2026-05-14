@@ -1352,16 +1352,17 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             'id' => (string)$v->id,
             'name' => (string)$v->name,
             'plate' => (string)$v->plate,
-            'rate_per_km'     => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
-            'gross_weight_kg' => $v->gross_weight_kg,
-            'axle_load_kg'    => $v->axle_load_kg     ?? null,
-            'height_cm'       => $v->height_cm        ?? null,
-            'width_cm'        => $v->width_cm         ?? null,
-            'length_cm'       => $v->length_cm        ?? null,
-            'axle_count'      => $v->axle_count       ?? null,
-            'tunnel_category' => $v->tunnel_category  ?? null,
-            'emission_class'  => $v->emission_class   ?? null,
-            'hazardous_goods' => $v->hazardous_goods  ?? null,
+            'rate_per_km'      => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
+            'gross_weight_kg'  => $v->gross_weight_kg,
+            'axle_load_kg'     => $v->axle_load_kg     ?? null,
+            'height_cm'        => $v->height_cm        ?? null,
+            'width_cm'         => $v->width_cm         ?? null,
+            'length_cm'        => $v->length_cm        ?? null,
+            'axle_count'       => $v->axle_count       ?? null,
+            'tunnel_category'  => $v->tunnel_category  ?? null,
+            'emission_class'   => $v->emission_class   ?? null,
+            'hazardous_goods'  => $v->hazardous_goods  ?? null,
+            'combination_type' => $v->combination_type ?? null,
         ];
     }, $vehicles), JSON_UNESCAPED_UNICODE) ?>;
     function getSelectedVehicle() {
@@ -3249,16 +3250,42 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
 
     // Sprawdza czy zestaw jest normatywny wg EU Dir. 96/53/EC.
-    // Standardowy zespół ciągnik+naczepa: 16.5m / 2.55m / 4m / 40t / 11.5t/oś napędowa.
+    // Limity zależą od typu zestawu:
+    //   standard/mega/fridge: 16,5 m × 2,55/2,60 m × 4,0 m × 40t × 11,5 t/oś
+    //   tandem: 18,75 m × 2,55 m × 4,0 m × 40t (drawbar trailer)
+    //   solo:   12,0 m × 2,55 m × 4,0 m × 40t
+    //   bus:    12-15 m × 2,55 m × 4,0 m × 18t
     function vehicleOversizeStatus(v) {
         if (!v) return null;
         var issues = [];
-        if (v.length_cm && v.length_cm > 1650) issues.push('długość >16,5 m');
-        if (v.width_cm && v.width_cm > 255)    issues.push('szerokość >2,55 m');
-        if (v.height_cm && v.height_cm > 400)  issues.push('wysokość >4 m');
+        // Limity zależne od combination_type
+        var maxLength = 1650;  // standard 16,5 m
+        var maxWidth = 255;    // standard 2,55 m
+        if (v.combination_type === 'tandem') maxLength = 1875;
+        if (v.combination_type === 'solo')   maxLength = 1200;
+        if (v.combination_type === 'fridge') maxWidth = 260; // chłodnie max 2,60 m
+        if (v.combination_type === 'oversize') return []; // user świadomie wybrał
+
+        if (v.length_cm && v.length_cm > maxLength) issues.push('długość >' + (maxLength / 100).toFixed(2) + ' m');
+        if (v.width_cm && v.width_cm > maxWidth)    issues.push('szerokość >' + (maxWidth / 100).toFixed(2) + ' m');
+        if (v.height_cm && v.height_cm > 400)       issues.push('wysokość >4,00 m');
         if (v.gross_weight_kg && v.gross_weight_kg > 40000) issues.push('DMC >40 t');
         if (v.axle_load_kg && v.axle_load_kg > 11500) issues.push('nacisk osi >11,5 t');
         return issues;
+    }
+
+    // Nazwa typu zestawu po polsku
+    function combinationTypeLabel(t) {
+        var map = {
+            'standard': 'Zestaw standard',
+            'mega':     'Mega',
+            'fridge':   'Chłodnia',
+            'tandem':   'Tandem (przyczepa drawbar)',
+            'solo':     'Solo (pojedyncza ciężarówka)',
+            'bus':      'Autobus',
+            'oversize': 'Ponadnormatywny',
+        };
+        return map[t] || null;
     }
 
     function renderTollCategories(vehicle) {
@@ -3292,6 +3319,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         // Parametry pojazdu — tylko te które są
         var paramParts = [];
+        if (vehicle.combination_type) {
+            var cLabel = combinationTypeLabel(vehicle.combination_type);
+            if (cLabel) paramParts.push('<span class="badge bg-primary">🚛 ' + escapeHtml(cLabel) + '</span>');
+        }
         if (vehicle.axle_count) paramParts.push('<strong>' + vehicle.axle_count + ' osi</strong>');
         if (vehicle.gross_weight_kg) paramParts.push((vehicle.gross_weight_kg / 1000).toFixed(1) + 't');
         if (vehicle.axle_load_kg) paramParts.push((vehicle.axle_load_kg / 1000).toFixed(1) + 't/oś');
@@ -3485,13 +3516,24 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 classCell += ' <span class="text-muted small">' + escapeHtml(methodLabel) + '</span>';
             }
 
-            // Dodatkowe info pod nazwą: charged distance + discount
+            // Dodatkowe info pod nazwą: charged distance + discount + alternatywne opcje winiet
             var extraInfo = '';
             if (f.charged_distance_km) {
                 extraInfo += '<div class="text-muted" style="font-size:.7rem"><i class="ri-roadster-line me-1"></i>' + fmtNum(f.charged_distance_km, 1) + ' km naliczonych</div>';
             }
             if (f.discount && f.discount.value) {
                 extraInfo += '<div class="text-success" style="font-size:.7rem"><i class="ri-discount-percent-line me-1"></i>Rabat: ' + escapeHtml(f.discount.type) + ' −' + fmtNum(f.discount.value, 2) + '</div>';
+            }
+            // Alternative options dla winiet (np. NL Eurovignette ma 4 opcje 1d/7d/1m/1y)
+            if (f.alternative_options && f.alternative_options.length) {
+                var altList = f.alternative_options.map(function (a) {
+                    var validity = a.pass_validity ? ' (' + escapeHtml(a.pass_validity) + ')' : '';
+                    return fmtNum(a.price, 0) + ' ' + escapeHtml(a.currency) + validity;
+                }).join(' · ');
+                extraInfo += '<div class="text-muted small mt-1"><i class="ri-information-line me-1"></i><?= __('Inne opcje winiety') ?>: ' + altList + '</div>';
+            }
+            if (f.pass_validity) {
+                extraInfo += '<div class="text-muted small"><i class="ri-time-line me-1"></i><?= __('Ważność') ?>: ' + escapeHtml(f.pass_validity) + '</div>';
             }
             if (f.fare_id) {
                 extraInfo += '<div class="text-muted" style="font-size:.65rem;opacity:.6"><code>' + escapeHtml(f.fare_id) + '</code></div>';

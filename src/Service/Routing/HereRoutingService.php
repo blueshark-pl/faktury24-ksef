@@ -569,6 +569,13 @@ class HereRoutingService
                     }
                 }
 
+                // Dedup wieloopcyjnych winiet (NL Eurovignette: 1d/7d/1m/1y).
+                // HERE zwraca WSZYSTKIE opcje — wybieramy NAJTAŃSZĄ (zwykle 1-day),
+                // pozostałe trzymamy jako alternative_options dla informacji.
+                [$tollsBreakdown, $tollsTotal, $tollsByCountry] = $this->dedupVignetteOptions(
+                    $tollsBreakdown, $tollsCurrency
+                );
+
                 $routesOut[] = [
                     'distance_km'      => round($totalDist / 1000, 1),
                     'duration_min'     => (int)round($totalDur / 60),
@@ -804,6 +811,69 @@ class HereRoutingService
         }
         Log::warning("normalizeEmission: nieznany format '{$raw}' — pomijam");
         return '';
+    }
+
+    /**
+     * Dedup wieloopcyjnych winiet (np. NL Eurovignette: 1d/7d/1m/1y).
+     * HERE zwraca WSZYSTKIE opcje za przejazd przez kraj — wybieramy najtańszą,
+     * pozostałe trzymamy jako alternative_options.
+     *
+     * @return array{0: array<int, array>, 1: float|null, 2: array<string, float>}
+     *   [tollsBreakdown_filtered, tollsTotal_recalc, tollsByCountry_recalc]
+     */
+    private function dedupVignetteOptions(array $tollsBreakdown, string $targetCurrency): array
+    {
+        $vigGroups = [];
+        $nonVig = [];
+        foreach ($tollsBreakdown as $entry) {
+            if (!empty($entry['is_vignette'])) {
+                // Grupuj po country + system (każdy kraj+system = jeden zestaw opcji)
+                $key = ($entry['country'] ?? '') . '|' . ($entry['system'] ?? '');
+                if (!isset($vigGroups[$key])) $vigGroups[$key] = [];
+                $vigGroups[$key][] = $entry;
+            } else {
+                $nonVig[] = $entry;
+            }
+        }
+        $dedupVig = [];
+        foreach ($vigGroups as $group) {
+            // Sortuj po cenie ASC — najtańsza pierwsza
+            usort($group, fn($a, $b) => ($a['price'] ?? 0) <=> ($b['price'] ?? 0));
+            $cheapest = $group[0];
+            if (count($group) > 1) {
+                $cheapest['alternative_options'] = array_map(function ($alt) {
+                    return [
+                        'price'        => $alt['price'] ?? 0,
+                        'currency'     => $alt['currency'] ?? '',
+                        'pass_validity'=> $alt['pass_validity'] ?? '',
+                        'name'         => $alt['name'] ?? '',
+                    ];
+                }, array_slice($group, 1));
+            }
+            $dedupVig[] = $cheapest;
+        }
+
+        // Przelicz totals od nowa — bazując tylko na zachowanych wpisach
+        $filteredBreakdown = array_merge($nonVig, $dedupVig);
+        $newTotal = null;
+        $newByCountry = [];
+        foreach ($filteredBreakdown as $f) {
+            $price = (float)($f['price'] ?? 0);
+            $cur   = (string)($f['currency'] ?? '');
+            $conv  = (float)($f['converted_price'] ?? 0);
+            $convCur = (string)($f['converted_curr'] ?? '');
+
+            $aggPrice = null;
+            if ($conv > 0 && strcasecmp($convCur, $targetCurrency) === 0) $aggPrice = $conv;
+            elseif (strcasecmp($cur, $targetCurrency) === 0) $aggPrice = $price;
+
+            if ($aggPrice !== null) {
+                $cc = (string)($f['country'] ?? '??');
+                $newByCountry[$cc] = ($newByCountry[$cc] ?? 0.0) + $aggPrice;
+                $newTotal = ($newTotal ?? 0.0) + $aggPrice;
+            }
+        }
+        return [$filteredBreakdown, $newTotal, $newByCountry];
     }
 
     /**

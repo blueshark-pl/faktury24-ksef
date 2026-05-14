@@ -3420,3 +3420,57 @@ msgstr "e.g. Loading 15.05 30-552 Kraków, Wielicka St 22, delivery 16.05 by 12:
 
 msgid "Podaj kody pocztowe gdzie się da — AI je rozpozna i geocoding HERE będzie 10× dokładniejszy. Jeśli nie znasz kodu — AI spróbuje go dopasować na podstawie miasta/ulicy."
 msgstr "Provide postal codes where possible — AI will recognize them and HERE geocoding will be 10× more accurate. If unknown, AI will try to match it based on city/street."
+
+msgid "Inne opcje winiety"
+msgstr "Other vignette options"
+
+msgid "Ważność"
+msgstr "Validity"
+
+msgid "Wysokość (m)"
+msgstr "Height (m)"
+
+msgid "Szerokość (m)"
+msgstr "Width (m)"
+
+msgid "Długość (m)"
+msgstr "Length (m)"
+
+msgid "EU max 4,00 m"
+msgstr "EU max 4.00 m"
+
+msgid "EU max 2,55 m (2,60 chłodnie)"
+msgstr "EU max 2.55 m (2.60 for refrigerated)"
+
+msgid "EU max 16,50 m (zestaw) / 12,00 m (solo) / 18,75 m (tandem)"
+msgstr "EU max 16.50 m (combination) / 12.00 m (solo) / 18.75 m (tandem)"
+
+msgid "Typ zestawu"
+msgstr "Combination type"
+
+msgid "wybierz typ zestawu"
+msgstr "choose combination type"
+
+msgid "Zestaw standard (16,5 m × 2,55 m × 4,0 m, 40t, 5 osi)"
+msgstr "Standard combination (16.5 m × 2.55 m × 4.0 m, 40t, 5 axles)"
+
+msgid "Mega (niska naczepa 3,0 m wys., maks. objętość ~100 m³)"
+msgstr "Mega (low trailer 3.0 m height, max volume ~100 m³)"
+
+msgid "Chłodnia (2,60 m szer. dozwolone, 40t, 5 osi)"
+msgstr "Refrigerated (2.60 m width allowed, 40t, 5 axles)"
+
+msgid "Tandem (ciężarówka + przyczepa drawbar, 18,75 m max)"
+msgstr "Tandem (truck + drawbar trailer, 18.75 m max)"
+
+msgid "Solo (pojedyncza ciężarówka 12 m, 2-3 osi)"
+msgstr "Solo (single truck 12 m, 2-3 axles)"
+
+msgid "Autobus"
+msgstr "Bus"
+
+msgid "Ponadnormatywny (wymaga zezwolenia)"
+msgstr "Oversize (requires permit)"
+
+msgid "Wybór typu auto-wypełni wymiary, masę i osie zgodnie ze standardami EU."
+msgstr "Selecting type auto-fills dimensions, weight, and axles per EU standards."

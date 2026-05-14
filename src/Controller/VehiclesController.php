@@ -67,7 +67,7 @@ class VehiclesController extends AppController
         $entity = $Vehicles->newEmptyEntity();
 
         if ($this->request->is('post')) {
-            $data = $this->request->getData();
+            $data = $this->convertMetersToCm($this->request->getData());
             $entity = $Vehicles->patchEntity($entity, $data);
             $entity->id = Text::uuid();
             $entity->company_id = $companyId;
@@ -95,7 +95,7 @@ class VehiclesController extends AppController
             throw new NotFoundException(__('Pojazd nie istnieje.'));
         }
         if ($this->request->is(['post', 'put', 'patch'])) {
-            $data = $this->request->getData();
+            $data = $this->convertMetersToCm($this->request->getData());
             $entity = $Vehicles->patchEntity($entity, $data);
             if (!empty($data['is_default'])) {
                 $Vehicles->updateAll(
@@ -130,5 +130,22 @@ class VehiclesController extends AppController
             $this->Flash->error(__('Nie udało się usunąć.'));
         }
         return $this->redirect(['action' => 'index']);
+    }
+
+    /**
+     * Konwersja pól {width,height,length}_m (metry, decimal) na {width,height,length}_cm (cm, int).
+     * Form wysyła w metrach dla wygody usera (np. 2.55), DB trzyma cm int (255).
+     */
+    private function convertMetersToCm(array $data): array
+    {
+        foreach (['width', 'height', 'length'] as $dim) {
+            $mKey = $dim . '_m';
+            $cmKey = $dim . '_cm';
+            if (isset($data[$mKey]) && $data[$mKey] !== '') {
+                $data[$cmKey] = (int)round(((float)$data[$mKey]) * 100);
+            }
+            unset($data[$mKey]);
+        }
+        return $data;
     }
 }
