@@ -810,6 +810,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 <i class="ri-information-line me-1"></i>
                                 <?= __('HERE wylicza opłaty automatycznie na podstawie tych parametrów. Jeśli klasa nie zgadza się z oczekiwaniami — sprawdź ustawienia pojazdu (liczba osi, masa, EURO).') ?>
                             </div>
+                            <div class="mt-1 small text-muted">
+                                <i class="ri-truck-line me-1"></i>
+                                <?= __('Pojazd to ZESPÓŁ — wprowadź sumy: liczbę osi (ciągnik + naczepa), DMC zespołu, max nacisk osi. EU normatywny zespół: 16,5 m × 2,55 m × 4 m, 40 t, 11,5 t/oś napędowa (Dyr. 96/53/EC).') ?>
+                            </div>
                         </div>
                     </div>
 
@@ -2489,12 +2493,47 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         return { it: it, fr: fr, de: de, at: at, pl: pl, cz: cz, ch: ch };
     }
 
+    // Sprawdza czy zestaw jest normatywny wg EU Dir. 96/53/EC.
+    // Standardowy zespół ciągnik+naczepa: 16.5m / 2.55m / 4m / 40t / 11.5t/oś napędowa.
+    function vehicleOversizeStatus(v) {
+        if (!v) return null;
+        var issues = [];
+        if (v.length_cm && v.length_cm > 1650) issues.push('długość >16,5 m');
+        if (v.width_cm && v.width_cm > 255)    issues.push('szerokość >2,55 m');
+        if (v.height_cm && v.height_cm > 400)  issues.push('wysokość >4 m');
+        if (v.gross_weight_kg && v.gross_weight_kg > 40000) issues.push('DMC >40 t');
+        if (v.axle_load_kg && v.axle_load_kg > 11500) issues.push('nacisk osi >11,5 t');
+        return issues;
+    }
+
     function renderTollCategories(vehicle) {
         var btn = document.getElementById('btn-toll-categories');
         if (!vehicle) { btn.style.display = 'none'; return; }
         btn.style.display = '';
         var classes = vehicleTollClasses(vehicle);
         if (!classes) return;
+
+        // Status normatywności (EU Dir. 96/53/EC)
+        var oversize = vehicleOversizeStatus(vehicle);
+        var statusHtml = '';
+        if (oversize === null) {
+            // brak danych
+        } else if (oversize.length === 0) {
+            // Określ typ zespołu na podstawie liczby osi i długości
+            var combinationHint = '';
+            if (vehicle.axle_count >= 4 && vehicle.length_cm >= 1200) {
+                combinationHint = ' · <span class="text-muted small">zespół ciągnik + naczepa</span>';
+            } else if (vehicle.axle_count >= 2 && vehicle.axle_count <= 3 && vehicle.length_cm <= 1200) {
+                combinationHint = ' · <span class="text-muted small">pojedyncza ciężarówka</span>';
+            }
+            statusHtml = '<span class="badge bg-success-subtle text-success border me-2">'
+                       + '<i class="ri-checkbox-circle-line me-1"></i>Pojazd normatywny</span>' + combinationHint;
+        } else {
+            statusHtml = '<span class="badge bg-warning text-dark border me-2">'
+                       + '<i class="ri-alert-line me-1"></i>NIENORMATYWNY</span>'
+                       + ' <span class="text-warning small">' + oversize.map(escapeHtml).join(', ') + '</span>'
+                       + ' <span class="text-muted small"> — może wymagać zezwolenia / pilota</span>';
+        }
 
         // Parametry pojazdu — tylko te które są
         var paramParts = [];
@@ -2522,7 +2561,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (vehicle.tunnel_category) paramParts.push('Tunel ' + vehicle.tunnel_category);
         if (vehicle.hazardous_goods) paramParts.push('<span class="badge bg-danger-subtle text-danger border">ADR</span>');
         if (!paramParts.length) paramParts.push('<em class="text-muted">brak danych pojazdu — HERE traktuje jako osobowy</em>');
-        document.getElementById('tolls-veh-params').innerHTML = paramParts.join(' · ');
+        document.getElementById('tolls-veh-params').innerHTML = paramParts.join(' · ')
+            + (statusHtml ? '<div class="mt-1">' + statusHtml + '</div>' : '');
 
         // Klasy per kraj
         var countryMap = [
