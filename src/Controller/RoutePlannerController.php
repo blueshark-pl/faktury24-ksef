@@ -309,6 +309,83 @@ class RoutePlannerController extends AppController
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // AI ENDPOINTS (OpenAI gpt-4o-mini)
+    // ═══════════════════════════════════════════════════════════════
+
+    public function aiParseAddress(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $text = trim((string)$this->request->getData('text', ''));
+        if ($text === '') {
+            return $this->jsonError(__('Pusty tekst do analizy.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->parseRouteText($text);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function aiCargoWizard(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $desc = trim((string)$this->request->getData('description', ''));
+        if ($desc === '') {
+            return $this->jsonError(__('Brak opisu ładunku.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->analyzeCargo($desc);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function aiPricing(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $context = (array)$this->request->getData('context', []);
+        if (empty($context['distance_km'])) {
+            return $this->jsonError(__('Brak kontekstu trasy.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->priceAdvisor($context);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function aiDriverBrief(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $context = (array)$this->request->getData('context', []);
+        $language = (string)$this->request->getData('language', 'pl');
+        if (empty($context)) {
+            return $this->jsonError(__('Brak kontekstu trasy.'));
+        }
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $brief = $ai->driverBrief($context, $language);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'brief' => $brief, 'language' => $language], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function autosuggest(): Response
     {
         $this->disableAutoRender();

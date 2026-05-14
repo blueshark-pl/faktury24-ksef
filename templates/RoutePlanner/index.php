@@ -28,24 +28,27 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         padding: 14px 22px;
         box-shadow: 0 8px 24px rgba(37, 99, 235, .25), 0 2px 4px rgba(15,23,42,.06);
         position: relative;
-        overflow: hidden;
         margin-bottom: 18px;
         transition: padding .25s;
     }
     /* Wyższe paddingi gdy mamy stats bar (po kalkulacji) */
     .rp-hero:has(.stats-pill-bar.visible) { padding: 20px 26px; }
-    .rp-hero::before {
+    /* Gradient effects w osobnym wrapperze z overflow:hidden — żeby dropdowny mogły wychodzić poza hero */
+    .rp-hero-bg-effects {
+        position: absolute; inset: 0; border-radius: 14px;
+        overflow: hidden; pointer-events: none; z-index: 0;
+    }
+    .rp-hero-bg-effects::before {
         content: ''; position: absolute; top: -60%; right: -12%;
         width: 500px; height: 500px;
         background: radial-gradient(circle, rgba(255,255,255,.10), transparent 70%);
-        pointer-events: none;
     }
-    .rp-hero::after {
+    .rp-hero-bg-effects::after {
         content: ''; position: absolute; bottom: -40%; left: -8%;
         width: 320px; height: 320px;
         background: radial-gradient(circle, rgba(167,139,250,.18), transparent 70%);
-        pointer-events: none;
     }
+    .rp-hero > * { position: relative; z-index: 1; }
     /* Wymuś biały tekst (Bootstrap nadpisuje h2 default color) */
     .rp-hero h2,
     .rp-hero h2 *,
@@ -75,6 +78,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
     .rp-hero .btn-hero:disabled { opacity: .45; cursor: not-allowed; }
     .rp-hero .btn-hero i { color: #ffffff !important; }
+    /* Dropdownów w hero nie obcinaj — Popper position:fixed (data-bs-strategy="fixed") */
+    .rp-hero .dropdown-menu { z-index: 1080; }
+
     /* Live pulse dot przy "Planer tras" gdy liczy */
     .live-dot {
         display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -335,6 +341,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
 <!-- ═══════════════════════════════ HERO ═══════════════════════════════ -->
 <div class="rp-hero">
+    <div class="rp-hero-bg-effects"></div>
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h2>
@@ -347,11 +354,30 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         </div>
         <div class="d-flex gap-2 no-print flex-wrap">
             <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-hero dropdown-toggle" data-bs-toggle="dropdown"
+                        data-bs-strategy="fixed"
+                        title="<?= __('AI Asystent') ?>">
+                    <i class="ri-sparkling-2-line me-1"></i><?= __('AI') ?>
+                </button>
+                <ul class="dropdown-menu shadow">
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aiParserModal">
+                        <i class="ri-magic-line me-2 text-primary"></i><?= __('Parser trasy z tekstu') ?></a></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aiCargoModal">
+                        <i class="ri-truck-line me-2 text-success"></i><?= __('Wizard ładunku') ?></a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-pricing-open">
+                        <i class="ri-robot-2-line me-2 text-danger"></i><?= __('AI Pricing Advisor') ?></a></li>
+                    <li><a class="dropdown-item ai-needs-route" href="#" id="btn-ai-brief-open">
+                        <i class="ri-user-voice-line me-2 text-warning"></i><?= __('Brief dla kierowcy') ?></a></li>
+                </ul>
+            </div>
+            <div class="btn-group">
                 <button type="button" class="btn btn-sm btn-hero dropdown-toggle" data-bs-toggle="dropdown" disabled id="btn-export"
+                        data-bs-strategy="fixed"
                         title="<?= __('Eksport') ?>">
                     <i class="ri-download-line me-1"></i><?= __('Eksport') ?>
                 </button>
-                <ul class="dropdown-menu">
+                <ul class="dropdown-menu shadow">
                     <li><a class="dropdown-item" href="#" id="btn-export-gpx">
                         <i class="ri-route-line me-2 text-success"></i>GPX <small class="text-muted">(<?= __('Garmin/Sygic') ?>)</small></a></li>
                     <li><a class="dropdown-item" href="#" id="btn-export-kml">
@@ -636,6 +662,122 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             </div>
         </div>
     </div>
+</div>
+
+<!-- ═══════════════════════════════ AI MODALS ═══════════════════════════════ -->
+
+<!-- AI Address Parser modal -->
+<div class="modal fade" id="aiParserModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;">
+        <h5 class="modal-title"><i class="ri-magic-line me-2"></i><?= __('AI Parser trasy') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2">
+          <i class="ri-information-line me-1"></i>
+          <?= __('Wklej tekst od klienta — email, wiadomość, opis trasy. AI wyciągnie waypoints, daty, ładunek i ADR.') ?>
+        </div>
+        <textarea class="form-control" id="ai-parser-input" rows="6"
+                  placeholder="<?= __('np. Załadunek 15.05 Kraków ul. Wielicka 22, dostawa 16.05 do godz. 12:00 w Berlinie. 24 tony, ADR klasa 3 — diesel.') ?>"></textarea>
+        <div id="ai-parser-result" class="mt-3" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-primary" id="btn-ai-parser-run">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Cargo Wizard modal -->
+<div class="modal fade" id="aiCargoModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #16a34a, #22c55e); color: white;">
+        <h5 class="modal-title"><i class="ri-truck-line me-2"></i><?= __('AI Wizard ładunku') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2">
+          <i class="ri-information-line me-1"></i>
+          <?= __('Opisz ładunek — AI podpowie klasę ADR, typ pojazdu i wymagania.') ?>
+        </div>
+        <input type="text" class="form-control" id="ai-cargo-input"
+               placeholder="<?= __('np. beczki z paliwem 12 ton, palety z chemią, mrożone mięso 20t…') ?>">
+        <div id="ai-cargo-result" class="mt-3" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-success" id="btn-ai-cargo-run">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Driver Brief modal -->
+<div class="modal fade" id="aiBriefModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #ea580c, #f97316); color: white;">
+        <h5 class="modal-title"><i class="ri-user-voice-line me-2"></i><?= __('Brief dla kierowcy') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small mb-1"><?= __('Język briefu') ?></label>
+          <select class="form-select form-select-sm" id="ai-brief-lang" style="max-width: 200px">
+            <option value="pl">🇵🇱 Polski</option>
+            <option value="en">🇬🇧 English</option>
+            <option value="de">🇩🇪 Deutsch</option>
+            <option value="ua">🇺🇦 Українська</option>
+            <option value="ru">🇷🇺 Русский</option>
+          </select>
+        </div>
+        <div id="ai-brief-loading" style="display:none" class="text-center py-4">
+          <div class="spinner-border text-warning"></div>
+          <div class="mt-2 small text-muted"><?= __('Generuję brief…') ?></div>
+        </div>
+        <pre id="ai-brief-result" class="p-3 rounded" style="display:none;background:#fef3c7;font-family:inherit;font-size:.88rem;line-height:1.6;white-space:pre-wrap;border:1px solid #fde68a"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+        <button type="button" class="btn btn-warning" id="btn-ai-brief-copy" style="display:none">
+          <i class="ri-clipboard-line me-1"></i><?= __('Kopiuj') ?>
+        </button>
+        <button type="button" class="btn btn-warning text-white" id="btn-ai-brief-run">
+          <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Pricing modal -->
+<div class="modal fade" id="aiPricingModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #db2777, #ec4899); color: white;">
+        <h5 class="modal-title"><i class="ri-robot-2-line me-2"></i><?= __('AI Pricing Advisor') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ai-pricing-loading" style="display:none" class="text-center py-4">
+          <div class="spinner-border text-danger"></div>
+          <div class="mt-2 small text-muted"><?= __('Analizuję rynek…') ?></div>
+        </div>
+        <div id="ai-pricing-result" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Template dla waypoint -->
@@ -1613,7 +1755,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var pts = getRoutePoints();
         var wps = (lastResponse.points || []).filter(function (p) { return p.lat && p.lng; });
         var now = new Date().toISOString();
-        var xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        var xml = '<' + '?xml version="1.0" encoding="UTF-8"?>\n';
         xml += '<gpx version="1.1" creator="JJ Maps Route Planner" xmlns="http://www.topografix.com/GPX/1/1">\n';
         xml += '  <metadata><time>' + now + '</time></metadata>\n';
         wps.forEach(function (p, i) {
@@ -1628,7 +1770,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     function buildKml() {
         var pts = getRoutePoints();
         var wps = (lastResponse.points || []).filter(function (p) { return p.lat && p.lng; });
-        var xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        var xml = '<' + '?xml version="1.0" encoding="UTF-8"?>\n';
         xml += '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n';
         xml += '  <name>JJ Maps Route</name>\n';
         wps.forEach(function (p, i) {
@@ -1675,6 +1817,275 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     function enableExportButton() {
         document.getElementById('btn-export').disabled = false;
     }
+
+    // ═════════════════════════════════════════════════════════════════
+    // AI FICZERY (OpenAI gpt-4o-mini)
+    // ═════════════════════════════════════════════════════════════════
+    var aiUrls = {
+        parse:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiParseAddress']) ?>',
+        cargo:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiCargoWizard']) ?>',
+        pricing: '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiPricing']) ?>',
+        brief:   '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']) ?>',
+    };
+    function aiPost(url, payload) {
+        var fd = new FormData();
+        Object.keys(payload).forEach(function (k) {
+            var v = payload[k];
+            if (v && typeof v === 'object') {
+                fd.append(k, JSON.stringify(v));
+            } else {
+                fd.append(k, String(v == null ? '' : v));
+            }
+        });
+        fd.append('_csrfToken', csrf);
+        return fetch(url, {
+            method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
+        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); });
+    }
+
+    // ── AI Address Parser ────────────────────────────────────────────
+    document.getElementById('btn-ai-parser-run').addEventListener('click', function () {
+        var btn = this;
+        var text = document.getElementById('ai-parser-input').value.trim();
+        if (text.length < 5) { toast('<?= __('Wklej dłuższy tekst.') ?>', 'warning'); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> <?= __('Analizuję…') ?>';
+        var resBox = document.getElementById('ai-parser-result');
+        resBox.style.display = 'none';
+
+        aiPost(aiUrls.parse, { text: text }).then(function (res) {
+            if (!res.ok || !res.data.ok) {
+                toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error');
+                return;
+            }
+            var d = res.data.data;
+            var html = '<div class="alert alert-success py-2 mb-2 small"><i class="ri-checkbox-circle-line me-1"></i><?= __('Rozpoznano') ?> ' + (d.points||[]).length + ' <?= __('punktów') ?></div>';
+            html += '<ul class="list-group small mb-2">';
+            (d.points || []).forEach(function (p, i) {
+                html += '<li class="list-group-item d-flex justify-content-between">'
+                     + '<span><strong>' + String.fromCharCode(65+i) + '.</strong> ' + escapeHtml(p.address || '') + '</span>'
+                     + (p.date ? '<span class="text-muted">' + escapeHtml(p.date) + '</span>' : '')
+                     + '</li>';
+            });
+            html += '</ul>';
+            var meta = [];
+            if (d.cargo_weight_kg) meta.push('<strong>' + d.cargo_weight_kg + ' kg</strong>');
+            if (d.cargo_description) meta.push(escapeHtml(d.cargo_description));
+            if (d.adr_class) meta.push('<span class="badge bg-danger-subtle text-danger border">ADR ' + d.adr_class + '</span>');
+            if (d.vehicle_type_hint) meta.push('<span class="badge bg-info-subtle text-info border">' + escapeHtml(d.vehicle_type_hint) + '</span>');
+            if (meta.length) html += '<div class="small mb-2"><strong><?= __('Ładunek:') ?></strong> ' + meta.join(' · ') + '</div>';
+            if (d.special_notes) html += '<div class="small text-muted"><i class="ri-information-line me-1"></i>' + escapeHtml(d.special_notes) + '</div>';
+            html += '<button class="btn btn-primary btn-sm mt-2" id="btn-ai-parser-apply"><i class="ri-check-line me-1"></i><?= __('Zastosuj do formularza') ?></button>';
+            resBox.innerHTML = html;
+            resBox.style.display = 'block';
+
+            document.getElementById('btn-ai-parser-apply').addEventListener('click', function () {
+                if (!d.points || d.points.length < 2) { toast('<?= __('Za mało punktów.') ?>', 'warning'); return; }
+                waypoints = d.points.map(function (p) {
+                    var date = '';
+                    if (p.date) {
+                        // Akceptuj YYYY-MM-DDTHH:MM, YYYY-MM-DD, lub dowolny format
+                        date = p.date.length >= 16 ? p.date.substring(0, 16) : (p.date.length === 10 ? p.date + 'T08:00' : '');
+                    }
+                    return { address: p.address, label: p.address, lat: null, lng: null, country: '', date: date };
+                });
+                // ADR class
+                if (d.adr_class) document.getElementById('adr-class').value = String(d.adr_class);
+                renderWaypoints();
+                // Geocoding pierwszej kalkulacji odbędzie się przy 'Wyznacz trasę'
+                bootstrap.Modal.getInstance(document.getElementById('aiParserModal')).hide();
+                toast('<?= __('Trasa wczytana z AI') ?>', 'success');
+                // Auto-trigger calc
+                setTimeout(function () { document.getElementById('btn-calc').click(); }, 200);
+            });
+        }).catch(function (e) {
+            toast('<?= __('Błąd AI:') ?> ' + e.message, 'error');
+        }).finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>';
+        });
+    });
+
+    // ── AI Cargo Wizard ──────────────────────────────────────────────
+    document.getElementById('btn-ai-cargo-run').addEventListener('click', function () {
+        var btn = this;
+        var desc = document.getElementById('ai-cargo-input').value.trim();
+        if (desc.length < 3) { toast('<?= __('Wpisz opis ładunku.') ?>', 'warning'); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> <?= __('Analizuję…') ?>';
+        var resBox = document.getElementById('ai-cargo-result');
+        resBox.style.display = 'none';
+
+        aiPost(aiUrls.cargo, { description: desc }).then(function (res) {
+            if (!res.ok || !res.data.ok) { toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error'); return; }
+            var d = res.data.data;
+            var html = '';
+            if (d.summary) html += '<div class="alert alert-info py-2 mb-2 small"><i class="ri-lightbulb-line me-1"></i>' + escapeHtml(d.summary) + '</div>';
+            var rows = [];
+            if (d.adr_class) rows.push(['<?= __('Klasa ADR') ?>', '<span class="badge bg-danger-subtle text-danger border">' + d.adr_class + (d.adr_class_name ? ' — ' + escapeHtml(d.adr_class_name) : '') + '</span>']);
+            if (d.recommended_vehicle) rows.push(['<?= __('Sugerowany pojazd') ?>', '<span class="badge bg-info-subtle text-info border">' + escapeHtml(d.recommended_vehicle) + '</span>']);
+            if (d.tonnage_estimate_kg) rows.push(['<?= __('Szacowany tonaż') ?>', '<strong>' + fmtNum(d.tonnage_estimate_kg / 1000, 1) + ' t</strong>']);
+            if (rows.length) {
+                html += '<table class="table table-sm mb-2">';
+                rows.forEach(function (r) { html += '<tr><td class="text-muted">' + r[0] + '</td><td>' + r[1] + '</td></tr>'; });
+                html += '</table>';
+            }
+            if (d.special_requirements && d.special_requirements.length) {
+                html += '<div class="small mb-2"><strong><?= __('Wymagania:') ?></strong><ul class="mb-0">'
+                     + d.special_requirements.map(function (x) { return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul></div>';
+            }
+            if (d.warnings && d.warnings.length) {
+                html += '<div class="alert alert-warning py-2 mb-2 small"><strong><i class="ri-alert-line me-1"></i><?= __('Ostrzeżenia:') ?></strong><ul class="mb-0">'
+                     + d.warnings.map(function (x) { return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul></div>';
+            }
+            if (d.adr_class) html += '<button class="btn btn-success btn-sm" id="btn-ai-cargo-apply"><i class="ri-check-line me-1"></i><?= __('Ustaw ADR') ?> ' + d.adr_class + '</button>';
+            resBox.innerHTML = html;
+            resBox.style.display = 'block';
+            var applyBtn = document.getElementById('btn-ai-cargo-apply');
+            if (applyBtn) applyBtn.addEventListener('click', function () {
+                document.getElementById('adr-class').value = String(d.adr_class);
+                bootstrap.Modal.getInstance(document.getElementById('aiCargoModal')).hide();
+                toast('<?= __('ADR ustawiony') ?>: ' + d.adr_class, 'success');
+            });
+        }).catch(function (e) { toast('<?= __('Błąd AI:') ?> ' + e.message, 'error'); })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Analizuj') ?>';
+        });
+    });
+
+    // ── AI Pricing Advisor ───────────────────────────────────────────
+    document.getElementById('btn-ai-pricing-open').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var r = lastResponse.routes[activeAltIdx];
+        var vehicle = getSelectedVehicle();
+        var countries = (lastResponse.points || []).map(function (p) { return p.country || ''; }).filter(function (x) { return x; });
+        var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
+        var price = parseFloat(document.getElementById('fuel-price').value || 0);
+        var rate = parseFloat(document.getElementById('driver-rate').value || 0);
+        var fuelPln = (r.distance_km / 100) * cons * price;
+        var driverPln = (r.duration_min / 60) * rate;
+        var tollsPln = r.tolls_total
+            ? ((r.tolls_currency === 'EUR' && lastResponse.eur_pln_rate) ? r.tolls_total * lastResponse.eur_pln_rate : r.tolls_total)
+            : 0;
+        var context = {
+            distance_km: r.distance_km,
+            duration_min: r.duration_min,
+            tolls_pln: Math.round(tollsPln * 100) / 100,
+            fuel_pln: Math.round(fuelPln * 100) / 100,
+            driver_pln: Math.round(driverPln * 100) / 100,
+            vehicle: vehicle ? (vehicle.name + ' ' + (vehicle.gross_weight_kg ? Math.round(vehicle.gross_weight_kg/1000) + 't' : '')) : 'osobowy',
+            rate_per_km: vehicle && vehicle.rate_per_km ? vehicle.rate_per_km : null,
+            countries: countries.join(','),
+            date: new Date().toISOString().substring(0, 10),
+            adr_class: document.getElementById('adr-class').value || null,
+        };
+        var modal = new bootstrap.Modal(document.getElementById('aiPricingModal'));
+        modal.show();
+        document.getElementById('ai-pricing-loading').style.display = 'block';
+        document.getElementById('ai-pricing-result').style.display = 'none';
+
+        aiPost(aiUrls.pricing, { context: context }).then(function (res) {
+            document.getElementById('ai-pricing-loading').style.display = 'none';
+            if (!res.ok || !res.data.ok) {
+                document.getElementById('ai-pricing-result').innerHTML = '<div class="alert alert-danger">' + escapeHtml(res.data.message || '<?= __('Błąd AI.') ?>') + '</div>';
+                document.getElementById('ai-pricing-result').style.display = 'block';
+                return;
+            }
+            var d = res.data.data;
+            var compBadge = { low: '<span class="badge bg-danger">Nisko</span>', fair: '<span class="badge bg-success">Fair</span>', high: '<span class="badge bg-warning">Wysoko</span>' }[d.competitiveness] || '';
+            var html = '<div class="text-center mb-3">'
+                     + '<div class="text-muted small text-uppercase" style="letter-spacing:.6px">AI sugerowana cena</div>'
+                     + '<div style="font-size:2.8rem;font-weight:700;color:#db2777">' + fmtNum(d.suggested_price_pln, 2) + ' <small class="text-muted" style="font-size:1rem">PLN</small></div>'
+                     + '<div class="text-muted">' + fmtNum(d.price_per_km_pln, 2) + ' PLN/km · marża ' + fmtNum(d.margin_percent, 0) + '% · ' + compBadge + '</div>'
+                     + '</div>';
+            if (d.reasoning) html += '<div class="alert alert-light border mb-2"><i class="ri-quill-pen-line me-1"></i>' + escapeHtml(d.reasoning) + '</div>';
+            if (d.factors && d.factors.length) {
+                html += '<div class="small fw-semibold mb-1 text-muted"><?= __('Czynniki') ?>:</div>';
+                html += '<ul class="small mb-0">' + d.factors.map(function (f) { return '<li>' + escapeHtml(f) + '</li>'; }).join('') + '</ul>';
+            }
+            document.getElementById('ai-pricing-result').innerHTML = html;
+            document.getElementById('ai-pricing-result').style.display = 'block';
+        }).catch(function (e) {
+            document.getElementById('ai-pricing-loading').style.display = 'none';
+            document.getElementById('ai-pricing-result').innerHTML = '<div class="alert alert-danger">' + escapeHtml(e.message) + '</div>';
+            document.getElementById('ai-pricing-result').style.display = 'block';
+        });
+    });
+
+    // ── AI Driver Brief ──────────────────────────────────────────────
+    function openBriefModal() {
+        var modal = new bootstrap.Modal(document.getElementById('aiBriefModal'));
+        modal.show();
+    }
+    document.getElementById('btn-ai-brief-open').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        openBriefModal();
+    });
+    document.getElementById('btn-ai-brief-run').addEventListener('click', function () {
+        var btn = this;
+        var lang = document.getElementById('ai-brief-lang').value;
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var r = lastResponse.routes[activeAltIdx];
+        var vehicle = getSelectedVehicle();
+        var context = {
+            points: (lastResponse.points || []).map(function (p, i) {
+                var wp = waypoints[i] || {};
+                return { letter: String.fromCharCode(65+i), address: p.label || p.address, country: p.country, date: wp.date || '' };
+            }),
+            distance_km: r.distance_km,
+            duration_min: r.duration_min,
+            tolls_total: r.tolls_total,
+            tolls_currency: r.tolls_currency,
+            sections: r.sections || [],
+            vehicle: vehicle ? (vehicle.name + (vehicle.plate ? ' (' + vehicle.plate + ')' : '')) : 'osobowy',
+            adr_class: document.getElementById('adr-class').value || null,
+        };
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+        document.getElementById('ai-brief-loading').style.display = 'block';
+        document.getElementById('ai-brief-result').style.display = 'none';
+        document.getElementById('btn-ai-brief-copy').style.display = 'none';
+
+        aiPost(aiUrls.brief, { context: context, language: lang }).then(function (res) {
+            document.getElementById('ai-brief-loading').style.display = 'none';
+            if (!res.ok || !res.data.ok) {
+                toast(res.data.message || '<?= __('Błąd AI.') ?>', 'error');
+                return;
+            }
+            var pre = document.getElementById('ai-brief-result');
+            pre.textContent = res.data.brief;
+            pre.style.display = 'block';
+            document.getElementById('btn-ai-brief-copy').style.display = '';
+        }).catch(function (e) {
+            document.getElementById('ai-brief-loading').style.display = 'none';
+            toast('<?= __('Błąd AI:') ?> ' + e.message, 'error');
+        }).finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-sparkling-2-line me-1"></i><?= __('Generuj') ?>';
+        });
+    });
+    document.getElementById('btn-ai-brief-copy').addEventListener('click', function () {
+        var text = document.getElementById('ai-brief-result').textContent;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function () {
+                toast('<?= __('Brief skopiowany') ?>', 'success');
+            });
+        }
+    });
+
+    // Aktywuj/dezaktywuj AI buttons zależnie od stanu trasy
+    function refreshAiButtons() {
+        var has = !!lastResponse;
+        document.querySelectorAll('.ai-needs-route').forEach(function (el) {
+            el.classList.toggle('disabled', !has);
+            el.style.opacity = has ? '1' : '.5';
+            el.style.pointerEvents = has ? '' : 'none';
+        });
+    }
+    refreshAiButtons();
 
     document.getElementById('btn-share').addEventListener('click', function () {
         var pts = waypoints.filter(function (w) { return w.lat != null && w.lng != null; });

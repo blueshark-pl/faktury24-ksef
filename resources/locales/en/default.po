@@ -2481,3 +2481,123 @@ msgstr "Embed link copied — paste in iframe"
 
 msgid "Brak punktów."
 msgstr "No points."
+
+msgid "AI Asystent"
+msgstr "AI Assistant"
+
+msgid "AI Parser trasy"
+msgstr "AI Route Parser"
+
+msgid "AI Wizard ładunku"
+msgstr "AI Cargo Wizard"
+
+msgid "AI Pricing Advisor"
+msgstr "AI Pricing Advisor"
+
+msgid "Brief dla kierowcy"
+msgstr "Driver Brief"
+
+msgid "Parser trasy z tekstu"
+msgstr "Parse route from text"
+
+msgid "Wizard ładunku"
+msgstr "Cargo Wizard"
+
+msgid "Wklej tekst od klienta — email, wiadomość, opis trasy. AI wyciągnie waypoints, daty, ładunek i ADR."
+msgstr "Paste customer text — email, message, route description. AI will extract waypoints, dates, cargo and ADR."
+
+msgid "np. Załadunek 15.05 Kraków ul. Wielicka 22, dostawa 16.05 do godz. 12:00 w Berlinie. 24 tony, ADR klasa 3 — diesel."
+msgstr "e.g. Loading 15.05 Kraków, Wielicka St 22, delivery 16.05 by 12:00 in Berlin. 24 tons, ADR class 3 — diesel."
+
+msgid "Anuluj"
+msgstr "Cancel"
+
+msgid "Analizuj"
+msgstr "Analyze"
+
+msgid "Opisz ładunek — AI podpowie klasę ADR, typ pojazdu i wymagania."
+msgstr "Describe cargo — AI will suggest ADR class, vehicle type and requirements."
+
+msgid "np. beczki z paliwem 12 ton, palety z chemią, mrożone mięso 20t…"
+msgstr "e.g. fuel barrels 12 tons, chemical pallets, frozen meat 20t…"
+
+msgid "Język briefu"
+msgstr "Brief language"
+
+msgid "Generuję brief…"
+msgstr "Generating brief…"
+
+msgid "Zamknij"
+msgstr "Close"
+
+msgid "Kopiuj"
+msgstr "Copy"
+
+msgid "Generuj"
+msgstr "Generate"
+
+msgid "Analizuję rynek…"
+msgstr "Analyzing market…"
+
+msgid "Analizuję…"
+msgstr "Analyzing…"
+
+msgid "Wklej dłuższy tekst."
+msgstr "Paste a longer text."
+
+msgid "Błąd AI."
+msgstr "AI error."
+
+msgid "Błąd AI:"
+msgstr "AI error:"
+
+msgid "Rozpoznano"
+msgstr "Recognized"
+
+msgid "punktów"
+msgstr "points"
+
+msgid "Ładunek:"
+msgstr "Cargo:"
+
+msgid "Zastosuj do formularza"
+msgstr "Apply to form"
+
+msgid "Za mało punktów."
+msgstr "Not enough points."
+
+msgid "Trasa wczytana z AI"
+msgstr "Route loaded from AI"
+
+msgid "Wpisz opis ładunku."
+msgstr "Enter cargo description."
+
+msgid "Klasa ADR"
+msgstr "ADR class"
+
+msgid "Sugerowany pojazd"
+msgstr "Recommended vehicle"
+
+msgid "Szacowany tonaż"
+msgstr "Estimated tonnage"
+
+msgid "Wymagania:"
+msgstr "Requirements:"
+
+msgid "Ostrzeżenia:"
+msgstr "Warnings:"
+
+msgid "Ustaw ADR"
+msgstr "Set ADR"
+
+msgid "ADR ustawiony"
+msgstr "ADR set"
+
+msgid "Najpierw wyznacz trasę."
+msgstr "Calculate a route first."
+
+msgid "Czynniki"
+msgstr "Factors"
+
+msgid "Brief skopiowany"
+msgstr "Brief copied"

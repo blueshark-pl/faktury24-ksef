@@ -219,6 +219,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->connect('/trasy/calculate',        ['controller' => 'RoutePlanner', 'action' => 'calculate']);
         $builder->get('/trasy/autosuggest',          ['controller' => 'RoutePlanner', 'action' => 'autosuggest']);
         $builder->get('/trasy/revgeocode',           ['controller' => 'RoutePlanner', 'action' => 'revgeocode']);
+        $builder->post('/trasy/ai/parse-address',    ['controller' => 'RoutePlanner', 'action' => 'aiParseAddress']);
+        $builder->post('/trasy/ai/cargo-wizard',     ['controller' => 'RoutePlanner', 'action' => 'aiCargoWizard']);
+        $builder->post('/trasy/ai/pricing',          ['controller' => 'RoutePlanner', 'action' => 'aiPricing']);
+        $builder->post('/trasy/ai/driver-brief',     ['controller' => 'RoutePlanner', 'action' => 'aiDriverBrief']);
         $builder->post('/trasy/historia/usun/{id}',  ['controller' => 'RoutePlanner', 'action' => 'deleteRecent'])
             ->setPass(['id']);
         $builder->post('/trasy/szablon/zapisz',       ['controller' => 'RoutePlanner', 'action' => 'saveTemplate']);
