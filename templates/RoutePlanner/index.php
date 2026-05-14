@@ -1024,6 +1024,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                    style="font-size:.78rem;padding:.18rem .4rem">
             <span class="text-muted wp-date-label" style="font-size:.7rem;min-width:70px">Załadunek</span>
             <span class="wp-eta-badge" style="display:none;font-size:.72rem;font-weight:600;padding:1px 6px;border-radius:8px"></span>
+            <span class="wp-weather-badge" style="display:none;font-size:.72rem;padding:1px 8px;border-radius:8px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe"></span>
         </div>
     </div>
 </template>
@@ -1630,6 +1631,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderEtaBadges(data.routes[0]);
         renderTollsBreakdown(data.routes[0]);
         renderTruckBans(data.routes[0], data.points || []);
+        fetchAndRenderWeather(data.routes[0], data.points || []);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
@@ -1977,6 +1979,69 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 badge.style.border = '1px solid #93c5fd';
                 badge.innerHTML = '<i class="ri-rewind-line me-1"></i><?= __('Wcześniej') ?> −' + fmtDeltaMin(diffMin);
                 badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
+            }
+        });
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    // #1 Pogoda po trasie (OpenWeatherMap)
+    // ═════════════════════════════════════════════════════════════════
+    var weatherUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'weather']) ?>';
+
+    function fetchAndRenderWeather(route, points) {
+        // Dla każdego waypoint pobieramy pogodę — ETA z section'ów
+        if (!route || !route.sections || !points || !points.length) return;
+        // Buduj listę punktów z lat/lng + data: dla punktu i, ETA z arrival_time poprzedniej sekcji
+        var pts = points.map(function (p, i) {
+            var iso = '';
+            if (i === 0 && route.sections[0]) iso = route.sections[0].departure_time;
+            else if (route.sections[i - 1]) iso = route.sections[i - 1].arrival_time;
+            return { lat: p.lat, lng: p.lng, date: iso };
+        });
+
+        var fd = new FormData();
+        pts.forEach(function (p, idx) {
+            fd.append('points[' + idx + '][lat]', String(p.lat));
+            fd.append('points[' + idx + '][lng]', String(p.lng));
+            if (p.date) fd.append('points[' + idx + '][date]', p.date);
+        });
+        fd.append('_csrfToken', csrf);
+
+        fetch(weatherUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (!data || !data.ok || !data.weather) return;
+            renderWeatherBadges(data.weather);
+        })
+        .catch(function (e) { console.warn('Weather fetch failed:', e); });
+    }
+
+    function renderWeatherBadges(weatherArr) {
+        var rows = waypointsEl.querySelectorAll('.waypoint-row');
+        rows.forEach(function (row, idx) {
+            var badge = row.querySelector('.wp-weather-badge');
+            if (!badge) return;
+            var w = weatherArr[idx];
+            if (!w) { badge.style.display = 'none'; return; }
+            var iconUrl = w.icon ? 'https://openweathermap.org/img/wn/' + w.icon + '.png' : '';
+            var html = '';
+            if (iconUrl) html += '<img src="' + iconUrl + '" style="width:20px;height:20px;vertical-align:middle;margin-right:2px">';
+            html += '<strong>' + w.temp + '°C</strong>';
+            html += ' <span class="text-muted">' + escapeHtml(w.desc) + '</span>';
+            if (w.rain > 0.1) html += ' · 🌧️ ' + w.rain + ' mm';
+            if (w.snow > 0.1) html += ' · ❄️ ' + w.snow + ' mm';
+            if (w.wind >= 8) html += ' · 💨 ' + w.wind + ' m/s';
+            badge.innerHTML = html;
+            badge.style.display = '';
+            badge.title = w.warning || (w.desc + ' · wilg. ' + w.humidity + '% · chmury ' + w.clouds + '%');
+            if (w.warning) {
+                badge.style.background = '#fef3c7';
+                badge.style.color = '#92400e';
+                badge.style.border = '1px solid #fde68a';
+            } else {
+                badge.style.background = '#eff6ff';
+                badge.style.color = '#1e40af';
+                badge.style.border = '1px solid #bfdbfe';
             }
         });
     }

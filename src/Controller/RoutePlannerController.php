@@ -383,6 +383,35 @@ class RoutePlannerController extends AppController
         }
     }
 
+    public function weather(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $points = (array)$this->request->getData('points', []);
+        if (empty($points)) {
+            return $this->jsonError(__('Brak punktów do pogody.'));
+        }
+        try {
+            $svc = new \App\Service\Weather\OpenWeatherService();
+            $out = [];
+            foreach ($points as $p) {
+                $p = (array)$p;
+                $lat = (float)($p['lat'] ?? 0);
+                $lng = (float)($p['lng'] ?? 0);
+                $date = (string)($p['date'] ?? '');
+                if ($lat === 0.0 || $lng === 0.0) {
+                    $out[] = null;
+                    continue;
+                }
+                $out[] = $svc->forecastAt($lat, $lng, $date !== '' ? $date : null);
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'weather' => $out], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function aiRouteOptimizer(): Response
     {
         $this->disableAutoRender();

@@ -2724,3 +2724,156 @@ msgstr "CSV downloaded"
 
 msgid "Włącz wyskakujące okna"
 msgstr "Enable popup windows"
+
+msgid "Cena frachtu od klienta (PLN)"
+msgstr "Customer freight price (PLN)"
+
+msgid "Wpisz aby zobaczyć zysk"
+msgstr "Enter to see profit"
+
+msgid "Pusto = bez kalkulacji zysku"
+msgstr "Empty = no profit calc"
+
+msgid "Zysk"
+msgstr "Profit"
+
+msgid "Plan postojów AETR"
+msgstr "AETR stop plan"
+
+msgid "zgodne z UE 561/2006"
+msgstr "EU 561/2006 compliant"
+
+msgid "Typ"
+msgstr "Type"
+
+msgid "Termin"
+msgstr "Time"
+
+msgid "Pozycja na trasie"
+msgstr "Position on route"
+
+msgid "Współrzędne"
+msgstr "Coordinates"
+
+msgid "Odpoczynek 11h"
+msgstr "11h rest"
+
+msgid "Przerwa 45 min"
+msgstr "45 min break"
+
+msgid "Zakazy dla ciężarówek"
+msgstr "Truck driving bans"
+
+msgid "Niedziele i święta — DE/AT/FR/IT (>7.5t)"
+msgstr "Sundays and holidays — DE/AT/FR/IT (>7.5t)"
+
+msgid "Zakaz niedzielny"
+msgstr "Sunday ban"
+
+msgid "Święto"
+msgstr "Holiday"
+
+msgid "AI — Najlepsza alternatywa"
+msgstr "AI — Best alternative"
+
+msgid "Priorytet"
+msgstr "Priority"
+
+msgid "Zrównoważony (czas + koszt)"
+msgstr "Balanced (time + cost)"
+
+msgid "Czas (najszybciej)"
+msgstr "Time (fastest)"
+
+msgid "Koszt (najtaniej)"
+msgstr "Cost (cheapest)"
+
+msgid "Komfort (autostrady)"
+msgstr "Comfort (highways)"
+
+msgid "Bezpieczeństwo (mało granic)"
+msgstr "Safety (few borders)"
+
+msgid "Analizuję alternatywy…"
+msgstr "Analyzing alternatives…"
+
+msgid "Wybierz najlepszą alternatywę"
+msgstr "Pick best alternative"
+
+msgid "Odpowiedź na email klienta"
+msgstr "Reply to customer email"
+
+msgid "Polecam"
+msgstr "Recommend"
+
+msgid "Trasa"
+msgstr "Route"
+
+msgid "główna"
+msgstr "main"
+
+msgid "alternatywa"
+msgstr "alternative"
+
+msgid "Szybkość"
+msgstr "Speed"
+
+msgid "Koszt"
+msgstr "Cost"
+
+msgid "Komfort"
+msgstr "Comfort"
+
+msgid "Bezpieczeństwo"
+msgstr "Safety"
+
+msgid "Razem"
+msgstr "Total"
+
+msgid "Zastosuj wybór"
+msgstr "Apply choice"
+
+msgid "Zastosowano rekomendację AI"
+msgstr "AI recommendation applied"
+
+msgid "Najpierw wyznacz trasę z >=2 alternatywami."
+msgstr "Calculate a route with >=2 alternatives first."
+
+msgid "Potrzebne minimum 2 alternatywy."
+msgstr "Minimum 2 alternatives required."
+
+msgid "Wklej treść emaila od klienta. AI rozpozna intencję, wygeneruje odpowiedź PL+EN i wskaże następne kroki."
+msgstr "Paste customer email. AI will detect intent, generate PL+EN reply and suggest next steps."
+
+msgid "Dzień dobry, proszę o ofertę na transport ładunku z Warszawy do Berlina, 24 tony, paliwo, 17.05…"
+msgstr "Hello, please quote a shipment from Warsaw to Berlin, 24 tons, diesel, May 17…"
+
+msgid "Generuj odpowiedź"
+msgstr "Generate reply"
+
+msgid "Zapytanie ofertowe"
+msgstr "Quote request"
+
+msgid "Sprawdzenie statusu"
+msgstr "Status check"
+
+msgid "Reklamacja"
+msgstr "Complaint"
+
+msgid "Inne"
+msgstr "Other"
+
+msgid "Wklej dłuższy email."
+msgstr "Paste a longer email."
+
+msgid "Kopiuj odpowiedź"
+msgstr "Copy reply"
+
+msgid "Skopiowane"
+msgstr "Copied"
+
+msgid "Brak treści emaila."
+msgstr "Empty email content."
+
+msgid "Brak punktów do pogody."
+msgstr "No points for weather."
