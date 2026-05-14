@@ -560,17 +560,27 @@ class HereRoutingService
         $stops = [];
         $seen = [];
         $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
-        // 700-7600 = Truck Stop/Plaza, 700-7400 = Gasoline Station
+        // HERE Places taxonomy:
+        //  700-7200 = Parking (regular)
+        //  700-7400 = Fuel / Gas Station (z 700-7400-0117 = truck-friendly fuel)
+        //  700-7600 = Rest Area / Truck Stop (z 700-7600-0116 = truck stop)
+        $categories = '700-7200,700-7400,700-7600';
+        $radiusM = 15000; // 15 km od sample point (domyślny zasięg Browse jest <1km)
         foreach ($points as $pt) {
             try {
-                $resp = $this->client->get($browseUrl, [
+                $params = [
                     'at'         => $pt['lat'] . ',' . $pt['lng'],
-                    'categories' => '700-7600,700-7400',
-                    'limit'      => 10,
+                    'in'         => 'circle:' . $pt['lat'] . ',' . $pt['lng'] . ';r=' . $radiusM,
+                    'categories' => $categories,
+                    'limit'      => 20,
                     'apiKey'     => $this->apiKey,
                     'lang'       => 'pl-PL',
-                ]);
-                if (!$resp->isOk()) continue;
+                ];
+                $resp = $this->client->get($browseUrl, $params);
+                if (!$resp->isOk()) {
+                    Log::warning('HERE browse HTTP ' . $resp->getStatusCode() . ' at ' . $pt['lat'] . ',' . $pt['lng'] . ': ' . $resp->getStringBody());
+                    continue;
+                }
                 $data = $resp->getJson();
                 foreach (($data['items'] ?? []) as $item) {
                     $id = (string)($item['id'] ?? '');
@@ -582,6 +592,7 @@ class HereRoutingService
                     $type = 'other';
                     if (str_starts_with($catId, '700-7600')) $type = 'truck_stop';
                     elseif (str_starts_with($catId, '700-7400')) $type = 'fuel_station';
+                    elseif (str_starts_with($catId, '700-7200')) $type = 'parking';
                     $stops[] = [
                         'id'          => $id,
                         'title'       => (string)($item['title'] ?? ''),
@@ -598,6 +609,7 @@ class HereRoutingService
                 Log::warning('HERE browse error: ' . $e->getMessage());
             }
         }
+        Log::debug('Truck POI search: ' . count($points) . ' samples, ' . count($stops) . ' results');
         return $stops;
     }
 

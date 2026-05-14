@@ -2105,9 +2105,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (!stops || !stops.length) return;
         poiMarkersGroup = new H.map.Group();
         stops.forEach(function (s) {
-            var isTruck = s.type === 'truck_stop';
-            var col = isTruck ? '#16a34a' : '#3b82f6';
-            var ico = isTruck ? '🅿️' : '⛽';
+            var col, ico;
+            if (s.type === 'truck_stop') { col = '#16a34a'; ico = '🚛'; }
+            else if (s.type === 'fuel_station') { col = '#3b82f6'; ico = '⛽'; }
+            else if (s.type === 'parking') { col = '#8b5cf6'; ico = '🅿️'; }
+            else { col = '#64748b'; ico = '📍'; }
             var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
                     + '<path d="M16 0C7 0 0 7 0 16c0 11 16 24 16 24s16-13 16-24C32 7 25 0 16 0z" fill="' + col + '" stroke="white" stroke-width="2"/>'
                     + '<circle cx="16" cy="16" r="9" fill="white"/>'
