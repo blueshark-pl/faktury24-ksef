@@ -230,6 +230,12 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/trasy/weather',             ['controller' => 'RoutePlanner', 'action' => 'weather']);
         $builder->post('/trasy/truck-pois',           ['controller' => 'RoutePlanner', 'action' => 'truckPois']);
         $builder->post('/trasy/toll-booths',           ['controller' => 'RoutePlanner', 'action' => 'tollBooths']);
+        // Toll fee overrides — learning loop
+        $builder->get('/trasy/toll-overrides',           ['controller' => 'RoutePlanner', 'action' => 'tollOverrideList']);
+        $builder->post('/trasy/toll-overrides/save',     ['controller' => 'RoutePlanner', 'action' => 'tollOverrideSave']);
+        $builder->post('/trasy/toll-overrides/{id}/delete', ['controller' => 'RoutePlanner', 'action' => 'tollOverrideDelete'])
+            ->setPatterns(['id' => '[0-9a-f-]{36}']);
+
         // #7 Cabotage tracker
         $builder->get('/trasy/cabotage-status',        ['controller' => 'RoutePlanner', 'action' => 'cabotageStatus']);
         $builder->post('/trasy/cabotage-save',         ['controller' => 'RoutePlanner', 'action' => 'cabotageSave']);

@@ -344,6 +344,48 @@ class RoutePlannerController extends AppController
             // NBP EUR→PLN rate dla tolls
             $result['eur_pln_rate'] = $this->fetchEurPlnRate();
 
+            // Aplikuj overrides usera dla opłat (learning loop)
+            $companyIdForOverrides = (string)($identity?->get('company_id') ?? '');
+            if ($companyIdForOverrides !== '' && !empty($result['routes'])) {
+                $overridesMap = $this->fetchTable('TollFeeOverrides')
+                    ->getActiveOverridesByCompany($companyIdForOverrides);
+                if (!empty($overridesMap)) {
+                    foreach ($result['routes'] as $rIdx => &$route) {
+                        if (empty($route['tolls_breakdown'])) continue;
+                        foreach ($route['tolls_breakdown'] as &$fare) {
+                            $sig = \App\Model\Table\TollFeeOverridesTable::fareSignature(
+                                (string)($fare['country'] ?? ''),
+                                (string)($fare['system'] ?? ''),
+                                (string)($fare['name'] ?? '')
+                            );
+                            $fare['fare_signature'] = $sig;
+                            if (isset($overridesMap[$sig])) {
+                                $o = $overridesMap[$sig];
+                                $fare['override'] = [
+                                    'id'        => (string)$o['id'],
+                                    'action'    => (string)$o['action'],
+                                    'reason'    => (string)$o['reason'],
+                                    'corrected_price'    => $o['corrected_price'] !== null ? (float)$o['corrected_price'] : null,
+                                    'corrected_currency' => (string)$o['corrected_currency'],
+                                ];
+                                // Zwiększ licznik (best-effort)
+                                try {
+                                    $this->fetchTable('TollFeeOverrides')->updateAll(
+                                        ['applied_count = applied_count + 1', 'last_applied_at' => date('Y-m-d H:i:s')],
+                                        ['id' => $o['id']]
+                                    );
+                                } catch (\Throwable $e) {}
+                            }
+                        }
+                        unset($fare);
+
+                        // Przelicz totals z uwzględnieniem overrides
+                        $route = $this->recalcTollsWithOverrides($route, $currency);
+                    }
+                    unset($route);
+                }
+            }
+
             // Hogis-style: zwracaj zsumowane parametry zestawu + dane kierowcy
             if ($vehicleData) {
                 $result['combination'] = [
@@ -499,6 +541,185 @@ class RoutePlannerController extends AppController
      * #7 Cabotage tracker — zwraca licznik ostatnich operacji w danym kraju
      * dla bieżącej firmy/pojazdu. Auto-wywoływany przed kalkulacją trasy.
      */
+    /**
+     * Zapisz override dla opłaty drogowej. User wybrał action (ignore/corrected/flagged)
+     * i opcjonalnie podał corrected_price + reason.
+     */
+    /**
+     * Przelicza tolls_total i tolls_by_country dla danej trasy uwzględniając
+     * overrides:
+     *   - action=ignore   → fare wykluczone z sumy (ale w breakdown z badgem)
+     *   - action=corrected → fare używa corrected_price zamiast HERE
+     *   - action=flagged  → fare zostaje w sumie ale oznaczone do review
+     */
+    private function recalcTollsWithOverrides(array $route, string $targetCurrency): array
+    {
+        $newTotal = 0.0;
+        $newByCountry = [];
+        $hadAny = false;
+        foreach ($route['tolls_breakdown'] ?? [] as $fare) {
+            $hadAny = true;
+            $action = $fare['override']['action'] ?? null;
+            if ($action === 'ignore') continue; // wyklucz z sumy
+
+            // Cena do agregacji: corrected jeśli jest, inaczej oryginalna
+            $price = null; $cur = null;
+            if ($action === 'corrected' && isset($fare['override']['corrected_price'])) {
+                $price = (float)$fare['override']['corrected_price'];
+                $cur   = (string)$fare['override']['corrected_currency'];
+            } else {
+                // Logika identyczna jak w HereRoutingService — preferuj converted
+                $origPrice = (float)($fare['price'] ?? 0);
+                $origCur   = (string)($fare['currency'] ?? '');
+                $convPrice = (float)($fare['converted_price'] ?? 0);
+                $convCur   = (string)($fare['converted_curr'] ?? '');
+                if ($convPrice > 0 && strcasecmp($convCur, $targetCurrency) === 0) {
+                    $price = $convPrice; $cur = $convCur;
+                } elseif (strcasecmp($origCur, $targetCurrency) === 0) {
+                    $price = $origPrice; $cur = $origCur;
+                }
+            }
+            if ($price === null) continue;
+
+            $cc = (string)($fare['country'] ?? '??');
+            $newByCountry[$cc] = ($newByCountry[$cc] ?? 0.0) + $price;
+            $newTotal += $price;
+        }
+        $route['tolls_total']      = $hadAny ? round($newTotal, 2) : null;
+        $route['tolls_by_country'] = $newByCountry;
+        $route['tolls_currency']   = $targetCurrency;
+        return $route;
+    }
+
+    public function tollOverrideSave(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        $userId = (string)($identity?->getIdentifier() ?? '');
+        if ($companyId === '') return $this->jsonError(__('Brak firmy.'));
+
+        $country = strtoupper(trim((string)$this->request->getData('country', '')));
+        $system  = trim((string)$this->request->getData('system', ''));
+        $name    = trim((string)$this->request->getData('name', ''));
+        $action  = (string)$this->request->getData('action', '');
+        if (!in_array($action, ['ignore', 'corrected', 'flagged'], true)) {
+            return $this->jsonError(__('Nieprawidłowa akcja.'));
+        }
+        if ($country === '') return $this->jsonError(__('Brak kodu kraju.'));
+
+        $signature = \App\Model\Table\TollFeeOverridesTable::fareSignature($country, $system, $name);
+        $Overrides = $this->fetchTable('TollFeeOverrides');
+
+        // Upsert: jeśli już istnieje aktywny override dla tej sygnatury, aktualizuj go
+        $existing = $Overrides->find()->where([
+            'company_id' => $companyId,
+            'fare_signature' => $signature,
+            'is_active' => true,
+        ])->first();
+
+        try {
+            if ($existing) {
+                $existing->action = $action;
+                $existing->corrected_price = $action === 'corrected'
+                    ? (float)$this->request->getData('corrected_price', 0) : null;
+                $existing->corrected_currency = $action === 'corrected'
+                    ? (string)$this->request->getData('corrected_currency', '') : null;
+                $existing->reason = (string)$this->request->getData('reason', '');
+                $existing->original_price = $this->request->getData('original_price') !== null
+                    ? (float)$this->request->getData('original_price') : null;
+                $existing->original_currency = (string)$this->request->getData('original_currency', '');
+                $Overrides->save($existing);
+                $id = (string)$existing->id;
+            } else {
+                $entity = $Overrides->newEntity([
+                    'id'                => \Cake\Utility\Text::uuid(),
+                    'company_id'        => $companyId,
+                    'created_by'        => $userId ?: null,
+                    'fare_signature'    => $signature,
+                    'country'           => $country,
+                    'system'            => $system,
+                    'fare_name'         => $name,
+                    'action'            => $action,
+                    'corrected_price'   => $action === 'corrected'
+                        ? (float)$this->request->getData('corrected_price', 0) : null,
+                    'corrected_currency' => $action === 'corrected'
+                        ? (string)$this->request->getData('corrected_currency', '') : null,
+                    'original_price'    => $this->request->getData('original_price') !== null
+                        ? (float)$this->request->getData('original_price') : null,
+                    'original_currency' => (string)$this->request->getData('original_currency', ''),
+                    'reason'            => (string)$this->request->getData('reason', ''),
+                    'route_search_id'   => $this->request->getData('route_search_id') ?: null,
+                    'is_active'         => true,
+                ]);
+                $Overrides->save($entity);
+                $id = (string)$entity->id;
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'id' => $id, 'signature' => $signature]));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    /**
+     * Usuń override (soft delete via is_active=false).
+     */
+    public function tollOverrideDelete(string $id): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post', 'delete']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        $Overrides = $this->fetchTable('TollFeeOverrides');
+        $entity = $Overrides->find()->where(['id' => $id, 'company_id' => $companyId])->first();
+        if ($entity) {
+            $entity->is_active = false;
+            $Overrides->save($entity);
+        }
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true]));
+    }
+
+    /**
+     * Lista wszystkich aktywnych override'ów dla firmy.
+     */
+    public function tollOverrideList(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') return $this->jsonError(__('Brak firmy.'));
+
+        $rows = $this->fetchTable('TollFeeOverrides')->find()
+            ->where(['company_id' => $companyId, 'is_active' => true])
+            ->orderByDesc('modified')
+            ->all()
+            ->toArray();
+        $out = array_map(function ($r) {
+            return [
+                'id'                 => (string)$r->id,
+                'signature'          => (string)$r->fare_signature,
+                'country'            => (string)$r->country,
+                'system'             => (string)$r->system,
+                'fare_name'          => (string)$r->fare_name,
+                'action'             => (string)$r->action,
+                'corrected_price'    => $r->corrected_price !== null ? (float)$r->corrected_price : null,
+                'corrected_currency' => (string)$r->corrected_currency,
+                'original_price'     => $r->original_price !== null ? (float)$r->original_price : null,
+                'original_currency'  => (string)$r->original_currency,
+                'reason'             => (string)$r->reason,
+                'applied_count'      => (int)$r->applied_count,
+                'last_applied_at'    => $r->last_applied_at?->format('c'),
+                'created'            => $r->created?->format('c'),
+            ];
+        }, $rows);
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['ok' => true, 'overrides' => $out], JSON_UNESCAPED_UNICODE));
+    }
+
     public function cabotageStatus(): Response
     {
         $this->disableAutoRender();

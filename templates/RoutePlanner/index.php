@@ -942,6 +942,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                         <th><?= __('Klasa HERE') ?></th>
                                         <th class="text-end"><?= __('Cena') ?></th>
                                         <th><?= __('Płatność') ?></th>
+                                        <th style="width:40px"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tolls-tbody" style="font-size:.82rem"></tbody>
@@ -3625,16 +3626,69 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 extraInfo += '<div class="text-muted" style="font-size:.65rem;opacity:.6"><code>' + escapeHtml(f.fare_id) + '</code></div>';
             }
 
+            // Override info: wyszarz wiersz jeśli ignore, badge jeśli corrected/flagged
+            var rowClass = '';
+            var overrideBadge = '';
+            if (f.override) {
+                var act = f.override.action;
+                if (act === 'ignore') {
+                    rowClass = ' style="opacity:.45;text-decoration:line-through"';
+                    overrideBadge = '<div class="small text-muted mt-1" title="' + escapeHtml(f.override.reason || '') + '">'
+                        + '<i class="ri-eye-off-line text-danger me-1"></i><?= __('WYKLUCZONA') ?>'
+                        + (f.override.reason ? ' — ' + escapeHtml(f.override.reason.substring(0, 80)) : '')
+                        + '</div>';
+                } else if (act === 'corrected') {
+                    overrideBadge = '<div class="small text-warning mt-1" title="' + escapeHtml(f.override.reason || '') + '">'
+                        + '<i class="ri-edit-circle-line me-1"></i><?= __('SKORYGOWANA') ?>: '
+                        + fmtNum(f.override.corrected_price, 2) + ' ' + escapeHtml(f.override.corrected_currency)
+                        + (f.override.reason ? ' · ' + escapeHtml(f.override.reason.substring(0, 60)) : '')
+                        + '</div>';
+                } else if (act === 'flagged') {
+                    overrideBadge = '<div class="small text-info mt-1" title="' + escapeHtml(f.override.reason || '') + '">'
+                        + '<i class="ri-flag-line me-1"></i><?= __('OZNACZONA') ?>'
+                        + (f.override.reason ? ' — ' + escapeHtml(f.override.reason.substring(0, 80)) : '')
+                        + '</div>';
+                }
+            }
+
+            // Dropdown menu z opcjami: wyklucz / popraw / oznacz
+            var fareJsonAttr = encodeURIComponent(JSON.stringify({
+                country: f.country, system: f.system, name: f.name,
+                signature: f.fare_signature || '',
+                price: f.price, currency: f.currency,
+                override_id: f.override ? f.override.id : null,
+            }));
+            var actionsMenu = '<div class="dropdown">'
+                + '<button class="btn btn-sm btn-link p-0 toll-actions-btn" data-bs-toggle="dropdown" data-bs-strategy="fixed">'
+                + '<i class="ri-more-2-fill"></i></button>'
+                + '<ul class="dropdown-menu dropdown-menu-end shadow-sm">'
+                + (f.override
+                    ? '<li><a class="dropdown-item small toll-override-clear" href="#" data-id="' + (f.override.id || '') + '" data-fare="' + fareJsonAttr + '">'
+                      + '<i class="ri-arrow-go-back-line me-2 text-success"></i><?= __('Cofnij korektę') ?></a></li>'
+                      + '<li><hr class="dropdown-divider"></li>'
+                    : '')
+                + '<li><a class="dropdown-item small toll-action-ignore" href="#" data-fare="' + fareJsonAttr + '">'
+                + '<i class="ri-eye-off-line me-2 text-danger"></i><?= __('Wyklucz z sumy') ?></a></li>'
+                + '<li><a class="dropdown-item small toll-action-correct" href="#" data-fare="' + fareJsonAttr + '">'
+                + '<i class="ri-edit-circle-line me-2 text-warning"></i><?= __('Popraw cenę') ?></a></li>'
+                + '<li><a class="dropdown-item small toll-action-flag" href="#" data-fare="' + fareJsonAttr + '">'
+                + '<i class="ri-flag-line me-2 text-info"></i><?= __('Zgłoś jako błędną') ?></a></li>'
+                + '</ul></div>';
+
             tbody.innerHTML +=
-                '<tr>'
+                '<tr' + rowClass + '>'
                 + '<td>' + flagSpan(f.country) + '</td>'
                 + '<td><span class="text-truncate d-inline-block" style="max-width:200px" title="' + escapeHtml(f.system) + '">' + escapeHtml(f.system || '—') + '</span></td>'
-                + '<td>' + nameCell + extraInfo + '</td>'
+                + '<td>' + nameCell + extraInfo + overrideBadge + '</td>'
                 + '<td>' + classCell + '</td>'
                 + '<td class="text-end">' + priceCell + '</td>'
                 + '<td>' + paymentBadge(f.payment_method) + '</td>'
+                + '<td class="text-end">' + actionsMenu + '</td>'
                 + '</tr>';
         });
+
+        // Bind menu handlers (event delegation żeby działało dla nowo wyrenderowanych)
+        bindTollOverrideHandlers();
 
         // Footer: suma per country + total
         var tfoot = document.getElementById('tolls-tfoot');
@@ -3642,19 +3696,155 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             return '<tr><td>' + flagSpan(cc) + '</td>'
                  + '<td colspan="3" class="text-muted">' + '<?= __('Suma') ?> ' + escapeHtml(cc) + '</td>'
                  + '<td class="text-end">' + fmtNum(route.tolls_by_country[cc], 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
-                 + '<td></td></tr>';
+                 + '<td colspan="2"></td></tr>';
         }).join('');
         tfoot.innerHTML = countryRows
             + '<tr style="border-top:2px solid #e5e7eb">'
             + '<td colspan="4" class="text-end"><?= __('RAZEM') ?></td>'
             + '<td class="text-end fs-6">' + fmtNum(route.tolls_total || 0, 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
-            + '<td></td></tr>';
+            + '<td colspan="2"></td></tr>';
 
         card.style.display = '';
 
         // L3: przycisk zawsze widoczny — OSM Overpass zwykle znajdzie bramki nawet gdy HERE nie zwrócił
         // (HERE rzadko zwraca tollLocations; OSM ma barrier=toll_booth dla większości autostrad EU)
         if (tollMarkersVisible) renderTollMarkers(true);
+    }
+
+    // ── Toll fee overrides — learning loop (ignore / corrected / flagged) ──
+    var tollOverrideSaveUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'tollOverrideSave']) ?>';
+    var tollOverrideDeleteUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'tollOverrideDelete', '__ID__']) ?>';
+
+    function bindTollOverrideHandlers() {
+        document.querySelectorAll('.toll-action-ignore').forEach(function (a) {
+            if (a.dataset.tollBound) return;
+            a.dataset.tollBound = '1';
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                openTollOverrideModal('ignore', JSON.parse(decodeURIComponent(a.dataset.fare)));
+            });
+        });
+        document.querySelectorAll('.toll-action-correct').forEach(function (a) {
+            if (a.dataset.tollBound) return;
+            a.dataset.tollBound = '1';
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                openTollOverrideModal('corrected', JSON.parse(decodeURIComponent(a.dataset.fare)));
+            });
+        });
+        document.querySelectorAll('.toll-action-flag').forEach(function (a) {
+            if (a.dataset.tollBound) return;
+            a.dataset.tollBound = '1';
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                openTollOverrideModal('flagged', JSON.parse(decodeURIComponent(a.dataset.fare)));
+            });
+        });
+        document.querySelectorAll('.toll-override-clear').forEach(function (a) {
+            if (a.dataset.tollBound) return;
+            a.dataset.tollBound = '1';
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (!confirm('<?= __('Cofnąć korektę?') ?>')) return;
+                var id = a.dataset.id;
+                if (!id) return;
+                var fd = new FormData();
+                fd.append('_csrfToken', csrf);
+                fetch(tollOverrideDeleteUrlTpl.replace('__ID__', id), {
+                    method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
+                }).then(function (r) { return r.json(); }).then(function (res) {
+                    if (res && res.ok) {
+                        toast('<?= __('Korekta cofnięta — przeliczam') ?>', 'success');
+                        setTimeout(function () { var btn = document.getElementById('btn-calc'); if (btn) btn.click(); }, 300);
+                    }
+                });
+            });
+        });
+    }
+
+    function openTollOverrideModal(action, fare) {
+        var actionLabels = {
+            'ignore':    { title: '<?= __('Wyklucz opłatę z sumy') ?>', color: 'danger', icon: 'ri-eye-off-line' },
+            'corrected': { title: '<?= __('Popraw cenę') ?>',           color: 'warning', icon: 'ri-edit-circle-line' },
+            'flagged':   { title: '<?= __('Zgłoś błędną opłatę') ?>',    color: 'info', icon: 'ri-flag-line' },
+        };
+        var info = actionLabels[action];
+        var priceField = (action === 'corrected')
+            ? '<div class="mb-2">'
+              + '<label class="form-label small"><?= __('Prawidłowa cena') ?></label>'
+              + '<div class="input-group input-group-sm">'
+              +   '<input type="number" step="0.01" class="form-control" id="to-corrected-price" placeholder="0.00">'
+              +   '<select class="form-select" id="to-corrected-currency" style="max-width:90px">'
+              +     '<option value="PLN" selected>PLN</option><option value="EUR">EUR</option><option value="CZK">CZK</option><option value="CHF">CHF</option><option value="HUF">HUF</option>'
+              +   '</select>'
+              + '</div>'
+              + '<div class="form-text small"><?= __('HERE liczy') ?>: <strong>' + fmtNum(fare.price, 2) + ' ' + escapeHtml(fare.currency) + '</strong></div>'
+              + '</div>'
+            : '';
+
+        var html = '<div class="modal fade" id="tollOverrideModal" tabindex="-1">'
+            + '<div class="modal-dialog modal-md modal-dialog-centered"><div class="modal-content" style="border-radius:14px;overflow:hidden">'
+            + '<div class="modal-header" style="background:linear-gradient(135deg,var(--bs-' + info.color + '),var(--bs-' + info.color + '));color:white">'
+            +   '<h5 class="modal-title"><i class="' + info.icon + ' me-2"></i>' + info.title + '</h5>'
+            +   '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>'
+            + '<div class="modal-body">'
+            +   '<div class="alert alert-light border py-2 small mb-3">'
+            +     '<strong>' + escapeHtml(fare.system || '') + '</strong>'
+            +     (fare.name ? ' · ' + escapeHtml(fare.name) : '')
+            +     '<div class="text-muted">' + escapeHtml(fare.country) + ' · HERE: ' + fmtNum(fare.price, 2) + ' ' + escapeHtml(fare.currency) + '</div>'
+            +   '</div>'
+            +   priceField
+            +   '<div class="mb-2">'
+            +     '<label class="form-label small"><?= __('Uzasadnienie / notatka') ?></label>'
+            +     '<textarea class="form-control form-control-sm" rows="3" id="to-reason" placeholder="<?= __('np. AWSA cennik kat. 4 to 73 PLN za odcinek, HERE liczy za dużo') ?>"></textarea>'
+            +     '<div class="form-text small text-muted">'
+            +       '<i class="ri-lightbulb-line me-1 text-warning"></i>'
+            +       '<?= __('Notatka pomoże nam się uczyć — kolejne kalkulacje tej opłaty automatycznie wzięte z Twojej korekty.') ?>'
+            +     '</div>'
+            +   '</div>'
+            + '</div>'
+            + '<div class="modal-footer">'
+            +   '<button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>'
+            +   '<button type="button" class="btn btn-' + info.color + (info.color === 'warning' ? '' : ' text-white') + '" id="btn-to-save">'
+            +     '<i class="ri-save-line me-1"></i><?= __('Zapisz') ?></button>'
+            + '</div></div></div></div>';
+        var ex = document.getElementById('tollOverrideModal');
+        if (ex) ex.remove();
+        document.body.insertAdjacentHTML('beforeend', html);
+        var modal = new bootstrap.Modal(document.getElementById('tollOverrideModal'));
+        modal.show();
+
+        document.getElementById('btn-to-save').addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('country', fare.country || '');
+            fd.append('system', fare.system || '');
+            fd.append('name', fare.name || '');
+            fd.append('action', action);
+            fd.append('original_price', String(fare.price || 0));
+            fd.append('original_currency', fare.currency || '');
+            if (action === 'corrected') {
+                var p = parseFloat(document.getElementById('to-corrected-price').value || 0);
+                if (!p) { toast('<?= __('Wpisz prawidłową cenę.') ?>', 'warning'); return; }
+                fd.append('corrected_price', String(p));
+                fd.append('corrected_currency', document.getElementById('to-corrected-currency').value);
+            }
+            fd.append('reason', document.getElementById('to-reason').value || '');
+            if (lastResponse && lastResponse.route_search_id) {
+                fd.append('route_search_id', lastResponse.route_search_id);
+            }
+            fd.append('_csrfToken', csrf);
+            fetch(tollOverrideSaveUrl, {
+                method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
+            }).then(function (r) { return r.json(); }).then(function (res) {
+                if (res && res.ok) {
+                    toast('<?= __('Korekta zapisana — przeliczam') ?>', 'success');
+                    modal.hide();
+                    setTimeout(function () { var btn = document.getElementById('btn-calc'); if (btn) btn.click(); }, 300);
+                } else {
+                    toast(res.message || '<?= __('Błąd zapisu.') ?>', 'error');
+                }
+            });
+        });
     }
 
     // ── L3: Markery bramek opłat (OSM Overpass + fallback HERE tollLocations)

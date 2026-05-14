@@ -180,7 +180,7 @@ return [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
             'plugin'     => false,
             'controller' => 'RoutePlanner',
-            'action'     => ['index', 'calculate', 'forOrder', 'autosuggest', 'revgeocode', 'deleteRecent', 'saveTemplate', 'aiParseAddress', 'aiCargoWizard', 'aiPricing', 'aiDriverBrief', 'aiRouteOptimizer', 'aiEmailReply', 'weather', 'truckPois', 'tollBooths', 'track', 'trackView', 'cabotageStatus', 'cabotageSave', 'cabotageDelete', 'aiDelayPrediction', 'optimizeMultileg'],
+            'action'     => ['index', 'calculate', 'forOrder', 'autosuggest', 'revgeocode', 'deleteRecent', 'saveTemplate', 'aiParseAddress', 'aiCargoWizard', 'aiPricing', 'aiDriverBrief', 'aiRouteOptimizer', 'aiEmailReply', 'weather', 'truckPois', 'tollBooths', 'track', 'trackView', 'cabotageStatus', 'cabotageSave', 'cabotageDelete', 'aiDelayPrediction', 'optimizeMultileg', 'tollOverrideSave', 'tollOverrideDelete', 'tollOverrideList'],
         ],
         [
             'role' => '*',

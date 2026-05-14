@@ -3531,3 +3531,66 @@ msgstr "— no trailer —"
 
 msgid "— ręczna stawka z Kosztów —"
 msgstr "— manual rate from Costs —"
+
+msgid "WYKLUCZONA"
+msgstr "EXCLUDED"
+
+msgid "SKORYGOWANA"
+msgstr "CORRECTED"
+
+msgid "OZNACZONA"
+msgstr "FLAGGED"
+
+msgid "Cofnij korektę"
+msgstr "Undo correction"
+
+msgid "Wyklucz z sumy"
+msgstr "Exclude from total"
+
+msgid "Popraw cenę"
+msgstr "Correct price"
+
+msgid "Zgłoś jako błędną"
+msgstr "Flag as incorrect"
+
+msgid "Cofnąć korektę?"
+msgstr "Undo correction?"
+
+msgid "Korekta cofnięta — przeliczam"
+msgstr "Correction undone — recalculating"
+
+msgid "Wyklucz opłatę z sumy"
+msgstr "Exclude fee from total"
+
+msgid "Zgłoś błędną opłatę"
+msgstr "Flag incorrect fee"
+
+msgid "Prawidłowa cena"
+msgstr "Correct price"
+
+msgid "HERE liczy"
+msgstr "HERE charges"
+
+msgid "Uzasadnienie / notatka"
+msgstr "Reason / note"
+
+msgid "np. AWSA cennik kat. 4 to 73 PLN za odcinek, HERE liczy za dużo"
+msgstr "e.g. AWSA cat. 4 tariff is 73 PLN per section, HERE charges too much"
+
+msgid "Notatka pomoże nam się uczyć — kolejne kalkulacje tej opłaty automatycznie wzięte z Twojej korekty."
+msgstr "The note helps us learn — subsequent calculations of this fee will use your correction automatically."
+
+msgid "Wpisz prawidłową cenę."
+msgstr "Enter correct price."
+
+msgid "Korekta zapisana — przeliczam"
+msgstr "Correction saved — recalculating"
+
+msgid "Nieprawidłowa akcja."
+msgstr "Invalid action."
+
+msgid "Brak kodu kraju."
+msgstr "Country code missing."
+
+msgid "Błąd zapisu."
+msgstr "Save error."
