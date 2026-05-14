@@ -150,7 +150,8 @@ class HereRoutingService
             $durS  = (int)($summary['duration'] ?? 0);
             $polyline = (string)($section['polyline'] ?? '');
 
-            // Toll'e per kraj
+            // Toll'e per kraj — wszystko sumujemy w żądanej walucie ($tollsCurrency).
+            // Per fare: użyj convertedPrice gdy waluta zgodna, lub price gdy oryginał = target.
             $tollsByCountry = [];
             $tollsTotal = null;
             $tollsCurrency = (string)($opts['currency'] ?? 'EUR');
@@ -161,9 +162,18 @@ class HereRoutingService
                     foreach (($toll['fares'] ?? []) as $fare) {
                         $price = (float)($fare['price']['value'] ?? 0);
                         $cur = (string)($fare['price']['currency'] ?? $tollsCurrency);
-                        $tollsByCountry[$country] = ($tollsByCountry[$country] ?? 0.0) + $price;
-                        $tollsTotal += $price;
-                        $tollsCurrency = $cur;
+                        $convPrice = (float)($fare['convertedPrice']['value'] ?? 0);
+                        $convCur   = (string)($fare['convertedPrice']['currency'] ?? $cur);
+                        $aggPrice = null;
+                        if ($convPrice > 0 && strcasecmp($convCur, $tollsCurrency) === 0) {
+                            $aggPrice = $convPrice;
+                        } elseif (strcasecmp($cur, $tollsCurrency) === 0) {
+                            $aggPrice = $price;
+                        }
+                        if ($aggPrice !== null) {
+                            $tollsByCountry[$country] = ($tollsByCountry[$country] ?? 0.0) + $aggPrice;
+                            $tollsTotal += $aggPrice;
+                        }
                     }
                 }
             }
@@ -452,11 +462,24 @@ class HereRoutingService
 
                             $isVignette = (stripos($reason, 'vignette') !== false) || $passValidity !== '';
 
-                            $tollsByCountry[$cc] = ($tollsByCountry[$cc] ?? 0.0) + $price;
-                            $tollsTotal = ($tollsTotal ?? 0.0) + $price;
-                            $tollsCurrency = $cur;
+                            // AGGREGATION — wszystko w żądanej walucie ($currency).
+                            // Priorytet: 1) convertedPrice w target, 2) original w target, 3) skip (waluta nie pasuje, brak kursu)
+                            $aggPrice = null;
+                            if ($convPrice > 0 && strcasecmp($convCur, $currency) === 0) {
+                                $aggPrice = $convPrice;
+                            } elseif (strcasecmp($cur, $currency) === 0) {
+                                $aggPrice = $price;
+                            } else {
+                                // Brak konwersji do żądanej waluty — loguj, ale wpis w breakdown zostaje
+                                Log::warning("Toll fare currency mismatch: orig={$cur}, conv={$convCur}, target={$currency}");
+                            }
+                            if ($aggPrice !== null) {
+                                $tollsByCountry[$cc] = ($tollsByCountry[$cc] ?? 0.0) + $aggPrice;
+                                $tollsTotal = ($tollsTotal ?? 0.0) + $aggPrice;
+                            }
+                            // tollsCurrency = ZAWSZE żądana waluta (nie nadpisuj per fare)
 
-                            // L1: szczegółowy wpis (per fare)
+                            // L1: szczegółowy wpis (per fare) — zachowujemy oryginalną cenę I converted
                             $tollsBreakdown[] = [
                                 'country'          => $cc,
                                 'system'           => $tollSystem,

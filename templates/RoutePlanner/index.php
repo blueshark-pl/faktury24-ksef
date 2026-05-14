@@ -2429,13 +2429,30 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // L1: Tabela opłat
         var tbody = document.getElementById('tolls-tbody');
         tbody.innerHTML = '';
+        var targetCurrency = currentTollsData.currency;
         route.tolls_breakdown.forEach(function (f) {
             var nameCell = escapeHtml(f.name || (f.is_vignette ? '<?= __('Winieta') ?>' : '—'));
             if (f.is_vignette) nameCell = '<i class="ri-sticker-line text-warning me-1"></i>' + nameCell;
-            var priceCell = '<strong>' + fmtNum(f.price, 2) + '</strong> ' + escapeHtml(f.currency);
-            if (f.converted_price && f.converted_curr && f.converted_curr !== f.currency) {
-                priceCell += '<div class="text-muted" style="font-size:.7rem">≈ ' + fmtNum(f.converted_price, 2) + ' ' + escapeHtml(f.converted_curr) + '</div>';
+
+            // Cena w docelowej walucie (target). Priorytet:
+            // 1) converted_price gdy converted_curr === target
+            // 2) f.price gdy f.currency === target
+            // 3) original (z znakiem ostrzeżenia — brak konwersji)
+            var mainPrice, mainCur, origDisplay = '';
+            if (f.converted_price && f.converted_curr && f.converted_curr.toUpperCase() === targetCurrency.toUpperCase()) {
+                mainPrice = f.converted_price;
+                mainCur = f.converted_curr;
+                origDisplay = '<div class="text-muted" style="font-size:.7rem">' + fmtNum(f.price, 2) + ' ' + escapeHtml(f.currency) + '</div>';
+            } else if (f.currency && f.currency.toUpperCase() === targetCurrency.toUpperCase()) {
+                mainPrice = f.price;
+                mainCur = f.currency;
+            } else {
+                // Waluta nie zgodna z target, brak konwersji — pokaż oryginał z ostrzeżeniem
+                mainPrice = f.price;
+                mainCur = f.currency;
+                origDisplay = '<div class="text-warning" style="font-size:.7rem" title="<?= __('Brak konwersji do') ?> ' + escapeHtml(targetCurrency) + '"><i class="ri-error-warning-line"></i></div>';
             }
+            var priceCell = '<strong>' + fmtNum(mainPrice, 2) + '</strong> ' + escapeHtml(mainCur) + origDisplay;
             tbody.innerHTML +=
                 '<tr>'
                 + '<td>' + flagSpan(f.country) + '</td>'
