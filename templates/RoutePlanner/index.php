@@ -1689,6 +1689,80 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         autosuggestTimers.set(input, t);
     }
 
+    // Uniwersalny autosuggest dla modali (multi-leg, cabotage, CMR).
+    // Inputfield potrzebuje wrappera position:relative — wstawi dropdown jako sibling.
+    function attachSimpleAutosuggest(input) {
+        if (!input || input.dataset.autosuggestBound === '1') return;
+        input.dataset.autosuggestBound = '1';
+        // Wrapper (jeśli rodzic nie jest relative, zawijamy)
+        var parent = input.parentElement;
+        if (getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+        }
+        var dropdown = document.createElement('div');
+        dropdown.className = 'autosuggest-dropdown';
+        dropdown.style.display = 'none';
+        dropdown.style.left = '0';
+        dropdown.style.right = '0';
+        dropdown.style.minWidth = '0';
+        dropdown.style.top = '100%';
+        parent.appendChild(dropdown);
+
+        var timer = null;
+        function runQuery() {
+            clearTimeout(timer);
+            var q = input.value.trim();
+            if (q.length < 2) { dropdown.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                var center = map.getCenter();
+                var cacheKey = 'as:' + q.toLowerCase();
+                var cached = cacheGet(cacheKey);
+                var prom = cached
+                    ? Promise.resolve(cached)
+                    : fetch(autoUrl + '?q=' + encodeURIComponent(q) + '&lat=' + center.lat + '&lng=' + center.lng, {
+                          headers: { 'Accept': 'application/json' }
+                      }).then(function (r) { return r.json(); }).then(function (d) { cacheSet(cacheKey, d); return d; });
+                prom.then(function (data) {
+                    var items = data.items || [];
+                    if (!items.length) { dropdown.style.display = 'none'; return; }
+                    dropdown.innerHTML = items.map(function (it, i) {
+                        var typeIcon = (it.type === 'place') ? 'ri-building-line' : (it.type === 'locality' ? 'ri-community-line' : 'ri-map-pin-line');
+                        var flag = flagEmoji(it.country);
+                        return '<div class="autosuggest-item" data-idx="' + i + '">'
+                            + '<i class="' + typeIcon + '"></i>'
+                            + '<span class="label">' + escapeHtml(it.title) + '</span>'
+                            + (flag ? '<span class="country">' + flag + ' ' + escapeHtml(it.country) + '</span>' : '')
+                            + '<div class="text-muted small mt-1">' + escapeHtml(it.label) + '</div>'
+                            + '</div>';
+                    }).join('');
+                    dropdown.style.display = 'block';
+                    dropdown.querySelectorAll('.autosuggest-item').forEach(function (el, i) {
+                        el.addEventListener('mousedown', function (e) {
+                            e.preventDefault();
+                            var it = items[i];
+                            input.value = it.label;
+                            input.dataset.lat = it.lat;
+                            input.dataset.lng = it.lng;
+                            input.dataset.country = it.country || '';
+                            input.dataset.label = it.label;
+                            dropdown.style.display = 'none';
+                        });
+                    });
+                }).catch(function () { dropdown.style.display = 'none'; });
+            }, 280);
+        }
+        input.addEventListener('input', function () {
+            // Reset zapisanych koordynat gdy user zmienia tekst
+            input.dataset.lat = '';
+            input.dataset.lng = '';
+            runQuery();
+        });
+        input.addEventListener('focus', function () { if (input.value.length >= 2) runQuery(); });
+        input.addEventListener('blur', function () {
+            setTimeout(function () { dropdown.style.display = 'none'; }, 200);
+        });
+    }
+
     // ─── Reverse geocoding helper z cache ──────────────────────────
     function reverseGeocode(lat, lng) {
         var key = 'rg:' + lat.toFixed(4) + ',' + lng.toFixed(4);
@@ -2634,6 +2708,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var existing = document.getElementById('cabotageAddModal');
         if (existing) existing.remove();
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+        // Autosuggest dla pól origin/destination
+        attachSimpleAutosuggest(document.getElementById('cab-origin'));
+        attachSimpleAutosuggest(document.getElementById('cab-destination'));
         new bootstrap.Modal(document.getElementById('cabotageAddModal')).show();
         document.getElementById('btn-cab-save').addEventListener('click', function () {
             var fd = new FormData();
@@ -4071,6 +4148,12 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     function addMlLoad() {
         if (mlLoadsCount >= 4) { toast('<?= __('Maksymalnie 4 zlecenia.') ?>', 'warning'); return; }
         document.getElementById('ml-loads-list').insertAdjacentHTML('beforeend', renderMlLoad(mlLoadsCount));
+        // Autosuggest dla nowo dodanej pary pickup/dropoff
+        var lastCard = document.querySelector('#ml-loads-list [data-load-idx="' + mlLoadsCount + '"]');
+        if (lastCard) {
+            attachSimpleAutosuggest(lastCard.querySelector('.ml-pickup'));
+            attachSimpleAutosuggest(lastCard.querySelector('.ml-dropoff'));
+        }
         mlLoadsCount++;
         bindMlRemoveHandlers();
     }
@@ -4093,8 +4176,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('ml-loads-list').innerHTML = '';
         mlLoadsCount = 0;
         document.getElementById('ml-result').style.display = 'none';
-        document.getElementById('ml-start').value = '';
-        document.getElementById('ml-end').value = '';
+        var startInp = document.getElementById('ml-start');
+        var endInp = document.getElementById('ml-end');
+        startInp.value = ''; startInp.dataset.lat = ''; startInp.dataset.lng = '';
+        endInp.value = '';   endInp.dataset.lat = '';   endInp.dataset.lng = '';
+        // Autosuggest dla start/end
+        attachSimpleAutosuggest(startInp);
+        attachSimpleAutosuggest(endInp);
         // Pre-fill 2 zlecenia
         addMlLoad(); addMlLoad();
         new bootstrap.Modal(document.getElementById('multilegModal')).show();
@@ -4110,8 +4198,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var loads = [];
         var hasError = false;
         loadCards.forEach(function (card, i) {
-            var pickup = card.querySelector('.ml-pickup').value.trim();
-            var dropoff = card.querySelector('.ml-dropoff').value.trim();
+            var pInp = card.querySelector('.ml-pickup');
+            var dInp = card.querySelector('.ml-dropoff');
+            var pickup = pInp.value.trim();
+            var dropoff = dInp.value.trim();
             if (!pickup || !dropoff) {
                 hasError = true;
                 toast('<?= __('Wpisz adresy załadunku/rozładunku dla zlecenia #') ?>' + (i + 1), 'error');
@@ -4119,25 +4209,39 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             }
             loads.push({
                 name: card.querySelector('.ml-load-name').value || ('Load ' + (i + 1)),
-                pickup: { address: pickup },
-                dropoff: { address: dropoff },
+                pickup: { address: pickup, lat: pInp.dataset.lat || null, lng: pInp.dataset.lng || null },
+                dropoff: { address: dropoff, lat: dInp.dataset.lat || null, lng: dInp.dataset.lng || null },
                 weight_kg: parseFloat(card.querySelector('.ml-weight').value) || null,
             });
         });
         if (hasError) return;
 
-        var startAddr = document.getElementById('ml-start').value.trim();
-        var endAddr = document.getElementById('ml-end').value.trim();
+        var startInp = document.getElementById('ml-start');
+        var endInp = document.getElementById('ml-end');
+        var startAddr = startInp.value.trim();
+        var endAddr = endInp.value.trim();
 
         var fd = new FormData();
         loads.forEach(function (L, idx) {
             fd.append('loads[' + idx + '][name]', L.name);
             fd.append('loads[' + idx + '][pickup][address]', L.pickup.address);
+            if (L.pickup.lat) fd.append('loads[' + idx + '][pickup][lat]', L.pickup.lat);
+            if (L.pickup.lng) fd.append('loads[' + idx + '][pickup][lng]', L.pickup.lng);
             fd.append('loads[' + idx + '][dropoff][address]', L.dropoff.address);
+            if (L.dropoff.lat) fd.append('loads[' + idx + '][dropoff][lat]', L.dropoff.lat);
+            if (L.dropoff.lng) fd.append('loads[' + idx + '][dropoff][lng]', L.dropoff.lng);
             if (L.weight_kg) fd.append('loads[' + idx + '][weight_kg]', String(L.weight_kg));
         });
-        if (startAddr) fd.append('start[address]', startAddr);
-        if (endAddr) fd.append('end[address]', endAddr);
+        if (startAddr) {
+            fd.append('start[address]', startAddr);
+            if (startInp.dataset.lat) fd.append('start[lat]', startInp.dataset.lat);
+            if (startInp.dataset.lng) fd.append('start[lng]', startInp.dataset.lng);
+        }
+        if (endAddr) {
+            fd.append('end[address]', endAddr);
+            if (endInp.dataset.lat) fd.append('end[lat]', endInp.dataset.lat);
+            if (endInp.dataset.lng) fd.append('end[lng]', endInp.dataset.lng);
+        }
         fd.append('_csrfToken', csrf);
 
         btn.disabled = true;
@@ -4304,6 +4408,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             document.getElementById('cmr-consignee-addr').value = dest.label || dest.address || '';
         }
         document.getElementById('cmr-cmr-number').value = 'CMR/' + new Date().getFullYear() + '/' + Math.floor(Math.random() * 9000 + 1000);
+        // Autosuggest dla adresów nadawcy/odbiorcy (przydatne gdy user wpisuje ręcznie nowy adres)
+        attachSimpleAutosuggest(document.getElementById('cmr-sender-addr'));
+        attachSimpleAutosuggest(document.getElementById('cmr-consignee-addr'));
         new bootstrap.Modal(document.getElementById('cmrModal')).show();
     });
 
