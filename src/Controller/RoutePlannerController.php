@@ -388,6 +388,7 @@ class RoutePlannerController extends AppController
         $this->disableAutoRender();
         $this->request->allowMethod(['post']);
         $polylines = (array)$this->request->getData('polylines', []);
+        \Cake\Log\Log::debug('truckPois: received ' . count($polylines) . ' polylines from request');
         if (empty($polylines)) {
             return $this->jsonError(__('Brak polyline trasy.'));
         }

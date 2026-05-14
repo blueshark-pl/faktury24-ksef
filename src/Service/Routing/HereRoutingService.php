@@ -534,9 +534,15 @@ class HereRoutingService
      */
     public function truckStopsAlongRoute(array $polylines, int $sampleEveryKm = 100, int $maxSamples = 8): array
     {
+        // Debug: ile polyline na wejściu, długość pierwszej
+        Log::debug('truckStopsAlongRoute: input polylines=' . count($polylines)
+            . ', first len=' . strlen($polylines[0] ?? '')
+            . ', first preview=' . substr($polylines[0] ?? '', 0, 30));
+
         $points = [];
-        foreach ($polylines as $poly) {
+        foreach ($polylines as $idx => $poly) {
             $decoded = self::decodePolyline($poly);
+            Log::debug('  polyline #' . $idx . ' decoded points=' . count($decoded));
             if (empty($decoded)) continue;
             // Pierwszy punkt zawsze
             $points[] = $decoded[0];

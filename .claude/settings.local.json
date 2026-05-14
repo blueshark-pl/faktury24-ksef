@@ -12,7 +12,17 @@
       "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/src/Model/Table/BankStatementImportsTable.php\")",
       "Bash(php bin/cake.php migrations dump)",
       "Bash(php -r ' *)",
-      "Bash(grep -rn \"CREATE TABLE \\\\`invoices\\\\`\\\\|'invoices'\" config/Migrations/)"
+      "Bash(grep -rn \"CREATE TABLE \\\\`invoices\\\\`\\\\|'invoices'\" config/Migrations/)",
+      "Bash(awk '/^msgid \"/ { print substr\\($0, 8\\) }' \"resources/locales/en/default.po\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(grep -n '^msgid \"Utwórz konto\"$' resources/locales/en/default.po)",
+      "Bash(rm -f tmp/cache/translations/*)",
+      "Bash(git commit -m 'feat: brakujące tłumaczenia EN dla auth \\(reset/login link/2FA/rejestracja\\) *)",
+      "Bash(git commit *)",
+      "Bash(grep -nE '^msgid \"Wyślij\"$|^msgid \"Wysyłanie\\\\.\\\\.\\\\.\"$' resources/locales/en/default.po)",
+      "Bash(grep -B2 \"templates\\\\\\\\\\\\\\\\AdminUsers\\\\\\\\\\\\\\\\index.php:198\" logs/error.log)"
     ]
   }
 }
