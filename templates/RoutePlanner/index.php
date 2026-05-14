@@ -1595,26 +1595,82 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     // ─── Draggable markery: drag z mapy aktualizuje waypoint ─────
     var behavior = window.__rpBehavior; // marker — bo behavior był stworzony wcześniej
     // (behavior już istnieje, używamy referencji z mapy)
+    // Ghost marker pokazywany podczas dragu polyline
+    window.__rpDragGhost = null;
+    function showDragGhost(coord) {
+        if (!window.__rpDragGhost) {
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">'
+                    + '<g><path d="M20 0C9 0 0 9 0 20c0 14 20 30 20 30s20-16 20-30C40 9 31 0 20 0z" fill="#7c3aed" stroke="white" stroke-width="3" opacity=".85"/>'
+                    + '<circle cx="20" cy="20" r="8" fill="white"/>'
+                    + '<text x="20" y="25" text-anchor="middle" font-size="12" font-weight="bold" fill="#7c3aed">+</text></g></svg>';
+            var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 20, y: 50 } });
+            window.__rpDragGhost = new H.map.Marker(coord, { icon: icon, volatility: true });
+            map.addObject(window.__rpDragGhost);
+        } else {
+            window.__rpDragGhost.setGeometry(coord);
+        }
+    }
+    function hideDragGhost() {
+        if (window.__rpDragGhost) {
+            try { map.removeObject(window.__rpDragGhost); } catch (e) {}
+            window.__rpDragGhost = null;
+        }
+    }
+
+    // Znajdź najlepsze miejsce na wstawienie nowego waypoint'a:
+    // segment trasy (między waypoint[i] i waypoint[i+1]) najbliższy do (lat, lng)
+    function findBestSegmentInsertIdx(targetLat, targetLng) {
+        if (!lastResponse || !lastResponse.routes[activeAltIdx] || !lastResponse.routes[activeAltIdx].sections) return null;
+        var sections = lastResponse.routes[activeAltIdx].sections;
+        var bestIdx = 0;
+        var bestDist = Infinity;
+        sections.forEach(function (s, i) {
+            // Distance od (targetLat,targetLng) do środka segmentu
+            var midLat = (s.from_lat + s.to_lat) / 2;
+            var midLng = (s.from_lng + s.to_lng) / 2;
+            var d = Math.sqrt(Math.pow(midLat - targetLat, 2) + Math.pow(midLng - targetLng, 2));
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        // Sekcja i = trasa od waypoint[i] do waypoint[i+1] → insert at position i+1
+        return bestIdx + 1;
+    }
+
     map.addEventListener('dragstart', function (ev) {
         var target = ev.target;
         if (target instanceof H.map.Marker && target.draggable) {
             window.__rpDraggedMarker = target;
-            // Wyłącz pan mapy podczas dragu markera
             map.getViewPort().element.style.cursor = 'grabbing';
-            // Behavior zapisany globalnie:
             if (window.__rpBehavior) window.__rpBehavior.disable(H.mapevents.Behavior.Feature.DRAG_PAN);
+        } else if (target instanceof H.map.Polyline) {
+            // Drag polyline → dodaj nowy via point
+            var d = target.getData();
+            if (d && d.kind === 'route-stroke') {
+                window.__rpDraggingRoute = true;
+                map.getViewPort().element.style.cursor = 'grabbing';
+                if (window.__rpBehavior) window.__rpBehavior.disable(H.mapevents.Behavior.Feature.DRAG_PAN);
+                var p = ev.currentPointer;
+                var coord = map.screenToGeo(p.viewportX, p.viewportY);
+                if (coord) showDragGhost(coord);
+            }
         }
     });
     map.addEventListener('drag', function (ev) {
         var m = window.__rpDraggedMarker;
-        if (!m) return;
-        var p = ev.currentPointer;
-        var coord = map.screenToGeo(p.viewportX, p.viewportY);
-        if (coord) m.setGeometry(coord);
+        if (m) {
+            var p = ev.currentPointer;
+            var coord = map.screenToGeo(p.viewportX, p.viewportY);
+            if (coord) m.setGeometry(coord);
+            return;
+        }
+        if (window.__rpDraggingRoute) {
+            var p = ev.currentPointer;
+            var coord = map.screenToGeo(p.viewportX, p.viewportY);
+            if (coord) showDragGhost(coord);
+        }
     });
     map.addEventListener('dragend', function (ev) {
         var m = window.__rpDraggedMarker;
-        if (!m) return;
+        if (m) {
         var d = m.getData();
         var geo = m.getGeometry();
         if (d && d.wpIdx != null && waypoints[d.wpIdx]) {
@@ -1636,6 +1692,46 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             }).catch(function () {});
         }
         window.__rpDraggedMarker = null;
+        }
+        // Drop polyline → wstaw nowy via point
+        if (window.__rpDraggingRoute) {
+            window.__rpDraggingRoute = false;
+            var p2 = ev.currentPointer;
+            var dropCoord = map.screenToGeo(p2.viewportX, p2.viewportY);
+            hideDragGhost();
+            if (dropCoord) {
+                var insertIdx = findBestSegmentInsertIdx(dropCoord.lat, dropCoord.lng);
+                if (insertIdx != null && insertIdx > 0 && insertIdx < waypoints.length) {
+                    var newWp = {
+                        address: '(' + dropCoord.lat.toFixed(5) + ', ' + dropCoord.lng.toFixed(5) + ')',
+                        label: '',
+                        lat: dropCoord.lat,
+                        lng: dropCoord.lng,
+                        country: '',
+                        date: ''
+                    };
+                    newWp.label = newWp.address;
+                    waypoints.splice(insertIdx, 0, newWp);
+                    toast('<?= __('Dodano przystanek — przeliczanie trasy…') ?>', 'info');
+                    renderWaypoints();
+                    renderPinsOnMap();
+                    // Reverse geocode w tle dla nazwy
+                    reverseGeocode(dropCoord.lat, dropCoord.lng).then(function (data) {
+                        if (data && data.label && waypoints[insertIdx]) {
+                            waypoints[insertIdx].address = data.label;
+                            waypoints[insertIdx].label = data.label;
+                            waypoints[insertIdx].country = data.country || '';
+                            renderWaypoints();
+                        }
+                    }).catch(function () {});
+                    // Auto-trigger recalculation
+                    setTimeout(function () {
+                        var btn = document.getElementById('btn-calc');
+                        if (btn && !btn.disabled) btn.click();
+                    }, 300);
+                }
+            }
+        }
         map.getViewPort().element.style.cursor = '';
         if (window.__rpBehavior) window.__rpBehavior.enable(H.mapevents.Behavior.Feature.DRAG_PAN);
     });
@@ -1926,11 +2022,17 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var lineWidth = opts.lineWidth || 10;
         var strokeColor = opts.color || 'rgba(37,99,235,.92)';
         var outlineColor = opts.outline || 'rgba(255,255,255,.95)';
+        var isMain = (opts.altIdx === 0); // tylko główna trasa jest "draggable"
         (routeData.polylines || []).forEach(function (polyStr) {
             try {
                 var line = H.geo.LineString.fromFlexiblePolyline(polyStr);
                 var outline = new H.map.Polyline(line, { style: { strokeColor: outlineColor, lineWidth: lineWidth } });
                 var stroke = new H.map.Polyline(line, { style: { strokeColor: strokeColor, lineWidth: lineWidth - 4 } });
+                // Main route: mark stroke as draggable target
+                if (isMain) {
+                    stroke.setData({ kind: 'route-stroke' });
+                    stroke.getStyle().cursor = 'grab';
+                }
                 group.addObject(outline);
                 group.addObject(stroke);
             } catch (e) { console.error('Polyline decode failed', e); }

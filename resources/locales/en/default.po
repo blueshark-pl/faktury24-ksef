@@ -3408,3 +3408,6 @@ msgstr "No loads to optimize."
 
 msgid "Nie znaleziono adresu dla ładunku #"
 msgstr "Address not found for load #"
+
+msgid "Dodano przystanek — przeliczanie trasy…"
+msgstr "Stop added — recalculating route…"
