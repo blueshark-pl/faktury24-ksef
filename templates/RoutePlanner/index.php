@@ -432,6 +432,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     title="<?= __('Pokaż parkingi i stacje truck-friendly wzdłuż trasy') ?>">
                 <i class="ri-truck-line me-1"></i><?= __('Parkingi/Stacje') ?>
             </button>
+            <button type="button" class="btn btn-sm btn-hero" id="btn-customer-offer" disabled
+                    title="<?= __('Wygeneruj ofertę PDF dla klienta') ?>">
+                <i class="ri-file-text-line me-1"></i><?= __('Oferta PDF') ?>
+            </button>
+            <button type="button" class="btn btn-sm btn-hero" id="btn-track-link" disabled
+                    title="<?= __('Wygeneruj link tracking dla klienta') ?>">
+                <i class="ri-broadcast-line me-1"></i><?= __('Link dla klienta') ?>
+            </button>
             <button type="button" class="btn btn-sm btn-hero" id="btn-share" disabled
                     title="<?= __('Kopiuj link do schowka') ?>">
                 <i class="ri-share-line me-1"></i><?= __('Udostępnij') ?>
@@ -712,7 +720,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <div class="row g-3 mt-0">
             <div class="col-lg-4">
                 <div class="card glass-card" id="alternatives-card" style="display:none">
-                    <div class="card-header py-2"><strong><i class="ri-git-branch-line me-1 text-primary"></i><?= __('Alternatywne trasy') ?></strong></div>
+                    <div class="card-header py-2 d-flex align-items-center gap-2">
+                        <strong><i class="ri-git-branch-line me-1 text-primary"></i><?= __('Alternatywne trasy') ?></strong>
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btn-compare-routes" disabled
+                                title="<?= __('Zaznacz minimum 2 trasy żeby porównać') ?>">
+                            <i class="ri-scales-3-line me-1"></i><?= __('Porównaj') ?>
+                        </button>
+                    </div>
                     <div class="card-body p-0" id="alternatives-list"></div>
                 </div>
             </div>
@@ -1058,6 +1072,24 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <button type="button" class="btn btn-secondary" id="btn-ai-email-run">
           <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj odpowiedź') ?>
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- #17 Compare routes modal -->
+<div class="modal fade" id="compareModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #4f46e5, #6366f1); color: white;">
+        <h5 class="modal-title"><i class="ri-scales-3-line me-2"></i><?= __('Porównanie tras') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="compare-modal-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
       </div>
     </div>
   </div>
@@ -1727,6 +1759,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('btn-print').disabled = false;
         document.getElementById('btn-share').disabled = false;
         document.getElementById('btn-truck-pois').disabled = false;
+        document.getElementById('btn-customer-offer').disabled = false;
+        document.getElementById('btn-track-link').disabled = false;
         document.getElementById('btn-save-template').disabled = false;
         enableExportButton();
     }
@@ -3166,11 +3200,20 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             var name = idx === 0 ? '<?= __('Trasa główna') ?>' : '<?= __('Alternatywa') ?> ' + idx;
             var tolls = r.tolls_total !== null ? fmtNum(r.tolls_total, 2) + ' ' + (r.tolls_currency || 'EUR') : '—';
             var html = '<div class="alt-route-card p-3 border-bottom ' + (idx === 0 ? 'active' : '') + '" data-idx="' + idx + '">'
-                + '<div class="d-flex justify-content-between align-items-center mb-1"><strong class="small">' + name + '</strong>'
+                + '<div class="d-flex justify-content-between align-items-center mb-1">'
+                + '<div class="d-flex align-items-center gap-2">'
+                + '<input type="checkbox" class="form-check-input alt-compare-cb" data-idx="' + idx + '"'
+                + (idx < 2 ? ' checked' : '') + ' onclick="event.stopPropagation()" title="<?= __('Zaznacz do porównania') ?>">'
+                + '<strong class="small">' + name + '</strong></div>'
                 + '<span class="badge bg-light text-dark border">' + fmtNum(r.distance_km, 1) + ' km</span></div>'
                 + '<div class="d-flex justify-content-between small text-muted"><span><i class="ri-time-line"></i> ' + fmtDur(r.duration_min) + '</span>'
                 + '<span><i class="ri-money-euro-circle-line"></i> ' + tolls + '</span></div></div>';
             list.insertAdjacentHTML('beforeend', html);
+        });
+        // Init Compare button state
+        updateCompareButton();
+        list.querySelectorAll('.alt-compare-cb').forEach(function (cb) {
+            cb.addEventListener('change', updateCompareButton);
         });
         list.querySelectorAll('.alt-route-card').forEach(function (el) {
             el.addEventListener('mouseenter', function () {
@@ -3203,6 +3246,118 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             });
         });
         ac.style.display = '';
+    }
+
+    // #17 Compare mode — side-by-side porównanie wybranych alternatyw
+    function updateCompareButton() {
+        var btn = document.getElementById('btn-compare-routes');
+        if (!btn) return;
+        var checked = document.querySelectorAll('.alt-compare-cb:checked');
+        btn.disabled = checked.length < 2;
+        btn.title = checked.length < 2
+            ? '<?= __('Zaznacz minimum 2 trasy żeby porównać') ?>'
+            : '<?= __('Porównaj') ?> ' + checked.length + ' <?= __('trasy') ?>';
+    }
+    document.getElementById('btn-compare-routes').addEventListener('click', function () {
+        var checked = Array.from(document.querySelectorAll('.alt-compare-cb:checked'))
+            .map(function (cb) { return parseInt(cb.dataset.idx, 10); });
+        if (checked.length < 2 || !lastResponse) return;
+        renderCompareModal(checked);
+    });
+
+    function renderCompareModal(idxArr) {
+        var routes = idxArr.map(function (i) { return { idx: i, route: lastResponse.routes[i] }; });
+        if (routes.some(function (r) { return !r.route; })) { toast('<?= __('Brak danych trasy.') ?>', 'error'); return; }
+
+        var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
+        var price = parseFloat(document.getElementById('fuel-price').value || 0);
+        var rate = parseFloat(document.getElementById('driver-rate').value || 0);
+        var revenue = parseFloat(document.getElementById('freight-revenue').value || 0);
+        var eurPln = lastResponse.eur_pln_rate || null;
+
+        function calcCosts(r) {
+            var fuel = (r.distance_km / 100) * cons * price;
+            var driver = (r.duration_min / 60) * rate;
+            var tolls = 0;
+            if (r.tolls_total) {
+                tolls = (r.tolls_currency === 'PLN') ? r.tolls_total
+                      : (eurPln ? r.tolls_total * eurPln : r.tolls_total);
+            }
+            return { fuel: fuel, driver: driver, tolls: tolls, total: fuel + driver + tolls };
+        }
+
+        // Buduj rzędy tabeli
+        var rows = [
+            { label: '<?= __('Dystans') ?>', icon: 'ri-roadster-line', val: function (r) { return fmtNum(r.distance_km, 1) + ' km'; } },
+            { label: '<?= __('Czas jazdy') ?>', icon: 'ri-time-line', val: function (r) { return fmtDur(r.duration_min); } },
+            { label: '<?= __('Opłaty') ?>', icon: 'ri-money-euro-circle-line',
+              val: function (r) { return r.tolls_total != null ? fmtNum(r.tolls_total, 2) + ' ' + (r.tolls_currency || 'EUR') : '—'; } },
+            { label: '<?= __('Paliwo (PLN)') ?>', icon: 'ri-gas-station-line',
+              val: function (r) { return fmtNum(calcCosts(r).fuel, 0) + ' PLN'; } },
+            { label: '<?= __('Kierowca (PLN)') ?>', icon: 'ri-user-line',
+              val: function (r) { return fmtNum(calcCosts(r).driver, 0) + ' PLN'; } },
+            { label: '<?= __('Koszt łączny (PLN)') ?>', icon: 'ri-money-pound-circle-line',
+              val: function (r) { return '<strong>' + fmtNum(calcCosts(r).total, 0) + ' PLN</strong>'; }, highlight: true },
+            { label: '<?= __('Liczba krajów') ?>', icon: 'ri-earth-line',
+              val: function (r) { return Object.keys(r.tolls_by_country || {}).length || '—'; } },
+        ];
+        if (revenue > 0) {
+            rows.push({ label: '<?= __('Zysk (PLN)') ?>', icon: 'ri-money-dollar-circle-line',
+                val: function (r) {
+                    var c = calcCosts(r);
+                    var profit = revenue - c.total;
+                    var margin = revenue > 0 ? (profit / revenue * 100) : 0;
+                    var color = margin >= 15 ? '#16a34a' : (margin >= 5 ? '#ca8a04' : '#dc2626');
+                    return '<strong style="color:' + color + '">' + fmtNum(profit, 0) + ' PLN</strong>'
+                        + '<div class="small text-muted">' + (margin >= 0 ? '+' : '') + fmtNum(margin, 1) + '%</div>';
+                }, highlight: true });
+        }
+
+        // Najlepsze/najgorsze per kategoria
+        var winners = {
+            distance: routes.reduce(function (a, b) { return a.route.distance_km < b.route.distance_km ? a : b; }).idx,
+            duration: routes.reduce(function (a, b) { return a.route.duration_min < b.route.duration_min ? a : b; }).idx,
+            cost: routes.reduce(function (a, b) { return calcCosts(a.route).total < calcCosts(b.route).total ? a : b; }).idx,
+        };
+
+        // Render
+        var html = '<table class="table table-bordered table-sm align-middle mb-0">';
+        html += '<thead><tr><th></th>';
+        routes.forEach(function (r) {
+            var name = r.idx === 0 ? '<?= __('Trasa główna') ?>' : '<?= __('Alt.') ?> ' + r.idx;
+            html += '<th class="text-center">' + name + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+
+        rows.forEach(function (row) {
+            html += '<tr' + (row.highlight ? ' style="background:#f9fafb"' : '') + '>';
+            html += '<td><i class="' + row.icon + ' me-1 text-muted"></i>' + row.label + '</td>';
+            routes.forEach(function (r) {
+                html += '<td class="text-center">' + row.val(r.route) + '</td>';
+            });
+            html += '</tr>';
+        });
+
+        // Highlight zwycięzców
+        html += '<tr style="background:#dcfce7"><td><i class="ri-trophy-line me-1 text-success"></i><?= __('Najkrótsza') ?></td>';
+        routes.forEach(function (r) {
+            html += '<td class="text-center">' + (r.idx === winners.distance ? '🏆' : '') + '</td>';
+        });
+        html += '</tr>';
+        html += '<tr style="background:#dcfce7"><td><i class="ri-trophy-line me-1 text-success"></i><?= __('Najszybsza') ?></td>';
+        routes.forEach(function (r) {
+            html += '<td class="text-center">' + (r.idx === winners.duration ? '🏆' : '') + '</td>';
+        });
+        html += '</tr>';
+        html += '<tr style="background:#dcfce7"><td><i class="ri-trophy-line me-1 text-success"></i><?= __('Najtańsza') ?></td>';
+        routes.forEach(function (r) {
+            html += '<td class="text-center">' + (r.idx === winners.cost ? '🏆' : '') + '</td>';
+        });
+        html += '</tr>';
+        html += '</tbody></table>';
+
+        document.getElementById('compare-modal-body').innerHTML = html;
+        new bootstrap.Modal(document.getElementById('compareModal')).show();
     }
 
     function renderDirections(r) {
@@ -3378,6 +3533,167 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // CRLF — zgodnie z RFC 5545
         return lines.join('\r\n');
     }
+    // #14 — Live tracking link dla klienta
+    document.getElementById('btn-track-link').addEventListener('click', function () {
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var id = lastResponse.route_search_id;
+        if (!id) { toast('<?= __('Trasa nie została zapisana — kalkulacja musi być po zalogowaniu.') ?>', 'warning'); return; }
+        var url = window.location.origin + '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'trackView', '__ID__']) ?>'.replace('__ID__', id);
+        // Pokazujemy modal z linkiem do kopiowania + QR
+        var modalHtml = '<div class="modal fade" id="trackLinkModal" tabindex="-1"><div class="modal-dialog modal-md modal-dialog-centered">'
+            + '<div class="modal-content" style="border-radius:14px;overflow:hidden">'
+            + '<div class="modal-header" style="background:linear-gradient(135deg,#0891b2,#06b6d4);color:white">'
+            + '<h5 class="modal-title"><i class="ri-broadcast-line me-2"></i><?= __('Link dla klienta') ?></h5>'
+            + '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>'
+            + '<div class="modal-body">'
+            + '<div class="text-muted small mb-3"><i class="ri-information-line me-1"></i><?= __('Klient otworzy link na telefonie / komputerze i zobaczy trasę z mapą, ETA, punktami. Bez logowania.') ?></div>'
+            + '<div class="input-group mb-3">'
+            +   '<input type="text" class="form-control" id="track-url-input" value="' + url + '" readonly>'
+            +   '<button class="btn btn-primary" id="btn-copy-track-url"><i class="ri-clipboard-line"></i></button>'
+            + '</div>'
+            + '<div class="text-center">'
+            +   '<img id="track-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url) + '" alt="QR" style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:white">'
+            +   '<div class="text-muted small mt-2"><?= __('Lub zeskanuj telefonem') ?></div>'
+            + '</div></div>'
+            + '<div class="modal-footer">'
+            + '<a href="' + url + '" target="_blank" class="btn btn-outline-info"><i class="ri-external-link-line me-1"></i><?= __('Otwórz') ?></a>'
+            + '<button type="button" class="btn btn-info text-white" id="btn-share-track"><i class="ri-share-line me-1"></i><?= __('Udostępnij') ?></button>'
+            + '</div></div></div></div>';
+        // Usuń stary jeśli istnieje
+        var existing = document.getElementById('trackLinkModal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('trackLinkModal')).show();
+        document.getElementById('btn-copy-track-url').addEventListener('click', function () {
+            if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () {
+                toast('<?= __('Link skopiowany') ?>', 'success');
+            });
+        });
+        document.getElementById('btn-share-track').addEventListener('click', function () {
+            if (navigator.share) {
+                navigator.share({ title: 'Trasa transportowa', text: 'Śledź trasę:', url: url });
+            } else if (navigator.clipboard) {
+                navigator.clipboard.writeText(url).then(function () {
+                    toast('<?= __('Link skopiowany — wklej do SMS/WhatsApp') ?>', 'success');
+                });
+            }
+        });
+    });
+
+    // #6 — Generuj ofertę PDF dla klienta (print view w nowym oknie z HERE static map)
+    document.getElementById('btn-customer-offer').addEventListener('click', function () {
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var r = lastResponse.routes[activeAltIdx];
+        var pts = lastResponse.points || [];
+        if (!r || pts.length < 2) { toast('<?= __('Brak punktów trasy.') ?>', 'warning'); return; }
+
+        // HERE Static Map Image API (mapview)
+        // Markery + polyline → URL do PNG
+        var mapMarkers = pts.map(function (p, i) {
+            return 'poi:' + p.lat.toFixed(5) + ',' + p.lng.toFixed(5) + ';' + String.fromCharCode(65 + i);
+        }).join('|');
+        // Bbox z punktów + 20% padding
+        var minLat = Math.min.apply(null, pts.map(function (p) { return p.lat; }));
+        var maxLat = Math.max.apply(null, pts.map(function (p) { return p.lat; }));
+        var minLng = Math.min.apply(null, pts.map(function (p) { return p.lng; }));
+        var maxLng = Math.max.apply(null, pts.map(function (p) { return p.lng; }));
+        var dLat = (maxLat - minLat) * 0.2;
+        var dLng = (maxLng - minLng) * 0.2;
+        var bbox = (maxLat + dLat).toFixed(5) + ',' + (minLng - dLng).toFixed(5)
+                 + ',' + (minLat - dLat).toFixed(5) + ',' + (maxLng + dLng).toFixed(5);
+        var mapUrl = 'https://image.maps.hereapi.com/mia/1.6/mapview'
+                   + '?apiKey=' + encodeURIComponent(hereKey)
+                   + '&bbox=' + encodeURIComponent(bbox)
+                   + '&poi=' + encodeURIComponent(pts.map(function (p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }).join(','))
+                   + '&poimarker=' + encodeURIComponent('0;2563EB;FFFFFF')
+                   + '&w=800&h=400&style=alps&f=0';
+
+        // Dane do oferty
+        var revenue = parseFloat(document.getElementById('freight-revenue').value || 0);
+        var cons = parseFloat(document.getElementById('fuel-consumption').value || 0);
+        var price = parseFloat(document.getElementById('fuel-price').value || 0);
+        var rate = parseFloat(document.getElementById('driver-rate').value || 0);
+        var fuel = (r.distance_km / 100) * cons * price;
+        var driver = (r.duration_min / 60) * rate;
+        var tolls = r.tolls_total || 0;
+        var vehicle = getSelectedVehicle();
+
+        // Daty z waypoints
+        var dateRangeText = '';
+        var w0 = waypoints[0], wN = waypoints[waypoints.length - 1];
+        if (w0 && w0.date) dateRangeText += '<?= __('Załadunek') ?>: <strong>' + w0.date.replace('T', ' ') + '</strong>';
+        if (wN && wN.date) dateRangeText += ' &nbsp;|&nbsp; <?= __('Dostawa') ?>: <strong>' + wN.date.replace('T', ' ') + '</strong>';
+
+        var wpsList = pts.map(function (p, i) {
+            return '<li><strong>' + String.fromCharCode(65 + i) + '.</strong> ' + escapeHtml(p.label || p.address || '') + '</li>';
+        }).join('');
+
+        var win = window.open('', '_blank', 'width=900,height=1200');
+        if (!win) { toast('<?= __('Włącz wyskakujące okna') ?>', 'warning'); return; }
+        win.document.write(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title><?= __('Oferta transportowa') ?></title>'
+            + '<style>'
+            + 'body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#111;background:white}'
+            + '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:15px;border-bottom:3px solid #2563eb}'
+            + '.logo{font-size:24px;font-weight:700;color:#2563eb}'
+            + '.sub{color:#6b7280;font-size:13px;margin-top:4px}'
+            + 'h1{font-size:22px;margin:8px 0;color:#111}'
+            + 'h2{font-size:14px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:24px 0 10px}'
+            + '.map{width:100%;border-radius:8px;border:1px solid #e5e7eb;margin:12px 0;max-height:400px}'
+            + '.box{background:#f9fafb;border-radius:8px;padding:16px 20px;margin:10px 0;border:1px solid #e5e7eb}'
+            + '.box.price{background:linear-gradient(135deg,#dbeafe,#eff6ff);border-color:#bfdbfe}'
+            + '.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb}'
+            + '.row:last-child{border:0}'
+            + '.row .label{color:#6b7280;font-size:13px}'
+            + '.row .val{font-weight:600;color:#111}'
+            + '.price-big{font-size:36px;font-weight:700;color:#2563eb;text-align:center;padding:10px 0}'
+            + '.muted{color:#6b7280;font-size:11px}'
+            + 'ul{padding-left:20px;list-style:none}'
+            + 'ul li{padding:6px 0;border-bottom:1px solid #e5e7eb}'
+            + 'ul li:last-child{border:0}'
+            + 'button{position:fixed;bottom:20px;right:20px;padding:12px 24px;background:#2563eb;color:white;border:0;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.15)}'
+            + '@media print{button{display:none}body{padding:15px}.box{break-inside:avoid}}'
+            + '</style></head><body>'
+            + '<div class="header">'
+            + '<div><div class="logo">🚛 Booklio TMS</div><div class="sub"><?= __('Ekspert w transporcie międzynarodowym') ?></div></div>'
+            + '<div style="text-align:right"><div class="muted"><?= __('Oferta wygenerowana') ?>:</div><div style="font-weight:600">' + new Date().toLocaleString('pl-PL') + '</div></div>'
+            + '</div>'
+            + '<h1>📋 <?= __('Oferta transportowa') ?></h1>'
+            + (dateRangeText ? '<div style="margin:8px 0 16px;color:#374151">' + dateRangeText + '</div>' : '')
+
+            + '<h2>📍 <?= __('Trasa') ?></h2>'
+            + '<img src="' + mapUrl + '" class="map" alt="<?= __('Mapa trasy') ?>" onerror="this.style.display=\'none\'">'
+            + '<ul>' + wpsList + '</ul>'
+
+            + '<h2>📊 <?= __('Podsumowanie') ?></h2>'
+            + '<div class="box">'
+            + '<div class="row"><span class="label">📏 <?= __('Dystans') ?></span><span class="val">' + fmtNum(r.distance_km, 1) + ' km</span></div>'
+            + '<div class="row"><span class="label">⏱️ <?= __('Czas jazdy') ?></span><span class="val">' + fmtDur(r.duration_min) + '</span></div>'
+            + '<div class="row"><span class="label">🚛 <?= __('Pojazd') ?></span><span class="val">' + (vehicle ? escapeHtml(vehicle.name) + (vehicle.plate ? ' (' + escapeHtml(vehicle.plate) + ')' : '') : '<?= __('osobowy') ?>') + '</span></div>'
+            + (r.tolls_total ? '<div class="row"><span class="label">💰 <?= __('Opłaty drogowe') ?></span><span class="val">' + fmtNum(r.tolls_total, 2) + ' ' + (r.tolls_currency || 'EUR') + '</span></div>' : '')
+            + '</div>'
+
+            + (revenue > 0 ? '<h2>💵 <?= __('Cena') ?></h2><div class="box price"><div class="price-big">' + fmtNum(revenue, 2) + ' PLN</div><div class="muted" style="text-align:center"><?= __('netto, do uzgodnienia') ?></div></div>' : '')
+
+            + '<h2>📋 <?= __('Warunki') ?></h2>'
+            + '<div class="box muted">'
+            + '• <?= __('Cena obejmuje transport, opłaty drogowe na trasie i ubezpieczenie OCP') ?><br>'
+            + '• <?= __('Ważność oferty: 7 dni od daty wygenerowania') ?><br>'
+            + '• <?= __('Płatność: przelew 14 dni od daty wystawienia faktury') ?><br>'
+            + '• <?= __('Realizacja zgodnie z Konwencją CMR') ?>'
+            + '</div>'
+
+            + '<div style="margin-top:30px;padding-top:15px;border-top:1px solid #e5e7eb" class="muted">'
+            + '<?= __('Dokument wygenerowany automatycznie przez Booklio TMS — booklio.pl') ?>'
+            + '</div>'
+
+            + '<button onclick="window.print()">🖨️ <?= __('Drukuj / Zapisz PDF') ?></button>'
+            + '</body></html>'
+        );
+        win.document.close();
+        setTimeout(function () { try { win.print(); } catch (e) {} }, 800);
+    });
+
     document.getElementById('btn-export-ical').addEventListener('click', function (e) {
         e.preventDefault();
         if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }

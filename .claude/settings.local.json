@@ -23,7 +23,8 @@
       "Bash(git commit *)",
       "Bash(grep -nE '^msgid \"Wyślij\"$|^msgid \"Wysyłanie\\\\.\\\\.\\\\.\"$' resources/locales/en/default.po)",
       "Bash(grep -B2 \"templates\\\\\\\\\\\\\\\\AdminUsers\\\\\\\\\\\\\\\\index.php:198\" logs/error.log)",
-      "WebFetch(domain:www.here.com)"
+      "WebFetch(domain:www.here.com)",
+      "WebFetch(domain:api.cepik.gov.pl)"
     ]
   }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\Routing\HereRoutingService;
+use Cake\Core\Configure;
 use Cake\Http\Response;
 
 /**
@@ -20,6 +21,15 @@ class RoutePlannerController extends AppController
     public function beforeFilter(\Cake\Event\EventInterface $event)
     {
         parent::beforeFilter($event);
+        // Publiczne akcje (#14 Live tracking link dla klienta — bez auth)
+        $publicActions = ['track', 'trackView'];
+        $action = $this->request->getParam('action');
+        if (in_array($action, $publicActions, true)) {
+            if ($this->components()->has('Authentication')) {
+                $this->Authentication->allowUnauthenticated($publicActions);
+            }
+            return;
+        }
         $identity = $this->request->getAttribute('identity');
         if (!$identity) {
             $event->setResult($this->redirect('/users/login'));
@@ -117,11 +127,11 @@ class RoutePlannerController extends AppController
             ->withStringBody(json_encode(['ok' => true]));
     }
 
-    private function saveRouteSearch(array $points, string $vehicleId, array $firstRoute): void
+    private function saveRouteSearch(array $points, string $vehicleId, array $firstRoute): ?string
     {
         $identity = $this->request->getAttribute('identity');
         $userId = (string)($identity?->getIdentifier() ?? '');
-        if ($userId === '') return;
+        if ($userId === '') return null;
         $companyId = (string)($identity?->get('company_id') ?? '');
 
         // Sygnatura: lat/lng zaokr. do 4 miejsc + vehicle_id
@@ -151,7 +161,7 @@ class RoutePlannerController extends AppController
             $existing->tolls_total    = $firstRoute['tolls_total']  ?? null;
             $existing->tolls_currency = $firstRoute['tolls_currency'] ?? null;
             $Searches->save($existing);
-            return;
+            return (string)$existing->id;
         }
         $entity = $Searches->newEntity([
             'id'             => \Cake\Utility\Text::uuid(),
@@ -177,6 +187,7 @@ class RoutePlannerController extends AppController
         foreach ($extra as $row) {
             $Searches->delete($row);
         }
+        return (string)$entity->id;
     }
 
     public function calculate(): Response
@@ -290,7 +301,10 @@ class RoutePlannerController extends AppController
 
             // Auto-zapis do historii (best-effort, błąd nie blokuje response)
             try {
-                $this->saveRouteSearch($allPoints, $vehicleId, $firstRoute);
+                $searchId = $this->saveRouteSearch($allPoints, $vehicleId, $firstRoute);
+                if ($searchId) {
+                    $result['route_search_id'] = $searchId;
+                }
             } catch (\Throwable $e) {
                 \Cake\Log\Log::warning('RouteSearch save failed: ' . $e->getMessage());
             }
@@ -399,6 +413,63 @@ class RoutePlannerController extends AppController
         } catch (\Throwable $e) {
             return $this->jsonError($e->getMessage());
         }
+    }
+
+    /**
+     * Live tracking link — publiczny URL z UUID RouteSearches.
+     * URL zwraca dane trasy + waypoints + ETA do widoku read-only.
+     * Brak auth — token UUID jest wystarczająco trudny do zgadnięcia.
+     */
+    public function track(string $id): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+        $Searches = $this->fetchTable('RouteSearches');
+        $search = $Searches->find()->where(['id' => $id])->first();
+        if (!$search) {
+            $this->response = $this->response->withStatus(404)->withType('application/json')
+                ->withStringBody(json_encode(['error' => true, 'message' => __('Trasa nie znaleziona.')]));
+            return $this->response;
+        }
+        $waypoints = json_decode((string)$search->waypoints_json, true) ?: [];
+        $data = [
+            'id'             => $id,
+            'waypoints'      => $waypoints,
+            'distance_km'    => $search->distance_km,
+            'duration_min'   => $search->duration_min,
+            'tolls_total'    => $search->tolls_total,
+            'tolls_currency' => $search->tolls_currency,
+            'last_used'      => $search->last_used?->format('c'),
+        ];
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Render strony tracking (publicznie dostępna mobile-first).
+     */
+    public function trackView(string $id): ?Response
+    {
+        $this->request->allowMethod(['get']);
+        // Ta akcja używa template — render dzieje się automatycznie
+        $Searches = $this->fetchTable('RouteSearches');
+        $search = $Searches->find()->where(['id' => $id])->first();
+        if (!$search) {
+            $this->Flash->error(__('Trasa nie znaleziona lub link wygasł.'));
+            return $this->redirect('/');
+        }
+        $waypoints = json_decode((string)$search->waypoints_json, true) ?: [];
+        $this->set([
+            'trackId'        => $id,
+            'waypoints'      => $waypoints,
+            'distance_km'    => $search->distance_km,
+            'duration_min'   => $search->duration_min,
+            'tolls_total'    => $search->tolls_total,
+            'tolls_currency' => $search->tolls_currency,
+            'hereApiKey'     => Configure::read('Here.apiKey'),
+        ]);
+        $this->viewBuilder()->setLayout(false);
+        return null;
     }
 
     public function truckPois(): Response
