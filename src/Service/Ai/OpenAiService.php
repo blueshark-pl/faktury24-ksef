@@ -123,11 +123,17 @@ class OpenAiService
     public function parseRouteText(string $text): array
     {
         $system = <<<SYS
-Jesteś asystentem AI dla firmy transportowej. Analizujesz tekst po polsku
+Jesteś asystentem AI dla firmy transportowej. Analizujesz tekst po polsku/angielsku/niemiecku
 i wyciągasz informacje o trasie. Zwracasz WYŁĄCZNIE poprawny JSON o strukturze:
 {
   "points": [
-    {"address": "Pełny adres po polsku z miastem i krajem (np. 'Kraków, ul. Wielicka 22, Polska')", "date": "YYYY-MM-DDTHH:MM lub pusty string"}
+    {
+      "address": "Pełny adres z kodem pocztowym, miastem i krajem (np. '30-552 Kraków, ul. Wielicka 22, Polska' lub '12101 Berlin, Tempelhofer Damm 1, Niemcy')",
+      "postal_code": "kod pocztowy w formacie kraju (np. '30-552' dla PL, '10115' dla DE, '75001' dla FR, '20-100' dla IT) lub pusty string jeśli niepodany",
+      "city": "nazwa miasta (np. 'Kraków')",
+      "country": "kod kraju ISO alpha-2 (np. 'PL', 'DE', 'FR', 'IT', 'AT', 'NL', 'BE', 'CZ', 'SK', 'UA')",
+      "date": "YYYY-MM-DDTHH:MM lub pusty string"
+    }
   ],
   "cargo_weight_kg": liczba lub null,
   "cargo_description": "krótki opis ładunku lub pusty string",
@@ -135,9 +141,25 @@ i wyciągasz informacje o trasie. Zwracasz WYŁĄCZNIE poprawny JSON o strukturz
   "vehicle_type_hint": "truck/tractor/van/trailer/cysterna lub pusty string",
   "special_notes": "uwagi specjalne lub pusty string"
 }
+
+WAŻNE — kod pocztowy:
+- Jeśli tekst zawiera kod pocztowy (np. '30-552', '10115', '75001') — WYCIĄGNIJ go i wpisz w pole 'postal_code' ORAZ w 'address'
+- Jeśli kod nie jest podany ale jest miasto i ulica — SPRÓBUJ DOPASOWAĆ typowy kod pocztowy dla tego miasta z Twojej wiedzy o kodach
+  (np. 'Kraków centrum' → '30-001/30-002/...', 'Berlin Tempelhof' → '12101', 'Warszawa Mokotów' → '02-XXX')
+- Formaty per kraj:
+  * PL: XX-XXX (np. 30-552)
+  * DE: XXXXX (5 cyfr, np. 10115)
+  * FR: XXXXX (5 cyfr, np. 75001)
+  * IT: XXXXX (5 cyfr, np. 00100)
+  * AT: XXXX (4 cyfry, np. 1010)
+  * CZ: XXX XX (np. 110 00)
+  * NL: XXXX AA (4 cyfry + 2 litery, np. 1011 AB)
+  * UK: AAX XAA (np. SW1A 1AA)
+- Kod pocztowy ZAWSZE poprawia jakość geocoding'u — preferuj jego dodanie
+
 Co najmniej 2 punkty (origin + dest). Jeśli daty/godziny nie podano — pusty string.
 SYS;
-        return $this->chatJson($system, $text, 1200);
+        return $this->chatJson($system, $text, 1500);
     }
 
     /**

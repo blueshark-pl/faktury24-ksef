@@ -938,10 +938,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
       <div class="modal-body">
         <div class="text-muted small mb-2">
           <i class="ri-information-line me-1"></i>
-          <?= __('Wklej tekst od klienta — email, wiadomość, opis trasy. AI wyciągnie waypoints, daty, ładunek i ADR.') ?>
+          <?= __('Wklej tekst od klienta — email, wiadomość, opis trasy. AI wyciągnie waypoints, kody pocztowe, daty, ładunek i ADR.') ?>
         </div>
         <textarea class="form-control" id="ai-parser-input" rows="6"
-                  placeholder="<?= __('np. Załadunek 15.05 Kraków ul. Wielicka 22, dostawa 16.05 do godz. 12:00 w Berlinie. 24 tony, ADR klasa 3 — diesel.') ?>"></textarea>
+                  placeholder="<?= __('np. Załadunek 15.05 30-552 Kraków ul. Wielicka 22, dostawa 16.05 do godz. 12:00 12101 Berlin Tempelhofer Damm 1. 24 tony, ADR klasa 3 — diesel.') ?>"></textarea>
+        <div class="form-text small mt-1">
+          <i class="ri-lightbulb-line me-1 text-warning"></i>
+          <?= __('Podaj kody pocztowe gdzie się da — AI je rozpozna i geocoding HERE będzie 10× dokładniejszy. Jeśli nie znasz kodu — AI spróbuje go dopasować na podstawie miasta/ulicy.') ?>
+        </div>
         <div id="ai-parser-result" class="mt-3" style="display:none"></div>
       </div>
       <div class="modal-footer">
@@ -4966,8 +4970,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             var html = '<div class="alert alert-success py-2 mb-2 small"><i class="ri-checkbox-circle-line me-1"></i><?= __('Rozpoznano') ?> ' + (d.points||[]).length + ' <?= __('punktów') ?></div>';
             html += '<ul class="list-group small mb-2">';
             (d.points || []).forEach(function (p, i) {
+                var addrParts = [];
+                if (p.postal_code) addrParts.push('<span class="badge bg-light text-primary border me-1">' + escapeHtml(p.postal_code) + '</span>');
+                addrParts.push(escapeHtml(p.address || ''));
+                var countryBadge = p.country
+                    ? ' <span class="fi fi-' + escapeHtml(p.country.toLowerCase()) + '" title="' + escapeHtml(p.country) + '"></span>'
+                    : '';
                 html += '<li class="list-group-item d-flex justify-content-between">'
-                     + '<span><strong>' + String.fromCharCode(65+i) + '.</strong> ' + escapeHtml(p.address || '') + '</span>'
+                     + '<span><strong>' + String.fromCharCode(65+i) + '.</strong> ' + addrParts.join(' ') + countryBadge + '</span>'
                      + (p.date ? '<span class="text-muted">' + escapeHtml(p.date) + '</span>' : '')
                      + '</li>';
             });
@@ -4991,7 +5001,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         // Akceptuj YYYY-MM-DDTHH:MM, YYYY-MM-DD, lub dowolny format
                         date = p.date.length >= 16 ? p.date.substring(0, 16) : (p.date.length === 10 ? p.date + 'T08:00' : '');
                     }
-                    return { address: p.address, label: p.address, lat: null, lng: null, country: '', date: date };
+                    // Address może już zawierać kod pocztowy — jeśli nie, doklej z osobnego pola
+                    var fullAddr = p.address || '';
+                    if (p.postal_code && fullAddr.indexOf(p.postal_code) === -1) {
+                        // Doklej kod pocztowy przed miastem dla lepszego geocoding'u
+                        fullAddr = p.postal_code + ' ' + fullAddr;
+                    }
+                    return {
+                        address: fullAddr,
+                        label: fullAddr,
+                        lat: null, lng: null,
+                        country: p.country ? p.country.toUpperCase() : '',
+                        date: date
+                    };
                 });
                 // ADR class
                 if (d.adr_class) document.getElementById('adr-class').value = String(d.adr_class);

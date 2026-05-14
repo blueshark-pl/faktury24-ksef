@@ -3411,3 +3411,12 @@ msgstr "Address not found for load #"
 
 msgid "Dodano przystanek — przeliczanie trasy…"
 msgstr "Stop added — recalculating route…"
+
+msgid "Wklej tekst od klienta — email, wiadomość, opis trasy. AI wyciągnie waypoints, kody pocztowe, daty, ładunek i ADR."
+msgstr "Paste customer text — email, message, route description. AI will extract waypoints, postal codes, dates, cargo and ADR."
+
+msgid "np. Załadunek 15.05 30-552 Kraków ul. Wielicka 22, dostawa 16.05 do godz. 12:00 12101 Berlin Tempelhofer Damm 1. 24 tony, ADR klasa 3 — diesel."
+msgstr "e.g. Loading 15.05 30-552 Kraków, Wielicka St 22, delivery 16.05 by 12:00 12101 Berlin Tempelhofer Damm 1. 24 tons, ADR class 3 — diesel."
+
+msgid "Podaj kody pocztowe gdzie się da — AI je rozpozna i geocoding HERE będzie 10× dokładniejszy. Jeśli nie znasz kodu — AI spróbuje go dopasować na podstawie miasta/ulicy."
+msgstr "Provide postal codes where possible — AI will recognize them and HERE geocoding will be 10× more accurate. If unknown, AI will try to match it based on city/street."
