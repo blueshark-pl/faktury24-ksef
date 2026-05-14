@@ -88,6 +88,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     .fi { width: 1.2em; height: .9em; display: inline-block; vertical-align: middle; margin-right: .3em; border-radius: 2px;
           box-shadow: 0 0 1px rgba(0,0,0,.4); }
     .select2-results__option .fi { margin-right: .5em; }
+    /* Select2 dropdowny doczepione do body — wysoki z-index nad kartami planera */
+    .select2-container--open { z-index: 9999 !important; }
+    .select2-dropdown { z-index: 9999 !important; }
     /* Select2 dla planera: kompaktowy rozmiar dopasowany do form-control-sm */
     .planer-select2 + .select2-container--default .select2-selection--single {
         height: 31px; border-color: #ced4da; font-size: .875rem;
@@ -1972,7 +1975,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             minimumResultsForSearch: Infinity,
             templateResult: tplCurrency,
             templateSelection: tplCurrencySelected,
-            dropdownParent: jQuery('#currency').closest('.collapse, .card, body')
+            dropdownParent: jQuery('body')
         });
 
         jQuery('#exclude-countries').select2({
@@ -1982,7 +1985,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             closeOnSelect: false,
             templateResult: tplCountry,
             templateSelection: tplCountry,
-            dropdownParent: jQuery('#exclude-countries').closest('.collapse, .card, body')
+            dropdownParent: jQuery('body')
         });
 
         // ── ADR Select2 z ikonami Remixicon ──────────────────────────
@@ -2001,7 +2004,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             minimumResultsForSearch: Infinity,
             templateResult: tplAdr,
             templateSelection: tplAdr,
-            dropdownParent: jQuery('#adr-class').closest('.collapse, .card, body')
+            dropdownParent: jQuery('body')
         });
     })();
 
