@@ -572,11 +572,13 @@ class HereRoutingService
             ['q' => 'gas station',   'type' => 'fuel_station'],
             ['q' => 'parking',       'type' => 'parking'],
         ];
+        $radiusM = 30000; // 30 km — twardy limit, bez tego Discover zwraca globalne wyniki
         foreach ($points as $ptIdx => $pt) {
             foreach ($queries as $qInfo) {
                 try {
                     $resp = $this->client->get($discoverUrl, [
                         'at'     => $pt['lat'] . ',' . $pt['lng'],
+                        'in'     => 'circle:' . $pt['lat'] . ',' . $pt['lng'] . ';r=' . $radiusM,
                         'q'      => $qInfo['q'],
                         'limit'  => 5,
                         'apiKey' => $this->apiKey,
