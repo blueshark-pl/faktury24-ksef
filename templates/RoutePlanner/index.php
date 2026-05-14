@@ -704,6 +704,58 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 </div>
             </div>
         </div>
+
+        <!-- L1+L2: Szczegółowe opłaty + winiety -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card" id="tolls-card" style="display:none">
+                    <div class="card-header py-2 d-flex align-items-center flex-wrap gap-2">
+                        <strong><i class="ri-coin-line me-1 text-warning"></i><?= __('Szczegółowe opłaty drogowe') ?></strong>
+                        <span id="tolls-summary" class="text-muted small ms-2"></span>
+                        <div class="ms-auto d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-toll-markers" title="<?= __('Pokaż bramki na mapie') ?>">
+                                <i class="ri-map-pin-line me-1"></i><?= __('Bramki na mapie') ?>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-tolls-csv" title="<?= __('Eksport CSV') ?>">
+                                <i class="ri-file-excel-2-line me-1"></i>CSV
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="btn-tolls-pdf" title="<?= __('Eksport PDF') ?>">
+                                <i class="ri-file-pdf-2-line me-1"></i>PDF
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Winiety -->
+                    <div id="vignettes-section" class="px-3 pt-3 pb-2" style="display:none">
+                        <div class="alert alert-warning py-2 mb-2 small d-flex align-items-start gap-2">
+                            <i class="ri-sticker-line fs-18"></i>
+                            <div>
+                                <strong><?= __('Wymagane winiety') ?>:</strong>
+                                <?= __('przed wjazdem do tych krajów kup naklejkę/e-winietę:') ?>
+                            </div>
+                        </div>
+                        <div id="vignettes-list" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    <!-- Tabela opłat -->
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0" id="tolls-table">
+                                <thead style="background:#f9fafb;font-size:.78rem">
+                                    <tr>
+                                        <th><?= __('Kraj') ?></th>
+                                        <th><?= __('System') ?></th>
+                                        <th><?= __('Odcinek / opłata') ?></th>
+                                        <th class="text-end"><?= __('Cena') ?></th>
+                                        <th><?= __('Płatność') ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tolls-tbody" style="font-size:.82rem"></tbody>
+                                <tfoot id="tolls-tfoot" style="background:#f9fafb;font-weight:600"></tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1448,6 +1500,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderBorderCrossings(data.routes[0], data.points || []);
         checkRestLawCompliance(data.routes[0]);
         renderEtaBadges(data.routes[0]);
+        renderTollsBreakdown(data.routes[0]);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
@@ -1683,6 +1736,267 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             }
         });
     }
+
+    // ═════════════════════════════════════════════════════════════════
+    // L1+L2+L3+L4: Szczegółowe opłaty drogowe (tolls breakdown)
+    // ═════════════════════════════════════════════════════════════════
+    var tollMarkersGroup = null;       // L3: grupa markerów bramek
+    var tollMarkersVisible = false;
+    var currentTollsData = null;       // dla CSV/PDF export
+
+    function flagSpan(cc) {
+        if (!cc) return '';
+        // HERE zwraca alpha-3 (DEU/POL...) lub alpha-2 (DE/PL). Mapujemy oba na alpha-2.
+        var iso3to2 = { POL:'pl', DEU:'de', CZE:'cz', SVK:'sk', UKR:'ua', LTU:'lt', LVA:'lv', BLR:'by', AUT:'at', HUN:'hu', FRA:'fr', ESP:'es', ITA:'it', NLD:'nl', BEL:'be', DNK:'dk', SWE:'se', NOR:'no', FIN:'fi', GBR:'gb', IRL:'ie', CHE:'ch', ROU:'ro', BGR:'bg', GRC:'gr', PRT:'pt', SVN:'si', HRV:'hr', LUX:'lu', RUS:'ru', MDA:'md', SRB:'rs', MKD:'mk', ALB:'al', BIH:'ba', MNE:'me' };
+        var c2 = (cc.length === 3) ? (iso3to2[cc.toUpperCase()] || '') : cc.toLowerCase();
+        if (!c2) return escapeHtml(cc);
+        return '<span class="fi fi-' + c2 + '" title="' + escapeHtml(cc) + '"></span> <span class="text-muted small">' + escapeHtml(cc.toUpperCase()) + '</span>';
+    }
+
+    function paymentBadge(method) {
+        if (!method) return '';
+        var iconMap = {
+            'cash': ['ri-coin-line', '#fbbf24', 'Gotówka'],
+            'creditCard': ['ri-bank-card-line', '#3b82f6', 'Karta'],
+            'bankCard': ['ri-bank-card-line', '#3b82f6', 'Karta'],
+            'transponder': ['ri-radio-button-line', '#10b981', 'Transponder'],
+            'videoToll': ['ri-camera-line', '#8b5cf6', 'Video'],
+            'travelCard': ['ri-id-card-line', '#06b6d4', 'Karta podróżna']
+        };
+        return method.split(',').map(function (m) {
+            m = m.trim();
+            var ic = iconMap[m];
+            if (!ic) return '<span class="badge bg-light text-muted border">' + escapeHtml(m) + '</span>';
+            return '<span class="badge border" style="background:' + ic[1] + '15;color:' + ic[1] + ';border-color:' + ic[1] + '40 !important">'
+                 + '<i class="' + ic[0] + ' me-1"></i>' + ic[2] + '</span>';
+        }).join(' ');
+    }
+
+    function renderTollsBreakdown(route) {
+        currentTollsData = null;
+        var card = document.getElementById('tolls-card');
+        if (!route || !route.tolls_breakdown || !route.tolls_breakdown.length) {
+            card.style.display = 'none';
+            return;
+        }
+        currentTollsData = {
+            breakdown: route.tolls_breakdown,
+            vignettes: route.vignettes || [],
+            locations: route.toll_locations || [],
+            by_country: route.tolls_by_country || {},
+            total: route.tolls_total,
+            currency: route.tolls_currency || 'EUR'
+        };
+
+        // Summary po nagłówku
+        var summary = document.getElementById('tolls-summary');
+        var fees = route.tolls_breakdown.filter(function (f) { return !f.is_vignette; });
+        var vigs = route.tolls_breakdown.filter(function (f) { return f.is_vignette; });
+        var sumParts = [];
+        sumParts.push('· ' + fees.length + ' ' + '<?= __('opłat odcinkowych') ?>');
+        if (vigs.length) sumParts.push(vigs.length + ' ' + '<?= __('winiet') ?>');
+        if (currentTollsData.locations && currentTollsData.locations.length) {
+            sumParts.push(currentTollsData.locations.length + ' ' + '<?= __('bramek') ?>');
+        }
+        summary.innerHTML = sumParts.join(' · ');
+
+        // L2: Winiety
+        var vigSec = document.getElementById('vignettes-section');
+        var vigList = document.getElementById('vignettes-list');
+        if (route.vignettes && route.vignettes.length) {
+            vigSec.style.display = '';
+            vigList.innerHTML = route.vignettes.map(function (v) {
+                var validity = v.pass_validity ? ' · ' + escapeHtml(v.pass_validity) : '';
+                return '<div class="card border-warning" style="min-width:200px">'
+                     + '<div class="card-body py-2 px-3">'
+                     + '<div class="d-flex align-items-center justify-content-between gap-2">'
+                     + '<div>' + flagSpan(v.country) + ' <strong class="ms-1">' + escapeHtml(v.system || 'Winieta') + '</strong></div>'
+                     + '<span class="fs-6 fw-bold text-warning">' + fmtNum(v.price, 2) + ' ' + escapeHtml(v.currency) + '</span>'
+                     + '</div>'
+                     + (v.name ? '<div class="text-muted small mt-1">' + escapeHtml(v.name) + '</div>' : '')
+                     + (validity ? '<div class="text-muted" style="font-size:.7rem">' + escapeHtml(validity) + '</div>' : '')
+                     + '</div></div>';
+            }).join('');
+        } else {
+            vigSec.style.display = 'none';
+            vigList.innerHTML = '';
+        }
+
+        // L1: Tabela opłat
+        var tbody = document.getElementById('tolls-tbody');
+        tbody.innerHTML = '';
+        route.tolls_breakdown.forEach(function (f) {
+            var nameCell = escapeHtml(f.name || (f.is_vignette ? '<?= __('Winieta') ?>' : '—'));
+            if (f.is_vignette) nameCell = '<i class="ri-sticker-line text-warning me-1"></i>' + nameCell;
+            var priceCell = '<strong>' + fmtNum(f.price, 2) + '</strong> ' + escapeHtml(f.currency);
+            if (f.converted_price && f.converted_curr && f.converted_curr !== f.currency) {
+                priceCell += '<div class="text-muted" style="font-size:.7rem">≈ ' + fmtNum(f.converted_price, 2) + ' ' + escapeHtml(f.converted_curr) + '</div>';
+            }
+            tbody.innerHTML +=
+                '<tr>'
+                + '<td>' + flagSpan(f.country) + '</td>'
+                + '<td><span class="text-truncate d-inline-block" style="max-width:200px" title="' + escapeHtml(f.system) + '">' + escapeHtml(f.system || '—') + '</span></td>'
+                + '<td>' + nameCell + '</td>'
+                + '<td class="text-end">' + priceCell + '</td>'
+                + '<td>' + paymentBadge(f.payment_method) + '</td>'
+                + '</tr>';
+        });
+
+        // Footer: suma per country + total
+        var tfoot = document.getElementById('tolls-tfoot');
+        var countryRows = Object.keys(route.tolls_by_country || {}).map(function (cc) {
+            return '<tr><td>' + flagSpan(cc) + '</td>'
+                 + '<td colspan="2" class="text-muted">' + '<?= __('Suma') ?> ' + escapeHtml(cc) + '</td>'
+                 + '<td class="text-end">' + fmtNum(route.tolls_by_country[cc], 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
+                 + '<td></td></tr>';
+        }).join('');
+        tfoot.innerHTML = countryRows
+            + '<tr style="border-top:2px solid #e5e7eb">'
+            + '<td colspan="3" class="text-end"><?= __('RAZEM') ?></td>'
+            + '<td class="text-end fs-6">' + fmtNum(route.tolls_total || 0, 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
+            + '<td></td></tr>';
+
+        card.style.display = '';
+
+        // L3: jeśli już mieliśmy bramki na mapie — odśwież
+        if (tollMarkersVisible) renderTollMarkers(true);
+    }
+
+    // ── L3: Markery bramek na mapie (toggle) ─────────────────────────
+    function renderTollMarkers(show) {
+        if (tollMarkersGroup) { map.removeObject(tollMarkersGroup); tollMarkersGroup = null; }
+        if (!show || !currentTollsData || !currentTollsData.locations || !currentTollsData.locations.length) return;
+        tollMarkersGroup = new H.map.Group();
+        // Buduj indeks opłat per (country, system) żeby pokazać orientacyjną cenę w popupie
+        var priceByKey = {};
+        (currentTollsData.breakdown || []).forEach(function (f) {
+            if (f.is_vignette) return;
+            var k = (f.country || '') + '|' + (f.system || '');
+            priceByKey[k] = (priceByKey[k] || 0) + (f.price || 0);
+        });
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">'
+                + '<path d="M12 0C5 0 0 5 0 12c0 8 12 20 12 20s12-12 12-20C24 5 19 0 12 0z" fill="#fbbf24" stroke="white" stroke-width="2"/>'
+                + '<text x="12" y="16" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">€</text></svg>';
+        var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 12, y: 32 } });
+        currentTollsData.locations.forEach(function (loc) {
+            var m = new H.map.Marker({ lat: loc.lat, lng: loc.lng }, { icon: icon });
+            var k = (loc.country || '') + '|' + (loc.system || '');
+            var p = priceByKey[k] ? (' · ~' + fmtNum(priceByKey[k], 2) + ' ' + currentTollsData.currency) : '';
+            m.setData('<strong>' + escapeHtml(loc.name || '<?= __('Bramka') ?>') + '</strong>'
+                    + '<div class="small text-muted">' + escapeHtml(loc.system || '') + ' · ' + escapeHtml(loc.country || '') + p + '</div>');
+            tollMarkersGroup.addObject(m);
+        });
+        map.addObject(tollMarkersGroup);
+    }
+
+    // L3: toggle handler
+    (function bindTollMarkers() {
+        var btn = document.getElementById('btn-toll-markers');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            tollMarkersVisible = !tollMarkersVisible;
+            renderTollMarkers(tollMarkersVisible);
+            btn.classList.toggle('btn-outline-secondary', !tollMarkersVisible);
+            btn.classList.toggle('btn-warning', tollMarkersVisible);
+            btn.innerHTML = '<i class="ri-map-pin-line me-1"></i>' + (tollMarkersVisible ? '<?= __('Ukryj bramki') ?>' : '<?= __('Bramki na mapie') ?>');
+        });
+    })();
+
+    // ── L4: Export CSV ───────────────────────────────────────────────
+    (function bindTollsCsv() {
+        var btn = document.getElementById('btn-tolls-csv');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            if (!currentTollsData || !currentTollsData.breakdown.length) return;
+            var rows = [['Kraj', 'System', 'Odcinek/opłata', 'Cena', 'Waluta', 'Przeliczona', 'Waluta przelicz.', 'Płatność', 'Winieta?', 'Ważność']];
+            currentTollsData.breakdown.forEach(function (f) {
+                rows.push([
+                    f.country || '',
+                    (f.system || '').replace(/"/g, '""'),
+                    (f.name || '').replace(/"/g, '""'),
+                    (f.price || 0).toFixed(2).replace('.', ','),
+                    f.currency || '',
+                    f.converted_price ? f.converted_price.toFixed(2).replace('.', ',') : '',
+                    f.converted_curr || '',
+                    f.payment_method || '',
+                    f.is_vignette ? 'TAK' : 'NIE',
+                    f.pass_validity || ''
+                ]);
+            });
+            var csv = '﻿' + rows.map(function (r) {
+                return r.map(function (c) { return '"' + String(c) + '"'; }).join(';');
+            }).join('\n');
+            var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'oplaty-drogowe-' + new Date().toISOString().substring(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            toast('<?= __('CSV pobrany') ?>', 'success');
+        });
+    })();
+
+    // ── L4: Export PDF (print view) ──────────────────────────────────
+    (function bindTollsPdf() {
+        var btn = document.getElementById('btn-tolls-pdf');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            if (!currentTollsData || !currentTollsData.breakdown.length) return;
+            var w = window.open('', '_blank', 'width=900,height=700');
+            if (!w) { toast('<?= __('Włącz wyskakujące okna') ?>', 'warning'); return; }
+            var pts = (lastResponse && lastResponse.points) || [];
+            var routeLabel = pts.map(function (p) { return p.label || p.address || ''; }).filter(Boolean).join(' → ');
+            var rows = currentTollsData.breakdown.map(function (f) {
+                var conv = f.converted_price ? '<br><small style="color:#6b7280">≈ ' + fmtNum(f.converted_price, 2) + ' ' + f.converted_curr + '</small>' : '';
+                return '<tr>'
+                    + '<td>' + escapeHtml(f.country || '') + '</td>'
+                    + '<td>' + escapeHtml(f.system || '—') + '</td>'
+                    + '<td>' + (f.is_vignette ? '🎟️ ' : '') + escapeHtml(f.name || '—') + '</td>'
+                    + '<td style="text-align:right">' + fmtNum(f.price, 2) + ' ' + escapeHtml(f.currency) + conv + '</td>'
+                    + '<td>' + escapeHtml(f.payment_method || '') + '</td>'
+                    + '</tr>';
+            }).join('');
+            var byCountryRows = Object.keys(currentTollsData.by_country).map(function (cc) {
+                return '<tr><td colspan="3" style="text-align:right;color:#6b7280">Suma ' + cc + '</td>'
+                     + '<td style="text-align:right"><strong>' + fmtNum(currentTollsData.by_country[cc], 2) + ' ' + currentTollsData.currency + '</strong></td><td></td></tr>';
+            }).join('');
+            var vigList = currentTollsData.vignettes.length
+                ? '<h3 style="margin-top:24px">Wymagane winiety</h3><ul>'
+                  + currentTollsData.vignettes.map(function (v) {
+                      return '<li>' + escapeHtml(v.country) + ' — ' + escapeHtml(v.system || 'Winieta')
+                           + ' · <strong>' + fmtNum(v.price, 2) + ' ' + escapeHtml(v.currency) + '</strong>'
+                           + (v.pass_validity ? ' · ' + escapeHtml(v.pass_validity) : '') + '</li>';
+                  }).join('') + '</ul>'
+                : '';
+            w.document.write(
+                '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Opłaty drogowe</title>'
+                + '<style>'
+                + 'body{font-family:Arial,sans-serif;margin:30px;color:#111}'
+                + 'h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;color:#6b7280;font-weight:400;margin:0 0 16px}'
+                + 'table{border-collapse:collapse;width:100%;font-size:11px}'
+                + 'th,td{padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}'
+                + 'th{background:#f3f4f6}'
+                + 'tfoot td{background:#f9fafb;font-weight:600}'
+                + '.total{font-size:14px;font-weight:700;color:#dc2626}'
+                + '@media print{button{display:none}}'
+                + '</style></head><body>'
+                + '<h1>Opłaty drogowe</h1>'
+                + '<h2>' + escapeHtml(routeLabel) + '</h2>'
+                + '<table><thead><tr><th>Kraj</th><th>System</th><th>Odcinek</th><th style="text-align:right">Cena</th><th>Płatność</th></tr></thead>'
+                + '<tbody>' + rows + '</tbody>'
+                + '<tfoot>' + byCountryRows + '<tr><td colspan="3" style="text-align:right">RAZEM</td>'
+                + '<td style="text-align:right" class="total">' + fmtNum(currentTollsData.total || 0, 2) + ' ' + currentTollsData.currency + '</td><td></td></tr></tfoot>'
+                + '</table>'
+                + vigList
+                + '<p style="margin-top:30px;color:#6b7280;font-size:10px">Wygenerowane: ' + new Date().toLocaleString('pl-PL') + ' · Booklio TMS</p>'
+                + '<button onclick="window.print()" style="margin-top:20px;padding:8px 16px">Drukuj / Zapisz PDF</button>'
+                + '</body></html>'
+            );
+            w.document.close();
+            setTimeout(function () { w.print(); }, 400);
+        });
+    })();
 
     function renderStatsBar(r, extra) {
         extra = extra || {};

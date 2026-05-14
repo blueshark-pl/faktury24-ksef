@@ -285,7 +285,7 @@ class HereRoutingService
         $currency = (string)($opts['currency'] ?? 'EUR');
         $returnInstr = !empty($opts['returnInstructions']);
 
-        $returns = ['summary', 'polyline', 'tolls'];
+        $returns = ['summary', 'polyline', 'tolls', 'tollSystems', 'tollLocations'];
         if ($returnInstr) {
             $returns[] = 'actions';
             $returns[] = 'instructions';
@@ -389,6 +389,9 @@ class HereRoutingService
                 $tollsCurrency = $currency;
                 $instructions = [];
                 $sections = [];
+                $tollsBreakdown = [];   // L1: szczegółowe opłaty
+                $vignettes = [];         // L2: winiety
+                $tollLocations = [];     // L3: lokalizacje bramek na mapie
 
                 foreach (($route['sections'] ?? []) as $sect) {
                     $summary = $sect['summary'] ?? [];
@@ -416,12 +419,69 @@ class HereRoutingService
 
                     foreach (($sect['tolls'] ?? []) as $toll) {
                         $cc = (string)($toll['countryCode'] ?? '??');
+                        $tollSystem  = (string)($toll['tollSystem'] ?? '');
+                        $paymentMethods = (array)($toll['paymentMethods'] ?? []);
                         foreach (($toll['fares'] ?? []) as $fare) {
                             $price = (float)($fare['price']['value'] ?? 0);
                             $cur   = (string)($fare['price']['currency'] ?? $currency);
+                            $convPrice = (float)($fare['convertedPrice']['value'] ?? 0);
+                            $convCur   = (string)($fare['convertedPrice']['currency'] ?? $cur);
+                            $reason = (string)($fare['reason'] ?? '');
+                            $name   = (string)($fare['name'] ?? '');
+                            $fpm    = (string)($fare['paymentMethod'] ?? (is_array($paymentMethods) && count($paymentMethods) ? implode(',', $paymentMethods) : ''));
+                            $passValidity = (string)($fare['passValidityPeriod'] ?? '');
+
+                            $isVignette = (stripos($reason, 'vignette') !== false) || $passValidity !== '';
+
                             $tollsByCountry[$cc] = ($tollsByCountry[$cc] ?? 0.0) + $price;
                             $tollsTotal = ($tollsTotal ?? 0.0) + $price;
                             $tollsCurrency = $cur;
+
+                            // L1: szczegółowy wpis (per fare)
+                            $tollsBreakdown[] = [
+                                'country'          => $cc,
+                                'system'           => $tollSystem,
+                                'name'             => $name,
+                                'price'            => round($price, 2),
+                                'currency'         => $cur,
+                                'converted_price'  => $convPrice > 0 ? round($convPrice, 2) : null,
+                                'converted_curr'   => $convPrice > 0 ? $convCur : null,
+                                'payment_method'   => $fpm,
+                                'reason'           => $reason,
+                                'is_vignette'      => $isVignette,
+                                'pass_validity'    => $passValidity,
+                            ];
+
+                            // L2: winieta — zbieramy dedup'owane (country + system + validity)
+                            if ($isVignette) {
+                                $vkey = $cc . '|' . $tollSystem . '|' . $passValidity;
+                                if (!isset($vignettes[$vkey])) {
+                                    $vignettes[$vkey] = [
+                                        'country'        => $cc,
+                                        'system'         => $tollSystem,
+                                        'name'           => $name,
+                                        'price'          => round($price, 2),
+                                        'currency'       => $cur,
+                                        'pass_validity'  => $passValidity,
+                                        'payment_method' => $fpm,
+                                    ];
+                                }
+                            }
+                        }
+                    }
+
+                    // L3: lokalizacje bramek na trasie (tollLocations w sekcji)
+                    foreach (($sect['tollLocations'] ?? []) as $loc) {
+                        $lat = $loc['location']['lat'] ?? null;
+                        $lng = $loc['location']['lng'] ?? null;
+                        if ($lat !== null && $lng !== null) {
+                            $tollLocations[] = [
+                                'lat'     => (float)$lat,
+                                'lng'     => (float)$lng,
+                                'country' => (string)($loc['countryCode'] ?? ''),
+                                'name'    => (string)($loc['name'] ?? ''),
+                                'system'  => (string)($loc['tollSystemRef']['name'] ?? ''),
+                            ];
                         }
                     }
 
@@ -442,6 +502,9 @@ class HereRoutingService
                     'tolls_total'      => $tollsTotal !== null ? round($tollsTotal, 2) : null,
                     'tolls_currency'   => $tollsCurrency,
                     'tolls_by_country' => $tollsByCountry,
+                    'tolls_breakdown'  => $tollsBreakdown,       // L1
+                    'vignettes'        => array_values($vignettes), // L2
+                    'toll_locations'   => $tollLocations,         // L3
                     'polylines'        => $polylines,
                     'instructions'     => $instructions,
                     'sections'         => $sections,

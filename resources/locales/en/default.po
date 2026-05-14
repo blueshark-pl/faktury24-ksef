@@ -2658,3 +2658,69 @@ msgstr "Early"
 
 msgid "Predykcja"
 msgstr "Predicted"
+
+msgid "Szczegółowe opłaty drogowe"
+msgstr "Detailed toll breakdown"
+
+msgid "Pokaż bramki na mapie"
+msgstr "Show toll gates on map"
+
+msgid "Bramki na mapie"
+msgstr "Toll gates on map"
+
+msgid "Ukryj bramki"
+msgstr "Hide gates"
+
+msgid "Eksport CSV"
+msgstr "Export CSV"
+
+msgid "Eksport PDF"
+msgstr "Export PDF"
+
+msgid "Wymagane winiety"
+msgstr "Required vignettes"
+
+msgid "przed wjazdem do tych krajów kup naklejkę/e-winietę:"
+msgstr "before entering these countries, buy a sticker/e-vignette:"
+
+msgid "Kraj"
+msgstr "Country"
+
+msgid "System"
+msgstr "System"
+
+msgid "Odcinek / opłata"
+msgstr "Section / fee"
+
+msgid "Cena"
+msgstr "Price"
+
+msgid "Płatność"
+msgstr "Payment"
+
+msgid "Suma"
+msgstr "Total"
+
+msgid "RAZEM"
+msgstr "TOTAL"
+
+msgid "opłat odcinkowych"
+msgstr "section fees"
+
+msgid "winiet"
+msgstr "vignettes"
+
+msgid "bramek"
+msgstr "toll gates"
+
+msgid "Bramka"
+msgstr "Toll gate"
+
+msgid "Winieta"
+msgstr "Vignette"
+
+msgid "CSV pobrany"
+msgstr "CSV downloaded"
+
+msgid "Włącz wyskakujące okna"
+msgstr "Enable popup windows"
