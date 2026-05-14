@@ -148,6 +148,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     .stats-pill.fuel    { background: linear-gradient(135deg, rgba(244,114,182,.22), rgba(217,70,239,.18)); border-color: rgba(244,114,182,.4); }
     .stats-pill.driver  { background: linear-gradient(135deg, rgba(192,132,252,.22), rgba(168,85,247,.18)); border-color: rgba(192,132,252,.4); }
     .stats-pill.eco     { background: linear-gradient(135deg, rgba(74,222,128,.28), rgba(34,197,94,.20)); border-color: rgba(74,222,128,.5); }
+    /* #4 — Pill Zysk: 3 stany kolorystyczne (good ≥15% / fair 5-15% / bad <5%) */
+    .stats-pill.profit.profit-good { background: linear-gradient(135deg, rgba(34,197,94,.32), rgba(22,163,74,.24)); border-color: rgba(74,222,128,.6); }
+    .stats-pill.profit.profit-fair { background: linear-gradient(135deg, rgba(251,191,36,.28), rgba(245,158,11,.20)); border-color: rgba(252,211,77,.5); }
+    .stats-pill.profit.profit-bad  { background: linear-gradient(135deg, rgba(239,68,68,.28), rgba(220,38,38,.20));  border-color: rgba(248,113,113,.5); }
     .stats-pill .sub-value {
         font-size: .72rem; opacity: .8; margin-top: 2px;
         text-shadow: 0 1px 1px rgba(0,0,0,.15);
@@ -457,6 +461,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             <div class="label"><i class="ri-leaf-line me-1"></i><?= __('CO₂') ?></div>
             <div class="value"><span id="stat-co2">—</span><span class="unit">kg</span></div>
         </div>
+        <div class="stats-pill profit" id="profit-pill" style="display:none">
+            <div class="label"><i class="ri-money-dollar-circle-line me-1"></i><?= __('Zysk') ?></div>
+            <div class="value"><span id="stat-profit">—</span><span class="unit">PLN</span></div>
+            <div class="sub-value" id="stat-margin">—</div>
+        </div>
     </div>
     <div class="freight-card" id="freight-card" style="display:none">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -644,6 +653,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <div class="col-12">
                         <label class="form-label small mb-1"><?= __('Stawka kierowcy (PLN/h)') ?></label>
                         <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="driver-rate" value="50">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small mb-1">
+                            <i class="ri-money-dollar-circle-line text-success"></i>
+                            <?= __('Cena frachtu od klienta (PLN)') ?>
+                        </label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="freight-revenue" placeholder="<?= __('Wpisz aby zobaczyć zysk') ?>">
+                        <div class="form-text" style="font-size:.7rem"><?= __('Pusto = bez kalkulacji zysku') ?></div>
                     </div>
                 </div>
             </div>
@@ -2039,6 +2056,44 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         // Freight card
         renderFreightCard(r, extra);
+
+        // #4 Kalkulator zysku
+        renderProfitPill(r, extra, fuelCost, driverCost);
+    }
+
+    // #4 — Kalkulator zysku (pill aktualizuje się od razu przy zmianie ceny)
+    function renderProfitPill(r, extra, fuelCost, driverCost) {
+        var pill = document.getElementById('profit-pill');
+        var revInput = document.getElementById('freight-revenue');
+        var revenue = parseFloat(revInput.value || 0);
+        if (!revenue || revenue <= 0 || !r || !r.distance_km) {
+            pill.style.display = 'none';
+            return;
+        }
+        // Koszt opłat w PLN
+        var tollsPln = 0;
+        if (r.tolls_total) {
+            if ((r.tolls_currency || 'EUR') === 'PLN') {
+                tollsPln = r.tolls_total;
+            } else if (extra && extra.eur_pln_rate) {
+                tollsPln = r.tolls_total * extra.eur_pln_rate;
+            }
+        }
+        var totalCost = (fuelCost || 0) + (driverCost || 0) + tollsPln;
+        var profit = revenue - totalCost;
+        var margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+        var perKm = revenue / r.distance_km;
+
+        pill.style.display = '';
+        pill.classList.remove('profit-good', 'profit-fair', 'profit-bad');
+        if (margin >= 15) pill.classList.add('profit-good');
+        else if (margin >= 5) pill.classList.add('profit-fair');
+        else pill.classList.add('profit-bad');
+
+        animateCounter(document.getElementById('stat-profit'), profit, 0);
+        var marginStr = (margin >= 0 ? '+' : '') + fmtNum(margin, 1) + '%';
+        document.getElementById('stat-margin').innerHTML =
+            '<i class="ri-percent-line me-1"></i>' + marginStr + '  ·  ' + fmtNum(perKm, 2) + ' PLN/km';
     }
 
     function renderFreightCard(r, extra) {
@@ -2078,7 +2133,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         card.style.display = 'block';
         setTimeout(function () { card.classList.add('visible'); }, 50);
     }
-    ['fuel-consumption','fuel-price','driver-rate'].forEach(function (id) {
+    ['fuel-consumption','fuel-price','driver-rate','freight-revenue'].forEach(function (id) {
         document.getElementById(id).addEventListener('input', function () {
             if (lastResponse && lastResponse.routes[activeAltIdx]) renderStatsBar(lastResponse.routes[activeAltIdx]);
         });
