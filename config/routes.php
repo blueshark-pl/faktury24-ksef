@@ -228,6 +228,11 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/trasy/weather',             ['controller' => 'RoutePlanner', 'action' => 'weather']);
         $builder->post('/trasy/truck-pois',           ['controller' => 'RoutePlanner', 'action' => 'truckPois']);
         $builder->post('/trasy/toll-booths',           ['controller' => 'RoutePlanner', 'action' => 'tollBooths']);
+        // #7 Cabotage tracker
+        $builder->get('/trasy/cabotage-status',        ['controller' => 'RoutePlanner', 'action' => 'cabotageStatus']);
+        $builder->post('/trasy/cabotage-save',         ['controller' => 'RoutePlanner', 'action' => 'cabotageSave']);
+        $builder->post('/trasy/cabotage/{id}/delete',  ['controller' => 'RoutePlanner', 'action' => 'cabotageDelete'])
+            ->setPatterns(['id' => '[0-9a-f-]{36}']);
         // #14 Live tracking — publiczne, bez auth
         $builder->get('/trasy/track/{id}',             ['controller' => 'RoutePlanner', 'action' => 'trackView'])->setPatterns(['id' => '[0-9a-f-]{36}']);
         $builder->get('/trasy/track-api/{id}',         ['controller' => 'RoutePlanner', 'action' => 'track'])->setPatterns(['id' => '[0-9a-f-]{36}']);

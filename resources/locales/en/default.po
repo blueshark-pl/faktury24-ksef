@@ -3126,3 +3126,156 @@ msgstr "Route waypoints"
 
 msgid "Trasa udostępniona przez Booklio TMS"
 msgstr "Route shared by Booklio TMS"
+
+msgid "Zgłoszenie kierowcy delegowanego"
+msgstr "Posted driver registration"
+
+msgid "Posted Workers — wymagane przed wjazdem ≥4h"
+msgstr "Posted Workers — required ≥4h before entry"
+
+msgid "Termin"
+msgstr "Deadline"
+
+msgid "Płaca min."
+msgstr "Min. wage"
+
+msgid "Otwórz portal"
+msgstr "Open portal"
+
+msgid "w dniu wjazdu"
+msgstr "on entry day"
+
+msgid "przed"
+msgstr "before"
+
+msgid "dni przed"
+msgstr "days before"
+
+msgid "Operacje cabotage"
+msgstr "Cabotage operations"
+
+msgid "Limit UE: 3 operacje / 7 dni / kraj (Rozp. 1072/2009)"
+msgstr "EU limit: 3 ops / 7 days / country (Reg. 1072/2009)"
+
+msgid "Dodaj operację"
+msgstr "Add operation"
+
+msgid "Dodaj operację cabotage"
+msgstr "Add cabotage operation"
+
+msgid "PRZEKROCZONY LIMIT"
+msgstr "LIMIT EXCEEDED"
+
+msgid "OSTATNIA dopuszczalna"
+msgstr "LAST allowed"
+
+msgid "w trakcie serii"
+msgstr "in series"
+
+msgid "nowa seria"
+msgstr "new series"
+
+msgid "w ostatnich 7 dniach"
+msgstr "in last 7 days"
+
+msgid "planowane"
+msgstr "planned"
+
+msgid "max"
+msgstr "max"
+
+msgid "Wykryto w planowanej trasie"
+msgstr "Detected in planned route"
+
+msgid "Operacja cabotage zapisana"
+msgstr "Cabotage operation saved"
+
+msgid "Błąd zapisu"
+msgstr "Save error"
+
+msgid "Brak firmy."
+msgstr "No company."
+
+msgid "Nieprawidłowy kod kraju (alpha-3)."
+msgstr "Invalid country code (alpha-3)."
+
+msgid "Kraj (alpha-3)"
+msgstr "Country (alpha-3)"
+
+msgid "Data"
+msgstr "Date"
+
+msgid "Miasto załadunku"
+msgstr "Loading city"
+
+msgid "Miasto rozładunku"
+msgstr "Unloading city"
+
+msgid "Notatki"
+msgstr "Notes"
+
+msgid "CMR nr, klient, ..."
+msgstr "CMR no, client, ..."
+
+msgid "Generator listu przewozowego CMR"
+msgstr "CMR consignment note generator"
+
+msgid "Generator listu CMR"
+msgstr "CMR generator"
+
+msgid "Język CMR"
+msgstr "CMR language"
+
+msgid "1. Nadawca (Sender)"
+msgstr "1. Sender"
+
+msgid "Nazwa firmy"
+msgstr "Company name"
+
+msgid "Adres (ulica, kod, miasto, kraj)"
+msgstr "Address (street, postal, city, country)"
+
+msgid "Adres (auto-uzupełniony z dostawy)"
+msgstr "Address (auto-filled from delivery)"
+
+msgid "Telefon"
+msgstr "Phone"
+
+msgid "2. Odbiorca (Consignee)"
+msgstr "2. Consignee"
+
+msgid "3. Ładunek"
+msgstr "3. Goods"
+
+msgid "Rodzaj ładunku"
+msgstr "Goods type"
+
+msgid "Sztuk"
+msgstr "Pieces"
+
+msgid "Opakowanie"
+msgstr "Packaging"
+
+msgid "Masa brutto (kg)"
+msgstr "Gross weight (kg)"
+
+msgid "Znaki i numery"
+msgstr "Marks and numbers"
+
+msgid "4. Instrukcje / inne"
+msgstr "4. Instructions / other"
+
+msgid "Instrukcje nadawcy"
+msgstr "Sender instructions"
+
+msgid "Nr CMR"
+msgstr "CMR No."
+
+msgid "Kierowca (imię, nazwisko)"
+msgstr "Driver (first, last name)"
+
+msgid "Auto-wypełnij ADR/pojazd/trasę z planera"
+msgstr "Auto-fill ADR/vehicle/route from planner"
+
+msgid "Generuj CMR (drukuj/PDF)"
+msgstr "Generate CMR (print/PDF)"

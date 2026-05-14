@@ -440,6 +440,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     title="<?= __('Wygeneruj link tracking dla klienta') ?>">
                 <i class="ri-broadcast-line me-1"></i><?= __('Link dla klienta') ?>
             </button>
+            <button type="button" class="btn btn-sm btn-hero" id="btn-cmr" disabled
+                    title="<?= __('Generator listu przewozowego CMR') ?>">
+                <i class="ri-file-list-3-line me-1"></i>CMR
+            </button>
             <button type="button" class="btn btn-sm btn-hero" id="btn-share" disabled
                     title="<?= __('Kopiuj link do schowka') ?>">
                 <i class="ri-share-line me-1"></i><?= __('Udostępnij') ?>
@@ -743,6 +747,35 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <button type="button" class="btn btn-sm btn-link ms-auto p-0" id="btn-toggle-dirs"><i class="ri-arrow-down-s-line"></i></button>
                     </div>
                     <div class="card-body" id="directions-body" style="max-height:340px;overflow-y:auto"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- #7 Cabotage tracker -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card" id="cabotage-card" style="display:none">
+                    <div class="card-header py-2 d-flex align-items-center">
+                        <strong><i class="ri-truck-line me-1 text-info"></i><?= __('Operacje cabotage') ?></strong>
+                        <span class="text-muted small ms-2"><?= __('Limit UE: 3 operacje / 7 dni / kraj (Rozp. 1072/2009)') ?></span>
+                        <button type="button" class="btn btn-sm btn-outline-info ms-auto" id="btn-cabotage-add">
+                            <i class="ri-add-line me-1"></i><?= __('Dodaj operację') ?>
+                        </button>
+                    </div>
+                    <div class="card-body py-2" id="cabotage-body"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- #8 Posted workers alert -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card border-warning" id="posted-workers-card" style="display:none">
+                    <div class="card-header py-2" style="background:linear-gradient(135deg,#fef3c7,#fde68a)">
+                        <strong class="text-warning-emphasis"><i class="ri-passport-line me-1"></i><?= __('Zgłoszenie kierowcy delegowanego') ?></strong>
+                        <span class="text-muted small ms-2"><?= __('Posted Workers — wymagane przed wjazdem ≥4h') ?></span>
+                    </div>
+                    <div class="card-body py-2" id="posted-workers-body"></div>
                 </div>
             </div>
         </div>
@@ -1071,6 +1104,67 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
         <button type="button" class="btn btn-secondary" id="btn-ai-email-run">
           <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj odpowiedź') ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- #9 CMR generator modal -->
+<div class="modal fade" id="cmrModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #15803d, #16a34a); color: white;">
+        <h5 class="modal-title"><i class="ri-file-list-3-line me-2"></i><?= __('Generator listu CMR') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small mb-1"><?= __('Język CMR') ?></label>
+          <select class="form-select" id="cmr-lang">
+            <option value="pl">🇵🇱 PL — Polski</option>
+            <option value="en">🇬🇧 EN — English</option>
+            <option value="de">🇩🇪 DE — Deutsch</option>
+            <option value="ua">🇺🇦 UA — Українська</option>
+          </select>
+        </div>
+        <h6 class="text-muted small mb-2"><?= __('1. Nadawca (Sender)') ?></h6>
+        <div class="row g-2 mb-3">
+          <div class="col-12"><input type="text" class="form-control form-control-sm" id="cmr-sender-name" placeholder="<?= __('Nazwa firmy') ?>"></div>
+          <div class="col-12"><input type="text" class="form-control form-control-sm" id="cmr-sender-addr" placeholder="<?= __('Adres (ulica, kod, miasto, kraj)') ?>"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-sender-nip" placeholder="NIP/VAT"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-sender-phone" placeholder="<?= __('Telefon') ?>"></div>
+        </div>
+        <h6 class="text-muted small mb-2"><?= __('2. Odbiorca (Consignee)') ?></h6>
+        <div class="row g-2 mb-3">
+          <div class="col-12"><input type="text" class="form-control form-control-sm" id="cmr-consignee-name" placeholder="<?= __('Nazwa firmy') ?>"></div>
+          <div class="col-12"><input type="text" class="form-control form-control-sm" id="cmr-consignee-addr" placeholder="<?= __('Adres (auto-uzupełniony z dostawy)') ?>"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-consignee-nip" placeholder="NIP/VAT"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-consignee-phone" placeholder="<?= __('Telefon') ?>"></div>
+        </div>
+        <h6 class="text-muted small mb-2"><?= __('3. Ładunek') ?></h6>
+        <div class="row g-2 mb-3">
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-goods" placeholder="<?= __('Rodzaj ładunku') ?>"></div>
+          <div class="col-3"><input type="number" class="form-control form-control-sm" id="cmr-pieces" placeholder="<?= __('Sztuk') ?>"></div>
+          <div class="col-3"><input type="text" class="form-control form-control-sm" id="cmr-packaging" placeholder="<?= __('Opakowanie') ?>"></div>
+          <div class="col-6"><input type="number" step="0.01" class="form-control form-control-sm" id="cmr-weight" placeholder="<?= __('Masa brutto (kg)') ?>"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-marks" placeholder="<?= __('Znaki i numery') ?>"></div>
+        </div>
+        <h6 class="text-muted small mb-2"><?= __('4. Instrukcje / inne') ?></h6>
+        <div class="row g-2 mb-3">
+          <div class="col-12"><input type="text" class="form-control form-control-sm" id="cmr-instructions" placeholder="<?= __('Instrukcje nadawcy') ?>"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-cmr-number" placeholder="<?= __('Nr CMR') ?>"></div>
+          <div class="col-6"><input type="text" class="form-control form-control-sm" id="cmr-driver" placeholder="<?= __('Kierowca (imię, nazwisko)') ?>"></div>
+        </div>
+        <div class="form-check small">
+          <input type="checkbox" class="form-check-input" id="cmr-adr" checked>
+          <label class="form-check-label" for="cmr-adr"><?= __('Auto-wypełnij ADR/pojazd/trasę z planera') ?></label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+        <button type="button" class="btn btn-success" id="btn-cmr-generate">
+          <i class="ri-printer-line me-1"></i><?= __('Generuj CMR (drukuj/PDF)') ?>
         </button>
       </div>
     </div>
@@ -1753,6 +1847,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderEtaBadges(data.routes[0]);
         renderTollsBreakdown(data.routes[0]);
         renderTruckBans(data.routes[0], data.points || []);
+        renderPostedWorkers(data.routes[0], data.points || []);
+        renderCabotage(data.points || []);
         fetchAndRenderWeather(data.routes[0], data.points || []);
 
         // Aktywuj akcje
@@ -1761,6 +1857,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('btn-truck-pois').disabled = false;
         document.getElementById('btn-customer-offer').disabled = false;
         document.getElementById('btn-track-link').disabled = false;
+        document.getElementById('btn-cmr').disabled = false;
         document.getElementById('btn-save-template').disabled = false;
         enableExportButton();
     }
@@ -2272,6 +2369,336 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 badge.style.border = '1px solid #bfdbfe';
             }
         });
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    // #7 Cabotage tracker — detekcja w planowanej trasie + bieżący stan
+    // ═════════════════════════════════════════════════════════════════
+    var cabotageUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'cabotageStatus']) ?>';
+    var cabotageSaveUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'cabotageSave']) ?>';
+    var cabotageDeleteUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'cabotageDelete', '__ID__']) ?>';
+    var COMPANY_COUNTRY = 'POL'; // domyślne — firma zarejestrowana w PL
+
+    // Wykryj operacje cabotage w trasie: każdy odcinek waypoint[i]→waypoint[i+1]
+    // gdzie OBA punkty są w tym samym kraju, RÓŻNYM niż kraj firmy.
+    function detectCabotageInRoute(points) {
+        var operations = [];
+        for (var i = 0; i < points.length - 1; i++) {
+            var a = points[i], b = points[i + 1];
+            if (!a.country || !b.country) continue;
+            if (a.country !== b.country) continue;
+            if (a.country === COMPANY_COUNTRY) continue;
+            operations.push({
+                country: a.country,
+                origin: a.label || a.address || '',
+                destination: b.label || b.address || '',
+                segment_idx: i,
+            });
+        }
+        return operations;
+    }
+
+    function renderCabotage(points) {
+        var card = document.getElementById('cabotage-card');
+        var body = document.getElementById('cabotage-body');
+        var detected = detectCabotageInRoute(points);
+
+        // Fetch historii operacji cabotage z bazy
+        var vehicleId = document.getElementById('vehicle-id').value;
+        var url = cabotageUrl + (vehicleId ? '?vehicle_id=' + encodeURIComponent(vehicleId) : '');
+        fetch(url, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                var byCountry = (res && res.ok && res.by_country) ? res.by_country : {};
+                // Dodaj wykryte operacje z bieżącej trasy do liczników (warunkowo, nie zapisane jeszcze)
+                detected.forEach(function (op) {
+                    if (!byCountry[op.country]) byCountry[op.country] = { count: 0, operations: [], planned: 0 };
+                    byCountry[op.country].planned = (byCountry[op.country].planned || 0) + 1;
+                });
+                renderCabotageContent(byCountry, detected, card, body);
+            })
+            .catch(function () {
+                // Brak danych z bazy — pokaż tylko wykryte
+                var byCountry = {};
+                detected.forEach(function (op) {
+                    if (!byCountry[op.country]) byCountry[op.country] = { count: 0, operations: [], planned: 0 };
+                    byCountry[op.country].planned = (byCountry[op.country].planned || 0) + 1;
+                });
+                renderCabotageContent(byCountry, detected, card, body);
+            });
+    }
+
+    function renderCabotageContent(byCountry, detected, card, body) {
+        var keys = Object.keys(byCountry);
+        if (!keys.length) { card.style.display = 'none'; return; }
+        card.style.display = '';
+
+        var rows = '';
+        keys.forEach(function (cc) {
+            var info = byCountry[cc];
+            var current = info.count || 0;
+            var planned = info.planned || 0;
+            var afterPlan = current + planned;
+            var status, color, icon;
+            if (afterPlan > 3)       { status = '<?= __('PRZEKROCZONY LIMIT') ?>'; color = 'danger';  icon = 'ri-alarm-warning-fill'; }
+            else if (afterPlan === 3){ status = '<?= __('OSTATNIA dopuszczalna') ?>'; color = 'warning'; icon = 'ri-alert-line'; }
+            else if (current >= 1)   { status = '<?= __('w trakcie serii') ?>'; color = 'info';    icon = 'ri-information-line'; }
+            else                     { status = '<?= __('nowa seria') ?>';     color = 'success'; icon = 'ri-checkbox-circle-line'; }
+
+            var alpha2 = (ISO3_TO_ISO2_WORKERS[cc] || cc.toLowerCase()).substring(0, 2);
+            rows += '<div class="d-flex flex-wrap align-items-center gap-3 py-2" style="border-bottom:1px solid #e5e7eb">'
+                 +   '<div style="min-width:140px">'
+                 +     '<span class="fi fi-' + alpha2 + '" style="font-size:1.4em"></span> '
+                 +     '<strong class="ms-1">' + escapeHtml(cc) + '</strong>'
+                 +   '</div>'
+                 +   '<div class="flex-grow-1">'
+                 +     '<div class="small"><strong>' + current + '</strong> <?= __('w ostatnich 7 dniach') ?>'
+                 +       (planned > 0 ? ' + <strong class="text-info">' + planned + '</strong> <?= __('planowane') ?>' : '')
+                 +       ' / <span class="text-muted">3 <?= __('max') ?></span></div>'
+                 +     '<div class="progress mt-1" style="height:6px;max-width:200px">'
+                 +       '<div class="progress-bar bg-' + (current >= 3 ? 'danger' : current >= 2 ? 'warning' : 'success') + '" style="width:' + Math.min(100, current * 33.3) + '%"></div>'
+                 +       (planned > 0 ? '<div class="progress-bar bg-info opacity-50" style="width:' + Math.min(100 - current * 33.3, planned * 33.3) + '%"></div>' : '')
+                 +     '</div>'
+                 +   '</div>'
+                 +   '<div><span class="badge bg-' + color + '"><i class="' + icon + ' me-1"></i>' + status + '</span></div>'
+                 + '</div>';
+        });
+
+        // Lista wykrytych operacji w bieżącej trasie z opcją "Zapisz"
+        var detectedHtml = '';
+        if (detected.length > 0) {
+            detectedHtml = '<div class="alert alert-info py-2 mt-2 mb-0 small">'
+                + '<strong><i class="ri-radar-line me-1"></i><?= __('Wykryto w planowanej trasie') ?>:</strong>';
+            detected.forEach(function (op, i) {
+                detectedHtml += '<div class="mt-1 d-flex justify-content-between align-items-center">'
+                    + '<span><span class="badge bg-light text-dark border me-1">' + op.country + '</span> '
+                    + escapeHtml(op.origin) + ' → ' + escapeHtml(op.destination) + '</span>'
+                    + '<button class="btn btn-sm btn-info text-white cab-save-detected" data-idx="' + i + '"'
+                    + ' data-country="' + escapeHtml(op.country) + '"'
+                    + ' data-origin="' + escapeHtml(op.origin) + '"'
+                    + ' data-destination="' + escapeHtml(op.destination) + '">'
+                    + '<i class="ri-save-line me-1"></i><?= __('Zapisz') ?></button>'
+                    + '</div>';
+            });
+            detectedHtml += '</div>';
+        }
+
+        body.innerHTML = rows + detectedHtml;
+
+        // Bind save-detected handlers
+        body.querySelectorAll('.cab-save-detected').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var fd = new FormData();
+                fd.append('country', btn.dataset.country);
+                fd.append('origin', btn.dataset.origin);
+                fd.append('destination', btn.dataset.destination);
+                fd.append('source', 'auto_planner');
+                fd.append('operation_date', new Date().toISOString().substring(0, 10));
+                if (lastResponse && lastResponse.route_search_id) fd.append('route_search_id', lastResponse.route_search_id);
+                if (document.getElementById('vehicle-id').value) fd.append('vehicle_id', document.getElementById('vehicle-id').value);
+                fd.append('_csrfToken', csrf);
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                fetch(cabotageSaveUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (res && res.ok) {
+                        toast('<?= __('Operacja cabotage zapisana') ?>', 'success');
+                        renderCabotage((lastResponse && lastResponse.points) || []);
+                    } else {
+                        toast(res.message || '<?= __('Błąd zapisu') ?>', 'error');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-save-line me-1"></i><?= __('Zapisz') ?>';
+                    }
+                });
+            });
+        });
+    }
+
+    // Modal ręcznego dodawania operacji
+    document.getElementById('btn-cabotage-add').addEventListener('click', function () {
+        var modalHtml = '<div class="modal fade" id="cabotageAddModal" tabindex="-1"><div class="modal-dialog modal-md modal-dialog-centered">'
+            + '<div class="modal-content" style="border-radius:14px;overflow:hidden">'
+            + '<div class="modal-header" style="background:linear-gradient(135deg,#0891b2,#06b6d4);color:white">'
+            + '<h5 class="modal-title"><i class="ri-add-line me-2"></i><?= __('Dodaj operację cabotage') ?></h5>'
+            + '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>'
+            + '<div class="modal-body">'
+            + '<div class="mb-2"><label class="form-label small"><?= __('Kraj (alpha-3)') ?></label>'
+            + '<select class="form-select" id="cab-country">'
+            + '<option value="DEU">🇩🇪 DEU — Niemcy</option>'
+            + '<option value="FRA">🇫🇷 FRA — Francja</option>'
+            + '<option value="ITA">🇮🇹 ITA — Włochy</option>'
+            + '<option value="AUT">🇦🇹 AUT — Austria</option>'
+            + '<option value="NLD">🇳🇱 NLD — Holandia</option>'
+            + '<option value="BEL">🇧🇪 BEL — Belgia</option>'
+            + '<option value="ESP">🇪🇸 ESP — Hiszpania</option>'
+            + '<option value="CZE">🇨🇿 CZE — Czechy</option>'
+            + '<option value="SVK">🇸🇰 SVK — Słowacja</option>'
+            + '<option value="HUN">🇭🇺 HUN — Węgry</option>'
+            + '<option value="ROU">🇷🇴 ROU — Rumunia</option>'
+            + '<option value="GBR">🇬🇧 GBR — Wielka Brytania</option>'
+            + '</select></div>'
+            + '<div class="mb-2"><label class="form-label small"><?= __('Data') ?></label>'
+            + '<input type="date" class="form-control" id="cab-date" value="' + new Date().toISOString().substring(0, 10) + '"></div>'
+            + '<div class="mb-2"><label class="form-label small"><?= __('Załadunek') ?></label>'
+            + '<input type="text" class="form-control" id="cab-origin" placeholder="<?= __('Miasto załadunku') ?>"></div>'
+            + '<div class="mb-2"><label class="form-label small"><?= __('Rozładunek') ?></label>'
+            + '<input type="text" class="form-control" id="cab-destination" placeholder="<?= __('Miasto rozładunku') ?>"></div>'
+            + '<div class="mb-2"><label class="form-label small"><?= __('Notatki') ?></label>'
+            + '<input type="text" class="form-control" id="cab-notes" placeholder="<?= __('CMR nr, klient, ...') ?>"></div>'
+            + '</div>'
+            + '<div class="modal-footer">'
+            + '<button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>'
+            + '<button type="button" class="btn btn-info text-white" id="btn-cab-save"><?= __('Zapisz') ?></button>'
+            + '</div></div></div></div>';
+        var existing = document.getElementById('cabotageAddModal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('cabotageAddModal')).show();
+        document.getElementById('btn-cab-save').addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('country', document.getElementById('cab-country').value);
+            fd.append('operation_date', document.getElementById('cab-date').value);
+            fd.append('origin', document.getElementById('cab-origin').value);
+            fd.append('destination', document.getElementById('cab-destination').value);
+            fd.append('notes', document.getElementById('cab-notes').value);
+            fd.append('source', 'manual');
+            if (document.getElementById('vehicle-id').value) fd.append('vehicle_id', document.getElementById('vehicle-id').value);
+            fd.append('_csrfToken', csrf);
+            fetch(cabotageSaveUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (res && res.ok) {
+                    toast('<?= __('Operacja cabotage zapisana') ?>', 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('cabotageAddModal')).hide();
+                    renderCabotage((lastResponse && lastResponse.points) || []);
+                } else toast(res.message || '<?= __('Błąd zapisu') ?>', 'error');
+            });
+        });
+    });
+
+    // ═════════════════════════════════════════════════════════════════
+    // #8 Posted Workers alert — kraje wymagające zgłoszenia kierowcy
+    // ═════════════════════════════════════════════════════════════════
+    var POSTED_WORKERS_COUNTRIES = {
+        'DEU': {
+            name: 'Niemcy',  alpha2: 'de',
+            law: 'MiLoG (Mindestlohngesetz)',
+            portal: 'https://meldeportal-mindestlohn.de/Meldeportal/login',
+            min_wage: '€12,82/h (od 2024)',
+            advance_h: 4,
+            note: 'Zgłoszenie online ≥4h przed wjazdem. Wymagana umowa o pracę w PL. Kara: 30 000 €'
+        },
+        'FRA': {
+            name: 'Francja', alpha2: 'fr',
+            law: 'Loi Macron / SIPSI',
+            portal: 'https://www.sipsi.travail.gouv.fr/',
+            min_wage: '€11,65/h SMIC (od 2024)',
+            advance_h: 1,
+            note: 'Zgłoszenie SIPSI + przedstawiciel we Francji. Brak zgłoszenia: 4000 € kara'
+        },
+        'AUT': {
+            name: 'Austria', alpha2: 'at',
+            law: 'LSD-BG (Lohn- und Sozialdumping)',
+            portal: 'https://www.formularservice.gv.at/site/lsdb/ZKO3-1_AT/0/index.html',
+            min_wage: '€10–12/h wg taryf branżowych',
+            advance_h: 0,
+            note: 'Zgłoszenie ZKO3 najpóźniej w dniu wjazdu. Tachograf + listy płac w samochodzie. Kara: do 50 000 €'
+        },
+        'CHE': {
+            name: 'Szwajcaria', alpha2: 'ch',
+            law: 'Posted Workers Act',
+            portal: 'https://www.entsendung.admin.ch/',
+            min_wage: 'CHF 25/h średnio',
+            advance_h: 168,
+            note: 'Zgłoszenie ≥8 dni przed wjazdem. Wymagane od >8 dni rocznie. Pełne pakiety logu szczególnych. Kara: do 30 000 CHF'
+        },
+        'NOR': {
+            name: 'Norwegia', alpha2: 'no',
+            law: 'Posting of Workers Act',
+            portal: 'https://www.skatteetaten.no/en/business-and-organisation/foreign/foreign-companies/foreign-employees/',
+            min_wage: 'NOK 230/h w transporcie',
+            advance_h: 0,
+            note: 'Rejestracja Skatteetaten przed pracą. Tachograf + płaca norweska'
+        },
+        'ITA': {
+            name: 'Włochy',  alpha2: 'it',
+            law: 'Distacco transnazionale',
+            portal: 'https://www.distaccoue.lavoro.gov.it/',
+            min_wage: '€7–11/h zgodnie z CCNL',
+            advance_h: 24,
+            note: 'Zgłoszenie UNIEMENS ≥24h przed wjazdem. CCNL Trasporti'
+        },
+        'BEL': {
+            name: 'Belgia', alpha2: 'be',
+            law: 'LIMOSA',
+            portal: 'https://www.international.socialsecurity.be/working_in_belgium/en/limosa.html',
+            min_wage: 'wg CLA branżowych',
+            advance_h: 0,
+            note: 'Zgłoszenie LIMOSA — bez tego kara od 1875 €'
+        },
+        'NLD': {
+            name: 'Holandia', alpha2: 'nl',
+            law: 'WagwEU / Posting Workers Directive',
+            portal: 'https://www.postedworkers.nl/',
+            min_wage: '€13,27/h (od lipca 2024)',
+            advance_h: 24,
+            note: 'Zgłoszenie online min 1 dzień przed. Kara: do 12 000 €'
+        }
+    };
+    var ISO3_TO_ISO2_WORKERS = { POL:'pl', DEU:'de', CZE:'cz', SVK:'sk', UKR:'ua', LTU:'lt', LVA:'lv', BLR:'by', AUT:'at', HUN:'hu', FRA:'fr', ESP:'es', ITA:'it', NLD:'nl', BEL:'be', DNK:'dk', SWE:'se', NOR:'no', FIN:'fi', GBR:'gb', IRL:'ie', CHE:'ch', ROU:'ro', BGR:'bg', GRC:'gr', PRT:'pt', SVN:'si', HRV:'hr', LUX:'lu' };
+
+    function renderPostedWorkers(route, points) {
+        var card = document.getElementById('posted-workers-card');
+        var body = document.getElementById('posted-workers-body');
+        if (!route || !points || points.length < 2) { card.style.display = 'none'; return; }
+
+        // Zbieramy kraje na trasie (waypoints + tolls_by_country)
+        var countriesOnRoute = new Set();
+        points.forEach(function (p) { if (p.country) countriesOnRoute.add(p.country); });
+        Object.keys(route.tolls_by_country || {}).forEach(function (cc) {
+            if (cc.length === 2) {
+                for (var iso3 in ISO3_TO_ISO2_WORKERS) {
+                    if (ISO3_TO_ISO2_WORKERS[iso3] === cc.toLowerCase()) { countriesOnRoute.add(iso3); break; }
+                }
+            } else {
+                countriesOnRoute.add(cc);
+            }
+        });
+
+        // Wykluczamy kraj startu (zakładamy że firma jest tam zarejestrowana)
+        var startCountry = points[0].country || '';
+        countriesOnRoute.delete(startCountry);
+
+        // Filtrujemy do tych co wymagają zgłoszenia
+        var required = Array.from(countriesOnRoute).filter(function (c) { return POSTED_WORKERS_COUNTRIES[c]; });
+        if (!required.length) { card.style.display = 'none'; return; }
+
+        body.innerHTML = required.map(function (cc) {
+            var info = POSTED_WORKERS_COUNTRIES[cc];
+            var advanceText = info.advance_h === 0
+                ? '<?= __('w dniu wjazdu') ?>'
+                : info.advance_h < 24 ? info.advance_h + 'h <?= __('przed') ?>'
+                : Math.floor(info.advance_h / 24) + ' <?= __('dni przed') ?>';
+            return '<div class="d-flex flex-wrap align-items-start gap-3 py-2" style="border-bottom:1px solid #fde68a">'
+                 + '<div style="min-width:160px">'
+                 +   '<span class="fi fi-' + info.alpha2 + '" style="font-size:1.5em"></span> '
+                 +   '<strong class="ms-1">' + escapeHtml(info.name) + '</strong>'
+                 +   '<div class="text-muted small">' + escapeHtml(info.law) + '</div>'
+                 + '</div>'
+                 + '<div class="flex-grow-1">'
+                 +   '<div class="small"><strong><?= __('Termin') ?>:</strong> ' + advanceText + '</div>'
+                 +   '<div class="small"><strong><?= __('Płaca min.') ?>:</strong> ' + escapeHtml(info.min_wage) + '</div>'
+                 +   '<div class="small text-muted mt-1">' + escapeHtml(info.note) + '</div>'
+                 + '</div>'
+                 + '<div>'
+                 +   '<a href="' + info.portal + '" target="_blank" rel="noopener" class="btn btn-sm btn-warning text-dark">'
+                 +     '<i class="ri-external-link-line me-1"></i><?= __('Otwórz portal') ?>'
+                 +   '</a>'
+                 + '</div>'
+                 + '</div>';
+        }).join('');
+        card.style.display = '';
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -3533,6 +3960,223 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // CRLF — zgodnie z RFC 5545
         return lines.join('\r\n');
     }
+    // #9 CMR generator — multilang print view
+    var CMR_L10N = {
+        pl: {
+            title: 'MIĘDZYNARODOWY SAMOCHODOWY LIST PRZEWOZOWY', subtitle: 'CMR - Konwencja CMR',
+            sender: '1. Nadawca', consignee: '2. Odbiorca', deliveryAddr: '3. Miejsce przeznaczenia',
+            loadAddr: '4. Miejsce i data załadunku', docs: '5. Dokumenty', marks: '6. Znaki i numery',
+            pieces: '7. Liczba sztuk', packaging: '8. Sposób opakowania', goods: '9. Rodzaj towaru',
+            statisticalNum: '10. Nr statystyczny', grossWeight: '11. Masa brutto kg', volume: '12. Objętość m³',
+            senderInstructions: '13. Instrukcje nadawcy', cashOnDelivery: '14. Postanowienia za pobraniem',
+            carrierInstr: '15. Postanowienia szczególne', carrier: '16. Przewoźnik',
+            successive: '17. Kolejni przewoźnicy', reservation: '18. Zastrzeżenia',
+            specialAgreements: '19. Postanowienia specjalne', cost: '20. Koszty',
+            issueDate: '21. Sporządzono w / dnia', signSender: 'Podpis nadawcy',
+            signCarrier: 'Podpis przewoźnika', signConsignee: 'Podpis odbiorcy',
+            cmrNumber: 'Nr CMR', driver: 'Kierowca', vehicle: 'Pojazd', route: 'Trasa',
+            adr: 'ADR', confirmConvention: 'Niniejszy przewóz, nawet jeśli odbywa się na podstawie umowy, podlega Konwencji CMR.'
+        },
+        en: {
+            title: 'INTERNATIONAL CONSIGNMENT NOTE', subtitle: 'CMR - Convention CMR',
+            sender: '1. Sender', consignee: '2. Consignee', deliveryAddr: '3. Place of delivery',
+            loadAddr: '4. Place and date of taking over the goods', docs: '5. Documents attached',
+            marks: '6. Marks and numbers', pieces: '7. Number of packages', packaging: '8. Method of packing',
+            goods: '9. Nature of the goods', statisticalNum: '10. Statistical number',
+            grossWeight: '11. Gross weight kg', volume: '12. Volume m³',
+            senderInstructions: '13. Sender\'s instructions', cashOnDelivery: '14. Cash on delivery',
+            carrierInstr: '15. Carrier\'s instructions', carrier: '16. Carrier',
+            successive: '17. Successive carriers', reservation: '18. Reservations of carrier',
+            specialAgreements: '19. Special agreements', cost: '20. Charges',
+            issueDate: '21. Established at / on', signSender: 'Sender\'s signature',
+            signCarrier: 'Carrier\'s signature', signConsignee: 'Consignee\'s signature',
+            cmrNumber: 'CMR No.', driver: 'Driver', vehicle: 'Vehicle', route: 'Route',
+            adr: 'ADR', confirmConvention: 'This carriage is subject to the CMR Convention notwithstanding any contract.'
+        },
+        de: {
+            title: 'INTERNATIONALER FRACHTBRIEF', subtitle: 'CMR - CMR-Konvention',
+            sender: '1. Absender', consignee: '2. Empfänger', deliveryAddr: '3. Auslieferungsort',
+            loadAddr: '4. Übernahmeort und -datum', docs: '5. Beigefügte Dokumente',
+            marks: '6. Zeichen und Nummern', pieces: '7. Anzahl der Packstücke', packaging: '8. Art der Verpackung',
+            goods: '9. Bezeichnung des Gutes', statisticalNum: '10. Statistische Nummer',
+            grossWeight: '11. Bruttogewicht kg', volume: '12. Umfang m³',
+            senderInstructions: '13. Anweisungen des Absenders', cashOnDelivery: '14. Nachnahme',
+            carrierInstr: '15. Anweisungen des Frachtführers', carrier: '16. Frachtführer',
+            successive: '17. Nachfolgende Frachtführer', reservation: '18. Vorbehalte',
+            specialAgreements: '19. Besondere Vereinbarungen', cost: '20. Kosten',
+            issueDate: '21. Ausgestellt in / am', signSender: 'Unterschrift Absender',
+            signCarrier: 'Unterschrift Frachtführer', signConsignee: 'Unterschrift Empfänger',
+            cmrNumber: 'CMR-Nr.', driver: 'Fahrer', vehicle: 'Fahrzeug', route: 'Strecke',
+            adr: 'ADR', confirmConvention: 'Diese Beförderung unterliegt trotz einer gegenteiligen Abmachung der CMR-Konvention.'
+        },
+        ua: {
+            title: 'МІЖНАРОДНА АВТОТРАНСПОРТНА НАКЛАДНА', subtitle: 'CMR - Конвенція CMR',
+            sender: '1. Відправник', consignee: '2. Одержувач', deliveryAddr: '3. Місце доставки',
+            loadAddr: '4. Місце і дата прийому вантажу', docs: '5. Документи',
+            marks: '6. Знаки і номери', pieces: '7. Кількість місць', packaging: '8. Вид упаковки',
+            goods: '9. Найменування вантажу', statisticalNum: '10. Статистичний номер',
+            grossWeight: '11. Маса брутто кг', volume: '12. Об\'єм м³',
+            senderInstructions: '13. Інструкції відправника', cashOnDelivery: '14. Накладений платіж',
+            carrierInstr: '15. Інструкції перевізника', carrier: '16. Перевізник',
+            successive: '17. Наступні перевізники', reservation: '18. Застереження',
+            specialAgreements: '19. Особливі умови', cost: '20. Витрати',
+            issueDate: '21. Складено в / дата', signSender: 'Підпис відправника',
+            signCarrier: 'Підпис перевізника', signConsignee: 'Підпис одержувача',
+            cmrNumber: 'Номер CMR', driver: 'Водій', vehicle: 'Транспортний засіб', route: 'Маршрут',
+            adr: 'ADR', confirmConvention: 'Це перевезення підлягає Конвенції CMR незалежно від договору.'
+        }
+    };
+
+    document.getElementById('btn-cmr').addEventListener('click', function () {
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        // Auto-uzupełnij delivery address z ostatniego waypoint
+        var pts = lastResponse.points || [];
+        if (pts.length >= 2) {
+            var origin = pts[0];
+            var dest = pts[pts.length - 1];
+            document.getElementById('cmr-consignee-addr').value = dest.label || dest.address || '';
+        }
+        document.getElementById('cmr-cmr-number').value = 'CMR/' + new Date().getFullYear() + '/' + Math.floor(Math.random() * 9000 + 1000);
+        new bootstrap.Modal(document.getElementById('cmrModal')).show();
+    });
+
+    document.getElementById('btn-cmr-generate').addEventListener('click', function () {
+        var lang = document.getElementById('cmr-lang').value;
+        var L = CMR_L10N[lang] || CMR_L10N.pl;
+        var pts = (lastResponse && lastResponse.points) || [];
+        var origin = pts[0] || {}, dest = pts[pts.length - 1] || {};
+        var vehicle = getSelectedVehicle();
+        var autoFill = document.getElementById('cmr-adr').checked;
+        var adrClass = document.getElementById('adr-class').value;
+
+        // Wypełnij wartości
+        var sender = {
+            name: document.getElementById('cmr-sender-name').value || '',
+            addr: document.getElementById('cmr-sender-addr').value || '',
+            nip: document.getElementById('cmr-sender-nip').value || '',
+            phone: document.getElementById('cmr-sender-phone').value || '',
+        };
+        var consignee = {
+            name: document.getElementById('cmr-consignee-name').value || '',
+            addr: document.getElementById('cmr-consignee-addr').value || (dest.label || dest.address || ''),
+            nip: document.getElementById('cmr-consignee-nip').value || '',
+            phone: document.getElementById('cmr-consignee-phone').value || '',
+        };
+        var loadAddr = origin.label || origin.address || '';
+        var goods = document.getElementById('cmr-goods').value || '';
+        var pieces = document.getElementById('cmr-pieces').value || '';
+        var packaging = document.getElementById('cmr-packaging').value || '';
+        var weight = document.getElementById('cmr-weight').value || '';
+        var marks = document.getElementById('cmr-marks').value || '';
+        var instructions = document.getElementById('cmr-instructions').value || '';
+        var cmrNumber = document.getElementById('cmr-cmr-number').value || '';
+        var driver = document.getElementById('cmr-driver').value || '';
+        var dateToday = new Date().toLocaleDateString(lang === 'pl' ? 'pl-PL' : lang === 'de' ? 'de-DE' : lang === 'ua' ? 'uk-UA' : 'en-GB');
+
+        // ADR section
+        var adrSection = '';
+        if (autoFill && adrClass) {
+            adrSection = '<div class="cell"><div class="lbl">' + L.adr + '</div><div><strong>Klasa ' + adrClass + '</strong></div></div>';
+        }
+
+        var routeText = pts.map(function (p, i) { return String.fromCharCode(65+i) + ': ' + (p.label || p.address); }).join(' → ');
+        var routeDistance = lastResponse.routes[activeAltIdx].distance_km;
+        var routeDuration = lastResponse.routes[activeAltIdx].duration_min;
+
+        var win = window.open('', '_blank', 'width=1000,height=1400');
+        if (!win) { toast('<?= __('Włącz wyskakujące okna') ?>', 'warning'); return; }
+        win.document.write(
+            '<!DOCTYPE html><html lang="' + lang + '"><head><meta charset="utf-8"><title>CMR ' + escapeHtml(cmrNumber) + '</title>'
+            + '<style>'
+            + 'body{font-family:Arial,sans-serif;margin:15px;color:#111;font-size:10pt}'
+            + '.header{text-align:center;border:2px solid #111;padding:10px;margin-bottom:0}'
+            + '.header h1{font-size:14pt;margin:0;font-weight:700}'
+            + '.header h2{font-size:9pt;margin:2px 0;color:#444;font-weight:400}'
+            + '.cmr-num{position:absolute;top:20px;right:30px;font-size:11pt;font-weight:700;color:#dc2626}'
+            + '.grid{display:grid;grid-template-columns:1fr 1fr;border:2px solid #111;border-top:0}'
+            + '.row{display:grid;border-bottom:1px solid #111}'
+            + '.row.two{grid-template-columns:1fr 1fr}'
+            + '.row.three{grid-template-columns:1fr 1fr 1fr}'
+            + '.row.four{grid-template-columns:1fr 1fr 1fr 1fr}'
+            + '.cell{padding:5px 8px;border-right:1px solid #111;min-height:32px}'
+            + '.cell:last-child{border-right:0}'
+            + '.lbl{font-size:7pt;font-weight:700;color:#555;text-transform:uppercase}'
+            + '.cell.tall{min-height:60px}'
+            + '.cell.medium{min-height:42px}'
+            + '.row:last-child{border-bottom:0}'
+            + '.sigs{display:grid;grid-template-columns:1fr 1fr 1fr;border:2px solid #111;border-top:0}'
+            + '.sigs .sig{padding:30px 12px 10px;border-right:1px solid #111;text-align:center;font-size:8pt}'
+            + '.sigs .sig:last-child{border-right:0}'
+            + '.footer{margin-top:10px;font-size:7pt;color:#555;font-style:italic}'
+            + 'button{position:fixed;bottom:20px;right:20px;padding:12px 24px;background:#15803d;color:white;border:0;border-radius:8px;font-weight:600;cursor:pointer}'
+            + '@media print{button{display:none}body{margin:8mm}}'
+            + '</style></head><body>'
+            + '<div class="cmr-num">' + escapeHtml(cmrNumber) + '</div>'
+            + '<div class="header">'
+            +   '<h1>' + L.title + '</h1>'
+            +   '<h2>' + L.subtitle + '</h2>'
+            + '</div>'
+            + '<div class="grid">'
+            +   '<div class="cell tall"><div class="lbl">' + L.sender + '</div>'
+            +     '<div><strong>' + escapeHtml(sender.name) + '</strong></div>'
+            +     '<div>' + escapeHtml(sender.addr) + '</div>'
+            +     (sender.nip ? '<div>NIP: ' + escapeHtml(sender.nip) + '</div>' : '')
+            +     (sender.phone ? '<div>Tel: ' + escapeHtml(sender.phone) + '</div>' : '')
+            +   '</div>'
+            +   '<div class="cell tall"><div class="lbl">' + L.consignee + '</div>'
+            +     '<div><strong>' + escapeHtml(consignee.name) + '</strong></div>'
+            +     '<div>' + escapeHtml(consignee.addr) + '</div>'
+            +     (consignee.nip ? '<div>NIP: ' + escapeHtml(consignee.nip) + '</div>' : '')
+            +     (consignee.phone ? '<div>Tel: ' + escapeHtml(consignee.phone) + '</div>' : '')
+            +   '</div>'
+            + '</div>'
+            + '<div class="grid" style="border-top:0">'
+            +   '<div class="cell medium"><div class="lbl">' + L.loadAddr + '</div><div><strong>' + escapeHtml(loadAddr) + '</strong></div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.deliveryAddr + '</div><div><strong>' + escapeHtml(consignee.addr) + '</strong></div></div>'
+            + '</div>'
+            + '<div class="row four" style="border:2px solid #111;border-top:0">'
+            +   '<div class="cell medium"><div class="lbl">' + L.marks + '</div><div>' + escapeHtml(marks) + '</div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.pieces + '</div><div>' + escapeHtml(pieces) + '</div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.packaging + '</div><div>' + escapeHtml(packaging) + '</div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.goods + '</div><div>' + escapeHtml(goods) + '</div></div>'
+            + '</div>'
+            + '<div class="row three" style="border:2px solid #111;border-top:0">'
+            +   '<div class="cell medium"><div class="lbl">' + L.grossWeight + '</div><div>' + escapeHtml(weight) + '</div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.volume + '</div><div></div></div>'
+            +   adrSection
+            + '</div>'
+            + '<div class="grid" style="border-top:0">'
+            +   '<div class="cell medium"><div class="lbl">' + L.senderInstructions + '</div><div>' + escapeHtml(instructions) + '</div></div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.carrierInstr + '</div><div></div></div>'
+            + '</div>'
+            + '<div class="grid" style="border-top:0">'
+            +   '<div class="cell medium"><div class="lbl">' + L.carrier + '</div>'
+            +     '<div><strong>Booklio TMS</strong></div>'
+            +     (vehicle ? '<div>' + L.vehicle + ': ' + escapeHtml(vehicle.name) + (vehicle.plate ? ' (' + escapeHtml(vehicle.plate) + ')' : '') + '</div>' : '')
+            +     (driver ? '<div>' + L.driver + ': ' + escapeHtml(driver) + '</div>' : '')
+            +   '</div>'
+            +   '<div class="cell medium"><div class="lbl">' + L.route + '</div>'
+            +     '<div style="font-size:8pt">' + escapeHtml(routeText) + '</div>'
+            +     '<div style="font-size:7pt;color:#555">' + fmtNum(routeDistance, 1) + ' km · ' + fmtDur(routeDuration) + '</div>'
+            +   '</div>'
+            + '</div>'
+            + '<div class="grid" style="border-top:0">'
+            +   '<div class="cell"><div class="lbl">' + L.issueDate + '</div><div><strong>' + escapeHtml(dateToday) + '</strong></div></div>'
+            +   '<div class="cell"><div class="lbl">' + L.specialAgreements + '</div><div></div></div>'
+            + '</div>'
+            + '<div class="sigs">'
+            +   '<div class="sig">' + L.signSender + '</div>'
+            +   '<div class="sig">' + L.signCarrier + '</div>'
+            +   '<div class="sig">' + L.signConsignee + '</div>'
+            + '</div>'
+            + '<div class="footer">' + L.confirmConvention + '</div>'
+            + '<button onclick="window.print()">🖨️ ' + L.title.split(' ').slice(-2).join(' ') + ' / PDF</button>'
+            + '</body></html>'
+        );
+        win.document.close();
+        setTimeout(function () { try { win.print(); } catch (e) {} }, 500);
+    });
+
     // #14 — Live tracking link dla klienta
     document.getElementById('btn-track-link').addEventListener('click', function () {
         if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }

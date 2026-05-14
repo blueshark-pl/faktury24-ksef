@@ -420,6 +420,109 @@ class RoutePlannerController extends AppController
      * URL zwraca dane trasy + waypoints + ETA do widoku read-only.
      * Brak auth — token UUID jest wystarczająco trudny do zgadnięcia.
      */
+    /**
+     * #7 Cabotage tracker — zwraca licznik ostatnich operacji w danym kraju
+     * dla bieżącej firmy/pojazdu. Auto-wywoływany przed kalkulacją trasy.
+     */
+    public function cabotageStatus(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get', 'post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') {
+            return $this->jsonError(__('Brak firmy.'));
+        }
+        $vehicleId = (string)$this->request->getData('vehicle_id', $this->request->getQuery('vehicle_id', ''));
+
+        try {
+            $Cab = $this->fetchTable('CabotageOperations');
+            // 7-dniowe okno + 4-dniowy cooling-off
+            $sevenDaysAgo = (new \DateTime('-7 days'))->format('Y-m-d');
+            $query = $Cab->find()
+                ->where(['company_id' => $companyId, 'operation_date >=' => $sevenDaysAgo]);
+            if ($vehicleId !== '') {
+                $query->where(['vehicle_id' => $vehicleId]);
+            }
+            $rows = $query->orderByDesc('operation_date')->all();
+
+            // Liczyć per kraj
+            $byCountry = [];
+            foreach ($rows as $r) {
+                $cc = (string)$r->country;
+                if (!isset($byCountry[$cc])) {
+                    $byCountry[$cc] = ['count' => 0, 'last_date' => null, 'operations' => []];
+                }
+                $byCountry[$cc]['count']++;
+                $byCountry[$cc]['operations'][] = [
+                    'id'             => (string)$r->id,
+                    'date'           => $r->operation_date->format('Y-m-d'),
+                    'origin'         => (string)$r->origin,
+                    'destination'    => (string)$r->destination,
+                    'notes'          => (string)$r->notes,
+                ];
+                if ($byCountry[$cc]['last_date'] === null) {
+                    $byCountry[$cc]['last_date'] = $r->operation_date->format('Y-m-d');
+                }
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'by_country' => $byCountry], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    /**
+     * Zapisz operację cabotage (z planera lub ręcznie).
+     */
+    public function cabotageSave(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') return $this->jsonError(__('Brak firmy.'));
+
+        $country = strtoupper(trim((string)$this->request->getData('country', '')));
+        $date    = (string)$this->request->getData('operation_date', date('Y-m-d'));
+        if (strlen($country) !== 3 || !preg_match('/^[A-Z]{3}$/', $country)) {
+            return $this->jsonError(__('Nieprawidłowy kod kraju (alpha-3).'));
+        }
+        try {
+            $Cab = $this->fetchTable('CabotageOperations');
+            $entity = $Cab->newEntity([
+                'id'              => \Cake\Utility\Text::uuid(),
+                'company_id'      => $companyId,
+                'vehicle_id'      => $this->request->getData('vehicle_id') ?: null,
+                'route_search_id' => $this->request->getData('route_search_id') ?: null,
+                'country'         => $country,
+                'operation_date'  => $date,
+                'origin'          => $this->request->getData('origin'),
+                'destination'     => $this->request->getData('destination'),
+                'notes'           => $this->request->getData('notes'),
+                'source'          => $this->request->getData('source', 'manual'),
+            ]);
+            $Cab->save($entity);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'id' => (string)$entity->id]));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
+    /**
+     * Usuń operację cabotage.
+     */
+    public function cabotageDelete(string $id): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post', 'delete']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        $this->fetchTable('CabotageOperations')->deleteAll(['id' => $id, 'company_id' => $companyId]);
+        return $this->response->withType('application/json')->withStringBody(json_encode(['ok' => true]));
+    }
+
     public function track(string $id): Response
     {
         $this->disableAutoRender();
