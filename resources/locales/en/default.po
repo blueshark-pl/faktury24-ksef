@@ -2877,3 +2877,63 @@ msgstr "Empty email content."
 
 msgid "Brak punktów do pogody."
 msgstr "No points for weather."
+
+msgid "iCal wyeksportowany — otwórz w Outlook/Google Calendar"
+msgstr "iCal exported — open in Outlook/Google Calendar"
+
+msgid "Brak danych do eksportu."
+msgstr "No data to export."
+
+msgid "QR kod dla kierowcy"
+msgstr "QR code for driver"
+
+msgid "QR dla kierowcy"
+msgstr "QR for driver"
+
+msgid "Pokaż QR — kierowca zeskanuje telefonem"
+msgstr "Show QR — driver scans with phone"
+
+msgid "Kierowca skanuje telefonem i otwiera brief — bez drukowania"
+msgstr "Driver scans phone and opens brief — no printing"
+
+msgid "Drukuj"
+msgstr "Print"
+
+msgid "Pobierz PNG"
+msgstr "Download PNG"
+
+msgid "Najpierw wygeneruj brief."
+msgstr "Generate the brief first."
+
+msgid "Błąd generowania QR"
+msgstr "QR generation error"
+
+msgid "Parkingi/Stacje"
+msgstr "Parking/Stations"
+
+msgid "Pokaż parkingi i stacje truck-friendly wzdłuż trasy"
+msgstr "Show truck-friendly parking and stations along route"
+
+msgid "Ukryj parkingi"
+msgstr "Hide parking"
+
+msgid "Szukam…"
+msgstr "Searching…"
+
+msgid "Brak polyline trasy."
+msgstr "No route polyline."
+
+msgid "Błąd pobierania POI."
+msgstr "POI fetch error."
+
+msgid "Znaleziono"
+msgstr "Found"
+
+msgid "parkingów/stacji"
+msgstr "parkings/stations"
+
+msgid "POI"
+msgstr "POI"
+
+msgid "Błąd:"
+msgstr "Error:"

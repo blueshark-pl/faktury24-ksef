@@ -428,6 +428,10 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <i class="ri-code-line me-2 text-primary"></i><?= __('Embed (read-only)') ?></a></li>
                 </ul>
             </div>
+            <button type="button" class="btn btn-sm btn-hero" id="btn-truck-pois" disabled
+                    title="<?= __('Pokaż parkingi i stacje truck-friendly wzdłuż trasy') ?>">
+                <i class="ri-truck-line me-1"></i><?= __('Parkingi/Stacje') ?>
+            </button>
             <button type="button" class="btn btn-sm btn-hero" id="btn-share" disabled
                     title="<?= __('Kopiuj link do schowka') ?>">
                 <i class="ri-share-line me-1"></i><?= __('Udostępnij') ?>
@@ -1670,6 +1674,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
         document.getElementById('btn-share').disabled = false;
+        document.getElementById('btn-truck-pois').disabled = false;
         document.getElementById('btn-save-template').disabled = false;
         enableExportButton();
     }
@@ -2015,6 +2020,107 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
             }
         });
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    // #2 Truck POI (parkingi/stacje wzdłuż trasy) — HERE Discover
+    // ═════════════════════════════════════════════════════════════════
+    var truckPoiUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'truckPois']) ?>';
+    var poiMarkersGroup = null;
+    var poiVisible = false;
+    var poiCache = null; // { stops: [...], polylineKey: '...' }
+
+    function poiPolylineKey() {
+        if (!lastResponse) return '';
+        var r = lastResponse.routes[activeAltIdx];
+        if (!r || !r.polylines) return '';
+        return r.polylines.join('|').substring(0, 100); // skrócony hash
+    }
+
+    document.getElementById('btn-truck-pois').addEventListener('click', function () {
+        if (!lastResponse) return;
+        var r = lastResponse.routes[activeAltIdx];
+        if (!r || !r.polylines || !r.polylines.length) { toast('<?= __('Brak polyline trasy.') ?>', 'warning'); return; }
+
+        // Toggle off jeśli już widoczne
+        if (poiVisible) {
+            poiVisible = false;
+            if (poiMarkersGroup) { map.removeObject(poiMarkersGroup); poiMarkersGroup = null; }
+            updateTruckPoiBtn();
+            return;
+        }
+
+        var btn = this;
+        var currentKey = poiPolylineKey();
+        // Cache: jeśli mieliśmy już wyniki dla tej samej trasy — pokaż
+        if (poiCache && poiCache.polylineKey === currentKey) {
+            renderPoiMarkers(poiCache.stops);
+            poiVisible = true;
+            updateTruckPoiBtn();
+            return;
+        }
+
+        var orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> <?= __('Szukam…') ?>';
+
+        var fd = new FormData();
+        r.polylines.forEach(function (p, idx) { fd.append('polylines[' + idx + ']', p); });
+        fd.append('_csrfToken', csrf);
+        fetch(truckPoiUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            if (!res.ok || !res.data.ok) {
+                toast(res.data.message || '<?= __('Błąd pobierania POI.') ?>', 'error');
+                return;
+            }
+            poiCache = { stops: res.data.stops || [], polylineKey: currentKey };
+            renderPoiMarkers(poiCache.stops);
+            poiVisible = true;
+            toast('<?= __('Znaleziono') ?> ' + poiCache.stops.length + ' <?= __('parkingów/stacji') ?>', 'success');
+        })
+        .catch(function (e) { toast('<?= __('Błąd:') ?> ' + e.message, 'error'); })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            updateTruckPoiBtn();
+        });
+    });
+
+    function updateTruckPoiBtn() {
+        var btn = document.getElementById('btn-truck-pois');
+        if (poiVisible) {
+            btn.classList.remove('btn-hero');
+            btn.classList.add('btn-success');
+            btn.innerHTML = '<i class="ri-truck-line me-1"></i><?= __('Ukryj parkingi') ?>';
+        } else {
+            btn.classList.add('btn-hero');
+            btn.classList.remove('btn-success');
+            btn.innerHTML = '<i class="ri-truck-line me-1"></i><?= __('Parkingi/Stacje') ?>';
+        }
+    }
+
+    function renderPoiMarkers(stops) {
+        if (poiMarkersGroup) { map.removeObject(poiMarkersGroup); poiMarkersGroup = null; }
+        if (!stops || !stops.length) return;
+        poiMarkersGroup = new H.map.Group();
+        stops.forEach(function (s) {
+            var isTruck = s.type === 'truck_stop';
+            var col = isTruck ? '#16a34a' : '#3b82f6';
+            var ico = isTruck ? '🅿️' : '⛽';
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
+                    + '<path d="M16 0C7 0 0 7 0 16c0 11 16 24 16 24s16-13 16-24C32 7 25 0 16 0z" fill="' + col + '" stroke="white" stroke-width="2"/>'
+                    + '<circle cx="16" cy="16" r="9" fill="white"/>'
+                    + '<text x="16" y="21" text-anchor="middle" font-size="13">' + ico + '</text></svg>';
+            var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 16, y: 40 } });
+            var m = new H.map.Marker({ lat: s.lat, lng: s.lng }, { icon: icon });
+            m.setData('<strong>' + escapeHtml(s.title || '<?= __('POI') ?>') + '</strong>'
+                    + '<div class="small text-muted">' + escapeHtml(s.category || '') + '</div>'
+                    + '<div class="small">' + escapeHtml(s.address || '') + '</div>'
+                    + (s.distance ? '<div class="small text-muted">' + Math.round(s.distance/1000) + ' km od trasy</div>' : ''));
+            poiMarkersGroup.addObject(m);
+        });
+        map.addObject(poiMarkersGroup);
     }
 
     // ═════════════════════════════════════════════════════════════════

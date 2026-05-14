@@ -524,6 +524,98 @@ class HereRoutingService
     }
 
     /**
+     * Szukaj truck-friendly POI (parkingi/stacje) wzdłuż trasy.
+     * Próbkuje punkty co N km z polyline, dla każdego wywołuje HERE Browse z kategoriami.
+     *
+     * @param array<int, string> $polylines  Flexible polylines z routeMulti
+     * @param int                $sampleEveryKm  Co ile km próbkujemy (domyślnie 100)
+     * @param int                $maxSamples     Max liczba próbek (limit API calls)
+     * @return array<int, array{id:string,title:string,address:string,lat:float,lng:float,category:string,category_id:string,distance:?int,type:string}>
+     */
+    public function truckStopsAlongRoute(array $polylines, int $sampleEveryKm = 100, int $maxSamples = 8): array
+    {
+        $points = [];
+        foreach ($polylines as $poly) {
+            $decoded = self::decodePolyline($poly);
+            if (empty($decoded)) continue;
+            // Pierwszy punkt zawsze
+            $points[] = $decoded[0];
+            $lastSampleKm = 0.0;
+            $cumKm = 0.0;
+            for ($i = 1; $i < count($decoded); $i++) {
+                $cumKm += $this->haversineKm($decoded[$i - 1], $decoded[$i]);
+                if ($cumKm - $lastSampleKm >= $sampleEveryKm) {
+                    $points[] = $decoded[$i];
+                    $lastSampleKm = $cumKm;
+                    if (count($points) >= $maxSamples) break;
+                }
+            }
+            // Ostatni
+            if (count($points) < $maxSamples) {
+                $points[] = end($decoded);
+            }
+            if (count($points) >= $maxSamples) break;
+        }
+
+        $stops = [];
+        $seen = [];
+        $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
+        // 700-7600 = Truck Stop/Plaza, 700-7400 = Gasoline Station
+        foreach ($points as $pt) {
+            try {
+                $resp = $this->client->get($browseUrl, [
+                    'at'         => $pt['lat'] . ',' . $pt['lng'],
+                    'categories' => '700-7600,700-7400',
+                    'limit'      => 10,
+                    'apiKey'     => $this->apiKey,
+                    'lang'       => 'pl-PL',
+                ]);
+                if (!$resp->isOk()) continue;
+                $data = $resp->getJson();
+                foreach (($data['items'] ?? []) as $item) {
+                    $id = (string)($item['id'] ?? '');
+                    if ($id === '' || isset($seen[$id])) continue;
+                    $seen[$id] = true;
+                    $catId = (string)($item['categories'][0]['id'] ?? '');
+                    $catName = (string)($item['categories'][0]['name'] ?? '');
+                    // Detekcja typu po prefiksie kategorii
+                    $type = 'other';
+                    if (str_starts_with($catId, '700-7600')) $type = 'truck_stop';
+                    elseif (str_starts_with($catId, '700-7400')) $type = 'fuel_station';
+                    $stops[] = [
+                        'id'          => $id,
+                        'title'       => (string)($item['title'] ?? ''),
+                        'address'     => (string)($item['address']['label'] ?? ''),
+                        'lat'         => (float)($item['position']['lat'] ?? 0),
+                        'lng'         => (float)($item['position']['lng'] ?? 0),
+                        'category'    => $catName,
+                        'category_id' => $catId,
+                        'distance'    => $item['distance'] ?? null,
+                        'type'        => $type,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('HERE browse error: ' . $e->getMessage());
+            }
+        }
+        return $stops;
+    }
+
+    /**
+     * Haversine — dystans w km między dwoma punktami.
+     */
+    private function haversineKm(array $a, array $b): float
+    {
+        $earth = 6371.0;
+        $lat1 = deg2rad($a['lat']);
+        $lat2 = deg2rad($b['lat']);
+        $dLat = $lat2 - $lat1;
+        $dLng = deg2rad($b['lng'] - $a['lng']);
+        $h = sin($dLat / 2) ** 2 + cos($lat1) * cos($lat2) * sin($dLng / 2) ** 2;
+        return 2 * $earth * asin(min(1.0, sqrt($h)));
+    }
+
+    /**
      * Dekoduje flexible polyline HERE → tablica punktów [{lat,lng}, ...].
      * Algorytm: https://github.com/heremaps/flexible-polyline/blob/master/README.md
      *
