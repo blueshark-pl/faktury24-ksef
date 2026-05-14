@@ -722,6 +722,34 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             </div>
         </div>
 
+        <!-- #3 Tachograph planner -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card" id="tacho-card" style="display:none">
+                    <div class="card-header py-2 d-flex align-items-center">
+                        <strong><i class="ri-time-line me-1 text-warning"></i><?= __('Plan postojów AETR') ?></strong>
+                        <span class="text-muted small ms-2"><?= __('zgodne z UE 561/2006') ?></span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead style="background:#f9fafb;font-size:.78rem">
+                                    <tr>
+                                        <th>#</th>
+                                        <th><?= __('Typ') ?></th>
+                                        <th><?= __('Termin') ?></th>
+                                        <th><?= __('Pozycja na trasie') ?></th>
+                                        <th><?= __('Współrzędne') ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tacho-tbody" style="font-size:.82rem"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- L1+L2: Szczegółowe opłaty + winiety -->
         <div class="row g-3 mt-0">
             <div class="col-lg-12">
@@ -1663,6 +1691,121 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             var breaks = Math.floor(hours / 4.5);
             toast('<?= __('Wymagana przerwa 45 min co 4.5h jazdy. Liczba przerw:') ?> ' + breaks, 'info');
         }
+        // #3 — Tachograph planner: konkretne punkty postoju
+        renderTachoSchedule(r);
+    }
+
+    // #3 — Tachograph planner: rozkład przerw 45min/odpoczynków 11h
+    // przy konkretnych punktach trasy (lat/lng z sekcji)
+    var tachoMarkersGroup = null;
+    function computeTachoStops(r) {
+        if (!r || !r.sections || r.sections.length === 0) return [];
+        var stops = [];
+        var driveMin = 0;       // czas jazdy od ostatniej przerwy
+        var totalDriveMin = 0;  // czas jazdy od początku doby
+        var distFromStart = 0;
+        // Czas startu (departure pierwszej sekcji lub teraz)
+        var t0 = r.sections[0].departure_time ? new Date(r.sections[0].departure_time) : new Date();
+        var simNow = new Date(t0.getTime());
+
+        r.sections.forEach(function (s, idx) {
+            var dur = s.duration_min || 0;
+            var dist = s.distance_km || 0;
+            // Symulacja: w trakcie tej sekcji mogą pojawić się przerwy
+            var simDriveMin = 0; // ile minut tej sekcji już przejechaliśmy
+            while (simDriveMin < dur) {
+                // Pozostały czas do najbliższej obowiązkowej przerwy
+                var nextBreakAt = 270; // 4.5h × 60
+                var nextDailyRestAt = 540; // 9h × 60
+                var toBreak = nextBreakAt - driveMin;
+                var toDaily = nextDailyRestAt - totalDriveMin;
+                var nextStop = Math.min(toBreak, toDaily);
+                var remainOfSection = dur - simDriveMin;
+                if (remainOfSection < nextStop) {
+                    // Dojedziemy do końca sekcji bez przerwy
+                    driveMin += remainOfSection;
+                    totalDriveMin += remainOfSection;
+                    distFromStart += dist * (remainOfSection / dur);
+                    simNow = new Date(simNow.getTime() + remainOfSection * 60000);
+                    simDriveMin = dur;
+                } else {
+                    // W tej sekcji wpadamy w przerwę
+                    driveMin += nextStop;
+                    totalDriveMin += nextStop;
+                    distFromStart += dist * (nextStop / dur);
+                    simNow = new Date(simNow.getTime() + nextStop * 60000);
+                    simDriveMin += nextStop;
+                    // Interpolacja pozycji
+                    var pct = simDriveMin / dur;
+                    var lat = s.from_lat + (s.to_lat - s.from_lat) * pct;
+                    var lng = s.from_lng + (s.to_lng - s.from_lng) * pct;
+                    var stopType = totalDriveMin >= nextDailyRestAt ? 'daily11h' : 'break45';
+                    stops.push({
+                        type: stopType,
+                        eta: new Date(simNow.getTime()),
+                        distance_km: Math.round(distFromStart),
+                        lat: lat, lng: lng,
+                        drive_h: (totalDriveMin / 60).toFixed(1)
+                    });
+                    // Reset
+                    if (stopType === 'daily11h') {
+                        driveMin = 0; totalDriveMin = 0;
+                        simNow = new Date(simNow.getTime() + 11 * 60 * 60000); // +11h
+                    } else {
+                        driveMin = 0;
+                        simNow = new Date(simNow.getTime() + 45 * 60000); // +45 min
+                    }
+                }
+            }
+        });
+        return stops;
+    }
+
+    function renderTachoSchedule(r) {
+        var card = document.getElementById('tacho-card');
+        var stops = computeTachoStops(r);
+        if (!stops.length || (r.duration_min || 0) <= 270) {
+            card.style.display = 'none';
+            if (tachoMarkersGroup) { map.removeObject(tachoMarkersGroup); tachoMarkersGroup = null; }
+            return;
+        }
+        card.style.display = '';
+        var tbody = document.getElementById('tacho-tbody');
+        tbody.innerHTML = '';
+        stops.forEach(function (s, i) {
+            var dt = s.eta.toLocaleString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            var typeBadge = s.type === 'daily11h'
+                ? '<span class="badge bg-danger-subtle text-danger border"><i class="ri-hotel-bed-line me-1"></i><?= __('Odpoczynek 11h') ?></span>'
+                : '<span class="badge bg-warning-subtle text-warning border"><i class="ri-coffee-line me-1"></i><?= __('Przerwa 45 min') ?></span>';
+            tbody.innerHTML +=
+                '<tr>'
+                + '<td class="text-muted">#' + (i + 1) + '</td>'
+                + '<td>' + typeBadge + '</td>'
+                + '<td>' + dt + '</td>'
+                + '<td>' + s.distance_km + ' km · ' + s.drive_h + ' h jazdy</td>'
+                + '<td><a href="https://maps.google.com/?q=' + s.lat.toFixed(5) + ',' + s.lng.toFixed(5) + '" target="_blank" class="text-decoration-none small">'
+                + s.lat.toFixed(4) + ', ' + s.lng.toFixed(4) + ' <i class="ri-external-link-line"></i></a></td>'
+                + '</tr>';
+        });
+
+        // Markery na mapie
+        if (tachoMarkersGroup) { map.removeObject(tachoMarkersGroup); tachoMarkersGroup = null; }
+        tachoMarkersGroup = new H.map.Group();
+        stops.forEach(function (s) {
+            var col = s.type === 'daily11h' ? '#dc2626' : '#f59e0b';
+            var ico = s.type === 'daily11h' ? '🛏️' : '☕';
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
+                    + '<path d="M16 0C7 0 0 7 0 16c0 11 16 24 16 24s16-13 16-24C32 7 25 0 16 0z" fill="' + col + '" stroke="white" stroke-width="2"/>'
+                    + '<circle cx="16" cy="16" r="9" fill="white"/>'
+                    + '<text x="16" y="21" text-anchor="middle" font-size="12">' + ico + '</text></svg>';
+            var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 16, y: 40 } });
+            var m = new H.map.Marker({ lat: s.lat, lng: s.lng }, { icon: icon });
+            m.setData('<strong>' + (s.type === 'daily11h' ? '<?= __('Odpoczynek 11h') ?>' : '<?= __('Przerwa 45 min') ?>') + '</strong>'
+                    + '<div class="small text-muted">' + s.eta.toLocaleString('pl-PL') + '</div>'
+                    + '<div class="small">' + s.distance_km + ' km od startu</div>');
+            tachoMarkersGroup.addObject(m);
+        });
+        map.addObject(tachoMarkersGroup);
     }
 
     // Count-up animation dla countera (650ms)
