@@ -227,6 +227,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/trasy/ai/email-reply',      ['controller' => 'RoutePlanner', 'action' => 'aiEmailReply']);
         $builder->post('/trasy/weather',             ['controller' => 'RoutePlanner', 'action' => 'weather']);
         $builder->post('/trasy/truck-pois',           ['controller' => 'RoutePlanner', 'action' => 'truckPois']);
+        $builder->post('/trasy/toll-booths',           ['controller' => 'RoutePlanner', 'action' => 'tollBooths']);
         $builder->post('/trasy/historia/usun/{id}',  ['controller' => 'RoutePlanner', 'action' => 'deleteRecent'])
             ->setPass(['id']);
         $builder->post('/trasy/szablon/zapisz',       ['controller' => 'RoutePlanner', 'action' => 'saveTemplate']);

@@ -2937,3 +2937,18 @@ msgstr "POI"
 
 msgid "Błąd:"
 msgstr "Error:"
+
+msgid "Bramka opłat"
+msgstr "Toll booth"
+
+msgid "Bramka ETC (gantry)"
+msgstr "ETC gantry"
+
+msgid "Szukam bramek…"
+msgstr "Searching for booths…"
+
+msgid "Błąd pobierania bramek."
+msgstr "Error fetching booths."
+
+msgid "Brak bramek na tej trasie (autostrady bezbramkowe)"
+msgstr "No toll booths on this route (gateless tolling)"

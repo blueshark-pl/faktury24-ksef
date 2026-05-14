@@ -2479,34 +2479,72 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         card.style.display = '';
 
-        // L3: ukryj przycisk "Bramki na mapie" jeśli HERE nie zwrócił lokalizacji
-        var btnMarkers = document.getElementById('btn-toll-markers');
-        if (btnMarkers) {
-            btnMarkers.style.display = (currentTollsData.locations.length ? '' : 'none');
-        }
+        // L3: przycisk zawsze widoczny — OSM Overpass zwykle znajdzie bramki nawet gdy HERE nie zwrócił
+        // (HERE rzadko zwraca tollLocations; OSM ma barrier=toll_booth dla większości autostrad EU)
         if (tollMarkersVisible) renderTollMarkers(true);
     }
 
-    // ── L3: Markery bramek na mapie (toggle) ─────────────────────────
+    // ── L3: Markery bramek opłat (OSM Overpass + fallback HERE tollLocations)
+    var osmTollUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'tollBooths']) ?>';
+    var osmBoothsCache = null; // {polylineKey, booths}
+
+    function poiPolylineKeyForTolls() {
+        if (!lastResponse) return '';
+        var r = lastResponse.routes[activeAltIdx];
+        if (!r || !r.polylines) return '';
+        return r.polylines.join('|').substring(0, 100);
+    }
+
     function renderTollMarkers(show) {
         if (tollMarkersGroup) { map.removeObject(tollMarkersGroup); tollMarkersGroup = null; }
-        if (!show || !currentTollsData || !currentTollsData.locations || !currentTollsData.locations.length) return;
+        if (!show) return;
+
+        // Łączymy 2 źródła: OSM booths (właściwe) + HERE locations (gdy zwrócił)
+        var hereLocations = (currentTollsData && currentTollsData.locations) || [];
+        var osmBooths = (osmBoothsCache && osmBoothsCache.booths) || [];
+        if (!hereLocations.length && !osmBooths.length) return;
+
         tollMarkersGroup = new H.map.Group();
-        // Buduj indeks opłat per (country, system) żeby pokazać orientacyjną cenę w popupie
+        // Indeks orientacyjnych cen z HERE breakdown (per country+system) — dla popupu
         var priceByKey = {};
-        (currentTollsData.breakdown || []).forEach(function (f) {
+        (currentTollsData ? currentTollsData.breakdown || [] : []).forEach(function (f) {
             if (f.is_vignette) return;
             var k = (f.country || '') + '|' + (f.system || '');
             priceByKey[k] = (priceByKey[k] || 0) + (f.price || 0);
         });
-        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">'
-                + '<path d="M12 0C5 0 0 5 0 12c0 8 12 20 12 20s12-12 12-20C24 5 19 0 12 0z" fill="#fbbf24" stroke="white" stroke-width="2"/>'
-                + '<text x="12" y="16" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">€</text></svg>';
-        var icon = new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 12, y: 32 } });
-        currentTollsData.locations.forEach(function (loc) {
-            var m = new H.map.Marker({ lat: loc.lat, lng: loc.lng }, { icon: icon });
+
+        // SVG ikony per typ
+        function makeIcon(color, ico) {
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">'
+                    + '<path d="M13 0C6 0 0 5 0 13c0 9 13 21 13 21s13-12 13-21C26 5 20 0 13 0z" fill="' + color + '" stroke="white" stroke-width="2"/>'
+                    + '<circle cx="13" cy="13" r="8" fill="white"/>'
+                    + '<text x="13" y="17" text-anchor="middle" font-size="11">' + ico + '</text></svg>';
+            return new H.map.Icon('data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg), { anchor: { x: 13, y: 34 } });
+        }
+        var iconBooth   = makeIcon('#dc2626', '🚧');  // czerwony — fizyczna bramka
+        var iconGantry  = makeIcon('#7c3aed', '📡');  // fioletowy — bramka ETC (gantry)
+        var iconHere    = makeIcon('#fbbf24', '€');   // żółty — HERE location
+
+        // OSM booths
+        osmBooths.forEach(function (b) {
+            var icon = (b.type === 'toll_gantry') ? iconGantry : iconBooth;
+            var m = new H.map.Marker({ lat: b.lat, lng: b.lng }, { icon: icon });
+            var typeName = (b.type === 'toll_gantry')
+                ? '<?= __('Bramka ETC (gantry)') ?>'
+                : '<?= __('Bramka opłat') ?>';
+            var details = '<div class="small">';
+            if (b.operator) details += '<div class="text-muted">' + escapeHtml(b.operator) + '</div>';
+            if (b.ref)      details += '<div class="text-muted">' + escapeHtml(b.ref) + '</div>';
+            details += '</div>';
+            m.setData('<strong>' + escapeHtml(b.name || typeName) + '</strong>' + details);
+            tollMarkersGroup.addObject(m);
+        });
+
+        // HERE locations (jeśli zwróci — głównie IT/FR)
+        hereLocations.forEach(function (loc) {
+            var m = new H.map.Marker({ lat: loc.lat, lng: loc.lng }, { icon: iconHere });
             var k = (loc.country || '') + '|' + (loc.system || '');
-            var p = priceByKey[k] ? (' · ~' + fmtNum(priceByKey[k], 2) + ' ' + currentTollsData.currency) : '';
+            var p = priceByKey[k] ? (' · ~' + fmtNum(priceByKey[k], 2) + ' ' + (currentTollsData ? currentTollsData.currency : '')) : '';
             m.setData('<strong>' + escapeHtml(loc.name || '<?= __('Bramka') ?>') + '</strong>'
                     + '<div class="small text-muted">' + escapeHtml(loc.system || '') + ' · ' + escapeHtml(loc.country || '') + p + '</div>');
             tollMarkersGroup.addObject(m);
@@ -2514,16 +2552,73 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         map.addObject(tollMarkersGroup);
     }
 
-    // L3: toggle handler
+    // L3: toggle handler — pobiera z OSM Overpass + dolewa z HERE
     (function bindTollMarkers() {
         var btn = document.getElementById('btn-toll-markers');
         if (!btn) return;
         btn.addEventListener('click', function () {
-            tollMarkersVisible = !tollMarkersVisible;
-            renderTollMarkers(tollMarkersVisible);
-            btn.classList.toggle('btn-outline-secondary', !tollMarkersVisible);
-            btn.classList.toggle('btn-warning', tollMarkersVisible);
-            btn.innerHTML = '<i class="ri-map-pin-line me-1"></i>' + (tollMarkersVisible ? '<?= __('Ukryj bramki') ?>' : '<?= __('Bramki na mapie') ?>');
+            // Toggle off
+            if (tollMarkersVisible) {
+                tollMarkersVisible = false;
+                renderTollMarkers(false);
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-outline-secondary');
+                btn.innerHTML = '<i class="ri-map-pin-line me-1"></i><?= __('Bramki na mapie') ?>';
+                return;
+            }
+            if (!lastResponse) return;
+            var r = lastResponse.routes[activeAltIdx];
+            if (!r || !r.polylines || !r.polylines.length) {
+                toast('<?= __('Brak polyline trasy.') ?>', 'warning');
+                return;
+            }
+
+            // Cache: jeśli mamy już booths dla tej polyline — pokaż od razu
+            var currentKey = poiPolylineKeyForTolls();
+            if (osmBoothsCache && osmBoothsCache.polylineKey === currentKey) {
+                tollMarkersVisible = true;
+                renderTollMarkers(true);
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-warning');
+                btn.innerHTML = '<i class="ri-map-pin-line me-1"></i><?= __('Ukryj bramki') ?>';
+                return;
+            }
+
+            // Pobierz OSM booths
+            var orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> <?= __('Szukam bramek…') ?>';
+
+            var fd = new FormData();
+            r.polylines.forEach(function (p, idx) { fd.append('polylines[' + idx + ']', p); });
+            fd.append('_csrfToken', csrf);
+
+            fetch(osmTollUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (!res.ok || !res.data.ok) {
+                    toast(res.data.message || '<?= __('Błąd pobierania bramek.') ?>', 'error');
+                    return;
+                }
+                osmBoothsCache = { polylineKey: currentKey, booths: res.data.booths || [] };
+                tollMarkersVisible = true;
+                renderTollMarkers(true);
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-warning');
+                var total = osmBoothsCache.booths.length + ((currentTollsData && currentTollsData.locations) || []).length;
+                if (total === 0) {
+                    toast('<?= __('Brak bramek na tej trasie (autostrady bezbramkowe)') ?>', 'info');
+                } else {
+                    toast('<?= __('Znaleziono') ?> ' + total + ' <?= __('bramek') ?>', 'success');
+                }
+            })
+            .catch(function (e) { toast('<?= __('Błąd:') ?> ' + e.message, 'error'); })
+            .finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = tollMarkersVisible
+                    ? '<i class="ri-map-pin-line me-1"></i><?= __('Ukryj bramki') ?>'
+                    : '<i class="ri-map-pin-line me-1"></i><?= __('Bramki na mapie') ?>';
+            });
         });
     })();
 

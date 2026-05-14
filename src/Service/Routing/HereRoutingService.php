@@ -644,6 +644,105 @@ class HereRoutingService
     }
 
     /**
+     * Szuka FIZYCZNYCH bramek opłat na autostradach wzdłuż trasy używając OSM Overpass.
+     *
+     * OSM tag: barrier=toll_booth, highway=toll_gantry (gantry = belka z czytnikiem)
+     * To uzupełnia/zastępuje HERE tollLocations (rzadko zwracane).
+     *
+     * @param array<int, string> $polylines  Flexible polylines z routeMulti
+     * @param float $maxDistKm  Max odległość bramki od trasy w km (default 2)
+     * @return array<int, array{lat:float,lng:float,name:string,operator:string,ref:string,type:string,distance_km:float}>
+     */
+    public function osmTollBooths(array $polylines, float $maxDistKm = 2.0): array
+    {
+        // Zdekoduj polyline'y → jeden zbiór punktów
+        $allPoints = [];
+        foreach ($polylines as $poly) {
+            foreach (self::decodePolyline($poly) as $p) {
+                $allPoints[] = $p;
+            }
+        }
+        if (empty($allPoints)) {
+            Log::debug('osmTollBooths: empty polylines');
+            return [];
+        }
+
+        // Bbox wzdłuż trasy + bufor ~0.05° (~5km)
+        $minLat = $maxLat = $allPoints[0]['lat'];
+        $minLng = $maxLng = $allPoints[0]['lng'];
+        foreach ($allPoints as $p) {
+            if ($p['lat'] < $minLat) $minLat = $p['lat'];
+            if ($p['lat'] > $maxLat) $maxLat = $p['lat'];
+            if ($p['lng'] < $minLng) $minLng = $p['lng'];
+            if ($p['lng'] > $maxLng) $maxLng = $p['lng'];
+        }
+        $padding = 0.05;
+        $minLat -= $padding; $maxLat += $padding;
+        $minLng -= $padding; $maxLng += $padding;
+
+        // Overpass QL: bramki opłat (toll_booth) + bramki ETC (toll_gantry)
+        $bbox = $minLat . ',' . $minLng . ',' . $maxLat . ',' . $maxLng;
+        $query = "[out:json][timeout:25];\n"
+               . "(\n"
+               . "  node[\"barrier\"=\"toll_booth\"]({$bbox});\n"
+               . "  way[\"barrier\"=\"toll_booth\"]({$bbox});\n"
+               . "  node[\"highway\"=\"toll_gantry\"]({$bbox});\n"
+               . ");\n"
+               . "out body center;";
+
+        Log::debug('osmTollBooths: bbox=' . $bbox . ', polyline points=' . count($allPoints));
+
+        try {
+            $client = new \Cake\Http\Client(['timeout' => 30]);
+            $resp = $client->post('https://overpass-api.de/api/interpreter',
+                'data=' . urlencode($query),
+                ['headers' => ['Content-Type' => 'application/x-www-form-urlencoded']]
+            );
+            if (!$resp->isOk()) {
+                Log::warning('Overpass HTTP ' . $resp->getStatusCode() . ': ' . substr($resp->getStringBody(), 0, 200));
+                return [];
+            }
+            $data = $resp->getJson();
+            $elements = $data['elements'] ?? [];
+            Log::debug('osmTollBooths: Overpass returned ' . count($elements) . ' elements in bbox');
+
+            // Filtruj per dystans do polyline ≤ maxDistKm
+            $booths = [];
+            foreach ($elements as $el) {
+                $lat = $el['lat'] ?? ($el['center']['lat'] ?? null);
+                $lng = $el['lon'] ?? ($el['center']['lon'] ?? null);
+                if ($lat === null || $lng === null) continue;
+
+                // Najmniejsza odległość od polyline (early-exit)
+                $minDist = PHP_FLOAT_MAX;
+                foreach ($allPoints as $p) {
+                    $d = $this->haversineKm(['lat' => (float)$lat, 'lng' => (float)$lng], $p);
+                    if ($d < $minDist) $minDist = $d;
+                    if ($minDist < 0.1) break; // <100m — już blisko, dalej szukać nie ma sensu
+                }
+                if ($minDist > $maxDistKm) continue;
+
+                $tags = $el['tags'] ?? [];
+                $isGantry = ($el['type'] === 'node' && ($tags['highway'] ?? '') === 'toll_gantry');
+                $booths[] = [
+                    'lat'         => (float)$lat,
+                    'lng'         => (float)$lng,
+                    'name'        => (string)($tags['name'] ?? ''),
+                    'operator'    => (string)($tags['operator'] ?? ''),
+                    'ref'         => (string)($tags['ref'] ?? ''),
+                    'type'        => $isGantry ? 'toll_gantry' : 'toll_booth',
+                    'distance_km' => round($minDist, 2),
+                ];
+            }
+            Log::debug('osmTollBooths: after distance filter: ' . count($booths) . ' booths');
+            return $booths;
+        } catch (\Throwable $e) {
+            Log::error('OSM Overpass error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Haversine — dystans w km między dwoma punktami.
      */
     private function haversineKm(array $a, array $b): float

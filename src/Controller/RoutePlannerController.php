@@ -383,6 +383,24 @@ class RoutePlannerController extends AppController
         }
     }
 
+    public function tollBooths(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+        $polylines = (array)$this->request->getData('polylines', []);
+        if (empty($polylines)) {
+            return $this->jsonError(__('Brak polyline trasy.'));
+        }
+        try {
+            $svc = new HereRoutingService();
+            $booths = $svc->osmTollBooths($polylines, 2.0);
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['ok' => true, 'booths' => $booths], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+    }
+
     public function truckPois(): Response
     {
         $this->disableAutoRender();
