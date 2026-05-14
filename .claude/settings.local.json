@@ -22,7 +22,8 @@
       "Bash(git commit -m 'feat: brakujące tłumaczenia EN dla auth \\(reset/login link/2FA/rejestracja\\) *)",
       "Bash(git commit *)",
       "Bash(grep -nE '^msgid \"Wyślij\"$|^msgid \"Wysyłanie\\\\.\\\\.\\\\.\"$' resources/locales/en/default.po)",
-      "Bash(grep -B2 \"templates\\\\\\\\\\\\\\\\AdminUsers\\\\\\\\\\\\\\\\index.php:198\" logs/error.log)"
+      "Bash(grep -B2 \"templates\\\\\\\\\\\\\\\\AdminUsers\\\\\\\\\\\\\\\\index.php:198\" logs/error.log)",
+      "WebFetch(domain:www.here.com)"
     ]
   }
 }

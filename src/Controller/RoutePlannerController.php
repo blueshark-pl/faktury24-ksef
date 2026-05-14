@@ -394,8 +394,8 @@ class RoutePlannerController extends AppController
         }
         try {
             $svc = new HereRoutingService();
-            // 10 km szerokości korytarza (=5km każda strona)
-            $stops = $svc->truckStopsAlongRoute($polylines, 10000);
+            // Sample every 50km, max 10 samples, 25km radius
+            $stops = $svc->truckStopsAlongRoute($polylines, 50, 10, 25000);
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode(['ok' => true, 'stops' => $stops], JSON_UNESCAPED_UNICODE));
         } catch (\Throwable $e) {

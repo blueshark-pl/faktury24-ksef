@@ -526,84 +526,97 @@ class HereRoutingService
     /**
      * Szukaj truck-friendly POI (parkingi/stacje) wzdłuż trasy.
      *
-     * Używa HERE Browse z parametrem `route=POLYLINE;w=WIDTH_M` — dedykowany corridor search.
-     * Browse jest preferowany do route-corridor (Discover też wspiera ale dla q=).
+     * HERE `route=` parametr powodował HTTP 414 (URL za długi). Używamy sample points
+     * + Browse z `in=circle:lat,lng;r=R` (Browse respektuje circle, Discover czasem nie).
      *
-     * @param array<int, string> $polylines  Flexible polylines z routeMulti
-     * @param int                $corridorWidthM Szerokość korytarza w metrach (każda strona)
+     * @param array<int, string> $polylines      Flexible polylines z routeMulti
+     * @param int                $sampleEveryKm  Co ile km próbkujemy
+     * @param int                $maxSamples     Max liczba sample (limit API calls)
+     * @param int                $radiusM        Promień przeszukiwania per sample
      * @return array<int, array{id:string,title:string,address:string,lat:float,lng:float,category:string,category_id:string,distance:?int,type:string}>
      */
-    public function truckStopsAlongRoute(array $polylines, int $corridorWidthM = 10000): array
+    public function truckStopsAlongRoute(array $polylines, int $sampleEveryKm = 50, int $maxSamples = 10, int $radiusM = 25000): array
     {
         Log::debug('truckStopsAlongRoute: input polylines=' . count($polylines)
-            . ', corridor width=' . $corridorWidthM . 'm');
+            . ', sampleEveryKm=' . $sampleEveryKm . ', maxSamples=' . $maxSamples . ', radiusM=' . $radiusM);
         if (empty($polylines)) return [];
 
-        // HERE Browse + parametr `route` — wyszukiwanie w korytarzu wzdłuż polyline.
-        // q jest opcjonalne dla Browse, używamy categories (Browse API).
-        // Discover używa q + route, ale Browse z route to klasyczny corridor search.
-        $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
-
-        // Kategorie HERE Places (v3 taxonomy):
-        //  700-7000-0107 = Parking Lot
-        //  700-7000-0108 = Parking Garage
-        //  700-7900-0000 = Truck Parking
-        //  700-7900-0107 = Truck Stop / Plaza
-        //  700-7600-0000 = Petrol/Gasoline Station
-        // Dla bezpieczeństwa próbujemy szerszych prefixów też.
-        $categoryGroups = [
-            ['ids' => '550-5510-0202,700-7900-0107',          'type' => 'truck_stop'],   // Truck Stop/Plaza
-            ['ids' => '700-7600-0000,700-7600,200-2100-0019', 'type' => 'fuel_station'], // Petrol/Gasoline
-            ['ids' => '700-7900,700-7000-0107,700-7000-0108', 'type' => 'parking'],      // Parking incl. truck
-        ];
+        // Sample punktów wzdłuż trasy (haversine)
+        $points = [];
+        foreach ($polylines as $poly) {
+            $decoded = self::decodePolyline($poly);
+            if (empty($decoded)) continue;
+            $points[] = $decoded[0];
+            $lastSampleKm = 0.0;
+            $cumKm = 0.0;
+            for ($i = 1; $i < count($decoded); $i++) {
+                $cumKm += $this->haversineKm($decoded[$i - 1], $decoded[$i]);
+                if ($cumKm - $lastSampleKm >= $sampleEveryKm) {
+                    $points[] = $decoded[$i];
+                    $lastSampleKm = $cumKm;
+                    if (count($points) >= $maxSamples) break 2;
+                }
+            }
+            if (count($points) < $maxSamples) {
+                $points[] = end($decoded);
+            }
+        }
+        Log::debug('Sample points: ' . count($points));
 
         $stops = [];
         $seen = [];
+        $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
+        $categoryGroups = [
+            ['ids' => '700-7900-0107,550-5510-0202',          'type' => 'truck_stop'],
+            ['ids' => '700-7600-0000,700-7600-0116,700-7600','type' => 'fuel_station'],
+            ['ids' => '700-7900,700-7900-0000',               'type' => 'parking'],
+        ];
 
-        foreach ($polylines as $polyIdx => $poly) {
-            if (empty($poly)) continue;
+        foreach ($points as $ptIdx => $pt) {
             foreach ($categoryGroups as $cg) {
                 try {
-                    // route=POLYLINE;w=WIDTH — corridor po HERE Search API
-                    $routeParam = $poly . ';w=' . $corridorWidthM;
                     $resp = $this->client->get($browseUrl, [
-                        'route'      => $routeParam,
+                        'at'         => $pt['lat'] . ',' . $pt['lng'],
+                        'in'         => 'circle:' . $pt['lat'] . ',' . $pt['lng'] . ';r=' . $radiusM,
                         'categories' => $cg['ids'],
-                        'limit'      => 30,
+                        'limit'      => 15,
                         'apiKey'     => $this->apiKey,
                         'lang'       => 'pl-PL',
                     ]);
                     if (!$resp->isOk()) {
-                        Log::warning('HERE browse(route) HTTP ' . $resp->getStatusCode() . ' (cat=' . $cg['ids'] . ', poly#' . $polyIdx . '): ' . $resp->getStringBody());
+                        Log::warning('HERE Browse HTTP ' . $resp->getStatusCode() . ' (cat=' . $cg['type'] . ', sample#' . $ptIdx . '): ' . substr($resp->getStringBody(), 0, 200));
                         continue;
                     }
                     $data = $resp->getJson();
                     $items = $data['items'] ?? [];
-                    Log::debug('  Browse(route) cat=' . $cg['type'] . ' poly#' . $polyIdx . ': ' . count($items) . ' items');
+                    if (!empty($items)) {
+                        Log::debug('  Browse cat=' . $cg['type'] . ' sample#' . $ptIdx
+                            . ' (' . round($pt['lat'], 2) . ',' . round($pt['lng'], 2) . '): '
+                            . count($items) . ' items, first=' . ($items[0]['title'] ?? '?')
+                            . ' @ ' . round($items[0]['position']['lat'] ?? 0, 2) . ',' . round($items[0]['position']['lng'] ?? 0, 2));
+                    }
                     foreach ($items as $item) {
                         $id = (string)($item['id'] ?? '');
                         if ($id === '' || isset($seen[$id])) continue;
                         $seen[$id] = true;
-                        $catName = (string)($item['categories'][0]['name'] ?? '');
-                        $catId   = (string)($item['categories'][0]['id'] ?? '');
                         $stops[] = [
                             'id'          => $id,
                             'title'       => (string)($item['title'] ?? ''),
                             'address'     => (string)($item['address']['label'] ?? ''),
                             'lat'         => (float)($item['position']['lat'] ?? 0),
                             'lng'         => (float)($item['position']['lng'] ?? 0),
-                            'category'    => $catName,
-                            'category_id' => $catId,
+                            'category'    => (string)($item['categories'][0]['name'] ?? ''),
+                            'category_id' => (string)($item['categories'][0]['id'] ?? ''),
                             'distance'    => $item['distance'] ?? null,
                             'type'        => $cg['type'],
                         ];
                     }
                 } catch (\Throwable $e) {
-                    Log::warning('HERE browse(route) error: ' . $e->getMessage());
+                    Log::warning('HERE Browse error: ' . $e->getMessage());
                 }
             }
         }
-        Log::debug('Truck POI corridor search: ' . count($stops) . ' unique results');
+        Log::debug('Truck POI search: ' . count($points) . ' samples × 3 cat groups → ' . count($stops) . ' unique results');
         return $stops;
     }
 
