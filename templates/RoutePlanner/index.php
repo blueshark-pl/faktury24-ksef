@@ -837,6 +837,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                         <th><?= __('Kraj') ?></th>
                                         <th><?= __('System') ?></th>
                                         <th><?= __('Odcinek / opłata') ?></th>
+                                        <th><?= __('Klasa HERE') ?></th>
                                         <th class="text-end"><?= __('Cena') ?></th>
                                         <th><?= __('Płatność') ?></th>
                                     </tr>
@@ -2689,11 +2690,42 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 origDisplay = '<div class="text-warning" style="font-size:.7rem" title="<?= __('Brak konwersji do') ?> ' + escapeHtml(targetCurrency) + '"><i class="ri-error-warning-line"></i></div>';
             }
             var priceCell = '<strong>' + fmtNum(mainPrice, 2) + '</strong> ' + escapeHtml(mainCur) + origDisplay;
+            // Klasa HERE (vehicle_category) + pricing method
+            var classCell = '';
+            if (f.vehicle_category) {
+                classCell = '<span class="badge bg-info-subtle text-info border">' + escapeHtml(f.vehicle_category) + '</span>';
+            } else {
+                classCell = '<span class="text-muted small">—</span>';
+            }
+            if (f.pricing_method) {
+                var methodLabel = ({
+                    'perKm': 'per km',
+                    'perDay': 'dzienne',
+                    'perTime': 'czasowe',
+                    'flat': 'ryczałt',
+                    'vignette': 'winieta'
+                }[f.pricing_method]) || f.pricing_method;
+                classCell += ' <span class="text-muted small">' + escapeHtml(methodLabel) + '</span>';
+            }
+
+            // Dodatkowe info pod nazwą: charged distance + discount
+            var extraInfo = '';
+            if (f.charged_distance_km) {
+                extraInfo += '<div class="text-muted" style="font-size:.7rem"><i class="ri-roadster-line me-1"></i>' + fmtNum(f.charged_distance_km, 1) + ' km naliczonych</div>';
+            }
+            if (f.discount && f.discount.value) {
+                extraInfo += '<div class="text-success" style="font-size:.7rem"><i class="ri-discount-percent-line me-1"></i>Rabat: ' + escapeHtml(f.discount.type) + ' −' + fmtNum(f.discount.value, 2) + '</div>';
+            }
+            if (f.fare_id) {
+                extraInfo += '<div class="text-muted" style="font-size:.65rem;opacity:.6"><code>' + escapeHtml(f.fare_id) + '</code></div>';
+            }
+
             tbody.innerHTML +=
                 '<tr>'
                 + '<td>' + flagSpan(f.country) + '</td>'
                 + '<td><span class="text-truncate d-inline-block" style="max-width:200px" title="' + escapeHtml(f.system) + '">' + escapeHtml(f.system || '—') + '</span></td>'
-                + '<td>' + nameCell + '</td>'
+                + '<td>' + nameCell + extraInfo + '</td>'
+                + '<td>' + classCell + '</td>'
                 + '<td class="text-end">' + priceCell + '</td>'
                 + '<td>' + paymentBadge(f.payment_method) + '</td>'
                 + '</tr>';
@@ -2703,13 +2735,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var tfoot = document.getElementById('tolls-tfoot');
         var countryRows = Object.keys(route.tolls_by_country || {}).map(function (cc) {
             return '<tr><td>' + flagSpan(cc) + '</td>'
-                 + '<td colspan="2" class="text-muted">' + '<?= __('Suma') ?> ' + escapeHtml(cc) + '</td>'
+                 + '<td colspan="3" class="text-muted">' + '<?= __('Suma') ?> ' + escapeHtml(cc) + '</td>'
                  + '<td class="text-end">' + fmtNum(route.tolls_by_country[cc], 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
                  + '<td></td></tr>';
         }).join('');
         tfoot.innerHTML = countryRows
             + '<tr style="border-top:2px solid #e5e7eb">'
-            + '<td colspan="3" class="text-end"><?= __('RAZEM') ?></td>'
+            + '<td colspan="4" class="text-end"><?= __('RAZEM') ?></td>'
             + '<td class="text-end fs-6">' + fmtNum(route.tolls_total || 0, 2) + ' ' + escapeHtml(route.tolls_currency || 'EUR') + '</td>'
             + '<td></td></tr>';
 

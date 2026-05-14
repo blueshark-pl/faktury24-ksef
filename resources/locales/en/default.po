@@ -2973,3 +2973,6 @@ msgstr "HERE auto-calculates tolls from these parameters. If the class differs f
 
 msgid "Pojazd to ZESPÓŁ — wprowadź sumy: liczbę osi (ciągnik + naczepa), DMC zespołu, max nacisk osi. EU normatywny zespół: 16,5 m × 2,55 m × 4 m, 40 t, 11,5 t/oś napędowa (Dyr. 96/53/EC)."
 msgstr "Vehicle = COMBINATION — enter totals: axle count (tractor + trailer), combination GVW, max axle load. EU normative combination: 16.5 m × 2.55 m × 4 m, 40 t, 11.5 t/drive axle (Dir. 96/53/EC)."
+
+msgid "Klasa HERE"
+msgstr "HERE class"

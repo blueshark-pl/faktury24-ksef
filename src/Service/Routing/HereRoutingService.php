@@ -410,6 +410,7 @@ class HereRoutingService
             }
 
             $routesOut = [];
+            $firstTollLogged = false; // do debug log pierwszego toll z HERE
             foreach ($data['routes'] as $route) {
                 $polylines = [];
                 $totalDist = 0;
@@ -447,10 +448,16 @@ class HereRoutingService
                         ];
                     }
 
-                    foreach (($sect['tolls'] ?? []) as $toll) {
+                    foreach (($sect['tolls'] ?? []) as $tollIdx => $toll) {
                         $cc = (string)($toll['countryCode'] ?? '??');
                         $tollSystem  = (string)($toll['tollSystem'] ?? '');
                         $paymentMethods = (array)($toll['paymentMethods'] ?? []);
+
+                        // Debug: pełna struktura pierwszego toll dla diagnostyki
+                        if ($tollIdx === 0 && empty($firstTollLogged)) {
+                            Log::debug('HERE toll[0] structure: ' . json_encode($toll, JSON_UNESCAPED_UNICODE));
+                            $firstTollLogged = true;
+                        }
 
                         // L3: lokalizacje bramek — HERE czasem zwraca je w toll.tollSegments[]
                         foreach (($toll['tollSegments'] ?? []) as $seg) {
@@ -477,6 +484,21 @@ class HereRoutingService
                             $fpm    = (string)($fare['paymentMethod'] ?? (is_array($paymentMethods) && count($paymentMethods) ? implode(',', $paymentMethods) : ''));
                             $passValidity = (string)($fare['passValidityPeriod'] ?? '');
 
+                            // Dodatkowe pola które HERE może zwrócić
+                            $vehicleCat = (string)($fare['vehicleCategory'] ?? '');
+                            $fareId     = (string)($fare['id'] ?? '');
+                            $discountInfo = null;
+                            if (!empty($fare['discount'])) {
+                                $discountInfo = [
+                                    'type' => (string)($fare['discount']['type'] ?? ''),
+                                    'value' => (float)($fare['discount']['value'] ?? 0),
+                                ];
+                            }
+                            // chargedDistance — niektóre systemy zwracają długość naliczania
+                            $chargedDistanceM = (int)($fare['chargedDistance'] ?? 0);
+                            // pricingMethod — np. 'perKm', 'flat', 'vignette'
+                            $pricingMethod = (string)($fare['pricingMethod'] ?? '');
+
                             $isVignette = (stripos($reason, 'vignette') !== false) || $passValidity !== '';
 
                             // AGGREGATION — wszystko w żądanej walucie ($currency).
@@ -496,19 +518,25 @@ class HereRoutingService
                             }
                             // tollsCurrency = ZAWSZE żądana waluta (nie nadpisuj per fare)
 
-                            // L1: szczegółowy wpis (per fare) — zachowujemy oryginalną cenę I converted
+                            // L1: szczegółowy wpis (per fare) — zachowujemy wszystkie zwrócone pola
                             $tollsBreakdown[] = [
-                                'country'          => $cc,
-                                'system'           => $tollSystem,
-                                'name'             => $name,
-                                'price'            => round($price, 2),
-                                'currency'         => $cur,
-                                'converted_price'  => $convPrice > 0 ? round($convPrice, 2) : null,
-                                'converted_curr'   => $convPrice > 0 ? $convCur : null,
-                                'payment_method'   => $fpm,
-                                'reason'           => $reason,
-                                'is_vignette'      => $isVignette,
-                                'pass_validity'    => $passValidity,
+                                'country'           => $cc,
+                                'system'            => $tollSystem,
+                                'name'              => $name,
+                                'price'             => round($price, 2),
+                                'currency'          => $cur,
+                                'converted_price'   => $convPrice > 0 ? round($convPrice, 2) : null,
+                                'converted_curr'    => $convPrice > 0 ? $convCur : null,
+                                'payment_method'    => $fpm,
+                                'reason'            => $reason,
+                                'is_vignette'       => $isVignette,
+                                'pass_validity'     => $passValidity,
+                                // Dodatkowe pola HERE (mogą być puste)
+                                'vehicle_category'  => $vehicleCat,
+                                'fare_id'           => $fareId,
+                                'pricing_method'    => $pricingMethod,
+                                'charged_distance_km' => $chargedDistanceM > 0 ? round($chargedDistanceM / 1000, 1) : null,
+                                'discount'          => $discountInfo,
                             ];
 
                             // L2: winieta — zbieramy dedup'owane (country + system + validity)
