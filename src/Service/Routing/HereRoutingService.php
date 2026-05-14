@@ -525,72 +525,61 @@ class HereRoutingService
 
     /**
      * Szukaj truck-friendly POI (parkingi/stacje) wzdłuż trasy.
-     * Próbkuje punkty co N km z polyline, dla każdego wywołuje HERE Browse z kategoriami.
+     *
+     * Używa HERE Browse z parametrem `route=POLYLINE;w=WIDTH_M` — dedykowany corridor search.
+     * Browse jest preferowany do route-corridor (Discover też wspiera ale dla q=).
      *
      * @param array<int, string> $polylines  Flexible polylines z routeMulti
-     * @param int                $sampleEveryKm  Co ile km próbkujemy (domyślnie 100)
-     * @param int                $maxSamples     Max liczba próbek (limit API calls)
+     * @param int                $corridorWidthM Szerokość korytarza w metrach (każda strona)
      * @return array<int, array{id:string,title:string,address:string,lat:float,lng:float,category:string,category_id:string,distance:?int,type:string}>
      */
-    public function truckStopsAlongRoute(array $polylines, int $sampleEveryKm = 100, int $maxSamples = 8): array
+    public function truckStopsAlongRoute(array $polylines, int $corridorWidthM = 10000): array
     {
-        // Debug: ile polyline na wejściu, długość pierwszej
         Log::debug('truckStopsAlongRoute: input polylines=' . count($polylines)
-            . ', first len=' . strlen($polylines[0] ?? '')
-            . ', first preview=' . substr($polylines[0] ?? '', 0, 30));
+            . ', corridor width=' . $corridorWidthM . 'm');
+        if (empty($polylines)) return [];
 
-        $points = [];
-        foreach ($polylines as $idx => $poly) {
-            $decoded = self::decodePolyline($poly);
-            Log::debug('  polyline #' . $idx . ' decoded points=' . count($decoded));
-            if (empty($decoded)) continue;
-            // Pierwszy punkt zawsze
-            $points[] = $decoded[0];
-            $lastSampleKm = 0.0;
-            $cumKm = 0.0;
-            for ($i = 1; $i < count($decoded); $i++) {
-                $cumKm += $this->haversineKm($decoded[$i - 1], $decoded[$i]);
-                if ($cumKm - $lastSampleKm >= $sampleEveryKm) {
-                    $points[] = $decoded[$i];
-                    $lastSampleKm = $cumKm;
-                    if (count($points) >= $maxSamples) break;
-                }
-            }
-            // Ostatni
-            if (count($points) < $maxSamples) {
-                $points[] = end($decoded);
-            }
-            if (count($points) >= $maxSamples) break;
-        }
+        // HERE Browse + parametr `route` — wyszukiwanie w korytarzu wzdłuż polyline.
+        // q jest opcjonalne dla Browse, używamy categories (Browse API).
+        // Discover używa q + route, ale Browse z route to klasyczny corridor search.
+        $browseUrl = 'https://browse.search.hereapi.com/v1/browse';
+
+        // Kategorie HERE Places (v3 taxonomy):
+        //  700-7000-0107 = Parking Lot
+        //  700-7000-0108 = Parking Garage
+        //  700-7900-0000 = Truck Parking
+        //  700-7900-0107 = Truck Stop / Plaza
+        //  700-7600-0000 = Petrol/Gasoline Station
+        // Dla bezpieczeństwa próbujemy szerszych prefixów też.
+        $categoryGroups = [
+            ['ids' => '550-5510-0202,700-7900-0107',          'type' => 'truck_stop'],   // Truck Stop/Plaza
+            ['ids' => '700-7600-0000,700-7600,200-2100-0019', 'type' => 'fuel_station'], // Petrol/Gasoline
+            ['ids' => '700-7900,700-7000-0107,700-7000-0108', 'type' => 'parking'],      // Parking incl. truck
+        ];
 
         $stops = [];
         $seen = [];
-        // Discover API — text search z lepszym zasięgiem. 3 queries per sample dla różnych typów.
-        $discoverUrl = 'https://discover.search.hereapi.com/v1/discover';
-        $queries = [
-            ['q' => 'truck stop',    'type' => 'truck_stop'],
-            ['q' => 'gas station',   'type' => 'fuel_station'],
-            ['q' => 'parking',       'type' => 'parking'],
-        ];
-        $radiusM = 30000; // 30 km — twardy limit, bez tego Discover zwraca globalne wyniki
-        foreach ($points as $ptIdx => $pt) {
-            foreach ($queries as $qInfo) {
+
+        foreach ($polylines as $polyIdx => $poly) {
+            if (empty($poly)) continue;
+            foreach ($categoryGroups as $cg) {
                 try {
-                    $resp = $this->client->get($discoverUrl, [
-                        'at'     => $pt['lat'] . ',' . $pt['lng'],
-                        'in'     => 'circle:' . $pt['lat'] . ',' . $pt['lng'] . ';r=' . $radiusM,
-                        'q'      => $qInfo['q'],
-                        'limit'  => 5,
-                        'apiKey' => $this->apiKey,
-                        'lang'   => 'pl-PL',
+                    // route=POLYLINE;w=WIDTH — corridor po HERE Search API
+                    $routeParam = $poly . ';w=' . $corridorWidthM;
+                    $resp = $this->client->get($browseUrl, [
+                        'route'      => $routeParam,
+                        'categories' => $cg['ids'],
+                        'limit'      => 30,
+                        'apiKey'     => $this->apiKey,
+                        'lang'       => 'pl-PL',
                     ]);
                     if (!$resp->isOk()) {
-                        Log::warning('HERE discover HTTP ' . $resp->getStatusCode() . ' (q=' . $qInfo['q'] . ') at ' . $pt['lat'] . ',' . $pt['lng'] . ': ' . $resp->getStringBody());
+                        Log::warning('HERE browse(route) HTTP ' . $resp->getStatusCode() . ' (cat=' . $cg['ids'] . ', poly#' . $polyIdx . '): ' . $resp->getStringBody());
                         continue;
                     }
                     $data = $resp->getJson();
                     $items = $data['items'] ?? [];
-                    Log::debug('  Discover q=' . $qInfo['q'] . ' at sample #' . $ptIdx . ': ' . count($items) . ' items');
+                    Log::debug('  Browse(route) cat=' . $cg['type'] . ' poly#' . $polyIdx . ': ' . count($items) . ' items');
                     foreach ($items as $item) {
                         $id = (string)($item['id'] ?? '');
                         if ($id === '' || isset($seen[$id])) continue;
@@ -606,15 +595,15 @@ class HereRoutingService
                             'category'    => $catName,
                             'category_id' => $catId,
                             'distance'    => $item['distance'] ?? null,
-                            'type'        => $qInfo['type'],
+                            'type'        => $cg['type'],
                         ];
                     }
                 } catch (\Throwable $e) {
-                    Log::warning('HERE discover error: ' . $e->getMessage());
+                    Log::warning('HERE browse(route) error: ' . $e->getMessage());
                 }
             }
         }
-        Log::debug('Truck POI search: ' . count($points) . ' samples × 3 queries, ' . count($stops) . ' unique results');
+        Log::debug('Truck POI corridor search: ' . count($stops) . ' unique results');
         return $stops;
     }
 
