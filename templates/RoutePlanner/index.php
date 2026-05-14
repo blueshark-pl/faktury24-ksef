@@ -421,6 +421,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <i class="ri-route-line me-2 text-success"></i>GPX <small class="text-muted">(<?= __('Garmin/Sygic') ?>)</small></a></li>
                     <li><a class="dropdown-item" href="#" id="btn-export-kml">
                         <i class="ri-earth-line me-2 text-info"></i>KML <small class="text-muted">(Google Earth)</small></a></li>
+                    <li><a class="dropdown-item" href="#" id="btn-export-ical">
+                        <i class="ri-calendar-line me-2 text-warning"></i>iCal <small class="text-muted">(Outlook/Google)</small></a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="#" id="btn-embed-link">
                         <i class="ri-code-line me-2 text-primary"></i><?= __('Embed (read-only)') ?></a></li>
@@ -905,12 +907,44 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+        <button type="button" class="btn btn-info text-white" id="btn-ai-brief-qr" style="display:none" title="<?= __('Pokaż QR — kierowca zeskanuje telefonem') ?>">
+          <i class="ri-qr-code-line me-1"></i><?= __('QR dla kierowcy') ?>
+        </button>
         <button type="button" class="btn btn-warning" id="btn-ai-brief-copy" style="display:none">
           <i class="ri-clipboard-line me-1"></i><?= __('Kopiuj') ?>
         </button>
         <button type="button" class="btn btn-warning text-white" id="btn-ai-brief-run">
           <i class="ri-sparkling-2-line me-1"></i><?= __('Generuj') ?>
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QR Brief modal -->
+<div class="modal fade" id="qrBriefModal" tabindex="-1">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0891b2, #06b6d4); color: white;">
+        <h5 class="modal-title"><i class="ri-qr-code-line me-2"></i><?= __('QR kod dla kierowcy') ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div class="text-muted small mb-3">
+          <i class="ri-information-line me-1"></i>
+          <?= __('Kierowca skanuje telefonem i otwiera brief — bez drukowania') ?>
+        </div>
+        <div id="qr-image-wrapper" class="d-flex justify-content-center mb-3" style="min-height:320px;align-items:center;background:#f8fafc;border-radius:8px;padding:16px">
+          <div class="spinner-border text-info"></div>
+        </div>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-qr-print">
+            <i class="ri-printer-line me-1"></i><?= __('Drukuj') ?>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="btn-qr-download">
+            <i class="ri-download-line me-1"></i><?= __('Pobierz PNG') ?>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2731,6 +2765,88 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         downloadFile('route-' + Date.now() + '.kml', buildKml(), 'application/vnd.google-earth.kml+xml');
         toast('<?= __('KML wyeksportowany') ?>', 'success');
     });
+
+    // #15 — iCal/Outlook export
+    function fmtIcalDt(d) {
+        // YYYYMMDDTHHmmssZ (UTC)
+        var dt = (typeof d === 'string') ? new Date(d) : d;
+        return dt.getUTCFullYear()
+            + String(dt.getUTCMonth() + 1).padStart(2, '0')
+            + String(dt.getUTCDate()).padStart(2, '0')
+            + 'T' + String(dt.getUTCHours()).padStart(2, '0')
+            + String(dt.getUTCMinutes()).padStart(2, '0')
+            + String(dt.getUTCSeconds()).padStart(2, '0') + 'Z';
+    }
+    function icalEscape(s) {
+        return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+    }
+    function buildIcal() {
+        if (!lastResponse) return '';
+        var r = lastResponse.routes[activeAltIdx];
+        var pts = lastResponse.points || [];
+        var now = new Date();
+        var stamp = fmtIcalDt(now);
+        var uid = 'booklio-' + now.getTime();
+        var lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Booklio TMS//Route Planner//EN',
+            'CALSCALE:GREGORIAN',
+            'METHOD:PUBLISH'
+        ];
+        // Główne wydarzenie - cała trasa
+        var totalLabel = pts.map(function (p) { return p.label || p.address || ''; }).filter(Boolean).join(' → ');
+        var startISO = r.sections && r.sections[0] && r.sections[0].departure_time;
+        var endISO   = r.sections && r.sections[r.sections.length - 1] && r.sections[r.sections.length - 1].arrival_time;
+        if (startISO && endISO) {
+            var dur = '~' + Math.round(r.duration_min / 60) + 'h, ' + r.distance_km + ' km';
+            lines.push('BEGIN:VEVENT');
+            lines.push('UID:' + uid + '-route@booklio.pl');
+            lines.push('DTSTAMP:' + stamp);
+            lines.push('DTSTART:' + fmtIcalDt(startISO));
+            lines.push('DTEND:'   + fmtIcalDt(endISO));
+            lines.push('SUMMARY:🚛 ' + icalEscape(totalLabel));
+            lines.push('DESCRIPTION:' + icalEscape('Trasa: ' + totalLabel + '\\nDystans: ' + r.distance_km + ' km\\nCzas: ' + dur
+                + (r.tolls_total ? '\\nOpłaty: ' + r.tolls_total + ' ' + (r.tolls_currency || 'EUR') : '')));
+            lines.push('END:VEVENT');
+        }
+        // Per waypoint event (1h przy każdym)
+        pts.forEach(function (p, idx) {
+            var wp = waypoints[idx] || {};
+            var iso = '';
+            if (idx === 0 && r.sections && r.sections[0]) iso = r.sections[0].departure_time;
+            else if (r.sections && r.sections[idx - 1])   iso = r.sections[idx - 1].arrival_time;
+            iso = wp.date || iso;
+            if (!iso) return;
+            var start = new Date(iso);
+            var end   = new Date(start.getTime() + 30 * 60000); // +30 min default
+            var letter = String.fromCharCode(65 + idx);
+            var typeLabel = idx === 0 ? 'Załadunek' : (idx === pts.length - 1 ? 'Dostawa' : 'Postój');
+            lines.push('BEGIN:VEVENT');
+            lines.push('UID:' + uid + '-wp' + idx + '@booklio.pl');
+            lines.push('DTSTAMP:' + stamp);
+            lines.push('DTSTART:' + fmtIcalDt(start));
+            lines.push('DTEND:'   + fmtIcalDt(end));
+            lines.push('SUMMARY:' + icalEscape('📍 ' + letter + '. ' + typeLabel + ' — ' + (p.label || p.address || '')));
+            if (p.lat && p.lng) {
+                lines.push('GEO:' + p.lat.toFixed(6) + ';' + p.lng.toFixed(6));
+                lines.push('LOCATION:' + icalEscape((p.label || p.address || '') + ' (' + p.lat.toFixed(4) + ', ' + p.lng.toFixed(4) + ')'));
+            }
+            lines.push('DESCRIPTION:' + icalEscape(typeLabel + ' — ' + (p.label || p.address || '')));
+            lines.push('END:VEVENT');
+        });
+        lines.push('END:VCALENDAR');
+        // CRLF — zgodnie z RFC 5545
+        return lines.join('\r\n');
+    }
+    document.getElementById('btn-export-ical').addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!lastResponse) { toast('<?= __('Najpierw wyznacz trasę.') ?>', 'warning'); return; }
+        var ics = buildIcal();
+        if (!ics) { toast('<?= __('Brak danych do eksportu.') ?>', 'warning'); return; }
+        downloadFile('route-' + Date.now() + '.ics', ics, 'text/calendar;charset=utf-8');
+        toast('<?= __('iCal wyeksportowany — otwórz w Outlook/Google Calendar') ?>', 'success');
+    });
     document.getElementById('btn-embed-link').addEventListener('click', function (e) {
         e.preventDefault();
         var pts = waypoints.filter(function (w) { return w.lat != null && w.lng != null; });
@@ -3069,6 +3185,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             pre.textContent = res.data.brief;
             pre.style.display = 'block';
             document.getElementById('btn-ai-brief-copy').style.display = '';
+            document.getElementById('btn-ai-brief-qr').style.display = '';
         }).catch(function (e) {
             document.getElementById('ai-brief-loading').style.display = 'none';
             toast('<?= __('Błąd AI:') ?> ' + e.message, 'error');
@@ -3084,6 +3201,66 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 toast('<?= __('Brief skopiowany') ?>', 'success');
             });
         }
+    });
+
+    // #16 — QR brief dla kierowcy
+    document.getElementById('btn-ai-brief-qr').addEventListener('click', function () {
+        var briefText = document.getElementById('ai-brief-result').textContent;
+        if (!briefText) { toast('<?= __('Najpierw wygeneruj brief.') ?>', 'warning'); return; }
+        // QR ma limit ~2900 znaków dla Version 40 (ECC L). Trimujemy jeśli za długi.
+        var qrPayload = briefText.length > 2500 ? briefText.substring(0, 2497) + '...' : briefText;
+        var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&format=png&data='
+                  + encodeURIComponent(qrPayload);
+        var wrapper = document.getElementById('qr-image-wrapper');
+        wrapper.innerHTML = '<div class="spinner-border text-info"></div>';
+        var img = new Image();
+        img.onload = function () {
+            wrapper.innerHTML = '';
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.id = 'qr-image';
+            wrapper.appendChild(img);
+        };
+        img.onerror = function () {
+            wrapper.innerHTML = '<div class="text-danger"><?= __('Błąd generowania QR') ?></div>';
+        };
+        img.src = qrUrl;
+        new bootstrap.Modal(document.getElementById('qrBriefModal')).show();
+    });
+
+    document.getElementById('btn-qr-print').addEventListener('click', function () {
+        var img = document.getElementById('qr-image');
+        if (!img) return;
+        var w = window.open('', '_blank', 'width=500,height=600');
+        if (!w) { toast('<?= __('Włącz wyskakujące okna') ?>', 'warning'); return; }
+        var pts = (lastResponse && lastResponse.points) || [];
+        var routeLabel = pts.map(function (p) { return p.label || p.address || ''; }).filter(Boolean).join(' → ');
+        w.document.write(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR Brief</title>'
+            + '<style>body{font-family:Arial;text-align:center;padding:30px;color:#111}'
+            + 'h1{font-size:18px;margin:0 0 8px}h2{font-size:13px;color:#6b7280;font-weight:400;margin:0 0 24px}'
+            + 'img{max-width:400px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:white}'
+            + '.note{margin-top:20px;font-size:11px;color:#6b7280}'
+            + '@media print{button{display:none}}</style></head><body>'
+            + '<h1>🚛 Brief dla kierowcy</h1>'
+            + '<h2>' + (routeLabel ? routeLabel.replace(/</g, '&lt;') : '') + '</h2>'
+            + '<img src="' + img.src + '">'
+            + '<div class="note">Zeskanuj telefonem aby otworzyć brief · Booklio TMS</div>'
+            + '<button onclick="window.print()" style="margin-top:30px;padding:8px 24px">Drukuj</button>'
+            + '</body></html>'
+        );
+        w.document.close();
+        setTimeout(function () { w.print(); }, 400);
+    });
+
+    document.getElementById('btn-qr-download').addEventListener('click', function () {
+        var img = document.getElementById('qr-image');
+        if (!img) return;
+        var a = document.createElement('a');
+        a.href = img.src;
+        a.download = 'qr-brief-' + Date.now() + '.png';
+        a.target = '_blank';
+        a.click();
     });
 
     // ── #12 AI Route Optimizer ───────────────────────────────────────
