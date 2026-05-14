@@ -2486,7 +2486,21 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (vehicle.height_cm) paramParts.push('h=' + (vehicle.height_cm / 100).toFixed(1) + 'm');
         if (vehicle.length_cm) paramParts.push('L=' + (vehicle.length_cm / 100).toFixed(1) + 'm');
         if (vehicle.width_cm)  paramParts.push('w=' + (vehicle.width_cm / 100).toFixed(1) + 'm');
-        if (vehicle.emission_class) paramParts.push('<span class="badge bg-success">' + (vehicle.emission_class.toUpperCase().includes('EURO') ? vehicle.emission_class : 'EURO ' + vehicle.emission_class) + '</span>');
+        if (vehicle.emission_class) {
+            // Normalizacja zgodna z HereRoutingService::normalizeEmission()
+            var ec = String(vehicle.emission_class).toLowerCase().replace(/[\s_\-]+/g, '');
+            var euroNum = null;
+            var m = ec.match(/(?:euro?|eu|e)?([1-6])$/);
+            if (ec.includes('eev')) {
+                paramParts.push('<span class="badge bg-success">EURO EEV</span>');
+            } else if (m) {
+                euroNum = m[1];
+                paramParts.push('<span class="badge bg-success">EURO ' + euroNum + '</span>'
+                    + ' <span class="text-muted small">(wysłano: <code>euro' + euroNum + '</code>)</span>');
+            } else {
+                paramParts.push('<span class="badge bg-warning text-dark" title="HERE nie rozpozna tego formatu">⚠ EURO ' + escapeHtml(vehicle.emission_class) + '</span>');
+            }
+        }
         if (vehicle.tunnel_category) paramParts.push('Tunel ' + vehicle.tunnel_category);
         if (vehicle.hazardous_goods) paramParts.push('<span class="badge bg-danger-subtle text-danger border">ADR</span>');
         if (!paramParts.length) paramParts.push('<em class="text-muted">brak danych pojazdu — HERE traktuje jako osobowy</em>');

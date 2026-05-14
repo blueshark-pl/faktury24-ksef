@@ -357,13 +357,30 @@ class HereRoutingService
                 'emissionType'   => 'emission_class',
             ];
             foreach ($map as $hereKey => $vKey) {
-                if (!empty($vehicle[$vKey])) {
-                    $params["vehicle[$hereKey]"] = (string)$vehicle[$vKey];
+                if (empty($vehicle[$vKey])) continue;
+                $val = (string)$vehicle[$vKey];
+                // Normalizacja: HERE wymaga wartości w określonych formatach
+                if ($hereKey === 'emissionType') {
+                    $val = self::normalizeEmission($val);
+                    if ($val === '') continue;
                 }
+                if ($hereKey === 'tunnelCategory') {
+                    // HERE: B/C/D/E (jeden znak, uppercase)
+                    $val = strtoupper(substr(trim($val), 0, 1));
+                    if (!in_array($val, ['B', 'C', 'D', 'E'], true)) continue;
+                }
+                $params["vehicle[$hereKey]"] = $val;
             }
             if (!empty($vehicle['hazardous_goods'])) {
                 $params['vehicle[shippedHazardousGoods]'] = 'explosive,gas,flammable,combustible,organic,poison,radioactive,corrosive,poisonousInhalation,harmfulToWater,other';
             }
+            // Log co dokładnie wysyłamy do HERE dla pojazdu
+            $vehParams = array_intersect_key($params, array_flip([
+                'vehicle[grossWeight]', 'vehicle[weightPerAxle]', 'vehicle[height]',
+                'vehicle[width]', 'vehicle[length]', 'vehicle[axleCount]',
+                'vehicle[tunnelCategory]', 'vehicle[emissionType]', 'vehicle[shippedHazardousGoods]',
+            ]));
+            Log::debug('HERE vehicle params: ' . json_encode($vehParams, JSON_UNESCAPED_UNICODE));
         }
 
         // HERE expects repeated `via=lat,lng` params (NOT via[0]=, via[1]=)
@@ -740,6 +757,25 @@ class HereRoutingService
             Log::error('OSM Overpass error: ' . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * Normalizuje wartość emission_class do formatu HERE.
+     *
+     * HERE oczekuje: 'euro1' .. 'euro6' lub 'euroEev' (bez spacji/podkreśleń).
+     * Akceptujemy popularne formaty wpisywane przez użytkowników i przeliczamy.
+     */
+    public static function normalizeEmission(string $raw): string
+    {
+        // np. 'EURO 6', 'euro_6', 'Euro-6', 'eu6', '6' → 'euro6'
+        $s = strtolower(preg_replace('/[\s_\-]+/', '', $raw));
+        if (str_contains($s, 'eev')) return 'euroEev';
+        // 'euro6' / 'eu6' / 'e6' / '6'
+        if (preg_match('/(?:euro?|eu|e)?([1-6])$/i', $s, $m)) {
+            return 'euro' . $m[1];
+        }
+        Log::warning("normalizeEmission: nieznany format '{$raw}' — pomijam");
+        return '';
     }
 
     /**
