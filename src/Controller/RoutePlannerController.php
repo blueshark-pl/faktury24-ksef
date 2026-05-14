@@ -138,6 +138,7 @@ class RoutePlannerController extends AppController
                 'label'   => (string)($p['label']   ?? $p['address'] ?? ''),
                 'lat'     => isset($p['lat']) ? (float)$p['lat'] : null,
                 'lng'     => isset($p['lng']) ? (float)$p['lng'] : null,
+                'date'    => !empty($p['date']) ? (string)$p['date'] : null,
             ];
         }, $points);
 
@@ -209,6 +210,19 @@ class RoutePlannerController extends AppController
 
         try {
             $here = new HereRoutingService();
+            // Zbieramy daty per waypoint (mogą być puste)
+            $pointDates = [];
+            foreach ($points as $i => $p) {
+                $pointDates[$i] = trim((string)(((array)$p)['date'] ?? ''));
+            }
+            // (A) Auto-set departure z najwcześniejszej daty waypoint jeśli hero puste
+            if ($departure === '' && !empty($pointDates[0])) {
+                // datetime-local YYYY-MM-DDTHH:MM → ISO z lokalną strefą (HERE akceptuje "any")
+                $d = $pointDates[0];
+                if (strlen($d) === 16) $d .= ':00';
+                $departure = $d; // np. 2026-05-15T10:00:00 — HERE bierze jako "local"
+            }
+
             // Geocode wszystkich punktów które nie mają jeszcze lat/lng
             $resolved = [];
             foreach ($points as $i => $p) {
@@ -218,6 +232,7 @@ class RoutePlannerController extends AppController
                         'lat'   => (float)$p['lat'],
                         'lng'   => (float)$p['lng'],
                         'label' => (string)($p['label'] ?? $p['address'] ?? ''),
+                        'date'  => $pointDates[$i] ?? '',
                     ];
                     continue;
                 }
@@ -227,6 +242,7 @@ class RoutePlannerController extends AppController
                 }
                 $geo = $here->geocode($addr);
                 if (!$geo) return $this->jsonError(__('Nie znaleziono adresu: ') . $addr);
+                $geo['date'] = $pointDates[$i] ?? '';
                 $resolved[] = $geo;
             }
 

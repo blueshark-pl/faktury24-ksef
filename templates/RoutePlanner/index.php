@@ -840,6 +840,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             <input type="datetime-local" class="form-control form-control-sm waypoint-date"
                    style="font-size:.78rem;padding:.18rem .4rem">
             <span class="text-muted wp-date-label" style="font-size:.7rem;min-width:70px">Załadunek</span>
+            <span class="wp-eta-badge" style="display:none;font-size:.72rem;font-weight:600;padding:1px 6px;border-radius:8px"></span>
         </div>
     </div>
 </template>
@@ -1443,6 +1444,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderDistanceMarkers(data.routes[0]);
         renderBorderCrossings(data.routes[0], data.points || []);
         checkRestLawCompliance(data.routes[0]);
+        renderEtaBadges(data.routes[0]);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
@@ -1607,6 +1609,78 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         }
         requestAnimationFrame(step);
     }
+    // ─── ETA badges per waypoint (porównanie z datą deklarowaną) ──────
+    function renderEtaBadges(route) {
+        if (!route || !route.sections) return;
+        var rows = waypointsEl.querySelectorAll('.waypoint-row');
+        // ETA per waypoint:
+        //   wp[0]   = sections[0].departure_time (start)
+        //   wp[i]   = sections[i-1].arrival_time (i>=1)
+        function fmtDateTime(iso) {
+            try {
+                var d = new Date(iso);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            } catch (_) { return ''; }
+        }
+        function fmtDeltaMin(min) {
+            var abs = Math.abs(min);
+            if (abs < 60) return abs + ' min';
+            var h = Math.floor(abs / 60), m = abs % 60;
+            return h + 'h' + (m ? ' ' + m + 'min' : '');
+        }
+        rows.forEach(function (row, idx) {
+            var badge = row.querySelector('.wp-eta-badge');
+            if (!badge) return;
+            badge.style.display = 'none';
+            var iso = '';
+            if (idx === 0 && route.sections[0]) iso = route.sections[0].departure_time;
+            else if (route.sections[idx - 1])    iso = route.sections[idx - 1].arrival_time;
+            if (!iso) return;
+            var etaStr = fmtDateTime(iso);
+            var wp = waypoints[idx];
+            // Bez deklarowanej daty — pokaż tylko sugerowaną ETA na neutralnie
+            if (!wp || !wp.date) {
+                badge.style.display = '';
+                badge.style.background = '#eef2ff';
+                badge.style.color = '#3730a3';
+                badge.style.border = '1px solid #c7d2fe';
+                badge.title = '<?= __('Sugerowana ETA') ?>';
+                badge.innerHTML = '<i class="ri-time-line me-1"></i>ETA ' + etaStr;
+                return;
+            }
+            // Porównaj z deklarowaną
+            var declared = new Date(wp.date);
+            var predicted = new Date(iso);
+            if (isNaN(declared.getTime()) || isNaN(predicted.getTime())) return;
+            var diffMin = Math.round((predicted - declared) / 60000);
+            var abs = Math.abs(diffMin);
+            badge.style.display = '';
+            if (abs <= 15) {
+                badge.style.background = '#dcfce7';
+                badge.style.color = '#166534';
+                badge.style.border = '1px solid #86efac';
+                badge.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Na czas') ?>';
+                badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
+            } else if (diffMin > 0) {
+                // spóźnienie
+                var sev = abs > 60;
+                badge.style.background = sev ? '#fee2e2' : '#fef3c7';
+                badge.style.color    = sev ? '#991b1b' : '#92400e';
+                badge.style.border   = '1px solid ' + (sev ? '#fca5a5' : '#fde68a');
+                badge.innerHTML = '<i class="ri-alarm-warning-line me-1"></i><?= __('Spóźnienie') ?> +' + fmtDeltaMin(diffMin);
+                badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
+            } else {
+                // za wcześnie
+                badge.style.background = '#dbeafe';
+                badge.style.color = '#1e40af';
+                badge.style.border = '1px solid #93c5fd';
+                badge.innerHTML = '<i class="ri-rewind-line me-1"></i><?= __('Wcześniej') ?> −' + fmtDeltaMin(diffMin);
+                badge.title = '<?= __('Predykcja') ?>: ' + etaStr;
+            }
+        });
+    }
+
     function renderStatsBar(r, extra) {
         extra = extra || {};
         animateCounter(document.getElementById('stat-km'), r.distance_km, 1);
@@ -2273,7 +2347,14 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             if (wp.lat != null) fd.append('points[' + idx + '][lat]', String(wp.lat));
             if (wp.lng != null) fd.append('points[' + idx + '][lng]', String(wp.lng));
             if (wp.label) fd.append('points[' + idx + '][label]', wp.label);
+            if (wp.date)  fd.append('points[' + idx + '][date]', wp.date); // C: daty per waypoint
         });
+        // A: jeśli hero "Wyjazd" puste, a pierwszy punkt ma datę — użyj jej jako start
+        if (!departureTime && pts[0] && pts[0].date) {
+            try {
+                departureTime = new Date(pts[0].date).toISOString();
+            } catch (_) { /* invalid date — pomiń */ }
+        }
         fd.append('vehicle_id', vehicleId);
         fd.append('currency', currency);
         fd.append('alternatives', String(alternatives));

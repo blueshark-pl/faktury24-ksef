@@ -403,12 +403,14 @@ class HereRoutingService
                     $arr = $sect['arrival']['place']['location'] ?? null;
                     if ($dep && $arr) {
                         $sections[] = [
-                            'from_lat'     => (float)$dep['lat'],
-                            'from_lng'     => (float)$dep['lng'],
-                            'to_lat'       => (float)$arr['lat'],
-                            'to_lng'       => (float)$arr['lng'],
-                            'distance_km'  => round($sd / 1000, 1),
-                            'duration_min' => (int)round($st / 60),
+                            'from_lat'       => (float)$dep['lat'],
+                            'from_lng'       => (float)$dep['lng'],
+                            'to_lat'         => (float)$arr['lat'],
+                            'to_lng'         => (float)$arr['lng'],
+                            'distance_km'    => round($sd / 1000, 1),
+                            'duration_min'   => (int)round($st / 60),
+                            'departure_time' => (string)($sect['departure']['time'] ?? ''),
+                            'arrival_time'   => (string)($sect['arrival']['time']   ?? ''),
                         ];
                     }
 

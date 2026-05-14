@@ -2640,3 +2640,21 @@ msgstr "Ukrainian Hryvnia"
 
 msgid "Kliknij i wybierz kraje…"
 msgstr "Click to select countries…"
+
+msgid "Alternatywne trasy"
+msgstr "Alternative routes"
+
+msgid "Sugerowana ETA"
+msgstr "Suggested ETA"
+
+msgid "Na czas"
+msgstr "On time"
+
+msgid "Spóźnienie"
+msgstr "Late"
+
+msgid "Wcześniej"
+msgstr "Early"
+
+msgid "Predykcja"
+msgstr "Predicted"
