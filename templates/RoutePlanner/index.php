@@ -2114,6 +2114,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('btn-customer-offer').disabled = false;
         document.getElementById('btn-track-link').disabled = false;
         document.getElementById('btn-cmr').disabled = false;
+        // Aktywuj wizualnie pozycje 'ai-needs-route' w dropdown'ie AI
+        if (typeof refreshAiButtons === 'function') refreshAiButtons();
         document.getElementById('btn-save-template').disabled = false;
         enableExportButton();
     }
