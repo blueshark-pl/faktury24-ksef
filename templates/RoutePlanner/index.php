@@ -49,6 +49,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         background: radial-gradient(circle, rgba(167,139,250,.18), transparent 70%);
     }
     .rp-hero > * { position: relative; z-index: 1; }
+    /* Wiersz z buttonami (AI/Eksport) musi być nad stats-pill-bar żeby dropdowny nie znikały */
+    .rp-hero > .d-flex { z-index: 10; }
+    .rp-hero .dropdown-menu { z-index: 2000 !important; }
     /* Wymuś biały tekst (Bootstrap nadpisuje h2 default color) */
     .rp-hero h2,
     .rp-hero h2 *,
@@ -570,7 +573,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         </select>
                     </div>
                     <div class="col-6">
-                        <label class="form-label small mb-1"><?= __('Alternatywy') ?></label>
+                        <label class="form-label small mb-1"><?= __('Alternatywne trasy') ?></label>
                         <select class="form-select form-select-sm" id="alternatives"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select>
                     </div>
                 </div>
@@ -581,17 +584,17 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 <div class="row g-2 mt-1">
                     <div class="col-12">
                         <label class="form-label small mb-1"><?= __('Klasa ADR') ?></label>
-                        <select class="form-select form-select-sm" id="adr-class">
-                            <option value=""><?= __('— brak ADR —') ?></option>
-                            <option value="1">1 — <?= __('Materiały wybuchowe') ?></option>
-                            <option value="2">2 — <?= __('Gazy') ?></option>
-                            <option value="3">3 — <?= __('Ciecze łatwopalne') ?></option>
-                            <option value="4">4 — <?= __('Materiały stałe łatwopalne') ?></option>
-                            <option value="5">5 — <?= __('Utleniacze') ?></option>
-                            <option value="6">6 — <?= __('Toksyczne') ?></option>
-                            <option value="7">7 — <?= __('Radioaktywne') ?></option>
-                            <option value="8">8 — <?= __('Korozyjne') ?></option>
-                            <option value="9">9 — <?= __('Inne niebezpieczne') ?></option>
+                        <select class="form-select form-select-sm planer-select2 adr-select" id="adr-class">
+                            <option value="" data-icon="ri-checkbox-blank-circle-line" data-color="#9ca3af"><?= __('— brak ADR —') ?></option>
+                            <option value="1" data-icon="ri-bomb-line" data-color="#dc2626">1 — <?= __('Materiały wybuchowe') ?></option>
+                            <option value="2" data-icon="ri-cloud-line" data-color="#16a34a">2 — <?= __('Gazy') ?></option>
+                            <option value="3" data-icon="ri-fire-line" data-color="#ea580c">3 — <?= __('Ciecze łatwopalne') ?></option>
+                            <option value="4" data-icon="ri-fire-fill" data-color="#b45309">4 — <?= __('Materiały stałe łatwopalne') ?></option>
+                            <option value="5" data-icon="ri-flask-line" data-color="#eab308">5 — <?= __('Utleniacze') ?></option>
+                            <option value="6" data-icon="ri-skull-2-line" data-color="#111827">6 — <?= __('Toksyczne') ?></option>
+                            <option value="7" data-icon="ri-radar-line" data-color="#a16207">7 — <?= __('Radioaktywne') ?></option>
+                            <option value="8" data-icon="ri-test-tube-line" data-color="#0ea5e9">8 — <?= __('Korozyjne') ?></option>
+                            <option value="9" data-icon="ri-alert-line" data-color="#7c3aed">9 — <?= __('Inne niebezpieczne') ?></option>
                         </select>
                     </div>
                     <div class="col-12">
@@ -1906,6 +1909,25 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             templateResult: tplCountry,
             templateSelection: tplCountry,
             dropdownParent: jQuery('#exclude-countries').closest('.collapse, .card, body')
+        });
+
+        // ── ADR Select2 z ikonami Remixicon ──────────────────────────
+        function tplAdr(state) {
+            if (!state.id && !state.element) return state.text;
+            var $el  = state.element ? jQuery(state.element) : null;
+            var icon = $el ? $el.attr('data-icon')  : null;
+            var col  = $el ? $el.attr('data-color') : null;
+            var html = '';
+            if (icon) html += '<i class="' + icon + '" style="color:' + (col || '#374151') + ';margin-right:.4em;font-size:1.05em;vertical-align:middle"></i>';
+            html += '<span>' + (state.text || '') + '</span>';
+            return jQuery('<span>' + html + '</span>');
+        }
+        jQuery('#adr-class').select2({
+            width: '100%',
+            minimumResultsForSearch: Infinity,
+            templateResult: tplAdr,
+            templateSelection: tplAdr,
+            dropdownParent: jQuery('#adr-class').closest('.collapse, .card, body')
         });
     })();
 
