@@ -1881,6 +1881,12 @@ if ($__isEdit && !empty($__prefillItems)) {
       padding: .2rem .4rem;
       font-size: .82rem;
     }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection--single,
+    .invoice-compact .select2-container--default .select2-selection--single{ height: 32px !important; }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection__rendered,
+    .invoice-compact .select2-container--default .select2-selection__rendered{ line-height: 30px !important; font-size: .82rem; }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection__arrow,
+    .invoice-compact .select2-container--default .select2-selection__arrow{ height: 30px !important; }
     .invoice-compact #items-table tbody > tr > td{
       padding: .25rem .35rem;
     }
@@ -1899,6 +1905,12 @@ if ($__isEdit && !empty($__prefillItems)) {
       padding: .15rem .35rem;
       font-size: .78rem;
     }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection--single,
+    .invoice-compact .select2-container--default .select2-selection--single{ height: 30px !important; }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection__rendered,
+    .invoice-compact .select2-container--default .select2-selection__rendered{ line-height: 28px !important; font-size: .78rem; }
+    .invoice-compact .select2-container--default.select2-compact .select2-selection__arrow,
+    .invoice-compact .select2-container--default .select2-selection__arrow{ height: 28px !important; }
   }
 
   .invoice-compact #items-body tr:last-child table td,
