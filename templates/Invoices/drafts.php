@@ -52,7 +52,7 @@ $editActionByType = [
   </div>
 </div>
 
-<div class="card">
+<div class="card custom-card">
   <div class="card-header justify-content-between flex-wrap gap-2">
     <div class="card-title d-flex align-items-center gap-2">
       Niewysłane dokumenty robocze
