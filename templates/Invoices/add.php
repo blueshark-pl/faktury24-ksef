@@ -806,17 +806,6 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
         </div>
 
         <div class="card custom-card invoice-compact">
-          <!-- Global price mode toolbar -->
-          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">Domyślny tryb ceny:</span>
-              <div class="btn-group btn-group-sm" role="group" aria-label="Domyślny tryb ceny" id="price-mode-toggle">
-                <button type="button" class="btn btn-outline-secondary" data-mode="net">Netto</button>
-                <button type="button" class="btn btn-outline-secondary" data-mode="gross">Brutto</button>
-              </div>
-            </div>
-            
-          </div>
           <!-- Pozycje -->
           <div class="table-responsive">
             <table class="table nowrap text-nowrap border mt-3" id="items-table">
@@ -1004,25 +993,6 @@ if ($__isEdit && !empty($__prefillItems)) {
     <div id="amount-in-words" class="text-muted fst-italic mt-1"></div>
   </td>
 </tr>
-
-<!-- Modal: Price Recalc Confirmation -->
-<div class="modal fade" id="price-recalc-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title">Przeliczyć ceny pozycji?</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-0">Zmieniasz domyślny tryb ceny. Czy przeliczyć ceny istniejących pozycji do wybranego trybu?</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
-        <button type="button" class="btn btn-primary" id="price-recalc-confirm">Przelicz</button>
-      </div>
-    </div>
-  </div>
- </div>
 
               </tbody>
             </table>
@@ -2828,15 +2798,7 @@ $('#gus-fetch-btn').on('click', function(){
     $itemsBody.find('tr').each(function(){ if ($(this).find('.item-net').length) n++; });
     return n;
   }
-  function getDefaultPriceMode(){ try{ return (localStorage.getItem('invoice_price_mode_default')||'net'); }catch(e){ return 'net'; } }
-  function setDefaultPriceMode(mode){ try{ localStorage.setItem('invoice_price_mode_default', mode); }catch(e){} }
-  function updatePriceModeToolbar(){
-    var cur = getDefaultPriceMode();
-    $('#price-mode-toggle [data-mode]')
-      .removeClass('btn-primary').addClass('btn-outline-secondary')
-      .attr('aria-pressed','false');
-    $('#price-mode-toggle [data-mode="'+cur+'"]').removeClass('btn-outline-secondary').addClass('btn-primary').attr('aria-pressed','true');
-  }
+  function getDefaultPriceMode(){ return 'net'; }
   function convertRowPriceMode($tr, newMode){
     var oldMode = ($tr.find('.item-price-mode').val()||'net');
     if (oldMode === newMode) { $tr.find('.item-price-mode').val(newMode); return; }
@@ -3452,46 +3414,7 @@ $('#gus-fetch-btn').on('click', function(){
     allCalc();
   });
 
-  // Toolbar handlers
-  updatePriceModeToolbar();
-  $('#price-mode-toggle').on('click', '[data-mode]', function(){
-    var mode = $(this).data('mode');
-    var needRecalc = false;
-    $itemsBody.find('tr').each(function(){
-      var $tr = $(this);
-      if ($tr.find('.item-price-mode').length){
-        var cur = ($tr.find('.item-price-mode').val() || 'net');
-        if (cur !== mode) { needRecalc = true; return false; }
-      }
-    });
-    setDefaultPriceMode(mode);
-    updatePriceModeToolbar();
-    if (!needRecalc) { return; }
-    // Show confirmation modal; on confirm, recalc all rows to selected mode
-    var $modal = $('#price-recalc-modal');
-    if ($modal.length){
-      $modal.data('target-mode', mode).modal('show');
-    } else {
-      // Fallback: immediate recalc if modal is not present
-      $itemsBody.find('tr').each(function(){
-        var $tr = $(this);
-        if ($tr.find('.item-price-mode').length){ convertRowPriceMode($tr, mode); }
-      });
-      allCalc();
-    }
-  });
-
-  // Confirm modal: recalc rows to selected global mode
-  $(document).on('click', '#price-recalc-confirm', function(){
-    var $modal = $('#price-recalc-modal');
-    var mode = $modal.data('target-mode') || getDefaultPriceMode();
-    $itemsBody.find('tr').each(function(){
-      var $tr = $(this);
-      if ($tr.find('.item-price-mode').length){ convertRowPriceMode($tr, mode); }
-    });
-    allCalc();
-    $modal.modal('hide');
-  });
+  // Toolbar/recalc-modal usunięte — domyślny tryb ceny to 'net' (per wiersz wybierany w kolumnie CENA)
 
   // ====== „Dodaj produkt” (ikona w wierszu) ======
   $itemsBody.on('click', '.btn-new-product', function(){ currentProductRow = $(this).closest('tr'); $('#product-create-modal').modal('show'); });
