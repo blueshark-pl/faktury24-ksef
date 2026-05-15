@@ -169,7 +169,7 @@ $editActionByType = [
                             class="btn btn-sm btn-outline-primary js-preview-number ms-auto py-0 px-2"
                             data-id="<?= h($inv->id) ?>"
                             title="Oblicz przewidywany numer dla tej faktury">
-                      Spr.
+                      Spr. numer
                     </button>
                   <?php endif; ?>
                 </div>
