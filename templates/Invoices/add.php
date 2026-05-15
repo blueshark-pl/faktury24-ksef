@@ -322,8 +322,11 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
           <!-- Grupa: Płatność -->
           <div class="form-group">
+            <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
+            <?php $__alreadyPaidVal = (float)($invoice->alreadypaid ?? 0); ?>
+            <?php $__partialEnabled = $__alreadyPaidVal > 0; ?>
             <div class="form-group-title">Płatność</div>
-            <div class="row g-3 align-items-end">
+            <div class="row g-3 align-items-start">
               <div class="col-lg-3">
                 <?= $this->Form->control('paymentmethod', [
                   'label' => 'Metoda płatności', 'type' => 'select',
@@ -343,24 +346,31 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 ]) ?>
               </div>
               <div class="col-lg-3">
+                <div class="form-check pt-2 mb-1">
+                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
+                  <label class="form-check-label fw-medium" for="is-paid-check">Oznacz jako opłacone</label>
+                </div>
+                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
+                  <?= $this->Form->control('paid_at', [
+                    'type' => 'date', 'label' => false, 'class' => 'form-control form-control-sm',
+                    'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '',
+                    'placeholder' => 'Data zapłaty',
+                  ]) ?>
+                </div>
+              </div>
+              <div class="col-lg-3">
                 <?= $this->Form->control('alreadypaid', [
                   'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
                 ]) ?>
               </div>
-              <div class="col-lg-3">
-                <div id="partial-paid-at-group" style="display:none;">
-                  <?= $this->Form->control('partial_paid_at', ['type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control']) ?>
-                </div>
-              </div>
-              <div class="col-lg-3">
-                <div class="form-check pb-2">
-                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
-                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
-                  <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
-                </div>
-                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
-                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
-                </div>
+              <div class="col-lg-3" id="partial-paid-at-group">
+                <?= $this->Form->control('partial_paid_at', [
+                  'type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control',
+                  'disabled' => !$__partialEnabled,
+                ]) ?>
+                <small class="text-muted d-block partial-paid-hint" style="margin-top:-.25rem<?= $__partialEnabled ? ';display:none' : '' ?>">
+                  Aktywne po wpisaniu kwoty w „Zapłacono".
+                </small>
               </div>
             </div>
           </div>
@@ -2032,17 +2042,19 @@ body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
 </script>
 <script>
 (function(){
-  // Pokaż datę częściowej płatności jeśli wpisano kwotę zapłaconą > 0
+  // Aktywuj/dezaktywuj pole „Data częściowej płatności" w zależności od kwoty „Zapłacono"
   function togglePartialPaid(){
     var v = parseFloat(($('[name="alreadypaid"]').val()||'0').replace(',','.'));
     var on = isFinite(v) && v > 0;
-    $('#partial-paid-at-group').toggle(on);
-    if (!on){
-      $('[name="partial_paid_at"]').val('');
-      $('[name="partial_paid_at"]').removeAttr('required');
-    }
-    if (on){
-      $('[name="partial_paid_at"]').attr('required', true);
+    var $input = $('[name="partial_paid_at"]');
+    var $group = $('#partial-paid-at-group');
+
+    if (on) {
+      $input.prop('disabled', false).attr('required', true);
+      $group.find('.partial-paid-hint').hide();
+    } else {
+      $input.val('').prop('disabled', true).removeAttr('required');
+      $group.find('.partial-paid-hint').show();
     }
   }
   $(document).on('input change', '[name="alreadypaid"]', togglePartialPaid);
