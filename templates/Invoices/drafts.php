@@ -65,6 +65,32 @@ $editActionByType = [
   </div>
 </div>
 
+<style>
+.empty-state-illus { width: 96px; height: 96px; }
+.empty-state-blob {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(148,212,55,.18), rgba(148,212,55,0) 70%);
+  border-radius: 50%;
+  animation: empty-pulse 2.8s ease-in-out infinite;
+}
+.empty-state-badge {
+  position: absolute;
+  right: -2px; bottom: -2px;
+  width: 28px; height: 28px;
+  background: var(--bs-primary, #94d437);
+  color: #fff;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 4px 10px rgba(148,212,55,.35);
+  border: 2px solid #fff;
+}
+@keyframes empty-pulse {
+  0%,100% { transform: scale(1); opacity: .9; }
+  50%     { transform: scale(1.08); opacity: 1; }
+}
+</style>
+
 <div class="card custom-card">
   <div class="card-header justify-content-between flex-wrap gap-2">
     <div class="card-title d-flex align-items-center gap-2">
@@ -213,7 +239,33 @@ $editActionByType = [
 
           <?php if (!count($drafts)): ?>
             <tr>
-              <td colspan="8" class="text-center text-muted py-4">Brak faktur roboczych.</td>
+              <td colspan="8" class="py-5">
+                <div class="empty-state text-center mx-auto" style="max-width:520px">
+                  <div class="empty-state-illus mx-auto mb-3 position-relative d-inline-flex align-items-center justify-content-center">
+                    <span class="empty-state-blob"></span>
+                    <i class="ri-draft-line position-relative" style="font-size:3.2rem;color:var(--bs-primary,#94d437)"></i>
+                    <span class="empty-state-badge"><i class="ri-check-line"></i></span>
+                  </div>
+                  <h5 class="mb-1 fw-semibold">Brak faktur roboczych</h5>
+                  <p class="text-muted mb-3">
+                    Wszystko czyste — żadne wersje robocze nie czekają na dokończenie.
+                    <br class="d-none d-md-inline">
+                    Wystawiaj fakturę gdy będziesz gotów lub przejrzyj listę wystawionych.
+                  </p>
+                  <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <?= $this->Html->link(
+                      '<i class="ri-add-line me-1"></i> Wystaw fakturę',
+                      ['action' => 'add'],
+                      ['class' => 'btn btn-primary btn-wave', 'escape' => false]
+                    ) ?>
+                    <?= $this->Html->link(
+                      '<i class="ri-list-check-2 me-1"></i> Wszystkie faktury',
+                      ['action' => 'index'],
+                      ['class' => 'btn btn-outline-primary btn-wave', 'escape' => false]
+                    ) ?>
+                  </div>
+                </div>
+              </td>
             </tr>
           <?php endif; ?>
         </tbody>
