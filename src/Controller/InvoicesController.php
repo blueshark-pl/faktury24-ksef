@@ -1013,6 +1013,15 @@ $stats = [
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
+        // Filtry z query stringa
+        $q     = trim((string)$this->request->getQuery('q', ''));
+        $type  = trim((string)$this->request->getQuery('type', ''));
+        $from  = trim((string)$this->request->getQuery('from', ''));
+        $to    = trim((string)$this->request->getQuery('to', ''));
+        $limit = (int)$this->request->getQuery('limit', 20);
+        if ($limit < 5)   $limit = 20;
+        if ($limit > 200) $limit = 200;
+
         $query = $this->Invoices->find()
             ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip']); }])
             ->where([
@@ -1021,7 +1030,32 @@ $stats = [
             ])
             ->orderDesc('Invoices.created');
 
-        $drafts = $this->paginate($query, ['limit' => 20]);
+        if ($q !== '') {
+            $like = '%' . str_replace(['%','_'], ['\%','\_'], $q) . '%';
+            $query->leftJoinWith('InvoiceContractors')
+                  ->andWhere(function ($exp) use ($like) {
+                      return $exp->or([
+                          'Invoices.fullnumber LIKE'        => $like,
+                          'InvoiceContractors.name LIKE'    => $like,
+                          'InvoiceContractors.nip LIKE'     => $like,
+                      ]);
+                  })
+                  ->group(['Invoices.id']);
+        }
+        if ($type !== '') {
+            $query->andWhere(['Invoices.type' => $type]);
+        }
+        if ($from !== '') {
+            $query->andWhere(['Invoices.date >=' => $from]);
+        }
+        if ($to !== '') {
+            $query->andWhere(['Invoices.date <=' => $to]);
+        }
+
+        $drafts = $this->paginate($query, ['limit' => $limit]);
+
+        // Przekaż wartości filtrów do widoku (potrzebne do renderowania pól)
+        $this->set(compact('q', 'type', 'from', 'to', 'limit'));
 
         // Mapa contractor_id → is_person (osoba fizyczna z katalogu) dla decyzji
         // czy pokazać przycisk "Przenieś do faktur" w drafts.php (bez KSeF).

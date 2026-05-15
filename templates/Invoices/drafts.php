@@ -53,12 +53,62 @@ $editActionByType = [
 </div>
 
 <div class="card">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="card-title mb-0">Niewysłane dokumenty robocze</div>
+  <div class="card-header justify-content-between flex-wrap gap-2">
+    <div class="card-title d-flex align-items-center gap-2 mb-0">
+      Niewysłane dokumenty robocze
+      <?php if ($q): ?>
+        <span class="badge bg-primary-transparent"><i class="ri-search-line me-1"></i><?= h($q) ?></span>
+      <?php endif; ?>
+      <?php if ($type): ?>
+        <span class="badge bg-secondary-transparent"><?= h($typeLabels[$type] ?? strtoupper($type)) ?></span>
+      <?php endif; ?>
+    </div>
+    <?= $this->Form->create(null, [
+      'type' => 'get', 'class' => 'd-flex flex-wrap gap-2 ms-2',
+      'role' => 'search', 'aria-label' => 'Filtry roboczych', 'id' => 'drafts-filters-form'
+    ]) ?>
+      <div class="position-relative">
+        <i class="ri-search-line position-absolute" style="left:10px;top:50%;transform:translateY(-50%);color:#9aa0ac;pointer-events:none"></i>
+        <input id="drafts-live-search" name="q" type="search"
+               class="form-control form-control-sm ps-4"
+               placeholder="Szukaj: numer / kontrahent / NIP"
+               value="<?= h($q) ?>"
+               style="min-width:240px"
+               aria-label="Szukaj">
+      </div>
+      <?= $this->Form->control('type', [
+        'type' => 'select', 'label' => false, 'empty' => 'Wszystkie typy',
+        'options' => $typeLabels, 'value' => $type,
+        'class' => 'form-select form-select-sm',
+        'onchange' => 'this.form.requestSubmit()'
+      ]) ?>
+      <?= $this->Form->control('from', [
+        'type' => 'date', 'label' => false, 'value' => $from,
+        'class' => 'form-control form-control-sm', 'aria-label' => 'Data od'
+      ]) ?>
+      <?= $this->Form->control('to', [
+        'type' => 'date', 'label' => false, 'value' => $to,
+        'class' => 'form-control form-control-sm', 'aria-label' => 'Data do'
+      ]) ?>
+      <?= $this->Form->control('limit', [
+        'type' => 'select', 'label' => false, 'value' => $limit,
+        'options' => [10 => '10 / stronę', 20 => '20 / stronę', 50 => '50 / stronę', 100 => '100 / stronę'],
+        'class' => 'form-select form-select-sm',
+        'onchange' => 'this.form.requestSubmit()'
+      ]) ?>
+      <div class="btn-group btn-group-sm">
+        <button class="btn btn-primary btn-wave" type="submit" title="Zastosuj filtry">
+          <i class="ri-search-line me-1"></i>Filtruj
+        </button>
+        <?= $this->Html->link('<i class="ri-refresh-line"></i>', ['action' => 'drafts'], [
+          'class' => 'btn btn-light', 'escape' => false, 'title' => 'Wyczyść filtry'
+        ]) ?>
+      </div>
+    <?= $this->Form->end() ?>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table align-middle mb-0">
+      <table class="table align-middle mb-0" id="drafts-table">
         <thead>
           <tr>
             <th>Status</th>
@@ -157,6 +207,65 @@ $editActionByType = [
 
 <script>
 (function() {
+  // === AJAX-refresh tabeli draftów ===
+  // Pobiera aktualny URL, parsuje HTML, podmienia tylko <tbody>. Zachowuje paginację i filtry.
+  async function refreshDraftsTable() {
+    const tbody = document.querySelector('#drafts-table tbody');
+    if (!tbody) return;
+    tbody.style.opacity = '0.5';
+    tbody.style.pointerEvents = 'none';
+    try {
+      const res = await fetch(window.location.href, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error('http ' + res.status);
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const newTbody = doc.querySelector('#drafts-table tbody');
+      if (!newTbody) throw new Error('Brak tbody w odpowiedzi');
+      tbody.replaceWith(newTbody);
+      // Re-init tooltipów dla nowych ikon „podgląd numeru"
+      document.querySelectorAll('#drafts-table .js-preview-number[data-bs-toggle="tooltip"]').forEach(el => {
+        if (el.dataset.tipBound) return;
+        el.dataset.tipBound = '1';
+        try { new bootstrap.Tooltip(el); } catch {}
+      });
+    } finally {
+      const refreshed = document.querySelector('#drafts-table tbody');
+      if (refreshed) { refreshed.style.opacity = ''; refreshed.style.pointerEvents = ''; }
+    }
+  }
+
+  // Submit formularza filtrów → AJAX (zamiast pełnego reload)
+  const filtersForm = document.getElementById('drafts-filters-form');
+  filtersForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(filtersForm);
+    const params = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (v !== '' && v !== null && v !== undefined) params.set(k, String(v));
+    }
+    const newUrl = filtersForm.action.split('?')[0] + (params.toString() ? ('?' + params.toString()) : '');
+    try { history.pushState({}, '', newUrl); } catch {}
+    try { await refreshDraftsTable(); } catch { window.location.href = newUrl; }
+  });
+
+  // Live search z debounce 400ms — zachowuje pozostałe filtry
+  const search = document.getElementById('drafts-live-search');
+  if (search) {
+    let t;
+    search.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => filtersForm?.requestSubmit(), 400);
+    });
+  }
+
+  // Back/Forward button
+  window.addEventListener('popstate', () => {
+    try { refreshDraftsTable(); } catch {}
+  });
+
   // Inicjalizuj tooltipy Bootstrap dla ikon „przewidywany numer"
   document.querySelectorAll('.js-preview-number[data-bs-toggle="tooltip"]').forEach(function (el) {
     try { new bootstrap.Tooltip(el); } catch {}
