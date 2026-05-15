@@ -258,9 +258,6 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                   'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
                   'id' => 'invoice-number', 'readonly' => true, 'tabindex' => '-1',
                 ]) ?>
-                <small class="text-muted" id="invoice-number-hint" style="display: none;">
-                  <i class="ri-information-line"></i> Numer faktury: <span id="invoice-number-suggestion"></span>
-                </small>
               </div>
               <div class="col-lg-6">
                 <?= $this->Form->hidden('invoice_series_id', [
@@ -2618,42 +2615,10 @@ $(function () {
     });
   }
 
-  // ====== SPRAWDZANIE AKTUALNEGO NUMERU FAKTURY ======
-  window.updateInvoiceNumberHint = function updateInvoiceNumberHint() {
-    var series = $('#series-select').val();
-    var $hint = $('#invoice-number-hint');
-    var $suggestion = $('#invoice-number-suggestion');
-    var $template = $('#invoice-number-template');
-    
-    console.log('updateInvoiceNumberHint called with series:', series);
-    
-    if (!series || series === '') {
-      $hint.hide();
-      return;
-    }
-    
-    var issueDate = $('#issue-date').val() || '';
-    
-    $.ajax({
-      url: seriesNextNumberUrl,
-      method: 'GET',
-      data: { series: series, date: issueDate },
-      headers: { 'Accept': 'application/json' }
-    }).done(function(res) {
-      console.log('nextNumber API response:', res);
-      console.log('Template from API:', res.template);
-      console.log('Formatted from API:', res.formatted);
-      if (res && res.success) {
-        $suggestion.text(res.formatted);
-        $hint.show();
-      } else {
-        $hint.hide();
-      }
-    }).fail(function(xhr, status, error) {
-      console.log('nextNumber API failed:', status, error);
-      $hint.hide();
-    });
-  }
+  // ====== Podgląd numeru faktury — WYŁĄCZONY ======
+  // Numer rezerwowany przy zapisie szkic/wystawienie; w UI nie pokazujemy „przewidywanego" numeru,
+  // bo użytkownicy myśleli, że faktura już go ma, podczas gdy w roboczych nie ma jeszcze numeru.
+  window.updateInvoiceNumberHint = function updateInvoiceNumberHint() { /* no-op */ };
 
   // Sprawdź numer przy zmianie serii
   $(document).on('change', '#series-select', function() {
