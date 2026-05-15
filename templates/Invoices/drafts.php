@@ -85,7 +85,19 @@ $editActionByType = [
             <tr>
               <td><span class="badge bg-warning">Robocza</span></td>
               <td>
-                <?= $this->Html->link(h($inv->fullnumber ?: ('ROB-' . substr((string)$inv->id, 0, 8))), ['action' => 'view', $inv->id], ['class' => 'fw-semibold']) ?>
+                <span class="d-inline-flex align-items-center gap-2">
+                  <?= $this->Html->link(h($inv->fullnumber ?: ('ROB-' . substr((string)$inv->id, 0, 8))), ['action' => 'view', $inv->id], ['class' => 'fw-semibold draft-number-link', 'data-id' => $inv->id]) ?>
+                  <?php if (empty($inv->fullnumber)): ?>
+                    <button type="button"
+                            class="btn btn-link btn-sm p-0 js-preview-number"
+                            data-id="<?= h($inv->id) ?>"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="top"
+                            title="Sprawdź przewidywany numer">
+                      <i class="ri-eye-line text-primary"></i>
+                    </button>
+                  <?php endif; ?>
+                </span>
               </td>
               <td>
                 <span class="badge bg-secondary"><?= h($typeLabels[$typeKey] ?? strtoupper($typeKey)) ?></span>
@@ -142,3 +154,63 @@ $editActionByType = [
     </ul>
   </div>
 </div>
+
+<script>
+(function() {
+  // Inicjalizuj tooltipy Bootstrap dla ikon „przewidywany numer"
+  document.querySelectorAll('.js-preview-number[data-bs-toggle="tooltip"]').forEach(function (el) {
+    try { new bootstrap.Tooltip(el); } catch {}
+  });
+
+  // Delegowany handler — klik w ikonkę 👁 obok ROB-xxxx
+  document.addEventListener('click', async function (e) {
+    const btn = e.target.closest('.js-preview-number');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = btn.dataset.id;
+    if (!id) return;
+    if (btn.dataset.loading === '1') return;
+    btn.dataset.loading = '1';
+
+    // Ikona → spinner na czas fetch
+    const icon = btn.querySelector('i');
+    const originalHtml = icon ? icon.outerHTML : '';
+    if (icon) icon.outerHTML = '<span class="spinner-border spinner-border-sm text-primary" style="width:.8rem;height:.8rem"></span>';
+
+    try {
+      const res = await fetch('<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'previewKsefNumber']) ?>/' + encodeURIComponent(id), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if (!data.success || !data.fullnumber) {
+        throw new Error(data.error || 'Nie udało się obliczyć numeru.');
+      }
+      // Zamień link „ROB-xxx" na przewidywany numer + badge „podgląd"
+      const link = document.querySelector('.draft-number-link[data-id="' + id + '"]');
+      if (link) {
+        const wrapper = link.parentElement;
+        wrapper.innerHTML = '<span class="fw-semibold">' + data.fullnumber.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) +
+          '</span> <span class="badge bg-info-subtle text-info" data-bs-toggle="tooltip" title="Numer przewidywany — może się zmienić jeśli inna faktura zostanie wysłana wcześniej">podgląd</span>';
+        // Re-init tooltipy dla nowego badge
+        wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => { try { new bootstrap.Tooltip(el); } catch {} });
+      }
+    } catch (err) {
+      // Przywróć ikonę i pokaż błąd
+      if (icon) {
+        btn.innerHTML = originalHtml;
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast(err.message || 'Nie udało się sprawdzić numeru.', 'danger');
+      } else {
+        alert(err.message || 'Nie udało się sprawdzić numeru.');
+      }
+    } finally {
+      btn.dataset.loading = '';
+    }
+  });
+})();
+</script>
+
