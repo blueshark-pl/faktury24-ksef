@@ -245,114 +245,58 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
       </div>
 
       <div class="card-body tab-content">
-        <div class="mb-3">
-            <div class="invoice-pills d-flex flex-wrap gap-2">
-                <div class="pill">
-                <span class="pill-label">Netto</span>
-                <span class="pill-value" id="pill-net">0,00</span>
-                </div>
-                <div class="pill">
-                <span class="pill-label">VAT</span>
-                <span class="pill-value" id="pill-vat">0,00</span>
-                </div>
-                <div class="pill pill-accent">
-                <span class="pill-label">Brutto</span>
-                <span class="pill-value" id="pill-gross">0,00</span>
-                </div>
-            </div>
-        </div>
 
         <!-- PODSTAWOWE -->
 <div class="tab-pane fade show active" id="pane-basic" role="tabpanel" aria-labelledby="tab-basic">
-          <div class="row g-3">
-            <div class="col-lg-4">
-              <?= $this->Form->control('fullnumber', [
-                'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
-                'id' => 'invoice-number', 'readonly' => true, 'tabindex' => '-1',
-              ]) ?>
-              <small class="text-muted" id="invoice-number-hint" style="display: none;">
-                <i class="ri-information-line"></i> Numer faktury: <span id="invoice-number-suggestion"></span>
-              </small>
-            </div>
-            <div class="col-lg-4">
-      <?= $this->Form->hidden('invoice_series_id', [
-        'id'    => 'invoice-series-id-hidden',
-        'value' => $invoice->invoice_series_id ?? null,
-      ]) ?>
-      <?= $this->Form->control('series', [
-        'label' => 'Schemat numeracji',
-                'type'  => 'select',
-                'empty' => true,
-                'class' => 'form-select',
-                'id'    => 'series-select',
-            'value' => $invoice->series ?? null,
-            ]) ?>
-            </div>
 
-            <div class="col-lg-2">
-            <?= $this->Form->control('date', [
-              'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
-              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->date) ? $invoice->date->format('Y-m-d') : null)
-            ]) ?>
-            </div>
-
-            <div class="col-lg-2">
-            <?= $this->Form->control('sold_date', [
-              'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
-            ]) ?>
-            </div>
-
-            
-<div class="row g-2">
-            <div class="col-lg-2">
-            <?= $this->Form->control('paymentmethod', [
-              'label' => 'Metoda płatności', 'type' => 'select',
-              'options' => [
-                'voucher'  => 'Bon',
-                'cheque'   => 'Czek',
-                'card'     => 'Karta',
-                'credit'   => 'Kredyt',
-                'mobile'   => 'Mobilna',
-                'other'    => 'Płatność inna',
-                'transfer' => 'Przelew',
-                'cash'     => 'Gotówka'
-              ],
-              'empty' => '— Wybierz metodę —',
-              'value' => !$__isEdit ? 'transfer' : ($invoice->paymentmethod ?? null),
-              'class' => 'form-select', 'required' => true
-            ]) ?>
-            </div>
-            
-              <div class="col-lg-2">
-                <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
+          <!-- Grupa: Identyfikacja faktury -->
+          <div class="form-group">
+            <div class="form-group-title">Identyfikacja faktury</div>
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <?= $this->Form->control('fullnumber', [
+                  'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
+                  'id' => 'invoice-number', 'readonly' => true, 'tabindex' => '-1',
+                ]) ?>
+                <small class="text-muted" id="invoice-number-hint" style="display: none;">
+                  <i class="ri-information-line"></i> Numer faktury: <span id="invoice-number-suggestion"></span>
+                </small>
+              </div>
+              <div class="col-lg-6">
+                <?= $this->Form->hidden('invoice_series_id', [
+                  'id'    => 'invoice-series-id-hidden',
+                  'value' => $invoice->invoice_series_id ?? null,
+                ]) ?>
+                <?= $this->Form->control('series', [
+                  'label' => 'Schemat numeracji',
+                  'type'  => 'select',
+                  'empty' => true,
+                  'class' => 'form-select',
+                  'id'    => 'series-select',
+                  'value' => $invoice->series ?? null,
                 ]) ?>
               </div>
-              <div class="col-lg-2">
-                <div id="partial-paid-at-group" style="display:none;">
-                  <?= $this->Form->control('partial_paid_at', ['type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control']) ?>
-                </div>
-              </div>
-              
-              <div class="col-lg-2 d-flex align-items-end">
-                <div class="form-check">
-                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
-                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
-                  <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
-                </div>
-              </div>
-              <div class="col-lg-2">
-                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
-                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
-                </div>
-              </div>
-              
             </div>
-              
-            <div class="col-lg-6">
-              <label class="form-label mb-1">Termin płatności</label>
-              <div class="border rounded p-2">
+          </div>
+
+          <!-- Grupa: Daty -->
+          <div class="form-group">
+            <div class="form-group-title">Daty</div>
+            <div class="row g-3">
+              <div class="col-lg-3">
+                <?= $this->Form->control('date', [
+                  'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
+                  'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->date) ? $invoice->date->format('Y-m-d') : null)
+                ]) ?>
+              </div>
+              <div class="col-lg-3">
+                <?= $this->Form->control('sold_date', [
+                  'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
+                  'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
+                ]) ?>
+              </div>
+              <div class="col-lg-6">
+                <label class="form-label mb-1">Termin płatności</label>
                 <div class="row g-2 align-items-center" id="due-combined">
                   <div class="col-7">
                     <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
@@ -369,13 +313,58 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     </div>
                   </div>
                 </div>
-                <small class="text-muted d-block mt-2">
+                <small class="text-muted d-block mt-1">
                   Obliczony termin: <span id="due-preview" class="fw-medium">—</span>
                 </small>
               </div>
             </div>
-
           </div>
+
+          <!-- Grupa: Płatność -->
+          <div class="form-group">
+            <div class="form-group-title">Płatność</div>
+            <div class="row g-3 align-items-end">
+              <div class="col-lg-3">
+                <?= $this->Form->control('paymentmethod', [
+                  'label' => 'Metoda płatności', 'type' => 'select',
+                  'options' => [
+                    'voucher'  => 'Bon',
+                    'cheque'   => 'Czek',
+                    'card'     => 'Karta',
+                    'credit'   => 'Kredyt',
+                    'mobile'   => 'Mobilna',
+                    'other'    => 'Płatność inna',
+                    'transfer' => 'Przelew',
+                    'cash'     => 'Gotówka'
+                  ],
+                  'empty' => '— Wybierz metodę —',
+                  'value' => !$__isEdit ? 'transfer' : ($invoice->paymentmethod ?? null),
+                  'class' => 'form-select', 'required' => true
+                ]) ?>
+              </div>
+              <div class="col-lg-3">
+                <?= $this->Form->control('alreadypaid', [
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
+                ]) ?>
+              </div>
+              <div class="col-lg-3">
+                <div id="partial-paid-at-group" style="display:none;">
+                  <?= $this->Form->control('partial_paid_at', ['type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control']) ?>
+                </div>
+              </div>
+              <div class="col-lg-3">
+                <div class="form-check pb-2">
+                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
+                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
+                </div>
+                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
+                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- KSIĘGOWE -->
@@ -1036,34 +1025,55 @@ if ($__isEdit && !empty($__prefillItems)) {
         </div>
       </div>
 
-      <div class="card-footer text-end">
-        <button type="button" id="btn-calc-toggle" class="btn btn-light m-1">
-          <i class="ri-calculator-line me-1"></i> Kalkulator
-        </button>
-        <?php if ($_isAdmin || $_role !== 'user'): ?>
-          <?= $this->Form->button('<i class="ri-draft-line ms-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
-            'class' => 'btn btn-outline-secondary m-1', 'escapeTitle' => false, 'name' => 'save_draft'
-          ]) ?>
-          <?php if ($__ksefModeEnabled): ?>
-            <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-              'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
-            ]) ?>
-          <?php else: ?>
-            <?= $this->Form->button('<i class="ri-save-line ms-1 align-middle d-inline-block"></i> Zapisz i wystaw', [
-              'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_only'
-            ]) ?>
-          <?php endif; ?>
-        <?php else: ?>
-          <?= $this->Form->button('<i class="ri-draft-line ms-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
-            'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_draft'
-          ]) ?>
-        <?php endif; ?>
-      </div>
     </div>
   </div>
 
   <!-- PRAWA KOLUMNA: karty -->
-  
+
+</div>
+
+<script>document.body && document.body.classList.add('has-invoice-sticky-bar');</script>
+<!-- Sticky action bar: pills (suma) + CTA. Pozostaje w <form> aby submit działał. -->
+<div class="invoice-sticky-bar" id="invoice-sticky-bar">
+  <div class="container-fluid d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="invoice-pills d-flex flex-wrap gap-2">
+      <div class="pill">
+        <span class="pill-label">Netto</span>
+        <span class="pill-value" id="pill-net">0,00</span>
+      </div>
+      <div class="pill">
+        <span class="pill-label">VAT</span>
+        <span class="pill-value" id="pill-vat">0,00</span>
+      </div>
+      <div class="pill pill-accent">
+        <span class="pill-label">Brutto</span>
+        <span class="pill-value" id="pill-gross">0,00</span>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" id="btn-calc-toggle" class="btn btn-light btn-sm">
+        <i class="ri-calculator-line me-1"></i> Kalkulator
+      </button>
+      <?php if ($_isAdmin || $_role !== 'user'): ?>
+        <?= $this->Form->button('<i class="ri-draft-line me-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
+          'class' => 'btn btn-outline-secondary btn-sm', 'escapeTitle' => false, 'name' => 'save_draft'
+        ]) ?>
+        <?php if ($__ksefModeEnabled): ?>
+          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+            'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+          ]) ?>
+        <?php else: ?>
+          <?= $this->Form->button('<i class="ri-save-line me-1 align-middle d-inline-block"></i> Zapisz i wystaw', [
+            'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_only'
+          ]) ?>
+        <?php endif; ?>
+      <?php else: ?>
+        <?= $this->Form->button('<i class="ri-draft-line me-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
+          'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_draft'
+        ]) ?>
+      <?php endif; ?>
+    </div>
+  </div>
 </div>
 
 <?= $this->Form->end() ?>
@@ -1902,6 +1912,42 @@ if ($__isEdit && !empty($__prefillItems)) {
 .invoice-pills .pill-accent{ background:#eef6ff; border-color:#d7e9ff; }
 .invoice-pills .pill-label{ font-size:.75rem; color:#6c757d; }
 .invoice-pills .pill-value{ font-weight:700; font-variant-numeric: tabular-nums; }
+
+/* --- Sticky action bar (suma + CTA) --- */
+.invoice-sticky-bar{
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 1030;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  box-shadow: 0 -8px 24px -12px rgba(15,23,42,.12);
+  padding: .55rem 0;
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+}
+.invoice-sticky-bar .invoice-pills .pill{ padding:.35rem .6rem; border-radius:10px; }
+.invoice-sticky-bar .invoice-pills .pill-value{ font-size:.95rem; }
+.invoice-sticky-bar .btn{ border-radius:8px; }
+/* odsuń stopkę strony żeby nie była zasłonięta */
+body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
+@media (max-width: 575.98px){
+  .invoice-sticky-bar .invoice-pills{ order: 2; width:100%; }
+  body.has-invoice-sticky-bar .main-content{ padding-bottom: 156px; }
+}
+
+/* --- Group headers w sekcji „Podstawowe" --- */
+.form-group-title{
+  font-size:.7rem;
+  font-weight:600;
+  letter-spacing:.6px;
+  text-transform:uppercase;
+  color:#64748b;
+  margin: .25rem 0 .5rem;
+  display:flex; align-items:center; gap:.5rem;
+}
+.form-group-title::after{
+  content:''; flex:1; height:1px; background:#e5e7eb;
+}
+.form-group + .form-group{ margin-top: 1.25rem; }
 .invoice-pills .pill-badge{
   font-size:.75rem; font-weight:600; padding:.15rem .5rem; border-radius:999px;
   background:#fff3cd; color:#9a6700; border:1px solid #ffe69c;
