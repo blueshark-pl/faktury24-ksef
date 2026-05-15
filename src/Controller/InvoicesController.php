@@ -3802,13 +3802,29 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     {
         $this->request->allowMethod(['post', 'delete']);
         $invoice = $this->Invoices->get($id);
-        if ($this->Invoices->delete($invoice)) {
+        $wasDraft = empty($invoice->fullnumber);
+        $ok = (bool)$this->Invoices->delete($invoice);
+
+        $isAjax = $this->request->is('ajax')
+            || str_contains((string)$this->request->getHeaderLine('Accept'), 'application/json');
+
+        if ($isAjax) {
+            $this->viewBuilder()->setClassName('Json');
+            $this->set([
+                'success' => $ok,
+                'error'   => $ok ? null : 'Nie udało się usunąć faktury.',
+                '_serialize' => ['success', 'error'],
+            ]);
+            return null;
+        }
+
+        if ($ok) {
             $this->Flash->success(__('The invoice has been deleted.'));
         } else {
             $this->Flash->error(__('The invoice could not be deleted. Please, try again.'));
         }
 
-        return $this->redirect(['action' => 'index']);
+        return $this->redirect(['action' => $wasDraft ? 'drafts' : 'index']);
     }
 private function makeClient(string $environment): KsefClient
     {

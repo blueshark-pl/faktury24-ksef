@@ -205,7 +205,7 @@ $editActionByType = [
                       ]
                     ) ?>
                   <?php endif; ?>
-                  <?= $this->Form->postLink('Usuń', ['action' => 'delete', $inv->id], ['class' => 'btn btn-outline-danger', 'confirm' => 'Usunąć tę fakturę roboczą?']) ?>
+                  <button type="button" class="btn btn-outline-danger js-delete-draft" data-id="<?= h($inv->id) ?>">Usuń</button>
                 </div>
               </td>
             </tr>
@@ -335,6 +335,81 @@ $editActionByType = [
       }
     } finally {
       btn.dataset.loading = '';
+    }
+  });
+
+  // === AJAX delete drafta ===
+  const deleteUrlBase = '<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'delete']) ?>';
+  const csrfToken = (document.querySelector('meta[name="csrfToken"]')?.content)
+    || (document.cookie.match(/csrfToken=([^;]+)/)?.[1] ? decodeURIComponent(document.cookie.match(/csrfToken=([^;]+)/)[1]) : '');
+
+  document.addEventListener('click', async function (e) {
+    const btn = e.target.closest('.js-delete-draft');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = btn.dataset.id;
+    if (!id) return;
+    if (btn.dataset.loading === '1') return;
+
+    const useSwal = (typeof Swal !== 'undefined');
+    let confirmed = false;
+    if (useSwal) {
+      const r = await Swal.fire({
+        title: 'Usunąć tę fakturę roboczą?',
+        text: 'Tej operacji nie można cofnąć.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Tak, usuń',
+        cancelButtonText: 'Anuluj',
+        confirmButtonColor: '#dc3545',
+        reverseButtons: true,
+      });
+      confirmed = !!r.isConfirmed;
+    } else {
+      confirmed = confirm('Usunąć tę fakturę roboczą?');
+    }
+    if (!confirmed) return;
+
+    btn.dataset.loading = '1';
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem" role="status"></span>';
+
+    try {
+      const res = await fetch(deleteUrlBase + '/' + encodeURIComponent(id), {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'same-origin',
+      });
+      const data = await res.json().catch(() => ({ success: false, error: 'Nieprawidłowa odpowiedź serwera.' }));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || ('HTTP ' + res.status));
+      }
+      // Animowane usunięcie wiersza
+      const row = btn.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity .25s';
+        row.style.opacity = '0';
+        setTimeout(() => row.remove(), 250);
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast('Faktura robocza usunięta.', 'success');
+      }
+    } catch (err) {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      btn.dataset.loading = '';
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({ icon: 'error', title: 'Błąd', text: err.message || 'Nie udało się usunąć faktury.' });
+      } else {
+        alert(err.message || 'Nie udało się usunąć faktury.');
+      }
     }
   });
 })();
