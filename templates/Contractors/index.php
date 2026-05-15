@@ -76,6 +76,11 @@ $companyId = $identity?->get('company_id');
       <div class="card-header justify-content-between flex-wrap gap-2">
         <div class="card-title d-flex align-items-center gap-2">
           Lista kontrahentów
+          <?php
+            // Łączna liczba wyników — CakePHP 5: Paginator->params() używa 'totalCount' (zob. CLAUDE.md)
+            $cParams = $this->Paginator->params();
+            $total = $cParams['totalCount'] ?? null;
+          ?>
           <?php if ($total !== null): ?>
             <span class="badge bg-light text-default rounded ms-1 fs-12 align-middle"><?= (int)$total ?></span>
           <?php endif; ?>
