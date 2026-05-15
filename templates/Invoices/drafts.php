@@ -54,13 +54,27 @@ $editActionByType = [
 
 <div class="card">
   <div class="card-header justify-content-between flex-wrap gap-2">
-    <div class="card-title d-flex align-items-center gap-2 mb-0">
+    <div class="card-title d-flex align-items-center gap-2">
       Niewysłane dokumenty robocze
+      <?php
+        // Łączna liczba spełniających filtry — z paginatora
+        $draftsParams = $this->Paginator->params();
+        $total = $draftsParams['totalCount'] ?? null;
+      ?>
+      <?php if ($total !== null): ?>
+        <span class="badge bg-light text-default rounded ms-1 fs-12 align-middle"><?= (int)$total ?></span>
+      <?php endif; ?>
       <?php if ($q): ?>
         <span class="badge bg-primary-transparent"><i class="ri-search-line me-1"></i><?= h($q) ?></span>
       <?php endif; ?>
       <?php if ($type): ?>
         <span class="badge bg-secondary-transparent"><?= h($typeLabels[$type] ?? strtoupper($type)) ?></span>
+      <?php endif; ?>
+      <?php if ($from || $to): ?>
+        <span class="badge bg-info-transparent">
+          <i class="ri-calendar-line me-1"></i>
+          <?= $from ? h($from) : '…' ?> — <?= $to ? h($to) : '…' ?>
+        </span>
       <?php endif; ?>
     </div>
     <?= $this->Form->create(null, [
