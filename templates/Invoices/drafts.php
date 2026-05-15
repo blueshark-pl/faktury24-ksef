@@ -162,17 +162,17 @@ $editActionByType = [
             <tr>
               <td><span class="badge bg-warning">Robocza</span></td>
               <td>
-                <span class="d-inline-flex align-items-center gap-2">
+                <div class="d-flex align-items-center justify-content-between gap-2">
                   <?= $this->Html->link(h($inv->fullnumber ?: ('ROB-' . substr((string)$inv->id, 0, 8))), ['action' => 'view', $inv->id], ['class' => 'fw-semibold draft-number-link', 'data-id' => $inv->id]) ?>
                   <?php if (empty($inv->fullnumber)): ?>
                     <button type="button"
-                            class="btn btn-sm btn-outline-primary js-preview-number"
+                            class="btn btn-sm btn-outline-primary js-preview-number ms-auto py-0 px-2"
                             data-id="<?= h($inv->id) ?>"
                             title="Oblicz przewidywany numer dla tej faktury">
-                      <i class="ri-eye-line me-1"></i>Sprawdź numer
+                      Spr.
                     </button>
                   <?php endif; ?>
-                </span>
+                </div>
               </td>
               <td>
                 <?php $badgeCls = $typeBadgeClass[$typeKey] ?? 'bg-light text-dark'; ?>
