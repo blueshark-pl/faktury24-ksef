@@ -884,11 +884,11 @@ if ($__isEdit && !empty($__prefillItems)) {
     <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
   </td>
-  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" inputmode="decimal" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
   <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td>
     <div class="d-flex align-items-center gap-1">
-      <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
+      <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" inputmode="decimal" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
       <select name="items[<?= (int)$__i ?>][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
         <option value="net"<?= $__pm === 'net' ? ' selected' : '' ?>>Netto</option>
         <option value="gross"<?= $__pm === 'gross' ? ' selected' : '' ?>>Brutto</option>
@@ -896,7 +896,7 @@ if ($__isEdit && !empty($__prefillItems)) {
     </div>
   </td>
   <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
-  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" inputmode="decimal" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="<?= $__netto ?>" readonly></td>
   <td><input class="form-control text-end item-gross" value="<?= $__brutto ?>" readonly></td>
   <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
@@ -923,11 +923,11 @@ if ($__isEdit && !empty($__prefillItems)) {
     <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
     <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
-  <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
+  <td><input name="items[0][quantity]" type="number" step="0.001" inputmode="decimal" value="1" class="form-control text-end item-qty" required></td>
   <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td>
     <div class="d-flex align-items-center gap-1">
-      <input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>
+      <input name="items[0][price]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-price" required>
       <select name="items[0][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
         <option value="net" selected>Netto</option>
         <option value="gross">Brutto</option>
@@ -935,7 +935,7 @@ if ($__isEdit && !empty($__prefillItems)) {
     </div>
   </td>
   <td class="vat-cell"><?= $vatSelectHtml ?></td>
-  <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
+  <td><input name="items[0][discount_percent]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="0.00" readonly></td>
   <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
   <td class="gtu-cell"><?= $gtuSelectHtml ?></td>
@@ -1861,6 +1861,45 @@ if ($__isEdit && !empty($__prefillItems)) {
   .invoice-compact input[type="number"]{ text-align:right; }
   .invoice-compact th[style*="min-width:260px"]{ min-width:220px !important; }
   .invoice-compact th, .invoice-compact td{ white-space: nowrap; }
+
+  /* Ukryj natywne strzałki spinnera w polach liczbowych — na wąskich kolumnach zjadały całe pole */
+  .invoice-compact input[type="number"]::-webkit-outer-spin-button,
+  .invoice-compact input[type="number"]::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .invoice-compact input[type="number"]{
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  /* Compact density — 1366px i mniej */
+  @media (max-width: 1399.98px){
+    .invoice-compact .form-control,
+    .invoice-compact .form-select{
+      height: 32px;
+      padding: .2rem .4rem;
+      font-size: .82rem;
+    }
+    .invoice-compact #items-table tbody > tr > td{
+      padding: .25rem .35rem;
+    }
+    .invoice-compact #items-table thead th{
+      padding: .35rem .35rem;
+      font-size: .72rem;
+      letter-spacing: .2px;
+    }
+    .invoice-compact .btn-icon{ width: 28px; height: 28px; }
+    .invoice-compact .item-price-mode{ min-width: 78px !important; font-size: .76rem; }
+  }
+  @media (max-width: 1199.98px){
+    .invoice-compact .form-control,
+    .invoice-compact .form-select{
+      height: 30px;
+      padding: .15rem .35rem;
+      font-size: .78rem;
+    }
+  }
 
   .invoice-compact #items-body tr:last-child table td,
   .invoice-compact #items-body tr:last-child table th{ padding: .2rem .25rem; }
@@ -3333,11 +3372,11 @@ $('#gus-fetch-btn').on('click', function(){
           '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
           '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
         '</td>' +
-        '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
+        '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" inputmode="decimal" value="1" class="form-control text-end item-qty" required></td>' +
         '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
         '<td>'+
           '<div class="d-flex align-items-center gap-1">'+
-            '<input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required>'+
+            '<input name="items['+idx+'][price]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-price" required>'+
             '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">'+
               '<option value="net" selected>Netto</option>'+
               '<option value="gross">Brutto</option>'+
@@ -3345,7 +3384,7 @@ $('#gus-fetch-btn').on('click', function(){
           '</div>'+
         '</td>' +
         '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>' +
-        '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>' +
+        '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-disc"></td>' +
         '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
         '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
         '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
