@@ -185,7 +185,7 @@ $editActionByType = [
               <td class="text-end"><strong><?= h($money($inv->total ?? 0, (string)($inv->currency ?? 'PLN'))) ?></strong></td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
-                  <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-secondary']) ?>
+                  <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-primary']) ?>
                   <?php
                     // Przycisk "Przenieś do faktur" (bez KSeF) pokazujemy gdy:
                     // - kontrahent z katalogu ma is_person=1 (osoba fizyczna), LUB
