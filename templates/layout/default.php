@@ -442,8 +442,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ? 'KSeF włączony — uprawnienia: ' . $ksefSlotLabel
                                 : 'KSeF wyłączony — faktury nie są wysyłane do KSeF';
                         ?>
+                        <?php $ksefAlertDockedHdr = (($_COOKIE['ksef_alert_docked'] ?? '') === '1'); ?>
                         <!-- Start::header-element: docked KSeF status -->
-                        <li class="header-element header-ksef" id="ksef-navbar-slot" aria-hidden="true">
+                        <li class="header-element header-ksef me-2 <?= $ksefAlertDockedHdr ? 'is-visible' : '' ?>"
+                            id="ksef-navbar-slot" <?= $ksefAlertDockedHdr ? '' : 'aria-hidden="true"' ?>>
                             <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>"
                                class="ksef-pill d-inline-flex align-items-center gap-2 px-2 py-1 rounded-pill text-decoration-none"
                                title="<?= h($ksefPillTitle) ?>"
@@ -1020,6 +1022,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 }
                                             }
                                         ?>
+                                        <?php $ksefAlertDocked = (($_COOKIE['ksef_alert_docked'] ?? '') === '1'); ?>
+                                        <?php if (!$ksefAlertDocked): ?>
                                         <?php if ($ksefModeEnabled): ?>
                                         <div id="ksef-status-alert" data-ksef-mode="on" data-ksef-perm="<?= h($permClass) ?>" data-ksef-perm-label="<?= h($permLabel) ?>"
                                              class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
@@ -1051,6 +1055,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             <a class="btn btn-sm btn-outline-dark" href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>">Ustawienia firmy</a>
                                         </div>
                                         <?php endif; // ksefModeEnabled ?>
+                                        <?php endif; // !ksefAlertDocked ?>
                                         <?php if ($isDemo): ?>
                                             <div class="alert alert-info d-flex align-items-start" role="alert">
                                                 <div class="flex-grow-1">
