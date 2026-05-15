@@ -368,7 +368,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                   'type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control',
                   'disabled' => !$__partialEnabled,
                 ]) ?>
-                <small class="text-muted d-block partial-paid-hint" style="margin-top:-.25rem<?= $__partialEnabled ? ';display:none' : '' ?>">
+                <small class="text-muted d-block partial-paid-hint mt-1"<?= $__partialEnabled ? ' style="display:none"' : '' ?>>
                   Aktywne po wpisaniu kwoty w „Zapłacono".
                 </small>
               </div>
