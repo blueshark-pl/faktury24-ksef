@@ -283,21 +283,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     #ksef-navbar-slot { opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .4s ease, transform .4s ease; pointer-events: none; }
                     #ksef-navbar-slot.is-visible { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
                     .ksef-pill {
-                        background: rgba(148,212,55,.10);
-                        border: 1px solid rgba(148,212,55,.28);
-                        color: #2a7a0e;
-                        font-size: .8rem;
+                        background: #fff;
+                        border: 1px solid #e5e7eb;
+                        color: #475569;
+                        font-size: .78rem;
                         line-height: 1;
-                        transition: background .2s ease, border-color .2s ease, transform .2s ease;
+                        transition: background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
                     }
-                    .ksef-pill:hover { background: rgba(148,212,55,.18); border-color: rgba(148,212,55,.45); transform: translateY(-1px); color:#2a7a0e; }
-                    .ksef-pill-icon { font-size: 1rem; }
-                    .ksef-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 rgba(34,197,94,0.55); animation: ksefPulse 2s ease-in-out infinite; }
-                    .ksef-pill[data-ksef-perm="warning"] { background: rgba(255,193,7,.12); border-color: rgba(255,193,7,.35); color:#8a6100; }
+                    .ksef-pill:hover { background: #f8fafc; border-color: #cbd5e1; color:#1e293b; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+                    .ksef-pill-icon { font-size: .95rem; color:#64748b; }
+                    .ksef-pill-text { letter-spacing:.2px; }
+                    .ksef-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 rgba(34,197,94,0.55); animation: ksefPulse 2s ease-in-out infinite; }
                     .ksef-pill[data-ksef-perm="warning"] .ksef-pill-dot { background: #f59f00; }
-                    .ksef-pill[data-ksef-perm="danger"]  { background: rgba(220,53,69,.10); border-color: rgba(220,53,69,.32); color:#a52a35; }
                     .ksef-pill[data-ksef-perm="danger"]  .ksef-pill-dot { background: #dc3545; box-shadow:none; animation:none; }
-                    .ksef-pill[data-ksef-mode="off"] .ksef-pill-icon::before { content: "\\f50d"; } /* shield-cross-line — fallback if remix has it */
+                    .ksef-pill[data-ksef-mode="off"] .ksef-pill-icon { color:#94a3b8; }
 
                     /* element animowany w trakcie docku */
                     #ksef-status-alert.is-flying {
