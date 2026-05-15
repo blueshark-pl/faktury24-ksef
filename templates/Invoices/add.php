@@ -346,17 +346,19 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 ]) ?>
               </div>
               <div class="col-lg-3">
-                <div class="form-check pt-2 mb-1">
-                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
-                  <label class="form-check-label fw-medium" for="is-paid-check">Oznacz jako opłacone</label>
+                <div class="d-flex align-items-center justify-content-between">
+                  <label class="form-label mb-0" for="paid-at">Data zapłaty</label>
+                  <div class="form-check form-switch m-0 ps-0">
+                    <input class="form-check-input ms-0" type="checkbox" role="switch" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
+                    <input type="hidden" name="paymentstate_marker" value="">
+                  </div>
                 </div>
-                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
-                  <?= $this->Form->control('paid_at', [
-                    'type' => 'date', 'label' => false, 'class' => 'form-control form-control-sm',
-                    'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '',
-                    'placeholder' => 'Data zapłaty',
-                  ]) ?>
-                </div>
+                <input type="date" name="paid_at" id="paid-at" class="form-control"
+                       value="<?= h($invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '') ?>"
+                       <?= $__isPaid ? '' : 'disabled' ?>>
+                <small class="text-muted d-block paid-at-hint mt-1"<?= $__isPaid ? ' style="display:none"' : '' ?>>
+                  Przełącz, aby oznaczyć fakturę jako opłaconą.
+                </small>
               </div>
               <div class="col-lg-3">
                 <?= $this->Form->control('alreadypaid', [
@@ -3790,13 +3792,22 @@ $('#gus-fetch-btn').on('click', function(){
 
   // ====== „Zapłacono (kwota)” ======
   var $paidCheck = $('#is-paid-check');
-  var $paidAtGrp = $('#paid-at-group');
+  var $paidAt    = $('#paid-at');
+  var $paidHint  = $('.paid-at-hint');
   var $paidInput = $('[name="alreadypaid"]');
   function getTotal(){ return parseFloat($('#sum-gross').val() || '0') || 0; }
   function syncPaidAmountIfLocked(){ if ($paidCheck.is(':checked')) { $paidInput.val(getTotal().toFixed(2)); } }
   function togglePaidLock(){
-    if ($paidCheck.is(':checked')) { $paidAtGrp.stop(true,true).slideDown(120); $paidInput.prop('readOnly', true).addClass('bg-light'); syncPaidAmountIfLocked(); }
-    else { $paidAtGrp.stop(true,true).slideUp(120).find('input').val(''); $paidInput.prop('readOnly', false).removeClass('bg-light'); }
+    if ($paidCheck.is(':checked')) {
+      $paidAt.prop('disabled', false);
+      $paidHint.hide();
+      $paidInput.prop('readOnly', true).addClass('bg-light');
+      syncPaidAmountIfLocked();
+    } else {
+      $paidAt.val('').prop('disabled', true);
+      $paidHint.show();
+      $paidInput.prop('readOnly', false).removeClass('bg-light');
+    }
   }
   $paidInput.on('input change', function(){ if ($paidCheck.is(':checked')) { syncPaidAmountIfLocked(); } });
   $paidCheck.on('change', togglePaidLock);
