@@ -61,7 +61,7 @@ $editActionByType = [
     </ol>
   </div>
   <div>
-    <?= $this->Html->link('<i class="ri-list-check-2 me-1"></i> Wszystkie faktury', ['action' => 'index'], ['class' => 'btn btn-outline-secondary', 'escape' => false]) ?>
+    <?= $this->Html->link('<i class="ri-list-check-2 me-1"></i> Wszystkie faktury', ['action' => 'index'], ['class' => 'btn btn-outline-primary btn-wave', 'escape' => false]) ?>
   </div>
 </div>
 
