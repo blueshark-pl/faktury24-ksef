@@ -244,6 +244,8 @@ return [
                 'importFetch',
                 'importBatch',
                 'bulkSetActive',
+                'viesCheck',
+                'stats',
             ],
 
         ],

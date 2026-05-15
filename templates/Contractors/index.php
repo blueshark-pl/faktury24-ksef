@@ -91,9 +91,9 @@ $companyId = $identity?->get('company_id');
           <?php endif; ?>
         </div>
 
-        <?= $this->Form->create(null, ['type' => 'get', 'class' => 'd-flex flex-wrap gap-2 ms-2', 'role' => 'search', 'aria-label' => 'Filtry kontrahentów']) ?>
+        <?= $this->Form->create(null, ['type' => 'get', 'class' => 'd-flex flex-wrap gap-2 ms-2', 'role' => 'search', 'aria-label' => 'Filtry kontrahentów', 'id' => 'contractor-filters-form']) ?>
           <div class="position-relative">
-            <i class="ri-search-line position-absolute" style="left:10px;top:8px;color:#9aa0ac"></i>
+            <i class="ri-search-line position-absolute" style="left:10px;top:50%;transform:translateY(-50%);color:#9aa0ac;pointer-events:none"></i>
             <input id="live-search" name="q" class="form-control form-control-sm ps-4" type="search"
                    placeholder="Szukaj: nazwa / NIP / email / miasto"
                    value="<?= h($q) ?>"
@@ -108,7 +108,7 @@ $companyId = $identity?->get('company_id');
             'options' => ['1' => 'Aktywni', '0' => 'Nieaktywni'],
             'value' => $active,
             'class' => 'form-select form-select-sm',
-            'onchange' => 'this.form.submit()',
+            'onchange' => 'this.form.requestSubmit()',
             'aria-label' => 'Status'
           ]) ?>
           <?= $this->Form->control('limit', [
@@ -117,7 +117,7 @@ $companyId = $identity?->get('company_id');
             'value' => $limit,
             'options' => [10 => '10 / stronę', 25 => '25 / stronę', 50 => '50 / stronę', 100 => '100 / stronę'],
             'class' => 'form-select form-select-sm',
-            'onchange' => 'this.form.submit()',
+            'onchange' => 'this.form.requestSubmit()',
             'aria-label' => 'Wiersze na stronę'
           ]) ?>
           <div class="btn-group btn-group-sm">
@@ -161,6 +161,7 @@ $companyId = $identity?->get('company_id');
                 <th><?= $this->Paginator->sort('name', 'Kontrahent') ?></th>
                 <th>Identyfikator</th>
                 <th>Kontakt</th>
+                <th class="text-end">Saldo</th>
                 <th><?= $this->Paginator->sort('is_active', 'Status') ?></th>
                 <th class="text-end">Akcje</th>
               </tr>
@@ -278,6 +279,30 @@ $companyId = $identity?->get('company_id');
                     <?php if (!$c->email && !$c->phone): ?>—<?php endif; ?>
                   </div>
                 </td>
+                <td class="text-end">
+                  <?php
+                    $bal = $balances[$c->id] ?? null;
+                    if ($bal && (float)$bal['amount'] > 0):
+                  ?>
+                    <button type="button"
+                            class="btn btn-link p-0 text-decoration-none js-balance-click"
+                            data-id="<?= h($c->id) ?>"
+                            data-name="<?= h($c->name ?: (trim(($c->first_name ?? '').' '.($c->last_name ?? '')) ?: ('#'.$c->id))) ?>"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="left"
+                            title="Pokaż nieopłacone faktury">
+                      <span class="fw-semibold text-danger">
+                        <?= number_format((float)$bal['amount'], 2, ',', ' ') ?>
+                        <small class="text-muted fw-normal"><?= h($bal['currency']) ?></small>
+                      </span>
+                      <?php if (!empty($bal['multi'])): ?>
+                        <i class="ri-error-warning-line text-warning" title="Faktury w wielu walutach — suma w tabeli tylko dla jednej waluty"></i>
+                      <?php endif; ?>
+                    </button>
+                  <?php else: ?>
+                    <span class="text-muted small">—</span>
+                  <?php endif; ?>
+                </td>
                 <td>
                   <?php $isActive = (int)$c->is_active === 1; ?>
                   <span class="d-inline-flex align-items-center gap-2" title="<?= $isActive ? 'Aktywny' : 'Nieaktywny' ?>">
@@ -335,7 +360,7 @@ $companyId = $identity?->get('company_id');
 
               <?php if (count($contractors) === 0): ?>
               <tr>
-                <td colspan="6" class="text-center text-muted py-5">
+                <td colspan="7" class="text-center text-muted py-5">
                   <div class="mb-2" style="font-size:32px;opacity:.3">📭</div>
                   Brak wyników. Zmień filtry lub dodaj pierwszego kontrahenta.
                   <div class="mt-3">
@@ -546,10 +571,11 @@ $companyId = $identity?->get('company_id');
           </div>
         </div>
 
-        <!-- Tabs: Odbiorcy / Faktury -->
+        <!-- Tabs: Odbiorcy / Faktury / Statystyki -->
         <ul class="nav nav-tabs nav-tabs-soft mb-3" role="tablist">
           <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cd-tab-recipients" type="button"><i class="ri-user-3-line me-1"></i>Odbiorcy</button></li>
           <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cd-tab-invoices" type="button"><i class="ri-file-list-line me-1"></i>Faktury</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cd-tab-stats" type="button" id="cd-tab-stats-btn"><i class="ri-bar-chart-2-line me-1"></i>Statystyki</button></li>
         </ul>
         <div class="tab-content">
           <div class="tab-pane fade show active" id="cd-tab-recipients" role="tabpanel">
@@ -582,6 +608,12 @@ $companyId = $identity?->get('company_id');
                 <tbody id="cd-invoices-tbody"><tr><td colspan="5" class="text-center text-muted py-3">Kliknij „Wczytaj faktury".</td></tr></tbody>
               </table>
             </div>
+          </div>
+          <div class="tab-pane fade" id="cd-tab-stats" role="tabpanel">
+            <div id="cd-stats-loader" class="text-center text-muted py-4 d-none">
+              <span class="spinner-border spinner-border-sm me-2"></span>Liczę statystyki…
+            </div>
+            <div id="cd-stats-body" class="d-none"></div>
           </div>
         </div>
       </div>
@@ -819,9 +851,16 @@ $companyId = $identity?->get('company_id');
                 </div>
                 <div class="col-md-5">
                   <label class="form-label small mb-1">Numer VAT-UE</label>
-                  <input type="text" name="vat_eu" id="modal-vat-eu"
-                         class="form-control form-control-sm" maxlength="32"
-                         placeholder="np. 123456789">
+                  <div class="input-group input-group-sm">
+                    <input type="text" name="vat_eu" id="modal-vat-eu"
+                           class="form-control form-control-sm" maxlength="32"
+                           placeholder="np. 123456789">
+                    <button type="button" class="btn btn-outline-secondary" id="vies-check-btn" title="Sprawdź w VIES (rejestr Komisji Europejskiej)">
+                      <span class="spinner-border spinner-border-sm d-none" id="vies-spin" role="status"></span>
+                      <i class="ri-shield-check-line" id="vies-icon"></i> VIES
+                    </button>
+                  </div>
+                  <div class="form-text small mt-1 d-none" id="vies-result"></div>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label small mb-1">EORI (opcjonalnie)</label>
@@ -1066,6 +1105,63 @@ $companyId = $identity?->get('company_id');
     background: transparent;
   }
   .nav-tabs-soft .nav-link:hover { color: var(--primary-color, #94d437); }
+
+  /* Statystyki kontrahenta — karty z liczbami + mini bar chart */
+  #contractor-details .cd-stat-card {
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 10px;
+    padding: .9rem 1rem;
+    background: #fff;
+    height: 100%;
+  }
+  #contractor-details .cd-stat-label {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    color: #64748b;
+    font-weight: 600;
+    margin-bottom: .25rem;
+  }
+  #contractor-details .cd-stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+  }
+  #contractor-details .cd-stat-sub {
+    font-size: .72rem;
+    color: #94a3b8;
+    margin-top: .25rem;
+  }
+  #contractor-details .stats-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 120px;
+    padding-top: 8px;
+  }
+  #contractor-details .stats-bar-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    cursor: default;
+  }
+  #contractor-details .stats-bar {
+    width: 100%;
+    max-width: 32px;
+    background: linear-gradient(180deg, var(--primary-color, #94d437) 0%, #84c02e 100%);
+    border-radius: 4px 4px 0 0;
+    transition: opacity .15s ease;
+    margin-top: auto;
+  }
+  #contractor-details .stats-bar-wrap:hover .stats-bar { opacity: .75; }
+  #contractor-details .stats-bar-label {
+    font-size: .65rem;
+    color: #94a3b8;
+    margin-top: 4px;
+  }
 
   /* Loader overlay w modalach */
   .cd-loader {
@@ -1326,7 +1422,46 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch {}
     });
   }
+  // Inicjalizuje tooltipy Bootstrap dla elementów dodanych po refreshu AJAX
+  function bindTableTooltips() {
+    document.querySelectorAll('#contractors-table [data-bs-toggle="tooltip"]').forEach(el => {
+      if (el.dataset.tipBound) return;
+      el.dataset.tipBound = '1';
+      try {
+        const existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el);
+      } catch {}
+    });
+  }
   bindTableDropdowns();
+  bindTableTooltips();
+
+  // Back/Forward button — gdy user nawiguje przez historię (pushState), odśwież tabelę
+  window.addEventListener('popstate', () => {
+    try { refreshContractorsTable(); } catch {}
+  });
+
+  // Submit formularza filtrów → AJAX-refresh tabeli zamiast przeładowania strony.
+  // Aktualizujemy też URL (history.pushState) żeby paginacja, bookmark i back-button działały.
+  const filtersForm = document.getElementById('contractor-filters-form');
+  filtersForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(filtersForm);
+    const params = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (v !== '' && v !== null && v !== undefined) params.set(k, String(v));
+    }
+    const newUrl = filtersForm.action.split('?')[0] + (params.toString() ? ('?' + params.toString()) : '');
+    try {
+      history.pushState({}, '', newUrl);
+    } catch {}
+    try {
+      await refreshContractorsTable();
+    } catch {
+      window.location.href = newUrl;
+    }
+  });
 
   // Odśwież tabelę kontrahentów przez AJAX — pobiera aktualny URL strony, parsuje HTML
   // i podmienia tylko <tbody>. Zachowuje paginację, filtry i stan przewijania.
@@ -1355,6 +1490,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('#contractors-table .js-settings').forEach(bindSettingsHandler);
       document.querySelectorAll('#contractors-table .js-delete-contractor').forEach(bindDeleteHandler);
       bindTableDropdowns();
+      bindTableTooltips();
     } finally {
       const refreshed = document.querySelector('#contractors-table tbody');
       if (refreshed) { refreshed.style.opacity = ''; refreshed.style.pointerEvents = ''; }
@@ -1393,22 +1529,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // live search (debounce -> 400ms)
+  // Live search (debounce 400ms) → AJAX-refresh tabeli zamiast przeładowania strony.
   const search = document.getElementById('live-search');
   if (search) {
     let t;
     const baseUrl = search.dataset.currentUrl;
-    const current = new URL(window.location.href);
-    const active = current.searchParams.get('active') ?? '';
-    const limit  = current.searchParams.get('limit') ?? '';
     search.addEventListener('input', () => {
       clearTimeout(t);
-      t = setTimeout(() => {
+      t = setTimeout(async () => {
         const url = new URL(baseUrl, window.location.origin);
+        // Zachowaj aktualne wartości pozostałych filtrów (active, limit) z formularza
+        const ff = document.getElementById('contractor-filters-form');
+        if (ff) {
+          const fd = new FormData(ff);
+          for (const [k, v] of fd.entries()) {
+            if (k === 'q') continue;
+            if (v !== '' && v !== null && v !== undefined) url.searchParams.set(k, String(v));
+          }
+        }
         if (search.value.trim() !== '') url.searchParams.set('q', search.value.trim());
-        if (active !== '') url.searchParams.set('active', active);
-        if (limit  !== '') url.searchParams.set('limit', limit);
-        window.location.href = url.toString();
+        try { history.pushState({}, '', url.toString()); } catch {}
+        try { await refreshContractorsTable(); } catch { window.location.href = url.toString(); }
       }, 400);
     });
   }
@@ -1523,7 +1664,12 @@ document.addEventListener('DOMContentLoaded', () => {
     $ui.countrySelect({ defaultCountry: (countryHidden?.value || 'PL').toLowerCase() });
     try {
       const init = $ui.countrySelect('getSelectedCountryData');
-      if (init?.iso2) countryHidden.value = init.iso2.toUpperCase();
+      if (init?.iso2) {
+        countryHidden.value = init.iso2.toUpperCase();
+        // Nadpisz widoczne pole polską nazwą (plugin domyślnie wstawia angielską)
+        const plName = plCountryName(init.iso2);
+        if (plName) countryUI.value = plName;
+      }
     } catch {}
     $ui.on('change', () => {
       try {
@@ -1785,6 +1931,65 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {}
   }
 
+  // Weryfikacja VAT-UE w VIES (Komisja Europejska)
+  const viesBtn = document.getElementById('vies-check-btn');
+  const viesSpin = document.getElementById('vies-spin');
+  const viesIcon = document.getElementById('vies-icon');
+  const viesResult = document.getElementById('vies-result');
+  viesBtn?.addEventListener('click', async () => {
+    const prefix = (vatPfxHidden?.value || '').trim().toUpperCase();
+    const number = (modalVatEu?.value || '').trim();
+    if (!prefix || prefix === 'NONE') {
+      showToast('Wybierz najpierw Prefiks UE (kraj).', 'warning');
+      return;
+    }
+    if (!number) {
+      showToast('Podaj Numer VAT-UE do weryfikacji.', 'warning');
+      return;
+    }
+    viesBtn.disabled = true;
+    viesSpin?.classList.remove('d-none');
+    viesIcon?.classList.add('d-none');
+    viesResult?.classList.add('d-none');
+    try {
+      const fd = new FormData();
+      fd.set('prefix', prefix);
+      fd.set('number', number);
+      const res = await fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'viesCheck']) ?>', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With':'XMLHttpRequest', 'X-CSRF-Token': CSRF_TOKEN },
+        body: fd
+      });
+      const data = await res.json();
+      if (!viesResult) return;
+      viesResult.classList.remove('d-none', 'text-success', 'text-danger', 'text-warning');
+      if (data.success && data.valid) {
+        viesResult.classList.add('text-success');
+        let html = '<i class="ri-checkbox-circle-fill"></i> Aktywny w VIES';
+        if (data.name) html += ' — <strong>' + data.name.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</strong>';
+        if (data.address) html += '<br><span class="text-muted">' + data.address.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</span>';
+        viesResult.innerHTML = html;
+      } else if (data.success && !data.valid) {
+        viesResult.classList.add('text-danger');
+        viesResult.innerHTML = '<i class="ri-close-circle-fill"></i> Niezarejestrowany w VIES — sprawdź numer.';
+      } else {
+        viesResult.classList.add('text-warning');
+        viesResult.innerHTML = '<i class="ri-error-warning-fill"></i> ' + (data.message || 'Nie udało się sprawdzić w VIES.');
+      }
+    } catch (e) {
+      if (viesResult) {
+        viesResult.classList.remove('d-none');
+        viesResult.classList.add('text-warning');
+        viesResult.innerHTML = '<i class="ri-error-warning-fill"></i> Błąd połączenia z VIES.';
+      }
+    } finally {
+      viesBtn.disabled = false;
+      viesSpin?.classList.add('d-none');
+      viesIcon?.classList.remove('d-none');
+    }
+  });
+
   // CountrySelect dla prefiksu VAT-UE (tylko kraje UE)
   if (window.jQuery && jQuery.fn.countrySelect && vatPfxUI) {
     try {
@@ -1961,6 +2166,15 @@ document.addEventListener('DOMContentLoaded', () => {
     form.querySelectorAll('.invalid-feedback').forEach(i => i.remove());
     // Wyczyść `touched` flagi PESEL/NIP osoby — nowe otwarcie modala startuje świeżo
     [peselInput, personNipInput].forEach(el => { if (el) delete el.dataset.touched; });
+    // Resetuj widoczny "Kraj" na polską nazwę (form.reset() może wrócić do angielskiej z plugina)
+    try {
+      if (window.jQuery && jQuery.fn.countrySelect && countryUI) {
+        jQuery(countryUI).countrySelect('selectCountry', 'pl');
+        const plName = plCountryName('pl');
+        if (plName) countryUI.value = plName;
+        if (countryHidden) countryHidden.value = 'PL';
+      }
+    } catch {}
     // Odblokuj wszystkie pola firm/osoby/NIP/GUS — edycja osoby/firmy zostawia disabled na
     // niewłaściwych polach, co przy następnym Dodaj/Edytuj pozostawia np. NIP/nazwę szare.
     document.querySelectorAll(
@@ -2397,6 +2611,99 @@ document.addEventListener('DOMContentLoaded', () => {
         // bo bindDetailsHandler odpala się przy KAŻDYM otwarciu modala — addEventListener
         // by się kumulowało i przy 1 kliknięciu checkboxa loadInvoices leciałby N-razy.
         if (invUnsettled) invUnsettled.onchange = loadInvoices;
+
+        // === Statystyki (lazy-load przy pierwszym otwarciu taba) ===
+        const statsTabBtn = document.getElementById('cd-tab-stats-btn');
+        const statsLoader = document.getElementById('cd-stats-loader');
+        const statsBody   = document.getElementById('cd-stats-body');
+        let statsLoaded = false;
+        const fmtMoney = (n, cur='PLN') => Number(n||0).toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ' + cur;
+        const renderStats = (stats) => {
+          if (!stats) return '';
+          // Mini bar chart dla 12 miesięcy (CSS-only)
+          const maxMonth = Math.max(...stats.byMonth.map(m => m.total), 1);
+          const barsHtml = stats.byMonth.map(m => {
+            const h = Math.max(2, Math.round((m.total / maxMonth) * 100));
+            return `<div class="stats-bar-wrap" title="${escHtml(m.month)}: ${fmtMoney(m.total)} (${m.count} szt.)">
+                      <div class="stats-bar" style="height:${h}%"></div>
+                      <div class="stats-bar-label">${escHtml(m.month.slice(5))}</div>
+                    </div>`;
+          }).join('');
+          const topHtml = stats.topProducts.length
+            ? stats.topProducts.map((p, i) => `<li class="d-flex justify-content-between"><span><strong>${i+1}.</strong> ${escHtml(p.name)}</span><span class="text-muted">${fmtMoney(p.revenue)}</span></li>`).join('')
+            : '<li class="text-muted">Brak danych — kontrahent jeszcze nie ma faktur z pozycjami.</li>';
+          const avgDaysTxt = stats.avgPaymentDays !== null && stats.avgPaymentDays !== undefined
+            ? `${stats.avgPaymentDays} dni`
+            : '<span class="text-muted">—</span>';
+          return `
+            <div class="row g-3 mb-3">
+              <div class="col-md-3">
+                <div class="cd-stat-card">
+                  <div class="cd-stat-label">Liczba faktur</div>
+                  <div class="cd-stat-value">${stats.totalInvoices}</div>
+                  <div class="cd-stat-sub">${stats.ytdCount} w bieżącym roku</div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="cd-stat-card">
+                  <div class="cd-stat-label">Łączna wartość</div>
+                  <div class="cd-stat-value">${fmtMoney(stats.totalAmount)}</div>
+                  <div class="cd-stat-sub">YTD: ${fmtMoney(stats.ytdAmount)}</div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="cd-stat-card">
+                  <div class="cd-stat-label">Opłacone</div>
+                  <div class="cd-stat-value text-success">${fmtMoney(stats.totalPaid)}</div>
+                  <div class="cd-stat-sub">Do zapłaty: <span class="text-danger">${fmtMoney(stats.totalRemaining)}</span></div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="cd-stat-card">
+                  <div class="cd-stat-label">Średni czas płatności</div>
+                  <div class="cd-stat-value">${avgDaysTxt}</div>
+                  <div class="cd-stat-sub">na podstawie opłaconych</div>
+                </div>
+              </div>
+            </div>
+            <div class="cd-card mb-3">
+              <div class="cd-card-header"><i class="ri-bar-chart-2-line"></i>Sprzedaż po miesiącach (12 mies.)</div>
+              <div class="cd-card-body">
+                <div class="stats-bars">${barsHtml || '<span class="text-muted">Brak danych</span>'}</div>
+              </div>
+            </div>
+            <div class="cd-card">
+              <div class="cd-card-header"><i class="ri-trophy-line"></i>Top 3 produkty / usługi</div>
+              <div class="cd-card-body">
+                <ul class="list-unstyled mb-0">${topHtml}</ul>
+              </div>
+            </div>
+          `;
+        };
+        const loadStats = async () => {
+          if (statsLoaded) return;
+          statsLoader?.classList.remove('d-none');
+          statsBody?.classList.add('d-none');
+          try {
+            const res = await fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'stats']) ?>/' + encodeURIComponent(id), { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+            const data = await res.json();
+            if (data.success && data.stats) {
+              statsBody.innerHTML = renderStats(data.stats);
+              statsBody.classList.remove('d-none');
+              statsLoaded = true;
+            } else {
+              statsBody.innerHTML = '<div class="text-muted text-center py-3">Brak statystyk.</div>';
+              statsBody.classList.remove('d-none');
+            }
+          } catch {
+            statsBody.innerHTML = '<div class="text-danger text-center py-3">Błąd ładowania statystyk.</div>';
+            statsBody.classList.remove('d-none');
+          } finally {
+            statsLoader?.classList.add('d-none');
+          }
+        };
+        statsTabBtn?.addEventListener('shown.bs.tab', loadStats);
+
         // auto-load related data on open
         try { loadRecBtn?.click(); } catch {}
         try { await loadInvoices(); } catch {}
@@ -3302,6 +3609,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   invUnsettled?.addEventListener('change', () => loadInvoices(invUnsettled.checked));
+
+  // Klik w saldo (kolumna w tabeli) → otwiera modal Faktury kontrahenta z pre-checked "Tylko nierozliczone".
+  // Delegacja na document — przeżywa AJAX-refresh tbody.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.js-balance-click');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    currentContractorId = btn.dataset.id;
+    invNameEl.textContent = btn.dataset.name || ('#' + currentContractorId);
+    invUnsettled.checked = true; // pre-check „Tylko nierozliczone"
+    invModal?.show();
+    loadInvoices(true);
+  });
 
   // === Modal: Ustawienia kontrahenta ===
   const setModalEl = document.getElementById('contractor-settings');

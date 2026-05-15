@@ -300,7 +300,150 @@ if ($active !== null && $active !== '') {
 
 $this->paginate = ['order' => ['Contractors.created' => 'DESC']];
 $contractors = $this->paginate($query);
-$this->set(compact('contractors'));
+
+// === Saldo per kontrahent (suma 'remaining' z aktywnych faktur) ===
+// Map: contractor_id => ['amount' => float, 'currency' => string]
+// Liczymy tylko dla widocznej strony. Match: contractor_id LUB snapshot identyfikatorów
+// (nip, vat_eu, tax_id_other) — żeby legacy/zaimportowane faktury bez contractor_id też trafiały.
+$companyId = (string)$this->request->getAttribute('identity')->get('company_id');
+$pageIds = [];
+$contractorIdsByNip      = []; // nip => contractor_id
+$contractorIdsByVatEu    = []; // vat_eu (z prefiksem i bez) => contractor_id
+$contractorIdsByTaxOther = []; // tax_id_other => contractor_id
+$allNips = []; $allVatEus = []; $allTaxOthers = [];
+foreach ($contractors as $c) {
+    $cid = (string)$c->id;
+    $pageIds[] = $cid;
+    if (!empty($c->nip)) {
+        $nip = trim((string)$c->nip);
+        $contractorIdsByNip[$nip] = $cid;
+        $allNips[] = $nip;
+    }
+    if (!empty($c->vat_eu)) {
+        $ve = trim((string)$c->vat_eu);
+        $contractorIdsByVatEu[$ve] = $cid;
+        $allVatEus[] = $ve;
+        if (!empty($c->vat_prefix) && $c->vat_prefix !== 'NONE') {
+            $full = $c->vat_prefix . $ve;
+            $contractorIdsByVatEu[$full] = $cid;
+            $allVatEus[] = $full;
+        }
+    }
+    if (!empty($c->tax_id_other)) {
+        $to = trim((string)$c->tax_id_other);
+        $contractorIdsByTaxOther[$to] = $cid;
+        $allTaxOthers[] = $to;
+    }
+}
+$balances = [];
+
+$applyBalance = function (string $cid, string $cur, float $amt) use (&$balances) {
+    if ($cid === '' || $amt <= 0) return;
+    if (!isset($balances[$cid])) {
+        $balances[$cid] = ['amount' => $amt, 'currency' => $cur];
+    } else {
+        if ($balances[$cid]['currency'] === $cur) {
+            $balances[$cid]['amount'] += $amt;
+        } else {
+            $balances[$cid]['multi'] = true;
+        }
+    }
+};
+
+if (!empty($pageIds)) {
+    try {
+        $Invoices = $this->fetchTable('Invoices');
+
+        // 1) bezpośrednie matche po contractor_id
+        $rows = $Invoices->find()
+            ->select([
+                'cid'   => 'Invoices.contractor_id',
+                'cur'   => 'Invoices.currency',
+                'total' => 'SUM(Invoices.remaining)',
+            ])
+            ->where([
+                'Invoices.company_id'     => $companyId,
+                'Invoices.contractor_id IN' => $pageIds,
+                'Invoices.remaining >'    => 0,
+                'OR' => [
+                    ['Invoices.workflow_status IS' => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
+            ->group(['Invoices.contractor_id', 'Invoices.currency'])
+            ->disableHydration()
+            ->all();
+        $directInvoiceIds = $Invoices->find()
+            ->select(['id'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.contractor_id IN' => $pageIds,
+                'Invoices.remaining >' => 0,
+            ])
+            ->disableHydration()
+            ->all()
+            ->extract('id')
+            ->toList();
+        foreach ($rows as $r) {
+            $applyBalance((string)($r['cid'] ?? ''), (string)($r['cur'] ?? 'PLN'), (float)($r['total'] ?? 0));
+        }
+
+        // 2) snapshot matche — faktury bez contractor_id (lub z innym) ale ze zgodnym
+        //    invoice_contractors.nip / .vat_eu / .tax_id_other
+        if (!empty($allNips) || !empty($allVatEus) || !empty($allTaxOthers)) {
+            $InvoiceContractors = $this->fetchTable('InvoiceContractors');
+            $snapQ = $InvoiceContractors->find()
+                ->innerJoinWith('Invoices')
+                ->select([
+                    'invoice_id' => 'Invoices.id',
+                    'nip'        => 'InvoiceContractors.nip',
+                    'vat_eu'     => 'InvoiceContractors.vat_eu',
+                    'tax_id_other' => 'InvoiceContractors.tax_id_other',
+                    'cur'        => 'Invoices.currency',
+                    'rem'        => 'Invoices.remaining',
+                ])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.remaining >' => 0,
+                    'OR' => [
+                        ['Invoices.workflow_status IS' => null],
+                        ['Invoices.workflow_status !=' => 'draft'],
+                    ],
+                ])
+                ->andWhere(function ($exp) use ($allNips, $allVatEus, $allTaxOthers) {
+                    $or = [];
+                    if (!empty($allNips))      $or[] = ['InvoiceContractors.nip IN' => array_values(array_unique($allNips))];
+                    if (!empty($allVatEus))    $or[] = ['InvoiceContractors.vat_eu IN' => array_values(array_unique($allVatEus))];
+                    if (!empty($allTaxOthers)) $or[] = ['InvoiceContractors.tax_id_other IN' => array_values(array_unique($allTaxOthers))];
+                    return $exp->or($or);
+                })
+                ->disableHydration()
+                ->all();
+            // Dedup po invoice_id (faktura już mogła być doliczona przez direct match)
+            $directSet = array_flip(array_map('strval', $directInvoiceIds));
+            foreach ($snapQ as $r) {
+                $invId = (string)($r['invoice_id'] ?? '');
+                if ($invId === '' || isset($directSet[$invId])) continue;
+                // Znajdź kontrahenta — po pierwszym pasującym identyfikatorze
+                $cid = null;
+                $nip = trim((string)($r['nip'] ?? ''));
+                $ve  = trim((string)($r['vat_eu'] ?? ''));
+                $to  = trim((string)($r['tax_id_other'] ?? ''));
+                if ($nip !== '' && isset($contractorIdsByNip[$nip])) $cid = $contractorIdsByNip[$nip];
+                elseif ($ve !== '' && isset($contractorIdsByVatEu[$ve])) $cid = $contractorIdsByVatEu[$ve];
+                elseif ($to !== '' && isset($contractorIdsByTaxOther[$to])) $cid = $contractorIdsByTaxOther[$to];
+                if ($cid !== null) {
+                    $applyBalance($cid, (string)($r['cur'] ?? 'PLN'), (float)($r['rem'] ?? 0));
+                    $directSet[$invId] = true; // ochrona przed re-doliczeniem tej samej faktury
+                }
+            }
+        }
+    } catch (\Throwable) {
+        $balances = [];
+    }
+}
+
+$this->set(compact('contractors', 'balances'));
 
     }
 
@@ -953,16 +1096,19 @@ public function invoices($contractorId)
 
     $companyId = $this->request->getAttribute('identity')?->get('company_id');
 
-    // Pobierz kontrahenta — potrzebujemy też NIP do fallback-match po snapshocie
+    // Pobierz kontrahenta — potrzebujemy też wszystkich identyfikatorów do fallback-match po snapshocie
     $contractor = $this->Contractors->find()
-        ->select(['id', 'nip'])
+        ->select(['id', 'nip', 'vat_prefix', 'vat_eu', 'tax_id_other', 'tax_id_other_country'])
         ->where(['id' => $contractorId, 'company_id' => $companyId])
         ->first();
     if (!$contractor) {
         $this->set(['success'=>false, 'message'=>'Not found', 'invoices'=>[]]);
         return;
     }
-    $contractorNip = trim((string)($contractor->nip ?? ''));
+    $contractorNip      = trim((string)($contractor->nip ?? ''));
+    $contractorVatEu    = trim((string)($contractor->vat_eu ?? ''));
+    $contractorVatPfx   = trim((string)($contractor->vat_prefix ?? ''));
+    $contractorTaxOther = trim((string)($contractor->tax_id_other ?? ''));
 
     $onlyUnsettled = (int)$this->request->getQuery('unsettled') === 1;
 
@@ -978,21 +1124,32 @@ public function invoices($contractorId)
         // company_id ZAWSZE filtruje (multitenancy — nie pokazujemy faktur innych firm!)
         ->where(['Invoices.company_id' => $companyId]);
 
-    // Match: bezpośrednio po contractor_id LUB po NIP w snapshocie invoice_contractors
-    // (faktury legacy / zaimportowane mogą nie mieć contractor_id ustawionego)
-    if ($contractorNip !== '') {
+    // Match: contractor_id LUB snapshot (invoice_contractors.nip / .vat_eu / .tax_id_other)
+    // Faktury legacy/zaimportowane mogą nie mieć contractor_id, ale mają snapshot identyfikatorów.
+    $hasSnapshotIds = $contractorNip !== '' || $contractorVatEu !== '' || $contractorTaxOther !== '';
+    if ($hasSnapshotIds) {
         $q->leftJoinWith('InvoiceContractors')
-          ->andWhere(function ($exp) use ($contractorId, $contractorNip) {
-              return $exp->or([
-                  'Invoices.contractor_id'  => (string)$contractorId,
-                  'InvoiceContractors.nip'  => $contractorNip,
-              ]);
+          ->andWhere(function ($exp) use ($contractorId, $contractorNip, $contractorVatEu, $contractorVatPfx, $contractorTaxOther) {
+              $or = ['Invoices.contractor_id' => (string)$contractorId];
+              if ($contractorNip !== '') {
+                  $or[] = ['InvoiceContractors.nip' => $contractorNip];
+              }
+              if ($contractorVatEu !== '') {
+                  // Match po samym numerze VAT-UE, oraz po pełnym (prefix+number) gdy oba ustawione
+                  $or[] = ['InvoiceContractors.vat_eu' => $contractorVatEu];
+                  if ($contractorVatPfx !== '' && $contractorVatPfx !== 'NONE') {
+                      $or[] = ['InvoiceContractors.vat_eu' => $contractorVatPfx . $contractorVatEu];
+                  }
+              }
+              if ($contractorTaxOther !== '') {
+                  $or[] = ['InvoiceContractors.tax_id_other' => $contractorTaxOther];
+              }
+              return $exp->or($or);
           })
           ->group(['Invoices.id']);
     } else {
         $q->andWhere(['Invoices.contractor_id' => (string)$contractorId]);
     }
-
     $q->orderDesc('Invoices.date');
 
     if ($onlyUnsettled) {
@@ -1010,6 +1167,286 @@ public function invoices($contractorId)
         'success'  => true,
         'invoices' => $invoices,
         'message'  => null,
+    ]);
+}
+
+/**
+ * Statystyki sprzedaży per kontrahent.
+ * GET /contractors/stats/{id}
+ * Zwraca: agregaty kwot, średni czas płatności, faktury YTD, najpopularniejsze produkty.
+ */
+public function stats(string $contractorId)
+{
+    $this->request->allowMethod(['get']);
+    $this->viewBuilder()->setClassName(JsonView::class);
+    $this->viewBuilder()->setOption('serialize', ['success','stats','message']);
+
+    $identity  = $this->request->getAttribute('identity');
+    $companyId = (string)($identity?->get('company_id') ?? '');
+    if ($companyId === '') {
+        $this->set(['success'=>false, 'stats'=>null, 'message'=>'Brak kontekstu firmy.']);
+        return;
+    }
+
+    $contractor = $this->Contractors->find()
+        ->select(['id', 'nip', 'name'])
+        ->where(['id' => $contractorId, 'company_id' => $companyId])
+        ->first();
+    if (!$contractor) {
+        $this->set(['success'=>false, 'stats'=>null, 'message'=>'Nie znaleziono kontrahenta.']);
+        return;
+    }
+
+    $Invoices = $this->fetchTable('Invoices');
+    $nip = trim((string)($contractor->nip ?? ''));
+
+    // Subselect WHERE — match po contractor_id LUB po snapshot NIP (jak w invoices() action)
+    $baseWhere = function ($q) use ($companyId, $contractorId, $nip) {
+        $q->where(['Invoices.company_id' => $companyId]);
+        if ($nip !== '') {
+            $q->leftJoinWith('InvoiceContractors')
+              ->andWhere(function ($exp) use ($contractorId, $nip) {
+                  return $exp->or([
+                      'Invoices.contractor_id'  => $contractorId,
+                      'InvoiceContractors.nip'  => $nip,
+                  ]);
+              });
+        } else {
+            $q->andWhere(['Invoices.contractor_id' => $contractorId]);
+        }
+        // Ignoruj szkice
+        $q->andWhere([
+            'OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft'],
+            ],
+        ]);
+        return $q;
+    };
+
+    // Agregaty kwotowe (PLN — uproszczenie, multi-currency w tooltip)
+    $aggQ = $Invoices->find();
+    $baseWhere($aggQ);
+    $agg = $aggQ
+        ->select([
+            'count'    => $aggQ->func()->count('DISTINCT Invoices.id'),
+            'total'    => 'SUM(Invoices.total)',
+            'paid'     => 'SUM(Invoices.alreadypaid)',
+            'remaining'=> 'SUM(Invoices.remaining)',
+        ])
+        ->disableHydration()
+        ->first();
+
+    // Faktury w bieżącym roku
+    $yearStart = (new \DateTime())->modify('first day of January this year')->format('Y-m-d');
+    $ytdQ = $Invoices->find();
+    $baseWhere($ytdQ);
+    $ytdQ->andWhere(['Invoices.date >=' => $yearStart]);
+    $ytd = $ytdQ
+        ->select([
+            'count' => $ytdQ->func()->count('DISTINCT Invoices.id'),
+            'total' => 'SUM(Invoices.total)',
+        ])
+        ->disableHydration()
+        ->first();
+
+    // Średni czas płatności (dni między datą faktury a datą zapłaty, dla opłaconych)
+    $avgDays = null;
+    try {
+        $paidQ = $Invoices->find();
+        $baseWhere($paidQ);
+        $paidQ->andWhere([
+            'Invoices.paymentdate IS NOT' => null,
+            'Invoices.date IS NOT' => null,
+            'Invoices.remaining <=' => 0,
+        ]);
+        $delays = $paidQ
+            ->select(['date' => 'Invoices.date', 'paid' => 'Invoices.paymentdate'])
+            ->disableHydration()
+            ->limit(500)
+            ->all();
+        $sum = 0; $n = 0;
+        foreach ($delays as $r) {
+            try {
+                $d1 = new \DateTime((string)$r['date']);
+                $d2 = new \DateTime((string)$r['paid']);
+                $diff = (int)$d1->diff($d2)->format('%r%a');
+                if ($diff >= 0 && $diff < 365) { $sum += $diff; $n++; }
+            } catch (\Throwable) {}
+        }
+        $avgDays = $n > 0 ? round($sum / $n, 1) : null;
+    } catch (\Throwable) { $avgDays = null; }
+
+    // Po miesiącach (12 ostatnich miesięcy)
+    $byMonth = [];
+    try {
+        $monthlyQ = $Invoices->find();
+        $baseWhere($monthlyQ);
+        $monthsAgo = (new \DateTime())->modify('-11 months')->modify('first day of this month')->format('Y-m-d');
+        $monthlyQ->andWhere(['Invoices.date >=' => $monthsAgo]);
+        $rows = $monthlyQ
+            ->select([
+                'mo' => 'DATE_FORMAT(Invoices.date, "%Y-%m")',
+                'total' => 'SUM(Invoices.total)',
+                'cnt' => $monthlyQ->func()->count('DISTINCT Invoices.id'),
+            ])
+            ->group(['mo'])
+            ->order(['mo' => 'ASC'])
+            ->disableHydration()
+            ->all();
+        foreach ($rows as $r) {
+            $byMonth[] = [
+                'month' => (string)$r['mo'],
+                'total' => (float)$r['total'],
+                'count' => (int)$r['cnt'],
+            ];
+        }
+    } catch (\Throwable) {}
+
+    // Top 3 produkty (z invoice_contents na fakturach kontrahenta)
+    $topProducts = [];
+    try {
+        $InvoiceContents = $this->fetchTable('InvoiceContents');
+        $tpQ = $InvoiceContents->find();
+        $tpQ
+            ->innerJoinWith('Invoices')
+            ->select([
+                'name' => 'InvoiceContents.name',
+                'qty'  => 'SUM(InvoiceContents.quantity)',
+                'rev'  => 'SUM(InvoiceContents.quantity * InvoiceContents.price)',
+            ])
+            ->where(['Invoices.company_id' => $companyId])
+            ->group(['InvoiceContents.name'])
+            ->order(['rev' => 'DESC'])
+            ->limit(3);
+        if ($nip !== '') {
+            $tpQ->leftJoinWith('Invoices.InvoiceContractors')
+                ->andWhere(function ($exp) use ($contractorId, $nip) {
+                    return $exp->or([
+                        'Invoices.contractor_id'  => $contractorId,
+                        'InvoiceContractors.nip'  => $nip,
+                    ]);
+                });
+        } else {
+            $tpQ->andWhere(['Invoices.contractor_id' => $contractorId]);
+        }
+        $rows = $tpQ->disableHydration()->all();
+        foreach ($rows as $r) {
+            $topProducts[] = [
+                'name' => (string)$r['name'],
+                'qty'  => (float)$r['qty'],
+                'revenue' => (float)$r['rev'],
+            ];
+        }
+    } catch (\Throwable) {}
+
+    $stats = [
+        'totalInvoices' => (int)($agg['count'] ?? 0),
+        'totalAmount'   => (float)($agg['total'] ?? 0),
+        'totalPaid'     => (float)($agg['paid'] ?? 0),
+        'totalRemaining'=> (float)($agg['remaining'] ?? 0),
+        'ytdCount'      => (int)($ytd['count'] ?? 0),
+        'ytdAmount'     => (float)($ytd['total'] ?? 0),
+        'avgPaymentDays'=> $avgDays,
+        'byMonth'       => $byMonth,
+        'topProducts'   => $topProducts,
+    ];
+
+    $this->set(['success'=>true, 'stats'=>$stats, 'message'=>null]);
+}
+
+/**
+ * Weryfikacja numeru VAT-UE w bazie VIES (Komisja Europejska).
+ * POST /contractors/vies-check { prefix: 'DE', number: '123456789' }
+ * Zwraca: { success, valid, name, address, source: 'vies' }
+ */
+public function viesCheck()
+{
+    $this->request->allowMethod(['post']);
+    $this->viewBuilder()->setClassName(JsonView::class);
+    $this->viewBuilder()->setOption('serialize', ['success','valid','name','address','message']);
+
+    $prefix = strtoupper(preg_replace('/[^A-Z]/i', '', (string)$this->request->getData('prefix')));
+    $number = preg_replace('/[^0-9A-Z]/i', '', strtoupper((string)$this->request->getData('number')));
+    if ($prefix === '' || $number === '') {
+        $this->set(['success'=>false, 'valid'=>false, 'message'=>'Podaj prefiks i numer VAT-UE.']);
+        return;
+    }
+
+    // Lista 27 krajów członkowskich UE (VIES nie obsługuje innych)
+    $eu = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','EL','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE'];
+    // VIES używa 'EL' dla Grecji (nie 'GR')
+    if ($prefix === 'GR') $prefix = 'EL';
+    if (!in_array($prefix, $eu, true)) {
+        $this->set(['success'=>false, 'valid'=>false, 'message'=>'Prefiks „'.$prefix.'" nie należy do UE.']);
+        return;
+    }
+
+    $envelope = '<?xml version="1.0" encoding="UTF-8"?>'
+        . '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">'
+        . '<soapenv:Body><urn:checkVat>'
+        . '<urn:countryCode>' . htmlspecialchars($prefix, ENT_XML1) . '</urn:countryCode>'
+        . '<urn:vatNumber>'   . htmlspecialchars($number, ENT_XML1) . '</urn:vatNumber>'
+        . '</urn:checkVat></soapenv:Body></soapenv:Envelope>';
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method'  => 'POST',
+            'header'  => "Content-Type: text/xml; charset=utf-8\r\nSOAPAction: \"\"\r\n",
+            'content' => $envelope,
+            'timeout' => 8,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $url = 'https://ec.europa.eu/taxation_customs/vies/services/checkVatService';
+    $resp = @file_get_contents($url, false, $ctx);
+
+    if ($resp === false) {
+        $this->set(['success'=>false, 'valid'=>false, 'message'=>'Serwis VIES jest chwilowo niedostępny — spróbuj ponownie później.']);
+        return;
+    }
+
+    // Parser regex — VIES używa prefiksu namespace (np. <ns2:valid>true</ns2:valid>).
+    // Dopuszczamy opcjonalny prefiks `[\w-]+:` przed nazwą elementu.
+
+    // SOAP fault (np. MS_UNAVAILABLE, GLOBAL_MAX_CONCURRENT_REQ, TIMEOUT, SERVICE_UNAVAILABLE)
+    if (preg_match('#<(?:[\w-]+:)?Fault>.*?<faultstring>(.*?)</faultstring>#is', $resp, $m)) {
+        $fault = trim($m[1]);
+        $this->set([
+            'success' => false,
+            'valid'   => false,
+            'message' => 'VIES odpowiedział błędem: ' . $fault . ' — spróbuj ponownie za chwilę.',
+        ]);
+        return;
+    }
+
+    $hasValidElement = preg_match('#<(?:[\w-]+:)?valid>\s*(true|false)\s*</(?:[\w-]+:)?valid>#i', $resp, $vMatch);
+    if (!$hasValidElement) {
+        // Niespodziewany format odpowiedzi — log do debugowania
+        $this->set([
+            'success' => false,
+            'valid'   => false,
+            'message' => 'Nieoczekiwana odpowiedź z VIES — sprawdź połączenie lub spróbuj ponownie.',
+        ]);
+        return;
+    }
+    $valid = strtolower($vMatch[1]) === 'true';
+
+    $name = '';
+    $addr = '';
+    if (preg_match('#<(?:[\w-]+:)?name>(.*?)</(?:[\w-]+:)?name>#s', $resp, $m)) {
+        $name = trim(html_entity_decode($m[1], ENT_QUOTES|ENT_XML1, 'UTF-8'));
+    }
+    if (preg_match('#<(?:[\w-]+:)?address>(.*?)</(?:[\w-]+:)?address>#s', $resp, $m)) {
+        $addr = trim(html_entity_decode($m[1], ENT_QUOTES|ENT_XML1, 'UTF-8'));
+    }
+
+    $this->set([
+        'success' => true,
+        'valid'   => $valid,
+        'name'    => $name !== '' && $name !== '---' ? $name : null,
+        'address' => $addr !== '' && $addr !== '---' ? $addr : null,
+        'message' => $valid ? 'Numer aktywny w VIES.' : 'Numer niezarejestrowany w VIES.',
     ]);
 }
 

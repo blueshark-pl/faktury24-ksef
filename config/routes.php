@@ -27,6 +27,9 @@ return function (RouteBuilder $routes): void {
         $builder->post('/contractors/gus-lookup', 'Contractors::gusLookup');
         $builder->post('/contractors/search', 'Contractors::search');
         $builder->post('/contractors/bulk-set-active', 'Contractors::bulkSetActive');
+        $builder->post('/contractors/vies-check', 'Contractors::viesCheck');
+        $builder->get('/contractors/stats/{id}', ['controller' => 'Contractors', 'action' => 'stats'])
+            ->setPass(['id']);
         $builder->get('/contractors/import-fetch', 'Contractors::importFetch');
         $builder->post('/contractors/import-batch', 'Contractors::importBatch');
         $builder->get('/products/import-fetch', 'Products::importFetch');
