@@ -3810,11 +3810,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
         if ($isAjax) {
             $this->viewBuilder()->setClassName('Json');
-            $this->set([
-                'success' => $ok,
-                'error'   => $ok ? null : 'Nie udało się usunąć faktury.',
-                '_serialize' => ['success', 'error'],
-            ]);
+            $this->set('success', $ok);
+            $this->set('error', $ok ? null : 'Nie udało się usunąć faktury.');
+            $this->viewBuilder()->setOption('serialize', ['success', 'error']);
             return null;
         }
 
