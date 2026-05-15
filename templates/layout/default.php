@@ -278,6 +278,51 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <style>
                     @keyframes ksefPulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0.6);} 70% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(34,197,94,0);} 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0);} }
                     .ksef-dot.pulse { animation: ksefPulse 1.8s ease-in-out infinite; }
+
+                    /* === Docked KSeF status pill (navbar) === */
+                    #ksef-navbar-slot { opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .4s ease, transform .4s ease; pointer-events: none; }
+                    #ksef-navbar-slot.is-visible { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
+                    .ksef-pill {
+                        background: rgba(148,212,55,.10);
+                        border: 1px solid rgba(148,212,55,.28);
+                        color: #2a7a0e;
+                        font-size: .8rem;
+                        line-height: 1;
+                        transition: background .2s ease, border-color .2s ease, transform .2s ease;
+                    }
+                    .ksef-pill:hover { background: rgba(148,212,55,.18); border-color: rgba(148,212,55,.45); transform: translateY(-1px); color:#2a7a0e; }
+                    .ksef-pill-icon { font-size: 1rem; }
+                    .ksef-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 rgba(34,197,94,0.55); animation: ksefPulse 2s ease-in-out infinite; }
+                    .ksef-pill[data-ksef-perm="warning"] { background: rgba(255,193,7,.12); border-color: rgba(255,193,7,.35); color:#8a6100; }
+                    .ksef-pill[data-ksef-perm="warning"] .ksef-pill-dot { background: #f59f00; }
+                    .ksef-pill[data-ksef-perm="danger"]  { background: rgba(220,53,69,.10); border-color: rgba(220,53,69,.32); color:#a52a35; }
+                    .ksef-pill[data-ksef-perm="danger"]  .ksef-pill-dot { background: #dc3545; box-shadow:none; animation:none; }
+                    .ksef-pill[data-ksef-mode="off"] .ksef-pill-icon::before { content: "\\f50d"; } /* shield-cross-line — fallback if remix has it */
+
+                    /* element animowany w trakcie docku */
+                    #ksef-status-alert.is-flying {
+                        position: fixed !important;
+                        margin: 0 !important;
+                        z-index: 1090;
+                        box-shadow: 0 18px 40px -10px rgba(15, 23, 42, .35);
+                        transition:
+                            top .85s cubic-bezier(.65,.05,.2,1),
+                            left .85s cubic-bezier(.65,.05,.2,1),
+                            width .85s cubic-bezier(.65,.05,.2,1),
+                            height .85s cubic-bezier(.65,.05,.2,1),
+                            padding .85s ease,
+                            border-radius .85s ease,
+                            opacity .55s ease .35s,
+                            transform .85s cubic-bezier(.34,1.56,.64,1);
+                        overflow: hidden;
+                        will-change: top,left,width,height,transform,opacity;
+                    }
+                    #ksef-status-alert.is-flying.is-shrinking {
+                        padding: 0 !important;
+                        border-radius: 999px !important;
+                        opacity: 0;
+                        transform: scale(.4);
+                    }
                 </style>
             </div>
             <!-- Usunięto pozostałe elementy switchera, pozostawiono tylko status KSeF -->
@@ -376,6 +421,41 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             }
                             $hasRecent = !empty($recentInvoices) || !empty($recentContractors);
                         ?>
+
+                        <?php
+                            // Slot na zadokowany status KSeF — renderowany zawsze, widoczność zarządzana z JS (cookie + animacja docku)
+                            $ksefSlotMode = !empty($ksefModeEnabled) ? 'on' : 'off';
+                            $ksefSlotPerm = 'success';
+                            $ksefSlotLabel = 'OK';
+                            $ksefSlotStatus = $this->getRequest()->getSession()->read('Ksef.status');
+                            if ($ksefSlotMode === 'on' && is_array($ksefSlotStatus)) {
+                                $activeSlot = (bool)($ksefSlotStatus['active'] ?? false);
+                                $stateSlot = (string)($ksefSlotStatus['state'] ?? '');
+                                if ($activeSlot) { $ksefSlotPerm = 'success'; $ksefSlotLabel = 'OK'; }
+                                elseif ($stateSlot === 'inactive') { $ksefSlotPerm = 'danger'; $ksefSlotLabel = 'brak'; }
+                                else { $ksefSlotPerm = 'warning'; $ksefSlotLabel = 'wymagane'; }
+                            } elseif ($ksefSlotMode === 'off') {
+                                $ksefSlotPerm = 'danger';
+                                $ksefSlotLabel = 'WYŁ.';
+                            }
+                            $ksefPillTitle = $ksefSlotMode === 'on'
+                                ? 'KSeF włączony — uprawnienia: ' . $ksefSlotLabel
+                                : 'KSeF wyłączony — faktury nie są wysyłane do KSeF';
+                        ?>
+                        <!-- Start::header-element: docked KSeF status -->
+                        <li class="header-element header-ksef" id="ksef-navbar-slot" aria-hidden="true">
+                            <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'Companies', 'action' => 'edit']) ?>"
+                               class="ksef-pill d-inline-flex align-items-center gap-2 px-2 py-1 rounded-pill text-decoration-none"
+                               title="<?= h($ksefPillTitle) ?>"
+                               data-bs-toggle="tooltip"
+                               data-ksef-mode="<?= h($ksefSlotMode) ?>"
+                               data-ksef-perm="<?= h($ksefSlotPerm) ?>">
+                                <i class="ri-shield-check-line ksef-pill-icon"></i>
+                                <span class="ksef-pill-text fw-semibold small">KSeF</span>
+                                <span class="ksef-pill-dot" aria-hidden="true"></span>
+                            </a>
+                        </li>
+                        <!-- End::header-element: docked KSeF status -->
 
                         <!-- Start::header-element: CTA wystaw fakturę -->
                         <li class="header-element header-quick-add dropdown">
@@ -941,7 +1021,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             }
                                         ?>
                                         <?php if ($ksefModeEnabled): ?>
-                                        <div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+                                        <div id="ksef-status-alert" data-ksef-mode="on" data-ksef-perm="<?= h($permClass) ?>" data-ksef-perm-label="<?= h($permLabel) ?>"
+                                             class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                                 <span class="fw-semibold">Tryb KSeF:</span>
                                                 <span class="badge bg-success">WŁ.</span>
@@ -960,7 +1041,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                             </div>
                                         <?php endif; // draftInvoicesCount ?>
                                         <?php else: ?>
-                                        <div class="alert alert-secondary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+                                        <div id="ksef-status-alert" data-ksef-mode="off"
+                                             class="alert alert-secondary d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                                 <span class="fw-semibold">Tryb KSeF:</span>
                                                 <span class="badge bg-danger">WYŁ.</span>
@@ -1622,6 +1704,97 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         });
                     })();
                 </script>
+
+    <!-- KSeF status — auto-dock do navbar po 5s + zapamiętanie w cookie -->
+    <script>
+    (function() {
+      const COOKIE = 'ksef_alert_docked';
+      const cookieGet = (name) => document.cookie.split(';').map(s => s.trim()).find(c => c.startsWith(name + '='))?.split('=')[1];
+      const cookieSet = (name, value, days) => {
+        const exp = new Date(Date.now() + (days||365) * 86400000).toUTCString();
+        document.cookie = name + '=' + value + '; expires=' + exp + '; path=/; SameSite=Lax';
+      };
+      function showPill(slot) {
+        if (!slot) return;
+        slot.classList.add('is-visible');
+        slot.removeAttribute('aria-hidden');
+        // Init tooltip on pill
+        const pill = slot.querySelector('[data-bs-toggle="tooltip"]');
+        if (pill && window.bootstrap?.Tooltip) {
+          try { bootstrap.Tooltip.getOrCreateInstance(pill); } catch {}
+        }
+      }
+      function runDock(alert, slot) {
+        // Target & source rects
+        slot.style.visibility = 'hidden';
+        slot.classList.add('is-visible');         // temporarily to measure
+        const toRect = slot.getBoundingClientRect();
+        slot.classList.remove('is-visible');
+        slot.style.visibility = '';
+
+        const fromRect = alert.getBoundingClientRect();
+        if (!fromRect.width || !toRect.width) {
+          // fallback — bez animacji
+          alert.remove();
+          showPill(slot);
+          cookieSet(COOKIE, '1');
+          return;
+        }
+
+        // Faza 1: zamień alert w "fixed" w jego obecnej pozycji
+        alert.style.top = fromRect.top + 'px';
+        alert.style.left = fromRect.left + 'px';
+        alert.style.width = fromRect.width + 'px';
+        alert.style.height = fromRect.height + 'px';
+        alert.classList.add('is-flying');
+
+        // Force reflow
+        // eslint-disable-next-line no-unused-expressions
+        alert.offsetHeight;
+
+        // Faza 2: animacja do navbar slot
+        alert.style.top = toRect.top + 'px';
+        alert.style.left = toRect.left + 'px';
+        alert.style.width = Math.max(toRect.width, 40) + 'px';
+        alert.style.height = Math.max(toRect.height, 28) + 'px';
+        // dodaj shrink po ~250ms żeby zniknięcie tekstu nie było wcześniej niż lot
+        setTimeout(() => alert.classList.add('is-shrinking'), 300);
+
+        // Faza 3: po zakończeniu animacji — pokaż prawdziwy pill, usuń alert, zapisz cookie
+        setTimeout(() => {
+          alert.remove();
+          showPill(slot);
+          cookieSet(COOKIE, '1');
+        }, 950);
+      }
+
+      function init() {
+        const alert = document.getElementById('ksef-status-alert');
+        const slot  = document.getElementById('ksef-navbar-slot');
+        if (!slot) return;
+
+        const docked = cookieGet(COOKIE) === '1';
+        if (docked) {
+          if (alert) alert.remove();
+          showPill(slot);
+          return;
+        }
+        if (!alert) {
+          // Brak alertu (np. dla widoku, gdzie nie został wyrenderowany) — pokaż pill
+          showPill(slot);
+          return;
+        }
+        // Po 5s — animowany dock
+        setTimeout(() => runDock(alert, slot), 5000);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+    </script>
 
     <!-- Toast container: lewy dolny róg -->
     <div class="position-fixed bottom-0 start-0 p-3" style="z-index:11000" id="f24-toast-container"></div>
