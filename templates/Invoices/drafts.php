@@ -375,7 +375,26 @@ $editActionByType = [
     btn.dataset.loading = '1';
     btn.disabled = true;
     const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem" role="status"></span>';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem" role="status"></span> Usuwam…';
+
+    // Wyszarzenie wiersza + brak interakcji
+    const row = btn.closest('tr');
+    if (row) {
+      row.style.transition = 'opacity .2s';
+      row.style.opacity = '0.5';
+      row.style.pointerEvents = 'none';
+    }
+
+    // SweetAlert loading na pełnym ekranie — dodatkowy sygnał dla użytkownika
+    if (useSwal) {
+      Swal.fire({
+        title: 'Usuwam fakturę roboczą…',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+    }
 
     try {
       const res = await fetch(deleteUrlBase + '/' + encodeURIComponent(id), {
@@ -391,21 +410,26 @@ $editActionByType = [
       if (!res.ok || !data.success) {
         throw new Error(data.error || ('HTTP ' + res.status));
       }
+      if (useSwal) Swal.close();
       // Animowane usunięcie wiersza
-      const row = btn.closest('tr');
       if (row) {
-        row.style.transition = 'opacity .25s';
         row.style.opacity = '0';
-        setTimeout(() => row.remove(), 250);
+        setTimeout(() => row.remove(), 200);
       }
       if (typeof window.showToast === 'function') {
         window.showToast('Faktura robocza usunięta.', 'success');
+      } else if (useSwal) {
+        Swal.fire({ icon: 'success', title: 'Usunięto', timer: 1200, showConfirmButton: false, toast: true, position: 'top-end' });
       }
     } catch (err) {
+      if (row) {
+        row.style.opacity = '';
+        row.style.pointerEvents = '';
+      }
       btn.innerHTML = originalHtml;
       btn.disabled = false;
       btn.dataset.loading = '';
-      if (typeof Swal !== 'undefined') {
+      if (useSwal) {
         Swal.fire({ icon: 'error', title: 'Błąd', text: err.message || 'Nie udało się usunąć faktury.' });
       } else {
         alert(err.message || 'Nie udało się usunąć faktury.');
