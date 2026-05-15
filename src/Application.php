@@ -27,6 +27,9 @@ use Cake\Http\MiddlewareQueue;
 use Cake\ORM\Locator\TableLocator;
 use Cake\Routing\Middleware\AssetMiddleware;
 use Cake\Routing\Middleware\RoutingMiddleware;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Application setup class.
@@ -66,6 +69,30 @@ class Application extends BaseApplication
      */
     public function middleware(MiddlewareQueue $middlewareQueue): MiddlewareQueue
     {
+        // CORS dla /api/* — obsługa preflight i nagłówki dla cross-origin fetch
+        $allowedOrigins = Configure::read('Api.corsOrigins') ?? [];
+        $middlewareQueue->add(new class($allowedOrigins) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private array $origins) {}
+            public function process(ServerRequestInterface $req, RequestHandlerInterface $handler): ResponseInterface {
+                $path   = $req->getUri()->getPath();
+                $origin = $req->getHeaderLine('Origin');
+                $allow  = in_array($origin, $this->origins, true) ? $origin : '';
+                if (!str_starts_with($path, '/api') || !$allow) {
+                    return $handler->handle($req);
+                }
+                if ($req->getMethod() === 'OPTIONS') {
+                    return (new \Cake\Http\Response())->withStatus(204)
+                        ->withHeader('Access-Control-Allow-Origin', $allow)
+                        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                        ->withHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+                        ->withHeader('Access-Control-Max-Age', '86400');
+                }
+                return $handler->handle($req)
+                    ->withHeader('Access-Control-Allow-Origin', $allow)
+                    ->withHeader('Vary', 'Origin');
+            }
+        });
+
         $middlewareQueue
             // Catch any exceptions in the lower layers,
             // and make an error page/response
@@ -89,9 +116,12 @@ class Application extends BaseApplication
 
             // Cross Site Request Forgery (CSRF) Protection Middleware
             // https://book.cakephp.org/5/en/security/csrf.html#cross-site-request-forgery-csrf-middleware
-            ->add(new CsrfProtectionMiddleware([
+            ->add((new CsrfProtectionMiddleware([
                 'httponly' => true,
-            ]));
+            ]))->skipCheckCallback(function (\Cake\Http\ServerRequest $request) {
+                // Pomiń CSRF dla API — autoryzacja przez Bearer token
+                return str_starts_with($request->getUri()->getPath(), '/api');
+            }));
 
         return $middlewareQueue;
     }

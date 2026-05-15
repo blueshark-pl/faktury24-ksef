@@ -1,6 +1,7 @@
 <?php
 /** @var \App\View\AppView $this */
 /** @var iterable<\App\Model\Entity\Invoice> $drafts */
+/** @var array<string, bool> $personMap */
 
 $this->assign('title', 'Faktury robocze');
 
@@ -97,6 +98,25 @@ $editActionByType = [
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
                   <?= $this->Html->link('Edytuj', ['action' => $editAction, $inv->id], ['class' => 'btn btn-outline-secondary']) ?>
+                  <?php
+                    // Przycisk "Przenieś do faktur" (bez KSeF) pokazujemy gdy:
+                    // - kontrahent z katalogu ma is_person=1 (osoba fizyczna), LUB
+                    // - snapshot kontrahenta nie ma NIP (heurystyka: typowo osoba fizyczna).
+                    $cid = (string)($inv->contractor_id ?? '');
+                    $isPersonInvoice = ($cid !== '' && !empty($personMap[$cid]))
+                        || empty(trim((string)($contractor->nip ?? '')));
+                  ?>
+                  <?php if ($isPersonInvoice): ?>
+                    <?= $this->Form->postLink(
+                      '<i class="ri-arrow-right-line me-1"></i>Przenieś do faktur',
+                      ['action' => 'promoteToIssued', $inv->id],
+                      [
+                        'escape'  => false,
+                        'class'   => 'btn btn-outline-success',
+                        'confirm' => 'Przenieść tę fakturę na listę faktur z nadanym numerem? Faktura NIE zostanie wysłana do KSeF.',
+                      ]
+                    ) ?>
+                  <?php endif; ?>
                   <?= $this->Form->postLink('Usuń', ['action' => 'delete', $inv->id], ['class' => 'btn btn-outline-danger', 'confirm' => 'Usunąć tę fakturę roboczą?']) ?>
                 </div>
               </td>

@@ -27,6 +27,7 @@ use Cake\ORM\Entity;
  * @property string $alreadypaid
  * @property string $remaining
  * @property string|null $fullnumber
+ * @property string|null $corrected_invoice_number
  * @property int|null $number
  * @property int|null $day
  * @property int|null $month
@@ -42,6 +43,7 @@ use Cake\ORM\Entity;
  * @property string|null $receipt_number
  * @property \Cake\I18n\Date|null $receipt_date
  * @property \Cake\I18n\Date|null $sold_date
+ * @property \Cake\I18n\Date|null $advance_received_date
  * @property \Cake\I18n\Date|null $paid_at
  * @property \Cake\I18n\Date|null $partial_paid_at
  * @property string|null $lang
@@ -118,6 +120,7 @@ class Invoice extends Entity
         'alreadypaid' => true,
         'remaining' => true,
         'fullnumber' => true,
+        'corrected_invoice_number' => true,
         'number' => true,
         'day' => true,
         'month' => true,
@@ -133,6 +136,7 @@ class Invoice extends Entity
     'receipt_number' => true,
     'receipt_date' => true,
         'sold_date' => true,
+        'advance_received_date' => true,
         'paid_at' => true,
         'partial_paid_at' => true,
         'lang' => true,

@@ -7,8 +7,8 @@
             <div class="card shadow-sm">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <h5 class="mb-0">Wgraj certyfikat KSeF</h5>
-                    <span class="badge <?= ($defaultEnv ?? 'prod') === 'prod' ? 'bg-danger' : 'bg-secondary' ?>">
-                        <?= h(strtoupper((string)($defaultEnv ?? 'prod'))) ?>
+                    <span class="badge <?= ($defaultEnv ?? 'test') === 'prod' ? 'bg-danger' : 'bg-secondary' ?>">
+                        <?= h(strtoupper((string)($defaultEnv ?? 'test'))) ?>
                     </span>
                 </div>
                 <div class="card-body">

@@ -458,6 +458,91 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
     </div>
     <?php endif; ?>
 
+    <!-- ── DodatkowyOpis ── -->
+    <?php
+    $__addDesc = $invoice->invoice_additional_descriptions ?? [];
+    if (!is_array($__addDesc)) $__addDesc = [];
+    ?>
+    <div class="border rounded p-3">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <i class="ri-list-check-3 fs-16 text-primary"></i>
+        <strong class="small">Dodatkowe opisy (DodatkowyOpis)</strong>
+        <span class="badge bg-secondary-transparent ms-auto">opcjonalne</span>
+      </div>
+      <small class="text-muted d-block mb-3">Dowolne pary klucz–wartość wymagane przepisami prawa lub własne opisy. Każdy wiersz to osobny element <code>&lt;DodatkowyOpis&gt;</code> w XML KSeF.</small>
+
+      <div class="row g-1 mb-2 d-none d-md-flex">
+        <div class="col-md-2"><small class="text-muted">Nr wiersza fakt.</small></div>
+        <div class="col-md-4"><small class="text-muted">Klucz</small></div>
+        <div class="col-md-5"><small class="text-muted">Wartość</small></div>
+      </div>
+
+      <div id="add-desc-list">
+        <?php foreach ($__addDesc as $__i => $__d): ?>
+        <div class="row g-2 align-items-center add-desc-row mb-1">
+          <div class="col-md-2">
+            <input type="number" class="form-control form-control-sm" name="add_desc[<?= $__i ?>][nr_wiersza]"
+              placeholder="Nr wiersza" min="1" value="<?= h($__d->nr_wiersza ?? $__d['nr_wiersza'] ?? '') ?>">
+          </div>
+          <div class="col-md-4">
+            <input type="text" class="form-control form-control-sm" name="add_desc[<?= $__i ?>][klucz]"
+              placeholder="np. Numer zlecenia" value="<?= h($__d->klucz ?? $__d['klucz'] ?? '') ?>">
+          </div>
+          <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" name="add_desc[<?= $__i ?>][wartosc]"
+              placeholder="Wartość" value="<?= h($__d->wartosc ?? $__d['wartosc'] ?? '') ?>">
+          </div>
+          <div class="col-md-1 text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm add-desc-remove" title="Usuń"><i class="ri-delete-bin-line"></i></button>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="add-desc-add">
+        <i class="ri-add-line me-1"></i>Dodaj opis
+      </button>
+    </div>
+
+    <!-- ── Stopka faktury ── -->
+    <?php
+    $__rawFooter = $invoice->footer_text ?? '';
+    $__footerLines = [];
+    if (is_string($__rawFooter) && str_starts_with(trim($__rawFooter), '[')) {
+        $__dec = json_decode($__rawFooter, true);
+        if (is_array($__dec)) $__footerLines = array_values($__dec);
+    } elseif (trim($__rawFooter) !== '') {
+        $__footerLines = [$__rawFooter];
+    }
+    ?>
+    <div class="border rounded p-3">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <i class="ri-file-text-line fs-16 text-primary"></i>
+        <strong class="small">Stopka faktury</strong>
+        <span class="badge bg-secondary-transparent ms-auto">opcjonalne</span>
+      </div>
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label" for="footer_text_1">Stopka 1</label>
+          <textarea class="form-control" id="footer_text_1" name="footer_text[0]" rows="2"
+            placeholder="np. Dziękujemy za współpracę!"><?= h($__footerLines[0] ?? '') ?></textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="footer_text_2">Stopka 2 <span class="text-muted small">(opcjonalna)</span></label>
+          <textarea class="form-control" id="footer_text_2" name="footer_text[1]" rows="2"
+            placeholder="np. Podpis wystawcy / klauzula"><?= h($__footerLines[1] ?? '') ?></textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="footer_text_3">Stopka 3 <span class="text-muted small">(opcjonalna)</span></label>
+          <textarea class="form-control" id="footer_text_3" name="footer_text[2]" rows="2"
+            placeholder="np. Dodatkowa klauzula lub uwagi"><?= h($__footerLines[2] ?? '') ?></textarea>
+        </div>
+        <div class="col-12">
+          <small class="text-muted">Każde wypełnione pole generuje osobny blok <code>&lt;Informacje&gt;&lt;StopkaFaktury&gt;</code> w XML KSeF (max 3).</small>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /vstack -->
 </div><!-- /tab-pane -->
 
@@ -482,6 +567,7 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
     if (e.target.closest('.fa3-remove-row'))  {
       e.target.closest('.charge-row, .factor-bank-row, .auth-entity-row, .order-line-row')?.remove();
     }
+    if (e.target.closest('.add-desc-remove')) { e.target.closest('.add-desc-row')?.remove(); }
   });
 
   // Counter for new row indexes
@@ -539,6 +625,21 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
         '<div class="col-md-2"><label class="form-label small mb-1">Telefon</label><input type="text" class="form-control form-control-sm" name="auth_entities['+i+'][phone]" placeholder="+48…"></div>' +
       '</div>';
     document.getElementById('auth-entities-list')?.appendChild(div);
+  });
+
+  // Add DodatkowyOpis row
+  var adIdx = <?= count($__addDesc ?? []) ?>;
+  document.getElementById('add-desc-add')?.addEventListener('click', function(){
+    var i = adIdx++;
+    var div = document.createElement('div');
+    div.className = 'row g-2 align-items-center add-desc-row mb-1';
+    div.innerHTML =
+      '<div class="col-md-2"><input type="number" class="form-control form-control-sm" name="add_desc['+i+'][nr_wiersza]" placeholder="Nr wiersza" min="1"></div>' +
+      '<div class="col-md-4"><input type="text" class="form-control form-control-sm" name="add_desc['+i+'][klucz]" placeholder="np. Numer zlecenia"></div>' +
+      '<div class="col-md-5"><input type="text" class="form-control form-control-sm" name="add_desc['+i+'][wartosc]" placeholder="Wartość"></div>' +
+      '<div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm add-desc-remove" title="Usuń"><i class="ri-delete-bin-line"></i></button></div>';
+    document.getElementById('add-desc-list')?.appendChild(div);
+    div.querySelector('input[name$="[klucz]"]')?.focus();
   });
 
   // Add order line row

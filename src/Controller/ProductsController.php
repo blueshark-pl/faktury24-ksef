@@ -267,31 +267,64 @@ class ProductsController extends AppController
         $companyId = $identity?->get('company_id');
 
         $Products = $this->fetchTable('Products');
-        $product  = $Products->find()
-            ->where(['Products.id' => $id, 'Products.company_id' => $companyId, 'Products.deleted' => 0])
-            ->firstOrFail();
+
+        try {
+            $product = $Products->find()
+                ->where(['Products.id' => $id, 'Products.company_id' => $companyId, 'Products.deleted' => 0])
+                ->firstOrFail();
+        } catch (RecordNotFoundException) {
+            if ($this->request->is('ajax')) {
+                return $this->response->withType('application/json')
+                    ->withStringBody(json_encode(['success' => false, 'message' => 'Nie znaleziono produktu.']));
+            }
+            $this->Flash->error('Nie znaleziono produktu.');
+            return $this->redirect(['action' => 'index']);
+        }
 
         if ($this->request->is(['post', 'put', 'patch'])) {
             $data = $this->request->getData();
             unset($data['company_id'], $data['id']); // nie zmieniamy
+
+            // pusty kod → null, żeby allowMultipleNulls w isUnique działało poprawnie
+            if (isset($data['code']) && trim((string)$data['code']) === '') {
+                $data['code'] = null;
+            }
 
             $Products->patchEntity($product, $data);
 
             if ($Products->save($product)) {
                 if ($this->request->is('ajax')) {
                     return $this->response->withType('application/json')
-                        ->withStringBody(json_encode(['success' => true, 'product' => $product]));
+                        ->withStringBody(json_encode([
+                            'success' => true,
+                            'message' => 'Zapisano zmiany.',
+                            'product' => $product,
+                        ]));
                 }
                 $this->Flash->success('Zapisano zmiany.');
                 return $this->redirect(['action' => 'index']);
             }
 
             if ($this->request->is('ajax')) {
+                // Przekaż surowe błędy — formatowanie i tłumaczenie robi JS
+                $errors = $product->getErrors();
+                $flatErrors = [];
+                foreach ($errors as $field => $msgs) {
+                    // CakePHP zwraca zagnieżdżone tablice {rule: 'komunikat'}
+                    // wyciągamy tylko wartości (komunikaty), pomijając klucze reguł
+                    $texts = [];
+                    foreach ((array)$msgs as $msg) {
+                        // usuń ewentualny prefiks "fieldName: " który CakePHP dodaje w isUnique
+                        $clean = preg_replace('/^\w+:\s*/u', '', (string)$msg);
+                        $texts[] = trim($clean);
+                    }
+                    $flatErrors[$field] = implode(', ', array_filter($texts));
+                }
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode([
                         'success' => false,
-                        'message' => 'Nie udało się zapisać.',
-                        'errors'  => $product->getErrors(),
+                        'message' => 'Nie udało się zapisać. Sprawdź formularz.',
+                        'errors'  => $flatErrors,
                     ]));
             }
             $this->Flash->error('Nie udało się zapisać zmian.');
@@ -484,7 +517,7 @@ class ProductsController extends AppController
         foreach ($products as $p) {
             $results[] = [
                 'id'        => $p->id,
-                'text'      => !empty($p->code) ? sprintf('%s - %s', $p->code, $p->name) : $p->name,
+                'text'      => $p->name,
                 'name'      => $p->name,
                 'code'      => $p->code ?? '',
                 'price'     => (float)$p->net_price,

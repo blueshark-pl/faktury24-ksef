@@ -9,6 +9,28 @@
 $__isEdit = !empty($isEdit) || !empty($invoice?->id) || (isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : false);
 $__pageTitle = $__isEdit ? 'Edytuj fakturę walutową' : 'Faktura walutowa';
 $this->assign('title', $__pageTitle);
+$_identity = $this->request->getAttribute('identity');
+$_role = strtolower((string)($_identity?->get('role') ?? ''));
+$_isAdmin = (bool)($_identity?->get('is_admin') ?? false);
+// Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
+$__paymentDateVal = '';
+$__dueDaysPreset  = 7;
+$__dueDaysCustom  = false;
+if (!empty($invoice->paymentdate)) {
+    $pd = $invoice->paymentdate instanceof \DateTimeInterface
+        ? $invoice->paymentdate
+        : new \DateTime((string)$invoice->paymentdate);
+    $__paymentDateVal = $pd->format('Y-m-d');
+    $id_ = !empty($invoice->date)
+        ? ($invoice->date instanceof \DateTimeInterface ? $invoice->date : new \DateTime((string)$invoice->date))
+        : new \DateTime();
+    $diff = (int)$id_->diff($pd)->days * ($pd >= $id_ ? 1 : -1);
+    if (in_array($diff, [0, 7, 14, 30, 60, 90], true)) {
+        $__dueDaysPreset = $diff;
+    } else {
+        $__dueDaysCustom = true;
+    }
+}
 $__ksefModeEnabled = false;
 
 $__prefillContractor = null;
@@ -26,6 +48,11 @@ try {
       'country' => (string)($c->country ?? ''),
       'email' => (string)($c->email ?? ''),
       'phone' => (string)($c->phone ?? ''),
+      'vat_prefix'           => (string)($c->vat_prefix ?? ''),
+      'vat_eu'               => (string)($c->vat_eu ?? ''),
+      'eori'                 => (string)($c->eori ?? ''),
+      'tax_id_other'         => (string)($c->tax_id_other ?? ''),
+      'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
     ];
   }
 } catch (\Throwable) {
@@ -120,9 +147,8 @@ $gtuSelectHtml .= '</select>';
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
-        <?php if ($this->Identity->hasRole('admin')): ?>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -141,7 +167,7 @@ $gtuSelectHtml .= '</select>';
             </li>
           </ul>
         </div>
-        <?php endif; ?>
+        <?php //endif; ?>
         <script>
         $(function(){
           var $gearBtn = $("#inv-extra-tabs-btn");
@@ -257,13 +283,14 @@ $gtuSelectHtml .= '</select>';
               
               <div class="col-lg-2 d-flex align-items-end">
                 <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check">
+                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
+                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
                   <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
                 </div>
               </div>
               <div class="col-lg-2">
-                <div id="paid-at-group" style="display:none;">
-                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control']) ?>
+                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
+                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
                 </div>
               </div>
               
@@ -276,14 +303,14 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-7">
                     <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
                       <?php foreach ([0,7,14,30,60,90] as $d): ?>
-                        <option value="<?= $d ?>"<?= $d == 7 ? ' selected' : '' ?>><?= $d ?> dni</option>
+                        <option value="<?= $d ?>"<?= (!$__dueDaysCustom && $d === $__dueDaysPreset) ? ' selected' : '' ?>><?= $d ?> dni</option>
                       <?php endforeach; ?>
-                      <option value="_custom">Inna liczba…</option>
+                      <option value="_custom"<?= $__dueDaysCustom ? ' selected' : '' ?>>Inna liczba…</option>
                     </select>
                   </div>
                   <div class="col-5">
                     <div class="input-group">
-                      <input type="date" id="payment-date" name="paymentdate" class="form-control">
+                      <input type="date" id="payment-date" name="paymentdate" class="form-control" value="<?= h($__paymentDateVal) ?>">
                       <span class="input-group-text"><i class="ri-calendar-line"></i></span>
                     </div>
                   </div>
@@ -340,6 +367,40 @@ $gtuSelectHtml .= '</select>';
               </button>
             </div>
 
+            <!-- Dostawa towarów/usług zwolnionych od podatku -->
+            <div class="d-flex align-items-start gap-2">
+              <div class="form-check m-0">
+                <?php $__annSG = is_array($invoice->annotations) ? ($invoice->annotations['supply_goods'] ?? null) : (json_decode((string)($invoice->annotations ?? ''), true)['supply_goods'] ?? null); ?>
+                <input class="form-check-input" type="checkbox" id="supply-goods" name="annotations[supply_goods]" value="1"<?= !empty($__annSG) ? ' checked' : '' ?>>
+                <label class="form-check-label" for="supply-goods">Dostawa towarów/usług zwolnionych od podatku</label>
+              </div>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="supply-goods-help"
+                data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right" title="Zwolnienie z VAT"
+                data-bs-content="
+                  <div class='small text-start'>
+                    Zaznacz, gdy faktura dotyczy dostawy towarów lub świadczenia usług zwolnionych na podstawie art. 43 ust. 1, art. 113 ust. 1 i 9, przepisów wydanych na podstawie art. 82 ust. 3 lub innych przepisów.
+                  </div>">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+            <div id="tax-free-extra" class="row g-2 ms-1" style="display:none;">
+              <div class="col-lg-6 col-12">
+                <label class="form-label" for="annotations-tax-free">Podstawa zwolnienia od podatku</label>
+                <?php $__atf = $invoice->annotations_tax_free ?? ''; ?>
+                <select class="form-select" id="annotations-tax-free" name="annotations_tax_free">
+                  <option value="ustawa"<?= ($__atf === 'ustawa' || $__atf === '') ? ' selected' : '' ?>>Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku</option>
+                  <option value="dyrektywa"<?= $__atf === 'dyrektywa' ? ' selected' : '' ?>>Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług</option>
+                  <option value="inna"<?= $__atf === 'inna' ? ' selected' : '' ?>>Inna podstawa prawna wskazująca na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia</option>
+                </select>
+                <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
+              </div>
+              <div class="col-lg-6 col-12">
+                <label class="form-label" id="annotations-tax-free-field-label" for="annotations-tax-free-field">Treść przepisu stanowiącego podstawę zwolnienia</label>
+                <textarea class="form-control" rows="3" id="annotations-tax-free-field" name="annotations_tax_free_field" placeholder="Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia"><?= h($invoice->annotations_tax_free_field ?? '') ?></textarea>
+                <div class="form-text">Pole obowiązkowe po zaznaczeniu powyższego checkboxa.</div>
+              </div>
+            </div>
+
             <!-- Mechanizm podzielonej płatności (MPP) -->
             <div class="form-check form-switch">
               <input class="form-check-input" type="checkbox" id="is-split-payment" name="is_split_payment" value="1"<?= !empty($invoice->is_split_payment) ? ' checked' : '' ?>>
@@ -370,6 +431,43 @@ $gtuSelectHtml .= '</select>';
                     if (typeof mirrorSums === 'function') mirrorSums();
               // initialize on load
               $(toggleReceiptExtra);
+
+              // Supply goods tax-free toggle
+              const $supply = $('#supply-goods');
+              const taxFreeLabels = {
+                '':          'Treść przepisu stanowiącego podstawę zwolnienia',
+                'ustawa':    'Przepis ustawy albo aktu wydanego na podstawie ustawy, na podstawie którego podatnik stosuje zwolnienie od podatku',
+                'dyrektywa': 'Przepis dyrektywy 2006/112/WE, który zwalnia od podatku taką dostawę towarów lub takie świadczenie usług',
+                'inna':      'Inna podstawa prawna wskazująca na to, że dostawa towarów lub świadczenie usług korzysta ze zwolnienia od podatku',
+              };
+              const taxFreePlaceholders = {
+                '':          'Wpisz treść przepisu lub aktu stanowiącego podstawę zwolnienia',
+                'ustawa':    'np. art. 43 ust. 1 pkt 18 ustawy z dnia 11 marca 2004 r. o podatku od towarów i usług',
+                'dyrektywa': 'np. art. 132 ust. 1 lit. b dyrektywy 2006/112/WE Rady z dnia 28 listopada 2006 r.',
+                'inna':      'Wpisz inną podstawę prawną zwolnienia od podatku',
+              };
+              function updateTaxFreeFieldLabel() {
+                const val = $('#annotations-tax-free').val() || '';
+                $('#annotations-tax-free-field-label').text(taxFreeLabels[val] || taxFreeLabels['']);
+                $('#annotations-tax-free-field').attr('placeholder', taxFreePlaceholders[val] || taxFreePlaceholders['']);
+              }
+              function toggleTaxFreeExtra(){
+                const on = $supply.is(':checked');
+                $('#tax-free-extra').toggle(on);
+                const $sel = $('#annotations-tax-free');
+                if (on){
+                  $sel.attr('required', true);
+                  if (!$sel.val()) $sel.val('ustawa');
+                } else {
+                  $sel.removeAttr('required');
+                  $sel.val('');
+                }
+                updateTaxFreeFieldLabel();
+              }
+              $(document).on('change', '#supply-goods', toggleTaxFreeExtra);
+              $(document).on('change', '#annotations-tax-free', updateTaxFreeFieldLabel);
+              $(toggleTaxFreeExtra);
+              $(updateTaxFreeFieldLabel);
             })();
             </script>
           </div>
@@ -388,10 +486,20 @@ $gtuSelectHtml .= '</select>';
             */ ?>
             <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
+            <?php
+              $__existingBankId   = $__isEdit ? (string)($invoice->company_bank_account_id ?? '') : '';
+              $__existingBankIban = $__isEdit ? (string)($invoice->invoice_company_detail->bank_account ?? '') : '';
+            ?>
             <label class="form-label">Rachunek na fakturze</label>
-            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"></select>
-            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden']) ?>
-            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden']) ?>
+            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"
+              data-prefill-id="<?= h($__existingBankId) ?>"
+              data-prefill-iban="<?= h($__existingBankIban) ?>">
+              <?php if ($__existingBankId): ?>
+                <option value="<?= h($__existingBankId) ?>" selected><?= h($__existingBankIban) ?></option>
+              <?php endif ?>
+            </select>
+            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden', 'value' => $__existingBankIban]) ?>
+            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden', 'value' => $__existingBankId]) ?>
             <small class="text-muted d-block mt-1">
               Rachunki firmy dodasz w <em>Ustawienia → Moja firma → Rachunki bankowe</em> lub bezpośrednio tutaj przyciskiem „Dodaj rachunek”.
             </small>
@@ -421,19 +529,23 @@ $gtuSelectHtml .= '</select>';
       <div class="card-header d-md-flex d-block">
   <div class="card-title">Faktura walutowa</div>
         <div class="ms-auto mt-md-0 mt-2">
-          <?php if ($__ksefModeEnabled): ?>
+          <?php if ($_isAdmin || $_role !== 'user'): ?>
             <?= $this->Form->button('Zapisz jako roboczą', [
-              'class' => 'btn btn-sm btn-outline-primary',
-              'name' => 'save_only'
+              'class' => 'btn btn-sm btn-outline-secondary',
+              'name' => 'save_draft'
             ]) ?>
-            <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-              'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
-            ]) ?>
+            <?php if ($__ksefModeEnabled): ?>
+              <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+                'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+              ]) ?>
+            <?php else: ?>
+              <?= $this->Form->button('Zapisz i wystaw', [
+                'class' => 'btn btn-sm btn-primary ms-1',
+                'name' => 'save_only'
+              ]) ?>
+            <?php endif; ?>
           <?php else: ?>
-            <?= $this->Form->button('Zapisz i wystaw', [
-              'class' => 'btn btn-sm btn-primary',
-              'name' => 'save_only'
-            ]) ?>
+            <?= $this->Form->button('Zapisz jako roboczą', ['class' => 'btn btn-sm btn-primary ms-1', 'name' => 'save_draft']) ?>
           <?php endif; ?>
         </div>
       </div>
@@ -465,7 +577,15 @@ $gtuSelectHtml .= '</select>';
                 </div>
 
                 <!-- ODBIORCA (opcjonalny) -->
-                <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="display:none;">
+                <?php $showRecipient = !empty($invoice->invoice_recipient->name); ?>
+                <?php if (!$showRecipient): ?>
+                <div class="mt-2 d-flex align-items-center gap-2 flex-wrap" id="recipient-add-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line"></i> Dodaj odbiorcę</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-from-db-btn" style="display:none!important"><i class="ri-database-2-line"></i> Z bazy</button>
+                    <select id="recipient-db-select" style="display:none;min-width:220px;max-width:350px;" class="form-select form-select-sm"></select>
+                </div>
+                <?php endif; ?>
+                <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="<?= $showRecipient ? '' : 'display:none;' ?>">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-semibold">Odbiorca</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-edit-btn"><i class="ri-edit-2-line"></i> Edytuj</button>
@@ -483,6 +603,28 @@ $gtuSelectHtml .= '</select>';
                     <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_recipient.country', $opts); ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
+                    <div class="col-12">
+                        <?= $this->Form->control('invoice_recipient.rola', [
+                            'label'   => 'Rola podmiotu (KSeF)',
+                            'type'    => 'select',
+                            'class'   => 'form-select',
+                            'options' => [
+                                1  => '1 – Faktor',
+                                2  => '2 – Odbiorca',
+                                3  => '3 – Podmiot pierwotny',
+                                4  => '4 – Dodatkowy nabywca',
+                                5  => '5 – Wystawca faktury',
+                                6  => '6 – Dokonujący płatności',
+                                7  => '7 – JST – wystawca',
+                                8  => '8 – JST – odbiorca',
+                                9  => '9 – Członek grupy VAT – wystawca',
+                                10 => '10 – Członek grupy VAT – odbiorca',
+                                11 => '11 – Pracownik',
+                            ],
+                            'default' => 2,
+                            'value'   => $invoice->invoice_recipient->rola ?? 2,
+                        ]) ?>
+                    </div>
                 </div>
                 </div>
 
@@ -490,17 +632,57 @@ $gtuSelectHtml .= '</select>';
               <div id="contractor-snapshot" class="mt-2" style="display:none;">
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
-                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true]) ?>
+                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
                   </div>
                   <div class="col-12 col-md-4">
-                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control']) ?>
+                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
                   </div>
-                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
-                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
+                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
+                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
+                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
+                  <!-- Identyfikatory UE / zagraniczne -->
+                  <div class="col-12">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle" value="1"<?= (!empty($invoice->invoice_contractor->vat_prefix) || !empty($invoice->invoice_contractor->vat_eu) || !empty($invoice->invoice_contractor->eori) || !empty($invoice->invoice_contractor->tax_id_other)) ? ' checked' : '' ?>>
+                      <label class="form-check-label small text-muted" for="snapshot-intl-toggle">Identyfikatory UE / zagraniczne</label>
+                    </div>
+                  </div>
+                  <div class="col-12<?= (!empty($invoice->invoice_contractor->vat_prefix) || !empty($invoice->invoice_contractor->vat_eu) || !empty($invoice->invoice_contractor->eori) || !empty($invoice->invoice_contractor->tax_id_other)) ? '' : ' d-none' ?>" id="snapshot-intl-fields">
+                    <div class="row g-2">
+                      <div class="col-3">
+                        <input type="hidden" name="invoice_contractor[vat_prefix]" id="inv-vat-prefix-hidden" value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
+                        <div id="inv-vat-prefix-wrapper">
+                          <input type="text" id="inv-vat-prefix-ui" class="form-control form-control-sm" placeholder="Prefiks VAT UE">
+                        </div>
+                        <div class="form-check mt-1">
+                          <input class="form-check-input" type="checkbox" id="inv-vat-prefix-none">
+                          <label class="form-check-label small text-muted" for="inv-vat-prefix-none">Brak (spoza UE)</label>
+                        </div>
+                      </div>
+                      <div class="col-5">
+                        <input type="text" id="inv-vat-eu-field" name="invoice_contractor[vat_eu]" class="form-control form-control-sm" maxlength="32"
+                          placeholder="Numer VAT-UE (np. 123456789)"
+                          value="<?= h($invoice->invoice_contractor->vat_eu ?? '') ?>">
+                      </div>
+                      <div class="col-4">
+                        <input type="text" name="invoice_contractor[eori]" class="form-control form-control-sm" maxlength="32"
+                          placeholder="EORI (np. PL1234567890)"
+                          value="<?= h($invoice->invoice_contractor->eori ?? '') ?>">
+                      </div>
+                      <div class="col-8">
+                        <input type="text" name="invoice_contractor[tax_id_other]" class="form-control form-control-sm" maxlength="64"
+                          placeholder="Inny identyfikator podatkowy"
+                          value="<?= h($invoice->invoice_contractor->tax_id_other ?? '') ?>">
+                      </div>
+                      <div class="col-4">
+                        <input type="hidden" name="invoice_contractor[tax_id_other_country]" id="inv-tax-id-country-hidden" value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
+                        <input type="text" id="inv-tax-id-country-ui" class="form-control form-control-sm" placeholder="Kod kraju (NrID)">
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Checkbox: zapisz do katalogu + popover info -->
@@ -604,7 +786,56 @@ $gtuSelectHtml .= '</select>';
                 </thead>
 
               <tbody id="items-body">
-                <!-- pierwszy (wymagany) wiersz -->
+<?php
+// Lista wierszy do wyrenderowania PHP-side (jak w add.php).
+// Zapewnia że wszystkie pozycje są w HTML od razu po renderze, bez fragile JS prefill.
+$__renderItems = [];
+if ($__isEdit && !empty($__prefillItems)) {
+    $__renderItems = $__prefillItems;
+}
+?>
+<?php if (!empty($__renderItems)): ?>
+<?php foreach ($__renderItems as $__i => $__it):
+    $__vatOpts = '';
+    foreach ($vats as $__vid => $__vlabel) {
+        $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
+        $__vatOpts .= '<option value="' . h($__vid) . '"' . $__sel . '>' . h($__vlabel) . '</option>';
+    }
+    $__gtuOpts = '';
+    foreach (($gtuOptions ?? []) as $__gval => $__glabel) {
+        $__sel = ((string)$__gval === (string)($__it['gtu_code'] ?? '')) ? ' selected' : '';
+        $__gtuOpts .= '<option value="' . h($__gval) . '"' . $__sel . '>' . h($__glabel) . '</option>';
+    }
+    $__itemName = (string)($__it['name'] ?? '');
+    $__newOpt = $__itemName !== '' ? '<option value="' . h('NEW:' . $__itemName) . '" selected>' . h($__itemName) . '</option>' : '';
+    $__pm = (string)($__it['price_mode'] ?? 'net');
+?>
+                <tr>
+  <td>
+    <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][price_mode]" class="item-price-mode" value="<?= h($__pm) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
+  </td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
+  <td><input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required></td>
+  <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="0.00" readonly></td>
+  <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
+  <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
+  <td>
+    <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
+  </td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
+                <!-- pierwszy (wymagany) wiersz dla nowej faktury -->
                 <tr>
   <td>
     <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
@@ -628,6 +859,7 @@ $gtuSelectHtml .= '</select>';
     <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
   </td>
 </tr>
+<?php endif; ?>
 
 
                 <!-- wiersz: Add Product -->
@@ -701,22 +933,26 @@ $gtuSelectHtml .= '</select>';
       </div>
 
       <div class="card-footer text-end">
-        <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
-          <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
-        </button>
-        <?php if ($__ksefModeEnabled): ?>
-          <?= $this->Form->button('Zapisz jako roboczą', [
-            'class' => 'btn btn-outline-primary m-1',
-            'name' => 'save_only'
-          ]) ?>
-          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-            'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
-          ]) ?>
+        <?php if ($_isAdmin || $_role !== 'user'): ?>
+          <?php if ($__ksefModeEnabled): ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-outline-primary m-1',
+              'name' => 'save_draft'
+            ]) ?>
+            <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+              'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+            ]) ?>
+          <?php else: ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-outline-secondary m-1', 'name' => 'save_draft'
+            ]) ?>
+            <?= $this->Form->button('Zapisz i wystaw', [
+              'class' => 'btn btn-primary m-1',
+              'name' => 'save_only'
+            ]) ?>
+          <?php endif; ?>
         <?php else: ?>
-          <?= $this->Form->button('Zapisz i wystaw', [
-            'class' => 'btn btn-primary m-1',
-            'name' => 'save_only'
-          ]) ?>
+          <?= $this->Form->button('Zapisz jako roboczą', ['class' => 'btn btn-primary m-1', 'name' => 'save_draft']) ?>
         <?php endif; ?>
       </div>
     </div>
@@ -839,6 +1075,22 @@ $(function(){
             <label class="form-label">Kraj</label>
             <input type="text" class="form-control" id="recipient-country" value="PL">
           </div>
+        </div>
+        <div class="mt-2">
+          <label class="form-label">Rola podmiotu (KSeF)</label>
+          <select class="form-select" id="recipient-rola">
+            <option value="1">1 – Faktor</option>
+            <option value="2" selected>2 – Odbiorca</option>
+            <option value="3">3 – Podmiot pierwotny</option>
+            <option value="4">4 – Dodatkowy nabywca</option>
+            <option value="5">5 – Wystawca faktury</option>
+            <option value="6">6 – Dokonujący płatności</option>
+            <option value="7">7 – JST – wystawca</option>
+            <option value="8">8 – JST – odbiorca</option>
+            <option value="9">9 – Członek grupy VAT – wystawca</option>
+            <option value="10">10 – Członek grupy VAT – odbiorca</option>
+            <option value="11">11 – Pracownik</option>
+          </select>
         </div>
       </div>
       <div class="modal-footer">
@@ -1573,7 +1825,7 @@ $(function () {
   };
   var $form = $('form.needs-validation').first();
   var $itemsBody = $('#items-body');
-  var idx = 1;
+  var idx = <?= max(1, count($__renderItems ?? [])) ?>;
   var currentProductRow = null;
 
   console.log('URLs initialized:', {
@@ -1608,7 +1860,7 @@ $(function () {
   </div>';
   if (document.getElementById('gtu-help')) {
     new bootstrap.Popover(document.getElementById('gtu-help'), {
-      html: true, content: gtuHelpHtml, trigger: 'focus', container: 'body', sanitize: false
+      html: true, content: gtuHelpHtml, trigger: 'click', container: 'body', sanitize: false
     });
   }
 
@@ -1650,7 +1902,7 @@ $(function () {
     </div>';
   if (document.getElementById('vat-help')) {
     new bootstrap.Popover(document.getElementById('vat-help'), {
-      html: true, content: vatHelpHtml, trigger: 'focus', container: 'body', sanitize: false
+      html: true, content: vatHelpHtml, trigger: 'click', container: 'body', sanitize: false
     });
   }
 
@@ -1666,15 +1918,45 @@ $(function () {
   function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
   function fillContractorSnapshot(c){
     console.log('fillContractorSnapshot called with:', c);
-    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'' };
+    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'' };
     console.log('Contractor data to fill:', data);
     function setField(key, val){
       var $targets = $('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+'"],#invoice-contractor-'+key+',#invoice_contractor_'+key);
       console.log('Setting field', key, 'to', val, 'targets found:', $targets.length);
-      if ($targets.length) $targets.val(val==null?'':val).trigger('change');
+      if ($targets.length) { $targets.val(val==null?'':val); $targets.trigger('change'); }
       else { var $any=$('[name="'+key+'"], #'+key); if ($any.length) $any.val(val==null?'':val).trigger('change'); }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
+    setTimeout(function(){
+      if (window.jQuery && jQuery.fn.countrySelect) {
+        var $ctryUI = jQuery('#contractor-country-select');
+        if ($ctryUI.length && data.country) try { $ctryUI.countrySelect('selectCountry', data.country.toLowerCase()); } catch(e) {}
+        // vat_prefix — katalog kontrahentów zapisuje "Brak (spoza UE)" jako vat_prefix="NONE"
+        var vpRaw = data.vat_prefix || '';
+        var vpIsNoneMarker = (vpRaw === 'NONE');
+        var vpClean = vpIsNoneMarker ? '' : vpRaw;
+        var $vpUI = jQuery('#inv-vat-prefix-ui');
+        if ($vpUI.length) try { $vpUI.countrySelect('selectCountry', vpClean.toLowerCase()); } catch(e) {}
+        var isNoneVp = vpIsNoneMarker || !vpClean;
+        jQuery('#inv-vat-prefix-none').prop('checked', isNoneVp);
+        jQuery('#inv-vat-prefix-wrapper').toggleClass('pe-none opacity-50', isNoneVp);
+        if (isNoneVp) {
+          jQuery('#inv-vat-prefix-hidden').val('');  // czyścimy "NONE" z hidden — XML dostaje empty
+          // KodUE i NrVatUE są parą XSD — bez prefiksu czyścimy i blokujemy pole Numer VAT-UE oraz EORI
+          jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
+          jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
+        } else {
+          jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
+          jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
+        }
+        var $tcUI = jQuery('#inv-tax-id-country-ui');
+        if ($tcUI.length) try { $tcUI.countrySelect('selectCountry', (data.tax_id_other_country || '').toLowerCase()); } catch(e) {}
+      }
+    }, 50);
+    // Pokaż sekcję intl jeśli któreś pole wypełnione
+    var hasIntl = !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
+    $('#snapshot-intl-toggle').prop('checked', hasIntl);
+    $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
   }
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
@@ -1695,11 +1977,107 @@ $(function () {
     saveRecent({id: c.id || ('LS:'+ (c.nip || (c.name||''))), text: c.name || c.label});
   }
   function clearContractorSnapshot(){
-    ['name','nip','street','zip','city','country','email','phone'].forEach(function(f){
+    ['name','nip','street','zip','city','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].forEach(function(f){
       $('[name="invoice_contractor['+f+']"]').val(f==='country'?'PL':'');
     });
     $('#contractor-id-input').val('');
+    $('#snapshot-intl-toggle').prop('checked', false);
+    $('#snapshot-intl-fields').addClass('d-none');
+    if (window.jQuery && jQuery.fn.countrySelect) {
+      try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', ''); } catch(e) {}
+      try { jQuery('#inv-tax-id-country-ui').countrySelect('selectCountry', ''); } catch(e) {}
+    }
+    jQuery('#inv-vat-prefix-none').prop('checked', false);
+    jQuery('#inv-vat-prefix-wrapper').removeClass('pe-none opacity-50');
+    jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
+    jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
   }
+
+  // ── inicjalizacja pickerów kraju w sekcji snapshot ────────────────────────
+  (function initInvCountryPickers() {
+    if (!window.jQuery || !jQuery.fn.countrySelect) {
+      var waited = 0;
+      var t = setInterval(function() {
+        waited++;
+        if (window.jQuery && jQuery.fn.countrySelect) { clearInterval(t); initInvCountryPickers(); }
+        else if (waited > 120) clearInterval(t);
+      }, 50);
+      return;
+    }
+    var PL = window.CS_PL_NAMES || {};
+    var EU = window.CS_EU_CODES || [];
+
+    // Inicjalizacja wszystkich picker-ów zarejestrowanych przez contractor_country_select element
+    window.__flushCsQueue = function () {
+      (window.__csQueue || []).forEach(function (cfg) {
+        var $ui = jQuery('#' + cfg.uiId);
+        var $h  = jQuery('#' + cfg.hiddenId);
+        if (!$ui.length || $ui.data('cs-inited')) return;
+        $ui.data('cs-inited', true);
+        $ui.countrySelect({
+          defaultCountry: cfg.initVal || 'pl',
+          preferredCountries: ['pl', 'de', 'cz', 'sk', 'gb', 'us', 'fr', 'nl', 'be', 'it', 'es'],
+          localizedCountries: PL
+        });
+        $ui.closest('.country-select').css({ display: 'block', width: '100%' });
+        try { var d = $ui.countrySelect('getSelectedCountryData'); if (d && d.iso2) $h.val(d.iso2.toUpperCase()); } catch (e) {}
+        $ui.on('change', function () {
+          try { var d = $ui.countrySelect('getSelectedCountryData'); if (d && d.iso2) $h.val(d.iso2.toUpperCase()); } catch (e) {}
+        });
+      });
+      window.__csQueue = [];
+    };
+    window.__flushCsQueue();
+
+    // vat_prefix — katalog kontrahentów zapisuje "Brak (spoza UE)" jako vat_prefix="NONE" — traktujemy jak puste.
+    var $vpUI = jQuery('#inv-vat-prefix-ui'), $vpH = jQuery('#inv-vat-prefix-hidden');
+    var $vpNone = jQuery('#inv-vat-prefix-none'), $vpWrap = jQuery('#inv-vat-prefix-wrapper');
+    if ($vpUI.length && !$vpUI.data('cs-inited')) {
+      $vpUI.data('cs-inited', true);
+      var rawInit = ($vpH.val() || '').toLowerCase();
+      var isInitNoneMarker = (rawInit === 'none');
+      var initVp = isInitNoneMarker ? '' : rawInit;
+      if (isInitNoneMarker) { $vpH.val(''); }  // strip "NONE" — XML/snapshot dostaje empty
+      $vpUI.countrySelect({ defaultCountry: initVp || 'pl', preferredCountries: ['pl','de','fr','cz','sk','nl','be','it','es'], localizedCountries: PL });
+      try { var d = $vpUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $vpH.val(d.iso2.toUpperCase()); } catch(e) {}
+      $vpUI.on('change', function() {
+        try { var d = $vpUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) { $vpH.val(d.iso2.toUpperCase()); $vpNone.prop('checked', false); $vpWrap.removeClass('pe-none opacity-50'); } } catch(e) {}
+      });
+      if (!initVp) { try { $vpUI.countrySelect('selectCountry', ''); $vpH.val(''); } catch(e) {} }
+      // Inicjalizacja stanu "Brak" — gdy sekcja intl widoczna i prefiks pusty LUB był "NONE" z katalogu.
+      var sectionVisible = !jQuery('#snapshot-intl-fields').hasClass('d-none');
+      if ((!initVp || isInitNoneMarker) && sectionVisible) {
+        $vpNone.prop('checked', true);
+        $vpWrap.addClass('pe-none opacity-50');
+        jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
+        jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
+      }
+      // Obsługa checkboxa "Brak prefiks UE"
+      $vpNone.on('change', function() {
+        if ($vpNone.is(':checked')) {
+          try { $vpUI.countrySelect('selectCountry', ''); } catch(e) {}
+          $vpH.val('');
+          $vpWrap.addClass('pe-none opacity-50');
+          // KodUE i NrVatUE są parą XSD — bez prefiksu czyścimy i blokujemy numer VAT-UE oraz EORI
+          jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
+          jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
+        } else {
+          $vpWrap.removeClass('pe-none opacity-50');
+          jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
+          jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
+        }
+      });
+    }
+    var $tcUI = jQuery('#inv-tax-id-country-ui'), $tcH = jQuery('#inv-tax-id-country-hidden');
+    if ($tcUI.length && !$tcUI.data('cs-inited')) {
+      $tcUI.data('cs-inited', true);
+      var initTc = ($tcH.val() || '').toLowerCase();
+      $tcUI.countrySelect({ defaultCountry: initTc || 'pl', preferredCountries: ['pl','de','cz','sk','gb','us'], localizedCountries: PL });
+      try { var d = $tcUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $tcH.val(d.iso2.toUpperCase()); } catch(e) {}
+      $tcUI.on('change', function() { try { var d = $tcUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $tcH.val(d.iso2.toUpperCase()); } catch(e) {} });
+      if (!initTc) { try { $tcUI.countrySelect('selectCountry', ''); $tcH.val(''); } catch(e) {} }
+    }
+  })();
 
   // ====== OSTATNIO WYBIERANI ======
   function getRecent(){ try{return JSON.parse(localStorage.getItem('recentContractors')||'[]');}catch(e){return [];} }
@@ -1741,7 +2119,7 @@ $(function () {
       templateSelection: function (d) { return d.text || d.id || ''; }
     })
     .on('select2:open', function(){ showContractorSnapshot(); injectContractorToolbar(); })
-    .on('select2:select', function(e){ var d=e.params.data||{}; fillContractorSnapshot(d); showContractorSnapshot(); saveRecent(d); $('#contractor-id-input').val(d.id || ''); })
+    .on('select2:select', function(e){ var d=e.params.data||{}; fillContractorSnapshot(d); showContractorSnapshot(); saveRecent(d); $('#contractor-id-input').val(d.id || ''); loadRecipientsForContractor(d.id || ''); })
     .on('select2:clear', function(){ clearContractorSnapshot(); hideContractorSnapshot(); });
   }
 
@@ -1912,14 +2290,21 @@ $(function () {
       name:$('#recipient-name').val()||'', nip:$('#recipient-nip').val()||'',
       email:$('#recipient-email').val()||'', phone:$('#recipient-phone').val()||'',
       zip:$('#recipient-zip').val()||'', street:$('#recipient-street').val()||'',
-      city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL'
+      city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL', rola:$('#recipient-rola').val()||'2'
     };
     Object.keys(data).forEach(function(k){
       var $t = $('[name="invoice_recipient['+k+']"], [name="invoice_recipient.'+k+']');
       if ($t.length) $t.val(data[k]).trigger('change');
     });
     $('#recipient-snapshot').slideDown(120);
+    $('#recipient-add-wrap').hide();
     $('#recipient-create-modal').modal('hide');
+  });
+  $('#recipient-add-btn').on('click', function(){
+    $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
+    $('#recipient-country').val('PL');
+    $('#recipient-rola').val('2');
+    $('#recipient-create-modal').modal('show');
   });
   $('#recipient-edit-btn').on('click', function(){
     $('#recipient-name').val($('[name="invoice_recipient[name]"]').val()||'');
@@ -1930,8 +2315,62 @@ $(function () {
     $('#recipient-street').val($('[name="invoice_recipient[street]"]').val()||'');
     $('#recipient-city').val($('[name="invoice_recipient[city]"]').val()||'');
     $('#recipient-country').val($('[name="invoice_recipient[country]"]').val()||'PL');
+    $('#recipient-rola').val($('[name="invoice_recipient[rola]"]').val()||'2');
     $('#recipient-create-modal').modal('show');
   });
+
+  // ===== Odbiorcy z bazy (wg wybranego kontrahenta) =====
+  var __recipientsCache = {};
+  function fillRecipientFromDb(r) {
+    var fields = {
+      name:   r.name   || '',
+      nip:    r.nip    || '',
+      email:  r.email  || '',
+      phone:  r.phone  || '',
+      street: r.street || '',
+      zip:    r.postal_code || '',
+      city:   r.city   || '',
+      country: r.country || 'PL'
+    };
+    Object.keys(fields).forEach(function(k){
+      $('[name="invoice_recipient['+k+']"]').val(fields[k]).trigger('change');
+    });
+    $('#recipient-snapshot').slideDown(120);
+    $('#recipient-add-wrap').hide();
+  }
+  function loadRecipientsForContractor(contractorId) {
+    if (!contractorId) { $('#recipient-from-db-btn').hide(); return; }
+    if (__recipientsCache[contractorId] !== undefined) {
+      if (__recipientsCache[contractorId].length > 0) {
+        $('#recipient-from-db-btn').css('display','');
+      }
+      return;
+    }
+    $.getJSON('/recipients/by-contractor/' + contractorId, function(res){
+      __recipientsCache[contractorId] = (res && res.recipients) ? res.recipients : [];
+      if (__recipientsCache[contractorId].length > 0) {
+        $('#recipient-from-db-btn').css('display','');
+      }
+    }).fail(function(){ __recipientsCache[contractorId] = []; });
+  }
+  $('#recipient-from-db-btn').on('click', function(){
+    var contractorId = $('#contractor-id-input').val();
+    var list = __recipientsCache[contractorId] || [];
+    if (!list.length) return;
+    var $sel = $('#recipient-db-select');
+    $sel.empty().append('<option value="">-- wybierz odbiorcę --</option>');
+    list.forEach(function(r){
+      var label = r.name + (r.city ? ', ' + r.city : '') + (r.nip ? ' ('+r.nip+')' : '');
+      $sel.append('<option value="'+r.id+'">'+$('<span>').text(label).html()+'</option>');
+    });
+    $sel.show().off('change.rdb').on('change.rdb', function(){
+      var rid = $(this).val();
+      if (!rid) return;
+      var r = list.find(function(x){ return String(x.id) === String(rid); });
+      if (r) { fillRecipientFromDb(r); $sel.hide().val(''); }
+    });
+  });
+
 // ====== GUS modal ======
 $('#gus-fetch-btn').on('click', function(){
   var nip = ($('#gus-nip').val()||'').replace(/\D/g,'');
@@ -2060,6 +2499,17 @@ $('#gus-fetch-btn').on('click', function(){
     }
   }
 
+  // ===== Identyfikatory UE / zagraniczne — toggle =====
+  $(document).on('change', '#snapshot-intl-toggle', function(){
+    $('#snapshot-intl-fields').toggleClass('d-none', !this.checked);
+  });
+  (function(){
+    var hasIntl = ['vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].some(function(f){
+      return !!($('[name="invoice_contractor['+f+']"]').val()||'').trim();
+    });
+    if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
+  })();
+
   // ===== Guard & sumy =====
   function allCalc(){
     var sn = 0, sg = 0;
@@ -2168,7 +2618,7 @@ $('#gus-fetch-btn').on('click', function(){
               results: $.map(data.results, function (p) { 
                 return $.extend({ 
                   id: p.id, 
-                  text: p.text || (p.code ? p.code + ' - ' + p.name : p.name) 
+                  text: p.name || p.text 
                 }, p); 
               }) 
             };
@@ -2251,15 +2701,25 @@ $('#gus-fetch-btn').on('click', function(){
     });
   }
 
-  // ====== PIERWSZY WIERSZ ======
+  // ====== DELEGOWANE HANDLERY DLA WSZYSTKICH WIERSZY (PHP-rendered + JS-added) ======
+  // Single delegation on $itemsBody — działa dla każdego wiersza, niezależnie kiedy powstał.
+  $itemsBody.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){
+    var $tr = $(this).closest('tr');
+    rowCalc($tr); allCalc();
+  });
+  $itemsBody.on('click', '.btn-remove', function(){
+    var $tr = $(this).closest('tr');
+    var rows = $itemsBody.find('tr').length - 2; // - add + sum rows
+    if (rows > 1) { $tr.remove(); allCalc(); guardMinRows(); }
+  });
+
+  // ====== PIERWSZY WIERSZ — init Select2 + price_mode default + recalc ======
   (function initFirstRow(){
     var $tr = $itemsBody.find('tr').first();
     initProductSelectForRow($tr);
     // set initial price mode
     var defMode = getDefaultPriceMode();
     $tr.find('.item-price-mode').val(defMode);
-    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){ rowCalc($tr); allCalc(); });
-    $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
   })();
 
@@ -2315,12 +2775,20 @@ $('#gus-fetch-btn').on('click', function(){
       } else {
         if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
       }
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
+      // Items są renderowane przez PHP (foreach $__renderItems w <tbody>) — bez JS prefillItems.
+      // JS musi tylko zainicjalizować Select2, przeliczyć netto/brutto per row i sumy.
+      getItemRows().each(function(){
+        var $tr = $(this);
+        try { initProductSelectForRow($tr); } catch (e) {}
+        try { if (typeof rowCalc === 'function') rowCalc($tr); } catch (e) {}
+      });
+      allCalc();
     } catch (e) {
       console.warn('Edit prefill failed', e);
     }
+    // Załaduj listę odbiorców dla wybranego kontrahenta (edit mode)
+    var initCtrId = $('#contractor-id-input').val();
+    if (initCtrId) { loadRecipientsForContractor(initCtrId); }
   }
 
   // ====== DODAJ WIERSZ ======
@@ -2350,8 +2818,7 @@ $('#gus-fetch-btn').on('click', function(){
     $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
     var $tr = $addRow.prev();
     initProductSelectForRow($tr);
-    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){ rowCalc($tr); allCalc(); });
-    $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+    // input change i btn-remove handlery są delegowane na $itemsBody (patrz wyżej) — tu tylko Select2 + recalc.
     rowCalc($tr); allCalc(); guardMinRows();
     idx++;
   });
@@ -2444,7 +2911,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Select2 – pokaz nazwe produktu
         if ($.fn && $.fn.select2) {
           var $sel        = currentProductRow.find('.item-product-select');
-          var displayText = product.code ? (product.code + ' – ' + prodName) : prodName;
+          var displayText = prodName;
           if (product.is_service) displayText += ' (usluga)';
           var opt = new Option(displayText, product.id, true, true);
           $sel.append(opt).trigger('change');
@@ -2611,6 +3078,15 @@ $('#gus-fetch-btn').on('click', function(){
   $paidCheck.on('change', togglePaidLock);
   togglePaidLock(); // init
 
+  // Re-sync alreadypaid po zmianie pozycji/sum, gdy "Oznacz jako opłacone" jest zaznaczone.
+  $(document).on('input change',
+    '.item-qty, .item-price, .item-price-mode, .item-vatcode, .item-discount, .item-net, .item-gross',
+    function(){ setTimeout(syncPaidAmountIfLocked, 0); }
+  );
+  $(document).on('click', '#btn-add-item, .btn-remove, .btn-duplicate', function(){
+    setTimeout(syncPaidAmountIfLocked, 50);
+  });
+
   // ====== Katalog: fetch/render/handlers ======
   var catalogData = [];
   function fetchContractorsForCatalog(){
@@ -2688,7 +3164,7 @@ $('#gus-fetch-btn').on('click', function(){
 
   // Inicjalizacja popoverów informacyjnych (inne)
   ['catalog-help','fp-help','currency-help','autosend-help'].forEach(function(id){
-    var el = document.getElementById(id); if (el) new bootstrap.Popover(el, {container:'body', sanitize:false});
+    var el = document.getElementById(id); if (el) new bootstrap.Popover(el, {container:'body', sanitize:false, trigger:'click'});
   });
 
   // Waluta (pokazanie pola kursu)
@@ -2802,15 +3278,17 @@ $('#gus-fetch-btn').on('click', function(){
             var label = r.text || (r.bank_name ? (r.bank_name + ' ' + (r.iban||'')) : (r.iban||''));
             return $.extend({ id: r.id, text: label }, r);
           });
-          // jeśli brak wyboru – spróbuj zaznaczyć domyślny przy pierwszym załadowaniu wyników
+          // Auto-default: tylko gdy NIE ma wyboru ANI prefilla (nowa faktura).
+          // hasPrefill chroni przed nadpisaniem zapisanego rachunku w trybie edit, gdy AJAX
+          // zwróci wyniki bez prefilled ID (np. inny currency filter).
           setTimeout(function(){
             var $sel = $('#bank-account-select');
-            if (!$sel.val() && items.length){
+            var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
+            if (!$sel.val() && !hasPrefill && items.length){
               var def = items.find(function(i){ return i.is_default; });
-              if (def){ 
-                var opt=new Option(def.text, def.id, true, true); 
+              if (def){
+                var opt=new Option(def.text, def.id, true, true);
                 $sel.append(opt).trigger('change');
-                // ustaw hiddeny (snapshot IBAN i ID)
                 $('#bank-account-hidden').val(def.iban || def.text || '').trigger('change');
                 $('#bank-account-id-hidden').val(def.id || '').trigger('change');
               }
@@ -2848,11 +3326,11 @@ $('#gus-fetch-btn').on('click', function(){
       $dd.on('mousedown', '.s2-add-bank', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#bank-account-select').select2('close');}catch(_){}; $('#bank-account-create-modal').modal('show'); });
     }
 
-    // Prefill default on initial load (no search term)
-    // Trigger a silent query to load first results and pick default if available
+    // Prefill default on initial load — tylko jeśli nie ma już wybranego konta i brak prefilla (nowa faktura)
     setTimeout(function(){
       var $sel = $('#bank-account-select');
-      if (!$sel.val()) {
+      var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
+      if (!$sel.val() && !hasPrefill) {
         // Force an initial fetch by opening and closing programmatically
         try { $sel.select2('open'); } catch(_){ }
         setTimeout(function(){ try { $sel.select2('close'); } catch(_){ } }, 0);
@@ -2870,14 +3348,11 @@ $('#gus-fetch-btn').on('click', function(){
     recomputeFromPreset(); 
   });
   $dueDate.on('change', recomputeFromDate);
-  setTimeout(function(){ 
-    // Jeśli preset jest wybrany (nie "_custom"), użyj preset-u
-    if ($duePreset.val() && $duePreset.val() !== '_custom') {
-      recomputeFromPreset(); 
-    } else if ($dueDate.val()) {
-      recomputeFromDate(); 
-    } else {
-      recomputeFromPreset(); 
+  setTimeout(function(){
+    if ($dueDate.val()) {
+      recomputeFromDate();
+    } else if ($duePreset.val() && $duePreset.val() !== '_custom') {
+      recomputeFromPreset();
     }
   }, 0);
 // ====== SELECT2: Seria faktury ======
@@ -3144,4 +3619,65 @@ $('#series-period-create-form').on('submit', function(e){
       }).fail(function(xhr){ console.error('bank add fail', xhr.status, xhr.responseText); toast('Błąd komunikacji przy dodawaniu rachunku.'); });
     });
   </script>
+<style>
+  .country-select .flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/img/flags.png') !important; }
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .country-select .flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/img/flags@2x.png') !important; }
+  }
+</style>
+<script>
+if (!window.__ctrCSLoaded) {
+  window.__ctrCSLoaded = true;
+  (function(){
+    if (!document.querySelector('link[href*="countrySelect"]')) {
+      var l = document.createElement('link'); l.rel = 'stylesheet';
+      l.href = 'https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/css/countrySelect.css';
+      l.integrity = 'sha512-WPc1lYhwI/V+DbzjPRw98rLrQznhpPZ7C/d7K6Vc5s7Sxw2zEk4xLodZwPP0SQ3aLJsBbuaYF0iovbFs2zzKlw==';
+      l.crossOrigin = 'anonymous'; document.head.appendChild(l);
+    }
+    if (!document.querySelector('script[src*="countrySelect"]')) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/js/countrySelect.min.js';
+      s.integrity = 'sha512-criuU34pNQDOIx2XSSIhHSvjfQcek130Y9fivItZPVfH7paZDEdtAMtwZxyPq/r2pyr9QpctipDFetLpUdKY4g==';
+      s.crossOrigin = 'anonymous'; document.head.appendChild(s);
+    }
+  })();
+}
+window.CS_PL_NAMES = window.CS_PL_NAMES || {
+  af:'Afganistan',al:'Albania',dz:'Algieria',ad:'Andora',ao:'Angola',ag:'Antigua i Barbuda',
+  sa:'Arabia Saudyjska',ar:'Argentyna',am:'Armenia',au:'Australia',at:'Austria',az:'Azerbejdżan',
+  bs:'Bahamy',bh:'Bahrajn',bd:'Bangladesz',bb:'Barbados',be:'Belgia',bz:'Belize',bj:'Benin',
+  bt:'Bhutan',by:'Białoruś',bo:'Boliwia',ba:'Bośnia i Hercegowina',bw:'Botswana',br:'Brazylia',
+  bn:'Brunei',bg:'Bułgaria',bf:'Burkina Faso',bi:'Burundi',cl:'Chile',cn:'Chiny',hr:'Chorwacja',
+  cy:'Cypr',td:'Czad',me:'Czarnogóra',cz:'Czechy',dk:'Dania',cd:'Dem. Republika Konga',
+  dj:'Dżibuti',dm:'Dominika',do:'Dominikana',eg:'Egipt',ec:'Ekwador',er:'Erytrea',ee:'Estonia',
+  et:'Etiopia',fj:'Fidżi',ph:'Filipiny',fi:'Finlandia',fr:'Francja',ga:'Gabon',gm:'Gambia',
+  gh:'Ghana',gr:'Grecja',gd:'Grenada',ge:'Gruzja',gy:'Gujana',gt:'Gwatemala',gn:'Gwinea',
+  gw:'Gwinea Bissau',gq:'Gwinea Równikowa',ht:'Haiti',es:'Hiszpania',hn:'Honduras',in:'Indie',
+  id:'Indonezja',iq:'Irak',ir:'Iran',ie:'Irlandia',is:'Islandia',il:'Izrael',jm:'Jamajka',
+  jp:'Japonia',ye:'Jemen',jo:'Jordania',kh:'Kambodża',cm:'Kamerun',ca:'Kanada',qa:'Katar',
+  kz:'Kazachstan',ke:'Kenia',kg:'Kirgistan',ki:'Kiribati',co:'Kolumbia',km:'Komory',cg:'Kongo',
+  kp:'Korea Północna',kr:'Korea Południowa',kw:'Kuwejt',la:'Laos',ls:'Lesotho',lb:'Liban',
+  lr:'Liberia',ly:'Libia',li:'Liechtenstein',lt:'Litwa',lu:'Luksemburg',lv:'Łotwa',
+  mk:'Macedonia Północna',mg:'Madagaskar',mw:'Malawi',mv:'Malediwy',my:'Malezja',ml:'Mali',
+  mt:'Malta',ma:'Maroko',mr:'Mauretania',mu:'Mauritius',mx:'Meksyk',fm:'Mikronezja',
+  md:'Mołdawia',mc:'Monako',mn:'Mongolia',mz:'Mozambik',mm:'Myanmar',na:'Namibia',nr:'Nauru',
+  np:'Nepal',nl:'Niderlandy',de:'Niemcy',ne:'Niger',ng:'Nigeria',ni:'Nikaragua',no:'Norwegia',
+  nz:'Nowa Zelandia',om:'Oman',pk:'Pakistan',pw:'Palau',pa:'Panama',pg:'Papua Nowa Gwinea',
+  py:'Paragwaj',pe:'Peru',pl:'Polska',pt:'Portugalia',za:'Republika Południowej Afryki',
+  cf:'Republika Środkowoafrykańska',ru:'Rosja',ro:'Rumunia',rw:'Rwanda',ws:'Samoa',
+  sm:'San Marino',sn:'Senegal',rs:'Serbia',sc:'Seszele',sl:'Sierra Leone',sg:'Singapur',
+  sk:'Słowacja',si:'Słowenia',so:'Somalia',lk:'Sri Lanka',us:'Stany Zjednoczone',
+  sz:'Eswatini',sd:'Sudan',ss:'Sudan Południowy',sr:'Surinam',sy:'Syria',ch:'Szwajcaria',
+  se:'Szwecja',tj:'Tadżykistan',th:'Tajlandia',tz:'Tanzania',tl:'Timor Wschodni',tg:'Togo',
+  to:'Tonga',tt:'Trynidad i Tobago',tn:'Tunezja',tr:'Turcja',tm:'Turkmenistan',tv:'Tuvalu',
+  ug:'Uganda',ua:'Ukraina',uy:'Urugwaj',uz:'Uzbekistan',vu:'Vanuatu',ve:'Wenezuela',
+  hu:'Węgry',gb:'Wielka Brytania',vn:'Wietnam',it:'Włochy',ci:'Wybrzeże Kości Słoniowej',
+  xi:'Irlandia Północna (XI)',zm:'Zambia',zw:'Zimbabwe',ae:'Zjednoczone Emiraty Arabskie'
+};
+window.CS_EU_CODES = window.CS_EU_CODES || [
+  'at','be','bg','cy','cz','de','dk','ee','es','fi','fr','gr','hr','hu','ie',
+  'it','lt','lu','lv','mt','nl','pl','pt','ro','se','si','sk','xi'
+];
+</script>
 </div>

@@ -302,6 +302,49 @@ $this->assign('title', 'Edycja firmy');
             </div>
           </div>
 
+          <!-- Sekcja: Identyfikatory międzynarodowe -->
+          <div class="card custom-card mb-3">
+            <div class="card-header justify-content-between">
+              <div class="card-title">Identyfikatory międzynarodowe (VAT-UE / EORI)</div>
+            </div>
+            <div class="card-body">
+              <div class="form-text mb-3">
+                Wypełnij tylko jeśli firma jest zarejestrowana do VAT-UE lub wykonuje operacje celne.
+                Wartości te będą automatycznie umieszczane na każdej wystawionej fakturze.
+              </div>
+              <div class="row gy-3">
+                <div class="col-xl-2">
+                  <?= $this->Form->control('seller_vat_prefix', [
+                    'label' => ['text' => 'Prefiks VAT'],
+                    'class' => 'form-control',
+                    'placeholder' => 'np. PL',
+                    'maxlength' => 8,
+                  ]) ?>
+                </div>
+                <div class="col-xl-4">
+                  <label class="form-label">Numer VAT-UE
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer VAT-UE sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer identyfikacji podatkowej z prefiksem kraju UE, wymagany przy transakcjach unijnych B2B (WDT, usługi dla podatnika z&nbsp;UE, procedura trójstronna).</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_vat_eu', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL1234567890', 'maxlength' => 32]) ?>
+                </div>
+                <div class="col-xl-6">
+                  <label class="form-label">Numer EORI
+                    <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Numer EORI sprzedawcy"
+                      data-bs-content="<div class='small text-start'>Numer do operacji celnych &mdash; import/eksport poza UE, odprawy celne.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </label>
+                  <?= $this->Form->control('seller_eori', ['label' => false, 'class' => 'form-control', 'placeholder' => 'np. PL123456789000', 'maxlength' => 32]) ?>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Sekcja: Najem prywatny -->
           <div class="card custom-card mb-3">
             <div class="card-header justify-content-between">
@@ -1546,15 +1589,70 @@ $this->assign('title', 'Edycja firmy');
     if (!item) return;
 
     const deleteFlag = item.querySelector('.series-delete-flag');
-    if (deleteFlag) {
-      deleteFlag.value = '1';
-      item.classList.add('d-none');
-    } else {
+    const seriesIdInput = item.querySelector('input[name*="[id]"]');
+    const seriesId = seriesIdInput ? seriesIdInput.value.trim() : '';
+
+    // Nowo dodana (bez ID) — usuń z DOM bez zapytania do serwera
+    if (!seriesId) {
       item.remove();
+      syncDefault();
+      updateEmptyState();
+      return;
     }
 
-    syncDefault();
-    updateEmptyState();
+    Swal.fire({
+      title: 'Usunąć serię?',
+      text: 'Tej operacji nie można cofnąć.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Tak, usuń',
+      cancelButtonText: 'Anuluj'
+    }).then((result) => {
+      if (!result.isConfirmed) return;
+
+      btn.disabled = true;
+      const spin = document.createElement('span');
+      spin.className = 'spinner-border spinner-border-sm ms-1';
+      btn.appendChild(spin);
+
+      const fd = new FormData();
+      fd.set('_section', 'serie');
+      const csrf = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content')
+                || document.querySelector('[name="_csrfToken"]')?.value
+                || '';
+      fd.set('_csrfToken', csrf);
+      fd.set('invoice_series_rows[0][id]', seriesId);
+      fd.set('invoice_series_rows[0][_delete]', '1');
+
+      fetch(window.location.href, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      })
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled = false;
+        spin.remove();
+        const sec = data?.sections?.serie ?? data;
+        if (data?.success || sec?.success) {
+          item.remove();
+          syncDefault();
+          updateEmptyState();
+          showToast('<i class="ri-check-line me-1"></i> Seria usunięta.', 'success');
+        } else {
+          const msg = sec?.message ?? data?.message ?? 'Błąd usuwania serii.';
+          Swal.fire({ icon: 'error', title: 'Błąd', text: msg });
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        spin.remove();
+        Swal.fire({ icon: 'error', title: 'Błąd', text: 'Błąd komunikacji z serwerem.' });
+      });
+    });
   });
 
   syncDefault();

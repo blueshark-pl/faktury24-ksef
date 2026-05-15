@@ -128,11 +128,11 @@ class ProductsTable extends Table
 
         $validator
             ->boolean('is_active')
-            ->notEmptyString('is_active');
+            ->allowEmptyString('is_active');
 
         $validator
             ->boolean('deleted')
-            ->notEmptyString('deleted');
+            ->allowEmptyString('deleted');
 
         return $validator;
     }

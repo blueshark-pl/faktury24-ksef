@@ -18,6 +18,11 @@ use Cake\ORM\Entity;
  * @property string|null $pesel
  * @property string|null $regon
  * @property bool $eu_vat
+ * @property string|null $vat_prefix
+ * @property string|null $vat_eu
+ * @property string|null $eori
+ * @property string|null $tax_id_other
+ * @property string|null $tax_id_other_country
  * @property string|null $country
  * @property string|null $postal_code
  * @property string|null $city
@@ -61,6 +66,11 @@ class Contractor extends Entity
         'pesel' => true,
         'regon' => true,
         'eu_vat' => true,
+        'vat_prefix' => true,
+        'vat_eu' => true,
+        'eori' => true,
+        'tax_id_other' => true,
+        'tax_id_other_country' => true,
         'country' => true,
         'postal_code' => true,
         'city' => true,

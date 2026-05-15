@@ -10,6 +10,7 @@ use Cake\ORM\Entity;
  *
  * @property string $id
  * @property string $invoice_id
+ * @property int|null $sort_order
  * @property string|null $vat_code_id
  * @property string $name
  * @property string|null $product_desc
@@ -51,6 +52,7 @@ class InvoiceContent extends Entity
      */
     protected array $_accessible = [
         'invoice_id' => true,
+        'sort_order' => true,
         'vat_code_id' => true,
         'name' => true,
         'product_desc' => true,

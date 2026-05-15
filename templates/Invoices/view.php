@@ -114,6 +114,20 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
   <div class="flex-grow-1">
     <div class="fw-bold fs-5 mb-1">Ta faktura jest robocza</div>
     <div class="mb-2">Sprawdź poprawność danych, a następnie wyślij fakturę do KSeF, aby została zaewidencjonowana w systemie Ministerstwa Finansów.</div>
+    <?php if (!empty($isPersonInvoice)): ?>
+      <div class="mt-2">
+        <?= $this->Form->postLink(
+          '<i class="ri-arrow-right-line me-1"></i>Przenieś do faktur (bez wysyłki do KSeF)',
+          ['action' => 'promoteToIssued', $invoice->id],
+          [
+            'escape'  => false,
+            'class'   => 'btn btn-warning btn-sm fw-semibold',
+            'confirm' => 'Przenieść tę fakturę na listę faktur z nadanym numerem? Faktura NIE zostanie wysłana do KSeF.',
+          ]
+        ) ?>
+        <small class="text-muted ms-2">Faktura wystawiona osobie fizycznej — można pominąć KSeF.</small>
+      </div>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
@@ -492,6 +506,31 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
     const dateWarningEl  = document.getElementById('ksef-date-warning');
     const issueDateInput = document.getElementById('ksef-issue-date');
 
+    const previewWrap   = document.getElementById('ksef-preview-number-wrap');
+    const previewNumber = document.getElementById('ksef-preview-number');
+    const previewNote   = document.getElementById('ksef-preview-number-note');
+    const invoiceId     = <?= json_encode((string)$invoice->id) ?>;
+
+    function fetchPreviewNumber() {
+        if (!previewWrap || !previewNumber) return;
+        previewNumber.textContent = '…';
+        previewNote.textContent = '';
+        previewWrap.style.display = '';
+        fetch('/invoices/' + invoiceId + '/preview-ksef-number', {
+            headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrf || '' }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (data && data.success) {
+                previewNumber.textContent = data.fullnumber;
+                previewNote.textContent = data.already_assigned ? '(już nadany)' : '(zostanie nadany przy wysyłce)';
+            } else {
+                previewWrap.style.display = 'none';
+            }
+        })
+        .catch(function(){ previewWrap.style.display = 'none'; });
+    }
+
     btn.addEventListener('click', function(){
         if (bsConfirm) {
             // Ustaw etykietę środowiska w potwierdzeniu
@@ -519,6 +558,7 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
                     dateWarningEl.innerHTML = '';
                 }
             }
+            fetchPreviewNumber();
             bsConfirm.show();
         } else {
             const url = btn.getAttribute('data-url');
@@ -621,6 +661,11 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
                     <strong><?= h((string)($invoice->fullnumber ?? $invoice->id)) ?></strong>
                     do KSeF (środowisko: <strong id="ksef-env-label">PROD</strong>)?
                 </p>
+                <div id="ksef-preview-number-wrap" class="alert alert-info py-2 mb-2" style="display:none">
+                    <i class="ri-hashtag me-1"></i>
+                    Numer faktury w XML: <strong id="ksef-preview-number">…</strong>
+                    <span id="ksef-preview-number-note" class="text-muted small ms-1"></span>
+                </div>
                 <ul class="mb-0">
                     <li>Wyślemy dokładnie oryginalny XML FA(3) bez modyfikacji.</li>
                     <li>Po zakończeniu zobaczysz status, numer KSeF oraz linki do pobrania dokumentu i UPO.</li>

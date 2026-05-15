@@ -75,6 +75,7 @@ class InvoicesTable extends Table
         ]);
         $this->hasMany('InvoiceContents', [
             'foreignKey' => 'invoice_id',
+            'sort' => ['InvoiceContents.sort_order' => 'ASC', 'InvoiceContents.created' => 'ASC'],
         ]);
         $this->hasMany('InvoiceVatContents', [
             'foreignKey' => 'invoice_id',

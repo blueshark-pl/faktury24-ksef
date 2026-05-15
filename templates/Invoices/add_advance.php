@@ -34,7 +34,6 @@ $this->assign('title', $__pageTitle);
         <ul class="nav nav-tabs card-header-tabs" id="invTabs" role="tablist">
           <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#pane-basic" type="button" role="tab">Podstawowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
-          <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
         </ul>
       </div>
       <div class="card-body tab-content">
@@ -42,14 +41,6 @@ $this->assign('title', $__pageTitle);
         <div class="vstack gap-3">
         <div class="mb-2">
           <div class="invoice-pills d-flex flex-wrap gap-2">
-            <div class="pill">
-              <span class="pill-label">Netto</span>
-              <span class="pill-value" id="pill-net">0,00</span>
-            </div>
-            <div class="pill">
-              <span class="pill-label">VAT</span>
-              <span class="pill-value" id="pill-vat">0,00</span>
-            </div>
             <div class="pill pill-accent">
               <span class="pill-label">Brutto</span>
               <span class="pill-value" id="pill-gross">0,00</span>
@@ -105,24 +96,6 @@ $this->assign('title', $__pageTitle);
             <input type="hidden" name="update_proforma_total" id="update-proforma-total" value="0">
             <input type="hidden" name="new_proforma_total" id="new-proforma-total" value="0">
           </div>
-          <div class="col-md-4">
-            <label class="form-label">Stawka VAT zaliczki</label>
-            <select name="advance_vat_code_id" id="advance-vat" class="form-select">
-              <?php $selectedVat = $invoice->advance_vat_code_id ?? null; ?>
-              <?php foreach (($vats ?? []) as $id => $label): ?>
-                <option value="<?= h($id) ?>" <?= ((string)$id === (string)$selectedVat) ? 'selected' : '' ?>><?= h($label) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <?= $this->Form->control('currency', [
-              'label' => 'Waluta',
-              'class' => 'form-select',
-              'id' => 'currency',
-              'value' => $invoice->isNew() ? 'PLN' : ($invoice->currency ?? 'PLN'),
-              'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
-            ]) ?>
-          </div>
           <div class="col-12 d-flex gap-2 align-items-center mt-2">
             <?= $this->Form->hidden('is_final', ['id' => 'is-final', 'value' => $__isFinal ? 1 : 0]) ?>
             <button type="button" id="btn-finalize" class="btn btn-outline-success btn-sm" <?= $__isEdit ? 'disabled' : '' ?>>
@@ -141,20 +114,6 @@ $this->assign('title', $__pageTitle);
           </div>
         </div>
 
-        <div class="row g-2">
-          <div class="col-md-4">
-            <label class="form-label">Netto</label>
-            <input id="adv-net" class="form-control" value="0.00" readonly>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">VAT</label>
-            <input id="adv-tax" class="form-control" value="0.00" readonly>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Brutto</label>
-            <input id="adv-gross" class="form-control" value="0.00" readonly>
-          </div>
-        </div>
 
         <div class="row g-3 mt-2 align-items-end">
           <div class="col-md-4">
@@ -174,6 +133,7 @@ $this->assign('title', $__pageTitle);
             <?= $this->Form->control('date', ['type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'value' => $invoice->isNew() ? date('Y-m-d') : ($invoice->date ? $invoice->date->format('Y-m-d') : date('Y-m-d'))]) ?>
             <small class="text-muted">&nbsp;</small>
           </div>
+          <?php if ($__isFinal): ?>
           <div class="col-md-2">
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
@@ -181,6 +141,7 @@ $this->assign('title', $__pageTitle);
             ]) ?>
             <small class="text-muted">&nbsp;</small>
           </div>
+          <?php endif; ?>
           <div class="col-md-4">
             <?= $this->Form->control('paymentdate', [
               'type' => 'date',
@@ -190,6 +151,33 @@ $this->assign('title', $__pageTitle);
               'value' => $invoice->isNew() ? date('Y-m-d', strtotime('+7 days')) : ($invoice->paymentdate ? $invoice->paymentdate->format('Y-m-d') : date('Y-m-d', strtotime('+7 days')))
             ]) ?>
             <small class="text-muted">Możesz zmienić domyślny termin (7 dni).</small>
+          </div>
+        </div>
+
+        <!-- Płatność / data otrzymania zaliczki -->
+        <?php $__isPaid = !empty($invoice->advance_received_date) || (string)($invoice->paymentstate ?? '') === 'paid'; ?>
+        <div class="row g-3 mt-1 align-items-end">
+          <div class="col-12">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="adv-paid-chk" name="advance_paid"
+                     value="1" <?= $__isPaid ? 'checked' : '' ?>>
+              <label class="form-check-label fw-medium" for="adv-paid-chk">
+                <?= $__isFinal ? 'Należność końcowa opłacona' : 'Zaliczka opłacona' ?>
+              </label>
+            </div>
+          </div>
+          <div id="adv-paid-fields" class="col-md-4" style="<?= $__isPaid ? '' : 'display:none;' ?>">
+            <?= $this->Form->control('advance_received_date', [
+              'type'  => 'date',
+              'label' => $__isFinal ? 'Data opłacenia faktury końcowej' : 'Data otrzymania zaliczki',
+              'class' => 'form-control',
+              'id'    => 'advance-received-date',
+              'value' => !empty($invoice->advance_received_date) ? $invoice->advance_received_date->format('Y-m-d') : date('Y-m-d'),
+            ]) ?>
+            <small class="text-muted"><?= $__isFinal ? 'Data zapłaty — wysyłana do KSeF (DataZaplaty)' : 'Wymagane dla KSeF (P_6) — data wpływu zaliczki' ?></small>
+          </div>
+          <div class="col-12" id="adv-unpaid-hint" style="<?= $__isPaid ? 'display:none;' : '' ?>">
+            <small class="text-muted"><i class="ri-information-line"></i> Zaznacz powyżej gdy zaliczka wpłynęła — data zostanie wysłana do KSeF jako P_6.</small>
           </div>
         </div>
 
@@ -238,8 +226,7 @@ $this->assign('title', $__pageTitle);
             </div>
           </div>
           <div>
-            <label class="form-label mb-1">Kraj</label>
-            <input type="text" class="form-control form-control-sm" name="invoice_contractor[country]" id="ctr-hidden-country" value="<?= h($__ic?->country ?? 'PL') ?>">
+            <?= $this->element('Invoices/contractor_country_select', ['value' => $__ic?->country ?? 'PL', 'selectId' => 'ctr-hidden-country']) ?>
           </div>
           <div>
             <label class="form-label mb-1">E-mail</label>
@@ -310,11 +297,11 @@ $this->assign('title', $__pageTitle);
 (function(){
   var isEdit = <?= json_encode($__isEdit) ?>;
   var currentIsFinal = <?= json_encode($__isFinal) ?>;
+  var currentInvoiceId = <?= json_encode($__isEdit ? (string)($invoice->id ?? '') : '') ?>;
   var csrf = $('meta[name="csrfToken"]').attr('content') || '';
   var searchUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"proformaSearch","_ext"=>"json"]) ?>';
   var detailsUrlBase = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"proformaDetails"]) ?>';
   var printUrlBase   = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"print"]) ?>';
-  var vatRates = <?= json_encode($vatRatesMap ?? []) ?>;
   var seriesSearchUrl = '<?= $this->Url->build(["controller"=>"InvoiceSeries","action"=>"search","_ext"=>"json"]) ?>';
   var seriesAddUrl    = '<?= $this->Url->build(["controller"=>"InvoiceSeries","action"=>"add","_ext"=>"json"]) ?>';
   var seriesNextNumberUrl = '<?= $this->Url->build(["controller"=>"InvoiceSeries","action"=>"nextNumber","_ext"=>"json"]) ?>';
@@ -341,13 +328,11 @@ $this->assign('title', $__pageTitle);
       $('#btn-finalize').prop('disabled', true).attr('title', 'Zablokowane — końcowa już wystawiona').attr('data-bs-toggle','tooltip');
       // ensure select2 reflects disabled state
       $('#series-select').prop('disabled', true).trigger('change.select2');
-      $('#advance-vat').prop('disabled', true).trigger('change.select2');
       setLockedVisuals(true);
     } else {
       $controls.prop('disabled', false);
       $('#btn-finalize').prop('disabled', false).removeAttr('title').removeAttr('data-bs-toggle');
       $('#series-select').prop('disabled', false).trigger('change.select2');
-      $('#advance-vat').prop('disabled', false).trigger('change.select2');
       setLockedVisuals(false);
     }
   }
@@ -408,15 +393,12 @@ $this->assign('title', $__pageTitle);
   }
 
   function loadDetails(id, preserveExisting){
-    $.ajax({ url: detailsUrlBase + '/' + encodeURIComponent(id) + '.json', method:'GET', headers:{ 'Accept':'application/json' } })
+    var detailsUrl = detailsUrlBase + '/' + encodeURIComponent(id) + '.json';
+    if (isEdit && currentInvoiceId) { detailsUrl += '?exclude_id=' + encodeURIComponent(currentInvoiceId); }
+    $.ajax({ url: detailsUrl, method:'GET', headers:{ 'Accept':'application/json' } })
       .done(function(res){
         if (!res || !res.success) return;
         var p = res.proforma || {};
-        // currency
-        if (!isEdit && (p.currency||'')) {
-          $('#currency').val(p.currency||'PLN');
-        }
-
         finalExists = !!p.final_exists;
         // totals and remaining
         proformaTotal = parseFloat(p.total||0) || 0;
@@ -547,17 +529,8 @@ $this->assign('title', $__pageTitle);
 
   function recompute(){
     var gross = parseFloat($('[name="advance_gross"]').val()||'0')||0;
-    var vatId = $('#advance-vat').val();
-    var rate = parseFloat(vatRates[vatId]||'0')||0;
-    var net = rate>0 ? +(gross/(1+rate/100)).toFixed(2) : +gross.toFixed(2);
-    var tax = +(gross - net).toFixed(2);
-    $('#adv-net').val(net.toFixed(2));
-    $('#adv-tax').val(tax.toFixed(2));
-    $('#adv-gross').val(gross.toFixed(2));
-    // pills
+    // VAT/netto split computed server-side from proforma; JS shows only gross in pills
     const nf = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    $('#pill-net').text(nf.format(net));
-    $('#pill-vat').text(nf.format(tax));
     $('#pill-gross').text(nf.format(gross));
 
     // Overpayment client-side validation
@@ -615,7 +588,7 @@ $this->assign('title', $__pageTitle);
       }
     }
   }
-  $(document).on('input change', '[name="advance_gross"], #advance-vat', recompute);
+  $(document).on('input change', '[name="advance_gross"]', recompute);
   $(document).on('change', '#update-proforma-total-chk', function(){
     $('#update-proforma-total').val(this.checked ? '1' : '0');
     $('#save-btn').prop('disabled', !this.checked);
@@ -667,6 +640,22 @@ $this->assign('title', $__pageTitle);
       recompute();
       ensureFinalSeries();
       showToast('Ustawiono pełne rozliczenie — przełączono serię na końcową.', 'success');
+    }
+  });
+
+  // Checkbox "Zaliczka opłacona" — show/hide advance_received_date
+  $('#adv-paid-chk').on('change', function(){
+    var checked = $(this).is(':checked');
+    $('#adv-paid-fields').toggle(checked);
+    $('#adv-unpaid-hint').toggle(!checked);
+    if (!checked) {
+      // wyczyść datę żeby nie trafiła do XML/paymentstate
+      $('#advance-received-date').val('');
+    } else {
+      // ustaw dzisiaj jeśli pole puste
+      if (!$('#advance-received-date').val()) {
+        $('#advance-received-date').val(new Date().toISOString().slice(0, 10));
+      }
     }
   });
 
@@ -929,7 +918,6 @@ $this->assign('title', $__pageTitle);
     var errors = 0;
     var $proforma = $('#proforma-id');
     var $amount = $('[name="advance_gross"]');
-    var $vat = $('#advance-vat');
     var $series = $('#series-select');
     var $date = $('#issue-date');
 
@@ -938,14 +926,13 @@ $this->assign('title', $__pageTitle);
     function markInvalidSelect2($sel){ $sel.addClass('is-invalid'); $sel.next('.select2-container').addClass('is-invalid-select'); errors++; }
     function unmarkSelect2($sel){ $sel.removeClass('is-invalid'); $sel.next('.select2-container').removeClass('is-invalid-select'); }
 
-    unmark($amount); unmark($date); unmarkSelect2($vat); unmarkSelect2($series);
+    unmark($amount); unmark($date); unmarkSelect2($series);
 
     if (!$proforma.val()) { markInvalid($('#proforma-select')); }
     var gross = parseFloat($amount.val()||'0')||0;
     if (gross <= 0) { markInvalid($amount); }
     var overpayAllowed = $('#update-proforma-total-chk').is(':checked');
     if (remainingTotal > 0 && gross - remainingTotal > 0.005 && !overpayAllowed) { markInvalid($amount); }
-    if (!$vat.val()) { markInvalidSelect2($vat); }
     if (!$series.val()) { markInvalidSelect2($series); }
     if (!$date.val()) { markInvalid($date); }
 

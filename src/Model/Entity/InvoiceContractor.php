@@ -21,6 +21,11 @@ use Cake\ORM\Entity;
  * @property string|null $phone
  * @property string|null $gln
  * @property string|null $nr_klienta
+ * @property string|null $vat_prefix
+ * @property string|null $vat_eu
+ * @property string|null $eori
+ * @property string|null $tax_id_other
+ * @property string|null $tax_id_other_country
  * @property \Cake\I18n\DateTime $created
  * @property \Cake\I18n\DateTime|null $modified
  *
@@ -50,6 +55,11 @@ class InvoiceContractor extends Entity
         'phone' => true,
         'gln' => true,
         'nr_klienta' => true,
+        'vat_prefix' => true,
+        'vat_eu' => true,
+        'eori' => true,
+        'tax_id_other' => true,
+        'tax_id_other_country' => true,
         'koresp_country_code' => true,
         'koresp_address_l1' => true,
         'koresp_address_l2' => true,

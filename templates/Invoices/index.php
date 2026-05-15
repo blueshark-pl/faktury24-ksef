@@ -158,13 +158,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
 
 <div class="card">
   <div class="card-body p-0">
-  <?= $this->Form->create(null, [
-        'type' => 'post', 
-        'url' => ['action' => 'bulkAction'], 
-        'id' => 'bulk-actions-form'
-    ]) ?>
-  <input type="hidden" name="bulk_action" id="bulk-action-input" value="">
-    
     <!-- Bulk Actions Bar -->
     <div class="p-3 border-bottom d-none" id="bulk-actions-bar">
       <div class="row g-3 align-items-center">
@@ -238,7 +231,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
     <i class="ri-add-line fw-medium align-middle me-1"></i>
     Utwórz…
   </button>
-  <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="addInvoiceDropdown" style="min-width: 260px">
+  <ul class="dropdown-menu dropdown-menu-end dropdown-menu-sm-start" aria-labelledby="addInvoiceDropdown" style="min-width: 260px; z-index: 9999;">
     <li>
       <?= $this->Html->link('<i class="ri-file-2-line me-2"></i> Faktura VAT',
         ['controller' => 'Invoices', 'action' => 'add', '?' => ['type' => 'vat']],
@@ -362,7 +355,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             'paid'    => 'Opłacona',
             'overdue' => 'Po terminie',
           ],
-          'default' => $state,
+          'value' => $state,
           'class' => 'form-select form-select-sm',
           'aria-label' => 'Status płatności'
         ]) ?>
@@ -402,6 +395,12 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
   </div>
 
   <div class="card-body p-0">
+    <?= $this->Form->create(null, [
+        'type' => 'post',
+        'url' => ['action' => 'bulkAction'],
+        'id' => 'bulk-actions-form'
+    ]) ?>
+    <input type="hidden" name="bulk_action" id="bulk-action-input" value="">
     <div class="table-responsive">
       <table class="table text-nowrap align-middle" id="invoices-table">
         <thead>
@@ -923,10 +922,10 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
 <?php endif; ?>
 <div class="col-lg-12 text-center">
     <?php
-      $__pageN   = (int)($__params['page'] ?? 1);
+      $__pageN   = (int)($__params['currentPage'] ?? $__params['page'] ?? 1);
       $__pagesN  = $__pageCount;
-      $__currentN= (int)($__params['current'] ?? (is_iterable($invoices) ? count($invoices) : 0));
-      $__countN  = (int)($__params['count'] ?? $__currentN);
+      $__currentN= (int)($__params['count'] ?? (is_iterable($invoices) ? count($invoices) : 0));
+      $__countN  = (int)($__params['totalCount'] ?? $__currentN);
       $__accWord = function($n){ $n = abs((int)$n); $n10 = $n % 10; $n100 = $n % 100; if ($n === 1) return 'fakturę'; if ($n10 >= 2 && $n10 <= 4 && ($n100 < 12 || $n100 > 14)) return 'faktury'; return 'faktur'; };
       $__genWord = function($n){ return ((int)$n === 1) ? 'faktury' : 'faktur'; };
     ?>
@@ -2153,9 +2152,12 @@ function deletePayment(paymentId) {
       data.logs.forEach(function (log) {
         var p = colorMap[log.color] || colorMap.secondary;
         var meta = [];
-        if (log.env)         meta.push('Środowisko: <strong>' + escHtml(log.env) + '</strong>');
-        if (log.status_code) meta.push('Kod: <strong>' + escHtml(log.status_code) + '</strong>');
-        if (log.ksef_number) meta.push('Nr KSeF: <strong>' + escHtml(log.ksef_number) + '</strong>');
+        if (log.env)             meta.push('Środowisko: <strong>' + escHtml(log.env) + '</strong>');
+        if (log.status_code)     meta.push('Kod HTTP: <strong>' + escHtml(log.status_code) + '</strong>');
+        if (log.http_code)       meta.push('Kod HTTP: <strong>' + escHtml(log.http_code) + '</strong>');
+        if (log.ksef_number)     meta.push('Nr KSeF: <strong>' + escHtml(log.ksef_number) + '</strong>');
+        if (log.exception_class) meta.push('Klasa: <strong>' + escHtml(log.exception_class) + '</strong>');
+        if (log.file)            meta.push('Plik: <code style="font-size:.7rem">' + escHtml(log.file) + '</code>');
 
         var li = document.createElement('li');
         li.innerHTML =

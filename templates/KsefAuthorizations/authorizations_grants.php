@@ -4,7 +4,7 @@
  * @var array $items
  */
 $this->assign('title', 'Uprawnienia (KSeF) – authorizations grants');
-$env = (string)$this->getRequest()->getQuery('env', 'prod');
+$env = (string)$this->getRequest()->getQuery('env', 'test');
 $page = max(1, (int)($page ?? $this->getRequest()->getQuery('page', 1)));
 $limit = (int)($limit ?? $this->getRequest()->getQuery('limit', 10));
 $hasMore = (bool)($hasMore ?? false);

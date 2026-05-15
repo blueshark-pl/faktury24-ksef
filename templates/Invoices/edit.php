@@ -6,6 +6,25 @@
  * @var array $vatRatesMap id => rate
  */
 $this->assign('title', 'Edit Invoice');
+// Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
+$__paymentDateVal = '';
+$__dueDaysPreset  = 7;
+$__dueDaysCustom  = false;
+if (!empty($invoice->paymentdate)) {
+    $pd = $invoice->paymentdate instanceof \DateTimeInterface
+        ? $invoice->paymentdate
+        : new \DateTime((string)$invoice->paymentdate);
+    $__paymentDateVal = $pd->format('Y-m-d');
+    $id_ = !empty($invoice->date)
+        ? ($invoice->date instanceof \DateTimeInterface ? $invoice->date : new \DateTime((string)$invoice->date))
+        : new \DateTime();
+    $diff = (int)$id_->diff($pd)->days * ($pd >= $id_ ? 1 : -1);
+    if (in_array($diff, [0, 7, 14, 30, 60, 90], true)) {
+        $__dueDaysPreset = $diff;
+    } else {
+        $__dueDaysCustom = true;
+    }
+}
 
 // pre-render VAT select do klonowania w wierszach (z pustą opcją na start)
 $vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
@@ -93,7 +112,7 @@ $sumTax = round($sumGross - $sumNet, 2);
                                 <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCatalog()">
                                     <i class="ri-search-line me-1"></i> Szukaj w katalogu
                                 </button>
-                                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#contractor-create-modal">
+                                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#contractor-create">
                                     <i class="ri-user-add-line me-1"></i> Nowy kontrahent
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gus-modal">
@@ -117,14 +136,20 @@ $sumTax = round($sumGross - $sumNet, 2);
                                     <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                                     <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                                     <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                                    <div class="col-6"><?= $this->Form->control('invoice_contractor.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
+                                    <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
                                     <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                                     <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                                 </div>
                             </div>
                             
                             <!-- ODBIORCA (opcjonalny) -->
-                            <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="display:none;">
+                            <?php $showRecipient = !empty($invoice->invoice_recipient->name); ?>
+                            <?php if (!$showRecipient): ?>
+                            <div class="mt-2" id="recipient-add-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line"></i> Dodaj odbiorcę</button>
+                            </div>
+                            <?php endif; ?>
+                            <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="<?= $showRecipient ? '' : 'display:none;' ?>">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span class="fw-semibold">Odbiorca</span>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-edit-btn"><i class="ri-edit-2-line"></i> Edytuj</button>
@@ -142,6 +167,28 @@ $sumTax = round($sumGross - $sumNet, 2);
                                     <div class="col-6"><?= $this->Form->control('invoice_recipient.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
                                     <div class="col-6"><?= $this->Form->control('invoice_recipient.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                                     <div class="col-6"><?= $this->Form->control('invoice_recipient.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
+                    <div class="col-12">
+                        <?= $this->Form->control('invoice_recipient.rola', [
+                            'label'   => 'Rola podmiotu (KSeF)',
+                            'type'    => 'select',
+                            'class'   => 'form-select',
+                            'options' => [
+                                1  => '1 – Faktor',
+                                2  => '2 – Odbiorca',
+                                3  => '3 – Podmiot pierwotny',
+                                4  => '4 – Dodatkowy nabywca',
+                                5  => '5 – Wystawca faktury',
+                                6  => '6 – Dokonujący płatności',
+                                7  => '7 – JST – wystawca',
+                                8  => '8 – JST – odbiorca',
+                                9  => '9 – Członek grupy VAT – wystawca',
+                                10 => '10 – Członek grupy VAT – odbiorca',
+                                11 => '11 – Pracownik',
+                            ],
+                            'default' => 2,
+                            'value'   => $invoice->invoice_recipient->rola ?? 2,
+                        ]) ?>
+                    </div>
                                 </div>
                             </div>
                         </div>
@@ -311,7 +358,6 @@ $sumTax = round($sumGross - $sumNet, 2);
                     <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
                     <li class="nav-item"><button class="nav-link" id="tab-annotations" data-bs-toggle="tab" data-bs-target="#pane-annotations" type="button" role="tab">Adnotacje</button></li>
                     <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
-                    <li class="nav-item"><button class="nav-link" id="tab-intl" data-bs-toggle="tab" data-bs-target="#pane-intl" type="button" role="tab">Identyfikatory międz.</button></li>
                     <li class="nav-item"><button class="nav-link" id="tab-fa3ext" data-bs-toggle="tab" data-bs-target="#pane-fa3ext" type="button" role="tab">KSeF FA(3)</button></li>
                 </ul>
             </div>
@@ -360,6 +406,19 @@ $sumTax = round($sumGross - $sumNet, 2);
                         ]) ?>
                         </div>
 
+                        <?php if (in_array(strtolower((string)($invoice->type ?? '')), ['advance', 'zal'], true)): ?>
+                        <div class="col-lg-12">
+                        <?= $this->Form->control('advance_received_date', [
+                            'type'  => 'date',
+                            'label' => 'Data otrzymania zaliczki',
+                            'class' => 'form-control',
+                            'id'    => 'advance-received-date',
+                            'value' => !empty($invoice->advance_received_date) ? $invoice->advance_received_date->format('Y-m-d') : '',
+                        ]) ?>
+                        <small class="text-muted">Wymagane dla KSeF (DataOtrzym)</small>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="col-12">
     <label class="form-label mb-1">Termin płatności</label>
     <div class="border rounded p-2">
@@ -367,9 +426,9 @@ $sumTax = round($sumGross - $sumNet, 2);
             <div class="col-7">
                 <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
                     <?php foreach ([0,7,14,30,60,90] as $d): ?>
-                        <option value="<?= $d ?>"<?= $d == 7 ? ' selected' : '' ?>><?= $d ?> dni</option>
+                        <option value="<?= $d ?>"<?= (!$__dueDaysCustom && $d === $__dueDaysPreset) ? ' selected' : '' ?>><?= $d ?> dni</option>
                     <?php endforeach; ?>
-                    <option value="_custom">Inna liczba…</option>
+                    <option value="_custom"<?= $__dueDaysCustom ? ' selected' : '' ?>>Inna liczba…</option>
                 </select>
             </div>
             <div class="col-5">
@@ -517,68 +576,8 @@ $sumTax = round($sumGross - $sumNet, 2);
     </div>
     </div>
 
-<!-- Modal: Dodaj kontrahenta -->
-<div class="modal fade" id="contractor-create-modal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h6 class="modal-title">Dodaj kontrahenta</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <?= $this->Form->create(null, ['url' => ['controller' => 'Contractors','action' => 'add'], 'data-ajax' => '1', 'id' => 'contractor-create-form']) ?>
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-md-12">
-                        <?= $this->Form->control('name', [ 'label' => 'Nazwa kontrahenta*', 'required' => true, 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-6">
-                        <?= $this->Form->control('altname', [ 'label' => 'Nazwa skrócona', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-6">
-                        <?= $this->Form->control('nip', [ 'label' => 'NIP', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-4">
-                        <?= $this->Form->control('regon', [ 'label' => 'REGON', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-4">
-                        <?= $this->Form->control('eu_vat', [ 'label' => 'EU VAT', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-4">
-                        <?= $this->Form->control('country', [ 'label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL' ]) ?>
-                    </div>
-                    <div class="col-md-4">
-                        <?= $this->Form->control('postal_code', [ 'label' => 'Kod pocztowy', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-8">
-                        <?= $this->Form->control('city', [ 'label' => 'Miasto', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-8">
-                        <?= $this->Form->control('street', [ 'label' => 'Ulica', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-4">
-                        <?= $this->Form->control('local_number', [ 'label' => 'Nr lokalu', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-6">
-                        <?= $this->Form->control('phone', [ 'label' => 'Telefon', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-6">
-                        <?= $this->Form->control('email', [ 'label' => 'Email', 'class' => 'form-control' ]) ?>
-                    </div>
-                    <div class="col-md-12">
-                        <?= $this->Form->control('notes', [ 'label' => 'Notatki', 'class' => 'form-control', 'type' => 'textarea', 'rows' => 2 ]) ?>
-                    </div>
-                </div>
-                <?= $this->Form->hidden('is_active', ['value' => 1]) ?>
-                <?= $this->Form->hidden('deleted', ['value' => 0]) ?>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-                <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz', ['class' => 'btn btn-primary', 'escapeTitle' => false]) ?>
-            </div>
-            <?= $this->Form->end() ?>
-        </div>
-    </div>
-</div>
+<?= $this->element('Contractors/modal_create', ['contractorModalMode' => 'invoice']) ?>
+<script>window.onContractorCreated = function(c){ if(typeof window.applyContractor === 'function') window.applyContractor(c); };</script>
 
 <!-- Modal: GUS (pobranie po NIP) -->
 <div class="modal fade" id="gus-modal" tabindex="-1" aria-hidden="true">
@@ -841,7 +840,7 @@ $(function(){
 
     // Due date preset: calculate preview and set payment date
     function fmt(d){ return d.toISOString().slice(0,10); }
-    function calcDue(){
+    function calcDue(setDate){
         var issue = $('#issue-date').val();
         var preset = $('#due-days-preset').val();
         if(!issue) return;
@@ -850,11 +849,12 @@ $(function(){
         if(preset && preset !== '_custom'){ days = parseInt(preset||'0',10)||0; }
         var due = new Date(base.getTime() + days*24*3600*1000);
         $('#due-preview').text(fmt(due));
-        // Ustaw też payment-date jeśli preset != _custom
-        if(preset !== '_custom'){ $('#payment-date').val(fmt(due)); }
+        // Ustaw payment-date tylko gdy wywołane ze zmiany pola (nie przy inicjalizacji)
+        if(setDate && preset !== '_custom'){ $('#payment-date').val(fmt(due)); }
     }
-    $('#issue-date, #due-days-preset').on('change', calcDue);
-    calcDue();
+    $('#issue-date, #due-days-preset').on('change', function(){ calcDue(true); });
+    // Przy inicjalizacji tylko aktualizuj podgląd — nie nadpisuj istniejącej daty
+    if (!$('#payment-date').val()) { calcDue(false); }
 });
 </script>
 
@@ -909,10 +909,12 @@ $(function(){
     function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
     function fillContractorSnapshot(c){
         var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'' };
-        function setField(key, val){ var $t=$('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+']'); if($t.length) $t.val(val==null?'':val).trigger('change'); }
+        function setField(key, val){ var $t=$('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+']'); if($t.length){ $t.val(val==null?'':val); $t.trigger('change'); } }
         Object.keys(data).forEach(function(k){ setField(k, data[k]); });
+        setTimeout(function(){ var $c=$('[name="invoice_contractor[country]"]'); if($c.length && $c.val()!==data.country) $c.val(data.country).trigger('change'); }, 50);
     }
     function applyContractor(c){
+    window.applyContractor = applyContractor;
         if (!c) return; fillContractorSnapshot(c); showContractorSnapshot();
         if ($.fn && $.fn.select2){ var $sel=$('#contractor-select'); var label=c.label||c.name|| (c.nip ? (c.name+' ('+c.nip+')') : c.name) || 'Kontrahent'; var value=c.id || ('LS:'+(c.nip || (c.name||'').slice(0,30))); $sel.find('option[value="'+value+'"]').remove(); var opt=new Option(label, value, true, true); $sel.append(opt).trigger('change'); }
         $('#contractor-id-input').val(c.id || '');
@@ -950,7 +952,7 @@ $(function(){
             '</div>'
         );
         $search.after(toolbar);
-        $dd.find('.ctr-act-add').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#contractor-select').select2('close');}catch(_){ } $('#contractor-create-modal').modal('show'); });
+        $dd.find('.ctr-act-add').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#contractor-select').select2('close');}catch(_){ } bootstrap.Modal.getOrCreateInstance(document.getElementById('contractor-create')).show(); });
         $dd.find('.ctr-act-gus').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#contractor-select').select2('close');}catch(_){ } $('#gus-modal').modal('show'); });
         $dd.find('.ctr-act-cat').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#contractor-select').select2('close');}catch(_){ } openCatalog(); });
         $dd.find('.ctr-act-rec').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#contractor-select').select2('close');}catch(_){ } $('#recipient-create-modal').modal('show'); });
@@ -975,7 +977,7 @@ $(function(){
         var $nameHidden = $tr.find('.item-name-hidden');
         $sel.select2({
             placeholder: $sel.data('placeholder') || 'Wybierz lub wpisz produkt',
-            ajax: { url: productUrl, dataType: 'json', delay: 200, data: function(p){ return { q:p.term }; }, processResults: function (data) { if (data && data.success && data.results) { return { results: $.map(data.results, function (p) { return $.extend({ id:p.id, text: p.text || (p.code ? p.code + ' - ' + p.name : p.name) }, p); }) }; } return { results: [] }; } },
+            ajax: { url: productUrl, dataType: 'json', delay: 200, data: function(p){ return { q:p.term }; }, processResults: function (data) { if (data && data.success && data.results) { return { results: $.map(data.results, function (p) { return $.extend({ id:p.id, text: p.name || p.text }, p); }) }; } return { results: [] }; } },
             minimumInputLength: 1,
             tags: true,
             createTag: function (params) { var term=$.trim(params.term||''); if(!term) return null; return { id:'NEW:'+term, text:term, isNew:true }; },
@@ -1007,22 +1009,14 @@ $(function(){
         .fail(function(xhr){ console.error('product add fail', xhr.status, xhr.responseText); toast('Błąd komunikacji przy dodawaniu produktu.'); });
     });
 
-    // Contractor modal AJAX add
-    $('#contractor-create-form').on('submit', function (e) {
-        e.preventDefault(); var $f=$(this);
-        $.ajax({ url: $f.attr('action'), method: 'POST', data: new FormData(this), processData:false, contentType:false, headers: { 'X-CSRF-Token': csrf, 'Accept':'application/json' } })
-        .done(function(data){ if (data && data.success && data.contractor){ var contractor=data.contractor; applyContractor(contractor); $('#contractor-create-modal').modal('hide'); $f[0].reset(); toast(data.message || 'Kontrahent został dodany i przypisany.'); } else { toast(data.message || 'Nie udało się dodać kontrahenta.'); } })
-        .fail(function(xhr){ console.error('contractor add fail', xhr.status, xhr.responseText); toast('Błąd komunikacji przy dodawaniu kontrahenta.'); });
-    });
-
     // Catalog modal logic
     var catalogData = [];
     function fetchContractorsForCatalog(){ return $.ajax({ url: contractorUrl, dataType:'json', data:{ q:'', limit:1000, all:'true' }, headers:{ 'Accept':'application/json' } }); }
     function renderCatalog(list){ catalogData = Array.isArray(list) ? list : []; var $tb=$('#contractors-table tbody'); var rows = catalogData.map(function(c){ var name=c.label||c.name||''; var nip=c.nip||''; var addr=$.grep([c.street,c.zip], Boolean).join(', '); var city=c.city||''; return '<tr class="catalog-row" data-json=\''+ JSON.stringify(c).replace(/'/g,'&#39;') +'\'><td>'+ $('<div>').text(name).html() +'</td><td>'+ $('<div>').text(nip).html() +'</td><td>'+ $('<div>').text(addr).html() +'</td><td>'+ $('<div>').text(city).html() +'</td></tr>'; }).join(''); $tb.html(rows || '<tr><td colspan="4" class="text-center text-muted">Brak danych</td></tr>'); $('#catalog-meta').text('Łącznie: ' + catalogData.length); }
-    function openCatalog(){ $('#contractor-catalog-modal').modal('show'); if (catalogData.length) return; fetchContractorsForCatalog().done(function(data){ renderCatalog(data||[]); }).fail(function(){ toast('Nie udało się pobrać katalogu kontrahentów.'); }); }
+    function openCatalog(){ bootstrap.Modal.getOrCreateInstance(document.getElementById('contractor-catalog-modal')).show(); if (catalogData.length) return; fetchContractorsForCatalog().done(function(data){ renderCatalog(data||[]); }).fail(function(){ toast('Nie udało się pobrać katalogu kontrahentów.'); }); }
     window.openCatalog = openCatalog;
     $(document).on('input', '#catalog-search', function(){ var term=(this.value||'').toLowerCase().trim(); $('#contractors-table tbody tr').each(function(){ var txt=$(this).text().toLowerCase(); $(this).toggle(txt.indexOf(term)>-1); }); });
-    $(document).on('click', '#contractors-table tbody tr.catalog-row', function(){ var raw=$(this).attr('data-json')||'{}'; var decoded=raw.replace(/&#39;/g, "'"); var c={}; try{ c=JSON.parse(decoded); }catch(e){ return; } applyContractor(c); $('#contractor-catalog-modal').modal('hide'); });
+    $(document).on('click', '#contractors-table tbody tr.catalog-row', function(){ var raw=$(this).attr('data-json')||'{}'; var decoded=raw.replace(/&#39;/g, "'"); var c={}; try{ c=JSON.parse(decoded); }catch(e){ return; } applyContractor(c); bootstrap.Modal.getOrCreateInstance(document.getElementById('contractor-catalog-modal')).hide(); });
 
     // Odbiorca (modal + snapshot)
     $('#recipient-save-btn').on('click', function(){
@@ -1030,11 +1024,18 @@ $(function(){
             name:$('#recipient-name').val()||'', nip:$('#recipient-nip').val()||'',
             email:$('#recipient-email').val()||'', phone:$('#recipient-phone').val()||'',
             zip:$('#recipient-zip').val()||'', street:$('#recipient-street').val()||'',
-            city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL'
+            city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL', rola:$('#recipient-rola').val()||'2'
         };
         Object.keys(data).forEach(function(k){ var $t=$('[name="invoice_recipient['+k+']"], [name="invoice_recipient.'+k+']'); if ($t.length) $t.val(data[k]).trigger('change'); });
         $('#recipient-snapshot').slideDown(120);
+        $('#recipient-add-wrap').hide();
         $('#recipient-create-modal').modal('hide');
+    });
+    $('#recipient-add-btn').on('click', function(){
+        $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
+        $('#recipient-country').val('PL');
+        $('#recipient-rola').val('2');
+        $('#recipient-create-modal').modal('show');
     });
     $('#recipient-edit-btn').on('click', function(){
         $('#recipient-name').val($('[name="invoice_recipient[name]"]').val()||'');
@@ -1045,6 +1046,7 @@ $(function(){
         $('#recipient-street').val($('[name="invoice_recipient[street]"]').val()||'');
         $('#recipient-city').val($('[name="invoice_recipient[city]"]').val()||'');
         $('#recipient-country').val($('[name="invoice_recipient[country]"]').val()||'PL');
+    $('#recipient-rola').val($('[name="invoice_recipient[rola]"]').val()||'2');
         $('#recipient-create-modal').modal('show');
     });
 

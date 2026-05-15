@@ -944,6 +944,21 @@ final class N1KsefService
         $tokens = $this->storage->getTokens($contextKey);
         $creds  = $this->storage->getSystemCreds($contextKey);
 
+        // Diagnostyka kontekstu autoryzacji (tymczasowa, do debugowania 403)
+        try {
+            $diagCtx = $this->diagnoseAuthContext($companyId, $environment);
+            $messages[] = ['stage' => 'setup', 'level' => 'info', 'ts' => $nowTs(), 'message' =>
+                'Auth diag: method=' . ($diagCtx['authMethod'] ?? '?')
+                . ' certUsed=' . ($diagCtx['certUsed'] ? 'yes' : 'no')
+                . ' certSource=' . ($diagCtx['certSource'] ?? 'none')
+                . ' certReadable=' . ($diagCtx['certReadable'] ? 'yes' : 'no')
+                . ' identifierNip=' . ($diagCtx['identifierNip'] ?? '?')
+                . ' hasAccessToken=' . ($diagCtx['hasAccessToken'] ? 'yes' : 'no')
+            ];
+        } catch (\Throwable $diagEx) {
+            $messages[] = ['stage' => 'setup', 'level' => 'warn', 'ts' => $nowTs(), 'message' => 'Auth diag failed: ' . $diagEx->getMessage()];
+        }
+
         $builder = $this->makeClientBuilder(
             companyId: $companyId,
             environment: $environment,

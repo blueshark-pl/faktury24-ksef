@@ -26,6 +26,11 @@ try {
       'country' => (string)($c->country ?? ''),
       'email' => (string)($c->email ?? ''),
       'phone' => (string)($c->phone ?? ''),
+      'vat_prefix'           => (string)($c->vat_prefix ?? ''),
+      'vat_eu'               => (string)($c->vat_eu ?? ''),
+      'eori'                 => (string)($c->eori ?? ''),
+      'tax_id_other'         => (string)($c->tax_id_other ?? ''),
+      'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
     ];
   }
 } catch (\Throwable) {
@@ -42,6 +47,7 @@ try {
         'unit'              => (string)($it->unit ?? 'szt.'),
         'price' => $it->price ?? 0,
         'discount_percent' => $it->discount_percent ?? 0,
+        'vat_code_id'       => $it->vat_code_id ?? null,
         'gtu_code'          => (string)($it->gtu_code ?? ''),
         'pkwiu'             => (string)($it->pkwiu ?? ''),
         'gtin'              => (string)($it->gtin ?? ''),
@@ -55,7 +61,12 @@ try {
   $__prefillItems = [];
 }
 
-// no-VAT: brak selektora stawek VAT w tym widoku
+// VAT — pre-render selektora stawek do klonowania w wierszach
+$vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
+foreach ($vats as $id => $label) {
+  $vatSelectHtml .= '<option value="' . h($id) . '">' . h($label) . '</option>';
+}
+$vatSelectHtml .= '</select>';
 
 // pre-render GTU select do klonowania (opcje możesz podać z kontrolera jako $gtuOptions)
 $gtuOptions = $gtuOptions ?? [
@@ -225,13 +236,14 @@ $gtuSelectHtml .= '</select>';
               
               <div class="col-lg-2 d-flex align-items-end">
                 <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check">
+                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
+                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
                   <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
                 </div>
               </div>
               <div class="col-lg-2">
-                <div id="paid-at-group" style="display:none;">
-                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control']) ?>
+                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
+                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
                 </div>
               </div>
               
@@ -423,17 +435,17 @@ $gtuSelectHtml .= '</select>';
               <div id="contractor-snapshot" class="mt-2" style="display:none;">
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
-                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true]) ?>
+                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
                   </div>
                   <div class="col-12 col-md-4">
-                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control']) ?>
+                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
                   </div>
-                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
-                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control']; if (!$__isEdit) { $opts['value'] = 'PL'; } echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
+                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
+                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
+                  <div class="col-6"><?php $opts = ['label' => 'Kraj', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->country ?? 'PL']; echo $this->Form->control('invoice_contractor.country', $opts); ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
+                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
                 </div>
 
                 <!-- Checkbox: zapisz do katalogu + popover info -->
@@ -507,6 +519,7 @@ $gtuSelectHtml .= '</select>';
                     <th style="width:120px;">ILOŚĆ</th>
                     <th style="width:80px;">JM</th>
           <th style="width:140px;">CENA</th>
+                    <th style="width:140px;">VAT</th>
                     <th style="width:120px;">RABAT %</th>
                     <th style="width:140px;">NETTO</th>
                     <th style="width:140px;">BRUTTO</th>
@@ -526,7 +539,56 @@ $gtuSelectHtml .= '</select>';
                 </thead>
 
               <tbody id="items-body">
-                <!-- pierwszy (wymagany) wiersz -->
+<?php
+// PHP-side rendering wszystkich wierszy (zamiast JS prefill — eliminuje race conditions Select2).
+$__renderItems = [];
+if ($__isEdit && !empty($__prefillItems)) {
+    $__renderItems = $__prefillItems;
+}
+?>
+<?php if (!empty($__renderItems)): ?>
+<?php foreach ($__renderItems as $__i => $__it):
+    $__vatOpts = '';
+    foreach ($vats as $__vid => $__vlabel) {
+        $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
+        $__vatOpts .= '<option value="' . h($__vid) . '"' . $__sel . '>' . h($__vlabel) . '</option>';
+    }
+    $__gtuOpts = '';
+    foreach (($gtuOptions ?? []) as $__gval => $__glabel) {
+        $__sel = ((string)$__gval === (string)($__it['gtu_code'] ?? '')) ? ' selected' : '';
+        $__gtuOpts .= '<option value="' . h($__gval) . '"' . $__sel . '>' . h($__glabel) . '</option>';
+    }
+    $__itemName = (string)($__it['name'] ?? '');
+    $__newOpt = $__itemName !== '' ? '<option value="' . h('NEW:' . $__itemName) . '" selected>' . h($__itemName) . '</option>' : '';
+?>
+                <tr>
+  <td>
+    <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
+  </td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
+  <td><input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required></td>
+  <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="0.00" readonly></td>
+  <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
+  <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
+  <td>
+    <div class="d-flex gap-1">
+      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
+      <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
+    </div>
+  </td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
+                <!-- pierwszy (wymagany) wiersz dla nowej faktury -->
                 <tr>
   <td>
     <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
@@ -540,6 +602,7 @@ $gtuSelectHtml .= '</select>';
   <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td><input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
+  <td class="vat-cell"><?= $vatSelectHtml ?></td>
   <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="0.00" readonly></td>
   <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
@@ -551,11 +614,12 @@ $gtuSelectHtml .= '</select>';
     </div>
   </td>
 </tr>
+<?php endif; ?>
 
 
                 <!-- wiersz: Add Product -->
                <tr>
-  <td colspan="9" class="border-bottom-0">
+  <td colspan="10" class="border-bottom-0">
     <button type="button" class="btn btn-light" id="btn-add-item"><i class="bi bi-plus-lg"></i> Dodaj produkt</button>
   </td>
 </tr>
@@ -563,13 +627,17 @@ $gtuSelectHtml .= '</select>';
 
                 <!-- wiersz: Sumy -->
                <tr>
-  <td colspan="5"></td>
+  <td colspan="6"></td>
   <td colspan="4">
     <table class="table table-sm text-nowrap mb-0 table-borderless">
       <tbody>
         <tr>
           <th scope="row"><div class="fw-medium">Razem netto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
           <td><input type="text" id="sum-net" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
+        </tr>
+        <tr>
+          <th scope="row"><div class="fw-medium">Razem VAT <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
+          <td><input type="text" id="sum-tax" class="form-control invoice-amount-input text-end" value="0.00" readonly></td>
         </tr>
         <tr>
           <th scope="row"><div class="fs-14 fw-medium">Razem brutto <span class="sum-currency-label text-muted fw-normal"></span>:</div></th>
@@ -591,9 +659,6 @@ $gtuSelectHtml .= '</select>';
       </div>
 
       <div class="card-footer text-end">
-        <button type="button" id="btn-validate" class="btn btn-outline-secondary m-1">
-          <i class="ri-shield-check-line me-1"></i> Sprawdź poprawność
-        </button>
           <?= $this->Form->button('<i class="ri-save-line me-1"></i> Zapisz Offline', [
             'class' => 'btn btn-primary m-1',
             'name' => 'save_only',
@@ -1375,7 +1440,7 @@ $gtuSelectHtml .= '</select>';
 $(function () {
   // ====== CONFIG / HELPERS ======
   var csrf = $('meta[name="csrfToken"]').attr('content') || '';
-  var vatRates = {};
+  var vatRates = <?= json_encode($vatRatesMap ?? []) ?>;
   var contractorUrl = '<?= $this->Url->build(['controller'=>'Contractors','action'=>'search','_ext'=>'json']) ?>';
   var productUrl    = '<?= $this->Url->build(['controller'=>'Products','action'=>'search','_ext'=>'json']) ?>';
   var gusUrl        = '<?= $this->Url->build(['controller'=>'Contractors','action'=>'gusLookup','_ext'=>'json']) ?>';
@@ -1402,7 +1467,7 @@ $(function () {
   };
   var $form = $('form.needs-validation').first();
   var $itemsBody = $('#items-body');
-  var idx = 1;
+  var idx = <?= max(1, count($__renderItems ?? [])) ?>;
   var currentProductRow = null;
 
   console.log('URLs initialized:', {
@@ -1784,10 +1849,12 @@ $('#gus-fetch-btn').on('click', function(){
     var q = toNum($tr.find('.item-qty').val(), 0);
     var p = toNum($tr.find('.item-price').val(), 0);
     var disc = toNum($tr.find('.item-disc').val(), 0);
+    var vatCode = $tr.find('.item-vatcode').val();
+    var rate = toNum(vatRates[vatCode], 0);
     var unit = p * (1 - disc/100);
     var net  = +(q * unit).toFixed(2);
-    var tax  = 0; // no-VAT: podatek zawsze 0
-    var gross= net; // no-VAT: brutto = netto
+    var tax  = +(net * (rate/100)).toFixed(2);
+    var gross= +(net + tax).toFixed(2);
     $tr.find('.item-net').val(net.toFixed(2));
     $tr.find('.item-gross').val(gross.toFixed(2));
   }
@@ -2014,12 +2081,21 @@ $('#gus-fetch-btn').on('click', function(){
     });
   }
 
-  // ====== PIERWSZY WIERSZ ======
+  // ====== DELEGOWANE HANDLERY DLA WSZYSTKICH WIERSZY (PHP-rendered + JS-added) ======
+  $itemsBody.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){
+    var $tr = $(this).closest('tr');
+    rowCalc($tr); allCalc();
+  });
+  $itemsBody.on('click', '.btn-remove', function(){
+    var $tr = $(this).closest('tr');
+    var rows = $itemsBody.find('tr').length - 2;
+    if (rows > 1) { $tr.remove(); allCalc(); guardMinRows(); }
+  });
+
+  // ====== PIERWSZY WIERSZ — init Select2 + recalc ======
   (function initFirstRow(){
     var $tr = $itemsBody.find('tr').first();
     initProductSelectForRow($tr);
-  $tr.on('input change', '.item-qty,.item-price,.item-disc', function(){ rowCalc($tr); allCalc(); });
-    $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
     rowCalc($tr); allCalc(); guardMinRows();
   })();
 
@@ -2071,9 +2147,13 @@ $('#gus-fetch-btn').on('click', function(){
       } else {
         if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '' && typeof showContractorSnapshot === 'function') { showContractorSnapshot(); }
       }
-      if (editPrefill && Array.isArray(editPrefill.items) && editPrefill.items.length) {
-        prefillItems(editPrefill.items);
-      }
+      // Items są renderowane przez PHP (foreach $__renderItems w <tbody>) — bez JS prefillItems.
+      getItemRows().each(function(){
+        var $tr = $(this);
+        try { initProductSelectForRow($tr); } catch (e) {}
+        try { if (typeof rowCalc === 'function') rowCalc($tr); } catch (e) {}
+      });
+      if (typeof allCalc === 'function') allCalc();
     } catch (e) {
       console.warn('Edit prefill failed', e);
     }
@@ -2096,17 +2176,17 @@ $('#gus-fetch-btn').on('click', function(){
         '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
         '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
         '<td><input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>' +
+        '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>' +
         '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>' +
         '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
         '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
         '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
         '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-dup" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>' +
       '</tr>';
-    $addRow.before(html.replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
+    $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
     var $tr = $addRow.prev();
     initProductSelectForRow($tr);
-    $tr.on('input change', '.item-qty,.item-price,.item-disc', function(){ rowCalc($tr); allCalc(); });
-    $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+    // input change i btn-remove handlery są delegowane na $itemsBody (patrz wyżej).
     rowCalc($tr); allCalc(); guardMinRows();
     idx++;
   });
@@ -2360,6 +2440,15 @@ $('#gus-fetch-btn').on('click', function(){
   $paidInput.on('input change', function(){ if ($paidCheck.is(':checked')) { syncPaidAmountIfLocked(); } });
   $paidCheck.on('change', togglePaidLock);
   togglePaidLock(); // init
+
+  // Re-sync alreadypaid po zmianie pozycji/sum, gdy "Oznacz jako opłacone" jest zaznaczone.
+  $(document).on('input change',
+    '.item-qty, .item-price, .item-price-mode, .item-vatcode, .item-discount, .item-net, .item-gross',
+    function(){ setTimeout(syncPaidAmountIfLocked, 0); }
+  );
+  $(document).on('click', '#btn-add-item, .btn-remove, .btn-duplicate', function(){
+    setTimeout(syncPaidAmountIfLocked, 50);
+  });
 
   // ====== Katalog: fetch/render/handlers ======
   var catalogData = [];

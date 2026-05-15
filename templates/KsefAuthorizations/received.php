@@ -5,7 +5,7 @@
  * @var array $stats
  */
 $this->assign('title', 'Faktury otrzymane (KSeF)');
-$env = (string)$this->getRequest()->getQuery('env', 'prod');
+$env = (string)$this->getRequest()->getQuery('env', 'test');
 ?>
 
 <?= $this->element('Ksef/filters', [
@@ -279,7 +279,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
     buttons.forEach(btn => {
       btn.addEventListener('click', async function(){
         const ksef = this.getAttribute('data-ksef');
-        const env  = this.getAttribute('data-env') || 'prod';
+        const env  = this.getAttribute('data-env') || 'test';
         if (!window.bootstrap) return;
         const modalEl = document.getElementById('bookingModal');
         const title   = document.getElementById('bookingModalLabel');
@@ -702,7 +702,7 @@ $nextUrl = $this->Url->build(['action' => 'received'] + array_merge($this->getRe
     const nodes = document.querySelectorAll('.booking-summary');
     nodes.forEach(async (el) => {
       const ksef = el.getAttribute('data-ksef');
-      const env = el.getAttribute('data-env') || 'prod';
+      const env = el.getAttribute('data-env') || 'test';
       const url = <?= json_encode($this->Url->build(['controller' => 'KsefAuthorizations','action' => 'bookingSummary','_full' => true])) ?> + '/' + encodeURIComponent(ksef) + '?env=' + encodeURIComponent(env);
       try {
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
