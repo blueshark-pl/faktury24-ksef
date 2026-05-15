@@ -21,6 +21,19 @@ $typeLabels = [
     'currency' => 'Walutowa',
     'final' => 'Końcowa',
 ];
+// Kolory badge dla każdego typu — spójne z /invoices/index
+$typeBadgeClass = [
+    'vat'        => 'bg-primary',
+    'novat'      => 'bg-secondary',
+    'proforma'   => 'bg-info',
+    'advance'    => 'bg-warning',
+    'correction' => 'bg-danger',
+    'margin'     => 'bg-success',
+    'internal'   => 'bg-dark',
+    'oss'        => 'bg-purple',
+    'currency'   => 'bg-info',
+    'final'      => 'bg-dark',
+];
 
 $editActionByType = [
     'vat' => 'editVat',
@@ -153,18 +166,17 @@ $editActionByType = [
                   <?= $this->Html->link(h($inv->fullnumber ?: ('ROB-' . substr((string)$inv->id, 0, 8))), ['action' => 'view', $inv->id], ['class' => 'fw-semibold draft-number-link', 'data-id' => $inv->id]) ?>
                   <?php if (empty($inv->fullnumber)): ?>
                     <button type="button"
-                            class="btn btn-link btn-sm p-0 js-preview-number"
+                            class="btn btn-sm btn-outline-primary js-preview-number"
                             data-id="<?= h($inv->id) ?>"
-                            data-bs-toggle="tooltip"
-                            data-bs-placement="top"
-                            title="Sprawdź przewidywany numer">
-                      <i class="ri-eye-line text-primary"></i>
+                            title="Oblicz przewidywany numer dla tej faktury">
+                      <i class="ri-eye-line me-1"></i>Sprawdź numer
                     </button>
                   <?php endif; ?>
                 </span>
               </td>
               <td>
-                <span class="badge bg-secondary"><?= h($typeLabels[$typeKey] ?? strtoupper($typeKey)) ?></span>
+                <?php $badgeCls = $typeBadgeClass[$typeKey] ?? 'bg-light text-dark'; ?>
+                <span class="badge <?= h($badgeCls) ?>"><?= h($typeLabels[$typeKey] ?? strtoupper($typeKey)) ?></span>
               </td>
               <td>
                 <?= h($contractor->name ?? '—') ?>
@@ -239,12 +251,7 @@ $editActionByType = [
       const newTbody = doc.querySelector('#drafts-table tbody');
       if (!newTbody) throw new Error('Brak tbody w odpowiedzi');
       tbody.replaceWith(newTbody);
-      // Re-init tooltipów dla nowych ikon „podgląd numeru"
-      document.querySelectorAll('#drafts-table .js-preview-number[data-bs-toggle="tooltip"]').forEach(el => {
-        if (el.dataset.tipBound) return;
-        el.dataset.tipBound = '1';
-        try { new bootstrap.Tooltip(el); } catch {}
-      });
+      // (przycisk „Sprawdź numer" używa natywnego title — bez bootstrap tooltip init)
     } finally {
       const refreshed = document.querySelector('#drafts-table tbody');
       if (refreshed) { refreshed.style.opacity = ''; refreshed.style.pointerEvents = ''; }
@@ -280,10 +287,7 @@ $editActionByType = [
     try { refreshDraftsTable(); } catch {}
   });
 
-  // Inicjalizuj tooltipy Bootstrap dla ikon „przewidywany numer"
-  document.querySelectorAll('.js-preview-number[data-bs-toggle="tooltip"]').forEach(function (el) {
-    try { new bootstrap.Tooltip(el); } catch {}
-  });
+  // (przycisk „Sprawdź numer" — natywny title, bez bootstrap tooltip init)
 
   // Delegowany handler — klik w ikonkę 👁 obok ROB-xxxx
   document.addEventListener('click', async function (e) {
@@ -297,10 +301,10 @@ $editActionByType = [
     if (btn.dataset.loading === '1') return;
     btn.dataset.loading = '1';
 
-    // Ikona → spinner na czas fetch
-    const icon = btn.querySelector('i');
-    const originalHtml = icon ? icon.outerHTML : '';
-    if (icon) icon.outerHTML = '<span class="spinner-border spinner-border-sm text-primary" style="width:.8rem;height:.8rem"></span>';
+    // Cały przycisk → spinner na czas fetch
+    const originalInnerHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem" role="status"></span> Liczę…';
 
     try {
       const res = await fetch('<?= $this->Url->build(['controller' => 'Invoices', 'action' => 'previewKsefNumber']) ?>/' + encodeURIComponent(id), {
@@ -321,10 +325,9 @@ $editActionByType = [
         wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => { try { new bootstrap.Tooltip(el); } catch {} });
       }
     } catch (err) {
-      // Przywróć ikonę i pokaż błąd
-      if (icon) {
-        btn.innerHTML = originalHtml;
-      }
+      // Przywróć oryginalną treść przycisku i pokaż błąd
+      btn.innerHTML = originalInnerHtml;
+      btn.disabled = false;
       if (typeof window.showToast === 'function') {
         window.showToast(err.message || 'Nie udało się sprawdzić numeru.', 'danger');
       } else {
