@@ -122,18 +122,6 @@ $hasSocial = !empty(array_filter($socialButtons, fn($s) => trim((string)$s) !== 
 
         <?= $this->Form->end() ?>
 
-        <div class="alert alert-info mt-4 mb-0 small" role="alert">
-          <i class="ri-information-line me-1"></i>
-          Jeśli korzystałeś z naszego <strong>starego systemu</strong>, użyj opcji
-          <?= $this->Html->link(
-              'Zresetuj hasło',
-              ['plugin' => 'CakeDC/Users', 'controller' => 'Users', 'action' => 'requestResetPassword'],
-              ['class' => 'alert-link']
-          ) ?>.
-          W razie problemów z logowaniem napisz do nas:
-          <a href="mailto:partnersc@partnersc.com" class="alert-link">partnersc@partnersc.com</a>
-        </div>
-
         <div class="text-center mt-3">
           <?php
             $registrationActive = Configure::read('Users.Registration.active');

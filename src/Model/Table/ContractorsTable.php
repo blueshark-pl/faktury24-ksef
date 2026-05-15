@@ -153,20 +153,28 @@ class ContractorsTable extends Table
                 $first = trim((string)($data['first_name'] ?? ''));
                 $last  = trim((string)($data['last_name'] ?? ''));
 
-                $isPerson = ($first !== '' || $last !== '') && $name === '';
-                $isCompany = $name !== '' && ($first === '' && $last === '');
+                // Preferuj jawną flagę z formularza (chip-picker "Firma/Osoba"); fallback do heurystyki
+                if (array_key_exists('is_person', $data)) {
+                    $isPerson  = (int)$data['is_person'] === 1;
+                    $isCompany = !$isPerson;
+                } else {
+                    $isPerson  = ($first !== '' || $last !== '') && $name === '';
+                    $isCompany = $name !== '' && ($first === '' && $last === '');
+                }
 
-                // For companies, require NIP
+                // For companies, require NIP — chyba że wypełnione są identyfikatory międzynarodowe
                 if ($isCompany) {
-                    if ($nip === '') {
-                        return 'NIP jest wymagany dla firmy.';
+                    $hasIntlIds = trim((string)($data['vat_prefix'] ?? '')) !== ''
+                        || trim((string)($data['vat_eu'] ?? '')) !== ''
+                        || trim((string)($data['eori'] ?? '')) !== ''
+                        || trim((string)($data['tax_id_other'] ?? '')) !== '';
+                    if ($nip === '' && !$hasIntlIds) {
+                        return 'NIP jest wymagany dla firmy (lub uzupełnij Identyfikatory międzynarodowe).';
                     }
                 }
                 // For persons, identifiers optional
 
-                if ($nip !== '') {
-                    return self::isValidNip($nip) ? true : 'Nieprawidłowy NIP (suma kontrolna).';
-                }
+                // NIP checksum validation intentionally skipped — supports foreign VAT numbers
 
                 if ($pesel !== '') {
                     if (!self::isValidPesel($pesel)) {
@@ -188,7 +196,12 @@ class ContractorsTable extends Table
                 $first = trim((string)($data['first_name'] ?? ''));
                 $last  = trim((string)($data['last_name'] ?? ''));
 
-                if (($first !== '' || $last !== '') && $name === '') {
+                // Preferuj jawną flagę z formularza
+                $isPerson = array_key_exists('is_person', $data)
+                    ? ((int)$data['is_person'] === 1)
+                    : (($first !== '' || $last !== '') && $name === '');
+
+                if ($isPerson) {
                     // person mode: require first+last
                     if ($first === '' || $last === '') {
                         return 'Podaj imię i nazwisko dla osoby fizycznej.';
@@ -212,6 +225,31 @@ class ContractorsTable extends Table
         $validator
             ->boolean('eu_vat')
             ->notEmptyString('eu_vat');
+
+        $validator
+            ->scalar('vat_prefix')
+            ->maxLength('vat_prefix', 8)
+            ->allowEmptyString('vat_prefix');
+
+        $validator
+            ->scalar('vat_eu')
+            ->maxLength('vat_eu', 32)
+            ->allowEmptyString('vat_eu');
+
+        $validator
+            ->scalar('eori')
+            ->maxLength('eori', 32)
+            ->allowEmptyString('eori');
+
+        $validator
+            ->scalar('tax_id_other')
+            ->maxLength('tax_id_other', 64)
+            ->allowEmptyString('tax_id_other');
+
+        $validator
+            ->scalar('tax_id_other_country')
+            ->maxLength('tax_id_other_country', 8)
+            ->allowEmptyString('tax_id_other_country');
 
         $validator
             ->scalar('country')

@@ -144,16 +144,33 @@ class KsefAuthorizationsController extends AppController
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
 
         try {
-            $ksef->queryReceivedMetadata(
+            $result = $ksef->queryPersonalGrants(
                 companyId: $companyId,
                 environment: $env,
-                filters: [],
+                filters: ['permissionState' => 'Active', 'permissionTypes' => ['InvoiceWrite']],
                 pageOffset: 0,
                 pageSize: 1
             );
-            $status = ['active' => true, 'env' => $env, 'ts' => time(), 'lastError' => null];
+            $items = [];
+            if (is_array($result)) {
+                $items = $result['permissions'] ?? $result['items'] ?? [];
+            }
+            $hasInvoiceWrite = count($items) > 0;
+            $status = [
+                'active'         => $hasInvoiceWrite,
+                'env'            => $env,
+                'ts'             => time(),
+                'lastError'      => $hasInvoiceWrite ? null : 'Brak uprawnienia InvoiceWrite (wystawianie) w KSeF.',
+                'checkKind'      => 'personalGrants',
+                'permissionType' => 'InvoiceWrite',
+            ];
         } catch (\Throwable $e) {
-            $status = ['active' => false, 'env' => $env, 'ts' => time(), 'lastError' => $e->getMessage()];
+            $status = [
+                'active'    => false,
+                'env'       => $env,
+                'ts'        => time(),
+                'lastError' => $e->getMessage() ?: get_class($e),
+            ];
         }
 
         $this->request->getSession()->write('Ksef.status', $status);
@@ -1032,6 +1049,23 @@ class KsefAuthorizationsController extends AppController
             }
         }
 
+        // === SESSION LOCK RELEASE ===
+        // Z sesji już wszystko odczytaliśmy (Ksef.status cache check wyżej, identity z requestu).
+        // Zamykamy sesję PRZED długimi wywołaniami HTTP do MF (5-30s), żeby NIE blokować
+        // innych żądań tego samego użytkownika (PHP session ma writer lock).
+        // Po zakończeniu robimy szybki re-open tylko na zapis statusu.
+        $session = $this->request->getSession();
+        try { $session->close(); } catch (\Throwable) { /* best-effort */ }
+        $writeStatusToSession = function (array $status) use ($session): void {
+            try {
+                $session->start();
+                $session->write('Ksef.status', $status);
+                $session->close();
+            } catch (\Throwable) {
+                // best-effort — zapis do sesji jest opcjonalny (mamy też Cache::write)
+            }
+        };
+
         $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
 
         // Diagnoza kontekstu (best-effort)
@@ -1100,7 +1134,7 @@ class KsefAuthorizationsController extends AppController
                 'authMethod' => is_array($diag) ? ($diag['authMethod'] ?? null) : null,
                 'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
             ];
-            $this->request->getSession()->write('Ksef.status', $status);
+            $writeStatusToSession($status);
             Cache::write($cacheKey, $status, 'ksefStatus');
 
             return $this->response
@@ -1126,7 +1160,7 @@ class KsefAuthorizationsController extends AppController
                 'authMethod' => is_array($diag) ? ($diag['authMethod'] ?? null) : null,
                 'certSource' => is_array($diag) ? ($diag['certSource'] ?? null) : null,
             ];
-            $this->request->getSession()->write('Ksef.status', $status);
+            $writeStatusToSession($status);
             Cache::write($cacheKey, $status, 'ksefStatus');
 
             return $this->response

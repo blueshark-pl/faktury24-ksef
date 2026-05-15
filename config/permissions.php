@@ -201,6 +201,7 @@ return [
                 'export',
                 'bulkAction',
                 'sendToKsef',
+                'previewKsefNumber',
                 'refreshKsefStatus',
                 'downloadKsef',
                 'downloadFa3Xml',
@@ -212,6 +213,7 @@ return [
                 'drafts',
                 'sendDraftNow',
                 'scheduleDraft',
+                'promoteToIssued',
                 'ksefSendLogs',
                 'contractorEmailLookup',
                 'emailInvoice',
@@ -241,6 +243,7 @@ return [
                 'invoices',
                 'importFetch',
                 'importBatch',
+                'bulkSetActive',
             ],
 
         ],
@@ -405,6 +408,16 @@ return [
             'controller' => 'Nbp',
             'action' => ['dictionary', 'rates'],
         ],
+
+        // tablica Kanban / taski (tylko admin — ale admin ma wildcard, tu na wszelki wypadek)
+        // Admin wildcard (linia ~100) już to pokrywa. Brak wpisów dla 'user' — intencjonalne.
+
+        // zgłoszenia i uwagi (support tickets)
+        [
+            'role' => 'user',
+            'controller' => 'SupportTickets',
+            'action' => ['index', 'add', 'view', 'download'],
+        ],
         [
             'role' => '*',
             'plugin' => 'DebugKit',
@@ -421,9 +434,32 @@ return [
         ],
         [
             'role' => '*',
+            'prefix' => 'Api',
+            'plugin' => '*',
+            'controller' => '*',
+            'action' => '*',
+            'bypassAuth' => true,
+        ],
+        [
+            'role' => '*',
             'controller' => 'Sso',
             'action' => ['login'],
             'bypassAuth' => true,
+        ],
+        // Globalna wyszukiwarka w navbarze
+        [
+            'role' => 'user',
+            'controller' => 'Search',
+            'action' => ['index'],
+        ],
+
+        // Impersonacja: `stop` musi być dostępna z poziomu impersonowanego (zwykle role=user),
+        // żeby admin mógł wrócić do swojej tożsamości. Sam kontroler i tak weryfikuje
+        // obecność `Impersonation.original_user_id` w sesji.
+        [
+            'role' => '*',
+            'controller' => 'Impersonation',
+            'action' => ['stop'],
         ],
     ]
 ];

@@ -340,4 +340,45 @@ class AppController extends Controller
         // domyślnie: redirect do kreatora
         return $this->redirect(Router::url(['controller' => 'Companies', 'action' => 'onboarding']));
     }
+
+    /**
+     * Zapisuje ostatnio przeglądany element (fakturę/kontrahenta) w sesji,
+     * by pokazać go w dropdownie „Ostatnio przeglądane" w navbarze.
+     *
+     * @param string $type  'invoices' | 'contractors'
+     * @param string $id    UUID elementu
+     * @param string $label Nazwa do wyświetlenia (np. numer faktury, nazwa kontrahenta)
+     * @param string $url   URL przekierowania
+     * @param string|null $sub Opcjonalny dodatkowy tekst (np. kontrahent dla faktury)
+     */
+    protected function trackRecentlyViewed(string $type, string $id, string $label, string $url, ?string $sub = null): void
+    {
+        if (!in_array($type, ['invoices', 'contractors'], true) || $id === '' || $label === '') {
+            return;
+        }
+        try {
+            $identity = $this->request->getAttribute('identity');
+            $userId = (string)($identity?->getIdentifier() ?? '');
+            if ($userId === '') {
+                return;
+            }
+            /** @var \App\Model\Table\RecentlyViewedTable $RecentlyViewed */
+            $RecentlyViewed = $this->fetchTable('RecentlyViewed');
+            $RecentlyViewed->track($userId, $type, $id, $label, $url, $sub);
+        } catch (\Throwable) {
+            // best-effort
+        }
+    }
+
+    protected function requireAdmin(): ?\Cake\Http\Response
+    {
+        $identity = $this->request->getAttribute('identity');
+        $isAdmin  = (bool)($identity?->get('is_admin') ?? false);
+        $role     = strtolower((string)($identity?->get('role') ?? ''));
+        if (!$isAdmin && $role !== 'admin') {
+            $this->Flash->error('Dostęp tylko dla administratora.');
+            return $this->redirect(['controller' => 'Invoices', 'action' => 'index']);
+        }
+        return null;
+    }
 }

@@ -35,7 +35,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     echo $this->fetch('meta');
 
     // Favicon
-    echo $this->Html->meta('icon', $this->Url->assetUrl('/assets/images/brand-logos/favicon.ico'), ['type' => 'image/x-icon']);
+    ?>
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="faktury24" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <?php
 
     // CSRF token dla JS (jeśli używasz CsrfProtectionMiddleware)
     $csrf = $this->request->getAttribute('csrfToken');
@@ -62,9 +69,61 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     // Local override: ensure proper hover contrast (background + text) in sidebar
     ?>
     <style>
+      /* Override koloru primary (94d437 = 148, 212, 55) */
+      :root { --primary-rgb: 148, 212, 55; }
+      .btn-primary,
+      .btn-primary:focus,
+      .btn-primary:active {
+        background-color: #94d437 !important;
+        border-color: #94d437 !important;
+        color: #fff !important;
+      }
+      .btn-primary:hover {
+        background-color: #84c02e !important;
+        border-color: #84c02e !important;
+        color: #fff !important;
+      }
+      .btn-primary:disabled,
+      .btn-primary.disabled {
+        background-color: #94d437 !important;
+        border-color: #94d437 !important;
+        opacity: .65;
+      }
+
+      /* Powiększone logo w sidebarze (desktop) */
+      .app-sidebar .main-sidebar-header .header-logo .desktop-logo,
+      .app-sidebar .main-sidebar-header .header-logo .desktop-dark {
+        height: 2.1rem;
+        line-height: 2.1rem;
+      }
+
       /* Show hand cursor on tab-style nav items */
       .nav-pills.tab-style-7 .nav-link { cursor: pointer; }
       .nav-pills.tab-style-7 .nav-item { cursor: pointer; }
+
+      /* Zawsze widoczny scrollbar poziomy w table-responsive */
+      .table-responsive {
+        overflow-x: scroll !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: #a7cf4c #e8f5d0;
+      }
+      .table-responsive::-webkit-scrollbar {
+        height: 10px;
+      }
+      .table-responsive::-webkit-scrollbar-track {
+        background: #e8f5d0 !important;
+        border-radius: 5px !important;
+      }
+      .table-responsive::-webkit-scrollbar-thumb {
+        background-color: #a7cf4c !important;
+        border-radius: 5px !important;
+        min-width: 40px !important;
+        border: 2px solid #e8f5d0 !important;
+      }
+      .table-responsive::-webkit-scrollbar-thumb:hover {
+        background-color: #8ab83a !important;
+      }
     </style>
     <?php
 
@@ -211,7 +270,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         Faktury24 mają uprawnienia.
                                     </div>
                   <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                    <!-- <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'KsefAuthorizations', 'action' => 'received', '?' => ['env' => $envSide ?: 'prod']]) ?>" class="btn btn-outline-success btn-sm">Odebrane dokumenty</a> -->
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ksef-invoicewrite-refresh>Odśwież status</button>
                   </div>
                 </div>
@@ -249,10 +307,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         <div class="header-element">
                             <div class="horizontal-logo">
                                 <a href="/" class="header-logo">
-                                    <img src="../assets/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
-                                    <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
-                                    <img src="../assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                                    <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
+                                    <img src="/img/faktury24_logo.png" alt="logo" class="desktop-logo">
+                                    <img src="/img/faktury24_logo.png" alt="logo" class="toggle-logo">
+                                    <img src="/img/faktury24_logo.png" alt="logo" class="desktop-dark">
+                                    <img src="/img/faktury24_logo.png" alt="logo" class="toggle-dark">
                                 </a>
                             </div>
                         </div>
@@ -280,6 +338,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                         </div>
                         <!-- End::header-element -->
 
+                        <!-- Start::header-element: global search -->
+                        <div class="header-element header-search-wrap" style="position:relative">
+                            <div class="input-group" style="min-width:280px;max-width:420px">
+                                <span class="input-group-text bg-white border-end-0" style="border-radius:8px 0 0 8px">
+                                    <i class="ri-search-2-line text-muted"></i>
+                                </span>
+                                <input type="text" class="form-control border-start-0" id="global-search-input" placeholder="Szukaj faktur, kontrahentów, towarów…" autocomplete="off" style="border-radius:0 8px 8px 0;font-size:.85rem">
+                            </div>
+                            <div id="global-search-results" class="shadow-lg border bg-white rounded" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:6px;max-height:420px;overflow-y:auto;z-index:1050;min-width:380px"></div>
+                        </div>
+                        <!-- End::header-element: global search -->
 
                     </div>
                     <!-- End::header-content-left -->
@@ -287,15 +356,138 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                     <!-- Start::header-content-right -->
                     <ul class="header-content-right">
 
-                        <!-- Start::header-element (Instrukcja obsługi) -->
-                        <li class="header-element">
-                            <a href="javascript:void(0);" class="header-link btn btn-primary btn-sm d-flex align-items-center gap-1 px-3 py-1 ms-1"
-                               data-bs-toggle="modal" data-bs-target="#manualPdfModal">
-                                <i class="ti ti-book-2 fs-15"></i>
-                                <span class="d-none d-sm-inline fw-medium">Instrukcja obsługi</span>
+                        <?php
+                            // Czy aktualnie zalogowana tożsamość ma uprawnienia admina?
+                            $idHdr = $this->request->getAttribute('identity') ?? null;
+                            $isAdminHdr = (bool)($idHdr?->get('is_admin') ?? false)
+                                || strtolower((string)($idHdr?->get('role') ?? '')) === 'admin';
+                            $csrfHdr = $this->getRequest()->getAttribute('csrfToken');
+                            // Ostatnio przeglądane (z bazy danych, per user)
+                            $recentInvoices = [];
+                            $recentContractors = [];
+                            $userIdHdr = (string)($idHdr?->getIdentifier() ?? '');
+                            if ($userIdHdr !== '') {
+                                try {
+                                    /** @var \App\Model\Table\RecentlyViewedTable $RecentlyViewedTbl */
+                                    $RecentlyViewedTbl = $this->fetchTable('RecentlyViewed');
+                                    $recentInvoices    = $RecentlyViewedTbl->listForUser($userIdHdr, 'invoices', 5);
+                                    $recentContractors = $RecentlyViewedTbl->listForUser($userIdHdr, 'contractors', 5);
+                                } catch (\Throwable) {}
+                            }
+                            $hasRecent = !empty($recentInvoices) || !empty($recentContractors);
+                        ?>
+
+                        <!-- Start::header-element: CTA wystaw fakturę -->
+                        <li class="header-element header-quick-add dropdown">
+                            <a href="javascript:void(0);" class="btn btn-primary btn-sm dropdown-toggle d-inline-flex align-items-center gap-1 fw-semibold" data-bs-toggle="dropdown" aria-expanded="false" style="border-radius:8px;padding:.4rem .8rem;font-size:.85rem">
+                                <i class="ri-add-line"></i>
+                                <span class="d-none d-md-inline">Wystaw fakturę</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px">
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-vat"><i class="ri-file-list-3-line text-primary"></i><span>Faktura VAT</span></a></li>
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-proforma"><i class="ri-file-text-line text-info"></i><span>Proforma</span></a></li>
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-advance"><i class="ri-coin-line text-warning"></i><span>Zaliczka</span></a></li>
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-correction"><i class="ri-edit-2-line text-danger"></i><span>Korekta</span></a></li>
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-currency"><i class="ri-exchange-dollar-line text-success"></i><span>Walutowa</span></a></li>
+                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-no-vat"><i class="ri-file-forbid-line text-muted"></i><span>Bez VAT</span></a></li>
+                            </ul>
+                        </li>
+                        <!-- End::header-element: CTA -->
+
+                        <?php if ($hasRecent): ?>
+                        <!-- Start::header-element: recently viewed -->
+                        <li class="header-element header-recent dropdown">
+                            <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret" data-bs-toggle="dropdown" aria-expanded="false" title="Ostatnio przeglądane" aria-label="Ostatnio przeglądane">
+                                <i class="ri-history-line header-link-icon" style="font-size:22px"></i>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:320px;max-width:380px">
+                                <li class="px-3 py-2 border-bottom small text-muted fw-semibold text-uppercase" style="font-size:.65rem;letter-spacing:.5px">
+                                    <i class="ri-history-line me-1"></i>Ostatnio przeglądane
+                                </li>
+                                <?php if (!empty($recentInvoices)): ?>
+                                <li class="px-3 py-1 small text-muted fw-semibold bg-light"><i class="ri-file-list-3-line me-1"></i>Faktury</li>
+                                <?php foreach ($recentInvoices as $r): ?>
+                                <li>
+                                    <a class="dropdown-item d-flex align-items-start gap-2 py-2" href="<?= h($r['url']) ?>">
+                                        <i class="ri-file-list-3-line text-primary mt-1"></i>
+                                        <span class="flex-grow-1 min-width-0">
+                                            <span class="fw-medium d-block text-truncate"><?= h($r['label']) ?></span>
+                                            <?php if (!empty($r['sub'])): ?><span class="small text-muted d-block text-truncate"><?= h($r['sub']) ?></span><?php endif; ?>
+                                        </span>
+                                    </a>
+                                </li>
+                                <?php endforeach; ?>
+                                <?php endif; ?>
+                                <?php if (!empty($recentContractors)): ?>
+                                <li class="px-3 py-1 small text-muted fw-semibold bg-light"><i class="ri-user-3-line me-1"></i>Kontrahenci</li>
+                                <?php foreach ($recentContractors as $r): ?>
+                                <li>
+                                    <a class="dropdown-item d-flex align-items-start gap-2 py-2" href="<?= h($r['url']) ?>">
+                                        <i class="ri-user-3-line text-success mt-1"></i>
+                                        <span class="flex-grow-1 min-width-0">
+                                            <span class="fw-medium d-block text-truncate"><?= h($r['label']) ?></span>
+                                            <?php if (!empty($r['sub'])): ?><span class="small text-muted d-block text-truncate"><?= h($r['sub']) ?></span><?php endif; ?>
+                                        </span>
+                                    </a>
+                                </li>
+                                <?php endforeach; ?>
+                                <?php endif; ?>
+                            </ul>
+                        </li>
+                        <!-- End::header-element: recently viewed -->
+                        <?php endif; ?>
+
+                        <!-- Start::header-element: fullscreen -->
+                        <li class="header-element header-fullscreen">
+                            <a href="javascript:void(0);" class="header-link" onclick="openFullscreen()" title="Pełny ekran" aria-label="Pełny ekran">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="full-screen-open header-link-icon" viewBox="0 0 256 256" width="22" height="22">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <polyline points="168 48 208 48 208 88" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="88 208 48 208 48 168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="208 168 208 208 168 208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="48 88 48 48 88 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                </svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="full-screen-close header-link-icon d-none" viewBox="0 0 256 256" width="22" height="22">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <polyline points="160 48 208 48 208 96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <line x1="144" y1="112" x2="208" y2="48" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                    <polyline points="96 208 48 208 48 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <line x1="112" y1="144" x2="48" y2="208" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></line>
+                                </svg>
                             </a>
                         </li>
-                        <!-- End::header-element (Instrukcja obsługi) -->
+                        <!-- End::header-element: fullscreen -->
+
+                        <?php if ($isAdminHdr): ?>
+                        <!-- Start::header-element: impersonate (admin only) -->
+                        <li class="header-element header-impersonate dropdown">
+                            <a href="javascript:void(0);" class="header-link dropdown-toggle no-caret" data-bs-auto-close="outside" data-bs-toggle="dropdown" aria-expanded="false" id="impersonateDropdown" title="Wcielenie w użytkownika" aria-label="Wcielenie w użytkownika">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="header-link-icon" viewBox="0 0 256 256" width="22" height="22">
+                                    <rect width="256" height="256" fill="none"></rect>
+                                    <circle cx="108" cy="100" r="44" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></circle>
+                                    <path d="M28,224c14.78-25.55,46-44,80-44s65.22,18.45,80,44" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <polyline points="184 16 200 32 184 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <polyline points="232 80 216 64 232 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></polyline>
+                                    <path d="M200,32a32,32,0,0,1,32,32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                    <path d="M216,64a32,32,0,0,1-32-32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"></path>
+                                </svg>
+                            </a>
+                            <ul class="main-header-dropdown dropdown-menu dropdown-menu-end p-0 shadow" aria-labelledby="impersonateDropdown" style="min-width:340px;max-width:420px;">
+                                <li class="px-3 py-2 border-bottom">
+                                    <div class="small text-muted mb-1 fw-semibold">
+                                        <i class="ri-spy-line me-1"></i>Wcielenie w użytkownika
+                                    </div>
+                                    <input type="text" class="form-control form-control-sm" id="imp-search-input" placeholder="Login, e-mail lub imię…" autocomplete="off">
+                                </li>
+                                <li>
+                                    <div id="imp-search-results" style="max-height:380px;overflow-y:auto">
+                                        <div class="p-3 text-muted small text-center">Zacznij wpisywać…</div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </li>
+                        <!-- End::header-element: impersonate -->
+                        <?php endif; ?>
 
                         <!-- Start::header-element -->
                         <li class="header-element dropdown">
@@ -391,10 +583,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                 <!-- Start::main-sidebar-header -->
                 <div class="main-sidebar-header">
                     <a href="/" class="header-logo">
-                        <img src="/img/logo-faktury24.png" alt="logo" class="desktop-logo">
-                        <img src="../assets/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
-                        <img src="../assets/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                        <img src="../assets/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
+                        <img src="/img/faktury24_logo.png" alt="logo" class="desktop-logo">
+                        <img src="/img/faktury24_logo.png" alt="logo" class="toggle-dark">
+                        <img src="/img/faktury24_logo.png" alt="logo" class="desktop-dark">
+                        <img src="/img/faktury24_logo.png" alt="logo" class="toggle-logo">
                     </a>
                 </div>
                 <!-- End::main-sidebar-header -->
@@ -616,6 +808,23 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li> -->
 
+                            <!-- Zgłoszenia support – dla wszystkich użytkowników -->
+                            <li class="slide__category"><span class="category-name">Pomoc</span></li>
+                            <li class="slide">
+                                <a href="javascript:void(0);" class="side-menu__item" data-bs-toggle="modal" data-bs-target="#manualPdfModal">
+                                    <i class="ri-book-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Instrukcja obsługi</span>
+                                </a>
+                            </li>
+                            <li class="slide <?= $navActive('SupportTickets', 'index') || $navActive('SupportTickets', 'add') || $navActive('SupportTickets', 'view') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-customer-service-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Zgłoszenia i uwagi</span>',
+                                    ['plugin' => false, 'controller' => 'SupportTickets', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php
                             // Sekcja administracyjna – widoczna tylko dla administratorów
                             $identity = $this->request->getAttribute('identity') ?? null;
@@ -624,15 +833,54 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             if ($isAdmin || $role === 'admin'):
                             ?>
                             <!-- Administracja -->
-                            <!-- <li class="slide__category"><span class="category-name">Administracja</span></li> -->
-                            <!-- <li class="slide">
+                            <li class="slide__category"><span class="category-name">Administracja</span></li>
+                            <li class="slide <?= $navActive('Invoices', 'adminInvoices') ?>">
                                 <?= $this->Html->link(
-                                    '<svg xmlns="http://www.w3.org/2000/svg" class="side-menu__icon" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M40,64H216" stroke="currentColor" fill="none" stroke-width="16"/><path d="M40,128H216" stroke="currentColor" fill="none" stroke-width="16"/><path d="M40,192H216" stroke="currentColor" fill="none" stroke-width="16"/></svg>
-                                    <span class="side-menu__label">Kategorie kosztów</span>',
-                                    ['plugin' => false, 'controller' => 'CostCategories', 'action' => 'index'],
+                                    '<i class="ri-file-list-3-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Faktury użytkowników</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminInvoices'],
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
-                            </li> -->
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminDrafts') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-draft-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Szkice faktur</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminDrafts'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminDeletionLogs') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-delete-bin-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Logi usunięć</span>',
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminDeletionLogs'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Invoices', 'adminSupport') || $navActive('Invoices', 'adminSupportView') ?>">
+                                <?php
+                                $adminSupportNewCount = 0;
+                                try {
+                                    $adminSupportNewCount = (int)$this->fetchTable('SupportTickets')->find()->where(['status' => 'nowe'])->count();
+                                } catch (\Throwable) {}
+                                ?>
+                                <?= $this->Html->link(
+                                    '<i class="ri-customer-service-2-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Zgłoszenia support</span>'
+                                    . ($adminSupportNewCount > 0 ? ' <span class="badge bg-danger ms-1">' . $adminSupportNewCount . '</span>' : ''),
+                                    ['plugin' => false, 'controller' => 'Invoices', 'action' => 'adminSupport'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+                            <li class="slide <?= $navActive('Tasks', 'index') || $navActive('Tasks', 'view') || $navActive('Tasks', 'add') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-kanban-view side-menu__icon"></i>
+                                    <span class="side-menu__label">Tablica Kanban</span>',
+                                    ['plugin' => false, 'controller' => 'Tasks', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <?php endif; ?>
 
                         </ul>
@@ -650,6 +898,30 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
             <!--APP-CONTENT START-->
             <div class="main-content app-content">
+                <?php
+                    // Banner impersonacji — pod navbarem, w obszarze contentu
+                    $impOriginalId = $this->getRequest()->getSession()->read('Impersonation.original_user_id');
+                    if (!empty($impOriginalId)):
+                        $impIdentity = $this->getRequest()->getAttribute('identity');
+                        $impFirst = trim((string)($impIdentity?->get('first_name') ?? ''));
+                        $impLast  = trim((string)($impIdentity?->get('last_name') ?? ''));
+                        $impEmail = (string)($impIdentity?->get('email') ?? '');
+                        $impLabel = trim($impFirst . ' ' . $impLast);
+                        if ($impLabel === '') { $impLabel = $impEmail; }
+                        $csrfImp = $this->getRequest()->getAttribute('csrfToken');
+                ?>
+                <div id="impersonation-banner" class="alert alert-warning border-0 rounded-0 mb-0 d-flex align-items-center justify-content-center gap-3 py-2"
+                     role="alert">
+                    <i class="ri-spy-line"></i>
+                    <span>Wcieliłeś się w <strong><?= h($impLabel) ?></strong><?php if ($impEmail && $impEmail !== $impLabel): ?> (<?= h($impEmail) ?>)<?php endif; ?>.</span>
+                    <form action="/admin/impersonate/stop" method="post" class="m-0">
+                        <?php if ($csrfImp): ?><input type="hidden" name="_csrfToken" value="<?= h($csrfImp) ?>"><?php endif; ?>
+                        <button type="submit" class="btn btn-sm btn-warning fw-semibold">
+                            <i class="ri-logout-box-r-line me-1"></i>Wróć do swojego konta
+                        </button>
+                    </form>
+                </div>
+                <?php endif; ?>
                 <div class="container-fluid mt-2">
                                         <?php
                                             $ksefModeEnabled = isset($ksefModeEnabled) ? (bool)$ksefModeEnabled : true;
@@ -705,36 +977,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                                 </div>
                                             </div>
                                         <?php endif; ?>
-                    <div id="verification-banner" class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert" style="display:none!important">
-                        <div class="d-flex align-items-start gap-2">
-                            <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
-                            <div>
-                                <strong>Prosimy o weryfikację danych!</strong><br>
-                                Sprawdź i uzupełnij: <strong>Rachunek bankowy</strong>, <strong>Serie numeracji</strong> oraz <strong>Dane firmy</strong>.
-                                Dołożyliśmy wszelkich starań, aby dane zostały zaimportowane poprawnie &mdash; jednak jeśli były niepełne lub nie spełniały wymogów systemu MF / KSeF, prosimy o ich ponowne wprowadzenie.
-                                <span class="d-flex gap-2 mt-2 flex-wrap">
-                                    <a class="btn btn-sm btn-outline-danger" href="/firma/edycja">Przejdź do ustawień firmy</a>
-                                </span>
-                            </div>
-                        </div>
-                        <button type="button" class="btn-close" id="verification-banner-close" aria-label="Zamknij"></button>
-                    </div>
-                    <script>
-                    (function () {
-                        var key = 'verificationBannerDismissed';
-                        var el = document.getElementById('verification-banner');
-                        if (el && !localStorage.getItem(key)) {
-                            el.style.removeProperty('display');
-                        }
-                        var btn = document.getElementById('verification-banner-close');
-                        if (btn) {
-                            btn.addEventListener('click', function () {
-                                localStorage.setItem(key, '1');
-                                el.style.setProperty('display', 'none', 'important');
-                            });
-                        }
-                    })();
-                    </script>
                     <?= $this->Flash->render() ?>
                     <?= $this->fetch('content') ?>
                 </div>
@@ -838,13 +1080,244 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             '/assets/libs/@tarekraafat/autocomplete.js/autoComplete.min.js',
             '/assets/libs/@simonwep/pickr/pickr.es5.min.js',
             '/assets/libs/flatpickr/flatpickr.min.js',
-            '/assets/js/custom-switcher.min.js',
             '/assets/libs/prismjs/prism.js',
             '/assets/js/prism-custom.js',
             '/assets/libs/choices.js/public/assets/scripts/choices.min.js',
             '/assets/js/alerts.js',
-            '/assets/js/custom.js',
         ], ['block' => 'scriptBottom']);
+
+        $this->Html->scriptBlock(<<<'JS'
+        (function () {
+          // Bootstrap tooltips
+          document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+            new bootstrap.Tooltip(el);
+          });
+          // Bootstrap popovers
+          document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+            new bootstrap.Popover(el);
+          });
+          // Autocomplete (header search) — inicjalizuj tylko gdy pole istnieje
+          if (typeof autoComplete === 'function' && document.querySelector('#header-search')) {
+            const ac = new autoComplete({
+              selector: '#header-search',
+              data: { src: [], cache: true },
+              resultItem: { highlight: true },
+              events: {
+                input: {
+                  selection: (event) => { ac.input.value = event.detail.selection.value; }
+                }
+              }
+            });
+          }
+        })();
+
+        // Globalna wyszukiwarka w navbarze
+        (function () {
+          const input   = document.getElementById('global-search-input');
+          const results = document.getElementById('global-search-results');
+          if (!input || !results) return;
+          let timer = null, lastQ = '', items = [], cursor = -1;
+
+          function esc(s) {
+            return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          }
+          function highlight(text, q) {
+            if (!q) return esc(text);
+            const t = String(text || '');
+            const idx = t.toLowerCase().indexOf(q.toLowerCase());
+            if (idx < 0) return esc(t);
+            return esc(t.slice(0, idx))
+              + '<mark style="background:#fff3a0;padding:0">' + esc(t.slice(idx, idx + q.length)) + '</mark>'
+              + esc(t.slice(idx + q.length));
+          }
+          function fmtMoney(n, cur) {
+            const num = Number(n || 0);
+            return num.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + (cur || 'PLN');
+          }
+          function hide() { results.style.display = 'none'; items = []; cursor = -1; }
+          function show() { results.style.display = 'block'; }
+
+          function render(data, q) {
+            const sections = [];
+            items = [];
+
+            function pushSection(label, icon, list, renderItem) {
+              if (!list || !list.length) return;
+              sections.push('<div class="px-3 py-1 small fw-semibold text-uppercase text-muted bg-light border-bottom" style="font-size:.65rem;letter-spacing:.5px"><i class="' + icon + ' me-1"></i>' + esc(label) + '</div>');
+              list.forEach(it => {
+                items.push(it.url);
+                sections.push(renderItem(it));
+              });
+            }
+
+            pushSection('Faktury', 'ri-file-list-3-line', data.invoices, (it) => (
+              '<a href="' + esc(it.url) + '" class="gs-item d-flex align-items-center gap-2 px-3 py-2 text-decoration-none text-dark border-bottom" style="cursor:pointer">'
+              + '<div class="bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center border" style="width:32px;height:32px;border-radius:50%;flex-shrink:0"><i class="ri-file-list-3-line"></i></div>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   '<div class="fw-semibold small text-truncate">' + highlight(it.fullnumber || '(brak numeru)', q) + (it.contractor ? ' · ' + highlight(it.contractor, q) : '') + '</div>'
+              +   '<div class="text-muted text-truncate" style="font-size:.72rem">' + esc(it.date || '') + '</div>'
+              + '</div>'
+              + '<div class="text-end small text-nowrap" style="font-size:.7rem">' + fmtMoney(it.total, it.currency) + '</div>'
+              + '</a>'
+            ));
+
+            pushSection('Kontrahenci', 'ri-user-3-line', data.contractors, (it) => (
+              '<a href="' + esc(it.url) + '" class="gs-item d-flex align-items-center gap-2 px-3 py-2 text-decoration-none text-dark border-bottom" style="cursor:pointer">'
+              + '<div class="bg-success-subtle text-success d-inline-flex align-items-center justify-content-center border" style="width:32px;height:32px;border-radius:50%;flex-shrink:0"><i class="ri-user-3-line"></i></div>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   '<div class="fw-semibold small text-truncate">' + highlight(it.name, q) + '</div>'
+              +   '<div class="text-muted text-truncate" style="font-size:.72rem">' + (it.nip ? 'NIP ' + esc(it.nip) : '') + (it.city ? (it.nip ? ' · ' : '') + esc(it.city) : '') + '</div>'
+              + '</div>'
+              + '</a>'
+            ));
+
+            pushSection('Towary / usługi', 'ri-shopping-bag-3-line', data.products, (it) => (
+              '<a href="' + esc(it.url) + '" class="gs-item d-flex align-items-center gap-2 px-3 py-2 text-decoration-none text-dark border-bottom" style="cursor:pointer">'
+              + '<div class="bg-warning-subtle text-warning d-inline-flex align-items-center justify-content-center border" style="width:32px;height:32px;border-radius:50%;flex-shrink:0"><i class="ri-shopping-bag-3-line"></i></div>'
+              + '<div class="flex-grow-1 min-width-0">'
+              +   '<div class="fw-semibold small text-truncate">' + highlight(it.name, q) + '</div>'
+              +   (it.code ? '<div class="text-muted text-truncate" style="font-size:.72rem">' + esc(it.code) + '</div>' : '')
+              + '</div>'
+              + '<div class="text-end small text-nowrap" style="font-size:.7rem">' + fmtMoney(it.price, it.currency) + '</div>'
+              + '</a>'
+            ));
+
+            if (items.length === 0) {
+              results.innerHTML = '<div class="p-3 text-muted small text-center">Brak wyników dla „' + esc(q) + '".</div>';
+            } else {
+              sections.push('<div class="px-3 py-1 small text-muted text-center border-top" style="font-size:.68rem"><i class="ri-keyboard-line me-1"></i>↑↓ aby nawigować · Enter aby otworzyć · Esc aby zamknąć</div>');
+              results.innerHTML = sections.join('');
+            }
+            show();
+            cursor = -1;
+          }
+
+          async function doSearch(q) {
+            if (q.length < 2) { hide(); return; }
+            try {
+              const res = await fetch('/search?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+              if (!res.ok) throw new Error('http ' + res.status);
+              const data = await res.json();
+              render(data, q);
+            } catch (e) {
+              results.innerHTML = '<div class="p-3 text-danger small text-center">Błąd wyszukiwania.</div>';
+              show();
+            }
+          }
+
+          function markActive() {
+            results.querySelectorAll('.gs-item').forEach((el, i) => {
+              if (i === cursor) {
+                el.style.background = '#f1f5f9';
+                el.scrollIntoView({ block: 'nearest' });
+              } else {
+                el.style.background = '';
+              }
+            });
+          }
+
+          input.addEventListener('input', () => {
+            const q = input.value.trim();
+            if (q === lastQ) return;
+            lastQ = q;
+            clearTimeout(timer);
+            timer = setTimeout(() => doSearch(q), 200);
+          });
+
+          input.addEventListener('keydown', (e) => {
+            if (results.style.display === 'none' || !items.length) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              cursor = (cursor + 1) % items.length;
+              markActive();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              cursor = (cursor - 1 + items.length) % items.length;
+              markActive();
+            } else if (e.key === 'Enter') {
+              if (cursor >= 0 && items[cursor]) {
+                e.preventDefault();
+                window.location.href = items[cursor];
+              }
+            } else if (e.key === 'Escape') {
+              hide();
+              input.blur();
+            }
+          });
+
+          document.addEventListener('click', (e) => {
+            if (!e.target.closest('#global-search-input') && !e.target.closest('#global-search-results')) {
+              hide();
+            }
+          });
+        })();
+
+        // Impersonate (admin) — autocomplete + start
+        (function () {
+          const input  = document.getElementById('imp-search-input');
+          const results= document.getElementById('imp-search-results');
+          if (!input || !results) return;
+          const csrf = (document.querySelector('meta[name="csrfToken"]') || {}).content || '';
+          let timer = null;
+          let lastQ = '';
+
+          function render(html) { results.innerHTML = html; }
+          function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+          async function search(q) {
+            if (q.length < 2) { render('<div class="p-3 text-muted small text-center">Zacznij wpisywać…</div>'); return; }
+            try {
+              const res = await fetch('/admin/impersonate/search?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+              if (!res.ok) throw new Error('http ' + res.status);
+              const data = await res.json();
+              const items = Array.isArray(data.items) ? data.items : [];
+              if (items.length === 0) { render('<div class="p-3 text-muted small text-center">Brak wyników.</div>'); return; }
+              const rows = items.map(u => {
+                const name    = u.name && u.name.trim() ? u.name : u.email;
+                const company = u.company ? '<div class="small text-muted">' + escapeHtml(u.company) + '</div>' : '';
+                const badge   = u.is_admin ? ' <span class="badge bg-warning-subtle text-warning ms-1">admin</span>' : '';
+                return '<form action="/admin/impersonate/start/' + encodeURIComponent(u.id) + '" method="post" class="m-0">'
+                     + (csrf ? '<input type="hidden" name="_csrfToken" value="' + escapeHtml(csrf) + '">' : '')
+                     + '<button type="submit" class="dropdown-item d-flex align-items-start gap-2 py-2">'
+                     + '<i class="ri-user-line mt-1"></i>'
+                     + '<span class="text-start flex-grow-1">'
+                     + '<span class="fw-medium">' + escapeHtml(name) + badge + '</span>'
+                     + '<div class="small text-muted">' + escapeHtml(u.email) + '</div>'
+                     + company
+                     + '</span></button></form>';
+              }).join('');
+              render(rows);
+            } catch (e) {
+              render('<div class="p-3 text-danger small text-center">Błąd wyszukiwania.</div>');
+            }
+          }
+
+          input.addEventListener('input', () => {
+            const q = input.value.trim();
+            if (q === lastQ) return;
+            lastQ = q;
+            clearTimeout(timer);
+            timer = setTimeout(() => search(q), 200);
+          });
+        })();
+
+        // Fullscreen toggle (wywoływane z onclick="openFullscreen()")
+        window.openFullscreen = function () {
+          var elem = document.documentElement;
+          var open  = document.querySelector('.full-screen-open');
+          var close = document.querySelector('.full-screen-close');
+          var isFs = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+          if (!isFs) {
+            (elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen).call(elem);
+            if (close) { close.classList.add('d-block'); close.classList.remove('d-none'); }
+            if (open)  open.classList.add('d-none');
+          } else {
+            (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen).call(document);
+            if (close) { close.classList.remove('d-block'); close.classList.add('d-none'); }
+            if (open)  { open.classList.remove('d-none'); open.classList.add('d-block'); }
+          }
+        };
+        JS, ['block' => 'scriptBottom']);
 
         // Skrypty dokładane z widoków/kontrolek:
  
@@ -1179,6 +1652,17 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
         }
     };
     </script>
+
+<script>
+// Globalny handler: zamknij Bootstrap Popover po kliknięciu poza nim
+document.addEventListener('click', function(e) {
+  document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function(el) {
+    if (el.contains(e.target) || e.target.closest('.popover')) return;
+    var p = window.bootstrap && bootstrap.Popover.getInstance(el);
+    if (p) p.hide();
+  });
+});
+</script>
 
 </body>
 </html>

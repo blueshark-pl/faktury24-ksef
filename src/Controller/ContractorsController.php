@@ -123,20 +123,23 @@ public function gusLookup()
             // ewentualnie możesz tu wstawić logikę wyboru po typie.
             $r = $reports[0];
 
+            // Adres budowany jako: "ulica  numer/lokal" — gdy GUS zwrócił nr lokalu,
+            // dokleja się go do street po "/". local_number zostaje pusty.
+            $streetBase = trim(implode(' ', array_filter([
+                (string)$r->getStreet(),
+                (string)$r->getPropertyNumber(),
+            ])));
             $apartmentNumberRaw = trim((string)$r->getApartmentNumber());
-            $localNumber = $apartmentNumberRaw;
-            if ($apartmentNumberRaw !== '' && preg_match('/^(\d+)/', $apartmentNumberRaw, $m)) {
-                $localNumber = (string)$m[1];
+            $street = $streetBase;
+            if ($streetBase !== '' && $apartmentNumberRaw !== '') {
+                $street = $streetBase . '/' . $apartmentNumberRaw;
             }
 
             $contractor = [
                 'name'   => trim((string)$r->getName()),
                 'nip'    => $nip,
-                'street' => trim(implode(' ', array_filter([
-                    (string)$r->getStreet(),
-                    (string)$r->getPropertyNumber(),
-                ]))),
-                'local_number' => $localNumber,
+                'street' => $street,
+                'local_number' => '',
                 'zip'    => (string)$r->getZipCode(),
                 'city'   => (string)$r->getCity(),
                 'country'=> 'PL',
@@ -223,7 +226,7 @@ public function gusLookup()
         $all = $this->request->getQuery('all') === 'true' || $this->request->getQuery('all') === '1'; // dla katalogu
         
         $query = $this->Contractors->find()
-            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone'])
+            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
             ->where([
                 'company_id' => $companyId
             ])
@@ -252,11 +255,16 @@ public function gusLookup()
                 'name'    => $c->name,
                 'nip'     => $c->nip,
                 'street'  => $c->street,
-                'zip'     => $c->postal_code, // Map postal_code to zip for frontend compatibility
+                'zip'     => $c->postal_code,
                 'city'    => $c->city,
                 'country' => $c->country ?: 'PL',
                 'email'   => $c->email,
                 'phone'   => $c->phone,
+                'vat_prefix'           => $c->vat_prefix,
+                'vat_eu'               => $c->vat_eu,
+                'eori'                 => $c->eori,
+                'tax_id_other'         => $c->tax_id_other,
+                'tax_id_other_country' => $c->tax_id_other_country,
             ];
         })->toList();
 
@@ -325,18 +333,37 @@ $this->set(compact('contractors'));
             $data = $this->request->getData();
             $data['company_id'] = $companyId;
             $notificationsEnabled = !empty($data['notify_invoice_email']);
-            // normalize NIP for duplicate check
+            // normalize NIP — trim whitespace, keep alphanumeric (supports foreign VAT numbers)
             if (isset($data['nip'])) {
-                $data['nip'] = preg_replace('/\D+/', '', (string)$data['nip']);
+                $data['nip'] = strtoupper(trim((string)$data['nip']));
             }
             
+            // Detekcja typu kontrahenta przed sklejeniem name:
+            // 1) Preferuj jawną flagę z formularza (chip-picker "Firma/Osoba" → ukryty `is_person`)
+            // 2) Fallback heurystyka po polach (zgodność z API/legacy)
+            $__first = trim((string)($data['first_name'] ?? ''));
+            $__last  = trim((string)($data['last_name']  ?? ''));
+            $__nameOriginal = trim((string)($data['name'] ?? ''));
+            if (array_key_exists('is_person', $data)) {
+                $data['is_person'] = (int)$data['is_person'] === 1 ? 1 : 0;
+            } else {
+                $data['is_person'] = (($__first !== '' || $__last !== '') && $__nameOriginal === '') ? 1 : 0;
+            }
+
+            // Osoba fizyczna: sklejamy first_name + last_name → name
+            if ($__nameOriginal === '') {
+                if ($__first !== '' || $__last !== '') {
+                    $data['name'] = trim($__first . ' ' . $__last);
+                }
+            }
+
             // Validate required fields for AJAX requests
             if ($this->request->is('ajax')) {
                 if (empty(trim((string)($data['name'] ?? '')))) {
                     return $this->response->withType('application/json')
                         ->withStringBody(json_encode([
                             'success' => false,
-                            'message' => 'Nazwa kontrahenta jest wymagana.'
+                            'message' => 'Podaj imię i nazwisko lub nazwę kontrahenta.'
                         ]));
                 }
                 if ($notificationsEnabled && empty(trim((string)($data['email'] ?? '')))) {
@@ -362,7 +389,7 @@ $this->set(compact('contractors'));
             }
 
             // Prevent duplicate contractor by NIP within same company
-            $nip = preg_replace('/\D+/', '', (string)($data['nip'] ?? ''));
+            $nip = strtoupper(trim((string)($data['nip'] ?? '')));
             if ($nip !== '') {
                 $exists = $this->Contractors->exists([
                     'company_id' => $companyId,
@@ -415,6 +442,11 @@ $this->set(compact('contractors'));
                                 'country' => $contractor->country ?: 'PL',
                                 'email'   => $contractor->email,
                                 'phone'   => $contractor->phone,
+                                'vat_prefix'          => $contractor->vat_prefix,
+                                'vat_eu'              => $contractor->vat_eu,
+                                'eori'                => $contractor->eori,
+                                'tax_id_other'        => $contractor->tax_id_other,
+                                'tax_id_other_country' => $contractor->tax_id_other_country,
                             ],
                             'message' => 'Kontrahent został dodany.'
                         ]));
@@ -451,8 +483,16 @@ public function viewJson($id)
 
     $c = $this->Contractors->find()
         ->where(['Contractors.id' => $id, 'Contractors.company_id' => $companyId])
-        ->select(['id','name','altname','nip','pesel','email','phone','country','postal_code','city','street','local_number','correspondence_street','correspondence_postal_code','correspondence_city','correspondence_country','notes','privacy_consent','privacy_basis','is_active'])
+        ->select(['id','name','altname','first_name','last_name','is_person','nip','pesel','email','phone','country','postal_code','city','street','local_number','correspondence_street','correspondence_postal_code','correspondence_city','correspondence_country','notes','privacy_consent','privacy_basis','is_active','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
         ->firstOrFail();
+
+    $this->trackRecentlyViewed(
+        'contractors',
+        (string)$c->id,
+        (string)$c->name,
+        '/contractors?q=' . rawurlencode((string)$c->name),
+        trim((string)($c->nip ?? '') . (($c->nip && $c->city) ? ' · ' : '') . (string)($c->city ?? '')) ?: null
+    );
 
     return $this->response->withType('application/json')
         ->withStringBody(json_encode([
@@ -517,6 +557,29 @@ private function saveContractorNotificationSettings(string $companyId, string $c
         if ($this->request->is(['patch', 'post', 'put'])) {
             $data = $this->request->getData();
 
+            // Detekcja typu kontrahenta przed sklejeniem name:
+            // 1) Preferuj jawną flagę z formularza (chip-picker "Firma/Osoba")
+            // 2) Fallback: heurystyka po polach lub poprzedni stan w DB (legacy/API)
+            $__first = trim((string)($data['first_name'] ?? ''));
+            $__last  = trim((string)($data['last_name']  ?? ''));
+            $__nameOriginal = trim((string)($data['name'] ?? ''));
+            $__wasPerson = ((int)($contractor->is_person ?? 0) === 1);
+            if (array_key_exists('is_person', $data)) {
+                $data['is_person'] = (int)$data['is_person'] === 1 ? 1 : 0;
+            } else {
+                $data['is_person'] = (
+                    (($__first !== '' || $__last !== '') && $__nameOriginal === '')
+                    || ($__wasPerson && ($__first !== '' || $__last !== ''))
+                ) ? 1 : 0;
+            }
+
+            // Osoba fizyczna: sklejamy first_name + last_name → name
+            if ($__nameOriginal === '') {
+                if ($__first !== '' || $__last !== '') {
+                    $data['name'] = trim($__first . ' ' . $__last);
+                }
+            }
+
             // Guard: do not allow switching a person to company during edit
             $incomingName  = trim((string)($data['name'] ?? ''));
             $incomingFirst = trim((string)($data['first_name'] ?? ''));
@@ -552,6 +615,11 @@ private function saveContractorNotificationSettings(string $companyId, string $c
                                 'street'      => (string)$contractor->street,
                                 'postal_code' => (string)$contractor->postal_code,
                                 'is_active'   => (int)$contractor->is_active,
+                                'vat_prefix'           => (string)$contractor->vat_prefix,
+                                'vat_eu'               => (string)$contractor->vat_eu,
+                                'eori'                 => (string)$contractor->eori,
+                                'tax_id_other'         => (string)$contractor->tax_id_other,
+                                'tax_id_other_country' => (string)$contractor->tax_id_other_country,
                             ]
                         ]));
                 }
@@ -635,6 +703,17 @@ public function export()
         ])
         ->where(['company_id' => $companyId])
         ->order(['name' => 'ASC']);
+
+    // Eksport zaznaczonych — gdy podano ids[]=..., ignoruj filtry q/active
+    $ids = (array)$this->request->getQuery('ids');
+    $ids = array_values(array_filter(array_map('strval', $ids), fn($v) => $v !== ''));
+    if (!empty($ids)) {
+        $query->where(['Contractors.id IN' => $ids]);
+        // Pomiń pozostałe filtry — user zaznaczył konkretne wpisy
+        $this->set('exportContext', 'selected');
+        $q = '';
+        $active = null;
+    }
 
     if ($q !== '') {
         $like = '%' . str_replace(['%', '_'], ['\%','\_'], $q) . '%';
@@ -874,11 +953,16 @@ public function invoices($contractorId)
 
     $companyId = $this->request->getAttribute('identity')?->get('company_id');
 
-    $exists = $this->Contractors->exists(['id' => $contractorId, 'company_id' => $companyId]);
-    if (!$exists) {
+    // Pobierz kontrahenta — potrzebujemy też NIP do fallback-match po snapshocie
+    $contractor = $this->Contractors->find()
+        ->select(['id', 'nip'])
+        ->where(['id' => $contractorId, 'company_id' => $companyId])
+        ->first();
+    if (!$contractor) {
         $this->set(['success'=>false, 'message'=>'Not found', 'invoices'=>[]]);
         return;
     }
+    $contractorNip = trim((string)($contractor->nip ?? ''));
 
     $onlyUnsettled = (int)$this->request->getQuery('unsettled') === 1;
 
@@ -889,16 +973,30 @@ public function invoices($contractorId)
             'simplified_invoice','paymentmethod','paymentdate','paymentstate',
             'date','total','netto','tax','alreadypaid','remaining','fullnumber',
             'currency','currency_date','currency_exchange','description',
-            'is_print','is_sent','is_api','created','modified'
+            'is_print','is_sent','is_api','workflow_status','created','modified'
         ])
-        ->where([
-            'Invoices.company_id' => $companyId,
-            'Invoices.contractor_id' => (int)$contractorId,
-        ])
-        ->orderDesc('Invoices.date');
+        // company_id ZAWSZE filtruje (multitenancy — nie pokazujemy faktur innych firm!)
+        ->where(['Invoices.company_id' => $companyId]);
+
+    // Match: bezpośrednio po contractor_id LUB po NIP w snapshocie invoice_contractors
+    // (faktury legacy / zaimportowane mogą nie mieć contractor_id ustawionego)
+    if ($contractorNip !== '') {
+        $q->leftJoinWith('InvoiceContractors')
+          ->andWhere(function ($exp) use ($contractorId, $contractorNip) {
+              return $exp->or([
+                  'Invoices.contractor_id'  => (string)$contractorId,
+                  'InvoiceContractors.nip'  => $contractorNip,
+              ]);
+          })
+          ->group(['Invoices.id']);
+    } else {
+        $q->andWhere(['Invoices.contractor_id' => (string)$contractorId]);
+    }
+
+    $q->orderDesc('Invoices.date');
 
     if ($onlyUnsettled) {
-        $q->where([
+        $q->andWhere([
             'OR' => [
                 'Invoices.remaining >' => 0,
                 ['Invoices.paymentstate IS NOT' => null, 'Invoices.paymentstate <>' => 'paid'],
@@ -912,6 +1010,47 @@ public function invoices($contractorId)
         'success'  => true,
         'invoices' => $invoices,
         'message'  => null,
+    ]);
+}
+
+/**
+ * Bulk update kontrahentów — toggle is_active.
+ * POST /contractors/bulk-set-active { ids: [...uuid], active: 0|1 }
+ * Zwraca JSON { success, updated, message }
+ */
+public function bulkSetActive()
+{
+    $this->request->allowMethod(['post']);
+    $this->viewBuilder()->setClassName(JsonView::class);
+    $this->viewBuilder()->setOption('serialize', ['success','updated','message']);
+
+    $identity  = $this->request->getAttribute('identity');
+    $companyId = $identity?->get('company_id');
+    if (!$companyId) {
+        $this->set(['success'=>false, 'updated'=>0, 'message'=>'Brak kontekstu firmy.']);
+        return;
+    }
+
+    $data = $this->request->getData();
+    $ids = (array)($data['ids'] ?? []);
+    $ids = array_values(array_filter(array_map('strval', $ids), fn($v) => $v !== ''));
+    $active = (int)($data['active'] ?? 0) === 1 ? 1 : 0;
+
+    if (empty($ids)) {
+        $this->set(['success'=>false, 'updated'=>0, 'message'=>'Nie wybrano kontrahentów.']);
+        return;
+    }
+
+    // UPDATE WHERE company_id = X AND id IN (...) — multitenancy safe
+    $updated = $this->Contractors->updateAll(
+        ['is_active' => $active],
+        ['company_id' => $companyId, 'id IN' => $ids]
+    );
+
+    $this->set([
+        'success' => true,
+        'updated' => (int)$updated,
+        'message' => null,
     ]);
 }
 

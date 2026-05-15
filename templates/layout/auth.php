@@ -22,7 +22,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
       data-theme-mode="light"
       data-header-styles="light"
       data-menu-styles="light"
-       style="--primary-rgb: 148, 200, 31;"
+       style="--primary-rgb: 148, 212, 55;"
       data-toggled="close">
 <head>
     <?= $this->Html->charset() ?>
@@ -35,7 +35,12 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
     <?= $this->Html->meta('keywords', 'faktury, faktury24, faktury online, faktury elektroniczne, ksef') ?>
 
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="<?= $this->Url->assetUrl('assets/images/brand-logos/favicon.ico') ?>"/>
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="faktury24" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <!-- Main Theme Js (head) -->
     <?= $this->Html->script($this->Url->assetUrl('assets/js/authentication-main.js'), ['block' => true]) ?>
@@ -45,6 +50,19 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
 
     <!-- Style Css -->
     <?= $this->Html->css($this->Url->assetUrl('assets/css/styles.css')) ?>
+    <style>
+      .btn-primary,
+      .btn-primary:focus,
+      .btn-primary:active {
+        background-color: #94d437 !important;
+        border-color: #94d437 !important;
+        color: #fff !important;
+      }
+      .btn-primary:hover {
+        background-color: #84c02e !important;
+        border-color: #84c02e !important;
+      }
+    </style>
 
     <!-- Icons Css -->
     <?= $this->Html->css($this->Url->assetUrl('assets/css/icons.css')) ?>
@@ -67,7 +85,7 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
           <div class="<?= h($authColumnClass) ?>">
             <div class="mb-3 d-flex justify-content-center auth-logo">
               <a href="/" class="d-inline-flex align-items-center gap-2 text-decoration-none" aria-label="Faktury24">
-                <img src="/img/logo-faktury24.png" alt="Faktury24">
+                <img src="/img/faktury24_logo.png" alt="Faktury24">
               </a>
             </div>
             <?= $this->cell('KsefStatus::banner') ?>
@@ -348,9 +366,6 @@ $authColumnClass = (string)($authColumnClass ?? 'col-xxl-4 col-xl-5 col-lg-6 col
     <!-- Bootstrap JS -->
     <?= $this->Html->script($this->Url->assetUrl('assets/libs/bootstrap/js/bootstrap.bundle.min.js'), ['block' => 'bottom']) ?>
 
-
-    <!-- Cover Password (opcjonalnie – jeśli używasz createpassword()) -->
-    <?= $this->Html->script($this->Url->assetUrl('assets/js/cover-password.js'), ['block' => 'bottom']) ?>
 
     <!-- Show Password JS -->
     <?= $this->Html->script($this->Url->assetUrl('assets/js/show-password.js'), ['block' => 'bottom']) ?>

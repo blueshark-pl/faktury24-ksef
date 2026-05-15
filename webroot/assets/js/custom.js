@@ -4,6 +4,7 @@
   /* page loader */
   function hideLoader() {
     const loader = document.getElementById("loader");
+    if (!loader) return;
     loader.classList.add("d-none")
   }
 
@@ -74,6 +75,7 @@
   ];
   const nanoButtons = [];
   let nanoPickr = null;
+  if (themeContainerPrimary && pickrContainerPrimary)
   for (const [theme, config] of nanoThemes) {
     const button = document.createElement("button");
     button.innerHTML = theme;
@@ -128,7 +130,7 @@
 
     themeContainerPrimary.appendChild(button);
   }
-  nanoButtons[0].click();
+  if (nanoButtons[0]) nanoButtons[0].click();
   /* for theme primary */
 
   /* for theme background */
@@ -156,6 +158,7 @@
   ];
   const nanoButtons1 = [];
   let nanoPickr1 = null;
+  if (themeContainerBackground && pickrContainerBackground)
   for (const [theme, config] of nanoThemes) {
     const button = document.createElement("button");
     button.innerHTML = theme;
@@ -237,7 +240,7 @@
     });
     themeContainerBackground.appendChild(button);
   }
-  nanoButtons1[0].click();
+  if (nanoButtons1[0]) nanoButtons1[0].click();
   /* for theme background */
 
   /* header theme toggle */
@@ -302,7 +305,7 @@
     }
   }
   let layoutSetting = document.querySelector(".layout-setting");
-  layoutSetting.addEventListener("click", toggleTheme);
+  if (layoutSetting) layoutSetting.addEventListener("click", toggleTheme);
   /* header theme toggle */
 
   /* Choices JS */
@@ -392,49 +395,51 @@
 
   /* header dropdowns scroll */
   var myHeadernotification = document.getElementById("header-notification-scroll1");
-  new SimpleBar(myHeadernotification, { autoHide: true });
+  if (myHeadernotification) new SimpleBar(myHeadernotification, { autoHide: true });
 
   /* header dropdowns scroll */
     var myHeadernotification = document.getElementById("header-notification-scroll2");
-    new SimpleBar(myHeadernotification, { autoHide: true });
+    if (myHeadernotification) new SimpleBar(myHeadernotification, { autoHide: true });
 
   /* header dropdowns scroll */
   var myHeadernotification = document.getElementById("header-notification-scroll3");
-  new SimpleBar(myHeadernotification, { autoHide: true });
+  if (myHeadernotification) new SimpleBar(myHeadernotification, { autoHide: true });
 
   var myHeaderCart = document.getElementById("header-cart-items-scroll");
-  new SimpleBar(myHeaderCart, { autoHide: true });
+  if (myHeaderCart) new SimpleBar(myHeaderCart, { autoHide: true });
   /* header dropdowns scroll */
 
-  const autoCompleteJS = new autoComplete({
-    selector: "#header-search",
-    data: {
-      src: [
-        "What is the meaning of life?",
-        "How does gravity work?",
-        "Why is the sky blue?",
-        "What is the capital of France?",
-        "Who painted the Mona Lisa?",
-        "What is the speed of light?",
-        "Why do we dream?",
-        "How do birds fly?",
-        "What is the largest mammal?",
-        "Why do leaves change color in the fall?"
-      ],
-      cache: true,
-    },
-    resultItem: {
-      highlight: true
-    },
-    events: {
-      input: {
-        selection: (event) => {
-          const selection = event.detail.selection.value;
-          autoCompleteJS.input.value = selection;
+  if (document.querySelector("#header-search")) {
+    const autoCompleteJS = new autoComplete({
+      selector: "#header-search",
+      data: {
+        src: [
+          "What is the meaning of life?",
+          "How does gravity work?",
+          "Why is the sky blue?",
+          "What is the capital of France?",
+          "Who painted the Mona Lisa?",
+          "What is the speed of light?",
+          "Why do we dream?",
+          "How do birds fly?",
+          "What is the largest mammal?",
+          "Why do leaves change color in the fall?"
+        ],
+        cache: true,
+      },
+      resultItem: {
+        highlight: true
+      },
+      events: {
+        input: {
+          selection: (event) => {
+            const selection = event.detail.selection.value;
+            autoCompleteJS.input.value = selection;
+          }
         }
       }
-    }
-  });
+    });
+  }
 })();
 
 /* full screen */
