@@ -119,6 +119,29 @@ class InvoicesController extends AppController
         if (!empty($q['date_to'])) {
             $query->where(['Invoices.date <=' => $q['date_to']]);
         }
+        // Filtr po NIP nabywcy (snapshot w invoice_contractors).
+        // NIP w bazie bywa zapisany w różnych wariantach („1234567890", „123-456-78-90",
+        // „PL1234567890"). Tworzymy listę popularnych zapisów i robimy IN — index-friendly,
+        // bez REPLACE() w WHERE.
+        if (!empty($q['nip'])) {
+            $nipDigits = preg_replace('/\D+/', '', (string)$q['nip']);
+            // Pełny polski NIP ma 10 cyfr — formatujemy 3-3-2-2.
+            $nipDashed = (strlen($nipDigits) === 10)
+                ? substr($nipDigits, 0, 3) . '-' . substr($nipDigits, 3, 3) . '-' . substr($nipDigits, 6, 2) . '-' . substr($nipDigits, 8, 2)
+                : null;
+            if ($nipDigits !== '') {
+                $variants = array_values(array_unique(array_filter([
+                    $nipDigits,
+                    'PL' . $nipDigits,
+                    'pl' . $nipDigits,
+                    $nipDashed,
+                    (string)$q['nip'],          // pass-through (jeśli ktoś poda np. "PL 123-456-78-90")
+                ])));
+                $query->leftJoinWith('InvoiceContractors')
+                      ->where(['InvoiceContractors.nip IN' => $variants])
+                      ->group(['Invoices.id']);
+            }
+        }
         if (!empty($q['type'])) {
             $query->where(['Invoices.type' => $q['type']]);
         }

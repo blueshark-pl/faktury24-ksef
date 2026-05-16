@@ -129,7 +129,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/series', ['controller' => 'Invoices', 'action' => 'series']);
         // GET  /api/v1/bank-accounts  — lista rachunków bankowych
         $builder->get('/bank-accounts', ['controller' => 'Invoices', 'action' => 'bankAccounts']);
-        // GET  /api/v1/invoices       — lista faktur
+        // GET  /api/v1/invoices       — lista faktur (filtry: nip, date_from, date_to, type, paymentstate, series, search, page, per_page)
         $builder->get('/invoices', ['controller' => 'Invoices', 'action' => 'index']);
         // POST /api/v1/invoices       — wystaw fakturę VAT
         $builder->post('/invoices', ['controller' => 'Invoices', 'action' => 'create']);
