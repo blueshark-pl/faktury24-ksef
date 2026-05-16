@@ -104,6 +104,7 @@ class InvoicesController extends AppController
                 'Invoices.currency', 'Invoices.paymentmethod', 'Invoices.paymentdate',
                 'Invoices.paymentstate', 'Invoices.alreadypaid', 'Invoices.remaining',
                 'Invoices.description', 'Invoices.ksef_number', 'Invoices.ksef_status',
+                'Invoices.workflow_status',
                 'Invoices.created', 'Invoices.modified',
             ])
             ->contain([
@@ -148,6 +149,22 @@ class InvoicesController extends AppController
         if (!empty($q['paymentstate'])) {
             $query->where(['Invoices.paymentstate' => $q['paymentstate']]);
         }
+        // Filtr po workflow_status: draft | issued | sending | sent.
+        // Akceptujemy alias „status" oraz wielokrotne wartości po przecinku („draft,issued").
+        // „is_draft=1/0" działa jak skrót — true == draft, false == NOT draft.
+        $statusParam = $q['workflow_status'] ?? $q['status'] ?? null;
+        if ($statusParam !== null && $statusParam !== '') {
+            $statuses = array_values(array_filter(array_map('trim', explode(',', (string)$statusParam))));
+            if (!empty($statuses)) {
+                $query->where(['Invoices.workflow_status IN' => $statuses]);
+            }
+        }
+        if (isset($q['is_draft']) && $q['is_draft'] !== '') {
+            $wantDraft = in_array(strtolower((string)$q['is_draft']), ['1','true','yes','t'], true);
+            $query->where($wantDraft
+                ? ['Invoices.workflow_status' => 'draft']
+                : ['Invoices.workflow_status !=' => 'draft']);
+        }
         if (!empty($q['series'])) {
             $seriesId = $q['series'];
             $isUuid = (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-/i', $seriesId);
@@ -182,24 +199,26 @@ class InvoicesController extends AppController
         $rows = [];
         foreach ($invoices as $inv) {
             $rows[] = [
-                'id'           => $inv->id,
-                'fullnumber'   => $inv->fullnumber,
-                'date'         => $inv->date?->format('Y-m-d'),
-                'sold_date'    => $inv->sold_date?->format('Y-m-d'),
-                'type'         => $inv->type,
-                'total'        => (float)$inv->total,
-                'netto'        => (float)$inv->netto,
-                'tax'          => (float)$inv->tax,
-                'currency'     => $inv->currency,
-                'paymentmethod'=> $inv->paymentmethod,
-                'paymentdate'  => $inv->paymentdate?->format('Y-m-d'),
-                'paymentstate' => $inv->paymentstate,
-                'alreadypaid'  => (float)$inv->alreadypaid,
-                'remaining'    => (float)$inv->remaining,
-                'description'  => $inv->description,
-                'ksef_number'  => $inv->ksef_number,
-                'ksef_status'  => $inv->ksef_status,
-                'buyer'        => $inv->invoice_contractor ? [
+                'id'              => $inv->id,
+                'fullnumber'      => $inv->fullnumber,
+                'date'            => $inv->date?->format('Y-m-d'),
+                'sold_date'       => $inv->sold_date?->format('Y-m-d'),
+                'type'            => $inv->type,
+                'workflow_status' => $inv->workflow_status,
+                'is_draft'        => ((string)$inv->workflow_status === 'draft'),
+                'total'           => (float)$inv->total,
+                'netto'           => (float)$inv->netto,
+                'tax'             => (float)$inv->tax,
+                'currency'        => $inv->currency,
+                'paymentmethod'   => $inv->paymentmethod,
+                'paymentdate'     => $inv->paymentdate?->format('Y-m-d'),
+                'paymentstate'    => $inv->paymentstate,
+                'alreadypaid'     => (float)$inv->alreadypaid,
+                'remaining'       => (float)$inv->remaining,
+                'description'     => $inv->description,
+                'ksef_number'     => $inv->ksef_number,
+                'ksef_status'     => $inv->ksef_status,
+                'buyer'           => $inv->invoice_contractor ? [
                     'name' => $inv->invoice_contractor->name,
                     'nip'  => $inv->invoice_contractor->nip,
                     'city' => $inv->invoice_contractor->city,
