@@ -1880,6 +1880,7 @@ class ReconciliationsController extends AppController
 
         $invoiceId = $allocation->invoice_id;
         $legacyId  = $allocation->legacy_invoice_id;
+        $txId      = $allocation->bank_transaction_id;
 
         // Usuń powiązaną wpłatę — invoice_payment (systemowa) lub legacy_invoice_payment
         if ($allocation->invoice_payment_id) {
@@ -1894,6 +1895,25 @@ class ReconciliationsController extends AppController
 
         if (!$Allocations->delete($allocation)) {
             return $this->_jsonError('Nie udało się usunąć alokacji.');
+        }
+
+        // ── Resetuj bank_transaction — jeśli to BYŁA jedyna alokacja dla tego tx
+        // Inaczej zostawiamy bo inne faktury mogą używać tej samej transakcji.
+        if ($txId) {
+            $hasOtherAllocs = $Allocations->exists(['bank_transaction_id' => $txId]);
+            if (!$hasOtherAllocs) {
+                $BankTxs = $this->fetchTable('BankTransactions');
+                $tx = $BankTxs->find()
+                    ->where(['id' => $txId, 'company_id' => $companyId])
+                    ->first();
+                if ($tx !== null) {
+                    $tx->invoice_id       = null;
+                    $tx->is_matched       = false;
+                    $tx->match_status     = 'unmatched';
+                    $tx->match_confidence = 0;
+                    $BankTxs->save($tx);
+                }
+            }
         }
 
         // Przelicz stan faktury
@@ -2570,11 +2590,12 @@ class ReconciliationsController extends AppController
     }
 
     /**
-     * Odpina bank_transaction od faktury (cofa auto-match):
+     * Odpina bank_transaction od faktury (cofa auto-match LUB manual):
      *   - Usuwa invoice_payments i bank_transaction_allocations powiązane z tym tx
+     *   - Usuwa sieroce invoice_payments (z confirmMatch sprzed allocation fixa)
      *   - Resetuje bank_transaction: invoice_id=NULL, match_status='unmatched',
      *     match_confidence=0, is_matched=false
-     *   - Przelicza paymentstate faktury (po usunięciu wpłaty)
+     *   - Przelicza paymentstate faktury (po usunięciu wpłat)
      */
     private function _unlinkAutoMatch(string $txId, string $companyId): array
     {

@@ -146,7 +146,16 @@ $fdate = static function ($d): string {
                                 <td><?= h(strtoupper($t->currency ?? 'PLN')) ?></td>
                                 <td class="text-nowrap"><?= h($fdate($t->value_date)) ?></td>
                                 <td class="text-muted text-truncate" style="max-width:240px"><?= h(mb_substr($t->party_name ?? '', 0, 40)) ?></td>
-                                <td class="text-end"><?= $renderFixBtn('tx', (string)$t->id) ?></td>
+                                <td class="text-end">
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <?= $renderFixBtn('tx', (string)$t->id) ?>
+                                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 btn-fix-one"
+                                                data-fix-type="unlink" data-fix-id="<?= h($t->id) ?>"
+                                                title="Całkowicie odepnij ten przelew od faktury">
+                                            <i class="ri-link-unlink"></i>
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
