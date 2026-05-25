@@ -32,6 +32,9 @@ class InvoicePayment extends Entity
      */
     protected array $_accessible = [
         'invoice_id' => true,
+        'bank_transaction_allocation_id' => true,
+        'payment_type' => true,
+        'currency' => true,
         'payment_date' => true,
         'amount' => true,
         'payment_method' => true,

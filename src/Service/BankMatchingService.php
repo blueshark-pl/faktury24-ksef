@@ -428,19 +428,41 @@ class BankMatchingService
                 $paymentAmount = $takeInInv;
             }
 
+            // Locale-agnostic format — Cake\I18n\Date (ChronosDate) NIE implementuje
+            // \DateTimeInterface, ale ma format(). (string)$date jest locale-aware!
+            $paymentDate = '';
+            if ($tx->value_date instanceof \DateTimeInterface) {
+                $paymentDate = $tx->value_date->format('Y-m-d');
+            } elseif (is_object($tx->value_date) && method_exists($tx->value_date, 'format')) {
+                $paymentDate = $tx->value_date->format('Y-m-d');
+            } elseif (is_object($tx->value_date) && method_exists($tx->value_date, 'toDateString')) {
+                $paymentDate = $tx->value_date->toDateString();
+            } elseif ($tx->value_date) {
+                $paymentDate = substr((string)$tx->value_date, 0, 10);
+            }
+            if ($paymentDate === '') {
+                $paymentDate = date('Y-m-d'); // fallback — dzisiaj
+            }
+
             $payment = $InvoicePayments->newEntity([
                 'id'             => \Cake\Utility\Text::uuid(),
                 'invoice_id'     => $invoiceId,
-                'payment_date'   => $tx->value_date instanceof \DateTimeInterface
-                    ? $tx->value_date->format('Y-m-d')
-                    : (string)$tx->value_date,
+                'payment_date'   => $paymentDate,
                 'amount'         => round($paymentAmount, 2),
                 'currency'       => $txCurrency,
                 'payment_method' => 'transfer',
                 'description'    => 'Przelew bankowy: ' . ($tx->bank_reference ?? $tx->customer_reference ?? ''),
             ]);
 
-            $InvoicePayments->save($payment);
+            $saved = $InvoicePayments->save($payment);
+            if (!$saved) {
+                \Cake\Log\Log::error('BankMatchingService::confirmMatch — nie udało się zapisać invoice_payment', [
+                    'tx_id'      => $transactionId,
+                    'invoice_id' => $invoiceId,
+                    'errors'     => $payment->getErrors(),
+                    'data'       => $payment->toArray(),
+                ]);
+            }
         }
 
         // Zaktualizuj paymentstate faktury (uwzględniając konwersję walut)
