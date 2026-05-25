@@ -125,12 +125,16 @@ $paymentBadge = function (?string $state, ?string $paymentdate, string $today): 
     return '<span class="badge bg-light text-secondary border">Do zapłaty</span>';
 };
 
-// Badge transakcji bankowej — pokazuje TYLKO potwierdzone (matched) wpłaty
+// Badge transakcji bankowej — pokazuje przelewy POWIĄZANE z fakturą (invoice_id)
 $bankBadge = function (?object $bt): string {
     if ($bt === null) return '';
-    $count = (int)($bt->_match_count ?? 1);
-    $suffix = $count > 1 ? ' <span class="opacity-75">×' . $count . '</span>' : '';
-    return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłata potwierdzona"><i class="ri-checkbox-circle-line me-1"></i>Wpłacono' . $suffix . '</span>';
+    $count   = (int)($bt->_match_count ?? 1);
+    $suffix  = $count > 1 ? ' <span class="opacity-75">×' . $count . '</span>' : '';
+    $matched = ($bt->match_status ?? '') === 'matched';
+    if ($matched) {
+        return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Przelew powiązany z fakturą"><i class="ri-checkbox-circle-line me-1"></i>Wpłata' . $suffix . '</span>';
+    }
+    return '<span class="badge bg-info-subtle text-info border border-info-subtle" title="Auto-sugerowane powiązanie — do potwierdzenia"><i class="ri-link me-1"></i>Wpłata?' . $suffix . '</span>';
 };
 
 // Pomocnik URL z aktualnymi filtrami

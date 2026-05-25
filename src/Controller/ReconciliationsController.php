@@ -280,9 +280,9 @@ class ReconciliationsController extends AppController
         }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
-        // Pokazujemy TYLKO potwierdzone powiązania (match_status = 'matched') —
-        // czyli konkretne wpłaty. Sugerowane (proposed) są tylko kandydatami,
-        // jeszcze nie są wpłatą.
+        // Pokazujemy przelewy POWIĄZANE z fakturą (invoice_id IS NOT NULL) —
+        // niezależnie czy potwierdzone (matched) czy auto-sugerowane (proposed
+        // z invoice_id z importu MT940). Te bez invoice_id to tylko kandydaci.
         $bankByInvoice = [];
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
@@ -291,7 +291,6 @@ class ReconciliationsController extends AppController
                 ->where([
                     'company_id'      => $companyId,
                     'invoice_id IN'   => $invoiceIds,
-                    'match_status'    => 'matched',
                 ])
                 ->select(['id', 'invoice_id', 'match_status', 'amount', 'currency', 'value_date', 'party_name'])
                 ->orderByDesc('value_date')
@@ -299,7 +298,7 @@ class ReconciliationsController extends AppController
 
             foreach ($bankRows as $bt) {
                 $iid = (string)$bt->invoice_id;
-                // Zostaw NAJNOWSZY potwierdzony przelew jako "główny" do badge,
+                // Zostaw NAJNOWSZY przelew jako "główny" do badge,
                 // ale zliczamy wszystkie dla wyświetlenia ×N gdy więcej niż jeden.
                 if (!isset($bankByInvoice[$iid])) {
                     $bankByInvoice[$iid] = $bt;
