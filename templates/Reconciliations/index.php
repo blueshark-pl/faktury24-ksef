@@ -2240,6 +2240,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 return am + tm; // 0,1,2
             }
             filtered.sort(function (a, b) {
+                // POWIĄZANE przelewy ZAWSZE na górze — niezależnie od sortowania.
+                // To są konkretne wpłaty na tę fakturę, więc priorytet wizualny.
+                if (a.isLinked !== b.isLinked) return a.isLinked ? -1 : 1;
+
                 // sortCol = 'score': priorytet match_score z backendu (smart confidence A)
                 if (sortCol === 'score') {
                     var ass = (a.tx.match_score || 0) + matchScore(a);
