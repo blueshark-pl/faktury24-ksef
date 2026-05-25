@@ -164,6 +164,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         // Admin: sprawdzenie integralności bank_tx ↔ allocation ↔ invoice_payment
         $builder->get('/admin/rozliczenia/sprawdz-integralnosc', ['controller' => 'Reconciliations', 'action' => 'checkIntegrity']);
         $builder->post('/admin/rozliczenia/napraw-integralnosc', ['controller' => 'Reconciliations', 'action' => 'fixIntegrity']);
+        $builder->post('/admin/rozliczenia/napraw-integralnosc/{type}/{id}', [
+            'controller' => 'Reconciliations', 'action' => 'fixOneIntegrity',
+        ])->setPass(['type', 'id']);
 
         // Wyciągi bankowe MT940
         $builder->get('/wyciagi', ['controller' => 'BankTransactions', 'action' => 'index']);
