@@ -135,6 +135,40 @@ $bankBadge = function (array $bts): string {
     return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłaty potwierdzone"><i class="ri-checkbox-circle-line me-1"></i>' . $label . $suffix . '</span>';
 };
 
+// Suma wpłat w walucie faktury (z konwersją gdy wpłata w innej walucie).
+// Zwraca:
+//   total       — suma we walucie faktury (do porównania z $invoice->total)
+//   by_currency — ['EUR' => 100.00, 'PLN' => 50.00] dla pokazania pełnego rozbicia
+//   mixed       — czy są różne waluty
+$paymentsTotal = function (array $bts, string $invoiceCurrency, float $invoiceRate): array {
+    $invoiceCurrency = strtoupper($invoiceCurrency ?: 'PLN');
+    $total = 0.0;
+    $byCurrency = [];
+    foreach ($bts as $p) {
+        $amt  = (float)$p->amount;
+        $curr = strtoupper((string)($p->currency ?? $invoiceCurrency)) ?: $invoiceCurrency;
+        $byCurrency[$curr] = ($byCurrency[$curr] ?? 0.0) + $amt;
+        if ($curr === $invoiceCurrency) {
+            $total += $amt;
+        } elseif ($invoiceRate > 0) {
+            if ($invoiceCurrency === 'PLN' && $curr !== 'PLN') {
+                $total += $amt * $invoiceRate;
+            } elseif ($curr === 'PLN' && $invoiceCurrency !== 'PLN') {
+                $total += $amt / $invoiceRate;
+            } else {
+                $total += $amt;
+            }
+        } else {
+            $total += $amt;
+        }
+    }
+    return [
+        'total'       => round($total, 2),
+        'by_currency' => $byCurrency,
+        'mixed'       => count($byCurrency) > 1,
+    ];
+};
+
 // Pomocnik URL z aktualnymi filtrami
 $currentUrl = function (array $extra = []) use ($baseAction, $search, $status, $dateFrom, $dateTo, $dueDateFrom, $dueDateTo, $currencyFilter, $amountFrom, $amountTo, $bankAccountFilter, $typeFilter, $sourceFilter, $sort, $dir, $limit, $page): array {
     $base = [
@@ -588,6 +622,16 @@ if ($status !== '')            $activeFilterCount++;
                 // Efektywne remaining po korekcie
                 $netRemaining = !empty($invCorrs) ? max(0.0, (float)$invoice->remaining + $corrDiff) : (float)$invoice->remaining;
 
+                // Suma wpłat w walucie faktury + detekcja nadpłaty / niedopłaty
+                $invCurr    = (string)($invoice->currency ?? 'PLN');
+                $invRate    = (float)($invoice->currency_exchange ?? 0);
+                $payAgg     = $paymentsTotal($bts, $invCurr, $invRate);
+                // Efektywny "powinno być zapłacone" — total + korekta (gdy korekta zwiększa/zmniejsza)
+                $effTotal   = (float)$invoice->total + ($corrDiff !== 0.0 ? $corrDiff : 0.0);
+                $overpayDiff = round($payAgg['total'] - $effTotal, 2);
+                $isOverpaid  = $overpayDiff > 0.01;
+                $isUnderpaid = !$isOverpaid && !empty($bts) && $overpayDiff < -0.01;
+
                 // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
                 $rawPd = $invoice->paymentdate;
                 if ($rawPd instanceof \DateTimeInterface) {
@@ -712,14 +756,22 @@ if ($status !== '')            $activeFilterCount++;
                     </td>
                     <!-- Pozostało -->
                     <td class="text-end text-nowrap small" data-col="remaining">
-                        <?php if ($state === 'paid'): ?>
+                        <?php if ($isOverpaid): ?>
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
+                                  title="Nadpłata — wpłat suma <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?> > faktura <?= number_format($effTotal, 2, ',', ' ') ?> <?= h($invCurr) ?>">
+                                <i class="ri-error-warning-line me-1"></i>Nadpłata
+                            </span>
+                            <div class="text-warning fw-semibold mt-1">
+                                +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($invCurr) ?>
+                            </div>
+                        <?php elseif ($state === 'paid'): ?>
                             <span class="text-success">0,00 <?= h($currency) ?></span>
                         <?php else: ?>
                             <span class="<?= $netRemaining > 0 ? 'fw-semibold text-dark' : 'text-muted' ?>">
                                 <?= number_format($netRemaining, 2, ',', ' ') ?> <?= h($currency) ?>
                             </span>
                         <?php endif; ?>
-                        <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid'): ?>
+                        <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid' && !$isOverpaid): ?>
                             <div class="text-muted" style="font-size:0.7rem" data-col="alreadypaid">
                                 wpłacono: <?= number_format((float)$invoice->alreadypaid, 2, ',', ' ') ?>
                             </div>
@@ -747,6 +799,26 @@ if ($status !== '')            $activeFilterCount++;
                                     </div>
                                 <?php endforeach; ?>
                             </div>
+                            <?php if (count($bts) > 1 || $payAgg['mixed']): ?>
+                                <div class="mt-1 pt-1 border-top" style="font-size:0.72rem">
+                                    <?php if ($payAgg['mixed']): ?>
+                                        <?php foreach ($payAgg['by_currency'] as $c => $v): ?>
+                                            <span class="fw-semibold"><?= number_format($v, 2, ',', ' ') ?> <?= h($c) ?></span><?= next($payAgg['by_currency']) !== false ? ' +' : '' ?>
+                                        <?php endforeach; ?>
+                                        <?php if ($invRate > 0): ?>
+                                            <div class="text-muted">≈ <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?></div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <strong>Σ <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?></strong>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ($isOverpaid): ?>
+                                <div class="text-warning fw-semibold mt-1" style="font-size:0.7rem"
+                                     title="Suma wpłat przekracza fakturę">
+                                    <i class="ri-alert-line"></i> nadpłata +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($invCurr) ?>
+                                </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <!-- Zlecenia Speed -->
