@@ -662,6 +662,27 @@ if ($status !== '')            $activeFilterCount++;
                 $overpayDiff = $payAgg['overpaid_by'];
                 $overpayCurr = $payAgg['overpaid_currency'];
 
+                // Kwoty kontrolne — brutto/netto/VAT w EUR i PLN (jak pille w modalu)
+                $invTotalEur = (float)($invoice->total ?? 0);
+                $invNettoEur = (float)($invoice->netto ?? 0);
+                $invVatEur   = max(0.0, $invTotalEur - $invNettoEur);
+                $isFx        = strtoupper($invCurr) !== 'PLN' && $invRate > 0;
+                $invAmounts  = $isFx ? [
+                    'currency'   => $invCurr,
+                    'rate'       => $invRate,
+                    'brutto_eur' => round($invTotalEur, 2),
+                    'netto_eur'  => round($invNettoEur, 2),
+                    'vat_eur'    => round($invVatEur, 2),
+                    'brutto_pln' => round($invTotalEur * $invRate, 2),
+                    'netto_pln'  => round($invNettoEur * $invRate, 2),
+                    'vat_pln'    => round($invVatEur   * $invRate, 2),
+                ] : [
+                    'currency'   => 'PLN',
+                    'brutto_pln' => round($invTotalEur, 2),
+                    'netto_pln'  => round($invNettoEur, 2),
+                    'vat_pln'    => round($invVatEur, 2),
+                ];
+
                 // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
                 $rawPd = $invoice->paymentdate;
                 if ($rawPd instanceof \DateTimeInterface) {
@@ -787,19 +808,11 @@ if ($status !== '')            $activeFilterCount++;
                     <!-- Pozostało -->
                     <td class="text-end text-nowrap small" data-col="remaining">
                         <?php if ($isOverpaid): ?>
-                            <?php
-                                // Tooltip — porównanie konkretnej kieszeni
-                                $opTitle = $overpayCurr === 'PLN' && $invCurr !== 'PLN'
-                                    ? sprintf('Nadpłata VAT — wpłaty PLN: %s vs VAT(PLN) faktury: %s',
-                                        number_format($payAgg['sum_pln'], 2, ',', ' '),
-                                        number_format($payAgg['vat_pln'], 2, ',', ' '))
-                                    : sprintf('Nadpłata — wpłaty %s: %s vs faktura: %s',
-                                        $overpayCurr,
-                                        number_format($payAgg[$overpayCurr === $invCurr ? 'sum_inv_curr' : 'sum_pln'], 2, ',', ' '),
-                                        number_format($payAgg['total_inv_curr'], 2, ',', ' '));
-                            ?>
                             <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
-                                  title="<?= h($opTitle) ?>">
+                                  title="<?= h(sprintf('Nadpłata — wpłaty %s: %s vs faktura: %s',
+                                        $overpayCurr,
+                                        number_format($payAgg['sum_inv_curr'], 2, ',', ' '),
+                                        number_format($payAgg['total_inv_curr'], 2, ',', ' '))) ?>">
                                 <i class="ri-error-warning-line me-1"></i>Nadpłata
                             </span>
                             <div class="text-warning fw-semibold mt-1">
@@ -829,7 +842,54 @@ if ($status !== '')            $activeFilterCount++;
                     </td>
                     <!-- Przelew -->
                     <td>
-                        <?= $bankBadge($bts) ?>
+                        <?php
+                            // Treść popovera "i" — kwoty kontrolne brutto/netto/VAT
+                            $popRows = '<table class="table table-sm mb-0" style="font-size:.78rem">';
+                            if ($isFx) {
+                                $popRows .= '<thead><tr><th class="text-muted fw-normal text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Składnik</th>'
+                                          . '<th class="text-end text-success">' . h($invCurr) . '</th>'
+                                          . '<th class="text-end text-primary">PLN</th></tr></thead><tbody>'
+                                          . '<tr><td><strong>Brutto</strong></td>'
+                                          .   '<td class="text-end fw-semibold text-success">' . number_format($invAmounts['brutto_eur'], 2, ',', ' ') . '</td>'
+                                          .   '<td class="text-end fw-semibold text-primary">' . number_format($invAmounts['brutto_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '<tr><td>Netto</td>'
+                                          .   '<td class="text-end">' . number_format($invAmounts['netto_eur'], 2, ',', ' ') . '</td>'
+                                          .   '<td class="text-end">' . number_format($invAmounts['netto_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '<tr><td>VAT</td>'
+                                          .   '<td class="text-end">' . number_format($invAmounts['vat_eur'], 2, ',', ' ') . '</td>'
+                                          .   '<td class="text-end fw-semibold">' . number_format($invAmounts['vat_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '<tr class="table-light"><td class="text-muted">Kurs NBP</td>'
+                                          .   '<td colspan="2" class="text-end text-muted">' . number_format($invAmounts['rate'], 4, ',', ' ') . '</td></tr>'
+                                          . '</tbody>';
+                            } else {
+                                $popRows .= '<thead><tr><th class="text-muted fw-normal text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Składnik</th>'
+                                          . '<th class="text-end">PLN</th></tr></thead><tbody>'
+                                          . '<tr><td><strong>Brutto</strong></td>'
+                                          .   '<td class="text-end fw-semibold">' . number_format($invAmounts['brutto_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '<tr><td>Netto</td>'
+                                          .   '<td class="text-end">' . number_format($invAmounts['netto_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '<tr><td>VAT</td>'
+                                          .   '<td class="text-end">' . number_format($invAmounts['vat_pln'], 2, ',', ' ') . '</td></tr>'
+                                          . '</tbody>';
+                            }
+                            $popRows .= '</table>';
+                        ?>
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                            <?= $bankBadge($bts) ?>
+                            <button type="button"
+                                    class="btn btn-sm btn-link p-0 text-info lh-1 btn-amounts-info"
+                                    data-bs-toggle="popover"
+                                    data-bs-trigger="click"
+                                    data-bs-html="true"
+                                    data-bs-placement="left"
+                                    data-bs-custom-class="popover-amounts"
+                                    data-bs-title="<?= h('Kwoty z faktury' . ($isFx ? ' (kurs z dnia wystawienia)' : '')) ?>"
+                                    data-bs-content='<?= h($popRows) ?>'
+                                    title="Kwoty kontrolne — brutto/netto/VAT"
+                                    style="line-height:1">
+                                <i class="ri-information-line" style="font-size:1rem"></i>
+                            </button>
+                        </div>
                         <?php if (!empty($bts)): ?>
                             <div style="font-size:0.7rem" class="text-muted mt-1">
                                 <?php foreach ($bts as $btRow): ?>
@@ -1393,6 +1453,34 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     </div>
   </div>
 </div>
+
+<script>
+// ── Popovery z kwotami kontrolnymi (info "i" w kolumnie Przelewy) ──────────
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Popover) return;
+    document.querySelectorAll('.btn-amounts-info').forEach(function (btn) {
+        new bootstrap.Popover(btn, { container: 'body', sanitize: false });
+    });
+    // Zamknij popover po kliku gdzie indziej
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.btn-amounts-info') || e.target.closest('.popover')) return;
+        document.querySelectorAll('.btn-amounts-info').forEach(function (btn) {
+            var inst = bootstrap.Popover.getInstance(btn);
+            if (inst) inst.hide();
+        });
+    });
+});
+</script>
+
+<style>
+.popover.popover-amounts { max-width: 320px; }
+.popover.popover-amounts .popover-header { font-size: .8rem; font-weight: 600; }
+.popover.popover-amounts .popover-body { padding: .5rem; }
+.popover.popover-amounts table { margin-bottom: 0; }
+.popover.popover-amounts td, .popover.popover-amounts th { padding: .25rem .5rem; }
+.btn-amounts-info { vertical-align: middle; }
+.btn-amounts-info:hover { color: #0d6efd !important; }
+</style>
 
 <script>
 (function () {
