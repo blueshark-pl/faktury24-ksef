@@ -861,8 +861,11 @@ class ReconciliationsController extends AppController
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
+        // Locale-agnostic — Cake\I18n\Date (ChronosDate) NIE implementuje DateTimeInterface
         $fmtDate = static function ($v): string {
             if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'toDateString')) return $v->toDateString();
             return $v ? substr((string)$v, 0, 10) : '';
         };
 
@@ -930,15 +933,21 @@ class ReconciliationsController extends AppController
             $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
         }
 
+        // Locale-agnostic parsing (patrz fmtDate w tym pliku)
         $rawDate = $invoice->date;
+        $invoiceDateStr = '';
         if ($rawDate instanceof \DateTimeInterface) {
             $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif (is_object($rawDate) && method_exists($rawDate, 'format')) {
+            $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif (is_object($rawDate) && method_exists($rawDate, 'toDateString')) {
+            $invoiceDateStr = $rawDate->toDateString();
         } elseif ($rawDate) {
-            $s  = substr((string)$rawDate, 0, 10);
-            $dt = \DateTime::createFromFormat('d.m.Y', $s) ?: \DateTime::createFromFormat('Y-m-d', $s);
-            $invoiceDateStr = $dt ? $dt->format('Y-m-d') : '';
-        } else {
-            $invoiceDateStr = '';
+            $s = substr((string)$rawDate, 0, 10);
+            foreach (['Y-m-d', 'd.m.Y', 'd/m/Y', 'm/d/Y'] as $fmt) {
+                $dt = \DateTime::createFromFormat($fmt, $s);
+                if ($dt) { $invoiceDateStr = $dt->format('Y-m-d'); break; }
+            }
         }
 
         $candidates = [];
@@ -1040,8 +1049,11 @@ class ReconciliationsController extends AppController
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
+        // Locale-agnostic — Cake\I18n\Date (ChronosDate) NIE implementuje DateTimeInterface
         $fmtDate = static function ($v): string {
             if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'toDateString')) return $v->toDateString();
             return $v ? substr((string)$v, 0, 10) : '';
         };
 
@@ -1103,16 +1115,29 @@ class ReconciliationsController extends AppController
             $nameOrConditions[] = ['BankTransactions.account_number IN' => $contractorIbans];
         }
 
-        // Data wystawienia faktury — normalizacja Y-m-d
+        // Data wystawienia faktury — normalizacja Y-m-d (locale-agnostic).
+        // UWAGA: Cake\I18n\Date (ChronosDate) NIE implementuje \DateTimeInterface,
+        // ale MA metodę format(). (string)$date jest locale-aware → różne wyniki PL/EN.
         $rawDate = $invoice->date;
+        $invoiceDateStr = '';
         if ($rawDate instanceof \DateTimeInterface) {
             $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif (is_object($rawDate) && method_exists($rawDate, 'format')) {
+            // Cake\I18n\Date / ChronosDate — locale-agnostic format
+            $invoiceDateStr = $rawDate->format('Y-m-d');
+        } elseif (is_object($rawDate) && method_exists($rawDate, 'toDateString')) {
+            // Chronos fallback
+            $invoiceDateStr = $rawDate->toDateString();
         } elseif ($rawDate) {
+            // Last resort — string parsing (próbujemy 4 formaty z różnych locale)
             $s  = substr((string)$rawDate, 0, 10);
-            $dt = \DateTime::createFromFormat('d.m.Y', $s) ?: \DateTime::createFromFormat('Y-m-d', $s);
-            $invoiceDateStr = $dt ? $dt->format('Y-m-d') : '';
-        } else {
-            $invoiceDateStr = '';
+            foreach (['Y-m-d', 'd.m.Y', 'd/m/Y', 'm/d/Y'] as $fmt) {
+                $dt = \DateTime::createFromFormat($fmt, $s);
+                if ($dt) { $invoiceDateStr = $dt->format('Y-m-d'); break; }
+            }
+            if ($invoiceDateStr === '') {
+                \Cake\Log\Log::warning('bankTransactions: cannot parse invoice date string: ' . $s);
+            }
         }
 
         // B) Filtr po kwocie (opcjonalny ±10%) z query param
@@ -1553,8 +1578,11 @@ class ReconciliationsController extends AppController
             ->orderByDesc('BankTransactionAllocations.created')
             ->all()->toArray();
 
+        // Locale-agnostic — Cake\I18n\Date (ChronosDate) NIE implementuje DateTimeInterface
         $fmtDate = static function ($v): string {
             if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
+            if (is_object($v) && method_exists($v, 'toDateString')) return $v->toDateString();
             return $v ? substr((string)$v, 0, 10) : '';
         };
 
