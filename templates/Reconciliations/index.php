@@ -780,6 +780,27 @@ if ($status !== '')            $activeFilterCount++;
                     <td class="text-nowrap small text-muted"><?= $fdate($invoice->date) ?></td>
                     <!-- Termin z faktury -->
                     <td class="text-nowrap small">
+                        <?php
+                        // Ile dni minęło od daty wystawienia faktury (zawsze pokazujemy)
+                        $rawIssue = $invoice->date;
+                        $issueStr = null;
+                        if ($rawIssue instanceof \DateTimeInterface) {
+                            $issueStr = $rawIssue->format('Y-m-d');
+                        } elseif (is_object($rawIssue) && method_exists($rawIssue, 'format')) {
+                            $issueStr = $rawIssue->format('Y-m-d');
+                        } elseif ($rawIssue) {
+                            $s = substr((string)$rawIssue, 0, 10);
+                            $dt = \DateTime::createFromFormat('Y-m-d', $s)
+                               ?: \DateTime::createFromFormat('d.m.Y', $s);
+                            $issueStr = $dt ? $dt->format('Y-m-d') : null;
+                        }
+                        $daysFromIssue = null;
+                        if ($issueStr) {
+                            $daysFromIssue = (int)(new \DateTime($issueStr))->diff($today)->days;
+                            // Tylko gdy wystawienia jest w przeszłości (zwykle tak)
+                            if ($issueStr > $todayStr) $daysFromIssue = null;
+                        }
+                        ?>
                         <?php if ($pdateStr): ?>
                             <?php
                             // Kolumna pokazuje termin z faktury — "dni temu" dotyczy tej samej daty.
@@ -808,8 +829,18 @@ if ($status !== '')            $activeFilterCount++;
                                     <?php endif; ?>
                                 </div>
                             <?php endif; ?>
+                            <?php if ($daysFromIssue !== null && $daysFromIssue > 0): ?>
+                                <div class="text-muted" style="font-size:0.68rem" title="Dni od daty wystawienia faktury">
+                                    <i class="ri-calendar-line me-1"></i><?= $daysFromIssue ?> dni od wystawienia
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <span class="text-muted">—</span>
+                            <?php if ($daysFromIssue !== null && $daysFromIssue > 0): ?>
+                                <div class="text-muted" style="font-size:0.68rem" title="Dni od daty wystawienia faktury">
+                                    <i class="ri-calendar-line me-1"></i><?= $daysFromIssue ?> dni od wystawienia
+                                </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <!-- Brutto -->
