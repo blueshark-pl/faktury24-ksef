@@ -1211,7 +1211,7 @@ class ReconciliationsController extends AppController
                 ->select(['id', 'value_date', 'amount', 'currency', 'direction', 'party_name', 'title',
                           'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
                 ->orderByDesc('value_date')
-                ->limit(200)
+                ->limit(500)
                 ->all()->toArray();
         }
 
