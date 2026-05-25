@@ -379,6 +379,36 @@ class BankTransactionsController extends AppController
 
         $ok = (new BankMatchingService())->confirmMatch($id, (string)$invoiceId, $companyId);
 
+        // AJAX: zwracaj JSON żeby modal mógł odświeżyć się w miejscu bez full page reload
+        if ($this->request->is('ajax') || $this->request->is('json')
+            || $this->request->getHeaderLine('X-Requested-With') === 'XMLHttpRequest') {
+            $this->disableAutoRender();
+            // Pobierz świeże dane faktury dla update'u listy
+            $invoiceData = null;
+            if ($ok) {
+                $inv = $this->fetchTable('Invoices')->find()
+                    ->select(['id', 'paymentstate', 'alreadypaid', 'remaining', 'currency'])
+                    ->where(['id' => $invoiceId, 'company_id' => $companyId])
+                    ->first();
+                if ($inv) {
+                    $invoiceData = [
+                        'id'           => (string)$inv->id,
+                        'paymentstate' => (string)$inv->paymentstate,
+                        'alreadypaid'  => (float)$inv->alreadypaid,
+                        'remaining'    => (float)$inv->remaining,
+                        'currency'     => (string)$inv->currency,
+                    ];
+                }
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'ok'      => $ok,
+                    'message' => $ok ? __('Dopasowanie potwierdzone — faktura zaktualizowana.')
+                                     : __('Nie udało się potwierdzić dopasowania.'),
+                    'invoice' => $invoiceData,
+                ], JSON_UNESCAPED_UNICODE));
+        }
+
         if ($ok) {
             $this->Flash->success('Dopasowanie potwierdzone — faktura oznaczona jako opłacona.');
         } else {

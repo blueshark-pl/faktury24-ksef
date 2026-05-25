@@ -1304,8 +1304,43 @@ class ReconciliationsController extends AppController
             'description'    => $description ?: null,
         ]);
 
-        if ($InvoicePayments->save($payment)) {
+        $saved = (bool)$InvoicePayments->save($payment);
+        if ($saved) {
             $this->_refreshPaymentState($invoiceId);
+        }
+
+        // AJAX: zwróć JSON ze stanem faktury żeby modal mógł odświeżyć się w miejscu
+        if ($this->request->is('ajax') || $this->request->is('json')
+            || $this->request->getHeaderLine('X-Requested-With') === 'XMLHttpRequest') {
+            $this->disableAutoRender();
+            $invoiceData = null;
+            if ($saved) {
+                $inv = $this->fetchTable('Invoices')->find()
+                    ->select(['id', 'paymentstate', 'alreadypaid', 'remaining', 'currency'])
+                    ->where(['id' => $invoiceId, 'company_id' => $companyId])
+                    ->first();
+                if ($inv) {
+                    $invoiceData = [
+                        'id'           => (string)$inv->id,
+                        'paymentstate' => (string)$inv->paymentstate,
+                        'alreadypaid'  => (float)$inv->alreadypaid,
+                        'remaining'    => (float)$inv->remaining,
+                        'currency'     => (string)$inv->currency,
+                    ];
+                }
+            }
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode([
+                    'ok'      => $saved,
+                    'message' => $saved
+                        ? sprintf(__('Wpłata %.2f %s zarejestrowana.'), $amount, $invoice->currency ?? 'PLN')
+                        : __('Nie udało się zapisać wpłaty.'),
+                    'invoice' => $invoiceData,
+                    'errors'  => $saved ? null : $payment->getErrors(),
+                ], JSON_UNESCAPED_UNICODE));
+        }
+
+        if ($saved) {
             $this->Flash->success(sprintf(
                 'Wpłata %.2f %s zarejestrowana dla faktury %s.',
                 $amount,

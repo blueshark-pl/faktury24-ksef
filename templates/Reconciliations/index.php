@@ -1985,11 +1985,47 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             if (!isLegacy) {
                 container.querySelectorAll('.btn-link-tx').forEach(function (btn) {
                     btn.addEventListener('click', function () {
+                        if (this.disabled) return;
                         var txId = this.dataset.txId;
-                        var form = document.getElementById('linkTxForm');
-                        document.getElementById('linkTxInvoiceId').value = currentInvoiceId;
-                        form.action = '/wyciagi/confirm-match/' + txId;
-                        form.submit();
+                        var clicked = this;
+                        var origHtml = clicked.innerHTML;
+                        clicked.disabled = true;
+                        clicked.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+                        var fd = new FormData();
+                        fd.append('invoice_id', currentInvoiceId);
+                        var csrfInput = document.querySelector('input[name="_csrfToken"]');
+                        if (csrfInput) fd.append('_csrfToken', csrfInput.value);
+
+                        fetch('/wyciagi/confirm-match/' + txId, {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json',
+                                'X-CSRF-Token': csrfInput ? csrfInput.value : ''
+                            },
+                            body: fd
+                        })
+                        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                        .then(function (res) {
+                            if (res.ok && res.data && res.data.ok) {
+                                showInModalToast(res.data.message || 'Powiązano', 'success');
+                                // Odśwież dane w modalu
+                                loadBankTransactions(currentInvoiceId, !!document.getElementById('bankTxAmountFilterToggle')?.checked);
+                                loadAllocations(currentInvoiceId, false);
+                                // Update wiersza w tabeli głównej (background)
+                                if (res.data.invoice) updateInvoiceRowInList(res.data.invoice);
+                            } else {
+                                showInModalToast((res.data && res.data.message) || 'Błąd powiązania', 'error');
+                                clicked.disabled = false;
+                                clicked.innerHTML = origHtml;
+                            }
+                        })
+                        .catch(function () {
+                            showInModalToast('Błąd sieci — spróbuj ponownie', 'error');
+                            clicked.disabled = false;
+                            clicked.innerHTML = origHtml;
+                        });
                     });
                 });
             }
@@ -2056,8 +2092,106 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     var urlAddLegacyPayment = '<?= $this->Url->build(['action' => 'addLegacyPayment']) ?>';
 
     document.addEventListener('DOMContentLoaded', function () {
-        var modal = document.getElementById('paymentModal');
+        // Toast w modalu — krótka informacja sukces/błąd bez zamykania
+    function showInModalToast(msg, type) {
+        var modalBody = document.querySelector('#paymentModal .modal-body');
+        if (!modalBody) return;
+        var color = type === 'success' ? 'success' : (type === 'error' ? 'danger' : 'info');
+        var icon  = type === 'success' ? 'ri-check-line' : (type === 'error' ? 'ri-error-warning-line' : 'ri-information-line');
+        var div = document.createElement('div');
+        div.className = 'alert alert-' + color + ' alert-dismissible py-2 small mb-0 position-absolute';
+        div.style.cssText = 'top:10px;right:10px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:280px';
+        div.innerHTML = '<i class="' + icon + ' me-1"></i>' + esc(msg)
+            + '<button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>';
+        modalBody.appendChild(div);
+        setTimeout(function () { div.remove(); }, 4500);
+    }
+
+    // Update wiersza na liście głównej rozliczeń (background tabela) — bez page reload
+    function updateInvoiceRowInList(invoice) {
+        if (!invoice || !invoice.id) return;
+        var row = document.querySelector('[data-invoice-id="' + invoice.id + '"]');
+        if (!row) row = document.querySelector('tr[data-id="' + invoice.id + '"]');
+        if (!row) return;
+        // Update remaining cell — szuka komórek z klasą rem-cell lub data-col
+        var remCell = row.querySelector('[data-col="remaining"]') || row.querySelector('.rem-cell');
+        if (remCell) {
+            remCell.textContent = (invoice.remaining || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
+        }
+        var paidCell = row.querySelector('[data-col="alreadypaid"]') || row.querySelector('.paid-cell');
+        if (paidCell) {
+            paidCell.textContent = (invoice.alreadypaid || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
+        }
+        // Status badge
+        var stateCell = row.querySelector('[data-col="paymentstate"]') || row.querySelector('.state-cell');
+        if (stateCell) {
+            var stateLabels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Nieopłacona' };
+            var stateColors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'danger' };
+            stateCell.innerHTML = '<span class="badge bg-' + (stateColors[invoice.paymentstate] || 'secondary') + '-subtle text-' + (stateColors[invoice.paymentstate] || 'secondary') + ' border">'
+                + (stateLabels[invoice.paymentstate] || invoice.paymentstate)
+                + '</span>';
+        }
+        // Wizualne podkreślenie zmiany — pulse animation
+        row.style.transition = 'background-color .6s';
+        row.style.backgroundColor = '#dcfce7';
+        setTimeout(function () { row.style.backgroundColor = ''; }, 1500);
+    }
+
+    var modal = document.getElementById('paymentModal');
         if (!modal) return;
+
+        // Intercept submit formularza ręcznej wpłaty — AJAX zamiast full page reload
+        var paymentForm = document.getElementById('paymentForm');
+        if (paymentForm) {
+            paymentForm.addEventListener('submit', function (ev) {
+                // Tylko dla system (KSeF), legacy zostawiamy starą logikę
+                if ((paymentForm.action || '').indexOf('legacy') !== -1) return;
+                ev.preventDefault();
+                var submitBtn = paymentForm.querySelector('button[type="submit"]');
+                var origHtml = submitBtn ? submitBtn.innerHTML : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Zapisywanie…';
+                }
+                var fd = new FormData(paymentForm);
+                var csrfInput = paymentForm.querySelector('input[name="_csrfToken"]');
+                fetch(paymentForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': csrfInput ? csrfInput.value : ''
+                    },
+                    body: fd
+                })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                .then(function (res) {
+                    if (res.ok && res.data && res.data.ok) {
+                        showInModalToast(res.data.message || 'Wpłata zapisana', 'success');
+                        // Odśwież dane w modalu
+                        if (currentInvoiceId) {
+                            loadBankTransactions(currentInvoiceId, !!document.getElementById('bankTxAmountFilterToggle')?.checked);
+                            loadAllocations(currentInvoiceId, false);
+                        }
+                        if (res.data.invoice) updateInvoiceRowInList(res.data.invoice);
+                        // Wyczyść pole kwoty żeby user nie podwójnie kliknął
+                        var amtField = document.getElementById('modalAmount');
+                        if (amtField) amtField.value = '';
+                    } else {
+                        showInModalToast((res.data && res.data.message) || 'Błąd zapisu', 'error');
+                    }
+                })
+                .catch(function () {
+                    showInModalToast('Błąd sieci — spróbuj ponownie', 'error');
+                })
+                .finally(function () {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = origHtml;
+                    }
+                });
+            });
+        }
 
         modal.addEventListener('show.bs.modal', function (event) {
             var btn       = event.relatedTarget;
