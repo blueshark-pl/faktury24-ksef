@@ -5,11 +5,13 @@
  * @var array $txsWithoutAlloc
  * @var array $orphanAllocs
  * @var array $currencyMismatches
+ * @var array $autoMatched
  */
 
 $this->assign('title', 'Sprawdzenie integralności — rozliczenia');
 
-$totalIssues = count($orphanPayments) + count($txsWithoutAlloc) + count($orphanAllocs) + count($currencyMismatches);
+$totalIssues = count($orphanPayments) + count($txsWithoutAlloc) + count($orphanAllocs)
+             + count($currencyMismatches) + count($autoMatched);
 $fdate = static function ($d): string {
     if ($d === null) return '—';
     if ($d instanceof \DateTimeInterface) return $d->format('Y-m-d');
@@ -193,6 +195,12 @@ $fdate = static function ($d): string {
                 if (this.disabled) return;
                 var type = this.dataset.fixType;
                 var id   = this.dataset.fixId;
+                // Operacje destrukcyjne wymagają potwierdzenia
+                if (type === 'unlink') {
+                    if (!confirm('Odpiąć ten przelew od faktury?\n\nTo usunie powiązaną wpłatę i alokację, oraz zresetuje przelew do stanu początkowego. Operacja nieodwracalna.')) {
+                        return;
+                    }
+                }
                 var row  = this.closest('tr');
                 var orig = this.innerHTML;
                 this.disabled = true;
@@ -283,6 +291,67 @@ $fdate = static function ($d): string {
                                 <td><span class="badge bg-success-subtle text-success border"><?= h($p->_real_currency) ?></span></td>
                                 <td class="text-nowrap"><?= h($fdate($p->payment_date)) ?></td>
                                 <td class="text-end"><?= $renderFixBtn('currency', (string)$p->id) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- E: auto-matched (confidence < 100) — błędnie oznaczone jako Wpłata -->
+    <div class="card mb-3">
+        <div class="card-header py-2 d-flex align-items-center gap-2">
+            <strong>E. Auto-matched przelewy (do odpięcia)</strong>
+            <span class="badge bg-secondary-subtle text-secondary"><?= count($autoMatched) ?></span>
+            <small class="text-muted ms-2">— <code>bank_transactions</code> z <code>match_status='matched'</code> ale <code>match_confidence &lt; 100</code> (automatyczne dopasowanie z importu MT940, nie odklikane przez usera)</small>
+        </div>
+        <?php if (empty($autoMatched)): ?>
+            <div class="card-body py-2 small text-muted">Brak problemów</div>
+        <?php else: ?>
+            <div class="alert alert-warning py-2 small mb-0 m-2">
+                <i class="ri-alert-line me-1"></i>
+                Odpięcie usunie powiązaną <code>invoice_payment</code> i <code>bank_transaction_allocation</code>,
+                zresetuje <code>bank_transaction</code> do stanu początkowego (<code>match_status='unmatched'</code>)
+                i przeliczy <code>paymentstate</code> faktury. <strong>Operacja nieodwracalna.</strong>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID przelewu</th>
+                            <th>Faktura</th>
+                            <th class="text-end">Kwota</th>
+                            <th>Waluta</th>
+                            <th>Data</th>
+                            <th>Confidence</th>
+                            <th>Reason</th>
+                            <th>Nadawca</th>
+                            <th class="text-end">Akcja</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($autoMatched as $t): ?>
+                            <tr data-row-id="<?= h($t->id) ?>">
+                                <td><code style="font-size:.7rem"><?= h(substr($t->id, 0, 8)) ?>…</code></td>
+                                <td><code style="font-size:.7rem"><?= h(substr($t->invoice_id, 0, 8)) ?>…</code></td>
+                                <td class="text-end fw-semibold"><?= number_format((float)$t->amount, 2, ',', ' ') ?></td>
+                                <td><?= h(strtoupper($t->currency ?? 'PLN')) ?></td>
+                                <td class="text-nowrap"><?= h($fdate($t->value_date)) ?></td>
+                                <td>
+                                    <span class="badge bg-info-subtle text-info border" style="font-size:.65rem">
+                                        <?= (int)$t->match_confidence ?>
+                                    </span>
+                                </td>
+                                <td class="text-muted" style="font-size:.7rem"><?= h($t->match_reason ?? '') ?></td>
+                                <td class="text-muted text-truncate" style="max-width:180px"><?= h(mb_substr($t->party_name ?? '', 0, 30)) ?></td>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-danger py-0 px-2 btn-fix-one"
+                                            data-fix-type="unlink" data-fix-id="<?= h($t->id) ?>"
+                                            title="Odepnij ten przelew od faktury (usuwa wpłatę i alokację)">
+                                        <i class="ri-link-unlink"></i> Odepnij
+                                    </button>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

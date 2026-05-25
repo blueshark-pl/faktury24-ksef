@@ -2087,11 +2087,12 @@ class ReconciliationsController extends AppController
     // ── ADMIN: Sprawdzenie integralności bank_tx ↔ allocation ↔ invoice_payment ──
 
     /**
-     * Skanuje dane i wykrywa 4 typy problemów:
+     * Skanuje dane i wykrywa 5 typów problemów:
      *  A) invoice_payments bez bank_transaction_allocation_id (sieroty z confirmMatch sprzed fixa)
      *  B) bank_transactions matched (manual) bez bank_transaction_allocation
      *  C) bank_transaction_allocations bez invoice_payment_id (brak back-link)
      *  D) invoice_payment.currency != bank_transaction.currency (zła waluta na wpłacie)
+     *  E) bank_transactions z auto-match (confidence < 100) — błędnie oznaczone jako "Wpłata"
      */
     public function checkIntegrity(): void
     {
@@ -2209,7 +2210,30 @@ class ReconciliationsController extends AppController
             }
         }
 
-        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches'));
+        // E) Auto-matched bank_transactions (confidence < 100) — sprzed wyłączenia auto-match
+        // Te są oznaczone jako "matched" ale nie były ręcznie kliknięte przez usera.
+        // Najczęściej tworzą fałszywe wpłaty/alokacje z importu MT940.
+        $autoMatched = $BankTxs->find()
+            ->contain([
+                'Invoices' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'fullnumber']);
+                },
+            ])
+            ->where([
+                'BankTransactions.company_id'        => $companyId,
+                'BankTransactions.match_status'      => 'matched',
+                'BankTransactions.invoice_id IS NOT' => null,
+                'BankTransactions.match_confidence <' => 100,
+            ])
+            ->select(['BankTransactions.id', 'BankTransactions.invoice_id', 'BankTransactions.amount',
+                      'BankTransactions.currency', 'BankTransactions.value_date',
+                      'BankTransactions.party_name', 'BankTransactions.match_confidence',
+                      'BankTransactions.match_reason', 'BankTransactions.parsed_inv',
+                      'BankTransactions.parsed_nip'])
+            ->orderByDesc('value_date')
+            ->all()->toArray();
+
+        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches', 'autoMatched'));
     }
 
     /**
@@ -2229,6 +2253,7 @@ class ReconciliationsController extends AppController
             'tx'       => $this->_fixTxWithoutAlloc($id, $companyId),
             'alloc'    => $this->_fixOrphanAllocation($id, $companyId),
             'currency' => $this->_fixCurrencyMismatch($id, $companyId),
+            'unlink'   => $this->_unlinkAutoMatch($id, $companyId),
             default    => ['ok' => false, 'message' => 'Nieznany typ: ' . $type],
         };
 
@@ -2320,9 +2345,25 @@ class ReconciliationsController extends AppController
             // Note: returns 'Waluty już zgodne' for already-correct → nie liczymy jako błąd
         }
 
+        // E) Odpinanie auto-matched (confidence < 100)
+        $autoTxs = $BankTxs->find()
+            ->where([
+                'BankTransactions.company_id'        => $companyId,
+                'BankTransactions.match_status'      => 'matched',
+                'BankTransactions.invoice_id IS NOT' => null,
+                'BankTransactions.match_confidence <' => 100,
+            ])
+            ->all();
+        $fixed['unlinked'] = 0;
+        foreach ($autoTxs as $t) {
+            $r = $this->_unlinkAutoMatch((string)$t->id, $companyId);
+            if ($r['ok']) $fixed['unlinked']++;
+            else $fixed['errors'][] = 'E: ' . ($r['message'] ?? '');
+        }
+
         $this->Flash->success(sprintf(
-            'Naprawiono: %d sierot wpłat, %d brakujących alokacji bank_tx, %d back-linków alokacji, %d niezgodności walut.',
-            $fixed['orphan_payments'], $fixed['tx_without_alloc'], $fixed['orphan_allocs'], $fixed['currency_fixes']
+            'Naprawiono: %d sierot wpłat, %d brakujących alokacji bank_tx, %d back-linków alokacji, %d niezgodności walut, %d odpiętych auto-match.',
+            $fixed['orphan_payments'], $fixed['tx_without_alloc'], $fixed['orphan_allocs'], $fixed['currency_fixes'], $fixed['unlinked']
         ));
         if (!empty($fixed['errors'])) {
             $this->Flash->error('Błędy: ' . implode(' | ', array_slice($fixed['errors'], 0, 5)));
@@ -2516,6 +2557,87 @@ class ReconciliationsController extends AppController
         }
 
         return ['ok' => true, 'message' => 'Waluta wpłaty + alokacji ustawiona na ' . $realCurr . ' (' . number_format((float)$tx->amount, 2) . ').'];
+    }
+
+    /**
+     * Odpina bank_transaction od faktury (cofa auto-match):
+     *   - Usuwa invoice_payments i bank_transaction_allocations powiązane z tym tx
+     *   - Resetuje bank_transaction: invoice_id=NULL, match_status='unmatched',
+     *     match_confidence=0, is_matched=false
+     *   - Przelicza paymentstate faktury (po usunięciu wpłaty)
+     */
+    private function _unlinkAutoMatch(string $txId, string $companyId): array
+    {
+        $Payments    = $this->fetchTable('InvoicePayments');
+        $BankTxs     = $this->fetchTable('BankTransactions');
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        $tx = $BankTxs->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->first();
+        if ($tx === null) return ['ok' => false, 'message' => 'Przelew nie istnieje.'];
+
+        $invoiceId = $tx->invoice_id;
+
+        // 1. Usuń alokacje i powiązane wpłaty
+        $allocs = $Allocations->find()
+            ->where(['bank_transaction_id' => $txId, 'company_id' => $companyId])
+            ->all();
+
+        $deletedPayments  = 0;
+        $deletedAllocs    = 0;
+        foreach ($allocs as $alloc) {
+            // Najpierw payment (jeśli istnieje)
+            if ($alloc->invoice_payment_id) {
+                $payment = $Payments->find()
+                    ->where(['id' => $alloc->invoice_payment_id])
+                    ->first();
+                if ($payment !== null && $Payments->delete($payment)) {
+                    $deletedPayments++;
+                }
+            }
+            if ($Allocations->delete($alloc)) {
+                $deletedAllocs++;
+            }
+        }
+
+        // 2. Dodatkowo: usuń sieroce invoice_payments z payment_method='transfer'
+        //    powiązane z tą fakturą i kwotą (z confirmMatch sprzed allocation fixa)
+        if ($invoiceId !== null) {
+            $orphanPayments = $Payments->find()
+                ->where([
+                    'invoice_id'                        => $invoiceId,
+                    'amount'                            => (float)$tx->amount,
+                    'payment_method'                    => 'transfer',
+                    'bank_transaction_allocation_id IS' => null,
+                ])
+                ->all();
+            foreach ($orphanPayments as $op) {
+                if ($Payments->delete($op)) $deletedPayments++;
+            }
+        }
+
+        // 3. Resetuj bank_transaction
+        $tx->invoice_id       = null;
+        $tx->is_matched       = false;
+        $tx->match_status     = 'unmatched';
+        $tx->match_confidence = 0;
+        if (!$BankTxs->save($tx)) {
+            return ['ok' => false, 'message' => 'Reset bank_tx: ' . json_encode($tx->getErrors())];
+        }
+
+        // 4. Przelicz stan faktury (alreadypaid/remaining/paymentstate)
+        if ($invoiceId !== null) {
+            $this->_recalcInvoicePaymentState((string)$invoiceId);
+        }
+
+        return [
+            'ok'      => true,
+            'message' => sprintf(
+                'Odpięto przelew (usunięto %d wpłat, %d alokacji).',
+                $deletedPayments, $deletedAllocs
+            ),
+        ];
     }
 
     private function _fixOrphanAllocation(string $allocId, string $companyId): array
