@@ -125,13 +125,12 @@ $paymentBadge = function (?string $state, ?string $paymentdate, string $today): 
     return '<span class="badge bg-light text-secondary border">Do zapłaty</span>';
 };
 
-// Badge transakcji bankowej
+// Badge transakcji bankowej — pokazuje TYLKO potwierdzone (matched) wpłaty
 $bankBadge = function (?object $bt): string {
     if ($bt === null) return '';
-    if ($bt->match_status === 'matched') {
-        return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Przelew dopasowany"><i class="ri-checkbox-circle-line me-1"></i>Przelew</span>';
-    }
-    return '<span class="badge bg-warning-subtle text-warning border border-warning-subtle" title="Przelew do potwierdzenia"><i class="ri-alert-line me-1"></i>Przelew?</span>';
+    $count = (int)($bt->_match_count ?? 1);
+    $suffix = $count > 1 ? ' <span class="opacity-75">×' . $count . '</span>' : '';
+    return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłata potwierdzona"><i class="ri-checkbox-circle-line me-1"></i>Wpłacono' . $suffix . '</span>';
 };
 
 // Pomocnik URL z aktualnymi filtrami
@@ -737,7 +736,7 @@ if ($status !== '')            $activeFilterCount++;
                         <?= $bankBadge($bt) ?>
                         <?php if ($bt !== null): ?>
                             <div style="font-size:0.7rem" class="text-muted mt-1">
-                                <?= number_format((float)$bt->amount, 2, ',', ' ') ?> PLN
+                                <?= number_format((float)$bt->amount, 2, ',', ' ') ?> <?= h(strtoupper($bt->currency ?? 'PLN')) ?>
                                 · <?= $fdate($bt->value_date) ?>
                             </div>
                         <?php endif; ?>

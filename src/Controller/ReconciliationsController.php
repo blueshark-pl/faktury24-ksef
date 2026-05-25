@@ -280,23 +280,33 @@ class ReconciliationsController extends AppController
         }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
+        // Pokazujemy TYLKO potwierdzone powiązania (match_status = 'matched') —
+        // czyli konkretne wpłaty. Sugerowane (proposed) są tylko kandydatami,
+        // jeszcze nie są wpłatą.
         $bankByInvoice = [];
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
 
             $bankRows = $this->fetchTable('BankTransactions')->find()
                 ->where([
-                    'company_id'     => $companyId,
-                    'invoice_id IN'  => $invoiceIds,
-                    'match_status IN' => ['matched', 'proposed'],
+                    'company_id'      => $companyId,
+                    'invoice_id IN'   => $invoiceIds,
+                    'match_status'    => 'matched',
                 ])
-                ->select(['id', 'invoice_id', 'match_status', 'amount', 'value_date', 'party_name'])
+                ->select(['id', 'invoice_id', 'match_status', 'amount', 'currency', 'value_date', 'party_name'])
                 ->orderByDesc('value_date')
                 ->all()->toArray();
 
             foreach ($bankRows as $bt) {
                 $iid = (string)$bt->invoice_id;
-                $bankByInvoice[$iid] ??= $bt;
+                // Zostaw NAJNOWSZY potwierdzony przelew jako "główny" do badge,
+                // ale zliczamy wszystkie dla wyświetlenia ×N gdy więcej niż jeden.
+                if (!isset($bankByInvoice[$iid])) {
+                    $bankByInvoice[$iid] = $bt;
+                    $bankByInvoice[$iid]->_match_count = 1;
+                } else {
+                    $bankByInvoice[$iid]->_match_count++;
+                }
             }
 
             // ── Zlecenia Speed (lista per faktura) ───────────────────────────
