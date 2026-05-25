@@ -279,6 +279,11 @@ $typeBadge = function (string $type): string {
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0 fw-semibold">Rozliczenia <span class="text-muted fs-6 fw-normal">faktury · wpłaty · przelewy</span></h4>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= $this->Url->build(['action' => 'checkIntegrity']) ?>"
+           class="btn btn-sm btn-outline-secondary"
+           title="Sprawdź integralność bank_tx ↔ allocation ↔ invoice_payment">
+            <i class="ri-shield-check-line me-1"></i>Integralność
+        </a>
         <button type="button" class="btn btn-sm btn-outline-warning"
                 data-bs-toggle="modal" data-bs-target="#legacySyncModal"
                 title="Synchronizuj faktury z zewnętrznego systemu">

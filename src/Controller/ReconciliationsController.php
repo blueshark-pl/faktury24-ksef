@@ -2083,4 +2083,274 @@ class ReconciliationsController extends AppController
             'overdue'             => $overduePln + $overdueEur,
         ];
     }
+
+    // ── ADMIN: Sprawdzenie integralności bank_tx ↔ allocation ↔ invoice_payment ──
+
+    /**
+     * Skanuje dane i wykrywa 3 typy problemów:
+     *  A) invoice_payments bez bank_transaction_allocation_id (sieroty z confirmMatch sprzed fixa)
+     *  B) bank_transactions matched (manual) bez bank_transaction_allocation
+     *  C) bank_transaction_allocations bez invoice_payment_id (brak back-link)
+     */
+    public function checkIntegrity(): void
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Payments     = $this->fetchTable('InvoicePayments');
+        $BankTxs      = $this->fetchTable('BankTransactions');
+        $Allocations  = $this->fetchTable('BankTransactionAllocations');
+
+        // A) invoice_payments z method=transfer ale bez allocation
+        $orphanPayments = $Payments->find()
+            ->contain([
+                'Invoices' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'fullnumber', 'company_id', 'currency', 'currency_exchange', 'total']);
+                },
+            ])
+            ->where([
+                'InvoicePayments.payment_method' => 'transfer',
+                'InvoicePayments.bank_transaction_allocation_id IS' => null,
+                'Invoices.company_id' => $companyId,
+            ])
+            ->select([
+                'InvoicePayments.id', 'InvoicePayments.invoice_id', 'InvoicePayments.amount',
+                'InvoicePayments.currency', 'InvoicePayments.payment_date',
+                'InvoicePayments.description', 'InvoicePayments.payment_type',
+            ])
+            ->all()->toArray();
+
+        // B) bank_transactions matched (manual) bez allocation
+        $matchedTxs = $BankTxs->find()
+            ->where([
+                'BankTransactions.company_id'        => $companyId,
+                'BankTransactions.match_status'      => 'matched',
+                'BankTransactions.invoice_id IS NOT' => null,
+                'BankTransactions.match_confidence >=' => 100,
+            ])
+            ->select(['id', 'invoice_id', 'amount', 'currency', 'value_date', 'party_name', 'title'])
+            ->all()->toArray();
+
+        $matchedIds = array_column($matchedTxs, 'id');
+        $allocTxIds = [];
+        if (!empty($matchedIds)) {
+            $allocRows = $Allocations->find()
+                ->where(['bank_transaction_id IN' => $matchedIds])
+                ->select(['bank_transaction_id'])
+                ->all();
+            foreach ($allocRows as $a) {
+                $allocTxIds[(string)$a->bank_transaction_id] = true;
+            }
+        }
+        $txsWithoutAlloc = array_filter($matchedTxs, fn($t) => !isset($allocTxIds[(string)$t->id]));
+
+        // C) allocations bez invoice_payment_id
+        $orphanAllocs = $Allocations->find()
+            ->where([
+                'BankTransactionAllocations.company_id' => $companyId,
+                'BankTransactionAllocations.invoice_payment_id IS' => null,
+                'BankTransactionAllocations.invoice_id IS NOT' => null,
+            ])
+            ->select(['id', 'bank_transaction_id', 'invoice_id', 'allocated_amount', 'currency', 'allocation_type', 'created'])
+            ->all()->toArray();
+
+        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs'));
+    }
+
+    /**
+     * Naprawia wszystkie wykryte problemy integralności.
+     * Dla każdego typu próbuje znaleźć "drugą stronę" po (invoice_id, kwota, data) i połączyć.
+     */
+    public function fixIntegrity(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Payments     = $this->fetchTable('InvoicePayments');
+        $BankTxs      = $this->fetchTable('BankTransactions');
+        $Allocations  = $this->fetchTable('BankTransactionAllocations');
+
+        $fixed = ['orphan_payments' => 0, 'tx_without_alloc' => 0, 'orphan_allocs' => 0, 'errors' => []];
+
+        // === A) Orphan invoice_payments → znajdź matched bank_tx i utwórz allocation ===
+        $orphanPayments = $Payments->find()
+            ->contain(['Invoices' => function ($q) { return $q->select(['id', 'company_id']); }])
+            ->where([
+                'InvoicePayments.payment_method' => 'transfer',
+                'InvoicePayments.bank_transaction_allocation_id IS' => null,
+                'Invoices.company_id' => $companyId,
+            ])
+            ->all();
+
+        foreach ($orphanPayments as $payment) {
+            // Szukaj bank_tx z tym samym invoice_id i podobną kwotą/datą
+            $tx = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id' => $companyId,
+                    'BankTransactions.invoice_id' => $payment->invoice_id,
+                    'BankTransactions.amount'     => (float)$payment->amount,
+                ])
+                ->orderByDesc('value_date')
+                ->first();
+
+            // Czy ten bank_tx nie ma już allocation?
+            if ($tx !== null) {
+                $hasAlloc = $Allocations->exists(['bank_transaction_id' => $tx->id]);
+                if ($hasAlloc) {
+                    $tx = null; // szukamy innego
+                }
+            }
+
+            if ($tx === null) continue; // brak inferencji — zostaw
+
+            $allocation = $Allocations->newEntity([
+                'id'                  => \Cake\Utility\Text::uuid(),
+                'company_id'          => $companyId,
+                'bank_transaction_id' => (string)$tx->id,
+                'invoice_id'          => $payment->invoice_id,
+                'invoice_payment_id'  => (string)$payment->id,
+                'allocated_amount'    => (float)$payment->amount,
+                'currency'            => (string)($payment->currency ?? 'PLN'),
+                'allocation_type'     => (string)($payment->payment_type ?? 'gross'),
+                'note'                => 'Naprawa integralności (z confirmMatch)',
+            ]);
+
+            if (!$Allocations->save($allocation)) {
+                $fixed['errors'][] = 'Alloc save: ' . json_encode($allocation->getErrors());
+                continue;
+            }
+
+            $payment->bank_transaction_allocation_id = (string)$allocation->id;
+            if ($Payments->save($payment)) {
+                $fixed['orphan_payments']++;
+            } else {
+                $fixed['errors'][] = 'Payment link: ' . json_encode($payment->getErrors());
+            }
+        }
+
+        // === B) Matched bank_tx bez allocation → utwórz allocation + payment ===
+        $matchedTxs = $BankTxs->find()
+            ->where([
+                'BankTransactions.company_id'        => $companyId,
+                'BankTransactions.match_status'      => 'matched',
+                'BankTransactions.invoice_id IS NOT' => null,
+                'BankTransactions.match_confidence >=' => 100,
+            ])
+            ->all();
+
+        foreach ($matchedTxs as $tx) {
+            $hasAlloc = $Allocations->exists(['bank_transaction_id' => $tx->id]);
+            if ($hasAlloc) continue;
+
+            // Szukaj invoice_payment dla tej faktury z podobną kwotą (może istnieje bez linku)
+            $payment = $Payments->find()
+                ->where([
+                    'invoice_id'                        => $tx->invoice_id,
+                    'amount'                            => (float)$tx->amount,
+                    'bank_transaction_allocation_id IS' => null,
+                ])
+                ->first();
+
+            $paymentDate = '';
+            if ($tx->value_date instanceof \DateTimeInterface) $paymentDate = $tx->value_date->format('Y-m-d');
+            elseif (is_object($tx->value_date) && method_exists($tx->value_date, 'format')) $paymentDate = $tx->value_date->format('Y-m-d');
+            else $paymentDate = substr((string)$tx->value_date, 0, 10) ?: date('Y-m-d');
+
+            $allocation = $Allocations->newEntity([
+                'id'                  => \Cake\Utility\Text::uuid(),
+                'company_id'          => $companyId,
+                'bank_transaction_id' => (string)$tx->id,
+                'invoice_id'          => (string)$tx->invoice_id,
+                'allocated_amount'    => (float)$tx->amount,
+                'currency'            => (string)($tx->currency ?? 'PLN'),
+                'allocation_type'     => 'gross',
+                'note'                => 'Naprawa integralności (brakująca alokacja)',
+            ]);
+
+            if (!$Allocations->save($allocation)) {
+                $fixed['errors'][] = 'B-alloc save: ' . json_encode($allocation->getErrors());
+                continue;
+            }
+
+            if ($payment !== null) {
+                $payment->bank_transaction_allocation_id = (string)$allocation->id;
+                $Payments->save($payment);
+                $allocation->invoice_payment_id = (string)$payment->id;
+                $Allocations->save($allocation);
+            } else {
+                // Brak payment — utwórz nowy
+                $payment = $Payments->newEntity([
+                    'id'                             => \Cake\Utility\Text::uuid(),
+                    'invoice_id'                     => (string)$tx->invoice_id,
+                    'bank_transaction_allocation_id' => (string)$allocation->id,
+                    'payment_date'                   => $paymentDate,
+                    'amount'                         => (float)$tx->amount,
+                    'currency'                       => (string)($tx->currency ?? 'PLN'),
+                    'payment_type'                   => 'gross',
+                    'payment_method'                 => 'transfer',
+                    'description'                    => 'Przelew bankowy: ' . ($tx->bank_reference ?? ''),
+                ]);
+                if ($Payments->save($payment)) {
+                    $allocation->invoice_payment_id = (string)$payment->id;
+                    $Allocations->save($allocation);
+                }
+            }
+            $fixed['tx_without_alloc']++;
+        }
+
+        // === C) Allocations bez invoice_payment_id → znajdź payment lub utwórz ===
+        $orphanAllocs = $Allocations->find()
+            ->where([
+                'company_id'           => $companyId,
+                'invoice_payment_id IS' => null,
+                'invoice_id IS NOT'    => null,
+            ])
+            ->all();
+
+        foreach ($orphanAllocs as $alloc) {
+            // Może już istnieje payment wskazujący na tę alokację?
+            $payment = $Payments->find()
+                ->where(['bank_transaction_allocation_id' => $alloc->id])
+                ->first();
+
+            if ($payment !== null) {
+                $alloc->invoice_payment_id = (string)$payment->id;
+                if ($Allocations->save($alloc)) {
+                    $fixed['orphan_allocs']++;
+                }
+                continue;
+            }
+
+            // Brak — szukamy po (invoice_id, amount) niepowiązanego
+            $payment = $Payments->find()
+                ->where([
+                    'invoice_id' => $alloc->invoice_id,
+                    'amount'     => (float)$alloc->allocated_amount,
+                    'bank_transaction_allocation_id IS' => null,
+                ])
+                ->first();
+
+            if ($payment !== null) {
+                $payment->bank_transaction_allocation_id = (string)$alloc->id;
+                $Payments->save($payment);
+                $alloc->invoice_payment_id = (string)$payment->id;
+                if ($Allocations->save($alloc)) {
+                    $fixed['orphan_allocs']++;
+                }
+            }
+        }
+
+        $this->Flash->success(sprintf(
+            'Naprawiono: %d sierot wpłat, %d brakujących alokacji bank_tx, %d back-linków allokacji.',
+            $fixed['orphan_payments'], $fixed['tx_without_alloc'], $fixed['orphan_allocs']
+        ));
+
+        if (!empty($fixed['errors'])) {
+            $this->Flash->error('Błędy: ' . implode(' | ', array_slice($fixed['errors'], 0, 5)));
+        }
+
+        return $this->redirect(['action' => 'checkIntegrity']);
+    }
 }
