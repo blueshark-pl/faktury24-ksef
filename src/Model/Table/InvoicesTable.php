@@ -289,7 +289,12 @@ class InvoicesTable extends Table
     }
 
     /**
-     * Recalculate invoice payment totals
+     * Recalculate invoice payment totals — z konwersją walut.
+     *
+     * Dla faktur walutowych (EUR/USD) z wpłatami w PLN (np. MPP/VAT split):
+     *   - sumuje wpłaty po konwersji do waluty faktury via invoice.currency_exchange
+     *   - alreadypaid jest w walucie faktury (nie raw mix)
+     *   - remaining nigdy nie jest ujemne (clamp do 0)
      */
     public function recalculatePayments($invoiceId)
     {
@@ -297,33 +302,41 @@ class InvoicesTable extends Table
             'contain' => ['InvoicePayments']
         ]);
 
-        // Sumuj wszystkie płatności
-        $totalPaid = 0;
+        $invCurr = strtoupper((string)($invoice->currency ?? 'PLN')) ?: 'PLN';
+        $rate    = (float)($invoice->currency_exchange ?? 0);
+        $total   = (float)$invoice->total;
+
+        // Sumuj wpłaty w walucie faktury (z konwersją gdy się różnią)
+        $totalPaid = 0.0;
         if (!empty($invoice->invoice_payments)) {
             foreach ($invoice->invoice_payments as $payment) {
-                $totalPaid += $payment->amount;
+                $amt  = (float)$payment->amount;
+                $curr = strtoupper((string)($payment->currency ?? $invCurr)) ?: $invCurr;
+                if ($curr === $invCurr) {
+                    $totalPaid += $amt;
+                } elseif ($rate > 0) {
+                    if ($invCurr === 'PLN' && $curr !== 'PLN')      $totalPaid += $amt * $rate;
+                    elseif ($curr === 'PLN' && $invCurr !== 'PLN') $totalPaid += $amt / $rate;
+                    else                                            $totalPaid += $amt;
+                } else {
+                    $totalPaid += $amt;
+                }
             }
         }
 
-        // Oblicz pozostałą kwotę
-        $remaining = $invoice->total - $totalPaid;
-        
-        // Określ status płatności
+        $totalPaid = round($totalPaid, 2);
+        $remaining = round($total - $totalPaid, 2);
+        if ($remaining < 0) $remaining = 0.0; // CLAMP — nadpłata = 0, nie ujemne
+
         $paymentstate = 'unpaid';
-        if ($totalPaid > 0) {
-            if ($remaining <= 0) {
-                $paymentstate = 'paid';
-                $remaining = 0;
-            } else {
-                $paymentstate = 'partial';
-            }
+        if ($totalPaid > 0.01) {
+            $paymentstate = ($remaining <= 0.01) ? 'paid' : 'partial';
         }
 
-        // Zaktualizuj fakturę
         $this->patchEntity($invoice, [
-            'alreadypaid' => $totalPaid,
-            'remaining' => $remaining,
-            'paymentstate' => $paymentstate
+            'alreadypaid'  => $totalPaid,
+            'remaining'    => $remaining,
+            'paymentstate' => $paymentstate,
         ]);
 
         return $this->save($invoice);

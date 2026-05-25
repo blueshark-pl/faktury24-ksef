@@ -53,15 +53,25 @@ $fdate = static function ($d): string {
         </div>
     </div>
 
-    <?php if ($totalIssues > 0): ?>
-        <?= $this->Form->create(null, ['url' => ['action' => 'fixIntegrity']]) ?>
-            <button type="submit" class="btn btn-warning mb-3"
-                    onclick="return confirm('Spróbować naprawić wszystkie wykryte problemy? Akcja utworzy brakujące alokacje i payment-y.')">
-                <i class="ri-tools-line me-1"></i>
-                Napraw wszystkie (<?= $totalIssues ?>)
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <?php if ($totalIssues > 0): ?>
+            <?= $this->Form->create(null, ['url' => ['action' => 'fixIntegrity'], 'class' => 'mb-0']) ?>
+                <button type="submit" class="btn btn-warning"
+                        onclick="return confirm('Spróbować naprawić wszystkie wykryte problemy? Akcja utworzy brakujące alokacje i payment-y.')">
+                    <i class="ri-tools-line me-1"></i>
+                    Napraw wszystkie (<?= $totalIssues ?>)
+                </button>
+            <?= $this->Form->end() ?>
+        <?php endif; ?>
+
+        <?= $this->Form->create(null, ['url' => ['action' => 'refreshAllPaymentStates'], 'class' => 'mb-0']) ?>
+            <button type="submit" class="btn btn-primary"
+                    onclick="return confirm('Przeliczyć paymentstate/alreadypaid/remaining dla WSZYSTKICH faktur w bazie?\n\nUżywa currency-aware logiki — naprawia ujemne remaining z faktur walutowych. Bezpieczne, tylko aktualizuje cached pola.')">
+                <i class="ri-refresh-line me-1"></i>
+                Przelicz alreadypaid/remaining wszystkich faktur
             </button>
         <?= $this->Form->end() ?>
-    <?php endif; ?>
+    </div>
 
     <?php
         $renderFixBtn = function (string $type, string $id) {

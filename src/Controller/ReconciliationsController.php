@@ -2004,12 +2004,19 @@ class ReconciliationsController extends AppController
         $remaining = round($total - $paid, 2);
         $paid      = round($paid, 2);
 
-        if ($remaining <= 0.01) {
+        // CLAMP: remaining nie może być ujemne (przy nadpłacie zostaje 0,
+        // a paymentstate i tak będzie 'paid')
+        if ($remaining < 0) {
+            $remaining = 0.0;
+        }
+
+        if ($remaining <= 0.01 && $paid > 0.01) {
             $state = 'paid';
         } elseif ($paid > 0.01) {
             $state = 'partial';
         } else {
             $state = 'unpaid';
+            $remaining = $total; // 0 wpłat = wszystko do zapłaty
         }
 
         $Invoices->updateAll(
@@ -2297,6 +2304,40 @@ class ReconciliationsController extends AppController
         } else {
             $this->Flash->error($result['message'] ?? 'Nie udało się naprawić.');
         }
+        return $this->redirect(['action' => 'checkIntegrity']);
+    }
+
+    /**
+     * Bulk: przelicza paymentstate/alreadypaid/remaining wszystkich faktur
+     * używając currency-aware InvoicesTable::recalculatePayments.
+     * Naprawia ujemne remaining z czasów przed fixem konwersji walut.
+     */
+    public function refreshAllPaymentStates(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $Invoices  = $this->fetchTable('Invoices');
+
+        $invIds = $Invoices->find()
+            ->where(['company_id' => $companyId])
+            ->select(['id'])
+            ->all()
+            ->extract('id')
+            ->toList();
+
+        $count = 0;
+        foreach ($invIds as $id) {
+            try {
+                $Invoices->recalculatePayments((string)$id);
+                $count++;
+            } catch (\Exception $e) {
+                \Cake\Log\Log::warning('refreshAllPaymentStates: ' . $e->getMessage());
+            }
+        }
+
+        $this->Flash->success(sprintf('Przeliczono paymentstate dla %d faktur.', $count));
         return $this->redirect(['action' => 'checkIntegrity']);
     }
 

@@ -170,6 +170,9 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/admin/rozliczenia/odepnij-kategorie/{category}', [
             'controller' => 'Reconciliations', 'action' => 'unlinkAllCategory',
         ])->setPass(['category']);
+        $builder->post('/admin/rozliczenia/przelicz-wszystkie', [
+            'controller' => 'Reconciliations', 'action' => 'refreshAllPaymentStates',
+        ]);
 
         // Wyciągi bankowe MT940
         $builder->get('/wyciagi', ['controller' => 'BankTransactions', 'action' => 'index']);
