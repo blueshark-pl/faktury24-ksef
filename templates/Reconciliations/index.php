@@ -1913,6 +1913,27 @@ tr.alloc-link-hi { box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35); }
         return clean ? ('…' + clean.slice(-8)) : '';
     }
 
+    // Buduje grupę przycisków: "Powiąż" (cała kwota) + "Częściowo" (prompt)
+    // Używana dla tx ze statusem proposed/unmatched.
+    function _buildLinkButtons(tx, mainBtnClass) {
+        return '<div class="d-flex gap-1 justify-content-end">'
+             + '<button type="button" class="btn btn-sm ' + mainBtnClass + ' py-0 btn-link-tx"'
+             + ' data-tx-id="' + esc(tx.id) + '"'
+             + ' data-tx-amount="' + esc(tx.amount) + '"'
+             + ' data-tx-currency="' + esc((tx.currency || 'PLN').toUpperCase()) + '"'
+             + ' data-tx-date="' + esc(tx.value_date) + '"'
+             + ' title="Powiąż całą kwotę z fakturą">'
+             + '<i class="ri-link me-1"></i>Powiąż</button>'
+             + '<button type="button" class="btn btn-sm btn-outline-primary py-0 btn-link-tx-partial"'
+             + ' data-tx-id="' + esc(tx.id) + '"'
+             + ' data-tx-amount="' + esc(tx.amount) + '"'
+             + ' data-tx-currency="' + esc((tx.currency || 'PLN').toUpperCase()) + '"'
+             + ' data-tx-date="' + esc(tx.value_date) + '"'
+             + ' title="Powiąż TYLKO część kwoty z tą fakturą (reszta zostanie wolna dla innych)">'
+             + '<i class="ri-scissors-line"></i></button>'
+             + '</div>';
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
     function esc(s) {
         return String(s)
@@ -1967,18 +1988,10 @@ tr.alloc-link-hi { box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35); }
         } else if (tx.match_status === 'proposed') {
             statusBadge = '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">'
                         + '<i class="ri-alert-line me-1"></i>Sugerowany</span>';
-            actionCol   = '<button type="button" class="btn btn-sm btn-success py-0 btn-link-tx"'
-                        + ' data-tx-id="' + esc(tx.id) + '"'
-                        + ' data-tx-amount="' + esc(tx.amount) + '"'
-                        + ' data-tx-date="' + esc(tx.value_date) + '">'
-                        + '<i class="ri-link me-1"></i>Powiąż</button>';
+            actionCol = _buildLinkButtons(tx, 'btn-success');
         } else {
             statusBadge = '<span class="badge bg-secondary-subtle text-secondary border">Wolny</span>';
-            actionCol   = '<button type="button" class="btn btn-sm btn-outline-success py-0 btn-link-tx"'
-                        + ' data-tx-id="' + esc(tx.id) + '"'
-                        + ' data-tx-amount="' + esc(tx.amount) + '"'
-                        + ' data-tx-date="' + esc(tx.value_date) + '">'
-                        + '<i class="ri-link me-1"></i>Powiąż</button>';
+            actionCol = _buildLinkButtons(tx, 'btn-outline-success');
         }
 
         var invTag = tx.parsed_inv
@@ -2453,6 +2466,110 @@ tr.alloc-link-hi { box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35); }
                     if (amtField)  amtField.value  = parseFloat(this.dataset.txAmount).toFixed(2);
                     if (dateField) dateField.value  = this.dataset.txDate;
                     if (amtField)  amtField.focus();
+                });
+            });
+
+            // Powiąż CZĘŚCIOWO — SweetAlert2 modal z polem kwoty
+            container.querySelectorAll('.btn-link-tx-partial').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (this.disabled) return;
+                    var clicked  = this;
+                    var txId     = this.dataset.txId;
+                    var txAmount = parseFloat(this.dataset.txAmount);
+                    var txCurr   = this.dataset.txCurrency || 'PLN';
+                    var txDate   = this.dataset.txDate;
+
+                    if (typeof Swal === 'undefined') {
+                        alert('SweetAlert2 nie załadowany — użyj zwykłego Powiąż.');
+                        return;
+                    }
+
+                    Swal.fire({
+                        title: 'Powiąż część przelewu',
+                        html:
+                            '<div class="text-start small mb-3">'
+                          + '<div class="text-muted mb-2">Przelew: <strong>' + esc(fmtAmount(txAmount)) + ' ' + esc(txCurr) + '</strong> · ' + esc(txDate) + '</div>'
+                          + '<div class="text-muted">Wpisz kwotę do alokacji TYLKO na tę fakturę. Reszta pozostanie wolna i można ją przypisać do innej faktury.</div>'
+                          + '</div>'
+                          + '<div class="d-flex gap-2 mb-2 justify-content-center">'
+                          + '<button type="button" class="btn btn-sm btn-outline-secondary swal-fill-amt" data-amt="' + txAmount + '">Cała kwota</button>'
+                          + '<button type="button" class="btn btn-sm btn-outline-secondary swal-fill-amt" data-amt="' + (txAmount / 2).toFixed(2) + '">Połowa</button>'
+                          + '</div>',
+                        input: 'number',
+                        inputValue: txAmount.toFixed(2),
+                        inputAttributes: { step: '0.01', min: '0.01', max: txAmount.toFixed(2) },
+                        inputLabel: 'Kwota do alokacji (' + txCurr + ')',
+                        showCancelButton: true,
+                        confirmButtonText: '<i class="ri-link me-1"></i>Powiąż częściowo',
+                        cancelButtonText: 'Anuluj',
+                        confirmButtonColor: '#0d6efd',
+                        didOpen: function (popup) {
+                            // Pille do szybkiego wypełnienia
+                            popup.querySelectorAll('.swal-fill-amt').forEach(function (b) {
+                                b.addEventListener('click', function () {
+                                    var inp = popup.querySelector('.swal2-input');
+                                    if (inp) inp.value = parseFloat(this.dataset.amt).toFixed(2);
+                                });
+                            });
+                        },
+                        inputValidator: function (value) {
+                            var v = parseFloat(value);
+                            if (!v || v <= 0)         return 'Kwota musi być > 0';
+                            if (v > txAmount + 0.001) return 'Kwota nie może przekraczać ' + fmtAmount(txAmount) + ' ' + txCurr;
+                        }
+                    }).then(function (result) {
+                        if (!result.isConfirmed) return;
+                        var amount = parseFloat(result.value);
+
+                        clicked.disabled = true;
+                        clicked.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+                        var fd = new FormData();
+                        fd.append('bank_transaction_id', txId);
+                        fd.append('invoice_id', currentInvoiceId);
+                        fd.append('allocated_amount', amount.toFixed(2));
+                        fd.append('currency', txCurr);
+                        fd.append('allocation_type', 'gross');
+                        var csrfInput = document.querySelector('input[name="_csrfToken"]');
+                        if (csrfInput) fd.append('_csrfToken', csrfInput.value);
+
+                        fetch('/rozliczenia/add-allocation', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-Token': csrfInput ? csrfInput.value : '',
+                                'Accept': 'application/json'
+                            },
+                            body: fd
+                        })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.success) {
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: 'Alokacja zapisana',
+                                    text: 'Powiązano ' + fmtAmount(amount) + ' ' + txCurr + ' z fakturą.',
+                                    timer: 1800, showConfirmButton: false
+                                });
+                                var filterToggle = document.getElementById('bankTxAmountFilterToggle');
+                                loadBankTransactions(currentInvoiceId, !!(filterToggle && filterToggle.checked));
+                                loadAllocations(currentInvoiceId, false);
+                            } else {
+                                if (clicked.isConnected) {
+                                    clicked.disabled = false;
+                                    clicked.innerHTML = '<i class="ri-scissors-line"></i>';
+                                }
+                                Swal.fire({ icon: 'error', title: 'Błąd alokacji', text: data.error || 'Nie udało się zapisać.' });
+                            }
+                        })
+                        .catch(function () {
+                            if (clicked.isConnected) {
+                                clicked.disabled = false;
+                                clicked.innerHTML = '<i class="ri-scissors-line"></i>';
+                            }
+                            Swal.fire({ icon: 'error', title: 'Błąd', text: 'Nie udało się wysłać żądania.' });
+                        });
+                    });
                 });
             });
         }
