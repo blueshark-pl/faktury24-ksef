@@ -2730,10 +2730,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var typeLabels = { gross: 'brutto', net: 'netto', vat: 'VAT' };
         var html = '';
-        var totalAllocated = 0;
+        var sumByCurrency = {};
 
         allocations.forEach(function (a) {
-            totalAllocated += a.allocated_amount;
+            // ŹRÓDŁO PRAWDY: bank_transactions.currency. Gdy się różni od allocation.currency,
+            // pokazujemy z tx (i ostrzeżenie obok), bo allocation może być starą PLN-domyślką.
+            var allocCurr = (a.currency || 'PLN').toUpperCase();
+            var txCurr    = (a.tx_currency || '').toUpperCase();
+            var displayCurr   = txCurr || allocCurr;
+            var displayAmount = (txCurr && a.tx_amount != null && txCurr !== allocCurr)
+                ? parseFloat(a.tx_amount)
+                : parseFloat(a.allocated_amount);
+            var mismatch = txCurr && txCurr !== allocCurr;
+            var mismatchBadge = mismatch
+                ? '<span class="badge bg-warning-subtle text-warning border ms-1"'
+                  + ' title="Niezgodność: alokacja w DB ma ' + esc(allocCurr) + ' ale przelew jest w ' + esc(txCurr)
+                  + '. Otwórz /admin/rozliczenia/sprawdz-integralnosc i napraw kategorię D."'
+                  + ' style="font-size:.6rem"><i class="ri-error-warning-line"></i></span>'
+                : '';
+
+            sumByCurrency[displayCurr] = (sumByCurrency[displayCurr] || 0) + displayAmount;
+
             var typeBadge = '<span class="badge bg-secondary-subtle text-secondary border me-1" style="font-size:.7em">'
                           + (typeLabels[a.allocation_type] || a.allocation_type) + '</span>';
             var txInfo = a.tx_date
@@ -2743,7 +2760,13 @@ document.addEventListener('DOMContentLoaded', function () {
             html += '<div class="d-flex align-items-start gap-2 py-2 border-bottom alloc-row" data-alloc-id="' + esc(a.id) + '">'
                   + '<div class="flex-grow-1 min-width-0">'
                   +   typeBadge
-                  +   '<span class="fw-semibold small">' + fmtAmount(a.allocated_amount) + '\u202f' + esc(a.currency) + '</span>'
+                  +   '<span class="fw-semibold small">' + fmtAmount(displayAmount) + '\u202f' + esc(displayCurr) + '</span>'
+                  +   mismatchBadge
+                  +   (mismatch
+                      ? '<div class="text-warning small" style="font-size:.7em"><i class="ri-information-line me-1"></i>'
+                        + 'DB ma: ' + fmtAmount(a.allocated_amount) + ' ' + esc(allocCurr) + ' \u2014 kliknij napraw w panelu admina'
+                        + '</div>'
+                      : '')
                   +   (txInfo ? '<div class="mt-1">' + txInfo + '</div>' : '')
                   +   (a.note ? '<div class="text-muted" style="font-size:.75em"><i class="ri-chat-1-line me-1"></i>' + esc(a.note) + '</div>' : '')
                   + '</div>'
@@ -2755,15 +2778,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (list) list.innerHTML = html;
 
-        // Pasek postępu (tylko jeśli znamy total)
-        var remEl  = document.getElementById('modalRemaining');
-        var remTxt = remEl ? remEl.textContent : '';
+        // Pasek postępu — sumy per waluta (osobno dla każdej, BEZ konwersji)
         if (summaryBar) {
             summaryBar.style.display = '';
             var paidEl = document.getElementById('allocSummaryPaid');
             var remSumEl = document.getElementById('allocSummaryRemaining');
-            if (paidEl) paidEl.textContent = fmtAmount(totalAllocated);
-            // remaining nie znamy dokładnie bez total — pomijamy progres
+            if (paidEl) {
+                var sumsHtml = Object.keys(sumByCurrency).map(function (c) {
+                    return '<span>' + fmtAmount(sumByCurrency[c]) + ' ' + esc(c) + '</span>';
+                }).join(' + ');
+                paidEl.innerHTML = sumsHtml || '0,00';
+            }
             var bar = document.getElementById('allocProgressBar');
             if (bar) bar.style.width = '0%';
             if (remSumEl) remSumEl.textContent = '—';
