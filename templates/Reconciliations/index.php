@@ -674,6 +674,15 @@ if ($status !== '')            $activeFilterCount++;
                 $overpayDiff = $payAgg['overpaid_by'];
                 $overpayCurr = $payAgg['overpaid_currency'];
 
+                // ── Weryfikacja invoice.remaining z DB względem sumy wpłat ──
+                // Sprawdzamy czy DB remaining zgadza się z computed = total - sum(payments).
+                // Powód: InvoicePaymentsTable::afterSave wywołuje recalculatePayments które
+                // NIE robi konwersji walut — dla faktur walutowych z wpłatami PLN remaining
+                // w DB jest błędne. Tu liczymy correct computed value używając konwersji.
+                $computedRemaining = round(max(0.0, (float)$invoice->total - $payAgg['sum_inv_curr']), 2);
+                $dbRemaining       = round((float)$invoice->remaining, 2);
+                $remainingMismatch = !empty($bts) && abs($computedRemaining - $dbRemaining) > 0.01;
+
                 // Kwoty kontrolne — brutto/netto/VAT w EUR i PLN (jak pille w modalu)
                 $invTotalEur = (float)($invoice->total ?? 0);
                 $invNettoEur = (float)($invoice->netto ?? 0);
@@ -840,6 +849,31 @@ if ($status !== '')            $activeFilterCount++;
                         <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid' && !$isOverpaid): ?>
                             <div class="text-muted" style="font-size:0.7rem" data-col="alreadypaid">
                                 wpłacono: <?= number_format((float)$invoice->alreadypaid, 2, ',', ' ') ?>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($remainingMismatch): ?>
+                            <?php
+                                // Computed vs DB rozjazd — pokażmy świeże computed jako prawdziwą wartość
+                                $diffLabel = $computedRemaining > $dbRemaining ? 'więcej do zapłaty' : 'mniej do zapłaty';
+                                $diffAbs   = round(abs($computedRemaining - $dbRemaining), 2);
+                            ?>
+                            <div class="mt-1 small">
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
+                                      title="<?= h(sprintf(
+                                          'Pozostało w DB (%s) różni się od wyliczenia z wpłat (%s %s). Najpewniej recalculatePayments nie zrobił konwersji walut.',
+                                          number_format($dbRemaining, 2, ',', ' '),
+                                          number_format($computedRemaining, 2, ',', ' '),
+                                          $invCurr
+                                      )) ?>"
+                                      style="font-size:.65rem">
+                                    <i class="ri-error-warning-line me-1"></i>DB ≠ wyliczenie
+                                </span>
+                                <div class="text-danger fw-semibold" style="font-size:.7rem">
+                                    realnie: <?= number_format($computedRemaining, 2, ',', ' ') ?> <?= h($invCurr) ?>
+                                </div>
+                                <div class="text-muted" style="font-size:.65rem">
+                                    (DB: <?= number_format($dbRemaining, 2, ',', ' ') ?> · różnica: <?= number_format($diffAbs, 2, ',', ' ') ?>)
+                                </div>
                             </div>
                         <?php endif; ?>
                     </td>
