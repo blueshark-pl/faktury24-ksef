@@ -166,6 +166,7 @@ $bankBadge = function (array $bts): string {
 // zweryfikować na podstawie wyświetlanych sum.
 $paymentsTotal = function (array $bts, object $invoice): array {
     $invCurr = strtoupper((string)($invoice->currency ?? 'PLN')) ?: 'PLN';
+    $rate    = (float)($invoice->currency_exchange ?? 0);
     $total   = (float)($invoice->total ?? 0);
 
     // Rozbij wpłaty per waluta
@@ -176,24 +177,35 @@ $paymentsTotal = function (array $bts, object $invoice): array {
         $byCurrency[$c] = ($byCurrency[$c] ?? 0.0) + $a;
     }
 
-    $sumInvCurr = $byCurrency[$invCurr] ?? 0.0;
-    $mixed      = count($byCurrency) > 1;
+    $mixed = count($byCurrency) > 1;
 
-    // Nadpłata — tylko gdy WSZYSTKIE wpłaty w walucie faktury, sum > total
-    $isOverpaid   = false;
-    $overpaidBy   = 0.0;
-    $overpaidCurr = $invCurr;
-
-    if (!$mixed && isset($byCurrency[$invCurr]) && $sumInvCurr > $total + 0.01) {
-        $isOverpaid   = true;
-        $overpaidBy   = round($sumInvCurr - $total, 2);
-        $overpaidCurr = $invCurr;
+    // Łączna suma WSZYSTKICH wpłat przeliczona do waluty faktury po kursie faktury.
+    // Dla faktury PLN — wszystko sumujemy w PLN (PLN→PLN bez konwersji, foreign→PLN przez rate).
+    // Dla faktury walutowej z poprawnym kursem — PLN→walutaFaktury / rate, sama waluta = sum bezpośrednio.
+    $sumInInvCurr = 0.0;
+    foreach ($byCurrency as $c => $v) {
+        if ($c === $invCurr) {
+            $sumInInvCurr += $v;
+        } elseif ($rate > 0) {
+            if ($invCurr === 'PLN' && $c !== 'PLN')      $sumInInvCurr += $v * $rate;
+            elseif ($c === 'PLN' && $invCurr !== 'PLN') $sumInInvCurr += $v / $rate;
+            else                                         $sumInInvCurr += $v;
+        } else {
+            $sumInInvCurr += $v; // brak kursu — naive sum
+        }
     }
+    $sumInInvCurr = round($sumInInvCurr, 2);
+
+    // Nadpłata: suma po konwersji > invoice.total
+    $isOverpaid   = $sumInInvCurr > $total + 0.01;
+    $overpaidBy   = $isOverpaid ? round($sumInInvCurr - $total, 2) : 0.0;
+    $overpaidCurr = $invCurr;
 
     return [
         'by_currency'       => $byCurrency,
         'mixed'             => $mixed,
-        'sum_inv_curr'      => round($sumInvCurr, 2),
+        'sum_inv_curr'      => $sumInInvCurr,    // łączna suma we walucie faktury (po konwersji)
+        'sum_inv_curr_only' => round($byCurrency[$invCurr] ?? 0.0, 2), // tylko wpłaty w walucie faktury
         'total_inv_curr'    => $total,
         'is_overpaid'       => $isOverpaid,
         'overpaid_by'       => $overpaidBy,
@@ -889,25 +901,56 @@ if ($status !== '')            $activeFilterCount++;
                         </div>
                         <?php if (!empty($bts)): ?>
                             <div style="font-size:0.7rem" class="text-muted mt-1">
-                                <?php foreach ($bts as $btRow): ?>
+                                <?php foreach ($bts as $btRow):
+                                    $btAmt  = (float)$btRow->amount;
+                                    $btCurr = strtoupper((string)($btRow->currency ?? 'PLN'));
+                                    // Konwersja do waluty faktury gdy się różni (po kursie z faktury)
+                                    $btEur = null;
+                                    if ($isFx && $btCurr !== $invCurr && $invRate > 0) {
+                                        $btEur = $btCurr === 'PLN' ? $btAmt / $invRate : $btAmt * $invRate;
+                                    }
+                                ?>
                                     <div>
-                                        <?= number_format((float)$btRow->amount, 2, ',', ' ') ?>
-                                        <?= h(strtoupper($btRow->currency ?? 'PLN')) ?>
+                                        <?= number_format($btAmt, 2, ',', ' ') ?>
+                                        <?= h($btCurr) ?>
+                                        <?php if ($btEur !== null): ?>
+                                            <span class="text-info">≈ <?= number_format($btEur, 2, ',', ' ') ?> <?= h($invCurr) ?></span>
+                                        <?php endif; ?>
                                         · <?= $fdate($btRow->value_date) ?>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                            <?php if (count($bts) > 1): ?>
+                            <?php if (count($bts) > 1 || ($isFx && !isset($payAgg['by_currency'][$invCurr]))): ?>
                                 <div class="mt-1 pt-1 border-top" style="font-size:0.72rem">
+                                    <?php
+                                        // Łączna suma w walucie faktury (z konwersją wszystkich pozycji)
+                                        $sumInInvCurr = 0.0;
+                                        foreach ($payAgg['by_currency'] as $c => $v) {
+                                            if ($c === $invCurr) { $sumInInvCurr += $v; }
+                                            elseif ($isFx && $invRate > 0) {
+                                                $sumInInvCurr += $c === 'PLN' ? $v / $invRate : $v * $invRate;
+                                            }
+                                        }
+                                    ?>
                                     <?php foreach ($payAgg['by_currency'] as $c => $v): ?>
                                         <div>
                                             <strong>Σ <?= h($c) ?>:</strong>
                                             <?= number_format($v, 2, ',', ' ') ?>
                                             <?php if ($c === $invCurr): ?>
                                                 <span class="text-muted">/ <?= number_format($payAgg['total_inv_curr'], 2, ',', ' ') ?></span>
+                                            <?php elseif ($isFx && $invRate > 0): ?>
+                                                <?php $eurEq = $c === 'PLN' ? $v / $invRate : $v * $invRate; ?>
+                                                <span class="text-info">≈ <?= number_format($eurEq, 2, ',', ' ') ?> <?= h($invCurr) ?></span>
                                             <?php endif; ?>
                                         </div>
                                     <?php endforeach; ?>
+                                    <?php if ($isFx && $payAgg['mixed']): ?>
+                                        <div class="mt-1 pt-1 border-top fw-semibold">
+                                            Σ <?= h($invCurr) ?> (po kursie):
+                                            <?= number_format($sumInInvCurr, 2, ',', ' ') ?> /
+                                            <?= number_format($payAgg['total_inv_curr'], 2, ',', ' ') ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             <?php endif; ?>
                             <?php if ($isOverpaid): ?>
