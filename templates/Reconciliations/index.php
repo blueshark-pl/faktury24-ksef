@@ -1643,6 +1643,36 @@ document.addEventListener('DOMContentLoaded', function () {
 <style>
 #paymentModal .modal-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 #paymentForm { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; }
+
+/* Animowany łącznik SVG: alloc-row ↔ tx-row */
+.alloc-connection-path {
+    fill: none;
+    stroke: #2563eb;
+    stroke-width: 2;
+    stroke-dasharray: 8 5;
+    stroke-linecap: round;
+    animation: alloc-marching 0.7s linear infinite;
+    filter: drop-shadow(0 1px 2px rgba(37, 99, 235, .3));
+}
+.alloc-connection-dot {
+    fill: #2563eb;
+    stroke: #fff;
+    stroke-width: 1.5;
+    animation: alloc-pulse 1.2s ease-in-out infinite;
+}
+@keyframes alloc-marching {
+    to { stroke-dashoffset: -26; }
+}
+@keyframes alloc-pulse {
+    0%, 100% { opacity: 1; r: 4; }
+    50% { opacity: .6; r: 5.5; }
+}
+.alloc-link-hi {
+    background-color: rgba(37, 99, 235, .08) !important;
+    transition: background-color .15s;
+    box-shadow: inset 3px 0 0 #2563eb;
+}
+tr.alloc-link-hi { box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .35); }
 /* Pille kwot — analog z /wyciagi/transakcje */
 #paymentModal .btn-quick-amt {
     font-size: .72rem; padding: .25rem .55rem; border-radius: .375rem;
@@ -1963,7 +1993,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? '<span class="text-muted ms-1" style="font-size:.72em">PLN</span>'
             : '<span class="badge bg-warning-subtle text-warning border ms-1" style="font-size:.65em;font-weight:600">' + esc(txCurr) + '</span>';
 
-        return '<tr data-account="' + esc(cleanAccount) + '" data-score="' + (tx.match_score || 0) + '" data-currency="' + esc(txCurr) + '">'
+        return '<tr data-tx-id="' + esc(tx.id) + '" data-account="' + esc(cleanAccount) + '" data-score="' + (tx.match_score || 0) + '" data-currency="' + esc(txCurr) + '">'
             + '<td class="text-nowrap small">' + esc(tx.value_date || '—') + '</td>'
             + '<td class="text-end text-nowrap small fw-semibold">' + fmtAmount(tx.amount) + currBadge + '</td>'
             + '<td class="small" style="max-width:200px">'
@@ -2275,6 +2305,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (noResults)   noResults.style.display = (n === 0) ? '' : 'none';
 
             wireTxButtons();
+            // Bind animated connection lines (alloc-row ↔ tx-row) — po każdym re-renderze
+            if (typeof wireConnectionLines === 'function') wireConnectionLines();
         }
 
         // Sortowanie — przyciski
@@ -2761,7 +2793,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? '<span class="text-muted" style="font-size:.75em">'
                   + a.tx_date + ' · ' + esc(a.tx_party || '') + '</span>'
                 : '';
-            html += '<div class="d-flex align-items-start gap-2 py-2 border-bottom alloc-row" data-alloc-id="' + esc(a.id) + '">'
+            html += '<div class="d-flex align-items-start gap-2 py-2 border-bottom alloc-row"'
+                  + ' data-alloc-id="' + esc(a.id) + '"'
+                  + ' data-tx-id="' + esc(a.bank_tx_id || '') + '">'
                   + '<div class="flex-grow-1 min-width-0">'
                   +   typeBadge
                   +   '<span class="fw-semibold small">' + fmtAmount(displayAmount) + '\u202f' + esc(displayCurr) + '</span>'
@@ -2821,7 +2855,114 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
         });
+
+        // Wire animowane łączniki SVG między alloc-row a tx-row
+        wireConnectionLines();
     }
+
+    // ── Animowane łączniki SVG: alloc-row ↔ tx-row ────────────────────────────
+    // Po najechaniu na wiersz w "Przypisane płatności" pojawia się
+    // przerywana, marszująca kreska do odpowiadającego przelewu w lewej kolumnie
+    // (i odwrotnie).
+
+    function _getOrCreateSvg() {
+        var modalBody = document.querySelector('#paymentModal .modal-body');
+        if (!modalBody) return null;
+        var svg = document.getElementById('alloc-connection-svg');
+        if (!svg) {
+            if (getComputedStyle(modalBody).position === 'static') {
+                modalBody.style.position = 'relative';
+            }
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'alloc-connection-svg';
+            svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;overflow:visible';
+            modalBody.appendChild(svg);
+        }
+        return svg;
+    }
+
+    function _drawConnection(elA, elB) {
+        var svg = _getOrCreateSvg();
+        if (!svg || !elA || !elB) return;
+        var modalBody = document.querySelector('#paymentModal .modal-body');
+        var bRect = modalBody.getBoundingClientRect();
+        var aRect = elA.getBoundingClientRect();
+        var cRect = elB.getBoundingClientRect();
+
+        // Punkt startowy — prawa krawędź lewej kolumny (tx), środek wysokości
+        // Punkt końcowy — lewa krawędź prawej kolumny (alloc), środek wysokości
+        // Wybieramy automatycznie: który z elementów jest po lewej.
+        var fromRight, fromY, toLeft, toY;
+        if (aRect.left < cRect.left) {
+            fromRight = aRect.right - bRect.left;
+            fromY     = aRect.top + aRect.height / 2 - bRect.top;
+            toLeft    = cRect.left - bRect.left;
+            toY       = cRect.top + cRect.height / 2 - bRect.top;
+        } else {
+            fromRight = cRect.right - bRect.left;
+            fromY     = cRect.top + cRect.height / 2 - bRect.top;
+            toLeft    = aRect.left - bRect.left;
+            toY       = aRect.top + aRect.height / 2 - bRect.top;
+        }
+
+        // Krzywa Béziera z poziomymi punktami kontrolnymi (S-curve)
+        var dx = toLeft - fromRight;
+        var cx1 = fromRight + dx * 0.5;
+        var cx2 = fromRight + dx * 0.5;
+        var path = 'M ' + fromRight + ' ' + fromY
+                 + ' C ' + cx1 + ' ' + fromY + ', '
+                 + cx2 + ' ' + toY + ', '
+                 + toLeft + ' ' + toY;
+
+        svg.innerHTML = '<path d="' + path + '" class="alloc-connection-path"/>'
+                      + '<circle cx="' + fromRight + '" cy="' + fromY + '" r="4" class="alloc-connection-dot"/>'
+                      + '<circle cx="' + toLeft + '" cy="' + toY + '" r="4" class="alloc-connection-dot"/>';
+    }
+
+    function _clearConnection() {
+        var svg = document.getElementById('alloc-connection-svg');
+        if (svg) svg.innerHTML = '';
+        document.querySelectorAll('.alloc-link-hi').forEach(function (el) {
+            el.classList.remove('alloc-link-hi');
+        });
+    }
+
+    function wireConnectionLines() {
+        // Bind dla alloc-row (po prawej stronie)
+        document.querySelectorAll('.alloc-row[data-tx-id]').forEach(function (row) {
+            if (row._wiredConn) return;
+            row._wiredConn = true;
+            row.addEventListener('mouseenter', function () {
+                var txId = this.dataset.txId;
+                if (!txId) return;
+                var txRow = document.querySelector('tr[data-tx-id="' + txId + '"]');
+                if (txRow) {
+                    this.classList.add('alloc-link-hi');
+                    txRow.classList.add('alloc-link-hi');
+                    _drawConnection(this, txRow);
+                }
+            });
+            row.addEventListener('mouseleave', _clearConnection);
+        });
+        // Bind dla tx-row (po lewej stronie)
+        document.querySelectorAll('tr[data-tx-id]').forEach(function (row) {
+            if (row._wiredConn) return;
+            row._wiredConn = true;
+            row.addEventListener('mouseenter', function () {
+                var txId = this.dataset.txId;
+                var allocRow = document.querySelector('.alloc-row[data-tx-id="' + txId + '"]');
+                if (allocRow) {
+                    this.classList.add('alloc-link-hi');
+                    allocRow.classList.add('alloc-link-hi');
+                    _drawConnection(this, allocRow);
+                }
+            });
+            row.addEventListener('mouseleave', _clearConnection);
+        });
+    }
+
+    // Wire dla tx rows też po renderze listy przelewów
+    var _origWireTxButtons = null;
 
     // ── Przycisk "Przypisz przelew" w wierszu ────────────────────────────────
     // Nadpisujemy wireTxButtons — dodajemy btn-assign-tx obok btn-use-tx
