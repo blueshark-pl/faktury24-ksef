@@ -126,11 +126,13 @@ $paymentBadge = function (?string $state, ?string $paymentdate, string $today): 
 };
 
 // Badge transakcji bankowej — TYLKO potwierdzone (matched) wpłaty
-$bankBadge = function (?object $bt): string {
-    if ($bt === null) return '';
-    $count  = (int)($bt->_match_count ?? 1);
+// Przyjmuje tablicę transakcji (może być 1 albo więcej powiązanych z fakturą)
+$bankBadge = function (array $bts): string {
+    if (empty($bts)) return '';
+    $count  = count($bts);
+    $label  = $count > 1 ? 'Wpłaty' : 'Wpłata';
     $suffix = $count > 1 ? ' <span class="opacity-75">×' . $count . '</span>' : '';
-    return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłata potwierdzona"><i class="ri-checkbox-circle-line me-1"></i>Wpłata' . $suffix . '</span>';
+    return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłaty potwierdzone"><i class="ri-checkbox-circle-line me-1"></i>' . $label . $suffix . '</span>';
 };
 
 // Pomocnik URL z aktualnymi filtrami
@@ -574,7 +576,8 @@ if ($status !== '')            $activeFilterCount++;
             </thead>
             <tbody>
             <?php foreach ($invoices as $invoice):
-                $bt    = $bankByInvoice[(string)$invoice->id] ?? null;
+                $bts   = $bankByInvoice[(string)$invoice->id] ?? [];
+                $bt    = $bts[0] ?? null; // najnowszy — używany przez bankBadge stary kontrakt
                 $state = $invoice->paymentstate ?? 'unpaid';
 
                 // Korekty do tej faktury
@@ -733,11 +736,16 @@ if ($status !== '')            $activeFilterCount++;
                     </td>
                     <!-- Przelew -->
                     <td>
-                        <?= $bankBadge($bt) ?>
-                        <?php if ($bt !== null): ?>
+                        <?= $bankBadge($bts) ?>
+                        <?php if (!empty($bts)): ?>
                             <div style="font-size:0.7rem" class="text-muted mt-1">
-                                <?= number_format((float)$bt->amount, 2, ',', ' ') ?> <?= h(strtoupper($bt->currency ?? 'PLN')) ?>
-                                · <?= $fdate($bt->value_date) ?>
+                                <?php foreach ($bts as $btRow): ?>
+                                    <div>
+                                        <?= number_format((float)$btRow->amount, 2, ',', ' ') ?>
+                                        <?= h(strtoupper($btRow->currency ?? 'PLN')) ?>
+                                        · <?= $fdate($btRow->value_date) ?>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
                     </td>

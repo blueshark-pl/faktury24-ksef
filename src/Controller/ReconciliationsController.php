@@ -281,8 +281,9 @@ class ReconciliationsController extends AppController
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
         // TYLKO przelewy POTWIERDZONE przez user'a (Powiąż → match_status='matched').
-        // Sugerowane (proposed) NIE są pokazywane — to nie są jeszcze wpłaty.
-        $bankByInvoice = [];
+        // Zbieramy WSZYSTKIE per faktura — kolumna pokazuje pełną listę wpłat,
+        // nie tylko najnowszą.
+        $bankByInvoice = []; // invoiceId => array of BankTransaction
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
 
@@ -298,14 +299,7 @@ class ReconciliationsController extends AppController
 
             foreach ($bankRows as $bt) {
                 $iid = (string)$bt->invoice_id;
-                // Zostaw NAJNOWSZY przelew jako "główny" do badge,
-                // ale zliczamy wszystkie dla wyświetlenia ×N gdy więcej niż jeden.
-                if (!isset($bankByInvoice[$iid])) {
-                    $bankByInvoice[$iid] = $bt;
-                    $bankByInvoice[$iid]->_match_count = 1;
-                } else {
-                    $bankByInvoice[$iid]->_match_count++;
-                }
+                $bankByInvoice[$iid][] = $bt;
             }
 
             // ── Zlecenia Speed (lista per faktura) ───────────────────────────
