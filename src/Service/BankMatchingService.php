@@ -23,8 +23,10 @@ class BankMatchingService
 {
     use LocatorAwareTrait;
 
-    // Próg auto-potwierdzenia (confidence >= tego → status 'matched' od razu)
-    private const AUTO_CONFIRM_THRESHOLD = 90;
+    // Próg auto-potwierdzenia (confidence >= tego → status 'matched' od razu).
+    // 999 = AUTO-MATCH WYŁĄCZONY — user musi ręcznie kliknąć "Powiąż" w modal'u.
+    // Wszystkie kandydaci podczas importu MT940 dostają status 'proposed'.
+    private const AUTO_CONFIRM_THRESHOLD = 999;
 
     // Tolerancja kwotowa (PLN) — dopuszczalna różnica przy dopasowaniu
     private const AMOUNT_TOLERANCE = 0.02;

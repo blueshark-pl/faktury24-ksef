@@ -279,31 +279,28 @@ class ReconciliationsController extends AppController
             }
         }
 
-        // ── Przelewy bankowe (per faktura) ──────────────────────────────────
-        // TYLKO przelewy ręcznie potwierdzone (Powiąż) — match_confidence=100.
-        //
-        // Podczas importu MT940 system AUTOMATYCZNIE ustawia match_status='matched'
-        // gdy confidence ≥ AUTO_CONFIRM_THRESHOLD=90 (np. /INV/ → 95, /IDC/ → 75).
-        // Te auto-potwierdzone NIE są pokazywane — tylko ręczne klikinięcia user'a
-        // w "Powiąż" które ustawiają match_confidence = max(prev, 100) = 100.
-        $bankByInvoice = []; // invoiceId => array of BankTransaction
+        // ── Wpłaty per faktura ──────────────────────────────────────────────
+        // Źródło prawdy: invoice_payments (konkretne wpłaty na fakturę).
+        // NIE używamy bank_transactions.match_status — to oddzielna semantyka
+        // (dopasowanie tx ↔ faktura), która może być rozsynchronizowana
+        // (np. auto-match podczas importu MT940 ustawia matched bez invoice_payment).
+        $bankByInvoice = []; // invoiceId => array of InvoicePayment
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
 
-            $bankRows = $this->fetchTable('BankTransactions')->find()
-                ->where([
-                    'company_id'       => $companyId,
-                    'invoice_id IN'    => $invoiceIds,
-                    'match_status'     => 'matched',
-                    'match_confidence >=' => 100,
-                ])
-                ->select(['id', 'invoice_id', 'match_status', 'match_confidence', 'amount', 'currency', 'value_date', 'party_name'])
-                ->orderByDesc('value_date')
+            $bankRows = $this->fetchTable('InvoicePayments')->find()
+                ->where(['invoice_id IN' => $invoiceIds])
+                ->select(['id', 'invoice_id', 'amount', 'currency', 'payment_date',
+                          'payment_method', 'description'])
+                ->orderByDesc('payment_date')
                 ->all()->toArray();
 
-            foreach ($bankRows as $bt) {
-                $iid = (string)$bt->invoice_id;
-                $bankByInvoice[$iid][] = $bt;
+            foreach ($bankRows as $p) {
+                // Normalizujemy do tego samego kontraktu co stare bankBadge —
+                // template używa `amount`, `currency`, `value_date` (alias).
+                $p->value_date = $p->payment_date;
+                $iid = (string)$p->invoice_id;
+                $bankByInvoice[$iid][] = $p;
             }
 
             // ── Zlecenia Speed (lista per faktura) ───────────────────────────
