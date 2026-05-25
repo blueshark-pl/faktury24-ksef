@@ -363,18 +363,70 @@ class BankMatchingService
             return false;
         }
 
-        // Utwórz wpis w invoice_payments (jeśli jeszcze nie istnieje)
+        // ── Waluty ────────────────────────────────────────────────────────
+        // Przelew ma własną walutę (tx.currency), faktura swoją (invoice.currency).
+        // Jeśli równe → wpłata 1:1. Jeśli różne — konwertujemy przez invoice.currency_exchange
+        // (kurs zapisany na fakturze: ile PLN za 1 jednostkę invoice.currency).
+        $txCurrency      = strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN';
+        $invoiceCurrency = strtoupper((string)($invoice->currency ?? 'PLN')) ?: 'PLN';
+        $rate            = (float)($invoice->currency_exchange ?? 0); // PLN za 1 invoiceCurrency
+
+        // Konwertuj kwotę przelewu do waluty faktury (do porównania z total/remaining)
+        $txAmountRaw   = (float)$tx->amount;
+        $txAmountInInv = $txAmountRaw;
+        if ($txCurrency !== $invoiceCurrency && $rate > 0) {
+            if ($invoiceCurrency === 'PLN' && $txCurrency !== 'PLN') {
+                // faktura PLN, przelew EUR → kwota PLN = EUR * kurs
+                $txAmountInInv = $txAmountRaw * $rate;
+            } elseif ($txCurrency === 'PLN' && $invoiceCurrency !== 'PLN') {
+                // faktura EUR, przelew PLN → kwota EUR = PLN / kurs
+                $txAmountInInv = $txAmountRaw / $rate;
+            }
+            // (waluta-waluta cross-currency — pomijamy, traktujemy 1:1; rzadki przypadek)
+        }
+
+        // Suma dotychczasowych wpłat w walucie faktury (konwersja gdy różna)
         $existing = $InvoicePayments->find()
             ->where(['invoice_id' => $invoiceId])
-            ->select(['id', 'amount'])
+            ->select(['id', 'amount', 'currency'])
             ->all()
             ->toList();
 
-        $alreadyPaid = array_sum(array_column($existing, 'amount'));
-        $remaining   = max(0, (float)$invoice->total - $alreadyPaid);
+        $alreadyPaidInInv = 0.0;
+        foreach ($existing as $e) {
+            $eAmt  = (float)$e->amount;
+            $eCurr = strtoupper((string)($e->currency ?? $invoiceCurrency)) ?: $invoiceCurrency;
+            if ($eCurr === $invoiceCurrency) {
+                $alreadyPaidInInv += $eAmt;
+            } elseif ($rate > 0) {
+                if ($invoiceCurrency === 'PLN' && $eCurr !== 'PLN') {
+                    $alreadyPaidInInv += $eAmt * $rate;
+                } elseif ($eCurr === 'PLN' && $invoiceCurrency !== 'PLN') {
+                    $alreadyPaidInInv += $eAmt / $rate;
+                } else {
+                    $alreadyPaidInInv += $eAmt;
+                }
+            } else {
+                $alreadyPaidInInv += $eAmt;
+            }
+        }
 
-        if ($remaining > 0.01) {
-            $paymentAmount = min((float)$tx->amount, $remaining);
+        $remainingInInv = max(0, (float)$invoice->total - $alreadyPaidInInv);
+
+        if ($remainingInInv > 0.01) {
+            // Ile z przelewu "weźmiemy" — nie więcej niż pozostało do zapłaty.
+            // amount zapisujemy W ORYGINALNEJ WALUCIE przelewu (currency = $txCurrency).
+            $takeInInv = min($txAmountInInv, $remainingInInv);
+            // Konwertuj z powrotem do waluty przelewu, by `amount` zgadzało się z `currency`
+            if ($txCurrency === $invoiceCurrency || $rate <= 0) {
+                $paymentAmount = $takeInInv;
+            } elseif ($invoiceCurrency === 'PLN' && $txCurrency !== 'PLN') {
+                $paymentAmount = $takeInInv / $rate;
+            } elseif ($txCurrency === 'PLN' && $invoiceCurrency !== 'PLN') {
+                $paymentAmount = $takeInInv * $rate;
+            } else {
+                $paymentAmount = $takeInInv;
+            }
 
             $payment = $InvoicePayments->newEntity([
                 'id'             => \Cake\Utility\Text::uuid(),
@@ -382,7 +434,8 @@ class BankMatchingService
                 'payment_date'   => $tx->value_date instanceof \DateTimeInterface
                     ? $tx->value_date->format('Y-m-d')
                     : (string)$tx->value_date,
-                'amount'         => $paymentAmount,
+                'amount'         => round($paymentAmount, 2),
+                'currency'       => $txCurrency,
                 'payment_method' => 'transfer',
                 'description'    => 'Przelew bankowy: ' . ($tx->bank_reference ?? $tx->customer_reference ?? ''),
             ]);
@@ -390,7 +443,7 @@ class BankMatchingService
             $InvoicePayments->save($payment);
         }
 
-        // Zaktualizuj paymentstate faktury
+        // Zaktualizuj paymentstate faktury (uwzględniając konwersję walut)
         $this->updateInvoicePaymentState($invoiceId);
 
         return true;
@@ -408,15 +461,37 @@ class BankMatchingService
         $InvoicePayments = $this->fetchTable('InvoicePayments');
 
         $invoice = $Invoices->get($invoiceId, [
-            'fields' => ['id', 'total', 'paymentstate', 'alreadypaid', 'remaining'],
+            'fields' => ['id', 'total', 'currency', 'currency_exchange', 'paymentstate', 'alreadypaid', 'remaining'],
         ]);
-        $paid    = (float)$InvoicePayments->find()
-            ->where(['invoice_id' => $invoiceId])
-            ->select(['s' => $InvoicePayments->find()->func()->sum('amount')])
-            ->first()
-            ?->s ?? 0;
+        $invoiceCurrency = strtoupper((string)($invoice->currency ?? 'PLN')) ?: 'PLN';
+        $rate            = (float)($invoice->currency_exchange ?? 0);
 
-        $total = (float)$invoice->total;
+        // Suma wpłat w walucie faktury (konwertujemy wpłaty w innej walucie po kursie faktury)
+        $payments = $InvoicePayments->find()
+            ->where(['invoice_id' => $invoiceId])
+            ->select(['amount', 'currency'])
+            ->all();
+
+        $paid = 0.0;
+        foreach ($payments as $p) {
+            $amt  = (float)$p->amount;
+            $curr = strtoupper((string)($p->currency ?? $invoiceCurrency)) ?: $invoiceCurrency;
+            if ($curr === $invoiceCurrency) {
+                $paid += $amt;
+            } elseif ($rate > 0) {
+                if ($invoiceCurrency === 'PLN' && $curr !== 'PLN') {
+                    $paid += $amt * $rate;       // np. EUR * kurs = PLN
+                } elseif ($curr === 'PLN' && $invoiceCurrency !== 'PLN') {
+                    $paid += $amt / $rate;       // np. PLN / kurs = EUR
+                } else {
+                    $paid += $amt;
+                }
+            } else {
+                $paid += $amt;
+            }
+        }
+
+        $total     = (float)$invoice->total;
         $remaining = max(0, round($total - $paid, 2));
 
         if ($paid <= 0) {

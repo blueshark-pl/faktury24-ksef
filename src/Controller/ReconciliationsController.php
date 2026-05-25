@@ -1106,6 +1106,7 @@ class ReconciliationsController extends AppController
                 'id'               => (string)$tx->id,
                 'value_date'       => $fmtDate($tx->value_date),
                 'amount'           => (float)$tx->amount,
+                'currency'         => strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN',
                 'direction'        => (string)($tx->direction ?? 'C'),
                 'party_name'       => (string)($tx->party_name ?? ''),
                 'title'            => (string)($tx->title ?? ''),
@@ -1121,7 +1122,7 @@ class ReconciliationsController extends AppController
         // Transakcje już powiązane z tą fakturą
         $linked = $BankTransactions->find()
             ->where(['company_id' => $companyId, 'invoice_id' => $invoiceId])
-            ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
+            ->select(['id', 'value_date', 'amount', 'currency', 'direction', 'party_name', 'title',
                       'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
             ->orderByDesc('value_date')
             ->all()->toArray();
@@ -1207,7 +1208,7 @@ class ReconciliationsController extends AppController
             }
             $candidates = $BankTransactions->find()
                 ->where($conditions)
-                ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
+                ->select(['id', 'value_date', 'amount', 'currency', 'direction', 'party_name', 'title',
                           'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
                 ->orderByDesc('value_date')
                 ->limit(200)

@@ -1675,9 +1675,14 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 + '</div>';
         }
 
-        return '<tr data-account="' + esc(cleanAccount) + '" data-score="' + (tx.match_score || 0) + '">'
+        var txCurr = (tx.currency || 'PLN').toUpperCase();
+        var currBadge = txCurr === 'PLN'
+            ? '<span class="text-muted ms-1" style="font-size:.72em">PLN</span>'
+            : '<span class="badge bg-warning-subtle text-warning border ms-1" style="font-size:.65em;font-weight:600">' + esc(txCurr) + '</span>';
+
+        return '<tr data-account="' + esc(cleanAccount) + '" data-score="' + (tx.match_score || 0) + '" data-currency="' + esc(txCurr) + '">'
             + '<td class="text-nowrap small">' + esc(tx.value_date || '—') + '</td>'
-            + '<td class="text-end text-nowrap small fw-semibold">' + fmtAmount(tx.amount) + '</td>'
+            + '<td class="text-end text-nowrap small fw-semibold">' + fmtAmount(tx.amount) + currBadge + '</td>'
             + '<td class="small" style="max-width:200px">'
             +   '<div class="text-truncate" title="' + esc(tx.party_name) + '">' + esc(tx.party_name || '—') + '</div>'
             +   titleHtml
@@ -2038,6 +2043,18 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         clicked.disabled = true;
                         clicked.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
+                        function resetButton() {
+                            // Defensive: jeśli button wciąż w DOM, przywróć stan
+                            if (clicked && clicked.isConnected) {
+                                clicked.disabled = false;
+                                clicked.innerHTML = origHtml;
+                            }
+                        }
+                        function hideBankTxSpinner() {
+                            var sp = document.getElementById('bankTxSpinner');
+                            if (sp) sp.setAttribute('style', 'display:none!important');
+                        }
+
                         var fd = new FormData();
                         fd.append('invoice_id', currentInvoiceId);
                         var csrfInput = document.querySelector('input[name="_csrfToken"]');
@@ -2056,21 +2073,25 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         .then(function (res) {
                             if (res.ok && res.data && res.data.ok) {
                                 showInModalToast(res.data.message || 'Powiązano', 'success');
-                                // Odśwież dane w modalu
-                                loadBankTransactions(currentInvoiceId, !!document.getElementById('bankTxAmountFilterToggle')?.checked);
-                                loadAllocations(currentInvoiceId, false);
-                                // Update wiersza w tabeli głównej (background)
-                                if (res.data.invoice) updateInvoiceRowInList(res.data.invoice);
+                                // Odśwież dane w modalu — Promise łańcuch z .finally czyści loader
+                                var filterToggle = document.getElementById('bankTxAmountFilterToggle');
+                                var p1 = loadBankTransactions(currentInvoiceId, !!(filterToggle && filterToggle.checked));
+                                var p2 = loadAllocations(currentInvoiceId, false);
+                                Promise.allSettled([p1, p2]).finally(hideBankTxSpinner);
+                                if (res.data.invoice) {
+                                    try { updateInvoiceRowInList(res.data.invoice); } catch (e) { console.warn(e); }
+                                }
                             } else {
                                 showInModalToast((res.data && res.data.message) || 'Błąd powiązania', 'error');
-                                clicked.disabled = false;
-                                clicked.innerHTML = origHtml;
+                                resetButton();
+                                hideBankTxSpinner();
                             }
                         })
-                        .catch(function () {
+                        .catch(function (err) {
+                            console.warn('confirm-match error:', err);
                             showInModalToast('Błąd sieci — spróbuj ponownie', 'error');
-                            clicked.disabled = false;
-                            clicked.innerHTML = origHtml;
+                            resetButton();
+                            hideBankTxSpinner();
                         });
                     });
                 });
@@ -2101,16 +2122,29 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var url = '/rozliczenia/bank-transactions/' + invoiceId
                 + (amountFilter ? '?amount_filter=1' : '');
 
-        fetch(url, {
+        return fetch(url, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function (r) { return r.json(); })
-        .then(renderBankTransactions)
-        .catch(function () {
-            if (spinner) spinner.style.display = 'none';
+        .then(function (data) {
+            try { renderBankTransactions(data); }
+            catch (e) {
+                console.error('renderBankTransactions error:', e);
+                document.getElementById('bankTxSection').innerHTML =
+                    '<div class="text-danger small"><i class="ri-error-warning-line me-1"></i>'
+                    + 'Błąd renderowania przelewów.</div>';
+            }
+        })
+        .catch(function (err) {
+            console.warn('loadBankTransactions error:', err);
             document.getElementById('bankTxSection').innerHTML =
                 '<div class="text-danger small"><i class="ri-error-warning-line me-1"></i>'
                 + 'Nie udało się załadować przelewów.</div>';
+        })
+        .finally(function () {
+            // Zawsze ukryj spinner — niezależnie od sukcesu/błędu
+            var sp = document.getElementById('bankTxSpinner');
+            if (sp) sp.setAttribute('style', 'display:none!important');
         });
     }
 
@@ -2120,16 +2154,28 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         container.innerHTML = '<div class="text-muted small fst-italic">Ładowanie przelewów kontrahenta…</div>';
         if (spinner) spinner.style.removeProperty('display');
 
-        fetch('/rozliczenia/legacy-bank-transactions/' + legacyInvoiceId, {
+        return fetch('/rozliczenia/legacy-bank-transactions/' + legacyInvoiceId, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function (r) { return r.json(); })
-        .then(renderBankTransactions)
-        .catch(function () {
-            if (spinner) spinner.style.display = 'none';
+        .then(function (data) {
+            try { renderBankTransactions(data); }
+            catch (e) {
+                console.error('renderBankTransactions error:', e);
+                document.getElementById('bankTxSection').innerHTML =
+                    '<div class="text-danger small"><i class="ri-error-warning-line me-1"></i>'
+                    + 'Błąd renderowania przelewów.</div>';
+            }
+        })
+        .catch(function (err) {
+            console.warn('loadLegacyBankTransactions error:', err);
             document.getElementById('bankTxSection').innerHTML =
                 '<div class="text-danger small"><i class="ri-error-warning-line me-1"></i>'
                 + 'Nie udało się załadować przelewów.</div>';
+        })
+        .finally(function () {
+            var sp = document.getElementById('bankTxSpinner');
+            if (sp) sp.setAttribute('style', 'display:none!important');
         });
     }
 
@@ -2351,10 +2397,13 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     function loadAllocations(invoiceId, isLegacy) {
         currentInvoiceIsLegacy = isLegacy;
         var url = '/rozliczenia/alokacje/' + invoiceId + (isLegacy ? '?legacy=1' : '');
-        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        return fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.json(); })
-            .then(function (data) { renderAllocations(data.allocations || [], invoiceId, isLegacy); })
-            .catch(function () { console.warn('Nie udało się załadować alokacji.'); });
+            .then(function (data) {
+                try { renderAllocations(data.allocations || [], invoiceId, isLegacy); }
+                catch (e) { console.warn('renderAllocations error:', e); }
+            })
+            .catch(function (err) { console.warn('Nie udało się załadować alokacji.', err); });
     }
 
     function renderAllocations(allocations, invoiceId, isLegacy) {
