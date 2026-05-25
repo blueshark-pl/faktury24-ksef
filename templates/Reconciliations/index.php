@@ -843,36 +843,33 @@ if ($status !== '')            $activeFilterCount++;
                     <!-- Przelew -->
                     <td>
                         <?php
-                            // Treść popovera "i" — kwoty kontrolne brutto/netto/VAT
-                            $popRows = '<table class="table table-sm mb-0" style="font-size:.78rem">';
+                            // Treść popovera "i" — kwoty kontrolne (identyczny markup jak w modalu)
+                            $tile = function (string $label, float $val, string $cur, string $cls = 'text-success'): string {
+                                return '<div class="d-flex flex-column text-center" style="min-width:80px">'
+                                     . '<span class="text-muted" style="font-size:.7em;text-transform:uppercase;letter-spacing:.04em">'
+                                     . h($label) . '</span>'
+                                     . '<span class="fw-semibold ' . $cls . '">'
+                                     . number_format($val, 2, ',', ' ') . '&nbsp;' . h($cur)
+                                     . '</span></div>';
+                            };
+                            $popRows  = '<div class="d-flex flex-wrap gap-3">';
                             if ($isFx) {
-                                $popRows .= '<thead><tr><th class="text-muted fw-normal text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Składnik</th>'
-                                          . '<th class="text-end text-success">' . h($invCurr) . '</th>'
-                                          . '<th class="text-end text-primary">PLN</th></tr></thead><tbody>'
-                                          . '<tr><td><strong>Brutto</strong></td>'
-                                          .   '<td class="text-end fw-semibold text-success">' . number_format($invAmounts['brutto_eur'], 2, ',', ' ') . '</td>'
-                                          .   '<td class="text-end fw-semibold text-primary">' . number_format($invAmounts['brutto_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '<tr><td>Netto</td>'
-                                          .   '<td class="text-end">' . number_format($invAmounts['netto_eur'], 2, ',', ' ') . '</td>'
-                                          .   '<td class="text-end">' . number_format($invAmounts['netto_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '<tr><td>VAT</td>'
-                                          .   '<td class="text-end">' . number_format($invAmounts['vat_eur'], 2, ',', ' ') . '</td>'
-                                          .   '<td class="text-end fw-semibold">' . number_format($invAmounts['vat_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '<tr class="table-light"><td class="text-muted">Kurs NBP</td>'
-                                          .   '<td colspan="2" class="text-end text-muted">' . number_format($invAmounts['rate'], 4, ',', ' ') . '</td></tr>'
-                                          . '</tbody>';
+                                $popRows .= $tile('Brutto ' . $invCurr, $invAmounts['brutto_eur'], $invCurr, 'text-success');
+                                $popRows .= $tile('Netto '  . $invCurr, $invAmounts['netto_eur'],  $invCurr, 'text-success');
+                                $popRows .= $tile('VAT '    . $invCurr, $invAmounts['vat_eur'],    $invCurr, 'text-success');
+                                $popRows .= $tile('VAT PLN',    $invAmounts['vat_pln'],    'PLN', 'text-primary');
+                                $popRows .= $tile('Brutto PLN', $invAmounts['brutto_pln'], 'PLN', 'text-primary');
+                                $popRows .= $tile('Netto PLN',  $invAmounts['netto_pln'],  'PLN', 'text-primary');
+                                $popRows .= '<div class="d-flex flex-column text-center justify-content-end" style="min-width:60px">'
+                                          . '<span class="text-muted" style="font-size:.7em;text-transform:uppercase;letter-spacing:.04em">Kurs NBP</span>'
+                                          . '<span class="text-muted">' . number_format($invAmounts['rate'], 4, '.', '') . '</span>'
+                                          . '</div>';
                             } else {
-                                $popRows .= '<thead><tr><th class="text-muted fw-normal text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Składnik</th>'
-                                          . '<th class="text-end">PLN</th></tr></thead><tbody>'
-                                          . '<tr><td><strong>Brutto</strong></td>'
-                                          .   '<td class="text-end fw-semibold">' . number_format($invAmounts['brutto_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '<tr><td>Netto</td>'
-                                          .   '<td class="text-end">' . number_format($invAmounts['netto_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '<tr><td>VAT</td>'
-                                          .   '<td class="text-end">' . number_format($invAmounts['vat_pln'], 2, ',', ' ') . '</td></tr>'
-                                          . '</tbody>';
+                                $popRows .= $tile('Brutto', $invAmounts['brutto_pln'], 'PLN', 'text-primary');
+                                $popRows .= $tile('Netto',  $invAmounts['netto_pln'],  'PLN', 'text-primary');
+                                $popRows .= $tile('VAT',    $invAmounts['vat_pln'],    'PLN', 'text-primary');
                             }
-                            $popRows .= '</table>';
+                            $popRows .= '</div>';
                         ?>
                         <div class="d-flex align-items-center gap-1 flex-wrap">
                             <?= $bankBadge($bts) ?>
@@ -1473,11 +1470,9 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <style>
-.popover.popover-amounts { max-width: 320px; }
+.popover.popover-amounts { max-width: 640px; }
 .popover.popover-amounts .popover-header { font-size: .8rem; font-weight: 600; }
-.popover.popover-amounts .popover-body { padding: .5rem; }
-.popover.popover-amounts table { margin-bottom: 0; }
-.popover.popover-amounts td, .popover.popover-amounts th { padding: .25rem .5rem; }
+.popover.popover-amounts .popover-body { padding: .75rem; }
 .btn-amounts-info { vertical-align: middle; }
 .btn-amounts-info:hover { color: #0d6efd !important; }
 </style>
