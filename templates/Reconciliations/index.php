@@ -135,37 +135,88 @@ $bankBadge = function (array $bts): string {
     return '<span class="badge bg-success-subtle text-success border border-success-subtle" title="Wpłaty potwierdzone"><i class="ri-checkbox-circle-line me-1"></i>' . $label . $suffix . '</span>';
 };
 
-// Suma wpłat w walucie faktury (z konwersją gdy wpłata w innej walucie).
+// Suma wpłat z analizą "kieszeni" — logika jak pill'e w modalu.
+//
+// Dla faktur WALUTOWYCH (EUR/USD...) wpłaty są naturalnie rozdzielone:
+//   - kieszeń waluty faktury (EUR): pokrywa BRUTTO faktury w EUR
+//   - kieszeń PLN: typowo wpłaty MPP/VAT split — pokrywa VAT_PLN
+//     (= brutto_pln - netto_pln, po kursie z faktury)
+// Nie KONWERTUJEMY wpłaty PLN na EUR — porównujemy każdą kieszeń osobno
+// do swojej "kwoty kontrolnej" z faktury.
+//
+// Dla faktur PLN: wszystkie wpłaty są w PLN, suma vs total.
+//
 // Zwraca:
-//   total       — suma we walucie faktury (do porównania z $invoice->total)
-//   by_currency — ['EUR' => 100.00, 'PLN' => 50.00] dla pokazania pełnego rozbicia
-//   mixed       — czy są różne waluty
-$paymentsTotal = function (array $bts, string $invoiceCurrency, float $invoiceRate): array {
-    $invoiceCurrency = strtoupper($invoiceCurrency ?: 'PLN');
-    $total = 0.0;
+//   by_currency       — ['EUR'=>100, 'PLN'=>50] do wyświetlenia rozbicia
+//   sum_inv_curr      — suma wpłat w walucie faktury
+//   sum_pln           — suma wpłat PLN (relevant dla faktur walutowych = VAT)
+//   vat_pln           — kwota VAT z faktury w PLN (po kursie)
+//   is_overpaid       — czy któraś kieszeń przekroczona
+//   overpaid_by       — o ile przekroczona
+//   overpaid_currency — w jakiej walucie
+$paymentsTotal = function (array $bts, object $invoice): array {
+    $invCurr = strtoupper((string)($invoice->currency ?? 'PLN')) ?: 'PLN';
+    $rate    = (float)($invoice->currency_exchange ?? 0);
+    $total   = (float)($invoice->total ?? 0);
+    $netto   = (float)($invoice->netto ?? 0);
+    $vatVal  = max(0.0, $total - $netto);
+    // VAT zawsze w PLN — dla faktury walutowej po kursie faktury
+    $vatPln  = ($invCurr !== 'PLN' && $rate > 0) ? round($vatVal * $rate, 2) : $vatVal;
+
+    // Rozbij wpłaty per waluta
     $byCurrency = [];
     foreach ($bts as $p) {
-        $amt  = (float)$p->amount;
-        $curr = strtoupper((string)($p->currency ?? $invoiceCurrency)) ?: $invoiceCurrency;
-        $byCurrency[$curr] = ($byCurrency[$curr] ?? 0.0) + $amt;
-        if ($curr === $invoiceCurrency) {
-            $total += $amt;
-        } elseif ($invoiceRate > 0) {
-            if ($invoiceCurrency === 'PLN' && $curr !== 'PLN') {
-                $total += $amt * $invoiceRate;
-            } elseif ($curr === 'PLN' && $invoiceCurrency !== 'PLN') {
-                $total += $amt / $invoiceRate;
-            } else {
-                $total += $amt;
-            }
-        } else {
-            $total += $amt;
+        $a = (float)$p->amount;
+        $c = strtoupper((string)($p->currency ?? $invCurr)) ?: $invCurr;
+        $byCurrency[$c] = ($byCurrency[$c] ?? 0.0) + $a;
+    }
+
+    $sumInvCurr = $byCurrency[$invCurr] ?? 0.0;
+    $sumPln     = $byCurrency['PLN'] ?? 0.0;
+
+    // Detekcja nadpłaty — per kieszeń
+    $isOverpaid   = false;
+    $overpaidBy   = 0.0;
+    $overpaidCurr = $invCurr;
+
+    if ($invCurr === 'PLN') {
+        // PLN invoice — sumujemy wszystkie wpłaty PLN
+        $allPln = 0.0;
+        foreach ($bts as $p) {
+            $a = (float)$p->amount;
+            $c = strtoupper((string)($p->currency ?? 'PLN')) ?: 'PLN';
+            if ($c === 'PLN') $allPln += $a;
+            elseif ($rate > 0) $allPln += $a * $rate; // EUR→PLN dla faktury PLN (rzadkie)
+            else $allPln += $a;
+        }
+        if ($allPln > $total + 0.01) {
+            $isOverpaid   = true;
+            $overpaidBy   = round($allPln - $total, 2);
+            $overpaidCurr = 'PLN';
+        }
+    } else {
+        // Faktura walutowa — sprawdzamy kieszenie OSOBNO (bez konwersji)
+        if ($sumInvCurr > $total + 0.01) {
+            $isOverpaid   = true;
+            $overpaidBy   = round($sumInvCurr - $total, 2);
+            $overpaidCurr = $invCurr;
+        } elseif ($sumPln > 0 && $vatPln > 0 && $sumPln > $vatPln + 0.01) {
+            $isOverpaid   = true;
+            $overpaidBy   = round($sumPln - $vatPln, 2);
+            $overpaidCurr = 'PLN';
         }
     }
+
     return [
-        'total'       => round($total, 2),
-        'by_currency' => $byCurrency,
-        'mixed'       => count($byCurrency) > 1,
+        'by_currency'      => $byCurrency,
+        'mixed'            => count($byCurrency) > 1,
+        'sum_inv_curr'     => round($sumInvCurr, 2),
+        'sum_pln'          => round($sumPln, 2),
+        'vat_pln'          => $vatPln,
+        'total_inv_curr'   => $total,
+        'is_overpaid'      => $isOverpaid,
+        'overpaid_by'      => $overpaidBy,
+        'overpaid_currency' => $overpaidCurr,
     ];
 };
 
@@ -622,15 +673,13 @@ if ($status !== '')            $activeFilterCount++;
                 // Efektywne remaining po korekcie
                 $netRemaining = !empty($invCorrs) ? max(0.0, (float)$invoice->remaining + $corrDiff) : (float)$invoice->remaining;
 
-                // Suma wpłat w walucie faktury + detekcja nadpłaty / niedopłaty
-                $invCurr    = (string)($invoice->currency ?? 'PLN');
-                $invRate    = (float)($invoice->currency_exchange ?? 0);
-                $payAgg     = $paymentsTotal($bts, $invCurr, $invRate);
-                // Efektywny "powinno być zapłacone" — total + korekta (gdy korekta zwiększa/zmniejsza)
-                $effTotal   = (float)$invoice->total + ($corrDiff !== 0.0 ? $corrDiff : 0.0);
-                $overpayDiff = round($payAgg['total'] - $effTotal, 2);
-                $isOverpaid  = $overpayDiff > 0.01;
-                $isUnderpaid = !$isOverpaid && !empty($bts) && $overpayDiff < -0.01;
+                // Suma wpłat z analizą kieszeni walutowych (jak pill'e w modalu)
+                $invCurr     = (string)($invoice->currency ?? 'PLN');
+                $invRate     = (float)($invoice->currency_exchange ?? 0);
+                $payAgg      = $paymentsTotal($bts, $invoice);
+                $isOverpaid  = $payAgg['is_overpaid'];
+                $overpayDiff = $payAgg['overpaid_by'];
+                $overpayCurr = $payAgg['overpaid_currency'];
 
                 // Normalizuj paymentdate do Y-m-d niezależnie od formatu zwróconego przez ORM
                 $rawPd = $invoice->paymentdate;
@@ -757,12 +806,23 @@ if ($status !== '')            $activeFilterCount++;
                     <!-- Pozostało -->
                     <td class="text-end text-nowrap small" data-col="remaining">
                         <?php if ($isOverpaid): ?>
+                            <?php
+                                // Tooltip — porównanie konkretnej kieszeni
+                                $opTitle = $overpayCurr === 'PLN' && $invCurr !== 'PLN'
+                                    ? sprintf('Nadpłata VAT — wpłaty PLN: %s vs VAT(PLN) faktury: %s',
+                                        number_format($payAgg['sum_pln'], 2, ',', ' '),
+                                        number_format($payAgg['vat_pln'], 2, ',', ' '))
+                                    : sprintf('Nadpłata — wpłaty %s: %s vs faktura: %s',
+                                        $overpayCurr,
+                                        number_format($payAgg[$overpayCurr === $invCurr ? 'sum_inv_curr' : 'sum_pln'], 2, ',', ' '),
+                                        number_format($payAgg['total_inv_curr'], 2, ',', ' '));
+                            ?>
                             <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
-                                  title="Nadpłata — wpłat suma <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?> > faktura <?= number_format($effTotal, 2, ',', ' ') ?> <?= h($invCurr) ?>">
+                                  title="<?= h($opTitle) ?>">
                                 <i class="ri-error-warning-line me-1"></i>Nadpłata
                             </span>
                             <div class="text-warning fw-semibold mt-1">
-                                +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($invCurr) ?>
+                                +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($overpayCurr) ?>
                             </div>
                         <?php elseif ($state === 'paid'): ?>
                             <span class="text-success">0,00 <?= h($currency) ?></span>
@@ -801,22 +861,22 @@ if ($status !== '')            $activeFilterCount++;
                             </div>
                             <?php if (count($bts) > 1 || $payAgg['mixed']): ?>
                                 <div class="mt-1 pt-1 border-top" style="font-size:0.72rem">
-                                    <?php if ($payAgg['mixed']): ?>
-                                        <?php foreach ($payAgg['by_currency'] as $c => $v): ?>
-                                            <span class="fw-semibold"><?= number_format($v, 2, ',', ' ') ?> <?= h($c) ?></span><?= next($payAgg['by_currency']) !== false ? ' +' : '' ?>
-                                        <?php endforeach; ?>
-                                        <?php if ($invRate > 0): ?>
-                                            <div class="text-muted">≈ <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?></div>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <strong>Σ <?= number_format($payAgg['total'], 2, ',', ' ') ?> <?= h($invCurr) ?></strong>
-                                    <?php endif; ?>
+                                    <?php foreach ($payAgg['by_currency'] as $c => $v): ?>
+                                        <div>
+                                            <strong>Σ <?= h($c) ?>:</strong>
+                                            <?= number_format($v, 2, ',', ' ') ?>
+                                            <?php if ($invCurr !== 'PLN' && $c === 'PLN' && $payAgg['vat_pln'] > 0): ?>
+                                                <span class="text-muted">/ VAT <?= number_format($payAgg['vat_pln'], 2, ',', ' ') ?></span>
+                                            <?php elseif ($c === $invCurr): ?>
+                                                <span class="text-muted">/ <?= number_format($payAgg['total_inv_curr'], 2, ',', ' ') ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
                                 </div>
                             <?php endif; ?>
                             <?php if ($isOverpaid): ?>
-                                <div class="text-warning fw-semibold mt-1" style="font-size:0.7rem"
-                                     title="Suma wpłat przekracza fakturę">
-                                    <i class="ri-alert-line"></i> nadpłata +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($invCurr) ?>
+                                <div class="text-warning fw-semibold mt-1" style="font-size:0.7rem">
+                                    <i class="ri-alert-line"></i> nadpłata +<?= number_format($overpayDiff, 2, ',', ' ') ?> <?= h($overpayCurr) ?>
                                 </div>
                             <?php endif; ?>
                         <?php endif; ?>
