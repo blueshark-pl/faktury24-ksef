@@ -4,11 +4,12 @@
  * @var array $orphanPayments
  * @var array $txsWithoutAlloc
  * @var array $orphanAllocs
+ * @var array $currencyMismatches
  */
 
 $this->assign('title', 'Sprawdzenie integralności — rozliczenia');
 
-$totalIssues = count($orphanPayments) + count($txsWithoutAlloc) + count($orphanAllocs);
+$totalIssues = count($orphanPayments) + count($txsWithoutAlloc) + count($orphanAllocs) + count($currencyMismatches);
 $fdate = static function ($d): string {
     if ($d === null) return '—';
     if ($d instanceof \DateTimeInterface) return $d->format('Y-m-d');
@@ -246,6 +247,49 @@ $fdate = static function ($d): string {
         }
     })();
     </script>
+
+    <!-- D: currency mismatch (payment.currency != tx.currency) -->
+    <div class="card mb-3">
+        <div class="card-header py-2 d-flex align-items-center gap-2">
+            <strong>D. Niezgodność waluty payment vs przelew</strong>
+            <span class="badge bg-secondary-subtle text-secondary"><?= count($currencyMismatches) ?></span>
+            <small class="text-muted ms-2">— <code>invoice_payments.currency</code> ≠ <code>bank_transactions.currency</code> (najczęściej stare PLN-domyślki zapisane zanim pole było accessible)</small>
+        </div>
+        <?php if (empty($currencyMismatches)): ?>
+            <div class="card-body py-2 small text-muted">Brak problemów</div>
+        <?php else: ?>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID wpłaty</th>
+                            <th>Faktura</th>
+                            <th class="text-end">Kwota DB</th>
+                            <th>Waluta DB</th>
+                            <th class="text-end">Kwota tx</th>
+                            <th>Waluta tx</th>
+                            <th>Data</th>
+                            <th class="text-end">Akcja</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($currencyMismatches as $p): ?>
+                            <tr data-row-id="<?= h($p->id) ?>">
+                                <td><code style="font-size:.7rem"><?= h(substr($p->id, 0, 8)) ?>…</code></td>
+                                <td><code style="font-size:.7rem"><?= h(substr($p->invoice_id, 0, 8)) ?>…</code></td>
+                                <td class="text-end"><?= number_format((float)$p->amount, 2, ',', ' ') ?></td>
+                                <td><span class="badge bg-danger-subtle text-danger border"><?= h(strtoupper($p->currency ?? 'PLN')) ?></span></td>
+                                <td class="text-end fw-semibold"><?= number_format($p->_real_amount, 2, ',', ' ') ?></td>
+                                <td><span class="badge bg-success-subtle text-success border"><?= h($p->_real_currency) ?></span></td>
+                                <td class="text-nowrap"><?= h($fdate($p->payment_date)) ?></td>
+                                <td class="text-end"><?= $renderFixBtn('currency', (string)$p->id) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
 
     <?php if ($totalIssues === 0): ?>
         <div class="alert alert-success py-2 small">

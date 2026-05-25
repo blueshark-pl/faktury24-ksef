@@ -2087,10 +2087,11 @@ class ReconciliationsController extends AppController
     // ── ADMIN: Sprawdzenie integralności bank_tx ↔ allocation ↔ invoice_payment ──
 
     /**
-     * Skanuje dane i wykrywa 3 typy problemów:
+     * Skanuje dane i wykrywa 4 typy problemów:
      *  A) invoice_payments bez bank_transaction_allocation_id (sieroty z confirmMatch sprzed fixa)
      *  B) bank_transactions matched (manual) bez bank_transaction_allocation
      *  C) bank_transaction_allocations bez invoice_payment_id (brak back-link)
+     *  D) invoice_payment.currency != bank_transaction.currency (zła waluta na wpłacie)
      */
     public function checkIntegrity(): void
     {
@@ -2154,7 +2155,61 @@ class ReconciliationsController extends AppController
             ->select(['id', 'bank_transaction_id', 'invoice_id', 'allocated_amount', 'currency', 'allocation_type', 'created'])
             ->all()->toArray();
 
-        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs'));
+        // D) Niezgodność waluty: invoice_payment.currency != linked bank_transaction.currency
+        // (np. payment zapisane jako PLN, ale tx jest w EUR — stare confirmMatch sprzed fixa)
+        $currencyMismatches = [];
+        $linkedPayments = $Payments->find()
+            ->contain([
+                'Invoices' => function ($q) { return $q->select(['id', 'company_id']); },
+            ])
+            ->where([
+                'InvoicePayments.bank_transaction_allocation_id IS NOT' => null,
+                'Invoices.company_id' => $companyId,
+            ])
+            ->select(['InvoicePayments.id', 'InvoicePayments.invoice_id', 'InvoicePayments.amount',
+                      'InvoicePayments.currency', 'InvoicePayments.payment_date',
+                      'InvoicePayments.bank_transaction_allocation_id'])
+            ->all()->toArray();
+
+        if (!empty($linkedPayments)) {
+            $allocIds = array_filter(array_map(fn($p) => $p->bank_transaction_allocation_id, $linkedPayments));
+            $allocMap = [];
+            if (!empty($allocIds)) {
+                $allocRows = $Allocations->find()
+                    ->where(['id IN' => $allocIds])
+                    ->select(['id', 'bank_transaction_id', 'currency'])
+                    ->all();
+                foreach ($allocRows as $a) {
+                    $allocMap[(string)$a->id] = $a;
+                }
+            }
+            $txIds = array_unique(array_filter(array_map(fn($a) => $a->bank_transaction_id, $allocMap)));
+            $txMap = [];
+            if (!empty($txIds)) {
+                $txRows = $BankTxs->find()
+                    ->where(['id IN' => $txIds, 'company_id' => $companyId])
+                    ->select(['id', 'amount', 'currency'])
+                    ->all();
+                foreach ($txRows as $t) {
+                    $txMap[(string)$t->id] = $t;
+                }
+            }
+            foreach ($linkedPayments as $p) {
+                $alloc = $allocMap[(string)$p->bank_transaction_allocation_id] ?? null;
+                if (!$alloc) continue;
+                $tx = $txMap[(string)$alloc->bank_transaction_id] ?? null;
+                if (!$tx) continue;
+                $payCurr = strtoupper((string)($p->currency ?? 'PLN'));
+                $txCurr  = strtoupper((string)($tx->currency ?? 'PLN'));
+                if ($payCurr !== $txCurr) {
+                    $p->_real_currency = $txCurr;
+                    $p->_real_amount   = (float)$tx->amount;
+                    $currencyMismatches[] = $p;
+                }
+            }
+        }
+
+        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches'));
     }
 
     /**
@@ -2170,10 +2225,11 @@ class ReconciliationsController extends AppController
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
 
         $result = match ($type) {
-            'payment' => $this->_fixOrphanPayment($id, $companyId),
-            'tx'      => $this->_fixTxWithoutAlloc($id, $companyId),
-            'alloc'   => $this->_fixOrphanAllocation($id, $companyId),
-            default   => ['ok' => false, 'message' => 'Nieznany typ: ' . $type],
+            'payment'  => $this->_fixOrphanPayment($id, $companyId),
+            'tx'       => $this->_fixTxWithoutAlloc($id, $companyId),
+            'alloc'    => $this->_fixOrphanAllocation($id, $companyId),
+            'currency' => $this->_fixCurrencyMismatch($id, $companyId),
+            default    => ['ok' => false, 'message' => 'Nieznany typ: ' . $type],
         };
 
         if ($this->request->is('ajax') || $this->request->getHeaderLine('X-Requested-With') === 'XMLHttpRequest') {
@@ -2203,7 +2259,7 @@ class ReconciliationsController extends AppController
         $BankTxs     = $this->fetchTable('BankTransactions');
         $Allocations = $this->fetchTable('BankTransactionAllocations');
 
-        $fixed = ['orphan_payments' => 0, 'tx_without_alloc' => 0, 'orphan_allocs' => 0, 'errors' => []];
+        $fixed = ['orphan_payments' => 0, 'tx_without_alloc' => 0, 'orphan_allocs' => 0, 'currency_fixes' => 0, 'errors' => []];
 
         // A) Orphan invoice_payments
         $orphanPayments = $Payments->find()
@@ -2250,9 +2306,23 @@ class ReconciliationsController extends AppController
             else $fixed['errors'][] = 'C: ' . ($r['message'] ?? '');
         }
 
+        // D) Niezgodności waluty payment vs tx
+        $allLinkedPayments = $Payments->find()
+            ->contain(['Invoices' => function ($q) { return $q->select(['id', 'company_id']); }])
+            ->where([
+                'InvoicePayments.bank_transaction_allocation_id IS NOT' => null,
+                'Invoices.company_id' => $companyId,
+            ])
+            ->all();
+        foreach ($allLinkedPayments as $p) {
+            $r = $this->_fixCurrencyMismatch((string)$p->id, $companyId);
+            if ($r['ok']) $fixed['currency_fixes']++;
+            // Note: returns 'Waluty już zgodne' for already-correct → nie liczymy jako błąd
+        }
+
         $this->Flash->success(sprintf(
-            'Naprawiono: %d sierot wpłat, %d brakujących alokacji bank_tx, %d back-linków alokacji.',
-            $fixed['orphan_payments'], $fixed['tx_without_alloc'], $fixed['orphan_allocs']
+            'Naprawiono: %d sierot wpłat, %d brakujących alokacji bank_tx, %d back-linków alokacji, %d niezgodności walut.',
+            $fixed['orphan_payments'], $fixed['tx_without_alloc'], $fixed['orphan_allocs'], $fixed['currency_fixes']
         ));
         if (!empty($fixed['errors'])) {
             $this->Flash->error('Błędy: ' . implode(' | ', array_slice($fixed['errors'], 0, 5)));
@@ -2277,6 +2347,8 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Wpłata już ma alokację.'];
         }
 
+        // Szukaj bank_tx po (invoice_id, kwota). Tx.currency to ŹRÓDŁO PRAWDY
+        // (stare invoice_payments mają currency='PLN' z DB default — błędne dla EUR).
         $tx = $BankTxs->find()
             ->where([
                 'BankTransactions.company_id' => $companyId,
@@ -2292,14 +2364,16 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Brak pasującego przelewu (invoice_id + kwota).'];
         }
 
+        $realCurrency = strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN';
+
         $allocation = $Allocations->newEntity([
             'id'                  => \Cake\Utility\Text::uuid(),
             'company_id'          => $companyId,
             'bank_transaction_id' => (string)$tx->id,
             'invoice_id'          => $payment->invoice_id,
             'invoice_payment_id'  => (string)$payment->id,
-            'allocated_amount'    => (float)$payment->amount,
-            'currency'            => (string)($payment->currency ?? 'PLN'),
+            'allocated_amount'    => (float)$tx->amount,    // z bank_tx (źródło prawdy)
+            'currency'            => $realCurrency,         // z bank_tx (nie payment!)
             'allocation_type'     => (string)($payment->payment_type ?? 'gross'),
             'note'                => 'Naprawa integralności (z confirmMatch)',
         ]);
@@ -2307,11 +2381,15 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Zapis alokacji: ' . json_encode($allocation->getErrors())];
         }
 
+        // Aktualizuj WPŁATĘ — link do alokacji + waluta z tx (poprawienie starej PLN-domyślki)
         $payment->bank_transaction_allocation_id = (string)$allocation->id;
+        if (strtoupper((string)$payment->currency) !== $realCurrency) {
+            $payment->currency = $realCurrency;
+        }
         if (!$Payments->save($payment)) {
             return ['ok' => false, 'message' => 'Link wpłaty: ' . json_encode($payment->getErrors())];
         }
-        return ['ok' => true, 'message' => 'Połączono wpłatę z przelewem.'];
+        return ['ok' => true, 'message' => 'Połączono wpłatę z przelewem (waluta: ' . $realCurrency . ').'];
     }
 
     private function _fixTxWithoutAlloc(string $txId, string $companyId): array
@@ -2385,6 +2463,59 @@ class ReconciliationsController extends AppController
         $allocation->invoice_payment_id = (string)$payment->id;
         $Allocations->save($allocation);
         return ['ok' => true, 'message' => 'Utworzono alokację i wpłatę.'];
+    }
+
+    /**
+     * Niezgodność waluty: invoice_payment.currency != bank_transaction.currency.
+     * Naprawia ustawiając payment.currency i payment.amount na wartości z bank_tx
+     * (z proporcjonalnym uwzględnieniem allocated_amount jeśli alokacja częściowa).
+     * Aktualizuje też allocation.currency.
+     */
+    private function _fixCurrencyMismatch(string $paymentId, string $companyId): array
+    {
+        $Payments    = $this->fetchTable('InvoicePayments');
+        $BankTxs     = $this->fetchTable('BankTransactions');
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        $payment = $Payments->find()
+            ->contain(['Invoices' => function ($q) { return $q->select(['id', 'company_id']); }])
+            ->where(['InvoicePayments.id' => $paymentId, 'Invoices.company_id' => $companyId])
+            ->first();
+        if ($payment === null) return ['ok' => false, 'message' => 'Wpłata nie istnieje.'];
+        if ($payment->bank_transaction_allocation_id === null) {
+            return ['ok' => false, 'message' => 'Wpłata nie ma alokacji — użyj typu "payment".'];
+        }
+
+        $alloc = $Allocations->find()
+            ->where(['id' => $payment->bank_transaction_allocation_id, 'company_id' => $companyId])
+            ->first();
+        if ($alloc === null) return ['ok' => false, 'message' => 'Alokacja nie istnieje.'];
+
+        $tx = $BankTxs->find()
+            ->where(['id' => $alloc->bank_transaction_id, 'company_id' => $companyId])
+            ->first();
+        if ($tx === null) return ['ok' => false, 'message' => 'Przelew nie istnieje.'];
+
+        $realCurr = strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN';
+        $payCurr  = strtoupper((string)($payment->currency ?? 'PLN'));
+        if ($payCurr === $realCurr) {
+            return ['ok' => false, 'message' => 'Waluty już zgodne.'];
+        }
+
+        // Ustaw poprawne wartości na payment + allocation
+        $payment->currency = $realCurr;
+        $payment->amount   = (float)$tx->amount;
+        if (!$Payments->save($payment)) {
+            return ['ok' => false, 'message' => 'Zapis wpłaty: ' . json_encode($payment->getErrors())];
+        }
+
+        $alloc->currency         = $realCurr;
+        $alloc->allocated_amount = (float)$tx->amount;
+        if (!$Allocations->save($alloc)) {
+            return ['ok' => false, 'message' => 'Zapis alokacji: ' . json_encode($alloc->getErrors())];
+        }
+
+        return ['ok' => true, 'message' => 'Waluta wpłaty + alokacji ustawiona na ' . $realCurr . ' (' . number_format((float)$tx->amount, 2) . ').'];
     }
 
     private function _fixOrphanAllocation(string $allocId, string $companyId): array
