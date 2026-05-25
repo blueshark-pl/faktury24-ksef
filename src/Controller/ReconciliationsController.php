@@ -280,20 +280,24 @@ class ReconciliationsController extends AppController
         }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
-        // TYLKO przelewy POTWIERDZONE przez user'a (Powiąż → match_status='matched').
-        // Zbieramy WSZYSTKIE per faktura — kolumna pokazuje pełną listę wpłat,
-        // nie tylko najnowszą.
+        // TYLKO przelewy ręcznie potwierdzone (Powiąż) — match_confidence=100.
+        //
+        // Podczas importu MT940 system AUTOMATYCZNIE ustawia match_status='matched'
+        // gdy confidence ≥ AUTO_CONFIRM_THRESHOLD=90 (np. /INV/ → 95, /IDC/ → 75).
+        // Te auto-potwierdzone NIE są pokazywane — tylko ręczne klikinięcia user'a
+        // w "Powiąż" które ustawiają match_confidence = max(prev, 100) = 100.
         $bankByInvoice = []; // invoiceId => array of BankTransaction
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
 
             $bankRows = $this->fetchTable('BankTransactions')->find()
                 ->where([
-                    'company_id'      => $companyId,
-                    'invoice_id IN'   => $invoiceIds,
-                    'match_status'    => 'matched',
+                    'company_id'       => $companyId,
+                    'invoice_id IN'    => $invoiceIds,
+                    'match_status'     => 'matched',
+                    'match_confidence >=' => 100,
                 ])
-                ->select(['id', 'invoice_id', 'match_status', 'amount', 'currency', 'value_date', 'party_name'])
+                ->select(['id', 'invoice_id', 'match_status', 'match_confidence', 'amount', 'currency', 'value_date', 'party_name'])
                 ->orderByDesc('value_date')
                 ->all()->toArray();
 
