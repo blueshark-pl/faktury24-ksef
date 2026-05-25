@@ -2301,6 +2301,75 @@ class ReconciliationsController extends AppController
     }
 
     /**
+     * Odpinanie zbiorcze wszystkich matched z określonej kategorii.
+     * category=B → wszystkie matched bez alokacji (confidence>=100)
+     * category=E → wszystkie auto-matched (confidence<100) — równoważne fixIntegrity dla E
+     */
+    public function unlinkAllCategory(string $category): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $BankTxs   = $this->fetchTable('BankTransactions');
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        $txsToUnlink = [];
+        if ($category === 'B') {
+            // Manual matched bez alokacji
+            $matchedTxs = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id'         => $companyId,
+                    'BankTransactions.match_status'       => 'matched',
+                    'BankTransactions.invoice_id IS NOT'  => null,
+                    'BankTransactions.match_confidence >=' => 100,
+                ])
+                ->select(['id'])
+                ->all()->toArray();
+            $matchedIds = array_column($matchedTxs, 'id');
+            if (!empty($matchedIds)) {
+                $allocRows = $Allocations->find()
+                    ->where(['bank_transaction_id IN' => $matchedIds])
+                    ->select(['bank_transaction_id'])
+                    ->all();
+                $hasAlloc = [];
+                foreach ($allocRows as $a) $hasAlloc[(string)$a->bank_transaction_id] = true;
+                foreach ($matchedTxs as $t) {
+                    if (!isset($hasAlloc[(string)$t->id])) $txsToUnlink[] = (string)$t->id;
+                }
+            }
+        } elseif ($category === 'E') {
+            $autoTxs = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id'        => $companyId,
+                    'BankTransactions.match_status'      => 'matched',
+                    'BankTransactions.invoice_id IS NOT' => null,
+                    'BankTransactions.match_confidence <' => 100,
+                ])
+                ->select(['id'])
+                ->all();
+            foreach ($autoTxs as $t) $txsToUnlink[] = (string)$t->id;
+        } else {
+            $this->Flash->error('Nieznana kategoria: ' . $category);
+            return $this->redirect(['action' => 'checkIntegrity']);
+        }
+
+        $unlinked = 0;
+        $errors   = [];
+        foreach ($txsToUnlink as $txId) {
+            $r = $this->_unlinkAutoMatch($txId, $companyId);
+            if ($r['ok']) $unlinked++;
+            else $errors[] = $r['message'] ?? '';
+        }
+
+        $this->Flash->success(sprintf('Odpięto %d przelewów z kategorii %s.', $unlinked, $category));
+        if (!empty($errors)) {
+            $this->Flash->error('Błędy: ' . implode(' | ', array_slice($errors, 0, 5)));
+        }
+        return $this->redirect(['action' => 'checkIntegrity']);
+    }
+
+    /**
      * Naprawia wszystkie wykryte problemy integralności (bulk).
      */
     public function fixIntegrity(): Response

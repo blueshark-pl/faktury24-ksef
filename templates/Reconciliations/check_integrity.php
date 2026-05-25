@@ -116,10 +116,22 @@ $fdate = static function ($d): string {
 
     <!-- B: matched bank_txs without allocation -->
     <div class="card mb-3">
-        <div class="card-header py-2 d-flex align-items-center gap-2">
+        <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
             <strong>B. Przelewy potwierdzone bez alokacji</strong>
             <span class="badge bg-secondary-subtle text-secondary"><?= count($txsWithoutAlloc) ?></span>
             <small class="text-muted ms-2">— <code>bank_transactions</code> z <code>match_status='matched'</code>, <code>match_confidence>=100</code>, ale brak rekordu w <code>bank_transaction_allocations</code></small>
+            <?php if (!empty($txsWithoutAlloc)): ?>
+                <?= $this->Form->create(null, [
+                    'url' => ['action' => 'unlinkAllCategory', 'B'],
+                    'class' => 'ms-auto mb-0',
+                ]) ?>
+                    <button type="submit" class="btn btn-sm btn-danger"
+                            onclick="return confirm('Odpiąć WSZYSTKIE <?= count($txsWithoutAlloc) ?> przelewów z kategorii B?\n\nTo usunie powiązane wpłaty/alokacje i zresetuje bank_transactions do unmatched. Operacja nieodwracalna.')">
+                        <i class="ri-link-unlink me-1"></i>
+                        Odepnij wszystkie B (<?= count($txsWithoutAlloc) ?>)
+                    </button>
+                <?= $this->Form->end() ?>
+            <?php endif; ?>
         </div>
         <?php if (empty($txsWithoutAlloc)): ?>
             <div class="card-body py-2 small text-muted">Brak problemów</div>
@@ -324,10 +336,22 @@ $fdate = static function ($d): string {
 
     <!-- E: auto-matched (confidence < 100) — błędnie oznaczone jako Wpłata -->
     <div class="card mb-3">
-        <div class="card-header py-2 d-flex align-items-center gap-2">
+        <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
             <strong>E. Auto-matched przelewy (do odpięcia)</strong>
             <span class="badge bg-secondary-subtle text-secondary"><?= count($autoMatched) ?></span>
             <small class="text-muted ms-2">— <code>bank_transactions</code> z <code>match_status='matched'</code> ale <code>match_confidence &lt; 100</code> (automatyczne dopasowanie z importu MT940, nie odklikane przez usera)</small>
+            <?php if (!empty($autoMatched)): ?>
+                <?= $this->Form->create(null, [
+                    'url' => ['action' => 'unlinkAllCategory', 'E'],
+                    'class' => 'ms-auto mb-0',
+                ]) ?>
+                    <button type="submit" class="btn btn-sm btn-danger"
+                            onclick="return confirm('Odpiąć WSZYSTKIE <?= count($autoMatched) ?> auto-matched z kategorii E?\n\nOperacja nieodwracalna.')">
+                        <i class="ri-link-unlink me-1"></i>
+                        Odepnij wszystkie E (<?= count($autoMatched) ?>)
+                    </button>
+                <?= $this->Form->end() ?>
+            <?php endif; ?>
         </div>
         <?php if (empty($autoMatched)): ?>
             <div class="card-body py-2 small text-muted">Brak problemów</div>
