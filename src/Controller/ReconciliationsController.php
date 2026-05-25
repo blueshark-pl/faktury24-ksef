@@ -2226,24 +2226,21 @@ class ReconciliationsController extends AppController
             ->orderByDesc('value_date')
             ->all()->toArray();
 
-        // Pomocniczne statystyki — żeby user widział co jest w bazie
+        // Pomocniczne statystyki — liczymy z już-pobranych danych (B + E) + 1 query
+        // (Wcześniej osobne count() queries dawały 0 z niejasnego powodu — może cache/scope)
+        $manualMatched = count($matchedTxs);       // matched + invoice_id + confidence>=100
+        $autoMatchedCount = count($autoMatched);   // matched + invoice_id + confidence<100
+        $proposedCount = $BankTxs->find()->where([
+            'BankTransactions.company_id'   => $companyId,
+            'BankTransactions.match_status' => 'proposed',
+        ])->count();
+
         $stats = [
-            'total_matched'        => $BankTxs->find()->where([
-                'company_id' => $companyId, 'match_status' => 'matched',
-            ])->count(),
-            'matched_with_invoice' => $BankTxs->find()->where([
-                'company_id' => $companyId, 'match_status' => 'matched',
-                'invoice_id IS NOT' => null,
-            ])->count(),
-            'auto_matched'         => count($autoMatched),
-            'manual_matched'       => $BankTxs->find()->where([
-                'company_id' => $companyId, 'match_status' => 'matched',
-                'invoice_id IS NOT' => null,
-                'match_confidence >=' => 100,
-            ])->count(),
-            'proposed'             => $BankTxs->find()->where([
-                'company_id' => $companyId, 'match_status' => 'proposed',
-            ])->count(),
+            'total_matched'        => $manualMatched + $autoMatchedCount,
+            'matched_with_invoice' => $manualMatched + $autoMatchedCount,
+            'manual_matched'       => $manualMatched,
+            'auto_matched'         => $autoMatchedCount,
+            'proposed'             => $proposedCount,
         ];
 
         $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches', 'autoMatched', 'stats'));
