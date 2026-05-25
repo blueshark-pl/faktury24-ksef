@@ -783,6 +783,11 @@ if ($status !== '')            $activeFilterCount++;
                     <td class="pe-3 text-end">
                         <div class="d-flex gap-1 justify-content-end flex-wrap">
                             <!-- Dodaj wpłatę -->
+                            <?php
+                                $invTotal = (float)($invoice->total ?? 0);
+                                $invNetto = (float)($invoice->netto ?? 0);
+                                $invVat   = max(0, $invTotal - $invNetto);
+                            ?>
                             <button type="button"
                                     class="btn btn-sm btn-outline-success"
                                     title="Dodaj wpłatę"
@@ -791,6 +796,9 @@ if ($status !== '')            $activeFilterCount++;
                                     data-invoice-id="<?= h($invoice->id) ?>"
                                     data-invoice-number="<?= h($invoice->fullnumber) ?>"
                                     data-invoice-remaining="<?= h($invoice->remaining) ?>"
+                                    data-invoice-total="<?= h(round($invTotal, 2)) ?>"
+                                    data-invoice-netto="<?= h(round($invNetto, 2)) ?>"
+                                    data-invoice-vat="<?= h(round($invVat, 2)) ?>"
                                     data-invoice-currency="<?= h($currency) ?>">
                                 <i class="ri-add-line"></i>
                             </button>
@@ -1352,6 +1360,15 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 <style>
 #paymentModal .modal-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 #paymentForm { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; }
+/* Pille kwot — analog z /wyciagi/transakcje */
+#paymentModal .btn-quick-amt {
+    font-size: .72rem; padding: .25rem .55rem; border-radius: .375rem;
+    border: 1px solid #cbd5e1; background: #fff; color: #374151;
+    line-height: 1.3; transition: all .1s; cursor: pointer; min-width: 90px;
+}
+#paymentModal .btn-quick-amt:hover  { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+#paymentModal .btn-quick-amt.active { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; font-weight: 600; }
+#paymentModal .btn-quick-amt small  { display: block; font-size: .68rem; opacity: .75; font-weight: 600; }
 #paymentModal .modal-body { flex: 1 1 0; overflow: hidden; }
 #paymentModal .modal-body .row { height: 100%; }
 #paymentModal .tx-col { display: flex; flex-direction: column; min-height: 0; height: 100%; }
@@ -1460,6 +1477,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small fw-semibold text-muted text-uppercase mb-1" style="font-size:.7rem;letter-spacing:.04em">Kwota <span class="text-danger">*</span></label>
+                                <!-- Pille kwot — auto-fill amount + currency + payment_type -->
+                                <div id="modalQuickAmounts" class="d-flex flex-wrap gap-1 mb-2" style="display:none!important"></div>
                                 <div class="input-group">
                                     <span class="input-group-text bg-white"><i class="ri-money-euro-circle-line text-muted"></i></span>
                                     <input type="number" step="0.01" min="0.01" name="amount" id="modalAmount"
@@ -2092,7 +2111,47 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     var urlAddLegacyPayment = '<?= $this->Url->build(['action' => 'addLegacyPayment']) ?>';
 
     document.addEventListener('DOMContentLoaded', function () {
-        // Toast w modalu — krótka informacja sukces/błąd bez zamykania
+        // Pille kwot — szybkie wypełnienie pola "Kwota" w modalu
+    function renderModalQuickAmounts(inv) {
+        var container = document.getElementById('modalQuickAmounts');
+        if (!container) return;
+        var pills = [];
+        // Pozostałe — zawsze jeśli > 0 i różne od total
+        if (inv.remaining > 0.01 && Math.abs(inv.remaining - inv.total) > 0.01) {
+            pills.push({ label: 'Pozostałe', amt: inv.remaining, curr: inv.currency || 'PLN', type: 'gross' });
+        }
+        if (inv.total > 0.01)  pills.push({ label: 'Brutto',  amt: inv.total, curr: inv.currency || 'PLN', type: 'gross' });
+        if (inv.netto > 0.01)  pills.push({ label: 'Netto',   amt: inv.netto, curr: inv.currency || 'PLN', type: 'net'   });
+        if (inv.vat   > 0.01)  pills.push({ label: 'VAT',     amt: inv.vat,   curr: 'PLN',                 type: 'vat'   });
+
+        if (!pills.length) { container.style.display = 'none'; return; }
+        container.style.display = 'flex';
+        container.innerHTML = pills.map(function (p) {
+            return '<button type="button" class="btn-quick-amt"'
+                + ' data-amt="' + p.amt.toFixed(2) + '"'
+                + ' data-curr="' + esc(p.curr) + '"'
+                + ' data-type="' + esc(p.type) + '">'
+                + esc(p.label)
+                + '<small>' + fmtAmount(p.amt) + ' ' + esc(p.curr) + '</small>'
+                + '</button>';
+        }).join('');
+
+        // Bind clicks (re-bind po każdym renderze — old elementy są zastąpione)
+        container.querySelectorAll('.btn-quick-amt').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                container.querySelectorAll('.btn-quick-amt').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                var amtField = document.getElementById('modalAmount');
+                var curSel   = document.getElementById('modalCurrency');
+                var typeSel  = document.getElementById('modalPaymentType');
+                if (amtField) amtField.value = parseFloat(this.dataset.amt).toFixed(2);
+                if (curSel)   curSel.value   = this.dataset.curr;
+                if (typeSel)  typeSel.value  = this.dataset.type;
+            });
+        });
+    }
+
+    // Toast w modalu — krótka informacja sukces/błąd bez zamykania
     function showInModalToast(msg, type) {
         var modalBody = document.querySelector('#paymentModal .modal-body');
         if (!modalBody) return;
@@ -2201,6 +2260,19 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             var remaining      = parseFloat(btn.dataset.invoiceRemaining || '0');    // zawsze PLN
             var remainingWal   = parseFloat(btn.dataset.invoiceRemainingWal || '0'); // waluta obca
             var currency       = btn.dataset.invoiceCurrency || 'PLN';
+            var invTotal       = parseFloat(btn.dataset.invoiceTotal || '0');
+            var invNetto       = parseFloat(btn.dataset.invoiceNetto || '0');
+            var invVat         = parseFloat(btn.dataset.invoiceVat || '0');
+
+            // Render pill'i kwot (jak w /wyciagi/transakcje)
+            renderModalQuickAmounts({
+                remaining: remaining,
+                total: invTotal,
+                netto: invNetto,
+                vat: invVat,
+                currency: currency,
+                source: source,
+            });
 
             var form         = document.getElementById('paymentForm');
             var bankSection  = document.getElementById('bankTxSection');
