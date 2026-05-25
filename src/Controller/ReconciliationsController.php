@@ -1008,10 +1008,14 @@ class ReconciliationsController extends AppController
         $invoice  = $Invoices->find()
             ->contain([
                 'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q) {
-                    return $q->select(['id', 'invoice_id', 'name', 'nip']);
+                    return $q->select(['id', 'invoice_id', 'name', 'nip', 'street', 'city', 'zip', 'country',
+                                       'email', 'phone', 'account_number']);
                 },
             ])
-            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency', 'Invoices.date'])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
+                      'Invoices.remaining', 'Invoices.alreadypaid', 'Invoices.currency',
+                      'Invoices.currency_exchange', 'Invoices.date', 'Invoices.paymentdate',
+                      'Invoices.paymentstate'])
             ->where(['Invoices.id' => $invoiceId, 'Invoices.company_id' => $companyId])
             ->first();
 
@@ -1021,11 +1025,51 @@ class ReconciliationsController extends AppController
                 ->withStringBody(json_encode(['error' => 'Faktura nie istnieje lub brak uprawnień']));
         }
 
-        $nip               = $invoice->invoice_contractor->nip ?? null;
-        $contractorName    = $invoice->invoice_contractor->name ?? null;
+        $contractor        = $invoice->invoice_contractor ?? null;
+        $nip               = $contractor->nip ?? null;
+        $contractorName    = $contractor->name ?? null;
         $invoiceTotal      = (float)($invoice->total ?? 0);
+        $invoiceNetto      = (float)($invoice->netto ?? 0);
         $invoiceRemaining  = (float)($invoice->remaining ?? $invoiceTotal);
+        $invoiceCurrency   = (string)($invoice->currency ?? 'PLN');
+        $invoiceExchange   = (float)($invoice->currency_exchange ?? 0);
         $invoiceFullnumber = (string)($invoice->fullnumber ?? '');
+        $vatVal            = max(0.0, $invoiceTotal - $invoiceNetto);
+
+        // ── Zestaw kwot — analogicznie do /rozliczenia/speed legacy view ─────
+        if ($invoiceCurrency !== 'PLN' && $invoiceExchange > 0) {
+            // Faktura walutowa: total/netto są w walucie, currency_exchange to kurs do PLN
+            $amounts = [
+                'brutto_eur' => round($invoiceTotal, 2),
+                'netto_eur'  => round($invoiceNetto, 2),
+                'vat_eur'    => round($vatVal, 2),
+                'brutto_pln' => round($invoiceTotal * $invoiceExchange, 2),
+                'netto_pln'  => round($invoiceNetto  * $invoiceExchange, 2),
+                'vat_pln'    => round($vatVal        * $invoiceExchange, 2),
+                'rate'       => $invoiceExchange,
+                'currency'   => $invoiceCurrency,
+            ];
+        } else {
+            $amounts = [
+                'brutto_pln' => round($invoiceTotal, 2),
+                'netto_pln'  => round($invoiceNetto, 2),
+                'vat_pln'    => round($vatVal, 2),
+                'currency'   => 'PLN',
+            ];
+        }
+
+        // ── Dane kontrahenta — pełne, do wyświetlenia w nagłówku modal'a ──
+        $contractorData = $contractor ? [
+            'name'    => (string)$contractor->name,
+            'nip'     => (string)$contractor->nip,
+            'street'  => (string)($contractor->street ?? ''),
+            'city'    => (string)($contractor->city ?? ''),
+            'zip'     => (string)($contractor->zip ?? ''),
+            'country' => (string)($contractor->country ?? ''),
+            'email'   => (string)($contractor->email ?? ''),
+            'phone'   => (string)($contractor->phone ?? ''),
+            'account_number' => (string)($contractor->account_number ?? ''),
+        ] : null;
 
         // C) IBAN-y kontrahenta — po NIP odnajdujemy konta w contractor_bank_accounts
         $contractorIbans = [];
@@ -1252,16 +1296,20 @@ class ReconciliationsController extends AppController
         return $this->response
             ->withType('application/json')
             ->withStringBody(json_encode([
-                'nip'              => $nip,
-                'contractor'       => $contractorName,
+                'nip'               => $nip,
+                'contractor'        => $contractorName,
+                'contractor_full'   => $contractorData,        // pełne dane do nagłówka modal'a
+                'amounts'           => $amounts,               // brutto/netto/VAT EUR+PLN + kurs
                 'invoice_remaining' => $invoiceRemaining,
-                'invoice_total'    => $invoiceTotal,
-                'invoice_currency' => (string)($invoice->currency ?? ''),
-                'contractor_ibans' => $contractorIbans,
-                'amount_filter'    => $amountFilter === '1',
-                'linked'           => array_map($mapTx, $linked),
-                'candidates'       => $scoredCandidates,
-            ]));
+                'invoice_total'     => $invoiceTotal,
+                'invoice_currency'  => $invoiceCurrency,
+                'invoice_number'    => $invoiceFullnumber,
+                'invoice_date'      => $invoiceDateStr,
+                'contractor_ibans'  => $contractorIbans,
+                'amount_filter'     => $amountFilter === '1',
+                'linked'            => array_map($mapTx, $linked),
+                'candidates'        => $scoredCandidates,
+            ], JSON_UNESCAPED_UNICODE));
     }
 
     // ── Dodaj wpłatę ─────────────────────────────────────────────────────────

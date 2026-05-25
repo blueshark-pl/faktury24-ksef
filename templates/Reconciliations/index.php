@@ -1719,7 +1719,34 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var rows = '';
         var note = '';
 
-        if (isLegacy && data.amounts) {
+        // ── Dane nabywcy (system KSeF — z contractor_full) ────────────────
+        if (!isLegacy && data.contractor_full) {
+            var c = data.contractor_full;
+            var addrParts = [];
+            if (c.street)             addrParts.push(esc(c.street));
+            if (c.zip || c.city)      addrParts.push(esc(((c.zip || '') + ' ' + (c.city || '')).trim()));
+            if (c.country)            addrParts.push(esc(c.country));
+            note += '<div class="mb-2 border rounded px-3 py-2 small bg-light">'
+                  + '<div class="d-flex align-items-start gap-3 flex-wrap">'
+                  +   '<div class="flex-grow-1">'
+                  +     '<div class="d-flex align-items-center gap-2">'
+                  +       '<i class="ri-user-3-line text-primary"></i>'
+                  +       '<strong>' + esc(c.name || '—') + '</strong>'
+                  +       (c.nip ? '<span class="badge bg-primary-subtle text-primary border" style="font-size:.7em">NIP ' + esc(c.nip) + '</span>' : '')
+                  +     '</div>'
+                  +     (addrParts.length ? '<div class="text-muted mt-1" style="font-size:.78em"><i class="ri-map-pin-line me-1"></i>' + addrParts.join(', ') + '</div>' : '')
+                  +     ((c.email || c.phone) ? '<div class="text-muted" style="font-size:.78em">'
+                          + (c.email ? '<i class="ri-mail-line me-1"></i>' + esc(c.email) : '')
+                          + (c.email && c.phone ? ' · ' : '')
+                          + (c.phone ? '<i class="ri-phone-line me-1"></i>' + esc(c.phone) : '')
+                          + '</div>' : '')
+                  +     (c.account_number ? '<div class="text-muted" style="font-size:.78em"><i class="ri-bank-line me-1"></i><code>' + esc(c.account_number) + '</code></div>' : '')
+                  +   '</div>'
+                  + '</div></div>';
+        }
+
+        // ── Kwoty faktury (system KSeF + legacy) — Brutto/Netto/VAT EUR/PLN + kurs ──
+        if (data.amounts) {
             var am = data.amounts;
             var isEur = am.currency && am.currency !== 'PLN';
             if (isEur) {
