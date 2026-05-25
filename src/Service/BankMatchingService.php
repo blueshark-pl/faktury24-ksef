@@ -397,14 +397,19 @@ class BankMatchingService
     }
 
     /**
-     * Przelicza paymentstate faktury na podstawie sumy płatności.
+     * Przelicza paymentstate + alreadypaid + remaining faktury na podstawie sumy płatności.
+     *
+     * Bez aktualizacji alreadypaid/remaining widok /rozliczenia/* pokazuje stare wartości
+     * mimo że płatność została dodana.
      */
     private function updateInvoicePaymentState(string $invoiceId): void
     {
         $Invoices        = $this->fetchTable('Invoices');
         $InvoicePayments = $this->fetchTable('InvoicePayments');
 
-        $invoice = $Invoices->get($invoiceId, ['fields' => ['id', 'total', 'paymentstate']]);
+        $invoice = $Invoices->get($invoiceId, [
+            'fields' => ['id', 'total', 'paymentstate', 'alreadypaid', 'remaining'],
+        ]);
         $paid    = (float)$InvoicePayments->find()
             ->where(['invoice_id' => $invoiceId])
             ->select(['s' => $InvoicePayments->find()->func()->sum('amount')])
@@ -412,6 +417,8 @@ class BankMatchingService
             ?->s ?? 0;
 
         $total = (float)$invoice->total;
+        $remaining = max(0, round($total - $paid, 2));
+
         if ($paid <= 0) {
             $state = 'unpaid';
         } elseif ($paid >= $total - 0.01) {
@@ -420,8 +427,12 @@ class BankMatchingService
             $state = 'partial';
         }
 
-        if ($invoice->paymentstate !== $state) {
-            $invoice->paymentstate = $state;
+        $dirty = false;
+        if ($invoice->paymentstate !== $state)        { $invoice->paymentstate = $state; $dirty = true; }
+        if ((float)$invoice->alreadypaid !== round($paid, 2)) { $invoice->alreadypaid = round($paid, 2); $dirty = true; }
+        if ((float)$invoice->remaining !== $remaining)        { $invoice->remaining   = $remaining;       $dirty = true; }
+
+        if ($dirty) {
             $Invoices->save($invoice);
         }
     }
