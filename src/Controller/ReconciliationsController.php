@@ -280,9 +280,8 @@ class ReconciliationsController extends AppController
         }
 
         // ── Przelewy bankowe (per faktura) ──────────────────────────────────
-        // Pokazujemy przelewy POWIĄZANE z fakturą (invoice_id IS NOT NULL) —
-        // niezależnie czy potwierdzone (matched) czy auto-sugerowane (proposed
-        // z invoice_id z importu MT940). Te bez invoice_id to tylko kandydaci.
+        // TYLKO przelewy POTWIERDZONE przez user'a (Powiąż → match_status='matched').
+        // Sugerowane (proposed) NIE są pokazywane — to nie są jeszcze wpłaty.
         $bankByInvoice = [];
         if (!empty($invoices)) {
             $invoiceIds = array_column($invoices, 'id');
@@ -291,6 +290,7 @@ class ReconciliationsController extends AppController
                 ->where([
                     'company_id'      => $companyId,
                     'invoice_id IN'   => $invoiceIds,
+                    'match_status'    => 'matched',
                 ])
                 ->select(['id', 'invoice_id', 'match_status', 'amount', 'currency', 'value_date', 'party_name'])
                 ->orderByDesc('value_date')
