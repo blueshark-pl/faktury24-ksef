@@ -1623,6 +1623,19 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
               + esc(tx.parsed_inv) + '</span>'
             : '';
 
+        // Smart match score badge (A) — pokazywany tylko dla candidates (nie linked) gdy score > 0
+        var scoreBadge = '';
+        if (!isLinked && typeof tx.match_score === 'number' && tx.match_score > 0) {
+            var score = tx.match_score;
+            var scoreColor = score >= 80 ? 'success' : score >= 50 ? 'primary' : score >= 25 ? 'info' : 'secondary';
+            var reasons = (tx.match_reasons || []).join(' · ');
+            scoreBadge = '<span class="badge bg-' + scoreColor + '-subtle text-' + scoreColor + ' border ms-1" '
+                + 'title="' + esc(reasons || 'Match score') + '" '
+                + 'style="font-size:.7rem;font-weight:600">'
+                + '<i class="ri-magic-line me-1"></i>' + score
+                + '</span>';
+        }
+
         var titleHtml = tx.title
             ? '<div class="text-muted text-truncate" style="font-size:.72em;max-width:200px" title="' + esc(tx.title) + '">'
               + '<i class="ri-file-text-line me-1 opacity-50"></i>' + esc(tx.title) + '</div>'
@@ -1635,7 +1648,15 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
 
         var cleanAccount = (tx.account_number || '').replace(/[\s\-]/g, '');
 
-        return '<tr data-account="' + esc(cleanAccount) + '">'
+        // Reasons sub-line dla candidates ze score
+        var reasonsLine = '';
+        if (!isLinked && tx.match_reasons && tx.match_reasons.length) {
+            reasonsLine = '<div class="text-muted" style="font-size:.68em;margin-top:2px">'
+                + tx.match_reasons.slice(0, 4).join(' · ')
+                + '</div>';
+        }
+
+        return '<tr data-account="' + esc(cleanAccount) + '" data-score="' + (tx.match_score || 0) + '">'
             + '<td class="text-nowrap small">' + esc(tx.value_date || '—') + '</td>'
             + '<td class="text-end text-nowrap small fw-semibold">' + fmtAmount(tx.amount) + '</td>'
             + '<td class="small" style="max-width:200px">'
@@ -1643,7 +1664,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             +   titleHtml
             +   accountHtml
             + '</td>'
-            + '<td class="small">' + invTag + statusBadge + '</td>'
+            + '<td class="small">' + invTag + statusBadge + scoreBadge + reasonsLine + '</td>'
             + '<td class="text-end">' + actionCol + '</td>'
             + '</tr>';
     }
@@ -1747,8 +1768,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             }
         });
 
-        // Stan sortowania (domyślnie: data desc)
-        var sortCol = 'date';
+        // Stan sortowania (domyślnie: score desc — najlepsze dopasowania na górze)
+        var sortCol = 'score';
         var sortAsc = false;
 
         // ── Buduj toolbar filtrów ─────────────────────────────────────────────
@@ -1793,11 +1814,19 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
             +       '<span class="badge bg-primary-subtle text-primary rounded-pill px-2" id="bankTxCount" style="font-size:.75rem">' + totalCount + '</span>'
             +     '</div>'
             +   '</div>'
-            // Sortowanie
-            +   '<div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top">'
+            // Sortowanie + amount filter
+            +   '<div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top flex-wrap">'
             +     '<span class="text-muted me-1" style="font-size:.72rem;letter-spacing:.03em;text-transform:uppercase">Sortuj:</span>'
-            +     '<button type="button" id="sort-btn-date"   class="sort-btn active"><i class="ri-calendar-line me-1"></i>Data<span id="bth-date-icon" class="ms-1">↓</span></button>'
+            +     '<button type="button" id="sort-btn-score"  class="sort-btn active"><i class="ri-magic-line me-1"></i>Trafność<span id="bth-score-icon" class="ms-1">↓</span></button>'
+            +     '<button type="button" id="sort-btn-date"   class="sort-btn"><i class="ri-calendar-line me-1"></i>Data<span id="bth-date-icon" class="ms-1 opacity-50">⇅</span></button>'
             +     '<button type="button" id="sort-btn-amount" class="sort-btn"><i class="ri-coins-line me-1"></i>Kwota<span id="bth-amount-icon" class="ms-1 opacity-50">⇅</span></button>'
+            // Filtr po kwocie (B): backend zwraca tylko przelewy w okolicy invoice.remaining
+            +     '<div class="ms-auto form-check form-switch ps-2 mb-0">'
+            +       '<input class="form-check-input" type="checkbox" id="bankTxAmountFilterToggle"' + (data.amount_filter ? ' checked' : '') + '>'
+            +       '<label class="form-check-label small text-muted" for="bankTxAmountFilterToggle" title="Pokaż tylko przelewy z kwotą w okolicy faktury (±10%)">'
+            +         '<i class="ri-equalizer-2-line me-1"></i>Tylko podobne kwoty (±10%)'
+            +       '</label>'
+            +     '</div>'
             +   '</div>'
             + '</div>'
             // ── Tabela ────────────────────────────────────────────────────
@@ -1830,6 +1859,12 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var sortBtnAmt    = document.getElementById('sort-btn-amount');
 
         function updateSortButtons() {
+            var sortBtnScore = document.getElementById('sort-btn-score');
+            if (sortBtnScore) {
+                sortBtnScore.className = 'sort-btn' + (sortCol === 'score' ? ' active' : '');
+                var si = document.getElementById('bth-score-icon');
+                if (si) { si.textContent = sortCol === 'score' ? (sortAsc ? '↑' : '↓') : '⇅'; si.className = 'ms-1' + (sortCol !== 'score' ? ' opacity-50' : ''); }
+            }
             if (sortBtnDate) {
                 sortBtnDate.className = 'sort-btn' + (sortCol === 'date' ? ' active' : '');
                 var di = document.getElementById('bth-date-icon');
@@ -1871,6 +1906,16 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                 return am + tm; // 0,1,2
             }
             filtered.sort(function (a, b) {
+                // sortCol = 'score': priorytet match_score z backendu (smart confidence A)
+                if (sortCol === 'score') {
+                    var ass = (a.tx.match_score || 0) + matchScore(a);
+                    var bss = (b.tx.match_score || 0) + matchScore(b);
+                    if (ass !== bss) return sortAsc ? (ass - bss) : (bss - ass);
+                    // fallback: nowsze najpierw
+                    if (a.tx.value_date < b.tx.value_date) return 1;
+                    if (a.tx.value_date > b.tx.value_date) return -1;
+                    return 0;
+                }
                 // Najpierw: score dopasowania (malejąco) dla trybu domyślnego
                 var sa = matchScore(a), sb = matchScore(b);
                 if (sa !== sb) return sb - sa;
@@ -1895,6 +1940,11 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         }
 
         // Sortowanie — przyciski
+        var sortBtnScore = document.getElementById('sort-btn-score');
+        if (sortBtnScore) sortBtnScore.addEventListener('click', function () {
+            if (sortCol === 'score') { sortAsc = !sortAsc; } else { sortCol = 'score'; sortAsc = false; }
+            updateSortButtons(); applyTxFilters();
+        });
         if (sortBtnDate) sortBtnDate.addEventListener('click', function () {
             if (sortCol === 'date') { sortAsc = !sortAsc; } else { sortCol = 'date'; sortAsc = false; }
             updateSortButtons(); applyTxFilters();
@@ -1902,6 +1952,14 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         if (sortBtnAmt) sortBtnAmt.addEventListener('click', function () {
             if (sortCol === 'amount') { sortAsc = !sortAsc; } else { sortCol = 'amount'; sortAsc = false; }
             updateSortButtons(); applyTxFilters();
+        });
+
+        // B) Toggle filtra kwoty — przeładowuje z parametrem amount_filter=1
+        var amtFilterToggle = document.getElementById('bankTxAmountFilterToggle');
+        if (amtFilterToggle) amtFilterToggle.addEventListener('change', function () {
+            if (lastLoadedInvoiceId) {
+                loadBankTransactions(lastLoadedInvoiceId, amtFilterToggle.checked);
+            }
         });
 
         // Clear all
@@ -1948,13 +2006,20 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     }
 
     // ── Pobieranie przelewów po otwarciu modala ───────────────────────────────
-    function loadBankTransactions(invoiceId) {
+    // Drugi parametr: amountFilter (boolean) — gdy true, backend zwraca tylko
+    // przelewy z kwotą w okolicy invoice.remaining (±10% default)
+    var lastLoadedInvoiceId = null;
+    function loadBankTransactions(invoiceId, amountFilter) {
         var container = document.getElementById('bankTxSection');
         var spinner   = document.getElementById('bankTxSpinner');
         container.innerHTML = '<div class="text-muted small fst-italic">Ładowanie przelewów…</div>';
         if (spinner) spinner.style.removeProperty('display');
+        lastLoadedInvoiceId = invoiceId;
 
-        fetch('/rozliczenia/bank-transactions/' + invoiceId, {
+        var url = '/rozliczenia/bank-transactions/' + invoiceId
+                + (amountFilter ? '?amount_filter=1' : '');
+
+        fetch(url, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function (r) { return r.json(); })

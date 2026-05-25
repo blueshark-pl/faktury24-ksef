@@ -1012,8 +1012,31 @@ class ReconciliationsController extends AppController
                 ->withStringBody(json_encode(['error' => 'Faktura nie istnieje lub brak uprawnień']));
         }
 
-        $nip            = $invoice->invoice_contractor->nip ?? null;
-        $contractorName = $invoice->invoice_contractor->name ?? null;
+        $nip               = $invoice->invoice_contractor->nip ?? null;
+        $contractorName    = $invoice->invoice_contractor->name ?? null;
+        $invoiceTotal      = (float)($invoice->total ?? 0);
+        $invoiceRemaining  = (float)($invoice->remaining ?? $invoiceTotal);
+        $invoiceFullnumber = (string)($invoice->fullnumber ?? '');
+
+        // C) IBAN-y kontrahenta — po NIP odnajdujemy konta w contractor_bank_accounts
+        $contractorIbans = [];
+        if ($nip !== null && $nip !== '') {
+            $cRows = $this->fetchTable('Contractors')->find()
+                ->select(['id'])
+                ->where(['company_id' => $companyId, 'nip' => $nip])
+                ->all();
+            $contractorIds = array_column($cRows->toArray(), 'id');
+            if (!empty($contractorIds)) {
+                $bankRows = $this->fetchTable('ContractorBankAccounts')->find()
+                    ->select(['iban'])
+                    ->where(['contractor_id IN' => $contractorIds])
+                    ->all();
+                foreach ($bankRows as $b) {
+                    $iban = preg_replace('/\s+/', '', (string)$b->iban);
+                    if ($iban !== '') $contractorIbans[] = $iban;
+                }
+            }
+        }
 
         $BankTransactions = $this->fetchTable('BankTransactions');
 
@@ -1035,6 +1058,7 @@ class ReconciliationsController extends AppController
                 'match_confidence' => (int)($tx->match_confidence ?? 0),
                 'match_reason'     => (string)($tx->match_reason ?? ''),
                 'parsed_inv'       => (string)($tx->parsed_inv ?? ''),
+                'parsed_nip'       => (string)($tx->parsed_nip ?? ''),
             ];
         };
 
@@ -1042,34 +1066,44 @@ class ReconciliationsController extends AppController
         $linked = $BankTransactions->find()
             ->where(['company_id' => $companyId, 'invoice_id' => $invoiceId])
             ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
-                      'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                      'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
             ->orderByDesc('value_date')
             ->all()->toArray();
 
-        // Kandydaci — niedopasowane/proponowane pasujące do nazwy kontrahenta lub NIP
+        // Kandydaci — niedopasowane/proponowane pasujące do nazwy kontrahenta / NIP / IBAN
         $candidates = [];
         $linkedIds  = array_column($linked, 'id');
 
-        // Buduj warunki wyszukiwania po nazwie (party_name LIKE) + opcjonalnie NIP
+        // D) Rozszerzona lista stop-words + max 5 znaczących słów
+        $stopWords = [
+            'sp', 'zoo', 'o.o', 'oo', 'spzoo',
+            'ltd', 'limited', 'inc', 'incorporated',
+            'gmbh', 's.a', 'sa', 's.c', 'sc', 'spk',
+            'company', 'corp', 'corporation', 'co',
+            'spolka', 'firma', 'jednoosobowa',
+            'jdg', 'pphu',
+            'group', 'grupa', 'holding',
+            'and', 'oraz', 'the', 'und', 'die', 'der', 'das',
+            'z', 'i', 'a', 'an', 'or', 'pan', 'pani',
+        ];
         $nameOrConditions = [];
-
-        // Wyciągnij znaczące słowa z nazwy kontrahenta (dł. >= 3, pomijaj "sp.", "z", "o.o." itp.)
         if ($contractorName !== null && $contractorName !== '') {
-            $stopWords = ['sp', 'zoo', 'o.o', 'ltd', 'gmbh', 's.a', 'z', 'i', 'oraz', 'the'];
-            $words = preg_split('/[\s\.,]+/', mb_strtolower($contractorName));
-            $significant = array_values(array_filter($words, fn($w) => strlen($w) >= 3 && !in_array($w, $stopWords, true)));
-            foreach (array_slice($significant, 0, 3) as $word) {
+            $words = preg_split('/[\s\.,\-\/()]+/u', mb_strtolower($contractorName));
+            $significant = array_values(array_filter($words, fn($w) => mb_strlen($w) >= 3 && !in_array($w, $stopWords, true)));
+            foreach (array_slice($significant, 0, 5) as $word) {
                 $nameOrConditions[] = ['BankTransactions.party_name LIKE' => '%' . $word . '%'];
             }
         }
-
-        // Fallback na NIP jeśli nie ma nazwy
-        if (empty($nameOrConditions) && $nip !== null && $nip !== '') {
+        // NIP jako dodatkowy OR (nie tylko fallback)
+        if ($nip !== null && $nip !== '') {
             $nameOrConditions[] = ['BankTransactions.parsed_nip' => $nip];
         }
+        // C) IBAN-y kontrahenta jako dodatkowy OR — najmocniejszy sygnał
+        if (!empty($contractorIbans)) {
+            $nameOrConditions[] = ['BankTransactions.account_number IN' => $contractorIbans];
+        }
 
-        // Data wystawienia faktury — przelew musi być >= tej daty
-        // Normalizuj do Y-m-d niezależnie od formatu (DateTimeInterface lub string d.m.Y)
+        // Data wystawienia faktury — normalizacja Y-m-d
         $rawDate = $invoice->date;
         if ($rawDate instanceof \DateTimeInterface) {
             $invoiceDateStr = $rawDate->format('Y-m-d');
@@ -1081,10 +1115,15 @@ class ReconciliationsController extends AppController
             $invoiceDateStr = '';
         }
 
+        // B) Filtr po kwocie (opcjonalny ±10%) z query param
+        $amountFilter    = (string)$this->request->getQuery('amount_filter', '');
+        $amountTolerance = (float)$this->request->getQuery('amount_tolerance', '10') / 100.0;
+
         if (!empty($nameOrConditions)) {
             $conditions = [
                 'BankTransactions.company_id'      => $companyId,
                 'BankTransactions.match_status IN' => ['unmatched', 'proposed'],
+                'BankTransactions.direction'       => 'C',
                 'OR'                               => $nameOrConditions,
             ];
             if ($invoiceDateStr !== '') {
@@ -1093,22 +1132,110 @@ class ReconciliationsController extends AppController
             if (!empty($linkedIds)) {
                 $conditions['BankTransactions.id NOT IN'] = $linkedIds;
             }
+            if ($amountFilter === '1' && $invoiceRemaining > 0) {
+                $conditions['BankTransactions.amount >='] = round($invoiceRemaining * (1 - $amountTolerance), 2);
+                $conditions['BankTransactions.amount <='] = round($invoiceRemaining * (1 + $amountTolerance), 2);
+            }
             $candidates = $BankTransactions->find()
                 ->where($conditions)
-                ->where(['BankTransactions.direction' => 'C'])
                 ->select(['id', 'value_date', 'amount', 'direction', 'party_name', 'title',
-                          'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv'])
+                          'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
                 ->orderByDesc('value_date')
+                ->limit(100)
                 ->all()->toArray();
         }
+
+        // A) Smart confidence scoring per kandydat
+        $signWords = [];
+        if ($contractorName !== null && $contractorName !== '') {
+            $w = preg_split('/[\s\.,\-\/()]+/u', mb_strtolower($contractorName));
+            $signWords = array_values(array_filter($w, fn($x) => mb_strlen($x) >= 3 && !in_array($x, $stopWords, true)));
+        }
+        $invoiceDateTs = $invoiceDateStr ? strtotime($invoiceDateStr) : 0;
+
+        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $invoiceRemaining, $nip, $contractorIbans, $signWords, $invoiceDateTs): array {
+            $score = 0;
+            $reasons = [];
+
+            // 1. Numer faktury w /INV/ lub w tytule
+            if ($invoiceFullnumber !== '' && $tx['parsed_inv'] !== ''
+                && strcasecmp($tx['parsed_inv'], $invoiceFullnumber) === 0) {
+                $score += 45; $reasons[] = '🎯 nr faktury w /INV/';
+            } elseif ($invoiceFullnumber !== '' && stripos($tx['title'], $invoiceFullnumber) !== false) {
+                $score += 35; $reasons[] = '🎯 nr faktury w tytule';
+            }
+
+            // 2. NIP w /IDC/
+            if ($nip !== null && $nip !== '' && $tx['parsed_nip'] === $nip) {
+                $score += 25; $reasons[] = '🪪 NIP w /IDC/';
+            }
+
+            // 3. IBAN kontrahenta
+            if (!empty($contractorIbans)
+                && in_array(preg_replace('/\s+/', '', $tx['account_number']), $contractorIbans, true)) {
+                $score += 30; $reasons[] = '🏦 IBAN kontrahenta';
+            }
+
+            // 4. Kwota match
+            if ($invoiceRemaining > 0 && $tx['amount'] > 0) {
+                $diff = abs($tx['amount'] - $invoiceRemaining) / $invoiceRemaining;
+                if ($diff < 0.001)     { $score += 35; $reasons[] = '💰 dokładna kwota'; }
+                elseif ($diff <= 0.05) { $score += 30; $reasons[] = '💰 kwota ±5%'; }
+                elseif ($diff <= 0.10) { $score += 20; $reasons[] = '💰 kwota ±10%'; }
+                elseif ($diff <= 0.20) { $score += 10; $reasons[] = '💰 kwota ±20%'; }
+            }
+
+            // 5. Punkty za znaczące słowa nazwy
+            $nameLower = mb_strtolower($tx['party_name']);
+            $hits = 0;
+            foreach ($signWords as $word) {
+                if (mb_strpos($nameLower, $word) !== false) $hits++;
+            }
+            if ($hits > 0) {
+                $bonus = min($hits * 5, 20);
+                $score += $bonus;
+                $reasons[] = '👤 nazwa ×' . $hits;
+            }
+
+            // 6. Bliskość daty wystawienia
+            if ($invoiceDateTs > 0 && $tx['value_date'] !== '') {
+                $diffDays = abs(strtotime($tx['value_date']) - $invoiceDateTs) / 86400;
+                if ($diffDays <= 3)       { $score += 8;  $reasons[] = '📅 ≤3 dni'; }
+                elseif ($diffDays <= 7)   { $score += 5;  $reasons[] = '📅 ≤7 dni'; }
+                elseif ($diffDays <= 14)  { $score += 3; }
+            }
+
+            return ['score' => $score, 'reasons' => $reasons];
+        };
+
+        $scoredCandidates = array_map(function ($tx) use ($mapTx, $scoreCandidate) {
+            $row = $mapTx($tx);
+            $s = $scoreCandidate($row);
+            $row['match_score']   = $s['score'];
+            $row['match_reasons'] = $s['reasons'];
+            return $row;
+        }, $candidates);
+
+        // Sort po wyliczonej score DESC, drugorzędnie value_date DESC
+        usort($scoredCandidates, function ($a, $b) {
+            if ($a['match_score'] !== $b['match_score']) return $b['match_score'] - $a['match_score'];
+            return strcmp($b['value_date'], $a['value_date']);
+        });
+        // Top 50 dla performance UI
+        $scoredCandidates = array_slice($scoredCandidates, 0, 50);
 
         return $this->response
             ->withType('application/json')
             ->withStringBody(json_encode([
-                'nip'        => $nip,
-                'contractor' => $contractorName,
-                'linked'     => array_map($mapTx, $linked),
-                'candidates' => array_map($mapTx, $candidates),
+                'nip'              => $nip,
+                'contractor'       => $contractorName,
+                'invoice_remaining' => $invoiceRemaining,
+                'invoice_total'    => $invoiceTotal,
+                'invoice_currency' => (string)($invoice->currency ?? ''),
+                'contractor_ibans' => $contractorIbans,
+                'amount_filter'    => $amountFilter === '1',
+                'linked'           => array_map($mapTx, $linked),
+                'candidates'       => $scoredCandidates,
             ]));
     }
 
