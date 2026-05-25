@@ -2183,6 +2183,49 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
     var urlAddPayment       = '<?= $this->Url->build(['action' => 'addPayment']) ?>';
     var urlAddLegacyPayment = '<?= $this->Url->build(['action' => 'addLegacyPayment']) ?>';
 
+    // ── Helpery dostępne z outer scope (wywoływane też z wireTxButtons) ──
+    // Toast w modalu — krótka informacja sukces/błąd bez zamykania
+    function showInModalToast(msg, type) {
+        var modalBody = document.querySelector('#paymentModal .modal-body');
+        if (!modalBody) return;
+        var color = type === 'success' ? 'success' : (type === 'error' ? 'danger' : 'info');
+        var icon  = type === 'success' ? 'ri-check-line' : (type === 'error' ? 'ri-error-warning-line' : 'ri-information-line');
+        var div = document.createElement('div');
+        div.className = 'alert alert-' + color + ' alert-dismissible py-2 small mb-0 position-absolute';
+        div.style.cssText = 'top:10px;right:10px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:280px';
+        div.innerHTML = '<i class="' + icon + ' me-1"></i>' + esc(msg)
+            + '<button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>';
+        modalBody.appendChild(div);
+        setTimeout(function () { div.remove(); }, 4500);
+    }
+
+    // Update wiersza na liście głównej rozliczeń (background tabela) — bez page reload
+    function updateInvoiceRowInList(invoice) {
+        if (!invoice || !invoice.id) return;
+        var row = document.querySelector('[data-invoice-id="' + invoice.id + '"]');
+        if (!row) row = document.querySelector('tr[data-id="' + invoice.id + '"]');
+        if (!row) return;
+        var remCell = row.querySelector('[data-col="remaining"]') || row.querySelector('.rem-cell');
+        if (remCell) {
+            remCell.textContent = (invoice.remaining || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
+        }
+        var paidCell = row.querySelector('[data-col="alreadypaid"]') || row.querySelector('.paid-cell');
+        if (paidCell) {
+            paidCell.textContent = (invoice.alreadypaid || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
+        }
+        var stateCell = row.querySelector('[data-col="paymentstate"]') || row.querySelector('.state-cell');
+        if (stateCell) {
+            var stateLabels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Nieopłacona' };
+            var stateColors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'danger' };
+            stateCell.innerHTML = '<span class="badge bg-' + (stateColors[invoice.paymentstate] || 'secondary') + '-subtle text-' + (stateColors[invoice.paymentstate] || 'secondary') + ' border">'
+                + (stateLabels[invoice.paymentstate] || invoice.paymentstate)
+                + '</span>';
+        }
+        row.style.transition = 'background-color .6s';
+        row.style.backgroundColor = '#dcfce7';
+        setTimeout(function () { row.style.backgroundColor = ''; }, 1500);
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         // Pille kwot — szybkie wypełnienie pola "Kwota" w modalu
     function renderModalQuickAmounts(inv) {
@@ -2224,50 +2267,8 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         });
     }
 
-    // Toast w modalu — krótka informacja sukces/błąd bez zamykania
-    function showInModalToast(msg, type) {
-        var modalBody = document.querySelector('#paymentModal .modal-body');
-        if (!modalBody) return;
-        var color = type === 'success' ? 'success' : (type === 'error' ? 'danger' : 'info');
-        var icon  = type === 'success' ? 'ri-check-line' : (type === 'error' ? 'ri-error-warning-line' : 'ri-information-line');
-        var div = document.createElement('div');
-        div.className = 'alert alert-' + color + ' alert-dismissible py-2 small mb-0 position-absolute';
-        div.style.cssText = 'top:10px;right:10px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:280px';
-        div.innerHTML = '<i class="' + icon + ' me-1"></i>' + esc(msg)
-            + '<button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>';
-        modalBody.appendChild(div);
-        setTimeout(function () { div.remove(); }, 4500);
-    }
-
-    // Update wiersza na liście głównej rozliczeń (background tabela) — bez page reload
-    function updateInvoiceRowInList(invoice) {
-        if (!invoice || !invoice.id) return;
-        var row = document.querySelector('[data-invoice-id="' + invoice.id + '"]');
-        if (!row) row = document.querySelector('tr[data-id="' + invoice.id + '"]');
-        if (!row) return;
-        // Update remaining cell — szuka komórek z klasą rem-cell lub data-col
-        var remCell = row.querySelector('[data-col="remaining"]') || row.querySelector('.rem-cell');
-        if (remCell) {
-            remCell.textContent = (invoice.remaining || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
-        }
-        var paidCell = row.querySelector('[data-col="alreadypaid"]') || row.querySelector('.paid-cell');
-        if (paidCell) {
-            paidCell.textContent = (invoice.alreadypaid || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
-        }
-        // Status badge
-        var stateCell = row.querySelector('[data-col="paymentstate"]') || row.querySelector('.state-cell');
-        if (stateCell) {
-            var stateLabels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Nieopłacona' };
-            var stateColors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'danger' };
-            stateCell.innerHTML = '<span class="badge bg-' + (stateColors[invoice.paymentstate] || 'secondary') + '-subtle text-' + (stateColors[invoice.paymentstate] || 'secondary') + ' border">'
-                + (stateLabels[invoice.paymentstate] || invoice.paymentstate)
-                + '</span>';
-        }
-        // Wizualne podkreślenie zmiany — pulse animation
-        row.style.transition = 'background-color .6s';
-        row.style.backgroundColor = '#dcfce7';
-        setTimeout(function () { row.style.backgroundColor = ''; }, 1500);
-    }
+    // showInModalToast i updateInvoiceRowInList — przeniesione do outer scope
+    // (wywoływane też z wireTxButtons w renderBankTransactions, które jest poza DOMContentLoaded)
 
     var modal = document.getElementById('paymentModal');
         if (!modal) return;
