@@ -342,6 +342,7 @@ class BankMatchingService
         $BankTransactions = $this->fetchTable('BankTransactions');
         $Invoices         = $this->fetchTable('Invoices');
         $InvoicePayments  = $this->fetchTable('InvoicePayments');
+        $Allocations      = $this->fetchTable('BankTransactionAllocations');
 
         $tx = $BankTransactions->find()
             ->where(['id' => $transactionId, 'company_id' => $companyId])
@@ -446,14 +447,38 @@ class BankMatchingService
                 $paymentDate = date('Y-m-d'); // fallback — dzisiaj
             }
 
+            // 1. NAJPIERW alokacja — żeby invoice_payment miał poprawne FK do niej
+            $allocation = $Allocations->newEntity([
+                'id'                  => \Cake\Utility\Text::uuid(),
+                'company_id'          => $companyId,
+                'bank_transaction_id' => $transactionId,
+                'invoice_id'          => $invoiceId,
+                'allocated_amount'    => round($paymentAmount, 2),
+                'currency'            => $txCurrency,
+                'allocation_type'     => 'gross',
+                'note'                => 'Powiąż (bank tx)',
+            ]);
+
+            if (!$Allocations->save($allocation)) {
+                \Cake\Log\Log::error('BankMatchingService::confirmMatch — nie udało się zapisać bank_transaction_allocation', [
+                    'tx_id'      => $transactionId,
+                    'invoice_id' => $invoiceId,
+                    'errors'     => $allocation->getErrors(),
+                ]);
+                return false;
+            }
+
+            // 2. invoice_payment z linkiem do alokacji
             $payment = $InvoicePayments->newEntity([
-                'id'             => \Cake\Utility\Text::uuid(),
-                'invoice_id'     => $invoiceId,
-                'payment_date'   => $paymentDate,
-                'amount'         => round($paymentAmount, 2),
-                'currency'       => $txCurrency,
-                'payment_method' => 'transfer',
-                'description'    => 'Przelew bankowy: ' . ($tx->bank_reference ?? $tx->customer_reference ?? ''),
+                'id'                             => \Cake\Utility\Text::uuid(),
+                'invoice_id'                     => $invoiceId,
+                'bank_transaction_allocation_id' => (string)$allocation->id,
+                'payment_date'                   => $paymentDate,
+                'amount'                         => round($paymentAmount, 2),
+                'currency'                       => $txCurrency,
+                'payment_type'                   => 'gross',
+                'payment_method'                 => 'transfer',
+                'description'                    => 'Przelew bankowy: ' . ($tx->bank_reference ?? $tx->customer_reference ?? ''),
             ]);
 
             $saved = $InvoicePayments->save($payment);
@@ -464,6 +489,12 @@ class BankMatchingService
                     'errors'     => $payment->getErrors(),
                     'data'       => $payment->toArray(),
                 ]);
+                // Cofnij alokację — żeby nie zostawiać orphana
+                $Allocations->delete($allocation);
+            } else {
+                // 3. Back-link: zapisz invoice_payment_id na alokacji
+                $allocation->invoice_payment_id = (string)$payment->id;
+                $Allocations->save($allocation);
             }
         }
 
