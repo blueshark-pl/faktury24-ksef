@@ -709,7 +709,7 @@ if ($status !== '')            $activeFilterCount++;
                         <?php endif; ?>
                     </td>
                     <!-- Pozostało -->
-                    <td class="text-end text-nowrap small">
+                    <td class="text-end text-nowrap small" data-col="remaining">
                         <?php if ($state === 'paid'): ?>
                             <span class="text-success">0,00 <?= h($currency) ?></span>
                         <?php else: ?>
@@ -718,13 +718,13 @@ if ($status !== '')            $activeFilterCount++;
                             </span>
                         <?php endif; ?>
                         <?php if ((float)$invoice->alreadypaid > 0 && $state !== 'paid'): ?>
-                            <div class="text-muted" style="font-size:0.7rem">
+                            <div class="text-muted" style="font-size:0.7rem" data-col="alreadypaid">
                                 wpłacono: <?= number_format((float)$invoice->alreadypaid, 2, ',', ' ') ?>
                             </div>
                         <?php endif; ?>
                     </td>
                     <!-- Status -->
-                    <td>
+                    <td data-col="paymentstate">
                         <?= $paymentBadge($state, $effectiveDue ?: null, $todayStr) ?>
                         <?php if ($pdateStr === null && $state !== 'paid'): ?>
                             <div class="text-muted mt-1" style="font-size:.68rem">
@@ -2205,22 +2205,44 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
         var row = document.querySelector('[data-invoice-id="' + invoice.id + '"]');
         if (!row) row = document.querySelector('tr[data-id="' + invoice.id + '"]');
         if (!row) return;
-        var remCell = row.querySelector('[data-col="remaining"]') || row.querySelector('.rem-cell');
+
+        var curr      = invoice.currency || 'PLN';
+        var state     = invoice.paymentstate || 'unpaid';
+        var remaining = parseFloat(invoice.remaining || 0);
+        var paid      = parseFloat(invoice.alreadypaid || 0);
+        var fmtPl     = function (v) { return parseFloat(v).toFixed(2).replace('.', ','); };
+
+        // Pozostało — gdy paid: zielone "0,00 PLN"; gdy częściowo: kwota + "wpłacono"
+        var remCell = row.querySelector('[data-col="remaining"]');
         if (remCell) {
-            remCell.textContent = (invoice.remaining || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
+            var html = state === 'paid'
+                ? '<span class="text-success">0,00 ' + esc(curr) + '</span>'
+                : '<span class="' + (remaining > 0 ? 'fw-semibold text-dark' : 'text-muted') + '">'
+                  + fmtPl(remaining) + ' ' + esc(curr) + '</span>';
+            if (paid > 0 && state !== 'paid') {
+                html += '<div class="text-muted" style="font-size:0.7rem" data-col="alreadypaid">'
+                      + 'wpłacono: ' + fmtPl(paid) + '</div>';
+            }
+            remCell.innerHTML = html;
         }
-        var paidCell = row.querySelector('[data-col="alreadypaid"]') || row.querySelector('.paid-cell');
-        if (paidCell) {
-            paidCell.textContent = (invoice.alreadypaid || 0).toFixed(2) + ' ' + (invoice.currency || 'PLN');
-        }
-        var stateCell = row.querySelector('[data-col="paymentstate"]') || row.querySelector('.state-cell');
+
+        // Status — badge w stylu z paymentBadge() (kolory subtle + border)
+        var stateCell = row.querySelector('[data-col="paymentstate"]');
         if (stateCell) {
-            var stateLabels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Nieopłacona' };
-            var stateColors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'danger' };
-            stateCell.innerHTML = '<span class="badge bg-' + (stateColors[invoice.paymentstate] || 'secondary') + '-subtle text-' + (stateColors[invoice.paymentstate] || 'secondary') + ' border">'
-                + (stateLabels[invoice.paymentstate] || invoice.paymentstate)
-                + '</span>';
+            var labels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Do zapłaty' };
+            var colors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'secondary' };
+            var color  = colors[state] || 'secondary';
+            stateCell.innerHTML = '<span class="badge bg-' + color + '-subtle text-' + color
+                + ' border border-' + color + '-subtle">'
+                + (labels[state] || state) + '</span>';
         }
+
+        // Jeśli faktura zapłacona — usuń kolorowanie "table-danger" (przeterminowana)
+        if (state === 'paid') {
+            row.classList.remove('table-danger', 'table-warning');
+        }
+
+        // Pulse animation
         row.style.transition = 'background-color .6s';
         row.style.backgroundColor = '#dcfce7';
         setTimeout(function () { row.style.backgroundColor = ''; }, 1500);
