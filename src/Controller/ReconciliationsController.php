@@ -2214,26 +2214,39 @@ class ReconciliationsController extends AppController
         // Te są oznaczone jako "matched" ale nie były ręcznie kliknięte przez usera.
         // Najczęściej tworzą fałszywe wpłaty/alokacje z importu MT940.
         $autoMatched = $BankTxs->find()
-            ->contain([
-                'Invoices' => function (\Cake\ORM\Query\SelectQuery $q) {
-                    return $q->select(['id', 'fullnumber']);
-                },
-            ])
             ->where([
                 'BankTransactions.company_id'        => $companyId,
                 'BankTransactions.match_status'      => 'matched',
                 'BankTransactions.invoice_id IS NOT' => null,
                 'BankTransactions.match_confidence <' => 100,
             ])
-            ->select(['BankTransactions.id', 'BankTransactions.invoice_id', 'BankTransactions.amount',
-                      'BankTransactions.currency', 'BankTransactions.value_date',
-                      'BankTransactions.party_name', 'BankTransactions.match_confidence',
-                      'BankTransactions.match_reason', 'BankTransactions.parsed_inv',
-                      'BankTransactions.parsed_nip'])
+            ->select(['id', 'invoice_id', 'amount', 'currency', 'value_date',
+                      'party_name', 'match_confidence', 'match_reason',
+                      'parsed_inv', 'parsed_nip'])
             ->orderByDesc('value_date')
             ->all()->toArray();
 
-        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches', 'autoMatched'));
+        // Pomocniczne statystyki — żeby user widział co jest w bazie
+        $stats = [
+            'total_matched'        => $BankTxs->find()->where([
+                'company_id' => $companyId, 'match_status' => 'matched',
+            ])->count(),
+            'matched_with_invoice' => $BankTxs->find()->where([
+                'company_id' => $companyId, 'match_status' => 'matched',
+                'invoice_id IS NOT' => null,
+            ])->count(),
+            'auto_matched'         => count($autoMatched),
+            'manual_matched'       => $BankTxs->find()->where([
+                'company_id' => $companyId, 'match_status' => 'matched',
+                'invoice_id IS NOT' => null,
+                'match_confidence >=' => 100,
+            ])->count(),
+            'proposed'             => $BankTxs->find()->where([
+                'company_id' => $companyId, 'match_status' => 'proposed',
+            ])->count(),
+        ];
+
+        $this->set(compact('orphanPayments', 'txsWithoutAlloc', 'orphanAllocs', 'currencyMismatches', 'autoMatched', 'stats'));
     }
 
     /**

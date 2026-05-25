@@ -6,6 +6,7 @@
  * @var array $orphanAllocs
  * @var array $currencyMismatches
  * @var array $autoMatched
+ * @var array $stats
  */
 
 $this->assign('title', 'Sprawdzenie integralności — rozliczenia');
@@ -37,6 +38,19 @@ $fdate = static function ($d): string {
         <i class="ri-information-line me-1"></i>
         Skanuje łańcuch <code>bank_transactions</code> ↔ <code>bank_transaction_allocations</code> ↔ <code>invoice_payments</code>.
         Wykrywa sieroty (rekordy bez powiązania) i pomaga je naprawić — łącząc po <code>invoice_id</code>, kwocie i dacie.
+    </div>
+
+    <!-- Statystyki stanu w bazie -->
+    <div class="card mb-3 bg-light">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 small">
+                <div><strong>Σ matched:</strong> <?= (int)$stats['total_matched'] ?></div>
+                <div><strong>matched + invoice_id:</strong> <?= (int)$stats['matched_with_invoice'] ?></div>
+                <div class="text-success"><strong>Ręcznie (confidence=100):</strong> <?= (int)$stats['manual_matched'] ?></div>
+                <div class="text-warning"><strong>Auto (confidence&lt;100):</strong> <?= (int)$stats['auto_matched'] ?></div>
+                <div class="text-muted"><strong>proposed:</strong> <?= (int)$stats['proposed'] ?></div>
+            </div>
+        </div>
     </div>
 
     <?php if ($totalIssues > 0): ?>
