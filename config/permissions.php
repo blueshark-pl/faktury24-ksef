@@ -116,6 +116,7 @@ return [
             'role' => '*',
             'controller' => 'Invoices',
             'action' => ['processEmailQueue', 'generatePdfInternal'],
+            'bypassAuth' => true,
         ],
         [
             'role' => '*',
