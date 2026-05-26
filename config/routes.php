@@ -131,6 +131,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/bank-accounts', ['controller' => 'Invoices', 'action' => 'bankAccounts']);
         // GET  /api/v1/invoices       — lista faktur (filtry: nip, date_from, date_to, type, paymentstate, workflow_status|status (draft|issued|sending|sent — można po przecinku), is_draft (0/1), series, search, page, per_page)
         $builder->get('/invoices', ['controller' => 'Invoices', 'action' => 'index']);
+        // GET  /api/v1/invoices/by-seller-nip — master token: lista faktur firmy po NIP-ie (filtr rok+miesiąc)
+        $builder->get('/invoices/by-seller-nip', ['controller' => 'Invoices', 'action' => 'bySellerNip']);
+        // GET  /api/v1/invoices/jpk-v7m — master token: generuje XML JPK_V7M (filtr nip + rok + miesiąc), tylko sprzedaż
+        $builder->get('/invoices/jpk-v7m', ['controller' => 'Invoices', 'action' => 'jpkV7m']);
         // POST /api/v1/invoices       — wystaw fakturę VAT
         $builder->post('/invoices', ['controller' => 'Invoices', 'action' => 'create']);
         // GET  /api/v1/invoices/{id}  — szczegóły faktury

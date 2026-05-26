@@ -5,6 +5,8 @@ namespace App\Controller\Api;
 
 use App\Controller\AppController;
 use App\Service\Invoice\InvoiceNumberingService;
+use App\Service\Jpk\JpkV7mGenerator;
+use App\Service\Jpk\JpkV7mValidator;
 use Cake\Http\Response;
 use Cake\Utility\Text;
 
@@ -18,6 +20,15 @@ use Cake\Utility\Text;
  */
 class InvoicesController extends AppController
 {
+    /**
+     * Master read-only token — pozwala portalowi pobierać faktury dowolnej firmy
+     * po jej NIP-ie (endpoint bySellerNip). Nie powiązany z `api_tokens`.
+     *
+     * UWAGA: ten token musi być synchronizowany z portalem
+     * (G:/2023/portal.partnersc.com/src/Controller/SalesInvoicesController.php).
+     */
+    private const MASTER_TOKEN = 'fv_master9a4b8e6c2d7f1a5b9e3c8d6f2a4b7e1c5d9a3b8e6c';
+
     private InvoiceNumberingService $numbering;
 
     public function initialize(): void
@@ -46,7 +57,7 @@ class InvoicesController extends AppController
         try {
             $authentication = $this->request->getAttribute('authentication');
             if ($authentication && method_exists($authentication, 'allowUnauthenticated')) {
-                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'pdf']);
+                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'pdf', 'bySellerNip', 'jpkV7m']);
             }
         } catch (\Throwable) {}
     }
@@ -234,6 +245,282 @@ class InvoicesController extends AppController
             'pages'    => (int)ceil($total / $perPage),
             'invoices' => $rows,
         ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/invoices/by-seller-nip
+    // Master-token only. Zwraca faktury wystawione przez firmę o danym NIP-ie,
+    // z filtrem na rok/miesiąc (sortowanie po Invoices.date DESC).
+    // Używane przez portal.partnersc.com → "Dokumenty sprzedażowe".
+    // -------------------------------------------------------------------------
+
+    public function bySellerNip(): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        // Master-token check
+        $header = $this->request->getHeaderLine('Authorization');
+        if (!str_starts_with($header, 'Bearer ') || substr($header, 7) !== self::MASTER_TOKEN) {
+            return $this->jsonError(401, 'Master token wymagany dla tego endpointu.');
+        }
+
+        $q = $this->request->getQueryParams();
+
+        // ── NIP firmy sprzedawcy ────────────────────────────────────────────
+        $nipDigits = preg_replace('/\D+/', '', (string)($q['nip'] ?? ''));
+        if ($nipDigits === '') {
+            return $this->jsonError(422, 'Parametr "nip" jest wymagany.');
+        }
+
+        // Wyszukaj firmę po NIP-ie (akceptuj różne formaty: 1234567890, PL1234567890, 123-456-78-90)
+        $nipDashed = (strlen($nipDigits) === 10)
+            ? substr($nipDigits, 0, 3) . '-' . substr($nipDigits, 3, 3) . '-' . substr($nipDigits, 6, 2) . '-' . substr($nipDigits, 8, 2)
+            : null;
+        $nipVariants = array_values(array_unique(array_filter([
+            $nipDigits,
+            'PL' . $nipDigits,
+            $nipDashed,
+        ])));
+
+        $company = $this->fetchTable('Companies')->find()
+            ->select(['id', 'name', 'nip'])
+            ->where(['nip IN' => $nipVariants])
+            ->first();
+
+        if (!$company) {
+            return $this->jsonError(404, 'Nie znaleziono firmy o NIP-ie: ' . $nipDigits);
+        }
+
+        // ── Walidacja okresu (rok/miesiąc) ─────────────────────────────────
+        $rok     = (int)($q['rok'] ?? $q['year'] ?? date('Y'));
+        $miesiac = (int)($q['miesiac'] ?? $q['month'] ?? (int)date('n'));
+        if ($rok < 2010 || $rok > 2100)   $rok = (int)date('Y');
+        if ($miesiac < 1 || $miesiac > 12) $miesiac = (int)date('n');
+
+        $fromDate = sprintf('%04d-%02d-01', $rok, $miesiac);
+        $toDate   = (new \DateTime($fromDate))->modify('last day of this month')->format('Y-m-d');
+
+        // ── Pobierz faktury ────────────────────────────────────────────────
+        $Invoices = $this->fetchTable('Invoices');
+        $invoices = $Invoices->find()
+            ->select([
+                'Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.sold_date',
+                'Invoices.type', 'Invoices.total', 'Invoices.netto', 'Invoices.tax',
+                'Invoices.currency', 'Invoices.paymentmethod', 'Invoices.paymentdate',
+                'Invoices.paymentstate', 'Invoices.alreadypaid', 'Invoices.remaining',
+                'Invoices.description', 'Invoices.ksef_number', 'Invoices.ksef_status',
+                'Invoices.workflow_status', 'Invoices.created',
+            ])
+            ->contain([
+                'InvoiceContractors' => fn($q) => $q->select(['invoice_id', 'name', 'nip', 'city']),
+            ])
+            ->where([
+                'Invoices.company_id' => $company->id,
+                'Invoices.date >=' => $fromDate,
+                'Invoices.date <=' => $toDate,
+            ])
+            ->orderBy(['Invoices.date' => 'DESC', 'Invoices.created' => 'DESC'])
+            ->all();
+
+        $rows = [];
+        foreach ($invoices as $inv) {
+            $rows[] = [
+                'id'              => $inv->id,
+                'fullnumber'      => $inv->fullnumber,
+                'date'            => $inv->date?->format('Y-m-d'),
+                'sold_date'       => $inv->sold_date?->format('Y-m-d'),
+                'type'            => $inv->type,
+                'workflow_status' => $inv->workflow_status,
+                'is_draft'        => ((string)$inv->workflow_status === 'draft'),
+                'total'           => (float)$inv->total,
+                'netto'           => (float)$inv->netto,
+                'tax'             => (float)$inv->tax,
+                'currency'        => $inv->currency,
+                'paymentmethod'   => $inv->paymentmethod,
+                'paymentdate'     => $inv->paymentdate?->format('Y-m-d'),
+                'paymentstate'    => $inv->paymentstate,
+                'alreadypaid'     => (float)$inv->alreadypaid,
+                'remaining'       => (float)$inv->remaining,
+                'description'     => $inv->description,
+                'ksef_number'     => $inv->ksef_number,
+                'ksef_status'     => $inv->ksef_status,
+                'buyer' => $inv->invoice_contractor ? [
+                    'name' => $inv->invoice_contractor->name,
+                    'nip'  => $inv->invoice_contractor->nip,
+                    'city' => $inv->invoice_contractor->city,
+                ] : null,
+                'created' => $inv->created?->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        return $this->jsonOk(200, [
+            'company'  => ['id' => $company->id, 'name' => $company->name, 'nip' => $company->nip],
+            'rok'      => $rok,
+            'miesiac'  => $miesiac,
+            'count'    => count($rows),
+            'invoices' => $rows,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/invoices/jpk-v7m
+    // Master-token only. Generuje plik JPK_V7M (XML wg MF) dla firmy o danym NIP-ie.
+    // Zawiera tylko sprzedaż (Ewidencja Sprzedaży + zerowa sekcja zakupów + uproszczona Deklaracja).
+    // -------------------------------------------------------------------------
+
+    public function jpkV7m(): Response
+    {
+        $this->request->allowMethod(['get']);
+
+        // Master-token check
+        $header = $this->request->getHeaderLine('Authorization');
+        if (!str_starts_with($header, 'Bearer ') || substr($header, 7) !== self::MASTER_TOKEN) {
+            return $this->jsonError(401, 'Master token wymagany dla tego endpointu.');
+        }
+
+        $q = $this->request->getQueryParams();
+
+        // NIP sprzedawcy
+        $nipDigits = preg_replace('/\D+/', '', (string)($q['nip'] ?? ''));
+        if ($nipDigits === '') {
+            return $this->jsonError(422, 'Parametr "nip" jest wymagany.');
+        }
+
+        $nipDashed = (strlen($nipDigits) === 10)
+            ? substr($nipDigits, 0, 3) . '-' . substr($nipDigits, 3, 3) . '-' . substr($nipDigits, 6, 2) . '-' . substr($nipDigits, 8, 2)
+            : null;
+        $nipVariants = array_values(array_unique(array_filter([
+            $nipDigits, 'PL' . $nipDigits, $nipDashed,
+        ])));
+
+        $company = $this->fetchTable('Companies')->find()
+            ->where(['nip IN' => $nipVariants])
+            ->first();
+
+        if (!$company) {
+            return $this->jsonError(404, 'Nie znaleziono firmy o NIP-ie: ' . $nipDigits);
+        }
+
+        // Okres miesięczny (V7M)
+        $rok     = (int)($q['rok']     ?? date('Y'));
+        $miesiac = (int)($q['miesiac'] ?? (int)date('n'));
+        if ($rok < 2010 || $rok > 2100)    $rok = (int)date('Y');
+        if ($miesiac < 1 || $miesiac > 12) $miesiac = (int)date('n');
+
+        $dateFrom = sprintf('%04d-%02d-01', $rok, $miesiac);
+        $dateTo   = (new \DateTime($dateFrom))->modify('last day of this month')->format('Y-m-d');
+
+        // Default '1471' (US Warszawa-Mokotów) — walidatorowi wystarczy, ale do realnej wysyłki user MUSI podać własny.
+        $kodUrzedu   = trim((string)($q['kod_urzedu'] ?? ''));
+        if ($kodUrzedu === '' || !preg_match('/^\d{4}$/', $kodUrzedu)) {
+            $kodUrzedu = '1471';
+        }
+        $celRaw      = (string)($q['cel'] ?? '1');
+        $celZlozenia = in_array($celRaw, ['1','2'], true) ? $celRaw : '1';
+        $email       = trim((string)($q['email']   ?? ''));
+        $telefon     = trim((string)($q['telefon'] ?? ''));
+
+        // Pobierz faktury z danymi do JPK (tylko wystawione, nie szkice)
+        // Dla korekt — ładuj parent z jego pozycjami, żeby policzyć delty
+        $Invoices = $this->fetchTable('Invoices');
+        $invoices = $Invoices->find()
+            ->contain([
+                'InvoiceContractors',
+                'InvoiceContents' => ['Vats'],
+                'ParentInvoices' => [
+                    'InvoiceContents' => ['Vats'],
+                ],
+            ])
+            ->where([
+                'Invoices.company_id' => $company->id,
+                'Invoices.date >='    => $dateFrom,
+                'Invoices.date <='    => $dateTo,
+                'Invoices.workflow_status !=' => 'draft',
+            ])
+            ->orderBy(['Invoices.date' => 'ASC', 'Invoices.created' => 'ASC'])
+            ->toArray();
+
+        // Dla faktur końcowych — podpnij rodzeństwo (poprzednie zaliczki tej samej proformy)
+        $finalParentIds = [];
+        foreach ($invoices as $inv) {
+            if (strtolower((string)$inv->type) === 'final' && !empty($inv->parent_id)) {
+                $finalParentIds[] = $inv->parent_id;
+            }
+        }
+        if (!empty($finalParentIds)) {
+            $advances = $Invoices->find()
+                ->contain(['InvoiceContents' => ['Vats']])
+                ->where([
+                    'Invoices.company_id'  => $company->id,
+                    'Invoices.parent_id IN' => array_values(array_unique($finalParentIds)),
+                    'Invoices.type'        => 'advance',
+                    'Invoices.workflow_status !=' => 'draft',
+                ])
+                ->all();
+            $advByParent = [];
+            foreach ($advances as $adv) {
+                $advByParent[(string)$adv->parent_id][] = $adv;
+            }
+            foreach ($invoices as $inv) {
+                if (strtolower((string)$inv->type) === 'final' && !empty($advByParent[(string)$inv->parent_id])) {
+                    $inv->set('sibling_advances', $advByParent[(string)$inv->parent_id]);
+                }
+            }
+        }
+
+        $generator = new JpkV7mGenerator();
+        $xml = $generator->generate(
+            $company,
+            $invoices,
+            $rok,
+            $miesiac,
+            $kodUrzedu,
+            $celZlozenia,
+            $email,
+            $telefon
+        );
+
+        // Opcjonalna walidacja XSD — ?validate=1 zwraca JSON z błędami zamiast XML
+        $shouldValidate = !empty($q['validate']) && in_array((string)$q['validate'], ['1','true','yes'], true);
+        if ($shouldValidate) {
+            $result = (new JpkV7mValidator())->validate($xml);
+            return $this->response
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success'    => $result['valid'],
+                    'valid'      => $result['valid'],
+                    'xsd_exists' => $result['xsd_exists'],
+                    'errors'     => $result['errors'],
+                    'xml_length' => strlen($xml),
+                    'invoices_count' => is_array($invoices) ? count($invoices) : $invoices->count(),
+                ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+
+        // Tryb strict — gdy ?strict=1 i walidacja XSD nie przechodzi → 422 z błędami zamiast XML
+        $strict = !empty($q['strict']) && in_array((string)$q['strict'], ['1','true','yes'], true);
+        if ($strict) {
+            $result = (new JpkV7mValidator())->validate($xml);
+            if (!$result['valid']) {
+                return $this->response
+                    ->withStatus(422)
+                    ->withType('application/json')
+                    ->withStringBody(json_encode([
+                        'success'    => false,
+                        'error'      => 'JPK_V7M nie przeszedł walidacji XSD.',
+                        'xsd_exists' => $result['xsd_exists'],
+                        'errors'     => $result['errors'],
+                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            }
+        }
+
+        $filename = 'JPK_V7M_' . preg_replace('/[^a-z0-9]/i', '', (string)$company->nip)
+                  . '_' . sprintf('%04d-%02d', $rok, $miesiac)
+                  . '.xml';
+
+        return $this->response
+            ->withType('application/xml')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->withStringBody($xml);
     }
 
     // -------------------------------------------------------------------------
@@ -1088,21 +1375,35 @@ class InvoicesController extends AppController
     {
         $this->request->allowMethod(['get']);
 
-        $token = $this->authenticate();
-        if ($token === null) {
-            return $this->response;
+        // Master-token bypass: portal pobiera PDF dowolnej faktury (read-only)
+        $header   = $this->request->getHeaderLine('Authorization');
+        $isMaster = str_starts_with($header, 'Bearer ') && substr($header, 7) === self::MASTER_TOKEN;
+
+        $companyId = null;
+        if (!$isMaster) {
+            $token = $this->authenticate();
+            if ($token === null) {
+                return $this->response;
+            }
+            $companyId = (string)$token->company_id;
         }
 
-        $companyId = (string)$token->company_id;
         $Invoices  = $this->fetchTable('Invoices');
 
         try {
-            $invoice = $Invoices->get($id, contain: [
-                'InvoiceContractors',
-                'InvoiceContents' => ['Vats'],
-                'Companies',
-                'InvoiceCompanyDetails',
-            ], conditions: ['Invoices.company_id' => $companyId]);
+            $conditions = ['Invoices.id' => $id];
+            if (!$isMaster) {
+                $conditions['Invoices.company_id'] = $companyId;
+            }
+            $invoice = $Invoices->find()
+                ->contain([
+                    'InvoiceContractors',
+                    'InvoiceContents' => ['Vats'],
+                    'Companies',
+                    'InvoiceCompanyDetails',
+                ])
+                ->where($conditions)
+                ->firstOrFail();
         } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
             return $this->jsonError(404, 'Faktura nie znaleziona.');
         }
