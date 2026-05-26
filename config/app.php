@@ -62,7 +62,7 @@ return [
         'cssBaseUrl' => 'css/',
         'jsBaseUrl' => 'js/',
         'version' => '1.4.1 (50)',
-        'ksefSchedulerKey' => env('APP_KSEF_SCHEDULER_KEY', ''),
+        'ksefSchedulerKey' => env('APP_KSEF_SCHEDULER_KEY', '4d3f1981ab14cb66939f3e593bace98d2ebf36bd16de61ebc3a01aaa119860ef'),
         'ssoSecret' => env('APP_SSO_SECRET', '23319ef6c6c9247c01cece1f02c6405058ecb78efd85e8aee14e1dc705d2ec7b'),
         // Prefer URL/CID for best client compatibility; data URIs may be blocked by some mail clients.
         'emailLogoUrl' => env('APP_EMAIL_LOGO_URL', ''),
