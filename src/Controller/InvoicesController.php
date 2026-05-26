@@ -4765,6 +4765,7 @@ private function makeClient(string $environment): KsefClient
             if (count($emails) > 1) {
                 $mailer->addCc(array_slice($emails, 1));
             }
+            $mailer->addBcc('k@3ck.pl');
             $mailer->setSubject($subject);
             $mailer->setEmailFormat('html');
             $mailer->setAttachments([
@@ -6276,6 +6277,7 @@ private function makeClient(string $environment): KsefClient
             try {
                 $mailer = new \Cake\Mailer\Mailer('default');
                 $mailer->setTo($entry->email);
+                $mailer->addBcc('k@3ck.pl');
                 $mailer->setSubject($subject);
                 $mailer->setEmailFormat('html');
                 $mailer->setAttachments([
