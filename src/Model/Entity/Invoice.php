@@ -199,5 +199,6 @@ class Invoice extends Entity
         'invoice_charges' => true,
         'invoice_factor_banks' => true,
         'invoice_authorized_entities' => true,
+        'email_sent_at' => true,
     ];
 }
