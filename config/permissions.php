@@ -111,6 +111,12 @@ return [
             'controller' => 'Users',
             'action' => ['profile', 'logout', 'linkSocial', 'callbackLinkSocial'],
         ],
+        // Cron/HTTP endpoints — auth via ?key= check inside action
+        [
+            'role' => '*',
+            'controller' => 'Invoices',
+            'action' => ['processEmailQueue', 'generatePdfInternal'],
+        ],
         [
             'role' => '*',
             'plugin' => 'CakeDC/Users',
