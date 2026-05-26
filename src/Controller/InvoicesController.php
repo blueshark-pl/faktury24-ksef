@@ -4783,6 +4783,12 @@ private function makeClient(string $environment): KsefClient
                 ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd wysyłki: ' . $e->getMessage()]));
         }
 
+        // Zapisz znacznik czasu wysyłki
+        $this->Invoices->updateAll(
+            ['email_sent_at' => new \DateTimeImmutable()],
+            ['id' => $invoice->id]
+        );
+
         return $this->response->withType('application/json')
             ->withStringBody(json_encode(['success' => true, 'sent_to' => $emails]));
     }
@@ -6286,6 +6292,11 @@ private function makeClient(string $environment): KsefClient
                 $entry->status  = 'sent';
                 $entry->sent_at = new \DateTimeImmutable();
                 $Queue->save($entry);
+
+                $this->Invoices->updateAll(
+                    ['email_sent_at' => new \DateTimeImmutable()],
+                    ['id' => $entry->invoice_id]
+                );
 
                 $results['sent']++;
                 $results['details'][] = ['number' => $fullnumber, 'to' => $entry->email];
