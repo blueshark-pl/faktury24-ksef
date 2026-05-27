@@ -35,79 +35,8 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 };
 
 // MT940 transaction type codes — opisy dla popoverów.
-// Standard SWIFT MT940: pierwsza litera = kategoria, kolejne 2 cyfry = typ operacji.
-// Polskie banki (PKO, Pekao, ING, mBank, Santander) używają wariantów poniżej.
-$mt940Codes = [
-    // Credit (wpływ)
-    'C20' => 'Wpłata gotówkowa (uznanie)',
-    'C44' => 'Czek otrzymany',
-    'C50' => 'Przelew otrzymany (zwykły)',
-    'C57' => 'Czek skupowy',
-    'C61' => 'Przelew otrzymany',
-    'C62' => 'Przelew zagraniczny otrzymany',
-    'C95' => 'Uznanie — opłata bankowa',
-
-    // Debit (rozchód)
-    'D20' => 'Wypłata gotówkowa (obciążenie)',
-    'D44' => 'Czek wystawiony',
-    'D50' => 'Przelew wychodzący (zwykły)',
-    'D57' => 'Czek rozliczeniowy',
-    'D61' => 'Przelew własny',
-    'D62' => 'Przelew zagraniczny wychodzący',
-    'D94' => 'Przelew krajowy (Elixir wychodzący)',
-    'D95' => 'Obciążenie — opłata bankowa',
-    'D99' => 'Inne obciążenie',
-
-    // External / przelew zewnętrzny
-    'N20' => 'Wpłata gotówkowa zewnętrzna',
-    'N31' => 'Przelew SEPA Credit Transfer',
-    'N32' => 'Przelew SEPA Direct Debit',
-    'N44' => 'Odsetki',
-    'N50' => 'Przelew SEPA wychodzący',
-    'N57' => 'Przelew międzybankowy SEPA',
-    'N94' => 'Przelew krajowy Elixir',
-    'N95' => 'Opłata bankowa (zewnętrzna)',
-
-    // Standing order / zlecenie stałe
-    'S20' => 'Wpłata własna gotówkowa',
-    'S50' => 'Przelew okresowy / zlecenie stałe',
-    'S61' => 'Polecenie zapłaty',
-
-    // Admin / korekty / księgowanie
-    'A61' => 'Korekta / księgowanie administracyjne (uznanie)',
-    'A95' => 'Opłaty bankowe (uznanie kredytowe)',
-
-    // Specjalne (Express Elixir, instant)
-    'F50' => 'Express Elixir / przelew natychmiastowy',
-    'F94' => 'Przelew natychmiastowy krajowy',
-
-    // Zwroty / storna
-    'Z61' => 'Storno przelewu',
-    'Z50' => 'Zwrot przelewu',
-
-    // Gwarancje / waluta
-    'G50' => 'Przelew gwarancyjny',
-    'W50' => 'Przewalutowanie',
-];
-
-$codeLabel = function (?string $code) use ($mt940Codes): string {
-    if (!$code) return '';
-    $up = strtoupper(trim($code));
-    if (isset($mt940Codes[$up])) return $mt940Codes[$up];
-    // Fallback: pierwsza litera daje kategorię
-    $letterMap = [
-        'C' => 'kod kredytowy (wpływ) — nieznana podkategoria',
-        'D' => 'kod debetowy (rozchód) — nieznana podkategoria',
-        'N' => 'przelew zewnętrzny — nieznana podkategoria',
-        'S' => 'zlecenie stałe / okresowe — nieznana podkategoria',
-        'A' => 'korekta / księgowanie administracyjne',
-        'F' => 'przelew natychmiastowy — nieznana podkategoria',
-        'Z' => 'storno / zwrot — nieznana podkategoria',
-        'G' => 'gwarancja — nieznana podkategoria',
-        'W' => 'operacja walutowa — nieznana podkategoria',
-    ];
-    return $letterMap[substr($up, 0, 1)] ?? 'Nieznany kod MT940';
-};
+// Pełna mapa kodów (mBank + SWIFT) w \App\Service\Mt940TransactionCodes.
+$codeLabel = fn(?string $code) => \App\Service\Mt940TransactionCodes::describe($code);
 ?>
 
 <!-- Nagłówek -->
