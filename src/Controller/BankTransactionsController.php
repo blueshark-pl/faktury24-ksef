@@ -154,8 +154,253 @@ class BankTransactionsController extends AppController
             }
         }
 
-        $this->set(compact('transactions', 'txAllocMap', 'search', 'direction', 'matchStatus', 'dateFrom', 'dateTo', 'page', 'pages', 'total', 'limit', 'statusCounts'));
+        // ── Auto-podpowiedzi: dla każdej kredytowej tx bez alokacji szukamy
+        //    pasujących nierozliczonych faktur (system + legacy) bez czekania na klik.
+        $candidatesByTx = $this->_buildCandidatesByTx($transactions, $txAllocMap, $companyId);
+
+        $this->set(compact('transactions', 'txAllocMap', 'candidatesByTx',
+            'search', 'direction', 'matchStatus', 'dateFrom', 'dateTo',
+            'page', 'pages', 'total', 'limit', 'statusCounts'));
         $this->set('title', 'Historia transakcji');
+    }
+
+    /**
+     * Dla każdej tx kredytowej (C) bez pełnej alokacji znajduje pasujące
+     * nierozliczone faktury (system + legacy) po:
+     *   - parsed_inv / title vs fullnumber (z wariantami formatu)
+     *   - party_name vs contractor_name (znaczące słowa)
+     *   - parsed_nip vs contractor.nip
+     *   - kwocie (matching remaining ±10%)
+     * Zwraca array [txId => array of candidate invoices]
+     */
+    private function _buildCandidatesByTx(iterable $transactions, array $txAllocMap, string $companyId): array
+    {
+        $candidatesByTx = [];
+
+        // Lista tx do przeszukania (tylko credit, bez alokacji)
+        $relevantTxs = [];
+        foreach ($transactions as $tx) {
+            if (($tx->direction ?? '') !== 'C') continue;
+            if (!empty($txAllocMap[(string)$tx->id]['count'])) continue;
+            if (in_array($tx->match_status, ['matched', 'ignored'], true)) continue;
+            $relevantTxs[(string)$tx->id] = $tx;
+        }
+        if (empty($relevantTxs)) return $candidatesByTx;
+
+        // ── Prefetch nierozliczone faktury systemowe ────────────────────────
+        $Invoices = $this->fetchTable('Invoices');
+        $sysInvoices = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'name', 'nip']);
+                },
+            ])
+            ->where([
+                'Invoices.company_id'        => $companyId,
+                'Invoices.paymentstate IN'   => ['unpaid', 'partial'],
+                'Invoices.workflow_status'   => 'issued',
+            ])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
+                      'Invoices.remaining', 'Invoices.alreadypaid', 'Invoices.currency',
+                      'Invoices.currency_exchange', 'Invoices.paymentstate',
+                      'Invoices.paymentdate', 'Invoices.date'])
+            ->orderByDesc('Invoices.date')
+            ->limit(500)
+            ->all()->toArray();
+
+        // ── Prefetch nierozliczone faktury legacy ────────────────────────────
+        $legacyInvoices = $this->fetchTable('LegacyInvoices')->find()
+            ->where([
+                'company_id'           => $companyId,
+                'paymentstate IN'      => ['unpaid', 'partial'],
+            ])
+            ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip',
+                      'total', 'netto', 'remaining', 'remaining_wal', 'currency',
+                      'exchange_rate', 'paymentstate', 'date'])
+            ->orderByDesc('date')
+            ->limit(500)
+            ->all()->toArray();
+
+        // Generator wariantów numeru faktury (FW/17/04/2026 → FW17/4/26, itp.)
+        $fnVariants = static function (string $fn): array {
+            if ($fn === '') return [];
+            $v = [$fn];
+            $v[] = str_replace('/', '', $fn);
+            $sy = preg_replace('/(\d{2})(\d{2})$/', '$2', $fn);
+            if ($sy && $sy !== $fn) { $v[] = $sy; $v[] = str_replace('/', '', $sy); }
+            $nl = preg_replace('#/0(\d)(?=/|$)#', '/$1', $fn);
+            if ($nl && $nl !== $fn) {
+                $v[] = $nl; $v[] = str_replace('/', '', $nl);
+                $sy2 = preg_replace('/(\d{2})(\d{2})$/', '$2', $nl);
+                if ($sy2 && $sy2 !== $nl) { $v[] = $sy2; $v[] = str_replace('/', '', $sy2); }
+            }
+            return array_unique($v);
+        };
+
+        $stopWords = ['sp', 'zoo', 'oo', 'spzoo', 'sa', 'gmbh', 'ltd',
+                      'spolka', 'firma', 'group', 'grupa', 'holding'];
+
+        // ── Per-tx matching ──────────────────────────────────────────────────
+        foreach ($relevantTxs as $txId => $tx) {
+            $txAmount   = (float)$tx->amount;
+            $txCurrency = strtoupper((string)($tx->currency ?? 'PLN'));
+            $txTitle    = strtolower((string)($tx->title ?? ''));
+            $txParty    = mb_strtolower((string)($tx->party_name ?? ''));
+            $parsedInv  = (string)($tx->parsed_inv ?? '');
+            $parsedNip  = (string)($tx->parsed_nip ?? '');
+
+            $matches = [];
+
+            // System invoices
+            foreach ($sysInvoices as $inv) {
+                $score    = 0;
+                $reasons  = [];
+                $fn       = (string)$inv->fullnumber;
+                $variants = $fnVariants($fn);
+
+                // Numer faktury (najmocniejszy)
+                $invMatched = false;
+                foreach ($variants as $v) {
+                    if ($parsedInv !== '' && strcasecmp($parsedInv, $v) === 0) {
+                        $score += 45; $reasons[] = '🎯 nr w /INV/'; $invMatched = true; break;
+                    }
+                }
+                if (!$invMatched) {
+                    foreach ($variants as $v) {
+                        if ($txTitle !== '' && stripos($txTitle, strtolower($v)) !== false) {
+                            $score += 35; $reasons[] = '🎯 nr w tytule'; break;
+                        }
+                    }
+                }
+
+                // NIP
+                $contractorNip = (string)($inv->invoice_contractor->nip ?? '');
+                if ($parsedNip !== '' && $contractorNip !== '' && $parsedNip === $contractorNip) {
+                    $score += 25; $reasons[] = '🪪 NIP';
+                }
+
+                // Nazwa kontrahenta
+                $contractorName = (string)($inv->invoice_contractor->name ?? '');
+                if ($contractorName !== '' && $txParty !== '') {
+                    $words = preg_split('/[\s\.,\-\/()]+/u', mb_strtolower($contractorName));
+                    $sig   = array_filter($words, fn($w) => mb_strlen($w) >= 3 && !in_array($w, $stopWords, true));
+                    $hits  = 0;
+                    foreach (array_slice($sig, 0, 5) as $w) {
+                        if (mb_strpos($txParty, $w) !== false) $hits++;
+                    }
+                    if ($hits > 0) { $score += min($hits * 5, 20); $reasons[] = '👤 nazwa ×' . $hits; }
+                }
+
+                // Kwota (uwzględnia waluty — konwertujemy tx do invoice currency)
+                $invRemaining = (float)$inv->remaining;
+                $invTotal     = (float)$inv->total;
+                $invCurr      = strtoupper((string)($inv->currency ?? 'PLN'));
+                $invRate      = (float)($inv->currency_exchange ?? 0);
+                $txInInvCurr  = $txAmount;
+                if ($txCurrency !== $invCurr && $invRate > 0) {
+                    if ($txCurrency === 'PLN' && $invCurr !== 'PLN')      $txInInvCurr = $txAmount / $invRate;
+                    elseif ($invCurr === 'PLN' && $txCurrency !== 'PLN') $txInInvCurr = $txAmount * $invRate;
+                }
+                $target = $invRemaining > 0.01 ? $invRemaining : $invTotal;
+                if ($target > 0) {
+                    $diff = abs($txInInvCurr - $target) / $target;
+                    if ($diff < 0.001)     { $score += 35; $reasons[] = '💰 dokładna'; }
+                    elseif ($diff <= 0.05) { $score += 30; $reasons[] = '💰 ±5%'; }
+                    elseif ($diff <= 0.10) { $score += 20; $reasons[] = '💰 ±10%'; }
+                }
+
+                if ($score >= 15) {
+                    $matches[] = [
+                        'id'           => (string)$inv->id,
+                        'source'       => 'system',
+                        'fullnumber'   => $fn,
+                        'contractor'   => $contractorName,
+                        'nip'          => $contractorNip,
+                        'total'        => $invTotal,
+                        'remaining'    => $invRemaining,
+                        'currency'     => $invCurr,
+                        'paymentstate' => (string)($inv->paymentstate ?? 'unpaid'),
+                        'date'         => $inv->date instanceof \DateTimeInterface ? $inv->date->format('Y-m-d') : substr((string)$inv->date, 0, 10),
+                        'score'        => $score,
+                        'reasons'      => $reasons,
+                    ];
+                }
+            }
+
+            // Legacy invoices (uproszczona logika)
+            foreach ($legacyInvoices as $inv) {
+                $score    = 0;
+                $reasons  = [];
+                $fn       = (string)$inv->fullnumber;
+                $variants = $fnVariants($fn);
+
+                $invMatched = false;
+                foreach ($variants as $v) {
+                    if ($parsedInv !== '' && strcasecmp($parsedInv, $v) === 0) {
+                        $score += 45; $reasons[] = '🎯 nr w /INV/'; $invMatched = true; break;
+                    }
+                }
+                if (!$invMatched) {
+                    foreach ($variants as $v) {
+                        if ($txTitle !== '' && stripos($txTitle, strtolower($v)) !== false) {
+                            $score += 35; $reasons[] = '🎯 nr w tytule'; break;
+                        }
+                    }
+                }
+
+                $contractorNip = (string)($inv->contractor_nip ?? '');
+                if ($parsedNip !== '' && $contractorNip !== '' && $parsedNip === $contractorNip) {
+                    $score += 25; $reasons[] = '🪪 NIP';
+                }
+
+                $contractorName = (string)($inv->contractor_name ?? '');
+                if ($contractorName !== '' && $txParty !== '') {
+                    $words = preg_split('/[\s\.,\-\/()]+/u', mb_strtolower($contractorName));
+                    $sig   = array_filter($words, fn($w) => mb_strlen($w) >= 3 && !in_array($w, $stopWords, true));
+                    $hits  = 0;
+                    foreach (array_slice($sig, 0, 5) as $w) {
+                        if (mb_strpos($txParty, $w) !== false) $hits++;
+                    }
+                    if ($hits > 0) { $score += min($hits * 5, 20); $reasons[] = '👤 nazwa ×' . $hits; }
+                }
+
+                // Kwota — uproszczona dla legacy
+                $invCurr   = strtoupper((string)($inv->currency ?? 'PLN'));
+                $invTotal  = (float)$inv->total;
+                $invRemPln = (float)$inv->remaining;
+                $invRemWal = (float)($inv->remaining_wal ?? 0);
+                $target    = ($invCurr !== 'PLN' && $invRemWal > 0.01) ? $invRemWal : $invRemPln;
+                if ($target > 0) {
+                    $diff = abs($txAmount - $target) / $target;
+                    if ($diff < 0.001)     { $score += 35; $reasons[] = '💰 dokładna'; }
+                    elseif ($diff <= 0.05) { $score += 30; $reasons[] = '💰 ±5%'; }
+                    elseif ($diff <= 0.10) { $score += 20; $reasons[] = '💰 ±10%'; }
+                }
+
+                if ($score >= 15) {
+                    $matches[] = [
+                        'id'           => (string)$inv->id,
+                        'source'       => 'legacy',
+                        'fullnumber'   => $fn,
+                        'contractor'   => $contractorName,
+                        'nip'          => $contractorNip,
+                        'total'        => $invTotal,
+                        'remaining'    => $target,
+                        'currency'     => $invCurr,
+                        'paymentstate' => (string)($inv->paymentstate ?? 'unpaid'),
+                        'date'         => $inv->date instanceof \DateTimeInterface ? $inv->date->format('Y-m-d') : substr((string)$inv->date, 0, 10),
+                        'score'        => $score,
+                        'reasons'      => $reasons,
+                    ];
+                }
+            }
+
+            // Sort by score DESC + top 6
+            usort($matches, fn($a, $b) => $b['score'] - $a['score']);
+            $candidatesByTx[$txId] = array_slice($matches, 0, 6);
+        }
+
+        return $candidatesByTx;
     }
 
     // -------------------------------------------------------------------------

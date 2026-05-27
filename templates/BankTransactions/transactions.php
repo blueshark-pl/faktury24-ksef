@@ -210,8 +210,8 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                             <?php endif; ?>
                         </td>
 
-                        <!-- Faktury (ręczne alokacje) -->
-                        <td class="align-top pt-3">
+                        <!-- Faktury (ręczne alokacje + auto-podpowiedzi) -->
+                        <td class="align-top pt-3" style="min-width:220px;max-width:340px">
                             <?php if ($hasAlloc): ?>
                             <div class="tx-alloc-invs d-flex flex-wrap gap-1" id="tx-alloc-invs-<?= h($tx->id) ?>">
                                 <?php foreach ($txAllocMap[$tx->id]['invoices'] as $fn): ?>
@@ -224,6 +224,59 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                             <div class="tx-alloc-invs" id="tx-alloc-invs-<?= h($tx->id) ?>">
                                 <span class="text-muted fst-italic" style="font-size:.8em">—</span>
                             </div>
+                            <?php endif; ?>
+                            <?php
+                                $candidates = $candidatesByTx[(string)$tx->id] ?? [];
+                            ?>
+                            <?php if (!empty($candidates)): ?>
+                                <div class="mt-2 pt-1 border-top" style="font-size:.7em">
+                                    <div class="text-muted mb-1" style="font-size:.95em">
+                                        <i class="ri-magic-line text-warning"></i>
+                                        Sugerowane (<?= count($candidates) ?>):
+                                    </div>
+                                    <div class="d-flex flex-column gap-1">
+                                        <?php foreach ($candidates as $c): ?>
+                                            <?php
+                                                $scoreColor = $c['score'] >= 80 ? 'success' : ($c['score'] >= 50 ? 'primary' : 'info');
+                                                $srcBadge   = $c['source'] === 'legacy' ? 'arch' : 'sys';
+                                                $srcClass   = $c['source'] === 'legacy' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary';
+                                                $reasonsStr = implode(' · ', $c['reasons']);
+                                            ?>
+                                            <div class="tx-candidate d-flex align-items-center gap-1"
+                                                 data-tx-id="<?= h($tx->id) ?>"
+                                                 data-cand-id="<?= h($c['id']) ?>"
+                                                 data-cand-source="<?= h($c['source']) ?>"
+                                                 data-cand-fullnumber="<?= h($c['fullnumber']) ?>"
+                                                 data-cand-total="<?= h($c['total']) ?>"
+                                                 data-cand-remaining="<?= h($c['remaining']) ?>"
+                                                 data-cand-currency="<?= h($c['currency']) ?>"
+                                                 title="<?= h($reasonsStr) ?>"
+                                                 style="border:1px solid #e5e7eb;border-radius:.3rem;padding:.2rem .35rem;cursor:pointer;background:#fafbfc">
+                                                <span class="badge <?= $srcClass ?> border" style="font-size:.65em"><?= $srcBadge ?></span>
+                                                <span class="fw-semibold text-truncate" style="max-width:120px"><?= h($c['fullnumber']) ?></span>
+                                                <span class="badge bg-<?= $scoreColor ?>-subtle text-<?= $scoreColor ?> border ms-auto" style="font-size:.62em" title="Match score">
+                                                    <?= (int)$c['score'] ?>
+                                                </span>
+                                                <span class="text-muted text-nowrap" style="font-size:.95em">
+                                                    <?= number_format($c['remaining'] > 0.01 ? $c['remaining'] : $c['total'], 2, ',', ' ') ?> <?= h($c['currency']) ?>
+                                                </span>
+                                                <button type="button" class="btn btn-xs btn-success p-0 px-1 ms-1 btn-link-candidate"
+                                                        data-tx-id="<?= h($tx->id) ?>"
+                                                        data-cand-id="<?= h($c['id']) ?>"
+                                                        data-cand-source="<?= h($c['source']) ?>"
+                                                        data-cand-fullnumber="<?= h($c['fullnumber']) ?>"
+                                                        data-cand-remaining="<?= h($c['remaining']) ?>"
+                                                        data-cand-currency="<?= h($c['currency']) ?>"
+                                                        data-tx-amount="<?= h($tx->amount) ?>"
+                                                        data-tx-currency="<?= h($tx->currency) ?>"
+                                                        title="Powiąż całą kwotę z tą fakturą"
+                                                        style="font-size:.72em;line-height:1">
+                                                    <i class="ri-link"></i>
+                                                </button>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
                             <?php endif; ?>
                         </td>
 
@@ -617,6 +670,75 @@ function renderModalAllocations(d) {
     });
     listEl.innerHTML = html;
 }
+
+// ── Inline auto-podpowiedź: klik "Powiąż" przy kandydacie w wierszu tx ────────
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-link-candidate');
+    if (!btn) return;
+    if (btn.disabled) return;
+    e.stopPropagation();
+
+    var txId         = btn.dataset.txId;
+    var candId       = btn.dataset.candId;
+    var candSource   = btn.dataset.candSource;
+    var candFullnum  = btn.dataset.candFullnumber;
+    var candRem      = parseFloat(btn.dataset.candRemaining);
+    var candCurr     = btn.dataset.candCurrency;
+    var txAmount     = parseFloat(btn.dataset.txAmount);
+    var txCurr       = btn.dataset.txCurrency;
+
+    if (typeof Swal === 'undefined') return;
+
+    Swal.fire({
+        title: 'Powiąż z fakturą ' + candFullnum + '?',
+        html: '<div class="small text-start">'
+            + '<div>Przelew: <strong>' + txAmount.toFixed(2).replace('.', ',') + ' ' + txCurr + '</strong></div>'
+            + '<div>Pozostało: <strong>' + (candRem > 0 ? candRem.toFixed(2).replace('.', ',') : '—') + ' ' + candCurr + '</strong></div>'
+            + '<div class="text-muted mt-2">Powiązana zostanie cała kwota przelewu w walucie przelewu.</div>'
+            + '</div>',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="ri-link me-1"></i>Powiąż',
+        cancelButtonText: 'Anuluj',
+        confirmButtonColor: '#16a34a'
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        var fd = new FormData();
+        if (candSource === 'legacy') fd.append('legacy_invoice_id', candId);
+        else                          fd.append('invoice_id', candId);
+        fd.append('bank_transaction_id', txId);
+        fd.append('allocated_amount', txAmount.toFixed(2));
+        fd.append('currency', txCurr);
+        fd.append('allocation_type', 'gross');
+        fd.append('_csrfToken', getCsrf());
+
+        fetch(urlAddAllocation, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': getCsrf() },
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.success) {
+                Swal.fire({ icon: 'success', title: 'Powiązano', timer: 1200, showConfirmButton: false });
+                setTimeout(function () { location.reload(); }, 800);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                Swal.fire({ icon: 'error', title: 'Błąd', text: d.error || 'Nie udało się powiązać.' });
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            Swal.fire({ icon: 'error', title: 'Błąd', text: 'Błąd sieci.' });
+        });
+    });
+});
 
 // ── Usuń alokację ─────────────────────────────────────────────────────────────
 document.addEventListener('click', function (e) {
