@@ -195,11 +195,17 @@ class BankTransactionsController extends AppController
                     return $q->select(['id', 'invoice_id', 'name', 'nip']);
                 },
             ])
-            ->where([
-                'Invoices.company_id'        => $companyId,
-                'Invoices.paymentstate IN'   => ['unpaid', 'partial'],
-                'Invoices.workflow_status'   => 'issued',
-            ])
+            ->where(['Invoices.company_id' => $companyId])
+            // Workflow: NULL lub != 'draft' (jak w ReconciliationsController::index)
+            ->where(['OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft'],
+            ]])
+            // Paymentstate: NULL/unpaid/partial
+            ->where(['OR' => [
+                ['Invoices.paymentstate IS' => null],
+                ['Invoices.paymentstate IN' => ['unpaid', 'partial']],
+            ]])
             ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
                       'Invoices.remaining', 'Invoices.alreadypaid', 'Invoices.currency',
                       'Invoices.currency_exchange', 'Invoices.paymentstate',
@@ -210,10 +216,11 @@ class BankTransactionsController extends AppController
 
         // ── Prefetch nierozliczone faktury legacy ────────────────────────────
         $legacyInvoices = $this->fetchTable('LegacyInvoices')->find()
-            ->where([
-                'company_id'           => $companyId,
-                'paymentstate IN'      => ['unpaid', 'partial'],
-            ])
+            ->where(['company_id' => $companyId])
+            ->where(['OR' => [
+                ['paymentstate IS' => null],
+                ['paymentstate IN' => ['unpaid', 'partial']],
+            ]])
             ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip',
                       'total', 'netto', 'remaining', 'remaining_wal', 'currency',
                       'exchange_rate', 'paymentstate', 'date'])
@@ -738,30 +745,18 @@ class BankTransactionsController extends AppController
         if ($q !== '' || $showAll) {
             // ── Faktury systemowe ──────────────────────────────────────────
             if ($source !== 'legacy') {
-                $conditions = [
-                    'Invoices.company_id'       => $companyId,
-                    'Invoices.workflow_status'  => 'issued',
-                ];
-                if ($unpaidOnly || $showAll) {
-                    $conditions['Invoices.paymentstate IN'] = ['unpaid', 'partial'];
-                }
-                if (!$showAll) {
-                    $or = [];
-                    foreach ($qVariants as $v) {
-                        $or[]['Invoices.fullnumber LIKE']      = '%' . $v . '%';
-                        $or[]['InvoiceContractors.name LIKE']  = '%' . $v . '%';
-                    }
-                    $or[]['InvoiceContractors.nip'] = $q;
-                    $conditions['OR'] = $or;
-                }
-
-                $rows = $this->fetchTable('Invoices')->find()
+                $query = $this->fetchTable('Invoices')->find()
                     ->contain([
                         'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q2) {
                             return $q2->select(['id', 'invoice_id', 'name', 'nip']);
                         },
                     ])
-                    ->where($conditions)
+                    ->where(['Invoices.company_id' => $companyId])
+                    // Workflow: NULL lub != 'draft' (legacy data ma NULL)
+                    ->where(['OR' => [
+                        ['Invoices.workflow_status IS' => null],
+                        ['Invoices.workflow_status !=' => 'draft'],
+                    ]])
                     ->select([
                         'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
                         'Invoices.remaining', 'Invoices.currency',
@@ -769,8 +764,26 @@ class BankTransactionsController extends AppController
                         'Invoices.paymentdate', 'Invoices.date',
                     ])
                     ->orderByDesc('Invoices.date')
-                    ->limit($showAll ? 30 : 15)
-                    ->all();
+                    ->limit($showAll ? 30 : 15);
+
+                if ($unpaidOnly || $showAll) {
+                    // Paymentstate: NULL traktujemy jako unpaid + unpaid + partial
+                    $query->where(['OR' => [
+                        ['Invoices.paymentstate IS' => null],
+                        ['Invoices.paymentstate IN' => ['unpaid', 'partial']],
+                    ]]);
+                }
+                if (!$showAll) {
+                    $searchOr = [];
+                    foreach ($qVariants as $v) {
+                        $searchOr[]['Invoices.fullnumber LIKE']     = '%' . $v . '%';
+                        $searchOr[]['InvoiceContractors.name LIKE'] = '%' . $v . '%';
+                    }
+                    $searchOr[]['InvoiceContractors.nip'] = $q;
+                    $query->where(['OR' => $searchOr]);
+                }
+
+                $rows = $query->all();
 
                 foreach ($rows as $inv) {
                     $currency = (string)($inv->currency ?? 'PLN');
@@ -815,28 +828,31 @@ class BankTransactionsController extends AppController
 
             // ── Faktury legacy ─────────────────────────────────────────────
             if ($source !== 'system') {
-                $legacyConditions = ['company_id' => $companyId];
-                if ($unpaidOnly || $showAll) {
-                    $legacyConditions['paymentstate IN'] = ['unpaid', 'partial'];
-                }
-                if (!$showAll) {
-                    $or = [];
-                    foreach ($qVariants as $v) {
-                        $or[]['fullnumber LIKE']      = '%' . $v . '%';
-                        $or[]['contractor_name LIKE'] = '%' . $v . '%';
-                    }
-                    $or[]['contractor_nip'] = $q;
-                    $legacyConditions['OR'] = $or;
-                }
-
-                $legacyRows = $this->fetchTable('LegacyInvoices')->find()
-                    ->where($legacyConditions)
+                $legacyQuery = $this->fetchTable('LegacyInvoices')->find()
+                    ->where(['company_id' => $companyId])
                     ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip',
                               'total', 'netto', 'remaining', 'remaining_wal', 'total_wal',
                               'currency', 'exchange_rate', 'paymentstate', 'date'])
                     ->orderByDesc('date')
-                    ->limit($showAll ? 30 : 15)
-                    ->all();
+                    ->limit($showAll ? 30 : 15);
+
+                if ($unpaidOnly || $showAll) {
+                    $legacyQuery->where(['OR' => [
+                        ['paymentstate IS' => null],
+                        ['paymentstate IN' => ['unpaid', 'partial']],
+                    ]]);
+                }
+                if (!$showAll) {
+                    $searchOr = [];
+                    foreach ($qVariants as $v) {
+                        $searchOr[]['fullnumber LIKE']      = '%' . $v . '%';
+                        $searchOr[]['contractor_name LIKE'] = '%' . $v . '%';
+                    }
+                    $searchOr[]['contractor_nip'] = $q;
+                    $legacyQuery->where(['OR' => $searchOr]);
+                }
+
+                $legacyRows = $legacyQuery->all();
 
                 foreach ($legacyRows as $inv) {
                     $total    = (float)$inv->total;
