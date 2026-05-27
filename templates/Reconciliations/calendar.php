@@ -8,6 +8,7 @@
  * @var string $view
  * @var string $show
  * @var bool   $showTx
+ * @var string $txDateField
  * @var array  $weeks
  * @var array  $byDate
  * @var string $firstDay
@@ -35,12 +36,13 @@ $fnum  = static fn ($v) => number_format((float)$v, 2, ',', ' ');
 $fnum0 = static fn ($v) => number_format((float)$v, 0, ',', ' ');
 
 // Helper budujący URL ze zachowaniem filtrów
-$buildUrl = function (array $changes = []) use ($ym, $mode, $view, $show, $showTx, $filterNip, $filterCurrency, $filterType, $filterOverdue) {
+$buildUrl = function (array $changes = []) use ($ym, $mode, $view, $show, $showTx, $txDateField, $filterNip, $filterCurrency, $filterType, $filterOverdue) {
     $params = array_merge([
         'mode'            => $mode,
         'view'            => $view,
         'show'            => $show,
         'show_tx'         => $showTx ? '1' : '',
+        'tx_date'         => ($txDateField !== 'booking') ? $txDateField : '', // booking = default, nie zaśmiecaj URL
         'contractor_nip'  => $filterNip,
         'currency'        => $filterCurrency,
         'type'            => $filterType,
@@ -186,6 +188,22 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
             <?php endif; ?>
         </a>
 
+        <!-- Tx date anchor toggle (booking vs value) -->
+        <?php if ($showTx): ?>
+            <div class="btn-group btn-group-sm" role="group" title="Według której daty kotwiczyć przelewy">
+                <a href="<?= $this->Url->build($buildUrl(['tx_date' => 'booking'])) ?>"
+                   class="btn <?= $txDateField === 'booking' ? 'btn-secondary' : 'btn-outline-secondary' ?>"
+                   title="Data księgowania (kiedy bank zaksięgował)">
+                    <i class="ri-book-2-line"></i> ks.
+                </a>
+                <a href="<?= $this->Url->build($buildUrl(['tx_date' => 'value'])) ?>"
+                   class="btn <?= $txDateField === 'value' ? 'btn-secondary' : 'btn-outline-secondary' ?>"
+                   title="Data waluty (kiedy środki dostępne)">
+                    <i class="ri-time-line"></i> wal.
+                </a>
+            </div>
+        <?php endif; ?>
+
         <!-- Mode toggle (effective vs paymentdate) -->
         <?php if ($show !== 'payments'): ?>
         <div class="btn-group btn-group-sm" role="group">
@@ -320,15 +338,21 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                         <input type="hidden" name="view" value="<?= h($view) ?>">
                         <input type="hidden" name="show" value="<?= h($show) ?>">
                         <input type="hidden" name="show_tx" value="<?= $showTx ? '1' : '' ?>">
+                        <?php if ($txDateField !== 'booking'): ?>
+                            <input type="hidden" name="tx_date" value="<?= h($txDateField) ?>">
+                        <?php endif; ?>
 
                         <!-- Contractor -->
                         <div class="mb-2">
                             <label class="form-label form-label-sm text-muted">Kontrahent</label>
-                            <select name="contractor_nip" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <select name="contractor_nip" id="filterContractorNip" class="form-select form-select-sm select2-contractor" style="width:100%">
                                 <option value="">— wszyscy —</option>
                                 <?php foreach ($contractorsForFilter as $c): ?>
-                                    <option value="<?= h($c['nip']) ?>" <?= $filterNip === $c['nip'] ? 'selected' : '' ?>>
-                                        <?= h(mb_strimwidth($c['name'], 0, 40, '…')) ?> (<?= (int)$c['cnt'] ?>)
+                                    <option value="<?= h($c['nip']) ?>"
+                                            data-nip="<?= h($c['nip']) ?>"
+                                            data-count="<?= (int)$c['cnt'] ?>"
+                                            <?= $filterNip === $c['nip'] ? 'selected' : '' ?>>
+                                        <?= h($c['name']) ?> · NIP <?= h($c['nip']) ?> (<?= (int)$c['cnt'] ?>)
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -477,6 +501,18 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                                 <?php endif; ?>
                                                 <?php if (!empty($it['title'])): ?>
                                                     <div class="text-muted small text-truncate" style="max-width:400px" title="<?= h($it['title']) ?>"><?= h(mb_strimwidth($it['title'], 0, 80, '…')) ?></div>
+                                                <?php endif; ?>
+                                                <?php
+                                                $bd = $it['booking_date'] ?? null;
+                                                $vd = $it['value_date'] ?? null;
+                                                ?>
+                                                <?php if ($bd && $vd && $bd !== $vd): ?>
+                                                    <div class="text-muted" style="font-size:.7rem">
+                                                        <i class="ri-book-2-line"></i> ks. <?= h($bd) ?>
+                                                        · <i class="ri-time-line"></i> wal. <?= h($vd) ?>
+                                                    </div>
+                                                <?php elseif ($bd || $vd): ?>
+                                                    <div class="text-muted" style="font-size:.7rem"><i class="ri-calendar-line"></i> <?= h($bd ?: $vd) ?></div>
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end">
@@ -683,6 +719,25 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
     #filterSidebar.show { display: block; position: fixed; top: 60px; left: 0; right: 0; z-index: 1050;
                           background: #fff; border-bottom: 2px solid #0d6efd; padding: 1rem; }
 }
+
+/* Select2 — dostosowanie do form-select-sm w sidebarze */
+#filterSidebar .select2-container--default .select2-selection--single {
+    height: calc(1.5em + 0.5rem + 2px);
+    line-height: 1.5;
+    font-size: .875rem;
+    padding: 0 .5rem;
+    border-color: #ced4da;
+}
+#filterSidebar .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: calc(1.5em + 0.4rem);
+    padding-left: 0;
+    color: #212529;
+}
+#filterSidebar .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: calc(1.5em + 0.5rem);
+}
+.select2-dropdown { z-index: 1060 !important; }
+.select2-results__option { font-size: .8rem; padding: .25rem .5rem; }
 </style>
 
 <script>
@@ -765,10 +820,18 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                 }
                 var titleHtml = it.title ? '<div class="text-muted small text-truncate" style="max-width:350px" title="' + esc(it.title) + '">' + esc(it.title) + '</div>' : '';
                 var confHtml = (it.match_confidence > 0) ? '<div class="text-muted small">conf: ' + it.match_confidence + '%</div>' : '';
+                // Pokazuj obie daty gdy się różnią
+                var datesHtml = '';
+                if (it.booking_date && it.value_date && it.booking_date !== it.value_date) {
+                    datesHtml = '<div class="text-muted" style="font-size:.7rem"><i class="ri-book-2-line"></i> ks. ' + esc(it.booking_date) + ' · <i class="ri-time-line"></i> wal. ' + esc(it.value_date) + '</div>';
+                } else if (it.booking_date || it.value_date) {
+                    var d = it.booking_date || it.value_date;
+                    datesHtml = '<div class="text-muted" style="font-size:.7rem"><i class="ri-calendar-line"></i> ' + esc(d) + '</div>';
+                }
                 html += '<tr>'
                      + '<td style="width:40px"><i class="ri-bank-line text-info fs-5" title="Przelew bankowy"></i></td>'
                      + '<td><div class="fw-semibold text-dark">' + party + '</div>'
-                     +   allocHtml + titleHtml
+                     +   allocHtml + titleHtml + datesHtml
                      + '</td>'
                      + '<td class="text-end"><div class="fw-bold text-' + (isCredit ? 'info' : 'secondary') + '">'
                      +   (isCredit ? '+' : '−') + fmtAmount(it.amount) + ' ' + esc(it.currency) + '</div>'
@@ -799,6 +862,32 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
     if (btnToggle) {
         btnToggle.addEventListener('click', function () {
             document.getElementById('filterSidebar').classList.toggle('show');
+        });
+    }
+
+    // Select2 — kontrahent z wyszukiwarką
+    if (window.jQuery && jQuery.fn && jQuery.fn.select2) {
+        jQuery('#filterContractorNip').select2({
+            placeholder: '— wszyscy —',
+            allowClear: true,
+            width: '100%',
+            language: {
+                noResults: function () { return 'Brak wyników'; },
+                searching: function () { return 'Szukam…'; },
+                inputTooShort: function () { return 'Wpisz nazwę lub NIP'; }
+            },
+            matcher: function (params, data) {
+                if (!params.term) return data;
+                if (!data.id) return null;
+                var term = params.term.toLowerCase();
+                var txt = (data.text || '').toLowerCase();
+                var nip = jQuery(data.element).data('nip') || '';
+                if (txt.indexOf(term) > -1 || String(nip).indexOf(term) > -1) return data;
+                return null;
+            }
+        }).on('change', function () {
+            // auto-submit po wyborze
+            document.getElementById('filterForm').submit();
         });
     }
 })();

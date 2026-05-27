@@ -2090,6 +2090,8 @@ class ReconciliationsController extends AppController
         $view    = $this->request->getQuery('view', 'month');
         $show    = $this->request->getQuery('show', 'both'); // invoices|payments|both
         $showTx  = (string)$this->request->getQuery('show_tx', '') === '1';
+        $txDateField = (string)$this->request->getQuery('tx_date', 'booking'); // booking|value
+        if (!in_array($txDateField, ['booking', 'value'], true)) $txDateField = 'booking';
         $today   = date('Y-m-d');
 
         // Filtry
@@ -2249,6 +2251,7 @@ class ReconciliationsController extends AppController
         if ($showTx) {
             try {
                 $BankTx = $this->fetchTable('BankTransactions');
+                // Kotwica daty: booking_date (fallback value_date) lub value_date — wybór usera
                 $txQuery = $BankTx->find()
                     ->contain([
                         'Invoices' => function ($q) {
@@ -2265,9 +2268,18 @@ class ReconciliationsController extends AppController
                         },
                     ])
                     ->where([
-                        'BankTransactions.company_id'  => $companyId,
-                        'BankTransactions.value_date >=' => $gridStart,
-                        'BankTransactions.value_date <=' => $gridEnd,
+                        'BankTransactions.company_id' => $companyId,
+                        // Bierzemy szerszy zakres na obu kolumnach — anchor wyliczymy w PHP
+                        'OR' => [
+                            'AND' => [
+                                'BankTransactions.value_date >=' => $gridStart,
+                                'BankTransactions.value_date <=' => $gridEnd,
+                            ],
+                            'AND_b' => [
+                                'BankTransactions.booking_date >=' => $gridStart,
+                                'BankTransactions.booking_date <=' => $gridEnd,
+                            ],
+                        ],
                     ])
                     ->select([
                         'BankTransactions.id', 'BankTransactions.value_date', 'BankTransactions.booking_date',
@@ -2286,14 +2298,19 @@ class ReconciliationsController extends AppController
                     $txQuery->where(['BankTransactions.parsed_nip' => $filterNip]);
                 }
                 if ($filterOverdue) {
-                    // Sensowne ograniczenie: pokazuj tylko niepołączone / propozycje
                     $txQuery->where(['BankTransactions.match_status IN' => ['unmatched', 'proposed']]);
                 }
 
                 $txRows = $txQuery->all();
                 foreach ($txRows as $tx) {
                     $vdStr = $this->_extractDateStr($tx->value_date);
-                    if (!$vdStr) continue;
+                    $bdStr = $this->_extractDateStr($tx->booking_date);
+                    // Anchor: zależnie od wyboru usera
+                    $anchor = ($txDateField === 'booking')
+                        ? ($bdStr ?: $vdStr)
+                        : ($vdStr ?: $bdStr);
+                    if (!$anchor) continue;
+                    if ($anchor < $gridStart || $anchor > $gridEnd) continue;
 
                     $allocs = [];
                     foreach (($tx->bank_transaction_allocations ?? []) as $a) {
@@ -2304,11 +2321,13 @@ class ReconciliationsController extends AppController
                         ];
                     }
 
-                    $byDate[$vdStr][] = [
+                    $byDate[$anchor][] = [
                         'kind'             => 'transfer',
                         'id'               => (string)$tx->id,
                         'value_date'       => $vdStr,
-                        'booking_date'     => $this->_extractDateStr($tx->booking_date),
+                        'booking_date'     => $bdStr,
+                        'anchor_date'      => $anchor,
+                        'date_field'       => $txDateField,
                         'direction'        => (string)$tx->direction,
                         'amount'           => (float)$tx->amount,
                         'currency'         => (string)($tx->currency ?? 'PLN'),
@@ -2326,7 +2345,6 @@ class ReconciliationsController extends AppController
                     ];
                 }
             } catch (\Exception $e) {
-                // tabela może nie istnieć / brak danych — degraduj cicho
                 \Cake\Log\Log::warning('[calendar] bank_transactions fetch failed: ' . $e->getMessage());
             }
         }
@@ -2386,7 +2404,8 @@ class ReconciliationsController extends AppController
         $prevWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' -7 days')) : null;
         $nextWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' +7 days')) : null;
 
-        $this->set(compact('ym', 'year', 'month', 'mode', 'view', 'show', 'showTx', 'weeks', 'byDate',
+        $this->set(compact('ym', 'year', 'month', 'mode', 'view', 'show', 'showTx', 'txDateField',
+            'weeks', 'byDate',
             'firstDay', 'lastDay', 'today', 'prevYM', 'nextYM',
             'prevDay', 'nextDay', 'prevWeek', 'nextWeek',
             'gridStart', 'gridEnd',
