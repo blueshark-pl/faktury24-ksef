@@ -2089,6 +2089,7 @@ class ReconciliationsController extends AppController
         $mode    = $this->request->getQuery('mode', 'effective');
         $view    = $this->request->getQuery('view', 'month');
         $show    = $this->request->getQuery('show', 'both'); // invoices|payments|both
+        $showTx  = (string)$this->request->getQuery('show_tx', '') === '1';
         $today   = date('Y-m-d');
 
         // Filtry
@@ -2244,11 +2245,98 @@ class ReconciliationsController extends AppController
             }
         }
 
-        // Sortuj elementy w każdym dniu (overdue → pending → paid → payment)
+        // ── Fetch PRZELEWÓW bankowych (bank_transactions) ────────────────
+        if ($showTx) {
+            try {
+                $BankTx = $this->fetchTable('BankTransactions');
+                $txQuery = $BankTx->find()
+                    ->contain([
+                        'Invoices' => function ($q) {
+                            return $q->select(['id', 'fullnumber', 'currency'])
+                                     ->contain(['InvoiceContractors' => function ($qc) {
+                                         return $qc->select(['id', 'invoice_id', 'nip', 'name']);
+                                     }]);
+                        },
+                        'BankTransactionAllocations' => function ($q) {
+                            return $q->select(['id', 'bank_transaction_id', 'invoice_id', 'amount'])
+                                     ->contain(['Invoices' => function ($qi) {
+                                         return $qi->select(['id', 'fullnumber']);
+                                     }]);
+                        },
+                    ])
+                    ->where([
+                        'BankTransactions.company_id'  => $companyId,
+                        'BankTransactions.value_date >=' => $gridStart,
+                        'BankTransactions.value_date <=' => $gridEnd,
+                    ])
+                    ->select([
+                        'BankTransactions.id', 'BankTransactions.value_date', 'BankTransactions.booking_date',
+                        'BankTransactions.direction', 'BankTransactions.amount', 'BankTransactions.currency',
+                        'BankTransactions.party_name', 'BankTransactions.party_account',
+                        'BankTransactions.title', 'BankTransactions.description',
+                        'BankTransactions.match_status', 'BankTransactions.match_confidence',
+                        'BankTransactions.invoice_id', 'BankTransactions.parsed_inv', 'BankTransactions.parsed_nip',
+                    ])
+                    ->orderAsc('BankTransactions.value_date');
+
+                if ($filterCurrency !== '') {
+                    $txQuery->where(['BankTransactions.currency' => $filterCurrency]);
+                }
+                if ($filterNip !== '') {
+                    $txQuery->where(['BankTransactions.parsed_nip' => $filterNip]);
+                }
+                if ($filterOverdue) {
+                    // Sensowne ograniczenie: pokazuj tylko niepołączone / propozycje
+                    $txQuery->where(['BankTransactions.match_status IN' => ['unmatched', 'proposed']]);
+                }
+
+                $txRows = $txQuery->all();
+                foreach ($txRows as $tx) {
+                    $vdStr = $this->_extractDateStr($tx->value_date);
+                    if (!$vdStr) continue;
+
+                    $allocs = [];
+                    foreach (($tx->bank_transaction_allocations ?? []) as $a) {
+                        $allocs[] = [
+                            'invoice_id'  => (string)$a->invoice_id,
+                            'fullnumber'  => (string)($a->invoice->fullnumber ?? ''),
+                            'amount'      => (float)$a->amount,
+                        ];
+                    }
+
+                    $byDate[$vdStr][] = [
+                        'kind'             => 'transfer',
+                        'id'               => (string)$tx->id,
+                        'value_date'       => $vdStr,
+                        'booking_date'     => $this->_extractDateStr($tx->booking_date),
+                        'direction'        => (string)$tx->direction,
+                        'amount'           => (float)$tx->amount,
+                        'currency'         => (string)($tx->currency ?? 'PLN'),
+                        'party_name'       => (string)($tx->party_name ?? ''),
+                        'party_account'    => (string)($tx->party_account ?? ''),
+                        'title'            => (string)($tx->title ?? ''),
+                        'description'      => (string)($tx->description ?? ''),
+                        'match_status'     => (string)($tx->match_status ?? 'unmatched'),
+                        'match_confidence' => (int)($tx->match_confidence ?? 0),
+                        'invoice_id'       => $tx->invoice_id ? (string)$tx->invoice_id : null,
+                        'invoice_fullnumber' => (string)($tx->invoice->fullnumber ?? ''),
+                        'parsed_inv'       => (string)($tx->parsed_inv ?? ''),
+                        'parsed_nip'       => (string)($tx->parsed_nip ?? ''),
+                        'allocations'      => $allocs,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // tabela może nie istnieć / brak danych — degraduj cicho
+                \Cake\Log\Log::warning('[calendar] bank_transactions fetch failed: ' . $e->getMessage());
+            }
+        }
+
+        // Sortuj elementy w każdym dniu (overdue → pending → paid → payment → transfer)
         foreach ($byDate as &$list) {
             usort($list, function ($a, $b) {
                 $rank = function ($i) {
-                    if ($i['kind'] === 'payment') return 3;
+                    if (($i['kind'] ?? '') === 'transfer') return 4;
+                    if (($i['kind'] ?? '') === 'payment')  return 3;
                     if ($i['is_overdue'] ?? false) return 0;
                     if (($i['paymentstate'] ?? '') === 'paid') return 2;
                     return 1;
@@ -2298,7 +2386,7 @@ class ReconciliationsController extends AppController
         $prevWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' -7 days')) : null;
         $nextWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' +7 days')) : null;
 
-        $this->set(compact('ym', 'year', 'month', 'mode', 'view', 'show', 'weeks', 'byDate',
+        $this->set(compact('ym', 'year', 'month', 'mode', 'view', 'show', 'showTx', 'weeks', 'byDate',
             'firstDay', 'lastDay', 'today', 'prevYM', 'nextYM',
             'prevDay', 'nextDay', 'prevWeek', 'nextWeek',
             'gridStart', 'gridEnd',
@@ -2331,20 +2419,24 @@ class ReconciliationsController extends AppController
     private function _buildCalendarSummary(array $byDate, string $today): array
     {
         $s = [
-            'invoices_count'  => 0,
-            'paid_count'      => 0,
-            'overdue_count'   => 0,
-            'pending_count'   => 0,
-            'payments_count'  => 0,
-            'invoice_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
-            'paid_amount'     => ['PLN' => 0.0, 'EUR' => 0.0],
-            'overdue_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
-            'payment_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
+            'invoices_count'   => 0,
+            'paid_count'       => 0,
+            'overdue_count'    => 0,
+            'pending_count'    => 0,
+            'payments_count'   => 0,
+            'transfers_count'  => 0,
+            'transfers_matched_count' => 0,
+            'transfers_unmatched_count' => 0,
+            'invoice_amount'   => ['PLN' => 0.0, 'EUR' => 0.0],
+            'paid_amount'      => ['PLN' => 0.0, 'EUR' => 0.0],
+            'overdue_amount'   => ['PLN' => 0.0, 'EUR' => 0.0],
+            'payment_amount'   => ['PLN' => 0.0, 'EUR' => 0.0],
+            'transfer_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
         ];
         foreach ($byDate as $list) {
             foreach ($list as $it) {
                 $curr = strtoupper($it['currency'] ?? 'PLN');
-                if ($curr !== 'EUR') $curr = 'PLN'; // wszystko inne idzie do PLN
+                if ($curr !== 'EUR') $curr = 'PLN';
                 if (($it['kind'] ?? '') === 'invoice') {
                     $s['invoices_count']++;
                     $s['invoice_amount'][$curr] = ($s['invoice_amount'][$curr] ?? 0) + (float)$it['remaining'];
@@ -2360,10 +2452,19 @@ class ReconciliationsController extends AppController
                 } elseif (($it['kind'] ?? '') === 'payment') {
                     $s['payments_count']++;
                     $s['payment_amount'][$curr] = ($s['payment_amount'][$curr] ?? 0) + (float)$it['amount'];
+                } elseif (($it['kind'] ?? '') === 'transfer') {
+                    // pokazuj tylko credit (wpłaty na konto) w sumach
+                    $s['transfers_count']++;
+                    $ms = (string)($it['match_status'] ?? 'unmatched');
+                    if ($ms === 'matched') $s['transfers_matched_count']++;
+                    elseif ($ms === 'unmatched' || $ms === 'proposed') $s['transfers_unmatched_count']++;
+                    if (($it['direction'] ?? 'C') === 'C') {
+                        $s['transfer_amount'][$curr] = ($s['transfer_amount'][$curr] ?? 0) + (float)$it['amount'];
+                    }
                 }
             }
         }
-        foreach (['invoice_amount', 'paid_amount', 'overdue_amount', 'payment_amount'] as $k) {
+        foreach (['invoice_amount', 'paid_amount', 'overdue_amount', 'payment_amount', 'transfer_amount'] as $k) {
             $s[$k]['PLN'] = round($s[$k]['PLN'], 2);
             $s[$k]['EUR'] = round($s[$k]['EUR'], 2);
         }

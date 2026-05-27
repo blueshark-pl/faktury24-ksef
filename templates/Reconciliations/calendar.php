@@ -7,6 +7,7 @@
  * @var string $mode
  * @var string $view
  * @var string $show
+ * @var bool   $showTx
  * @var array  $weeks
  * @var array  $byDate
  * @var string $firstDay
@@ -34,11 +35,12 @@ $fnum  = static fn ($v) => number_format((float)$v, 2, ',', ' ');
 $fnum0 = static fn ($v) => number_format((float)$v, 0, ',', ' ');
 
 // Helper budujący URL ze zachowaniem filtrów
-$buildUrl = function (array $changes = []) use ($ym, $mode, $view, $show, $filterNip, $filterCurrency, $filterType, $filterOverdue) {
+$buildUrl = function (array $changes = []) use ($ym, $mode, $view, $show, $showTx, $filterNip, $filterCurrency, $filterType, $filterOverdue) {
     $params = array_merge([
         'mode'            => $mode,
         'view'            => $view,
         'show'            => $show,
+        'show_tx'         => $showTx ? '1' : '',
         'contractor_nip'  => $filterNip,
         'currency'        => $filterCurrency,
         'type'            => $filterType,
@@ -53,14 +55,28 @@ $dayStats = function (string $date) use ($byDate) {
     $list = $byDate[$date] ?? [];
     $inv_paid = $inv_overdue = $inv_pending = 0;
     $pay_count = 0;
+    $tx_matched = $tx_proposed = $tx_unmatched = $tx_ignored = 0;
     $totalPln = $totalEur = $payPln = $payEur = $overduePln = 0.0;
+    $txPln = $txEur = 0.0;
     foreach ($list as $i) {
         $curr = strtoupper($i['currency'] ?: 'PLN');
         if ($curr !== 'EUR') $curr = 'PLN';
-        if (($i['kind'] ?? 'invoice') === 'payment') {
+        $k = $i['kind'] ?? 'invoice';
+        if ($k === 'payment') {
             $pay_count++;
             if ($curr === 'EUR') $payEur += (float)$i['amount'];
             else $payPln += (float)$i['amount'];
+        } elseif ($k === 'transfer') {
+            $ms = $i['match_status'] ?? 'unmatched';
+            if ($ms === 'matched')        $tx_matched++;
+            elseif ($ms === 'proposed')   $tx_proposed++;
+            elseif ($ms === 'ignored')    $tx_ignored++;
+            else                          $tx_unmatched++;
+            // tylko credit (wpłaty) wliczamy do sum
+            if (($i['direction'] ?? 'C') === 'C') {
+                if ($curr === 'EUR') $txEur += (float)$i['amount'];
+                else $txPln += (float)$i['amount'];
+            }
         } else {
             if ($i['paymentstate'] === 'paid') $inv_paid++;
             elseif ($i['is_overdue']) {
@@ -72,8 +88,10 @@ $dayStats = function (string $date) use ($byDate) {
             else $totalPln += (float)$i['remaining'];
         }
     }
+    $tx_count = $tx_matched + $tx_proposed + $tx_unmatched + $tx_ignored;
     return compact('list', 'inv_paid', 'inv_overdue', 'inv_pending', 'pay_count',
-                   'totalPln', 'totalEur', 'payPln', 'payEur', 'overduePln');
+                   'tx_count', 'tx_matched', 'tx_proposed', 'tx_unmatched', 'tx_ignored',
+                   'totalPln', 'totalEur', 'payPln', 'payEur', 'overduePln', 'txPln', 'txEur');
 };
 
 // Color helper dla heatmap density
@@ -158,6 +176,16 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
             </a>
         </div>
 
+        <!-- Show transfers toggle (independent) -->
+        <a href="<?= $this->Url->build($buildUrl(['show_tx' => $showTx ? '' : '1'])) ?>"
+           class="btn btn-sm <?= $showTx ? 'btn-info' : 'btn-outline-info' ?>"
+           title="<?= $showTx ? 'Ukryj przelewy bankowe' : 'Pokaż przelewy bankowe na kalendarzu' ?>">
+            <i class="ri-bank-line"></i> Przelewy
+            <?php if ($showTx && !empty($summary['transfers_count'])): ?>
+                <span class="badge bg-light text-dark"><?= (int)$summary['transfers_count'] ?></span>
+            <?php endif; ?>
+        </a>
+
         <!-- Mode toggle (effective vs paymentdate) -->
         <?php if ($show !== 'payments'): ?>
         <div class="btn-group btn-group-sm" role="group">
@@ -204,6 +232,26 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                         <?php endif; ?>
                         <?php if ($summary['payment_amount']['EUR'] > 0): ?>
                             <span class="text-success fw-semibold"><?= $fnum0($summary['payment_amount']['EUR']) ?> EUR</span>
+                        <?php endif; ?>
+                    </span>
+                </div>
+            <?php endif; ?>
+
+            <?php if (($summary['transfers_count'] ?? 0) > 0): ?>
+                <div class="d-flex flex-column" style="font-size:.75rem">
+                    <span class="text-muted text-uppercase" style="letter-spacing:.04em;font-size:.6rem">Przelewy bankowe</span>
+                    <span><strong><?= (int)$summary['transfers_count'] ?>×</strong>
+                        <?php if (($summary['transfers_matched_count'] ?? 0) > 0): ?>
+                            <span class="text-success">✓ <?= (int)$summary['transfers_matched_count'] ?></span>
+                        <?php endif; ?>
+                        <?php if (($summary['transfers_unmatched_count'] ?? 0) > 0): ?>
+                            <span class="text-danger">! <?= (int)$summary['transfers_unmatched_count'] ?> bez przyp.</span>
+                        <?php endif; ?>
+                        <?php if (($summary['transfer_amount']['PLN'] ?? 0) > 0): ?>
+                            <span class="text-info fw-semibold"><?= $fnum0($summary['transfer_amount']['PLN']) ?> PLN</span>
+                        <?php endif; ?>
+                        <?php if (($summary['transfer_amount']['EUR'] ?? 0) > 0): ?>
+                            <span class="text-info fw-semibold"><?= $fnum0($summary['transfer_amount']['EUR']) ?> EUR</span>
                         <?php endif; ?>
                     </span>
                 </div>
@@ -271,6 +319,7 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                         <input type="hidden" name="mode" value="<?= h($mode) ?>">
                         <input type="hidden" name="view" value="<?= h($view) ?>">
                         <input type="hidden" name="show" value="<?= h($show) ?>">
+                        <input type="hidden" name="show_tx" value="<?= $showTx ? '1' : '' ?>">
 
                         <!-- Contractor -->
                         <div class="mb-2">
@@ -329,7 +378,16 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                         <div><span class="cal-dot bg-danger d-inline-block">×</span> przeterminowane</div>
                         <div><span class="cal-dot bg-warning text-dark d-inline-block">×</span> oczekujące</div>
                         <div><span class="cal-dot bg-success d-inline-block">×</span> zapłacone</div>
-                        <div><span class="cal-dot bg-info d-inline-block">×</span> wpłaty</div>
+                        <div><span class="cal-dot bg-info d-inline-block">×</span> wpłaty (invoice_payments)</div>
+                        <?php if ($showTx): ?>
+                            <div class="mt-1 pt-1 border-top">
+                                <div class="text-muted small mb-1">Przelewy (MT940):</div>
+                                <div><span class="cal-dot bg-success d-inline-block">✓</span> powiązany</div>
+                                <div><span class="cal-dot bg-warning text-dark d-inline-block">?</span> propozycja</div>
+                                <div><span class="cal-dot bg-danger d-inline-block">!</span> bez przypisania</div>
+                                <div><span class="cal-dot bg-secondary d-inline-block">×</span> ignorowany</div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -354,6 +412,16 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                     <?php else: ?>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover mb-0">
+                                <?php
+                                $txStatusBadge = function (string $ms): array {
+                                    return match ($ms) {
+                                        'matched'   => ['success', 'Powiązany', '✓'],
+                                        'proposed'  => ['warning', 'Propozycja', '?'],
+                                        'ignored'   => ['secondary', 'Ignorowany', '×'],
+                                        default     => ['danger', 'Bez przypisania', '!'],
+                                    };
+                                };
+                                ?>
                                 <?php foreach ($stats['list'] as $it): ?>
                                     <?php if ($it['kind'] === 'invoice'): ?>
                                         <?php $stateCol = $it['is_overdue'] ? 'danger' : ($it['paymentstate'] === 'paid' ? 'success' : 'warning'); ?>
@@ -369,7 +437,7 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                             </td>
                                             <td><span class="badge bg-<?= $stateCol ?>-subtle text-<?= $stateCol ?> border"><?= h($it['paymentstate']) ?><?= $it['is_overdue'] ? ' ⚠' : '' ?></span></td>
                                         </tr>
-                                    <?php else: ?>
+                                    <?php elseif ($it['kind'] === 'payment'): ?>
                                         <tr>
                                             <td style="width:50px"><i class="ri-money-dollar-circle-line text-success fs-5" title="Wpłata"></i></td>
                                             <td>
@@ -383,6 +451,50 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                                 <div class="text-muted small"><?= h($it['method']) ?></div>
                                             </td>
                                             <td><span class="badge bg-success-subtle text-success border">Wpłata</span></td>
+                                        </tr>
+                                    <?php else: /* transfer */ ?>
+                                        <?php
+                                        [$txCol, $txLbl, $txGlyph] = $txStatusBadge($it['match_status']);
+                                        $isCredit = ($it['direction'] ?? 'C') === 'C';
+                                        ?>
+                                        <tr>
+                                            <td style="width:50px"><i class="ri-bank-line text-info fs-5" title="Przelew bankowy"></i></td>
+                                            <td>
+                                                <div class="fw-semibold text-dark">
+                                                    <?= h($it['party_name']) ?: '<em class="text-muted">brak nadawcy</em>' ?>
+                                                </div>
+                                                <?php if (!empty($it['invoice_fullnumber']) || !empty($it['allocations'])): ?>
+                                                    <div class="text-muted small">
+                                                        <i class="ri-link"></i>
+                                                        <?php if (!empty($it['allocations'])): ?>
+                                                            <?php foreach ($it['allocations'] as $a): ?>
+                                                                <a href="/invoices/view/<?= h($a['invoice_id']) ?>" class="text-decoration-none"><?= h($a['fullnumber']) ?></a> (<?= $fnum($a['amount']) ?>)
+                                                            <?php endforeach; ?>
+                                                        <?php elseif (!empty($it['invoice_fullnumber'])): ?>
+                                                            <a href="/invoices/view/<?= h($it['invoice_id']) ?>" class="text-decoration-none"><?= h($it['invoice_fullnumber']) ?></a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($it['title'])): ?>
+                                                    <div class="text-muted small text-truncate" style="max-width:400px" title="<?= h($it['title']) ?>"><?= h(mb_strimwidth($it['title'], 0, 80, '…')) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="fw-bold text-<?= $isCredit ? 'info' : 'secondary' ?>">
+                                                    <?= $isCredit ? '+' : '−' ?><?= $fnum($it['amount']) ?> <?= h($it['currency']) ?>
+                                                </div>
+                                                <?php if ($it['match_confidence'] > 0): ?>
+                                                    <div class="text-muted small">conf: <?= (int)$it['match_confidence'] ?>%</div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-<?= $txCol ?>-subtle text-<?= $txCol ?> border" title="<?= h($txLbl) ?>">
+                                                    <?= $txGlyph ?> <?= h($txLbl) ?>
+                                                </span>
+                                                <div class="mt-1">
+                                                    <a href="/wyciagi/transakcje?id=<?= h($it['id']) ?>" class="small text-decoration-none" title="Otwórz w wyciągach"><i class="ri-external-link-line"></i></a>
+                                                </div>
+                                            </td>
                                         </tr>
                                     <?php endif; ?>
                                 <?php endforeach; ?>
@@ -413,7 +525,8 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                             $isToday = $date === $today;
                                             $hasInvoices = $stats['inv_paid'] + $stats['inv_overdue'] + $stats['inv_pending'] > 0;
                                             $hasPayments = $stats['pay_count'] > 0;
-                                            $hasContent  = $hasInvoices || $hasPayments;
+                                            $hasTransfers= ($stats['tx_count'] ?? 0) > 0;
+                                            $hasContent  = $hasInvoices || $hasPayments || $hasTransfers;
                                             $cellClass = 'cal-cell align-top';
                                             if (!$isCurrentMonth && $view === 'month') $cellClass .= ' bg-light text-muted';
                                             if ($isToday) $cellClass .= ' cal-today';
@@ -451,21 +564,44 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                                         <?php if ($stats['pay_count'] > 0): ?>
                                                             <span class="cal-dot bg-info" title="Wpłaty: <?= $stats['pay_count'] ?>">💰<?= $stats['pay_count'] ?></span>
                                                         <?php endif; ?>
+                                                        <?php if (($stats['tx_matched'] ?? 0) > 0): ?>
+                                                            <span class="cal-dot bg-success" title="Przelewy powiązane: <?= $stats['tx_matched'] ?>" style="background:#0ea5e9 !important">🏦<?= $stats['tx_matched'] ?></span>
+                                                        <?php endif; ?>
+                                                        <?php if (($stats['tx_unmatched'] ?? 0) + ($stats['tx_proposed'] ?? 0) > 0): ?>
+                                                            <?php $u = ($stats['tx_unmatched'] ?? 0) + ($stats['tx_proposed'] ?? 0); ?>
+                                                            <span class="cal-dot bg-danger" title="Przelewy bez przypisania: <?= $u ?>">🏦?<?= $u ?></span>
+                                                        <?php endif; ?>
                                                     </div>
 
                                                     <!-- Week view: lista skompresowana -->
                                                     <?php if ($view === 'week'): ?>
                                                         <div class="cal-week-list" style="font-size:.65rem;line-height:1.3;max-height:230px;overflow-y:auto">
                                                             <?php foreach (array_slice($stats['list'], 0, 12) as $it): ?>
-                                                                <?php if (($it['kind'] ?? 'invoice') === 'invoice'): ?>
+                                                                <?php $k = $it['kind'] ?? 'invoice'; ?>
+                                                                <?php if ($k === 'invoice'): ?>
                                                                     <?php $col = $it['is_overdue'] ? 'danger' : ($it['paymentstate'] === 'paid' ? 'success' : 'warning'); ?>
                                                                     <div class="text-truncate text-<?= $col ?>" title="<?= h($it['fullnumber'] . ' · ' . $it['contractor']) ?>">
                                                                         <i class="ri-file-list-3-line"></i> <?= h($it['fullnumber']) ?>
                                                                         — <?= $fnum0($it['remaining']) ?> <?= h($it['currency']) ?>
                                                                     </div>
-                                                                <?php else: ?>
+                                                                <?php elseif ($k === 'payment'): ?>
                                                                     <div class="text-truncate text-info" title="<?= h($it['fullnumber'] . ' · ' . $it['contractor']) ?>">
                                                                         <i class="ri-money-dollar-circle-line"></i> +<?= $fnum0($it['amount']) ?> <?= h($it['currency']) ?>
+                                                                    </div>
+                                                                <?php else: /* transfer */ ?>
+                                                                    <?php
+                                                                    $txCol = match ($it['match_status'] ?? '') {
+                                                                        'matched' => 'success',
+                                                                        'proposed' => 'warning',
+                                                                        'ignored' => 'secondary',
+                                                                        default => 'danger',
+                                                                    };
+                                                                    $isCredit = ($it['direction'] ?? 'C') === 'C';
+                                                                    ?>
+                                                                    <div class="text-truncate text-<?= $txCol ?>" title="<?= h($it['party_name'] . ' · ' . $it['title']) ?>">
+                                                                        <i class="ri-bank-line"></i>
+                                                                        <?= $isCredit ? '+' : '−' ?><?= $fnum0($it['amount']) ?> <?= h($it['currency']) ?>
+                                                                        — <?= h(mb_strimwidth($it['party_name'] ?: 'tx', 0, 18, '…')) ?>
                                                                     </div>
                                                                 <?php endif; ?>
                                                             <?php endforeach; ?>
@@ -489,6 +625,12 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                                                                 <?php if ($stats['payEur'] > 0): ?>
                                                                     <div class="text-info"><i class="ri-arrow-up-circle-line"></i> <?= $fnum0($stats['payEur']) ?> EUR</div>
                                                                 <?php endif; ?>
+                                                            <?php endif; ?>
+                                                            <?php if (($stats['txPln'] ?? 0) > 0): ?>
+                                                                <div style="color:#0ea5e9"><i class="ri-bank-line"></i> <?= $fnum0($stats['txPln']) ?> PLN</div>
+                                                            <?php endif; ?>
+                                                            <?php if (($stats['txEur'] ?? 0) > 0): ?>
+                                                                <div style="color:#0ea5e9"><i class="ri-bank-line"></i> <?= $fnum0($stats['txEur']) ?> EUR</div>
                                                             <?php endif; ?>
                                                         </div>
                                                     <?php endif; ?>
@@ -558,6 +700,13 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
 
     var stateLabels = { 'paid': 'Zapłacona', 'partial': 'Częściowo', 'unpaid': 'Do zapłaty' };
     var stateColors = { 'paid': 'success', 'partial': 'warning', 'unpaid': 'secondary' };
+    var txStatusMeta = {
+        'matched':   { col: 'success',   lbl: 'Powiązany',         glyph: '✓' },
+        'proposed':  { col: 'warning',   lbl: 'Propozycja',        glyph: '?' },
+        'ignored':   { col: 'secondary', lbl: 'Ignorowany',        glyph: '×' },
+        'unmatched': { col: 'danger',    lbl: 'Bez przypisania',   glyph: '!' }
+    };
+    function txMeta(s) { return txStatusMeta[s] || txStatusMeta['unmatched']; }
 
     function renderDayModal(date, label) {
         var list = byDate[date] || [];
@@ -570,7 +719,8 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
 
         var html = '<div class="table-responsive"><table class="table table-sm table-hover small mb-0">';
         list.forEach(function (it) {
-            if ((it.kind || 'invoice') === 'invoice') {
+            var kind = it.kind || 'invoice';
+            if (kind === 'invoice') {
                 var stateCol = it.is_overdue ? 'danger' : (stateColors[it.paymentstate] || 'secondary');
                 var stateLbl = stateLabels[it.paymentstate] || it.paymentstate;
                 if (it.is_overdue && it.paymentstate !== 'paid') stateLbl += ' (przeterm.)';
@@ -587,7 +737,7 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                      +   '<div class="text-muted small">brutto ' + fmtAmount(it.total) + '</div></td>'
                      + '<td><span class="badge bg-' + stateCol + '-subtle text-' + stateCol + ' border" style="font-size:.65rem">' + esc(stateLbl) + '</span></td>'
                      + '</tr>';
-            } else {
+            } else if (kind === 'payment') {
                 html += '<tr>'
                      + '<td style="width:40px"><i class="ri-money-dollar-circle-line text-success fs-5"></i></td>'
                      + '<td>'
@@ -597,6 +747,36 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                      + '<td class="text-end"><div class="fw-bold text-success">+' + fmtAmount(it.amount) + ' ' + esc(it.currency) + '</div>'
                      +   '<div class="text-muted small">' + esc(it.method) + '</div></td>'
                      + '<td><span class="badge bg-success-subtle text-success border" style="font-size:.65rem">Wpłata</span></td>'
+                     + '</tr>';
+            } else if (kind === 'transfer') {
+                var m = txMeta(it.match_status);
+                var isCredit = (it.direction || 'C') === 'C';
+                var party = it.party_name || '<em class="text-muted">brak nadawcy</em>';
+                var allocHtml = '';
+                if (it.allocations && it.allocations.length) {
+                    allocHtml = '<div class="text-muted small"><i class="ri-link"></i> ';
+                    it.allocations.forEach(function (a, idx) {
+                        if (idx > 0) allocHtml += ', ';
+                        allocHtml += '<a href="/invoices/view/' + esc(a.invoice_id) + '" class="text-decoration-none">' + esc(a.fullnumber) + '</a> (' + fmtAmount(a.amount) + ')';
+                    });
+                    allocHtml += '</div>';
+                } else if (it.invoice_id && it.invoice_fullnumber) {
+                    allocHtml = '<div class="text-muted small"><i class="ri-link"></i> <a href="/invoices/view/' + esc(it.invoice_id) + '" class="text-decoration-none">' + esc(it.invoice_fullnumber) + '</a></div>';
+                }
+                var titleHtml = it.title ? '<div class="text-muted small text-truncate" style="max-width:350px" title="' + esc(it.title) + '">' + esc(it.title) + '</div>' : '';
+                var confHtml = (it.match_confidence > 0) ? '<div class="text-muted small">conf: ' + it.match_confidence + '%</div>' : '';
+                html += '<tr>'
+                     + '<td style="width:40px"><i class="ri-bank-line text-info fs-5" title="Przelew bankowy"></i></td>'
+                     + '<td><div class="fw-semibold text-dark">' + party + '</div>'
+                     +   allocHtml + titleHtml
+                     + '</td>'
+                     + '<td class="text-end"><div class="fw-bold text-' + (isCredit ? 'info' : 'secondary') + '">'
+                     +   (isCredit ? '+' : '−') + fmtAmount(it.amount) + ' ' + esc(it.currency) + '</div>'
+                     +   confHtml
+                     + '</td>'
+                     + '<td><span class="badge bg-' + m.col + '-subtle text-' + m.col + ' border" style="font-size:.65rem" title="' + esc(m.lbl) + '">' + m.glyph + ' ' + esc(m.lbl) + '</span>'
+                     +   '<div class="mt-1"><a href="/wyciagi/transakcje?id=' + esc(it.id) + '" class="small text-decoration-none" title="Otwórz w wyciągach"><i class="ri-external-link-line"></i></a></div>'
+                     + '</td>'
                      + '</tr>';
             }
         });
