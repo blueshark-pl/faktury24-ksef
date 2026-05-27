@@ -102,6 +102,108 @@ $periods = [
         </a>
     </div>
 
+    <!-- ── Legenda metryk (collapsible) ─────────────────────────────────── -->
+    <div class="card mb-3 border-info-subtle">
+        <div class="card-header py-2 bg-info-subtle d-flex align-items-center gap-2" role="button"
+             data-bs-toggle="collapse" data-bs-target="#legendaCard" aria-expanded="false">
+            <i class="ri-information-line text-info"></i>
+            <strong>Legenda metryk — jak są liczone te liczby?</strong>
+            <small class="text-muted ms-auto">kliknij aby rozwinąć</small>
+            <i class="ri-arrow-down-s-line"></i>
+        </div>
+        <div class="collapse" id="legendaCard">
+            <div class="card-body small">
+                <div class="row g-3">
+                    <!-- KPI cards -->
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-1">💎 Hero KPI cards</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li><strong>Należności</strong> — <code>SUM(invoices.remaining) WHERE paymentstate ≠ 'paid'</code> per waluta. Pokazuje ile klient nadal Ci jest winien (bieżąca chwila).</li>
+                            <li><strong>Przeterminowane</strong> — z należności te z <code>paymentdate &lt; dziś</code>. Wymagają natychmiastowego działania.</li>
+                            <li><strong>DSO (Days Sales Outstanding)</strong> — średni czas inkasa. Formuła: <code>(należności PLN-ekwiwalent × dni okresu) / sprzedaż w okresie PLN</code>. Mniej = lepiej. Trend vs poprzedni okres (↑ = klienci płacą wolniej).</li>
+                            <li><strong>Inkaso w okresie</strong> — <code>SUM(invoice_payments.amount) WHERE payment_date BETWEEN from AND to</code> per waluta. Co rzeczywiście wpłynęło.</li>
+                        </ul>
+                    </div>
+                    <!-- Aging -->
+                    <div class="col-md-6">
+                        <h6 class="text-danger mb-1">⏳ Wiekowanie zaległości</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Tylko faktury <code>paymentstate ≠ 'paid' AND paymentdate &lt; dziś</code> (przeterminowane).</li>
+                            <li>Przedział wg <code>DATEDIFF(dziś, paymentdate)</code>.</li>
+                            <li>Wartości w PLN: dla EUR mnożone przez <code>invoice.currency_exchange</code>. Wartości w EUR raw (oddzielnie pokazane).</li>
+                        </ul>
+                    </div>
+                    <!-- DSO trend -->
+                    <div class="col-md-6">
+                        <h6 class="text-info mb-1">📊 Trend DSO (12 mies.)</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Per każdy miesiąc: <code>(należności_na_koniec_miesiąca PLN × 30) / sprzedaż_w_tym_miesiącu PLN</code>.</li>
+                            <li>EUR faktury konwertowane przez <code>currency_exchange</code> faktury.</li>
+                            <li>Wartość NULL gdy brak sprzedaży w miesiącu (line ma „dziury”).</li>
+                        </ul>
+                    </div>
+                    <!-- Heatmap -->
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-1">🔥 Heatmapa płatności</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Top 20 kontrahentów wg liczby faktur z ostatnich 12 mies.</li>
+                            <li>Komórka: <code>% faktur z paymentstate='paid'</code> spośród faktur wystawionych w danym miesiącu.</li>
+                            <li>Kolor HSL: czerwony (0%) → żółty (50%) → zielony (100%).</li>
+                            <li><strong>Uwaga:</strong> liczy "zapłacone do dziś", nie "zapłacone w terminie".</li>
+                        </ul>
+                    </div>
+                    <!-- Cashflow -->
+                    <div class="col-md-6">
+                        <h6 class="text-success mb-1">💸 Prognoza wpływów</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Grupowanie wg <code>DATEDIFF(paymentdate, dziś)</code>: <code>&lt; 0</code> = przeterminowane, <code>0-30</code> = ≤30d itd.</li>
+                            <li>Tylko niezapłacone (<code>remaining &gt; 0</code>).</li>
+                            <li>Per waluta: PLN i EUR oddzielnie. Suma PLN zawiera EUR × kurs (orientacyjnie).</li>
+                            <li><strong>Brak prawdopodobieństwa</strong> — to czysta kwota, nie uwzględnia historii opóźnień klienta.</li>
+                        </ul>
+                    </div>
+                    <!-- Debtors -->
+                    <div class="col-md-6">
+                        <h6 class="text-danger mb-1">👤 Top dłużnicy</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Grupowane per NIP (z <code>invoice_contractors</code>).</li>
+                            <li><code>SUM(remaining) WHERE paymentstate ≠ 'paid'</code> per kontrahent, per waluta.</li>
+                            <li>Sortowanie wg PLN-ekwiwalent (EUR × <code>currency_exchange</code>) DESC.</li>
+                            <li>"Przeterm." = liczba faktur tego klienta z paymentdate &lt; dziś.</li>
+                        </ul>
+                    </div>
+                    <!-- Payment days -->
+                    <div class="col-md-6">
+                        <h6 class="text-warning mb-1">⏰ Najwolniej płacący</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li><code>AVG(DATEDIFF(invoice_payments.payment_date, invoices.date))</code> per kontrahent.</li>
+                            <li>Próbka min. 3 wpłaty (mniejsze próby pomijane).</li>
+                            <li>Sort DESC = najwolniejsi na górze.</li>
+                            <li>Kolory: &gt;30d czerwone, &gt;14d żółte, ≤14d zielone.</li>
+                        </ul>
+                    </div>
+                    <!-- Capital -->
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-1">📈 Kapitał w czasie</h6>
+                        <ul class="ps-3 mb-2 text-muted">
+                            <li>Per miesiąc: <code>SUM(total / alreadypaid / remaining)</code> dla faktur wystawionych w tym mies.</li>
+                            <li><strong>Raw sum</strong> bez konwersji walut — pokazuje surowy bilans (EUR sumowane razem z PLN).</li>
+                            <li>Dla dokładności: zobacz kafle KPI per waluta.</li>
+                        </ul>
+                    </div>
+                </div>
+                <hr>
+                <div class="text-muted small">
+                    <i class="ri-alert-line text-warning me-1"></i>
+                    <strong>Uwagi:</strong>
+                    Wszystkie kalkulacje opierają się na danych z bazy <code>invoices</code> + <code>invoice_payments</code>.
+                    Konwersja walut używa <code>invoice.currency_exchange</code> (kurs zapisany przy fakturze).
+                    Faktury z workflow_status='draft' są wykluczone.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── HERO KPI cards ─────────────────────────────────────────────────── -->
     <div class="row g-2 mb-3">
         <!-- Należności -->
