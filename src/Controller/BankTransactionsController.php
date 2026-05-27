@@ -997,22 +997,35 @@ class BankTransactionsController extends AppController
         $system = <<<SYS
 Jesteś asystentem księgowym. Z tekstu tytułu/opisu przelewu wyciągasz NUMERY FAKTUR.
 
-Obowiązują DWIE konwencje numeracji:
+Obowiązują DWIE konwencje numeracji — żadna inna nie istnieje:
 1) System od 2026-04-01: PREFIX/INDEX/MIESIĄC/ROK
    - PREFIX: FW (walutowa), FV (VAT), FK (korekta), FZ (zaliczka), PRO (proforma), NU (no-VAT)
-   - INDEX: 1+ cyfr (np. 1, 12, 234)
+   - INDEX: 1+ cyfr (np. 1, 12, 234) — bez sztywnego maksimum
    - MIESIĄC: 1-12 (jedno- lub dwucyfrowy: 4 albo 04)
-   - ROK: 4 cyfry (2026, 2025)
-   - Przykłady: FW/1/4/2026, FV/12/04/2026, FK/3/4/2026
+   - ROK: dokładnie 4 cyfry (2026, 2025)
+   - Przykłady POPRAWNE: FW/1/4/2026, FV/12/04/2026, FK/3/4/2026, FZ/234/12/2026
 2) Legacy przed 2026-04-01: NNNN/MM/YYYY
-   - Przykłady: 0102/03/2026, 0035/12/2025
+   - NNNN: **dokładnie 4 cyfry**, zakres 0001–9999 (maks 9999 faktur miesięcznie).
+     Wiodące zera obowiązkowe (0001, 0012, 0102, 9999).
+   - MM: 01-12 (najczęściej dwie cyfry, ale akceptuj też jednocyfrowe)
+   - YYYY: 4 cyfry
+   - Przykłady POPRAWNE: 0102/03/2026, 0035/12/2025, 9876/11/2025
+   - Przykłady BŁĘDNE (NIE zwracaj): 20225/03/2026 (5 cyfr!), 123/03/2026 (mniej niż 4),
+     12345/3/26 (5 cyfr + krótki rok).
+
+WALIDACJA — odrzucaj wszystko co nie pasuje do tych formatów:
+- Liczba 5+ cyfr w segmencie NNNN dla legacy → ODRZUĆ, to NIE jest numer faktury
+  (najczęściej identyfikator płatności, nr referencyjny banku, kod transakcji).
+- PREFIX inny niż FW/FV/FK/FZ/PRO/NU → ODRZUĆ.
+- Brakuje któregokolwiek segmentu → ODRZUĆ.
 
 NORMALIZUJ:
-- Dodaj zera wiodące w miesiącu nie wymagane (zostaw jak jest w tekście).
+- Dla legacy: dodaj wiodące zera do 4 cyfr (np. "102/3/2026" → "0102/03/2026").
+- Dla system: zostaw indeks bez wiodących zer (FW/1/4/2026 OK).
 - Małe litery zamień na duże (fw → FW).
 - Numery oddzielone spacjami, średnikami, przecinkami, "i", "oraz", "+" — to OSOBNE wpisy.
-- Ignoruj kwoty, NIP, daty bez kontekstu numeru, identyfikatory płatności (np. /PAY/, /VAT/), nr CMR.
-- Jeśli widzisz tylko fragment (np. "FW1" bez ukośników) — zwróć tylko jeśli możesz to sensownie zinterpretować jako PREFIX+INDEX (np. "FW1/4/2026").
+- Ignoruj kwoty, NIP, daty bez kontekstu numeru, identyfikatory płatności (np. /PAY/, /VAT/, /IDC/), nr CMR, kody SWIFT.
+- Jeśli widzisz tylko fragment (np. "FW1" bez ukośników) — zwróć tylko jeśli możesz to sensownie zinterpretować jako PREFIX+INDEX (np. "FW1/4/2026" gdy data sąsiaduje).
 
 ZWRÓĆ JSON:
 {"numbers": [{"raw": "FW1/4/2026", "normalized": "FW/1/4/2026", "type": "system|legacy", "confidence": 0..100}], "note": "krótkie uzasadnienie"}
@@ -1044,21 +1057,43 @@ SYS;
         }
 
         $numbers = is_array($result['numbers'] ?? null) ? $result['numbers'] : [];
-        // Deduplikacja po `normalized`
+        // Walidacja + deduplikacja po `normalized`
+        // Legacy: dokładnie 4 cyfry / 1-2 cyfry / 4 cyfry (np. 0102/03/2026)
+        // System: PREFIX (FW|FV|FK|FZ|PRO|NU) / cyfry / 1-2 cyfry / 4 cyfry
+        $legacyRe = '#^\d{4}/\d{1,2}/\d{4}$#';
+        $systemRe = '#^(FW|FV|FK|FZ|PRO|NU)/\d+/\d{1,2}/\d{4}$#i';
         $seen = [];
         $clean = [];
+        $rejected = [];
         foreach ($numbers as $n) {
             $norm = trim((string)($n['normalized'] ?? $n['raw'] ?? ''));
             if ($norm === '' || isset($seen[$norm])) continue;
             $seen[$norm] = true;
+
+            $type = strtolower((string)($n['type'] ?? ''));
+            $isLegacy = preg_match($legacyRe, $norm) === 1;
+            $isSystem = preg_match($systemRe, $norm) === 1;
+
+            if (!$isLegacy && !$isSystem) {
+                $rejected[] = $norm;
+                continue;
+            }
+            // Wymusza zgodność type z faktycznym kształtem
+            if ($isLegacy) $type = 'legacy';
+            elseif ($isSystem) $type = 'system';
+
             $clean[] = [
                 'raw'        => (string)($n['raw'] ?? $norm),
                 'normalized' => $norm,
-                'type'       => (string)($n['type'] ?? 'system'),
+                'type'       => $type,
                 'confidence' => max(0, min(100, (int)($n['confidence'] ?? 50))),
             ];
         }
         usort($clean, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+
+        if ($rejected) {
+            \Cake\Log\Log::info('[ai-parse-title] odrzucone (niezgodne z konwencjami): ' . implode(', ', $rejected));
+        }
 
         return $this->response->withType('application/json')
             ->withStringBody(json_encode([
