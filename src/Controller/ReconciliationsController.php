@@ -246,14 +246,24 @@ class ReconciliationsController extends AppController
                     ],
                 ]);
 
-            // Natural-sort dla fullnumber — żeby FV/1, FV/2, ..., FV/10 (zamiast FV/1, FV/10, FV/11, ..., FV/2).
-            // LENGTH najpierw grupuje po długości (1-cyfrowe → 2-cyfrowe → 3-cyfrowe), potem alfabet.
-            // Dodatkowo: date DESC jako secondary — żeby fullnumbery z różnych miesięcy były pogrupowane chronologicznie.
+            // Chronologiczny natural-sort dla fullnumber typu FV/NUM/MM/YYYY:
+            //   1. ROK (ostatni segment po /) — np. 2026
+            //   2. MIESIĄC (przedostatni segment) — np. 04
+            //   3. NUMER (drugi segment, po prefixie) — np. 1, 2, 10, ...
+            // Wszystko CAST AS UNSIGNED — żeby numeryczne porównanie (FV/10 po FV/9).
+            //
+            // Działa dla formatów PREFIX/NUM/MONTH/YEAR (najczęstszy w PL). Dla innych
+            // formatów (np. PREFIX/YEAR/NUM) cast da 0 → wiersze trafią na początek
+            // grupy "0", ale lista wciąż się posortuje (bez crashu).
             if ($sortCol === 'fullnumber') {
+                $yearExpr  = "CAST(SUBSTRING_INDEX(Invoices.fullnumber, '/', -1) AS UNSIGNED)";
+                $monthExpr = "CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(Invoices.fullnumber, '/', -2), '/', 1) AS UNSIGNED)";
+                $numExpr   = "CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(Invoices.fullnumber, '/', 2), '/', -1) AS UNSIGNED)";
                 $invoiceQuery->orderBy([
-                    new \Cake\Database\Expression\QueryExpression('LENGTH(Invoices.fullnumber) ' . $sortDir),
-                    'Invoices.fullnumber' => $sortDir,
-                    'Invoices.created'    => 'DESC',
+                    new \Cake\Database\Expression\QueryExpression($yearExpr  . ' ' . $sortDir),
+                    new \Cake\Database\Expression\QueryExpression($monthExpr . ' ' . $sortDir),
+                    new \Cake\Database\Expression\QueryExpression($numExpr   . ' ' . $sortDir),
+                    'Invoices.created' => 'DESC',
                 ]);
             } else {
                 $invoiceQuery->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
