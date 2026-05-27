@@ -33,6 +33,81 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
         default     => '<span class="badge bg-light text-secondary border">Niedopasowana</span>',
     };
 };
+
+// MT940 transaction type codes — opisy dla popoverów.
+// Standard SWIFT MT940: pierwsza litera = kategoria, kolejne 2 cyfry = typ operacji.
+// Polskie banki (PKO, Pekao, ING, mBank, Santander) używają wariantów poniżej.
+$mt940Codes = [
+    // Credit (wpływ)
+    'C20' => 'Wpłata gotówkowa (uznanie)',
+    'C44' => 'Czek otrzymany',
+    'C50' => 'Przelew otrzymany (zwykły)',
+    'C57' => 'Czek skupowy',
+    'C61' => 'Przelew otrzymany',
+    'C62' => 'Przelew zagraniczny otrzymany',
+    'C95' => 'Uznanie — opłata bankowa',
+
+    // Debit (rozchód)
+    'D20' => 'Wypłata gotówkowa (obciążenie)',
+    'D44' => 'Czek wystawiony',
+    'D50' => 'Przelew wychodzący (zwykły)',
+    'D57' => 'Czek rozliczeniowy',
+    'D61' => 'Przelew własny',
+    'D62' => 'Przelew zagraniczny wychodzący',
+    'D94' => 'Przelew krajowy (Elixir wychodzący)',
+    'D95' => 'Obciążenie — opłata bankowa',
+    'D99' => 'Inne obciążenie',
+
+    // External / przelew zewnętrzny
+    'N20' => 'Wpłata gotówkowa zewnętrzna',
+    'N31' => 'Przelew SEPA Credit Transfer',
+    'N32' => 'Przelew SEPA Direct Debit',
+    'N44' => 'Odsetki',
+    'N50' => 'Przelew SEPA wychodzący',
+    'N57' => 'Przelew międzybankowy SEPA',
+    'N94' => 'Przelew krajowy Elixir',
+    'N95' => 'Opłata bankowa (zewnętrzna)',
+
+    // Standing order / zlecenie stałe
+    'S20' => 'Wpłata własna gotówkowa',
+    'S50' => 'Przelew okresowy / zlecenie stałe',
+    'S61' => 'Polecenie zapłaty',
+
+    // Admin / korekty / księgowanie
+    'A61' => 'Korekta / księgowanie administracyjne (uznanie)',
+    'A95' => 'Opłaty bankowe (uznanie kredytowe)',
+
+    // Specjalne (Express Elixir, instant)
+    'F50' => 'Express Elixir / przelew natychmiastowy',
+    'F94' => 'Przelew natychmiastowy krajowy',
+
+    // Zwroty / storna
+    'Z61' => 'Storno przelewu',
+    'Z50' => 'Zwrot przelewu',
+
+    // Gwarancje / waluta
+    'G50' => 'Przelew gwarancyjny',
+    'W50' => 'Przewalutowanie',
+];
+
+$codeLabel = function (?string $code) use ($mt940Codes): string {
+    if (!$code) return '';
+    $up = strtoupper(trim($code));
+    if (isset($mt940Codes[$up])) return $mt940Codes[$up];
+    // Fallback: pierwsza litera daje kategorię
+    $letterMap = [
+        'C' => 'kod kredytowy (wpływ) — nieznana podkategoria',
+        'D' => 'kod debetowy (rozchód) — nieznana podkategoria',
+        'N' => 'przelew zewnętrzny — nieznana podkategoria',
+        'S' => 'zlecenie stałe / okresowe — nieznana podkategoria',
+        'A' => 'korekta / księgowanie administracyjne',
+        'F' => 'przelew natychmiastowy — nieznana podkategoria',
+        'Z' => 'storno / zwrot — nieznana podkategoria',
+        'G' => 'gwarancja — nieznana podkategoria',
+        'W' => 'operacja walutowa — nieznana podkategoria',
+    ];
+    return $letterMap[substr($up, 0, 1)] ?? 'Nieznany kod MT940';
+};
 ?>
 
 <!-- Nagłówek -->
@@ -161,8 +236,19 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                                 <div class="text-muted" style="font-size:.75em">ks. <?= $fdate($tx->booking_date) ?></div>
                             <?php endif; ?>
                             <?php if ($tx->tx_type_code): ?>
-                                <div class="mt-1">
+                                <?php $codeDesc = $codeLabel($tx->tx_type_code); ?>
+                                <div class="mt-1 d-inline-flex align-items-center gap-1">
                                     <span class="badge bg-light text-secondary border" style="font-size:.68em;letter-spacing:.03em"><?= h($tx->tx_type_code) ?></span>
+                                    <button type="button" class="btn btn-link p-0 mt-tx-code-info" style="line-height:1;color:#94a3b8"
+                                            data-bs-toggle="popover"
+                                            data-bs-trigger="focus hover"
+                                            data-bs-placement="right"
+                                            data-bs-html="true"
+                                            title="Kod MT940: <?= h($tx->tx_type_code) ?>"
+                                            data-bs-content="<?= h($codeDesc) ?>"
+                                            aria-label="Opis kodu <?= h($tx->tx_type_code) ?>">
+                                        <i class="ri-information-line" style="font-size:.85rem"></i>
+                                    </button>
                                 </div>
                             <?php endif; ?>
                         </td>
@@ -461,6 +547,11 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
 <style>
 .btn-xs { padding: .125rem .375rem; font-size: .75rem; border-radius: .2rem; }
+.mt-tx-code-info { border: 0; background: transparent; cursor: pointer; }
+.mt-tx-code-info:focus { outline: none; box-shadow: none; }
+.mt-tx-code-info:hover { color: #3b82f6 !important; }
+.popover { max-width: 320px; font-size: .8rem; }
+.popover-header { font-size: .75rem; font-weight: 700; }
 
 /* Nagłówek sekcji wewnątrz modala */
 .sm-section-label {
@@ -540,6 +631,11 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 var urlAddAllocation    = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'addAllocation']) ?>';
 var urlDeleteAllocation = '<?= $this->Url->build(['controller' => 'Reconciliations', 'action' => 'deleteAllocation', '_ext' => false]) ?>';
 var csrfToken = '<?= h($this->request->getAttribute('csrfToken') ?? '') ?>';
+
+// Bootstrap popovers — opisy kodów MT940 (i ewentualne inne w tabeli)
+document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+    new bootstrap.Popover(el, { container: 'body' });
+});
 
 function getCsrf() { return csrfToken; }
 
