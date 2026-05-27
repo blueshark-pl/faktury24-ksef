@@ -2063,6 +2063,247 @@ class ReconciliationsController extends AppController
     }
 
     /**
+     * Dashboard analytics — top dłużnicy, czas zapłaty, kapitał, ostatnie
+     * niewykorzystane przelewy, powiadomienia "Did you know".
+     */
+    public function insights(): void
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $today     = date('Y-m-d');
+
+        $Invoices = $this->fetchTable('Invoices');
+        $BankTxs  = $this->fetchTable('BankTransactions');
+
+        // 1. Top 10 dłużników — kontrahenci z największym sumą niezapłaconych
+        $topDebtors = [];
+        $debtorRows = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'nip', 'name']);
+                },
+            ])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'OR' => [
+                    ['Invoices.paymentstate IS' => null],
+                    ['Invoices.paymentstate !=' => 'paid'],
+                ],
+            ])
+            ->andWhere(['OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft'],
+            ]])
+            ->select(['Invoices.id', 'Invoices.remaining', 'Invoices.total', 'Invoices.currency',
+                      'Invoices.paymentdate', 'Invoices.paymentstate'])
+            ->all();
+
+        $byContractor = [];
+        foreach ($debtorRows as $inv) {
+            $nip  = (string)($inv->invoice_contractor->nip ?? '');
+            $name = (string)($inv->invoice_contractor->name ?? '');
+            if ($nip === '') $nip = '_unknown_';
+            $key = $nip;
+            if (!isset($byContractor[$key])) {
+                $byContractor[$key] = [
+                    'nip'              => $nip,
+                    'name'             => $name,
+                    'unpaid_count'     => 0,
+                    'remaining_total'  => 0.0,
+                    'overdue_count'    => 0,
+                ];
+            }
+            $byContractor[$key]['unpaid_count']++;
+            $byContractor[$key]['remaining_total'] += (float)($inv->remaining ?? 0);
+            $pd = (string)($inv->paymentdate ?? '');
+            if (substr($pd, 0, 10) && substr($pd, 0, 10) < $today) {
+                $byContractor[$key]['overdue_count']++;
+            }
+        }
+        usort($byContractor, fn($a, $b) => $b['remaining_total'] <=> $a['remaining_total']);
+        $topDebtors = array_slice($byContractor, 0, 10);
+
+        // 2. Średni czas zapłaty per kontrahent (top 10 z najdłuższym czasem)
+        $paymentDays = [];
+        try {
+            $db    = $Invoices->getConnection();
+            $stmt  = $db->execute(
+                "SELECT
+                    ic.nip,
+                    ic.name,
+                    COUNT(*)             AS sample_size,
+                    AVG(DATEDIFF(ip.payment_date, i.date)) AS avg_days,
+                    SUM(ip.amount)       AS total_paid
+                 FROM invoice_payments ip
+                 JOIN invoices i ON i.id = ip.invoice_id
+                 JOIN invoice_contractors ic ON ic.invoice_id = i.id
+                 WHERE i.company_id = ?
+                 GROUP BY ic.nip
+                 HAVING sample_size >= 3
+                 ORDER BY avg_days DESC
+                 LIMIT 10",
+                [$companyId]
+            );
+            $paymentDays = $stmt->fetchAll('assoc');
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights payment_days: ' . $e->getMessage());
+        }
+
+        // 3. Wolny kapitał miesięcznie (ostatnie 12 mies.) — suma billed/paid/remaining
+        $capital = [];
+        try {
+            $stmt = $db->execute(
+                "SELECT
+                    DATE_FORMAT(i.date, '%Y-%m') AS month,
+                    SUM(i.total)        AS billed_total,
+                    SUM(i.alreadypaid)  AS paid_total,
+                    SUM(i.remaining)    AS remaining_total,
+                    COUNT(*)            AS cnt
+                 FROM invoices i
+                 WHERE i.company_id = ?
+                   AND i.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                   AND (i.workflow_status IS NULL OR i.workflow_status != 'draft')
+                 GROUP BY DATE_FORMAT(i.date, '%Y-%m')
+                 ORDER BY month ASC",
+                [$companyId]
+            );
+            $capital = $stmt->fetchAll('assoc');
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights capital: ' . $e->getMessage());
+        }
+
+        // 4. Ostatnie niewykorzystane przelewy (30 dni) — TODO list
+        $recentUnmatched = $BankTxs->find()
+            ->where([
+                'BankTransactions.company_id'      => $companyId,
+                'BankTransactions.direction'       => 'C',
+                'BankTransactions.match_status IN' => ['unmatched', 'proposed'],
+                'BankTransactions.value_date >='   => date('Y-m-d', strtotime('-30 days')),
+            ])
+            ->select(['id', 'value_date', 'amount', 'currency', 'party_name', 'title', 'parsed_inv', 'account_number'])
+            ->orderByDesc('value_date')
+            ->limit(15)
+            ->all()
+            ->toArray();
+
+        // 5. Powiadomienia "Did you know?" — analytics on-demand
+        $notifications = $this->_buildInsightsNotifications($companyId, $today);
+
+        $this->set(compact('topDebtors', 'paymentDays', 'capital', 'recentUnmatched', 'notifications'));
+        $this->set('title', 'Insights — rozliczenia');
+    }
+
+    /**
+     * Generuje powiadomienia "Did you know?" — niewielkie heurystyki które
+     * mogą zainteresować user'a (możliwe duplikaty, długie zaległości itp.).
+     */
+    private function _buildInsightsNotifications(string $companyId, string $todayStr): array
+    {
+        $notifications = [];
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+
+            // A. Klienci z 3+ zaległymi fakturami > 60 dni
+            $longOverdue = $db->execute(
+                "SELECT
+                    ic.nip,
+                    ic.name,
+                    COUNT(*) AS cnt,
+                    SUM(i.remaining) AS total
+                 FROM invoices i
+                 JOIN invoice_contractors ic ON ic.invoice_id = i.id
+                 WHERE i.company_id = ?
+                   AND (i.paymentstate IS NULL OR i.paymentstate != 'paid')
+                   AND i.paymentdate < ?
+                   AND DATEDIFF(?, i.paymentdate) >= 60
+                 GROUP BY ic.nip
+                 HAVING cnt >= 3
+                 ORDER BY total DESC
+                 LIMIT 5",
+                [$companyId, $todayStr, $todayStr]
+            )->fetchAll('assoc');
+            foreach ($longOverdue as $row) {
+                $notifications[] = [
+                    'type' => 'warning',
+                    'icon' => 'ri-time-line',
+                    'title' => 'Długoterminowy dłużnik',
+                    'text' => sprintf(
+                        '%s ma %d zaległych faktur przeterminowanych > 60 dni (%s PLN). Czas na windykację?',
+                        $row['name'] ?? '?', (int)$row['cnt'], number_format((float)$row['total'], 0, ',', ' ')
+                    ),
+                ];
+            }
+
+            // B. Możliwe duplikaty — faktury z tym samym NIPem + tą samą total + w ±7 dni
+            $dups = $db->execute(
+                "SELECT
+                    ic.nip,
+                    ic.name,
+                    i1.fullnumber AS inv1,
+                    i2.fullnumber AS inv2,
+                    i1.total,
+                    i1.currency,
+                    i1.date AS date1,
+                    i2.date AS date2
+                 FROM invoices i1
+                 JOIN invoices i2 ON i2.company_id = i1.company_id
+                   AND i2.id > i1.id
+                   AND ABS(i2.total - i1.total) < 0.01
+                   AND ABS(DATEDIFF(i2.date, i1.date)) <= 7
+                 JOIN invoice_contractors ic ON ic.invoice_id = i1.id
+                 JOIN invoice_contractors ic2 ON ic2.invoice_id = i2.id AND ic2.nip = ic.nip
+                 WHERE i1.company_id = ?
+                   AND i1.total > 0
+                   AND (i1.workflow_status IS NULL OR i1.workflow_status != 'draft')
+                   AND (i2.workflow_status IS NULL OR i2.workflow_status != 'draft')
+                 LIMIT 5",
+                [$companyId]
+            )->fetchAll('assoc');
+            foreach ($dups as $row) {
+                $notifications[] = [
+                    'type' => 'info',
+                    'icon' => 'ri-file-copy-2-line',
+                    'title' => 'Możliwy duplikat',
+                    'text' => sprintf(
+                        '%s: faktury %s (%s) i %s (%s) — ta sama kwota %s %s, ±7 dni. Sprawdź czy to nie pomyłka.',
+                        $row['name'] ?? '?',
+                        $row['inv1'], substr((string)$row['date1'], 0, 10),
+                        $row['inv2'], substr((string)$row['date2'], 0, 10),
+                        number_format((float)$row['total'], 2, ',', ' '),
+                        $row['currency'] ?? 'PLN'
+                    ),
+                ];
+            }
+
+            // C. Niewykorzystane przelewy > 7 dni
+            $oldUnmatched = $db->execute(
+                "SELECT COUNT(*) AS cnt, SUM(amount) AS total
+                 FROM bank_transactions
+                 WHERE company_id = ?
+                   AND direction = 'C'
+                   AND match_status IN ('unmatched', 'proposed')
+                   AND value_date < DATE_SUB(?, INTERVAL 7 DAY)",
+                [$companyId, $todayStr]
+            )->fetchAll('assoc');
+            if (!empty($oldUnmatched) && (int)$oldUnmatched[0]['cnt'] > 0) {
+                $notifications[] = [
+                    'type' => 'warning',
+                    'icon' => 'ri-bank-line',
+                    'title' => 'Stare przelewy bez przypisania',
+                    'text' => sprintf(
+                        '%d przelewów z datą starszą niż 7 dni czeka na powiązanie (%s PLN). Otwórz /wyciagi/transakcje.',
+                        (int)$oldUnmatched[0]['cnt'],
+                        number_format((float)$oldUnmatched[0]['total'], 0, ',', ' ')
+                    ),
+                ];
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights notifications: ' . $e->getMessage());
+        }
+        return $notifications;
+    }
+
+    /**
      * Pasek sugerowanych akcji — zlicza "co dziś wymaga uwagi".
      * Lekkie queries (count only), wszystkie razem powinny być <50ms.
      *
