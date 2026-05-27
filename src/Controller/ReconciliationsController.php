@@ -2065,6 +2065,7 @@ class ReconciliationsController extends AppController
     /**
      * Dashboard analytics — top dłużnicy, czas zapłaty, kapitał, ostatnie
      * niewykorzystane przelewy, powiadomienia "Did you know".
+     * + Hero KPI cards, aging buckets, DSO trend, heatmapa, cashflow forecast.
      */
     public function insights(): void
     {
@@ -2072,8 +2073,27 @@ class ReconciliationsController extends AppController
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
         $today     = date('Y-m-d');
 
+        // Period selector: 7d/30d/3m/6m/1y/fy (fiscal year) / all
+        $period = (string)$this->request->getQuery('period', '30d');
+        $periodRange = $this->_periodToRange($period, $today);
+
         $Invoices = $this->fetchTable('Invoices');
         $BankTxs  = $this->fetchTable('BankTransactions');
+
+        // ── HERO KPI: Należności, Przeterminowane, DSO, Inkaso w okresie ──
+        $kpi = $this->_buildKpiCards($companyId, $today, $periodRange);
+
+        // ── Aging buckets: 0-30/31-60/61-90/90+ ──
+        $aging = $this->_buildAgingBuckets($companyId, $today);
+
+        // ── DSO trend (12 miesięcy line chart) ──
+        $dsoTrend = $this->_buildDsoTrend($companyId);
+
+        // ── Heatmapa płatności (top 20 klientów × 12 mies.) ──
+        $heatmap = $this->_buildPaymentHeatmap($companyId);
+
+        // ── Cashflow forecast (30/60/90 dni) ──
+        $cashflow = $this->_buildCashflowForecast($companyId, $today);
 
         // 1. Top dłużnicy — per kontrahent z podziałem na waluty
         $debtors = $this->_buildDebtorsAggregation($companyId, $today);
@@ -2147,8 +2167,567 @@ class ReconciliationsController extends AppController
         // 5. Powiadomienia "Did you know?" — analytics on-demand
         $notifications = $this->_buildInsightsNotifications($companyId, $today);
 
-        $this->set(compact('topDebtors', 'debtorsTotal', 'debtorTotals', 'paymentDays', 'capital', 'recentUnmatched', 'notifications'));
+        $this->set(compact(
+            'topDebtors', 'debtorsTotal', 'debtorTotals',
+            'paymentDays', 'capital', 'recentUnmatched', 'notifications',
+            'kpi', 'aging', 'dsoTrend', 'heatmap', 'cashflow',
+            'period', 'periodRange'
+        ));
         $this->set('title', 'Insights — rozliczenia');
+    }
+
+    /**
+     * Konwertuje skrót okresu na zakres dat [from, to].
+     * 7d / 30d / 3m / 6m / 1y / fy (fiscal year) / all
+     */
+    private function _periodToRange(string $period, string $today): array
+    {
+        $to = $today;
+        switch ($period) {
+            case '7d':  $from = date('Y-m-d', strtotime('-7 days')); break;
+            case '30d': $from = date('Y-m-d', strtotime('-30 days')); break;
+            case '3m':  $from = date('Y-m-d', strtotime('-3 months')); break;
+            case '6m':  $from = date('Y-m-d', strtotime('-6 months')); break;
+            case '1y':  $from = date('Y-m-d', strtotime('-1 year')); break;
+            case 'fy':
+                $year = (int)date('Y');
+                if ((int)date('m') < 4) $year--;
+                $from = $year . '-04-01';
+                break;
+            case 'all':
+            default:
+                $from = '2000-01-01';
+                break;
+        }
+        // Poprzedni okres (do porównań trend)
+        $diff = strtotime($today) - strtotime($from);
+        $prevTo   = date('Y-m-d', strtotime($from . ' -1 day'));
+        $prevFrom = date('Y-m-d', strtotime($prevTo . ' -' . ($diff / 86400) . ' days'));
+        return [
+            'from'      => $from,
+            'to'        => $to,
+            'prev_from' => $prevFrom,
+            'prev_to'   => $prevTo,
+            'label'     => $this->_periodLabel($period),
+        ];
+    }
+
+    private function _periodLabel(string $period): string
+    {
+        return match ($period) {
+            '7d'  => 'Ostatnie 7 dni',
+            '30d' => 'Ostatnie 30 dni',
+            '3m'  => 'Ostatnie 3 miesiące',
+            '6m'  => 'Ostatnie 6 miesięcy',
+            '1y'  => 'Ostatni rok',
+            'fy'  => 'Rok obrotowy',
+            'all' => 'Cały okres',
+            default => $period,
+        };
+    }
+
+    /**
+     * Hero KPI cards:
+     *   - Należności łącznie (per waluta)
+     *   - Przeterminowane (per waluta)
+     *   - DSO (Days Sales Outstanding) + trend
+     *   - Inkaso w okresie (per waluta) + trend vs poprz. okres
+     */
+    private function _buildKpiCards(string $companyId, string $today, array $period): array
+    {
+        $Invoices = $this->fetchTable('Invoices');
+        $Payments = $this->fetchTable('InvoicePayments');
+        $db = $Invoices->getConnection();
+
+        $kpi = [
+            'receivables'  => [],  // currency => amount (wszystko niezapłacone)
+            'overdue'      => [],  // currency => amount (przeterminowane)
+            'overdue_count'=> 0,
+            'dso'          => null,  // dni
+            'dso_prev'     => null,  // dni — okres poprzedni
+            'dso_trend'    => null,  // delta dni (+ wolniej, - szybciej)
+            'collected'    => [],  // currency => amount (inkaso w okresie)
+            'collected_prev' => [], // okres poprzedni
+            'collected_count' => 0,
+        ];
+
+        try {
+            // 1. Należności i przeterminowane per waluta
+            $rows = $db->execute(
+                "SELECT
+                    COALESCE(currency, 'PLN') AS currency,
+                    SUM(remaining) AS total_remaining,
+                    SUM(CASE WHEN paymentdate < ? THEN remaining ELSE 0 END) AS overdue,
+                    SUM(CASE WHEN paymentdate < ? THEN 1 ELSE 0 END) AS overdue_count
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND (paymentstate IS NULL OR paymentstate != 'paid')
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')
+                 GROUP BY currency",
+                [$today, $today, $companyId]
+            )->fetchAll('assoc');
+            foreach ($rows as $r) {
+                $c = strtoupper($r['currency']);
+                $kpi['receivables'][$c]    = round((float)$r['total_remaining'], 2);
+                if ((float)$r['overdue'] > 0) $kpi['overdue'][$c] = round((float)$r['overdue'], 2);
+                $kpi['overdue_count']      += (int)$r['overdue_count'];
+            }
+
+            // 2. Inkaso w okresie (per waluta, na podstawie payment_date)
+            $collectedRows = $db->execute(
+                "SELECT COALESCE(ip.currency, 'PLN') AS currency,
+                        SUM(ip.amount) AS total,
+                        COUNT(*) AS cnt
+                 FROM invoice_payments ip
+                 JOIN invoices i ON i.id = ip.invoice_id
+                 WHERE i.company_id = ?
+                   AND ip.payment_date BETWEEN ? AND ?
+                 GROUP BY ip.currency",
+                [$companyId, $period['from'], $period['to']]
+            )->fetchAll('assoc');
+            foreach ($collectedRows as $r) {
+                $c = strtoupper($r['currency']);
+                $kpi['collected'][$c]    = round((float)$r['total'], 2);
+                $kpi['collected_count'] += (int)$r['cnt'];
+            }
+
+            // 3. Inkaso w okresie POPRZEDNIM
+            $prevRows = $db->execute(
+                "SELECT COALESCE(ip.currency, 'PLN') AS currency, SUM(ip.amount) AS total
+                 FROM invoice_payments ip
+                 JOIN invoices i ON i.id = ip.invoice_id
+                 WHERE i.company_id = ?
+                   AND ip.payment_date BETWEEN ? AND ?
+                 GROUP BY ip.currency",
+                [$companyId, $period['prev_from'], $period['prev_to']]
+            )->fetchAll('assoc');
+            foreach ($prevRows as $r) {
+                $c = strtoupper($r['currency']);
+                $kpi['collected_prev'][$c] = round((float)$r['total'], 2);
+            }
+
+            // 4. DSO = (Należności_PLN_equivalent × 30) / Sprzedaż_w_okresie_PLN
+            //    Sprzedaż = invoice.total dla faktur wystawionych w okresie
+            $salesRow = $db->execute(
+                "SELECT
+                    SUM(CASE
+                        WHEN currency = 'PLN' OR currency IS NULL THEN total
+                        WHEN currency_exchange > 0 THEN total * currency_exchange
+                        ELSE total
+                    END) AS sales_pln
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND date BETWEEN ? AND ?
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')",
+                [$companyId, $period['from'], $period['to']]
+            )->fetchAll('assoc');
+            $sales = (float)($salesRow[0]['sales_pln'] ?? 0);
+
+            $receivablesPln = 0.0;
+            $recRow = $db->execute(
+                "SELECT
+                    SUM(CASE
+                        WHEN currency = 'PLN' OR currency IS NULL THEN remaining
+                        WHEN currency_exchange > 0 THEN remaining * currency_exchange
+                        ELSE remaining
+                    END) AS rem_pln
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND (paymentstate IS NULL OR paymentstate != 'paid')
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')",
+                [$companyId]
+            )->fetchAll('assoc');
+            $receivablesPln = (float)($recRow[0]['rem_pln'] ?? 0);
+
+            $periodDays = max(1, (strtotime($period['to']) - strtotime($period['from'])) / 86400);
+            if ($sales > 0 && $receivablesPln > 0) {
+                $kpi['dso'] = (int)round(($receivablesPln * $periodDays) / $sales);
+            }
+
+            // DSO okres poprzedni — dla trendu
+            $prevSalesRow = $db->execute(
+                "SELECT
+                    SUM(CASE
+                        WHEN currency = 'PLN' OR currency IS NULL THEN total
+                        WHEN currency_exchange > 0 THEN total * currency_exchange
+                        ELSE total
+                    END) AS sales_pln
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND date BETWEEN ? AND ?
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')",
+                [$companyId, $period['prev_from'], $period['prev_to']]
+            )->fetchAll('assoc');
+            $prevSales = (float)($prevSalesRow[0]['sales_pln'] ?? 0);
+            if ($prevSales > 0 && $receivablesPln > 0) {
+                $kpi['dso_prev'] = (int)round(($receivablesPln * $periodDays) / $prevSales);
+            }
+            if ($kpi['dso'] !== null && $kpi['dso_prev'] !== null) {
+                $kpi['dso_trend'] = $kpi['dso'] - $kpi['dso_prev'];
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights kpi: ' . $e->getMessage());
+        }
+
+        return $kpi;
+    }
+
+    /**
+     * Aging buckets: 0-30 / 31-60 / 61-90 / 90+ dni przeterminowania.
+     */
+    private function _buildAgingBuckets(string $companyId, string $today): array
+    {
+        $buckets = [
+            '0_30'  => ['label' => '0-30 dni',  'amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            '31_60' => ['label' => '31-60 dni', 'amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            '61_90' => ['label' => '61-90 dni', 'amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            '90p'   => ['label' => '90+ dni',   'amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+        ];
+
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+            $rows = $db->execute(
+                "SELECT
+                    DATEDIFF(?, paymentdate) AS days_late,
+                    COALESCE(currency, 'PLN') AS currency,
+                    remaining,
+                    currency_exchange
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND (paymentstate IS NULL OR paymentstate != 'paid')
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')
+                   AND paymentdate < ?
+                   AND remaining > 0",
+                [$today, $companyId, $today]
+            )->fetchAll('assoc');
+
+            foreach ($rows as $r) {
+                $days = (int)$r['days_late'];
+                $key  = $days <= 30 ? '0_30' : ($days <= 60 ? '31_60' : ($days <= 90 ? '61_90' : '90p'));
+                $curr = strtoupper((string)$r['currency']);
+                $amt  = (float)$r['remaining'];
+                $rate = (float)$r['currency_exchange'];
+
+                if ($curr === 'PLN') {
+                    $buckets[$key]['amount_pln'] += $amt;
+                } elseif ($curr === 'EUR') {
+                    $buckets[$key]['amount_eur'] += $amt;
+                    if ($rate > 0) $buckets[$key]['amount_pln'] += $amt * $rate;
+                } else {
+                    // inne waluty — sumujemy do EUR (przybliżenie) lub PLN jeśli rate
+                    if ($rate > 0) $buckets[$key]['amount_pln'] += $amt * $rate;
+                }
+                $buckets[$key]['count']++;
+            }
+            foreach ($buckets as $k => $b) {
+                $buckets[$k]['amount_pln'] = round($b['amount_pln'], 2);
+                $buckets[$k]['amount_eur'] = round($b['amount_eur'], 2);
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights aging: ' . $e->getMessage());
+        }
+        return $buckets;
+    }
+
+    /**
+     * DSO trend — wykres line chart 12 miesięcy.
+     */
+    private function _buildDsoTrend(string $companyId): array
+    {
+        $points = [];
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+            for ($i = 11; $i >= 0; $i--) {
+                $monthStart = date('Y-m-01', strtotime("-{$i} months"));
+                $monthEnd   = date('Y-m-t', strtotime("-{$i} months"));
+
+                $salesRow = $db->execute(
+                    "SELECT SUM(CASE
+                        WHEN currency = 'PLN' OR currency IS NULL THEN total
+                        WHEN currency_exchange > 0 THEN total * currency_exchange
+                        ELSE total END) AS sales
+                     FROM invoices
+                     WHERE company_id = ? AND date BETWEEN ? AND ?
+                       AND (workflow_status IS NULL OR workflow_status != 'draft')",
+                    [$companyId, $monthStart, $monthEnd]
+                )->fetchAll('assoc');
+                $sales = (float)($salesRow[0]['sales'] ?? 0);
+
+                // Należności na koniec miesiąca
+                $recRow = $db->execute(
+                    "SELECT SUM(CASE
+                        WHEN currency = 'PLN' OR currency IS NULL THEN remaining
+                        WHEN currency_exchange > 0 THEN remaining * currency_exchange
+                        ELSE remaining END) AS rem
+                     FROM invoices
+                     WHERE company_id = ? AND date <= ?
+                       AND (paymentstate IS NULL OR paymentstate != 'paid')
+                       AND (workflow_status IS NULL OR workflow_status != 'draft')",
+                    [$companyId, $monthEnd]
+                )->fetchAll('assoc');
+                $rec = (float)($recRow[0]['rem'] ?? 0);
+
+                $dso = ($sales > 0) ? (int)round(($rec * 30) / $sales) : null;
+                $points[] = [
+                    'month' => date('Y-m', strtotime($monthStart)),
+                    'dso'   => $dso,
+                    'sales' => round($sales, 2),
+                    'recv'  => round($rec, 2),
+                ];
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights dso trend: ' . $e->getMessage());
+        }
+        return $points;
+    }
+
+    /**
+     * Heatmapa płatności kontrahentów: top 20 klientów × 12 miesięcy.
+     * Każda komórka: % faktur zapłaconych W TERMINIE w danym miesiącu.
+     */
+    private function _buildPaymentHeatmap(string $companyId): array
+    {
+        $rows = ['contractors' => [], 'months' => []];
+        try {
+            // 12 miesięcy
+            $months = [];
+            for ($i = 11; $i >= 0; $i--) {
+                $months[] = date('Y-m', strtotime("-{$i} months"));
+            }
+            $rows['months'] = $months;
+
+            $db = $this->fetchTable('Invoices')->getConnection();
+
+            // Top 20 kontrahentów po liczbie faktur z 12 mies.
+            $startMonth = $months[0] . '-01';
+            $top20 = $db->execute(
+                "SELECT ic.nip, ic.name, COUNT(*) AS cnt
+                 FROM invoices i
+                 JOIN invoice_contractors ic ON ic.invoice_id = i.id
+                 WHERE i.company_id = ?
+                   AND i.date >= ?
+                   AND (i.workflow_status IS NULL OR i.workflow_status != 'draft')
+                 GROUP BY ic.nip
+                 ORDER BY cnt DESC
+                 LIMIT 20",
+                [$companyId, $startMonth]
+            )->fetchAll('assoc');
+
+            foreach ($top20 as $c) {
+                $nip = (string)($c['nip'] ?: '_unknown_');
+                $row = [
+                    'nip'    => $nip,
+                    'name'   => (string)$c['name'],
+                    'cells'  => [], // month => ['ratio' => 0-1, 'total' => N, 'on_time' => M]
+                ];
+
+                $monthData = $db->execute(
+                    "SELECT
+                        DATE_FORMAT(i.date, '%Y-%m') AS m,
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN i.paymentstate = 'paid' THEN 1 ELSE 0 END) AS paid_cnt
+                     FROM invoices i
+                     JOIN invoice_contractors ic ON ic.invoice_id = i.id
+                     WHERE i.company_id = ?
+                       AND ic.nip = ?
+                       AND i.date >= ?
+                       AND (i.workflow_status IS NULL OR i.workflow_status != 'draft')
+                     GROUP BY m",
+                    [$companyId, $nip, $startMonth]
+                )->fetchAll('assoc');
+
+                $byMonth = [];
+                foreach ($monthData as $m) {
+                    $byMonth[$m['m']] = [
+                        'total'   => (int)$m['total'],
+                        'on_time' => (int)$m['paid_cnt'],  // uproszczenie: 'paid' = "on time"
+                    ];
+                }
+
+                foreach ($months as $m) {
+                    if (isset($byMonth[$m])) {
+                        $t = $byMonth[$m]['total'];
+                        $on = $byMonth[$m]['on_time'];
+                        $row['cells'][$m] = [
+                            'ratio'   => $t > 0 ? round($on / $t, 2) : null,
+                            'total'   => $t,
+                            'on_time' => $on,
+                        ];
+                    } else {
+                        $row['cells'][$m] = ['ratio' => null, 'total' => 0, 'on_time' => 0];
+                    }
+                }
+                $rows['contractors'][] = $row;
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights heatmap: ' . $e->getMessage());
+        }
+        return $rows;
+    }
+
+    /**
+     * Cashflow forecast — oczekiwane wpływy na nadchodzące 30/60/90 dni.
+     */
+    private function _buildCashflowForecast(string $companyId, string $today): array
+    {
+        $forecast = [
+            'next_30' => ['amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            'next_60' => ['amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            'next_90' => ['amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            'later'   => ['amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+            'overdue' => ['amount_pln' => 0.0, 'amount_eur' => 0.0, 'count' => 0],
+        ];
+
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+            $rows = $db->execute(
+                "SELECT
+                    paymentdate,
+                    DATEDIFF(paymentdate, ?) AS days_until,
+                    COALESCE(currency, 'PLN') AS currency,
+                    remaining,
+                    currency_exchange
+                 FROM invoices
+                 WHERE company_id = ?
+                   AND (paymentstate IS NULL OR paymentstate != 'paid')
+                   AND (workflow_status IS NULL OR workflow_status != 'draft')
+                   AND remaining > 0",
+                [$today, $companyId]
+            )->fetchAll('assoc');
+
+            foreach ($rows as $r) {
+                $days = (int)$r['days_until'];
+                $key = $days < 0 ? 'overdue'
+                    : ($days <= 30 ? 'next_30'
+                    : ($days <= 60 ? 'next_60'
+                    : ($days <= 90 ? 'next_90' : 'later')));
+                $curr = strtoupper((string)$r['currency']);
+                $amt  = (float)$r['remaining'];
+                $rate = (float)$r['currency_exchange'];
+                if ($curr === 'PLN') {
+                    $forecast[$key]['amount_pln'] += $amt;
+                } elseif ($curr === 'EUR') {
+                    $forecast[$key]['amount_eur'] += $amt;
+                    if ($rate > 0) $forecast[$key]['amount_pln'] += $amt * $rate;
+                } else {
+                    if ($rate > 0) $forecast[$key]['amount_pln'] += $amt * $rate;
+                }
+                $forecast[$key]['count']++;
+            }
+            foreach ($forecast as $k => $v) {
+                $forecast[$k]['amount_pln'] = round($v['amount_pln'], 2);
+                $forecast[$k]['amount_eur'] = round($v['amount_eur'], 2);
+            }
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('insights cashflow: ' . $e->getMessage());
+        }
+        return $forecast;
+    }
+
+    /**
+     * AJAX: profil kontrahenta — drill-down z heatmapy/top dłużników.
+     * Zwraca: dane kontrahenta + jego faktury + historia płatności.
+     */
+    public function contractorProfile(string $nip): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Invoices = $this->fetchTable('Invoices');
+        $Contractors = $this->fetchTable('InvoiceContractors');
+
+        // Wszystkie faktury kontrahenta (po NIP)
+        $contractor = $Contractors->find()
+            ->where(['nip' => $nip])
+            ->select(['nip', 'name'])
+            ->orderByDesc('id')
+            ->first();
+
+        $invoices = $Invoices->find()
+            ->contain(['InvoiceContractors' => function ($q) use ($nip) {
+                return $q->where(['nip' => $nip])->select(['invoice_id', 'nip', 'name']);
+            }])
+            ->matching('InvoiceContractors', function ($q) use ($nip) {
+                return $q->where(['InvoiceContractors.nip' => $nip]);
+            })
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'OR' => [
+                    ['Invoices.workflow_status IS' => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
+                      'Invoices.total', 'Invoices.remaining', 'Invoices.currency', 'Invoices.paymentstate',
+                      'Invoices.type'])
+            ->orderByDesc('Invoices.date')
+            ->limit(50)
+            ->all()
+            ->toArray();
+
+        // Statystyki kontrahenta
+        $today = date('Y-m-d');
+        $stats = [
+            'total_count'    => 0,
+            'paid_count'     => 0,
+            'unpaid_count'   => 0,
+            'overdue_count'  => 0,
+            'sums'           => [], // currency => unpaid_sum
+            'sums_total'     => [], // currency => sum (all invoices)
+            'avg_days_late'  => null,
+        ];
+        $daysLateSum = 0;
+        $daysLateCnt = 0;
+        foreach ($invoices as $inv) {
+            $stats['total_count']++;
+            $curr = strtoupper((string)($inv->currency ?? 'PLN')) ?: 'PLN';
+            $stats['sums_total'][$curr] = ($stats['sums_total'][$curr] ?? 0) + (float)$inv->total;
+            if ((string)$inv->paymentstate === 'paid') {
+                $stats['paid_count']++;
+            } else {
+                $stats['unpaid_count']++;
+                $stats['sums'][$curr] = ($stats['sums'][$curr] ?? 0) + (float)($inv->remaining ?? 0);
+                $pd = $inv->paymentdate;
+                $pdStr = '';
+                if ($pd instanceof \DateTimeInterface) $pdStr = $pd->format('Y-m-d');
+                elseif (is_object($pd) && method_exists($pd, 'format')) $pdStr = $pd->format('Y-m-d');
+                elseif ($pd) $pdStr = substr((string)$pd, 0, 10);
+                if ($pdStr && $pdStr < $today) {
+                    $stats['overdue_count']++;
+                    $daysLate = (int)((strtotime($today) - strtotime($pdStr)) / 86400);
+                    $daysLateSum += $daysLate;
+                    $daysLateCnt++;
+                }
+            }
+        }
+        if ($daysLateCnt > 0) $stats['avg_days_late'] = (int)round($daysLateSum / $daysLateCnt);
+
+        return $this->response->withType('application/json')->withStringBody(json_encode([
+            'nip'       => $nip,
+            'name'      => $contractor ? (string)$contractor->name : '',
+            'stats'     => $stats,
+            'invoices'  => array_map(function ($i) {
+                $pd = $i->paymentdate;
+                $d  = $i->date;
+                $fmt = function ($v) {
+                    if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+                    if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
+                    return $v ? substr((string)$v, 0, 10) : null;
+                };
+                return [
+                    'id'           => (string)$i->id,
+                    'fullnumber'   => (string)$i->fullnumber,
+                    'type'         => (string)$i->type,
+                    'date'         => $fmt($d),
+                    'paymentdate'  => $fmt($pd),
+                    'total'        => (float)$i->total,
+                    'remaining'    => (float)$i->remaining,
+                    'currency'     => (string)($i->currency ?? 'PLN'),
+                    'paymentstate' => (string)($i->paymentstate ?? 'unpaid'),
+                ];
+            }, $invoices),
+        ], JSON_UNESCAPED_UNICODE));
     }
 
     /**
