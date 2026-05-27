@@ -1164,6 +1164,13 @@ class ReconciliationsController extends AppController
         if (!empty($contractorIbans)) {
             $nameOrConditions[] = ['BankTransactions.account_number IN' => $contractorIbans];
         }
+        // NAJMOCNIEJSZY sygnał: numer faktury w /INV/ lub w tytule.
+        // Dotąd brakowało — jeśli kontrahent miał inną nazwę (np. inną firmę
+        // grupy), tx z poprawnym nr faktury wypadała z OR-ów.
+        if ($invoiceFullnumber !== '') {
+            $nameOrConditions[] = ['BankTransactions.parsed_inv' => $invoiceFullnumber];
+            $nameOrConditions[] = ['BankTransactions.title LIKE' => '%' . $invoiceFullnumber . '%'];
+        }
 
         // Data wystawienia faktury — normalizacja Y-m-d (locale-agnostic).
         // UWAGA: Cake\I18n\Date (ChronosDate) NIE implementuje \DateTimeInterface,
