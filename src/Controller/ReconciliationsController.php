@@ -1288,7 +1288,7 @@ class ReconciliationsController extends AppController
                 ->select(['id', 'value_date', 'amount', 'currency', 'direction', 'party_name', 'title',
                           'account_number', 'match_status', 'match_confidence', 'match_reason', 'parsed_inv', 'parsed_nip'])
                 ->orderByDesc('value_date')
-                ->limit(500)
+                ->limit(1000)
                 ->all()->toArray();
         }
 
@@ -1444,8 +1444,8 @@ class ReconciliationsController extends AppController
             if ($a['match_score'] !== $b['match_score']) return $b['match_score'] - $a['match_score'];
             return strcmp($b['value_date'], $a['value_date']);
         });
-        // Top 200 dla performance UI — z 500 kandydatów z SQL bierzemy najlepsze 200 po score
-        $scoredCandidates = array_slice($scoredCandidates, 0, 200);
+        // Top 500 dla performance UI — z 1000 kandydatów z SQL bierzemy najlepsze 500 po score
+        $scoredCandidates = array_slice($scoredCandidates, 0, 500);
 
         return $this->response
             ->withType('application/json')
