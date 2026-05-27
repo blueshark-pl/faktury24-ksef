@@ -2234,46 +2234,12 @@ class ReconciliationsController extends AppController
                 ];
             }
 
-            // B. Możliwe duplikaty — faktury z tym samym NIPem + tą samą total + w ±7 dni
-            $dups = $db->execute(
-                "SELECT
-                    ic.nip,
-                    ic.name,
-                    i1.fullnumber AS inv1,
-                    i2.fullnumber AS inv2,
-                    i1.total,
-                    i1.currency,
-                    i1.date AS date1,
-                    i2.date AS date2
-                 FROM invoices i1
-                 JOIN invoices i2 ON i2.company_id = i1.company_id
-                   AND i2.id > i1.id
-                   AND ABS(i2.total - i1.total) < 0.01
-                   AND ABS(DATEDIFF(i2.date, i1.date)) <= 7
-                 JOIN invoice_contractors ic ON ic.invoice_id = i1.id
-                 JOIN invoice_contractors ic2 ON ic2.invoice_id = i2.id AND ic2.nip = ic.nip
-                 WHERE i1.company_id = ?
-                   AND i1.total > 0
-                   AND (i1.workflow_status IS NULL OR i1.workflow_status != 'draft')
-                   AND (i2.workflow_status IS NULL OR i2.workflow_status != 'draft')
-                 LIMIT 5",
-                [$companyId]
-            )->fetchAll('assoc');
-            foreach ($dups as $row) {
-                $notifications[] = [
-                    'type' => 'info',
-                    'icon' => 'ri-file-copy-2-line',
-                    'title' => 'Możliwy duplikat',
-                    'text' => sprintf(
-                        '%s: faktury %s (%s) i %s (%s) — ta sama kwota %s %s, ±7 dni. Sprawdź czy to nie pomyłka.',
-                        $row['name'] ?? '?',
-                        $row['inv1'], substr((string)$row['date1'], 0, 10),
-                        $row['inv2'], substr((string)$row['date2'], 0, 10),
-                        number_format((float)$row['total'], 2, ',', ' '),
-                        $row['currency'] ?? 'PLN'
-                    ),
-                ];
-            }
+            // B. WYŁĄCZONE — detekcja duplikatów po kwocie + NIP + dacie była zbyt
+            // hałaśliwa. Faktury VAT za stałe usługi często mają identyczne kwoty
+            // (np. abonamenty miesięczne), więc każdy taki przypadek był flagowany
+            // jako "możliwy duplikat", co rozprasza. Usunięte na życzenie user'a.
+            // Jeśli kiedyś wracamy do tematu — wymaga lepszej heurystyki, np.
+            // dodatkowo same pozycje (invoice_contents), nr w tytule, itp.
 
             // C. Niewykorzystane przelewy > 7 dni
             $oldUnmatched = $db->execute(
