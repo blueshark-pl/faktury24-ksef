@@ -2106,18 +2106,25 @@ class ReconciliationsController extends AppController
             $result['overdue']        = (int)($overdueRows['cnt'] ?? 0);
             $result['overdue_amount'] = round((float)($overdueRows['amt'] ?? 0), 2);
 
-            // 2. Przelewy unmatched/proposed (direction C, bez alokacji = niewykorzystane)
+            // 2. Przelewy unmatched/proposed (direction C, bez alokacji = niewykorzystane).
+            // Cutoff: 1 kwietnia bieżącego roku obrotowego (Jan-Mar = poprzedni rok).
+            $cutoffYear  = (int)date('Y');
+            if ((int)date('m') < 4) $cutoffYear--;
+            $unmatchedCutoff = $cutoffYear . '-04-01';
+
             $unmatchedRows = $BankTxs->find()
                 ->where([
                     'BankTransactions.company_id'       => $companyId,
                     'BankTransactions.direction'        => 'C',
                     'BankTransactions.match_status IN'  => ['unmatched', 'proposed'],
+                    'BankTransactions.value_date >='    => $unmatchedCutoff,
                 ])
                 ->select(['cnt' => 'COUNT(*)', 'amt' => 'SUM(BankTransactions.amount)'])
                 ->disableHydration()
                 ->first();
             $result['unmatched_credits']        = (int)($unmatchedRows['cnt'] ?? 0);
             $result['unmatched_credits_amount'] = round((float)($unmatchedRows['amt'] ?? 0), 2);
+            $result['unmatched_cutoff']         = $unmatchedCutoff;
 
             // 3. Problemy integralności — przybliżona suma (kategorie A+B+E)
             $Payments    = $this->fetchTable('InvoicePayments');
