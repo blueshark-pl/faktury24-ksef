@@ -1244,6 +1244,28 @@ class ReconciliationsController extends AppController
         $amountFilter    = (string)$this->request->getQuery('amount_filter', '');
         $amountTolerance = (float)$this->request->getQuery('amount_tolerance', '10') / 100.0;
 
+        // ── IBAN history: pobierz znane IBAN-y dla tego kontrahenta z historii ─
+        // Bonus do score gdy nowy przelew ma IBAN który już był używany przy
+        // potwierdzonych alokacjach z fakturami od tego samego NIPu.
+        $ibanHistoryMap = []; // [iban_normalized => confirmed_count]
+        if ($nip !== null && $nip !== '') {
+            try {
+                $histRows = $this->fetchTable('ContractorIbanHistories')->find()
+                    ->where([
+                        'company_id'     => $companyId,
+                        'contractor_nip' => $nip,
+                    ])
+                    ->select(['iban', 'confirmed_count'])
+                    ->disableHydration()
+                    ->all();
+                foreach ($histRows as $h) {
+                    $ibanHistoryMap[(string)$h['iban']] = (int)$h['confirmed_count'];
+                }
+            } catch (\Exception $e) {
+                // Tabela jeszcze nie istnieje (przed migracją) — pomijamy
+            }
+        }
+
         if (!empty($nameOrConditions)) {
             $conditions = [
                 'BankTransactions.company_id'      => $companyId,
@@ -1301,7 +1323,7 @@ class ReconciliationsController extends AppController
             $fullnumberVariants = array_unique($fullnumberVariants);
         }
 
-        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $fullnumberVariants, $invoiceRemaining, $nip, $contractorIbans, $signWords, $invoiceDateTs): array {
+        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $fullnumberVariants, $invoiceRemaining, $nip, $contractorIbans, $ibanHistoryMap, $signWords, $invoiceDateTs): array {
             $score = 0;
             $reasons = [];
 
@@ -1328,10 +1350,20 @@ class ReconciliationsController extends AppController
                 $score += 25; $reasons[] = '🪪 NIP w /IDC/';
             }
 
-            // 3. IBAN kontrahenta
-            if (!empty($contractorIbans)
-                && in_array(preg_replace('/\s+/', '', $tx['account_number']), $contractorIbans, true)) {
+            // 3. IBAN kontrahenta (z tabeli contractor_bank_accounts — ręczne wpisy)
+            $txIbanNorm = strtoupper(preg_replace('/[\s\-]/', '', $tx['account_number'] ?? ''));
+            if (!empty($contractorIbans) && $txIbanNorm !== ''
+                && in_array($txIbanNorm, $contractorIbans, true)) {
                 $score += 30; $reasons[] = '🏦 IBAN kontrahenta';
+            }
+
+            // 3b. IBAN history — historyczne powiązania (Faza 1 — learning loop)
+            // Im więcej razy ten IBAN był używany dla tego NIPu, tym wyższy bonus.
+            if ($txIbanNorm !== '' && isset($ibanHistoryMap[$txIbanNorm])) {
+                $cnt = $ibanHistoryMap[$txIbanNorm];
+                $bonus = min(5 + $cnt * 3, 35); // 1×=8, 2×=11, 5×=20, 10×=35
+                $score += $bonus;
+                $reasons[] = '📚 IBAN znany (×' . $cnt . ')';
             }
 
             // 4. Kwota match
@@ -1958,6 +1990,11 @@ class ReconciliationsController extends AppController
         // Suma alokacji dla tego tx vs amount → matched/proposed.
         $this->_updateBankTxMatchState($txId, $companyId);
 
+        // ── Learning loop: zapisz IBAN ↔ kontrahent (dla system invoices) ──
+        if ($invoiceId !== '') {
+            $this->_recordIbanHistoryForAllocation($txId, $invoiceId, $companyId);
+        }
+
         // ── Twardo wymuś recalc faktury — żeby UI od razu pokazywał paid/partial
         // (afterSave na invoice_payments też to robi, ale dla pewności).
         $invoiceStateAfter = null;
@@ -1987,6 +2024,39 @@ class ReconciliationsController extends AppController
                 'invoice_payment_id' => $paymentId,
                 'invoice_state'      => $invoiceStateAfter, // do podglądu w JS
             ]));
+    }
+
+    /**
+     * Learning loop: po addAllocation zapisz IBAN ↔ NIP kontrahenta do
+     * contractor_iban_history (do scoringu kandydatów przyszłych przelewów).
+     */
+    private function _recordIbanHistoryForAllocation(string $txId, string $invoiceId, string $companyId): void
+    {
+        try {
+            $BankTxs = $this->fetchTable('BankTransactions');
+            $tx = $BankTxs->find()
+                ->where(['id' => $txId, 'company_id' => $companyId])
+                ->select(['account_number', 'amount'])
+                ->first();
+            if ($tx === null || empty($tx->account_number)) return;
+
+            $InvoiceContractors = $this->fetchTable('InvoiceContractors');
+            $contractor = $InvoiceContractors->find()
+                ->where(['invoice_id' => $invoiceId])
+                ->select(['nip', 'name'])
+                ->first();
+            if ($contractor === null || empty($contractor->nip)) return;
+
+            $this->fetchTable('ContractorIbanHistories')->record(
+                $companyId,
+                (string)$contractor->nip,
+                (string)$tx->account_number,
+                (string)($contractor->name ?? null),
+                (float)($tx->amount ?? 0)
+            );
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('IBAN history recording failed: ' . $e->getMessage());
+        }
     }
 
     /**

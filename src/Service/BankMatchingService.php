@@ -501,7 +501,41 @@ class BankMatchingService
         // Zaktualizuj paymentstate faktury (uwzględniając konwersję walut)
         $this->updateInvoicePaymentState($invoiceId);
 
+        // ── Learning loop: zapisz IBAN ↔ kontrahent do historii ──
+        // Tylko gdy mamy IBAN nadawcy i kontrahent ma NIP — robimy "naukę" na
+        // faktycznym matchu (źródłem prawdy są potwierdzone alokacje).
+        $this->_recordIbanHistory($tx, $invoiceId, $companyId);
+
         return true;
+    }
+
+    /**
+     * Zapisuje powiązanie IBAN ↔ NIP kontrahenta do contractor_iban_history.
+     * Wywoływane po każdym confirmMatch (ręcznym Powiąż).
+     */
+    private function _recordIbanHistory($tx, string $invoiceId, string $companyId): void
+    {
+        $iban = $tx->account_number ?? null;
+        if (!$iban) return;
+
+        try {
+            $InvoiceContractors = $this->fetchTable('InvoiceContractors');
+            $contractor = $InvoiceContractors->find()
+                ->where(['invoice_id' => $invoiceId])
+                ->select(['nip', 'name'])
+                ->first();
+            if ($contractor === null || empty($contractor->nip)) return;
+
+            $this->fetchTable('ContractorIbanHistories')->record(
+                $companyId,
+                (string)$contractor->nip,
+                (string)$iban,
+                (string)($contractor->name ?? null),
+                (float)($tx->amount ?? 0)
+            );
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('IBAN history recording failed: ' . $e->getMessage());
+        }
     }
 
     /**
