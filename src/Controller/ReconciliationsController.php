@@ -244,8 +244,20 @@ class ReconciliationsController extends AppController
                         ['Invoices.workflow_status IS'  => null],
                         ['Invoices.workflow_status !=' => 'draft'],
                     ],
-                ])
-                ->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
+                ]);
+
+            // Natural-sort dla fullnumber — żeby FV/1, FV/2, ..., FV/10 (zamiast FV/1, FV/10, FV/11, ..., FV/2).
+            // LENGTH najpierw grupuje po długości (1-cyfrowe → 2-cyfrowe → 3-cyfrowe), potem alfabet.
+            // Dodatkowo: date DESC jako secondary — żeby fullnumbery z różnych miesięcy były pogrupowane chronologicznie.
+            if ($sortCol === 'fullnumber') {
+                $invoiceQuery->orderBy([
+                    new \Cake\Database\Expression\QueryExpression('LENGTH(Invoices.fullnumber) ' . $sortDir),
+                    'Invoices.fullnumber' => $sortDir,
+                    'Invoices.created'    => 'DESC',
+                ]);
+            } else {
+                $invoiceQuery->orderBy(['Invoices.' . $sortCol => $sortDir, 'Invoices.created' => 'DESC']);
+            }
 
             $total    = (clone $invoiceQuery)->count();
             $invoices = $invoiceQuery->limit($limit)->offset(($page - 1) * $limit)->all()->toArray();
