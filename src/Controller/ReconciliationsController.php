@@ -1852,12 +1852,22 @@ class ReconciliationsController extends AppController
             return $this->_jsonError('Nie udało się zapisać alokacji.', $allocation->getErrors());
         }
 
-        // ── Kwota PLN do zapisania w invoice_payment ──────────────────────────
-        // invoices.total / remaining są zawsze w PLN; alokacja może być w EUR
-        // VAT (allocation_type='vat') jest zawsze w PLN; gross/net przelicz przez kurs
-        $paymentDate = $tx->value_date instanceof \DateTimeInterface
-            ? $tx->value_date->format('Y-m-d')
-            : substr((string)$tx->value_date, 0, 10);
+        // ── payment_date — Locale-agnostic format (Cake\I18n\Date NIE implementuje
+        // DateTimeInterface, a (string) cast jest locale-aware → walidator ->date()
+        // odrzucał save() cicho). Używamy method_exists na format/toDateString.
+        $paymentDate = '';
+        if ($tx->value_date instanceof \DateTimeInterface) {
+            $paymentDate = $tx->value_date->format('Y-m-d');
+        } elseif (is_object($tx->value_date) && method_exists($tx->value_date, 'format')) {
+            $paymentDate = $tx->value_date->format('Y-m-d');
+        } elseif (is_object($tx->value_date) && method_exists($tx->value_date, 'toDateString')) {
+            $paymentDate = $tx->value_date->toDateString();
+        } elseif ($tx->value_date) {
+            $paymentDate = substr((string)$tx->value_date, 0, 10);
+        }
+        if ($paymentDate === '') {
+            $paymentDate = date('Y-m-d');
+        }
         $desc = $note !== '' ? $note : ('Przelew bankowy: ' . $paymentDate);
 
         // ── Utwórz wpłatę i przelicz stan faktury ─────────────────────────────
@@ -1887,6 +1897,19 @@ class ReconciliationsController extends AppController
                 // afterSave na invoice_payments wywołuje InvoicesTable::recalculatePayments
                 // (currency-aware). Wywołujemy _recalcInvoicePaymentState jako fallback safe.
                 $this->_recalcInvoicePaymentState($invoiceId);
+            } else {
+                // KRYTYCZNE: bez tego było silent fail (allokacja jest, ale wpłata nie).
+                \Cake\Log\Log::error('addAllocation: invoice_payment SAVE FAILED', [
+                    'errors'      => $payment->getErrors(),
+                    'data'        => $payment->toArray(),
+                    'invoice_id'  => $invoiceId,
+                    'tx_id'       => $txId,
+                    'amount'      => $amount,
+                    'currency'    => $currency,
+                ]);
+                // Rollback alokacji — żeby nie zostawiać orphana
+                $Allocations->delete($allocation);
+                return $this->_jsonError('Nie udało się zapisać wpłaty.', $payment->getErrors());
             }
         } else {
             // Faktura archiwalna → legacy_invoice_payments (zostaje stary konwert na PLN)
