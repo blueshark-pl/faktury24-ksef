@@ -1444,8 +1444,8 @@ class ReconciliationsController extends AppController
             if ($a['match_score'] !== $b['match_score']) return $b['match_score'] - $a['match_score'];
             return strcmp($b['value_date'], $a['value_date']);
         });
-        // Top 50 dla performance UI
-        $scoredCandidates = array_slice($scoredCandidates, 0, 50);
+        // Top 200 dla performance UI — z 500 kandydatów z SQL bierzemy najlepsze 200 po score
+        $scoredCandidates = array_slice($scoredCandidates, 0, 200);
 
         return $this->response
             ->withType('application/json')
