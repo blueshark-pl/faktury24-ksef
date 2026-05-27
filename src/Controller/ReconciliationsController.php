@@ -1323,7 +1323,7 @@ class ReconciliationsController extends AppController
             $fullnumberVariants = array_unique($fullnumberVariants);
         }
 
-        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $fullnumberVariants, $invoiceRemaining, $nip, $contractorIbans, $ibanHistoryMap, $signWords, $invoiceDateTs): array {
+        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $fullnumberVariants, $invoiceRemaining, $invoiceCurrency, $invoiceExchange, $nip, $contractorIbans, $ibanHistoryMap, $signWords, $invoiceDateTs): array {
             $score = 0;
             $reasons = [];
 
@@ -1366,13 +1366,46 @@ class ReconciliationsController extends AppController
                 $reasons[] = '📚 IBAN znany (×' . $cnt . ')';
             }
 
-            // 4. Kwota match
+            // 4. Kwota match — KONIECZNA konwersja walut przed porównaniem.
+            // 8000 PLN ≠ 8000 EUR! Konwertujemy tx.amount do waluty faktury
+            // przez invoice.currency_exchange (kurs faktury).
             if ($invoiceRemaining > 0 && $tx['amount'] > 0) {
-                $diff = abs($tx['amount'] - $invoiceRemaining) / $invoiceRemaining;
-                if ($diff < 0.001)     { $score += 35; $reasons[] = '💰 dokładna kwota'; }
-                elseif ($diff <= 0.05) { $score += 30; $reasons[] = '💰 kwota ±5%'; }
-                elseif ($diff <= 0.10) { $score += 20; $reasons[] = '💰 kwota ±10%'; }
-                elseif ($diff <= 0.20) { $score += 10; $reasons[] = '💰 kwota ±20%'; }
+                $txAmt    = (float)$tx['amount'];
+                $txCurr   = strtoupper((string)($tx['currency'] ?? 'PLN'));
+                $invCurr  = strtoupper((string)$invoiceCurrency) ?: 'PLN';
+                $rate     = (float)$invoiceExchange;
+
+                $convertible = false;
+                $txInInvCurr = null;
+
+                if ($txCurr === $invCurr) {
+                    // Te same waluty — porównujemy bezpośrednio
+                    $txInInvCurr = $txAmt;
+                    $convertible = true;
+                } elseif ($rate > 0) {
+                    // Różne + mamy kurs → konwertujemy
+                    if ($invCurr === 'PLN' && $txCurr !== 'PLN') {
+                        $txInInvCurr = $txAmt * $rate;     // EUR * kurs = PLN
+                    } elseif ($txCurr === 'PLN' && $invCurr !== 'PLN') {
+                        $txInInvCurr = $txAmt / $rate;     // PLN / kurs = EUR
+                    } else {
+                        // foreign↔foreign — nie umiemy bez 2 kursów
+                        $txInInvCurr = null;
+                    }
+                    $convertible = $txInInvCurr !== null;
+                }
+
+                if ($convertible) {
+                    $diff = abs($txInInvCurr - $invoiceRemaining) / $invoiceRemaining;
+                    $cur  = ($txCurr !== $invCurr) ? ' (' . $txCurr . '→' . $invCurr . ')' : '';
+                    if ($diff < 0.001)     { $score += 35; $reasons[] = '💰 dokładna kwota' . $cur; }
+                    elseif ($diff <= 0.05) { $score += 30; $reasons[] = '💰 kwota ±5%' . $cur; }
+                    elseif ($diff <= 0.10) { $score += 20; $reasons[] = '💰 kwota ±10%' . $cur; }
+                    elseif ($diff <= 0.20) { $score += 10; $reasons[] = '💰 kwota ±20%' . $cur; }
+                } else {
+                    // Niemożliwa konwersja — kara/info żeby user widział że tu jest niezgodność
+                    $reasons[] = '⚠ ' . $txCurr . ' vs ' . $invCurr . ' (brak kursu)';
+                }
             }
 
             // 5. Punkty za znaczące słowa nazwy
