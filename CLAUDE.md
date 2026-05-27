@@ -34,6 +34,21 @@ Gdy skończysz zadanie:
 Przed modyfikacją zawsze przeczytaj aktualny stan pliku.
 Nie opieraj się wyłącznie na pamięci z poprzednich sesji — kod mógł się zmienić.
 
+### 4a. Pola w migracjach — ZAWSZE sprawdzaj zanim użyjesz
+Przed użyciem dowolnej kolumny w `where`, `select`, `contain.fields`, lub przy dostępie
+do propertiesa encji (`$entity->kolumna`) — **otwórz odpowiednią migrację** w
+`config/Migrations/` i potwierdź dokładną nazwę kolumny i typ.
+Nie zgaduj że pole nazywa się `amount` / `date` / `name` — pola zwykle mają
+specyficzne nazwy: `allocated_amount`, `value_date`, `party_name` itp.
+
+**Workflow przy nowych migracjach:**
+1. Po utworzeniu migracji w `config/Migrations/YYYYMMDDHHMMSS_*.php` →
+   **od razu zaktualizuj** sekcję "Baza danych — kluczowe tabele" w tym CLAUDE.md,
+   dopisując nową tabelę i jej **kompletny opis kolumn** (nazwa, typ, znaczenie).
+2. Cel: kolejne sesje Claude czytają CLAUDE.md i mają pełną mapę bez konieczności
+   otwierania każdej migracji. To zapobiega błędom typu `$alloc->amount` zamiast
+   `$alloc->allocated_amount`.
+
 ### 5. Wszystko 2-językowo: PL + EN (i18n)
 Każdy widoczny dla użytkownika tekst musi przechodzić przez `__('...')` (CakePHP I18n).
 Dotyczy: nagłówków, etykiet, przycisków, placeholderów, opcji `<select>`, komunikatów
@@ -192,17 +207,69 @@ Import faktur kosztowych z KSeF. Osobna tabela `cost_invoices`.
 | `fullnumber` | Pełny numer faktury (np. FV/2026/04/001) |
 | `correction_id` | FK do faktury korygowanej |
 
-### Ważne kolumny `bank_transactions`
+### Pełne kolumny `bank_transactions`
+Migracja: `20260416210000_CreateBankTransactions.php` + `20260416220000_AddMatchingFieldsToBankTransactions.php`
 
-| Kolumna | Opis |
-|---------|------|
-| `match_status` | `unmatched` / `proposed` / `matched` / `ignored` |
-| `match_confidence` | 0–100 |
-| `invoice_id` | FK do powiązanej faktury (nullable) |
-| `parsed_inv` | Nr faktury wyciągnięty z `/INV/` |
-| `parsed_nip` | NIP z `/IDC/` |
-| `value_date` | Data waluty |
-| `party_name` | Nazwa nadawcy/odbiorcy |
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | FK firma |
+| `import_id` | uuid | FK do `bank_statement_imports` |
+| `account_number` | string(50) | nasze konto |
+| `value_date` | date | **data waluty** (środki dostępne, używana do matchingu kwotowego) |
+| `booking_date` | date | data księgowania (kiedy bank zapisał) — bywa różna od `value_date` |
+| `direction` | string(2) | `C` = credit (wpłata u nas), `D` = debit (wypłata) |
+| `amount` | decimal(15,2) | kwota transakcji (zawsze dodatnia) |
+| `currency` | string(3) | PLN/EUR/USD itd. |
+| `transaction_code` | string(10) | kod z MT940 |
+| `customer_reference` | string(100) | referencja klienta |
+| `bank_reference` | string(100) | referencja banku |
+| `description` | text | dane bankowe |
+| `party_name` | string(255) | **nazwa kontrahenta** (nadawca/odbiorca) |
+| `party_account` | string(60) | IBAN kontrahenta |
+| `title` | text | **tytuł przelewu** (zwykle zawiera /INV/ /IDC/ /VAT/) |
+| `import_hash` | string(64) | unique, deduplikacja importu |
+| `invoice_id` | uuid | FK do powiązanej faktury (legacy, nullable) |
+| `is_matched` | bool | legacy flag |
+| `match_status` | string(12) | `unmatched` / `proposed` / `matched` / `ignored` |
+| `match_confidence` | int(3) | 0–100 |
+| `match_reason` | string(100) | opis powodu dopasowania |
+| `parsed_inv` | string(100) | nr faktury wyciągnięty z `/INV/` |
+| `parsed_nip` | string(15) | NIP z `/IDC/` |
+| `parsed_vat` | decimal(15,2) | kwota VAT z `/VAT/` |
+| `tx_type_code` | string(10) | kod transakcji z `:86:` |
+
+### Pełne kolumny `bank_transaction_allocations`
+Migracja: `20260423100000_CreateBankTransactionAllocations.php`
+Łącznik N:M: jeden przelew może być rozdzielony na wiele faktur (i odwrotnie).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | FK firma |
+| `bank_transaction_id` | uuid | FK do `bank_transactions` (CASCADE) |
+| `invoice_id` | uuid | FK do faktury systemowej (nullable) |
+| `legacy_invoice_id` | char(36) | dla faktur z legacy DB (nullable) |
+| `invoice_payment_id` | uuid | FK do `invoice_payments` (SET_NULL) — wpłata utworzona z tej alokacji |
+| **`allocated_amount`** | **decimal(12,4)** | **kwota przypisana** — UWAGA: NIE `amount`! |
+| `currency` | char(3) | waluta alokacji (zwykle ta sama co bank_transactions.currency) |
+| `allocation_type` | string(10) | `gross` (default) / `net` / `vat` |
+| `note` | string(255) | komentarz |
+
+### Pełne kolumny `invoice_payments`
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `invoice_id` | uuid | FK do `invoices` |
+| `payment_date` | date | data wpłaty |
+| `amount` | decimal | kwota wpłaty (UWAGA: tu jest `amount`, w przeciwieństwie do alokacji) |
+| `currency` | string | waluta wpłaty |
+| `payment_method` | string | metoda płatności |
+| `payment_type` | string | `manual` / `bank` itp. |
+| `bank_transaction_allocation_id` | uuid | back-link do alokacji (nullable) |
+
+> Wpisy w `$_accessible` encji `InvoicePayment`: `currency`, `payment_type`,
+> `bank_transaction_allocation_id` (dodane manualnie — bez tego mass-assign cicho je gubi).
 
 ---
 
@@ -281,6 +348,8 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-05-27 | Doc: kompletna mapa kolumn `bank_transactions`, `bank_transaction_allocations`, `invoice_payments` + zasada #4a (sprawdzać migracje przed użyciem nazw pól) | `CLAUDE.md` |
+| 2026-05-27 | Feat: kalendarz rozliczeń — przelewy MT940 z statusem dopasowania, booking_date jako kotwica, Select2 dla kontrahentów | `ReconciliationsController.php`, `templates/Reconciliations/calendar.php` |
 | 2026-05-09 | Feat: panel admina — CRUD klientów portalu (lista, dodawanie, edycja, usuwanie); pozycja w sidebarze | `AdminClientsController.php`, `templates/AdminClients/{index,add,edit}.php`, `templates/layout/default.php` |
 | 2026-05-09 | Feat: portal klienta (rola `client`) — moduł "Zlecenia transportowe" wiązany przez NIP, pobieranie CMR i faktur PDF, i18n PL/EN | `ClientPortalController.php`, `ClientProfilesTable.php`, `ClientProfile.php`, `templates/ClientPortal/*`, `resources/locales/en/default.po`, migracja `CreateClientProfiles`, sidebar warunkowy w `templates/layout/default.php` |
 | 2026-04-17 | Fix: ReconciliationsController — closure w contain, naprawa błędu `contractor_id` | `ReconciliationsController.php` |

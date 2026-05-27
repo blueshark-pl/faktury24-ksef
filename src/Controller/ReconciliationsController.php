@@ -2261,7 +2261,10 @@ class ReconciliationsController extends AppController
                                      }]);
                         },
                         'BankTransactionAllocations' => function ($q) {
-                            return $q->select(['id', 'bank_transaction_id', 'invoice_id', 'amount'])
+                            return $q->select([
+                                        'id', 'bank_transaction_id', 'invoice_id',
+                                        'allocated_amount', 'currency', 'allocation_type',
+                                     ])
                                      ->contain(['Invoices' => function ($qi) {
                                          return $qi->select(['id', 'fullnumber']);
                                      }]);
@@ -2324,9 +2327,11 @@ class ReconciliationsController extends AppController
                     $allocs = [];
                     foreach (($tx->bank_transaction_allocations ?? []) as $a) {
                         $allocs[] = [
-                            'invoice_id'  => (string)$a->invoice_id,
-                            'fullnumber'  => (string)($a->invoice->fullnumber ?? ''),
-                            'amount'      => (float)$a->amount,
+                            'invoice_id'      => (string)$a->invoice_id,
+                            'fullnumber'      => (string)($a->invoice->fullnumber ?? ''),
+                            'amount'          => (float)$a->allocated_amount,
+                            'currency'        => (string)($a->currency ?? ''),
+                            'allocation_type' => (string)($a->allocation_type ?? 'gross'),
                         ];
                     }
 
