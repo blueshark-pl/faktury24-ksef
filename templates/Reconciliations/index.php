@@ -281,6 +281,11 @@ $typeBadge = function (string $type): string {
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0 fw-semibold">Rozliczenia <span class="text-muted fs-6 fw-normal">faktury · wpłaty · przelewy</span></h4>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= $this->Url->build(['action' => 'calendar']) ?>"
+           class="btn btn-sm btn-outline-primary"
+           title="Widok kalendarza miesięcznego z fakturami">
+            <i class="ri-calendar-line me-1"></i>Kalendarz
+        </a>
         <a href="<?= $this->Url->build(['action' => 'insights']) ?>"
            class="btn btn-sm btn-outline-primary"
            title="Analityka rozliczeń + powiadomienia">

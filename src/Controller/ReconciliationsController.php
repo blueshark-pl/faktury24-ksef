@@ -2063,6 +2063,167 @@ class ReconciliationsController extends AppController
     }
 
     /**
+     * Widok kalendarza — faktury wg paymentdate (lub efektywnej daty od wysyłki).
+     * Param yearMonth = "YYYY-MM" (default: current).
+     * Query param mode = "paymentdate" | "effective" (default: effective).
+     */
+    public function calendar(?string $yearMonth = null): void
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        // Parse month
+        $ym = $yearMonth ?: date('Y-m');
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) $ym = date('Y-m');
+        [$year, $month] = explode('-', $ym);
+        $year  = (int)$year;
+        $month = (int)$month;
+
+        $mode  = $this->request->getQuery('mode', 'effective'); // effective | paymentdate
+        $today = date('Y-m-d');
+
+        // Pierwszy i ostatni dzień miesiąca
+        $firstDay = sprintf('%04d-%02d-01', $year, $month);
+        $lastDay  = date('Y-m-t', strtotime($firstDay));
+
+        // Padding do siatki kalendarzowej (poniedziałek → niedziela)
+        $firstDow = (int)date('N', strtotime($firstDay)); // 1=Mon ... 7=Sun
+        $padStart = $firstDow - 1;
+        $gridStart = date('Y-m-d', strtotime($firstDay . ' -' . $padStart . ' days'));
+        $lastDow  = (int)date('N', strtotime($lastDay));
+        $padEnd   = 7 - $lastDow;
+        $gridEnd  = date('Y-m-d', strtotime($lastDay . ' +' . $padEnd . ' days'));
+
+        // Fetch faktur w przedziale (+ tydzień zapasu z każdej strony, żeby effective też wpadało)
+        $bufferStart = date('Y-m-d', strtotime($gridStart . ' -30 days'));
+        $bufferEnd   = date('Y-m-d', strtotime($gridEnd . ' +30 days'));
+
+        $Invoices = $this->fetchTable('Invoices');
+        $rows = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'nip', 'name']);
+                },
+            ])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.paymentdate >=' => $bufferStart,
+                'Invoices.paymentdate <=' => $bufferEnd,
+                'OR' => [
+                    ['Invoices.workflow_status IS' => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
+                      'Invoices.paymentstate', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency',
+                      'Invoices.type', 'Invoices.sent_at'])
+            ->all();
+
+        // Buduj mapę date => [invoices...]
+        $byDate = [];
+        foreach ($rows as $inv) {
+            $pdStr = $this->_extractDateStr($inv->paymentdate);
+            if (!$pdStr) continue;
+            $effDue = $this->_computeEffectiveDue($inv);
+            $useDate = ($mode === 'effective' && $effDue) ? $effDue : $pdStr;
+
+            // Tylko jeśli w siatce
+            if ($useDate < $gridStart || $useDate > $gridEnd) continue;
+
+            $byDate[$useDate][] = [
+                'id'              => (string)$inv->id,
+                'fullnumber'      => (string)$inv->fullnumber,
+                'contractor'      => (string)($inv->invoice_contractor->name ?? ''),
+                'nip'             => (string)($inv->invoice_contractor->nip ?? ''),
+                'date'            => $this->_extractDateStr($inv->date),
+                'paymentdate'     => $pdStr,
+                'effective_due'   => $effDue,
+                'paymentstate'    => (string)($inv->paymentstate ?? 'unpaid'),
+                'total'           => (float)$inv->total,
+                'remaining'       => (float)$inv->remaining,
+                'currency'        => (string)($inv->currency ?? 'PLN'),
+                'type'            => (string)$inv->type,
+                'is_overdue'      => ($useDate < $today && (string)$inv->paymentstate !== 'paid'),
+            ];
+        }
+
+        // Sortuj faktury w każdym dniu (najpierw przeterminowane, potem niezapłacone, potem zapłacone)
+        foreach ($byDate as &$invList) {
+            usort($invList, function ($a, $b) {
+                $rank = function ($i) {
+                    if ($i['is_overdue']) return 0;
+                    if ($i['paymentstate'] === 'paid') return 2;
+                    return 1;
+                };
+                return $rank($a) - $rank($b);
+            });
+        }
+        unset($invList);
+
+        // Wygeneruj siatkę kalendarza
+        $weeks = [];
+        $cursor = $gridStart;
+        while ($cursor <= $gridEnd) {
+            $week = [];
+            for ($i = 0; $i < 7; $i++) {
+                $week[] = $cursor;
+                $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'));
+            }
+            $weeks[] = $week;
+        }
+
+        // Nawigacja
+        $prevYM = date('Y-m', strtotime($firstDay . ' -1 month'));
+        $nextYM = date('Y-m', strtotime($firstDay . ' +1 month'));
+
+        $this->set(compact('ym', 'year', 'month', 'mode', 'weeks', 'byDate',
+            'firstDay', 'lastDay', 'today', 'prevYM', 'nextYM'));
+        $this->set('title', 'Kalendarz rozliczeń');
+    }
+
+    /**
+     * Helper: ekstraktuje YYYY-MM-DD z różnych formatów (DateTimeInterface, Cake\I18n\Date, string).
+     */
+    private function _extractDateStr($v): ?string
+    {
+        if ($v === null) return null;
+        if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+        if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
+        $s = substr((string)$v, 0, 10);
+        return $s ?: null;
+    }
+
+    /**
+     * Helper: efektywna data płatności = sent_at + payment_days (z faktury).
+     * Pattern z templates/Reconciliations/index.php → $sentBasedDue.
+     */
+    private function _computeEffectiveDue($invoice): ?string
+    {
+        $sentAt      = $invoice->sent_at ?? null;
+        $invoiceDate = $invoice->date;
+        $paymentDate = $invoice->paymentdate;
+        if (!$sentAt || !$invoiceDate || !$paymentDate) return null;
+
+        $toMutable = function ($v, int $substLen = 10): ?\DateTime {
+            if ($v instanceof \DateTimeInterface) {
+                return \DateTime::createFromFormat('Y-m-d', $v->format('Y-m-d')) ?: null;
+            }
+            $s = substr((string)$v, 0, $substLen);
+            return \DateTime::createFromFormat('d.m.Y', $s)
+                ?: \DateTime::createFromFormat('Y-m-d', $s)
+                ?: null;
+        };
+        $invDt = $toMutable($invoiceDate);
+        $payDt = $toMutable($paymentDate);
+        $sntDt = $toMutable($sentAt, 19);
+        if (!$invDt || !$payDt || !$sntDt) return null;
+
+        $paymentDays = (int)$invDt->diff($payDt)->days;
+        $sntDt->modify('+' . $paymentDays . ' days');
+        return $sntDt->format('Y-m-d');
+    }
+
+    /**
      * Dashboard analytics — top dłużnicy, czas zapłaty, kapitał, ostatnie
      * niewykorzystane przelewy, powiadomienia "Did you know".
      * + Hero KPI cards, aging buckets, DSO trend, heatmapa, cashflow forecast.

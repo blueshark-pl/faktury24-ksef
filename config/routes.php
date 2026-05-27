@@ -139,6 +139,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/rozliczenia', ['controller' => 'Reconciliations', 'action' => 'index']);
         $builder->get('/rozliczenia/ksef', ['controller' => 'Reconciliations', 'action' => 'indexKsef']);
         $builder->get('/rozliczenia/ksef/insights', ['controller' => 'Reconciliations', 'action' => 'insights']);
+        $builder->get('/rozliczenia/ksef/kalendarz', ['controller' => 'Reconciliations', 'action' => 'calendar']);
+        $builder->get('/rozliczenia/ksef/kalendarz/{yearMonth}', ['controller' => 'Reconciliations', 'action' => 'calendar'])
+            ->setPass(['yearMonth'])
+            ->setPatterns(['yearMonth' => '\d{4}-\d{2}']);
         $builder->get('/rozliczenia/ksef/insights/top-debtors', ['controller' => 'Reconciliations', 'action' => 'topDebtorsPage']);
         $builder->get('/rozliczenia/ksef/insights/contractor/{nip}', ['controller' => 'Reconciliations', 'action' => 'contractorProfile'])
             ->setPass(['nip']);
