@@ -1165,11 +1165,37 @@ class ReconciliationsController extends AppController
             $nameOrConditions[] = ['BankTransactions.account_number IN' => $contractorIbans];
         }
         // NAJMOCNIEJSZY sygnał: numer faktury w /INV/ lub w tytule.
-        // Dotąd brakowało — jeśli kontrahent miał inną nazwę (np. inną firmę
-        // grupy), tx z poprawnym nr faktury wypadała z OR-ów.
+        // Format numeru w banku często różni się od formatu w systemie:
+        //   system: FW/17/04/2026, bank: FW17/4/26, FW17042026, itd.
+        // Generujemy popularne warianty i szukamy LIKE dla każdego.
         if ($invoiceFullnumber !== '') {
+            $variations = [$invoiceFullnumber];
+            // Bez slashy
+            $variations[] = str_replace('/', '', $invoiceFullnumber);
+            // Skrócony rok (2026 → 26) — operacja na końcówce
+            $shortYear = preg_replace('/(\d{2})(\d{2})$/', '$2', $invoiceFullnumber);
+            if ($shortYear && $shortYear !== $invoiceFullnumber) {
+                $variations[] = $shortYear;
+                $variations[] = str_replace('/', '', $shortYear);
+            }
+            // Bez zer wiodących w środkowych segmentach (/04/ → /4/)
+            $noLeadZero = preg_replace('#/0(\d)(?=/|$)#', '/$1', $invoiceFullnumber);
+            if ($noLeadZero && $noLeadZero !== $invoiceFullnumber) {
+                $variations[] = $noLeadZero;
+                $variations[] = str_replace('/', '', $noLeadZero);
+                $shortYearNoZero = preg_replace('/(\d{2})(\d{2})$/', '$2', $noLeadZero);
+                if ($shortYearNoZero && $shortYearNoZero !== $noLeadZero) {
+                    $variations[] = $shortYearNoZero;
+                    $variations[] = str_replace('/', '', $shortYearNoZero);
+                }
+            }
+            $variations = array_unique($variations);
+
             $nameOrConditions[] = ['BankTransactions.parsed_inv' => $invoiceFullnumber];
-            $nameOrConditions[] = ['BankTransactions.title LIKE' => '%' . $invoiceFullnumber . '%'];
+            foreach ($variations as $v) {
+                $nameOrConditions[] = ['BankTransactions.parsed_inv' => $v];
+                $nameOrConditions[] = ['BankTransactions.title LIKE' => '%' . $v . '%'];
+            }
         }
 
         // Data wystawienia faktury — normalizacja Y-m-d (locale-agnostic).
@@ -1235,16 +1261,49 @@ class ReconciliationsController extends AppController
         }
         $invoiceDateTs = $invoiceDateStr ? strtotime($invoiceDateStr) : 0;
 
-        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $invoiceRemaining, $nip, $contractorIbans, $signWords, $invoiceDateTs): array {
+        // Warianty numeru faktury — żeby match'ować różne formaty (FW/17/04/2026 vs FW17/4/26)
+        $fullnumberVariants = [];
+        if ($invoiceFullnumber !== '') {
+            $fullnumberVariants[] = $invoiceFullnumber;
+            $fullnumberVariants[] = str_replace('/', '', $invoiceFullnumber);
+            $sy = preg_replace('/(\d{2})(\d{2})$/', '$2', $invoiceFullnumber);
+            if ($sy && $sy !== $invoiceFullnumber) {
+                $fullnumberVariants[] = $sy;
+                $fullnumberVariants[] = str_replace('/', '', $sy);
+            }
+            $nl = preg_replace('#/0(\d)(?=/|$)#', '/$1', $invoiceFullnumber);
+            if ($nl && $nl !== $invoiceFullnumber) {
+                $fullnumberVariants[] = $nl;
+                $fullnumberVariants[] = str_replace('/', '', $nl);
+                $sy2 = preg_replace('/(\d{2})(\d{2})$/', '$2', $nl);
+                if ($sy2 && $sy2 !== $nl) {
+                    $fullnumberVariants[] = $sy2;
+                    $fullnumberVariants[] = str_replace('/', '', $sy2);
+                }
+            }
+            $fullnumberVariants = array_unique($fullnumberVariants);
+        }
+
+        $scoreCandidate = function (array $tx) use ($invoiceFullnumber, $fullnumberVariants, $invoiceRemaining, $nip, $contractorIbans, $signWords, $invoiceDateTs): array {
             $score = 0;
             $reasons = [];
 
-            // 1. Numer faktury w /INV/ lub w tytule
-            if ($invoiceFullnumber !== '' && $tx['parsed_inv'] !== ''
-                && strcasecmp($tx['parsed_inv'], $invoiceFullnumber) === 0) {
-                $score += 45; $reasons[] = '🎯 nr faktury w /INV/';
-            } elseif ($invoiceFullnumber !== '' && stripos($tx['title'], $invoiceFullnumber) !== false) {
-                $score += 35; $reasons[] = '🎯 nr faktury w tytule';
+            // 1. Numer faktury w /INV/ lub w tytule — sprawdzamy warianty formatu
+            $invMatched = false;
+            foreach ($fullnumberVariants as $v) {
+                if ($tx['parsed_inv'] !== '' && strcasecmp($tx['parsed_inv'], $v) === 0) {
+                    $score += 45; $reasons[] = '🎯 nr faktury w /INV/';
+                    $invMatched = true;
+                    break;
+                }
+            }
+            if (!$invMatched) {
+                foreach ($fullnumberVariants as $v) {
+                    if (stripos($tx['title'], $v) !== false) {
+                        $score += 35; $reasons[] = '🎯 nr faktury w tytule';
+                        break;
+                    }
+                }
             }
 
             // 2. NIP w /IDC/
