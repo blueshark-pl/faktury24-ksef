@@ -2674,11 +2674,16 @@ class ReconciliationsController extends AppController
 
         // Szukaj bank_tx po (invoice_id, kwota). Tx.currency to ŹRÓDŁO PRAWDY
         // (stare invoice_payments mają currency='PLN' z DB default — błędne dla EUR).
+        //
+        // Kwota porównywana z tolerancją ±0.01 — chroni przed floating-point
+        // i różnymi precyzjami kolumn (decimal(15,2) vs decimal(15,4) = 1782.2600).
+        $pAmt = round((float)$payment->amount, 2);
         $tx = $BankTxs->find()
             ->where([
-                'BankTransactions.company_id' => $companyId,
-                'BankTransactions.invoice_id' => $payment->invoice_id,
-                'BankTransactions.amount'     => (float)$payment->amount,
+                'BankTransactions.company_id'      => $companyId,
+                'BankTransactions.invoice_id'      => $payment->invoice_id,
+                'BankTransactions.amount >='       => $pAmt - 0.01,
+                'BankTransactions.amount <='       => $pAmt + 0.01,
             ])
             ->orderByDesc('value_date')
             ->first();
@@ -2686,7 +2691,7 @@ class ReconciliationsController extends AppController
             $tx = null;
         }
         if ($tx === null) {
-            return ['ok' => false, 'message' => 'Brak pasującego przelewu (invoice_id + kwota).'];
+            return ['ok' => false, 'message' => 'Brak pasującego przelewu (invoice_id + kwota ' . number_format($pAmt, 2) . ').'];
         }
 
         $realCurrency = strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN';
@@ -2753,11 +2758,13 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Zapis alokacji: ' . json_encode($allocation->getErrors())];
         }
 
-        // Szukamy istniejącego "wolnego" payment
+        // Szukamy istniejącego "wolnego" payment (z tolerancją ±0.01)
+        $tAmt = round((float)$tx->amount, 2);
         $payment = $Payments->find()
             ->where([
                 'invoice_id'                        => $tx->invoice_id,
-                'amount'                            => (float)$tx->amount,
+                'amount >='                         => $tAmt - 0.01,
+                'amount <='                         => $tAmt + 0.01,
                 'bank_transaction_allocation_id IS' => null,
             ])
             ->first();
@@ -2943,11 +2950,13 @@ class ReconciliationsController extends AppController
             ->where(['bank_transaction_allocation_id' => $alloc->id])
             ->first();
         if ($payment === null) {
-            // Szukamy po (invoice_id, amount)
+            // Szukamy po (invoice_id, amount) z tolerancją ±0.01
+            $aAmt = round((float)$alloc->allocated_amount, 2);
             $payment = $Payments->find()
                 ->where([
                     'invoice_id'                        => $alloc->invoice_id,
-                    'amount'                            => (float)$alloc->allocated_amount,
+                    'amount >='                         => $aAmt - 0.01,
+                    'amount <='                         => $aAmt + 0.01,
                     'bank_transaction_allocation_id IS' => null,
                 ])
                 ->first();
