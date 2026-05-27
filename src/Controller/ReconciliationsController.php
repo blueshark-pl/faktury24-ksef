@@ -2075,53 +2075,11 @@ class ReconciliationsController extends AppController
         $Invoices = $this->fetchTable('Invoices');
         $BankTxs  = $this->fetchTable('BankTransactions');
 
-        // 1. Top 10 dłużników — kontrahenci z największym sumą niezapłaconych
-        $topDebtors = [];
-        $debtorRows = $Invoices->find()
-            ->contain([
-                'InvoiceContractors' => function ($q) {
-                    return $q->select(['id', 'invoice_id', 'nip', 'name']);
-                },
-            ])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'OR' => [
-                    ['Invoices.paymentstate IS' => null],
-                    ['Invoices.paymentstate !=' => 'paid'],
-                ],
-            ])
-            ->andWhere(['OR' => [
-                ['Invoices.workflow_status IS' => null],
-                ['Invoices.workflow_status !=' => 'draft'],
-            ]])
-            ->select(['Invoices.id', 'Invoices.remaining', 'Invoices.total', 'Invoices.currency',
-                      'Invoices.paymentdate', 'Invoices.paymentstate'])
-            ->all();
-
-        $byContractor = [];
-        foreach ($debtorRows as $inv) {
-            $nip  = (string)($inv->invoice_contractor->nip ?? '');
-            $name = (string)($inv->invoice_contractor->name ?? '');
-            if ($nip === '') $nip = '_unknown_';
-            $key = $nip;
-            if (!isset($byContractor[$key])) {
-                $byContractor[$key] = [
-                    'nip'              => $nip,
-                    'name'             => $name,
-                    'unpaid_count'     => 0,
-                    'remaining_total'  => 0.0,
-                    'overdue_count'    => 0,
-                ];
-            }
-            $byContractor[$key]['unpaid_count']++;
-            $byContractor[$key]['remaining_total'] += (float)($inv->remaining ?? 0);
-            $pd = (string)($inv->paymentdate ?? '');
-            if (substr($pd, 0, 10) && substr($pd, 0, 10) < $today) {
-                $byContractor[$key]['overdue_count']++;
-            }
-        }
-        usort($byContractor, fn($a, $b) => $b['remaining_total'] <=> $a['remaining_total']);
-        $topDebtors = array_slice($byContractor, 0, 10);
+        // 1. Top dłużnicy — per kontrahent z podziałem na waluty
+        $debtors = $this->_buildDebtorsAggregation($companyId, $today);
+        $topDebtors = array_slice($debtors['list'], 0, 10);
+        $debtorsTotal = count($debtors['list']);    // dla "Załaduj więcej"
+        $debtorTotals = $debtors['totals'];          // suma per waluta
 
         // 2. Średni czas zapłaty per kontrahent (top 10 z najdłuższym czasem)
         $paymentDays = [];
@@ -2189,8 +2147,122 @@ class ReconciliationsController extends AppController
         // 5. Powiadomienia "Did you know?" — analytics on-demand
         $notifications = $this->_buildInsightsNotifications($companyId, $today);
 
-        $this->set(compact('topDebtors', 'paymentDays', 'capital', 'recentUnmatched', 'notifications'));
+        $this->set(compact('topDebtors', 'debtorsTotal', 'debtorTotals', 'paymentDays', 'capital', 'recentUnmatched', 'notifications'));
         $this->set('title', 'Insights — rozliczenia');
+    }
+
+    /**
+     * Buduje listę dłużników z podziałem na waluty oraz totale globalne.
+     * Zwraca:
+     *   list   — array of debtor (sortowane po total_pln_equivalent DESC dla rankingu)
+     *   totals — ['PLN' => X, 'EUR' => Y, ...] globalna suma niezapłaconych per waluta
+     */
+    private function _buildDebtorsAggregation(string $companyId, string $today): array
+    {
+        $Invoices = $this->fetchTable('Invoices');
+        $rows = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'nip', 'name']);
+                },
+            ])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'OR' => [
+                    ['Invoices.paymentstate IS' => null],
+                    ['Invoices.paymentstate !=' => 'paid'],
+                ],
+            ])
+            ->andWhere(['OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft'],
+            ]])
+            ->select(['Invoices.id', 'Invoices.remaining', 'Invoices.total', 'Invoices.currency',
+                      'Invoices.currency_exchange', 'Invoices.paymentdate', 'Invoices.paymentstate'])
+            ->all();
+
+        $byContractor = []; // nip => debtor row
+        $totals       = []; // currency => total
+
+        foreach ($rows as $inv) {
+            $nip  = (string)($inv->invoice_contractor->nip ?? '');
+            $name = (string)($inv->invoice_contractor->name ?? '');
+            if ($nip === '') $nip = '_unknown_';
+            $key  = $nip;
+            $curr = strtoupper((string)($inv->currency ?? 'PLN')) ?: 'PLN';
+            $rate = (float)($inv->currency_exchange ?? 0);
+            $rem  = (float)($inv->remaining ?? 0);
+
+            if (!isset($byContractor[$key])) {
+                $byContractor[$key] = [
+                    'nip'                 => $nip,
+                    'name'                => $name,
+                    'unpaid_count'        => 0,
+                    'overdue_count'       => 0,
+                    'by_currency'         => [],          // EUR/PLN/... → kwota
+                    'pln_equivalent_total'=> 0.0,         // do rankingu
+                ];
+            }
+            $byContractor[$key]['unpaid_count']++;
+            $byContractor[$key]['by_currency'][$curr] = ($byContractor[$key]['by_currency'][$curr] ?? 0) + $rem;
+            $pd = (string)($inv->paymentdate ?? '');
+            if (substr($pd, 0, 10) && substr($pd, 0, 10) < $today) {
+                $byContractor[$key]['overdue_count']++;
+            }
+
+            // PLN-equivalent dla sortowania (EUR × kurs = PLN)
+            if ($curr === 'PLN') {
+                $byContractor[$key]['pln_equivalent_total'] += $rem;
+            } elseif ($rate > 0) {
+                $byContractor[$key]['pln_equivalent_total'] += $rem * $rate;
+            } else {
+                // brak kursu — sumujemy raw (przybliżenie)
+                $byContractor[$key]['pln_equivalent_total'] += $rem;
+            }
+
+            $totals[$curr] = ($totals[$curr] ?? 0) + $rem;
+        }
+
+        // Sort po PLN-equivalent DESC (ranking)
+        usort($byContractor, fn($a, $b) => $b['pln_equivalent_total'] <=> $a['pln_equivalent_total']);
+
+        // Zaokrąglij sumy
+        foreach ($byContractor as &$d) {
+            foreach ($d['by_currency'] as $c => $v) {
+                $d['by_currency'][$c] = round($v, 2);
+            }
+            $d['pln_equivalent_total'] = round($d['pln_equivalent_total'], 2);
+        }
+        unset($d);
+        foreach ($totals as $c => $v) {
+            $totals[$c] = round($v, 2);
+        }
+
+        return ['list' => $byContractor, 'totals' => $totals];
+    }
+
+    /**
+     * AJAX: zwraca kolejną stronę top dłużników dla insights dashboard.
+     */
+    public function topDebtorsPage(): Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->disableAutoLayout();
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $offset = max(0, (int)$this->request->getQuery('offset', 0));
+        $limit  = min(50, max(1, (int)$this->request->getQuery('limit', 10)));
+
+        $debtors = $this->_buildDebtorsAggregation($companyId, date('Y-m-d'));
+        $page    = array_slice($debtors['list'], $offset, $limit);
+        $hasMore = ($offset + count($page)) < count($debtors['list']);
+
+        return $this->response->withType('application/json')->withStringBody(json_encode([
+            'debtors'   => $page,
+            'offset'    => $offset,
+            'limit'     => $limit,
+            'has_more'  => $hasMore,
+            'total'     => count($debtors['list']),
+        ], JSON_UNESCAPED_UNICODE));
     }
 
     /**

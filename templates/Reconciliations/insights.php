@@ -2,6 +2,8 @@
 /**
  * @var \App\View\AppView $this
  * @var array $topDebtors
+ * @var int   $debtorsTotal
+ * @var array $debtorTotals
  * @var array $paymentDays
  * @var array $capital
  * @var array $recentUnmatched
@@ -58,40 +60,62 @@ $fdate = static function ($v): string {
 
     <div class="row g-3">
         <!-- ── Top dłużnicy ──────────────────────────────────────────────── -->
-        <div class="col-lg-6">
+        <div class="col-lg-12">
             <div class="card shadow-sm h-100">
-                <div class="card-header py-2 d-flex align-items-center gap-2">
+                <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
                     <i class="ri-user-warning-line text-danger"></i>
-                    <strong>Top 10 dłużników</strong>
-                    <small class="text-muted ms-auto">suma niezapłaconych</small>
+                    <strong>Top dłużnicy</strong>
+                    <span class="badge bg-secondary-subtle text-secondary"><?= (int)$debtorsTotal ?></span>
+                    <small class="text-muted ms-auto">sortowane wg PLN-ekwiwalent</small>
                 </div>
+
+                <!-- Globalne sumy per waluta -->
+                <?php if (!empty($debtorTotals)): ?>
+                    <div class="px-3 py-2 bg-light border-bottom d-flex flex-wrap gap-3 align-items-center">
+                        <span class="small text-muted">Łącznie niezapłacone:</span>
+                        <?php
+                            // PLN najpierw, EUR drugi, reszta dalej
+                            $orderedKeys = array_unique(array_merge(['PLN', 'EUR'], array_keys($debtorTotals)));
+                            foreach ($orderedKeys as $curr) {
+                                if (!isset($debtorTotals[$curr])) continue;
+                                $isPln = $curr === 'PLN';
+                                $cls   = $isPln ? 'text-primary' : 'text-success';
+                        ?>
+                            <div class="d-flex flex-column">
+                                <span class="text-muted" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.04em"><?= h($curr) ?></span>
+                                <span class="fw-bold <?= $cls ?>"><?= $fnum($debtorTotals[$curr]) ?>&nbsp;<?= h($curr) ?></span>
+                            </div>
+                        <?php } ?>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (empty($topDebtors)): ?>
                     <div class="card-body text-muted small fst-italic">Brak dłużników — wszystko zapłacone 🎉</div>
                 <?php else: ?>
                     <div class="table-responsive">
-                        <table class="table table-sm mb-0 small">
+                        <table class="table table-sm mb-0 small" id="debtorsTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
+                                    <th style="width:30px">#</th>
                                     <th>Kontrahent</th>
-                                    <th class="text-end">Faktury</th>
-                                    <th class="text-end">Przeterm.</th>
-                                    <th class="text-end">Suma</th>
+                                    <th class="text-end" style="width:60px">Faktury</th>
+                                    <th class="text-end" style="width:80px">Przeterm.</th>
+                                    <th class="text-end">Niezapłacone</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($topDebtors as $i => $d): ?>
+                                <?php $renderDebtorRow = function ($d, $i) use ($fnum) { ?>
                                     <tr>
                                         <td class="text-muted"><?= $i + 1 ?></td>
-                                        <td class="text-truncate" style="max-width:200px" title="<?= h($d['name']) ?>">
+                                        <td class="text-truncate" style="max-width:280px" title="<?= h($d['name']) ?>">
                                             <?= h($d['name']) ?: '—' ?>
-                                            <?php if ($d['nip'] !== '_unknown_'): ?>
+                                            <?php if (($d['nip'] ?? '') !== '_unknown_'): ?>
                                                 <div class="text-muted" style="font-size:.7em">NIP <?= h($d['nip']) ?></div>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-end"><?= (int)$d['unpaid_count'] ?></td>
                                         <td class="text-end">
-                                            <?php if ($d['overdue_count'] > 0): ?>
+                                            <?php if (($d['overdue_count'] ?? 0) > 0): ?>
                                                 <span class="badge bg-danger-subtle text-danger border" style="font-size:.65rem">
                                                     <?= (int)$d['overdue_count'] ?>
                                                 </span>
@@ -99,20 +123,42 @@ $fdate = static function ($v): string {
                                                 <span class="text-muted">—</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="text-end fw-semibold text-danger">
-                                            <?= $fnum0($d['remaining_total']) ?>
+                                        <td class="text-end">
+                                            <?php
+                                                $orderedKeys = array_unique(array_merge(['PLN', 'EUR'], array_keys($d['by_currency'])));
+                                                $parts = [];
+                                                foreach ($orderedKeys as $c) {
+                                                    if (!isset($d['by_currency'][$c])) continue;
+                                                    $isPln = $c === 'PLN';
+                                                    $cls   = $isPln ? 'text-primary' : 'text-success';
+                                                    $parts[] = '<span class="fw-semibold ' . $cls . '">' . $fnum($d['by_currency'][$c]) . '&nbsp;' . h($c) . '</span>';
+                                                }
+                                                echo implode(' <span class="text-muted">+</span> ', $parts);
+                                            ?>
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
+                                <?php };
+                                foreach ($topDebtors as $i => $d) $renderDebtorRow($d, $i);
+                                ?>
                             </tbody>
                         </table>
                     </div>
+                    <?php if ($debtorsTotal > count($topDebtors)): ?>
+                        <div class="card-footer py-2 text-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnLoadMoreDebtors"
+                                    data-offset="<?= count($topDebtors) ?>"
+                                    data-total="<?= (int)$debtorsTotal ?>">
+                                <i class="ri-arrow-down-line me-1"></i>
+                                Załaduj więcej (<?= $debtorsTotal - count($topDebtors) ?> pozostało)
+                            </button>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
 
         <!-- ── Najwolniej płacący ────────────────────────────────────────── -->
-        <div class="col-lg-6">
+        <div class="col-lg-12">
             <div class="card shadow-sm h-100">
                 <div class="card-header py-2 d-flex align-items-center gap-2">
                     <i class="ri-time-line text-warning"></i>
@@ -232,6 +278,79 @@ $fdate = static function ($v): string {
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    // ── "Załaduj więcej" dla listy dłużników ──────────────────────────────
+    var btn = document.getElementById('btnLoadMoreDebtors');
+    if (!btn) return;
+    var tbody = document.querySelector('#debtorsTable tbody');
+    if (!tbody) return;
+
+    function fmtAmount(v) {
+        return parseFloat(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+    }
+    function esc(s) {
+        return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function renderRow(d, i) {
+        var orderedKeys = Array.from(new Set(['PLN', 'EUR'].concat(Object.keys(d.by_currency || {}))));
+        var parts = [];
+        orderedKeys.forEach(function (c) {
+            if (!d.by_currency || d.by_currency[c] === undefined) return;
+            var cls = c === 'PLN' ? 'text-primary' : 'text-success';
+            parts.push('<span class="fw-semibold ' + cls + '">' + fmtAmount(d.by_currency[c]) + ' ' + esc(c) + '</span>');
+        });
+        var amountsHtml = parts.join(' <span class="text-muted">+</span> ');
+        var nipHtml = (d.nip && d.nip !== '_unknown_')
+            ? '<div class="text-muted" style="font-size:.7em">NIP ' + esc(d.nip) + '</div>'
+            : '';
+        var overdueHtml = (d.overdue_count > 0)
+            ? '<span class="badge bg-danger-subtle text-danger border" style="font-size:.65rem">' + d.overdue_count + '</span>'
+            : '<span class="text-muted">—</span>';
+
+        return '<tr>'
+             + '<td class="text-muted">' + (i + 1) + '</td>'
+             + '<td class="text-truncate" style="max-width:280px" title="' + esc(d.name) + '">' + (esc(d.name) || '—') + nipHtml + '</td>'
+             + '<td class="text-end">' + d.unpaid_count + '</td>'
+             + '<td class="text-end">' + overdueHtml + '</td>'
+             + '<td class="text-end">' + amountsHtml + '</td>'
+             + '</tr>';
+    }
+
+    btn.addEventListener('click', function () {
+        if (this.disabled) return;
+        var offset = parseInt(this.dataset.offset, 10) || 0;
+        var origHtml = this.innerHTML;
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Ładowanie…';
+
+        fetch('/rozliczenia/ksef/insights/top-debtors?offset=' + offset + '&limit=10', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            (d.debtors || []).forEach(function (deb, idx) {
+                tbody.insertAdjacentHTML('beforeend', renderRow(deb, offset + idx));
+            });
+            var newOffset = offset + (d.debtors || []).length;
+            btn.dataset.offset = newOffset;
+            if (!d.has_more) {
+                btn.remove();
+            } else {
+                btn.disabled = false;
+                var remaining = (d.total || 0) - newOffset;
+                btn.innerHTML = '<i class="ri-arrow-down-line me-1"></i>Załaduj więcej (' + remaining + ' pozostało)';
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            alert('Błąd ładowania danych');
+        });
+    });
+})();
+</script>
 
 <?php if (!empty($capital)): ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
