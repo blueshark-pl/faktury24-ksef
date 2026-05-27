@@ -550,7 +550,7 @@ class ReconciliationsController extends AppController
         }
 
         // ── Pasek sugerowanych akcji — szybki przegląd "co dziś wymaga uwagi" ──
-        $guidance = $this->_buildGuidanceCounts($companyId, $todayStr);
+        $guidance = $this->_buildGuidanceCounts($companyId, date('Y-m-d'));
 
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
