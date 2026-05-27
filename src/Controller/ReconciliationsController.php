@@ -2063,122 +2063,311 @@ class ReconciliationsController extends AppController
     }
 
     /**
-     * Widok kalendarza — faktury wg paymentdate (lub efektywnej daty od wysyłki).
-     * Param yearMonth = "YYYY-MM" (default: current).
-     * Query param mode = "paymentdate" | "effective" (default: effective).
+     * Widok kalendarza — faktury i wpłaty z bocznymi filtrami.
+     *
+     * URL params:
+     *   yearMonth (?Y-m) — miesiąc (default: bieżący)
+     *   mode      = paymentdate | effective (default: effective)
+     *   view      = month | week | day (default: month)
+     *   show      = invoices | payments | both (default: both)
+     *   contractor_nip — filtr po NIP
+     *   currency  = PLN | EUR
+     *   type      = vat | currency | novat | ...
+     *   only_overdue = 1
      */
     public function calendar(?string $yearMonth = null): void
     {
         $this->request->allowMethod(['get']);
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
 
-        // Parse month
         $ym = $yearMonth ?: date('Y-m');
         if (!preg_match('/^\d{4}-\d{2}$/', $ym)) $ym = date('Y-m');
         [$year, $month] = explode('-', $ym);
         $year  = (int)$year;
         $month = (int)$month;
 
-        $mode  = $this->request->getQuery('mode', 'effective'); // effective | paymentdate
-        $today = date('Y-m-d');
+        $mode    = $this->request->getQuery('mode', 'effective');
+        $view    = $this->request->getQuery('view', 'month');
+        $show    = $this->request->getQuery('show', 'both'); // invoices|payments|both
+        $today   = date('Y-m-d');
 
-        // Pierwszy i ostatni dzień miesiąca
+        // Filtry
+        $filterNip       = (string)$this->request->getQuery('contractor_nip', '');
+        $filterCurrency  = (string)$this->request->getQuery('currency', '');
+        $filterType      = (string)$this->request->getQuery('type', '');
+        $filterOverdue   = (string)$this->request->getQuery('only_overdue', '') === '1';
+
+        // Określ zakres siatki w zależności od view
         $firstDay = sprintf('%04d-%02d-01', $year, $month);
         $lastDay  = date('Y-m-t', strtotime($firstDay));
 
-        // Padding do siatki kalendarzowej (poniedziałek → niedziela)
-        $firstDow = (int)date('N', strtotime($firstDay)); // 1=Mon ... 7=Sun
-        $padStart = $firstDow - 1;
-        $gridStart = date('Y-m-d', strtotime($firstDay . ' -' . $padStart . ' days'));
-        $lastDow  = (int)date('N', strtotime($lastDay));
-        $padEnd   = 7 - $lastDow;
-        $gridEnd  = date('Y-m-d', strtotime($lastDay . ' +' . $padEnd . ' days'));
+        if ($view === 'day') {
+            // Day view: pojedynczy dzień (z URL ?day=YYYY-MM-DD lub dziś)
+            $dayParam = $this->request->getQuery('day', $today);
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dayParam)) $dayParam = $today;
+            $gridStart = $dayParam;
+            $gridEnd   = $dayParam;
+        } elseif ($view === 'week') {
+            // Week view: tydzień zawierający today (lub day param)
+            $dayParam = $this->request->getQuery('day', $today);
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dayParam)) $dayParam = $today;
+            $dow = (int)date('N', strtotime($dayParam));
+            $gridStart = date('Y-m-d', strtotime($dayParam . ' -' . ($dow - 1) . ' days'));
+            $gridEnd   = date('Y-m-d', strtotime($gridStart . ' +6 days'));
+        } else {
+            // Month view: padding do pełnych tygodni
+            $firstDow = (int)date('N', strtotime($firstDay));
+            $gridStart = date('Y-m-d', strtotime($firstDay . ' -' . ($firstDow - 1) . ' days'));
+            $lastDow   = (int)date('N', strtotime($lastDay));
+            $padEnd    = 7 - $lastDow;
+            $gridEnd   = date('Y-m-d', strtotime($lastDay . ' +' . $padEnd . ' days'));
+        }
 
-        // Fetch faktur w przedziale (+ tydzień zapasu z każdej strony, żeby effective też wpadało)
+        // Bufor ±30 dni dla effective due
         $bufferStart = date('Y-m-d', strtotime($gridStart . ' -30 days'));
         $bufferEnd   = date('Y-m-d', strtotime($gridEnd . ' +30 days'));
 
-        $Invoices = $this->fetchTable('Invoices');
-        $rows = $Invoices->find()
-            ->contain([
-                'InvoiceContractors' => function ($q) {
-                    return $q->select(['id', 'invoice_id', 'nip', 'name']);
-                },
-            ])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.paymentdate >=' => $bufferStart,
-                'Invoices.paymentdate <=' => $bufferEnd,
-                'OR' => [
-                    ['Invoices.workflow_status IS' => null],
-                    ['Invoices.workflow_status !=' => 'draft'],
-                ],
-            ])
-            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
-                      'Invoices.paymentstate', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency',
-                      'Invoices.type', 'Invoices.sent_at'])
-            ->all();
-
-        // Buduj mapę date => [invoices...]
+        // ── Fetch FAKTUR z filtrami ──────────────────────────────────────
         $byDate = [];
-        foreach ($rows as $inv) {
-            $pdStr = $this->_extractDateStr($inv->paymentdate);
-            if (!$pdStr) continue;
-            $effDue = $this->_computeEffectiveDue($inv);
-            $useDate = ($mode === 'effective' && $effDue) ? $effDue : $pdStr;
+        if ($show !== 'payments') {
+            $Invoices = $this->fetchTable('Invoices');
+            $invQuery = $Invoices->find()
+                ->contain([
+                    'InvoiceContractors' => function ($q) {
+                        return $q->select(['id', 'invoice_id', 'nip', 'name']);
+                    },
+                ])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.paymentdate >=' => $bufferStart,
+                    'Invoices.paymentdate <=' => $bufferEnd,
+                    'OR' => [
+                        ['Invoices.workflow_status IS' => null],
+                        ['Invoices.workflow_status !=' => 'draft'],
+                    ],
+                ])
+                ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
+                          'Invoices.paymentstate', 'Invoices.total', 'Invoices.remaining', 'Invoices.currency',
+                          'Invoices.type', 'Invoices.sent_at']);
 
-            // Tylko jeśli w siatce
-            if ($useDate < $gridStart || $useDate > $gridEnd) continue;
+            if ($filterNip !== '') {
+                $invQuery->where(['InvoiceContractors.nip' => $filterNip]);
+            }
+            if ($filterCurrency !== '') {
+                $invQuery->where(['Invoices.currency' => $filterCurrency]);
+            }
+            if ($filterType !== '') {
+                $invQuery->where(['Invoices.type' => $filterType]);
+            }
 
-            $byDate[$useDate][] = [
-                'id'              => (string)$inv->id,
-                'fullnumber'      => (string)$inv->fullnumber,
-                'contractor'      => (string)($inv->invoice_contractor->name ?? ''),
-                'nip'             => (string)($inv->invoice_contractor->nip ?? ''),
-                'date'            => $this->_extractDateStr($inv->date),
-                'paymentdate'     => $pdStr,
-                'effective_due'   => $effDue,
-                'paymentstate'    => (string)($inv->paymentstate ?? 'unpaid'),
-                'total'           => (float)$inv->total,
-                'remaining'       => (float)$inv->remaining,
-                'currency'        => (string)($inv->currency ?? 'PLN'),
-                'type'            => (string)$inv->type,
-                'is_overdue'      => ($useDate < $today && (string)$inv->paymentstate !== 'paid'),
-            ];
+            $rows = $invQuery->all();
+
+            foreach ($rows as $inv) {
+                $pdStr = $this->_extractDateStr($inv->paymentdate);
+                if (!$pdStr) continue;
+                $effDue = $this->_computeEffectiveDue($inv);
+                $useDate = ($mode === 'effective' && $effDue) ? $effDue : $pdStr;
+                if ($useDate < $gridStart || $useDate > $gridEnd) continue;
+
+                $isOverdue = ($useDate < $today && (string)$inv->paymentstate !== 'paid');
+                if ($filterOverdue && !$isOverdue) continue;
+
+                $byDate[$useDate][] = [
+                    'kind'            => 'invoice',
+                    'id'              => (string)$inv->id,
+                    'fullnumber'      => (string)$inv->fullnumber,
+                    'contractor'      => (string)($inv->invoice_contractor->name ?? ''),
+                    'nip'             => (string)($inv->invoice_contractor->nip ?? ''),
+                    'date'            => $this->_extractDateStr($inv->date),
+                    'paymentdate'     => $pdStr,
+                    'effective_due'   => $effDue,
+                    'paymentstate'    => (string)($inv->paymentstate ?? 'unpaid'),
+                    'total'           => (float)$inv->total,
+                    'remaining'       => (float)$inv->remaining,
+                    'currency'        => (string)($inv->currency ?? 'PLN'),
+                    'type'            => (string)$inv->type,
+                    'is_overdue'      => $isOverdue,
+                ];
+            }
         }
 
-        // Sortuj faktury w każdym dniu (najpierw przeterminowane, potem niezapłacone, potem zapłacone)
-        foreach ($byDate as &$invList) {
-            usort($invList, function ($a, $b) {
+        // ── Fetch WPŁAT (invoice_payments) z filtrami ────────────────────
+        if ($show !== 'invoices') {
+            $Payments = $this->fetchTable('InvoicePayments');
+            $payQuery = $Payments->find()
+                ->contain([
+                    'Invoices' => function ($q) {
+                        return $q->select(['id', 'fullnumber', 'currency', 'company_id', 'type'])
+                                 ->contain(['InvoiceContractors' => function ($qc) {
+                                     return $qc->select(['id', 'invoice_id', 'nip', 'name']);
+                                 }]);
+                    },
+                ])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'InvoicePayments.payment_date >=' => $gridStart,
+                    'InvoicePayments.payment_date <=' => $gridEnd,
+                ])
+                ->select(['InvoicePayments.id', 'InvoicePayments.invoice_id',
+                          'InvoicePayments.payment_date', 'InvoicePayments.amount',
+                          'InvoicePayments.currency', 'InvoicePayments.payment_method']);
+
+            if ($filterNip !== '') {
+                $payQuery->matching('Invoices.InvoiceContractors', function ($q) use ($filterNip) {
+                    return $q->where(['InvoiceContractors.nip' => $filterNip]);
+                });
+            }
+            if ($filterCurrency !== '') {
+                $payQuery->where(['InvoicePayments.currency' => $filterCurrency]);
+            }
+            if ($filterType !== '') {
+                $payQuery->where(['Invoices.type' => $filterType]);
+            }
+
+            $payRows = $payQuery->all();
+            foreach ($payRows as $p) {
+                $pdStr = $this->_extractDateStr($p->payment_date);
+                if (!$pdStr) continue;
+                $contractor = $p->invoice->invoice_contractor ?? null;
+                $byDate[$pdStr][] = [
+                    'kind'         => 'payment',
+                    'id'           => (string)$p->id,
+                    'invoice_id'   => (string)$p->invoice_id,
+                    'fullnumber'   => (string)($p->invoice->fullnumber ?? ''),
+                    'contractor'   => (string)($contractor->name ?? ''),
+                    'nip'          => (string)($contractor->nip ?? ''),
+                    'amount'       => (float)$p->amount,
+                    'currency'     => (string)($p->currency ?? 'PLN'),
+                    'payment_date' => $pdStr,
+                    'method'       => (string)$p->payment_method,
+                ];
+            }
+        }
+
+        // Sortuj elementy w każdym dniu (overdue → pending → paid → payment)
+        foreach ($byDate as &$list) {
+            usort($list, function ($a, $b) {
                 $rank = function ($i) {
-                    if ($i['is_overdue']) return 0;
-                    if ($i['paymentstate'] === 'paid') return 2;
+                    if ($i['kind'] === 'payment') return 3;
+                    if ($i['is_overdue'] ?? false) return 0;
+                    if (($i['paymentstate'] ?? '') === 'paid') return 2;
                     return 1;
                 };
                 return $rank($a) - $rank($b);
             });
         }
-        unset($invList);
+        unset($list);
 
-        // Wygeneruj siatkę kalendarza
+        // Wygeneruj siatkę
         $weeks = [];
         $cursor = $gridStart;
         while ($cursor <= $gridEnd) {
             $week = [];
-            for ($i = 0; $i < 7; $i++) {
+            for ($i = 0; $i < 7 && $cursor <= $gridEnd; $i++) {
                 $week[] = $cursor;
                 $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'));
             }
             $weeks[] = $week;
         }
 
+        // ── Lista kontrahentów do filtra ─────────────────────────────────
+        $contractorsForFilter = $this->_buildContractorsList($companyId);
+
+        // ── Summary bar — totale miesiąca ────────────────────────────────
+        $summary = $this->_buildCalendarSummary($byDate, $today);
+
+        // ── Max overdue dla heatmap density ──────────────────────────────
+        $maxOverduePln = 0;
+        foreach ($byDate as $list) {
+            $dayOverdue = 0;
+            foreach ($list as $it) {
+                if (($it['kind'] ?? '') === 'invoice' && ($it['is_overdue'] ?? false)) {
+                    $curr = strtoupper($it['currency'] ?? 'PLN');
+                    $amt = (float)$it['remaining'];
+                    $dayOverdue += $curr === 'EUR' ? $amt * 4.3 : $amt;
+                }
+            }
+            if ($dayOverdue > $maxOverduePln) $maxOverduePln = $dayOverdue;
+        }
+
         // Nawigacja
         $prevYM = date('Y-m', strtotime($firstDay . ' -1 month'));
         $nextYM = date('Y-m', strtotime($firstDay . ' +1 month'));
+        $prevDay = isset($dayParam) ? date('Y-m-d', strtotime($dayParam . ' -1 day')) : null;
+        $nextDay = isset($dayParam) ? date('Y-m-d', strtotime($dayParam . ' +1 day')) : null;
+        $prevWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' -7 days')) : null;
+        $nextWeek = $view === 'week' ? date('Y-m-d', strtotime($gridStart . ' +7 days')) : null;
 
-        $this->set(compact('ym', 'year', 'month', 'mode', 'weeks', 'byDate',
-            'firstDay', 'lastDay', 'today', 'prevYM', 'nextYM'));
+        $this->set(compact('ym', 'year', 'month', 'mode', 'view', 'show', 'weeks', 'byDate',
+            'firstDay', 'lastDay', 'today', 'prevYM', 'nextYM',
+            'prevDay', 'nextDay', 'prevWeek', 'nextWeek',
+            'gridStart', 'gridEnd',
+            'filterNip', 'filterCurrency', 'filterType', 'filterOverdue',
+            'contractorsForFilter', 'summary', 'maxOverduePln'));
         $this->set('title', 'Kalendarz rozliczeń');
+    }
+
+    private function _buildContractorsList(string $companyId): array
+    {
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+            $rows = $db->execute(
+                "SELECT DISTINCT ic.nip, ic.name, COUNT(*) AS cnt
+                 FROM invoice_contractors ic
+                 JOIN invoices i ON i.id = ic.invoice_id
+                 WHERE i.company_id = ?
+                   AND ic.nip IS NOT NULL AND ic.nip != ''
+                 GROUP BY ic.nip
+                 ORDER BY cnt DESC, ic.name ASC
+                 LIMIT 200",
+                [$companyId]
+            )->fetchAll('assoc');
+            return $rows;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    private function _buildCalendarSummary(array $byDate, string $today): array
+    {
+        $s = [
+            'invoices_count'  => 0,
+            'paid_count'      => 0,
+            'overdue_count'   => 0,
+            'pending_count'   => 0,
+            'payments_count'  => 0,
+            'invoice_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
+            'paid_amount'     => ['PLN' => 0.0, 'EUR' => 0.0],
+            'overdue_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
+            'payment_amount'  => ['PLN' => 0.0, 'EUR' => 0.0],
+        ];
+        foreach ($byDate as $list) {
+            foreach ($list as $it) {
+                $curr = strtoupper($it['currency'] ?? 'PLN');
+                if ($curr !== 'EUR') $curr = 'PLN'; // wszystko inne idzie do PLN
+                if (($it['kind'] ?? '') === 'invoice') {
+                    $s['invoices_count']++;
+                    $s['invoice_amount'][$curr] = ($s['invoice_amount'][$curr] ?? 0) + (float)$it['remaining'];
+                    if ($it['paymentstate'] === 'paid') {
+                        $s['paid_count']++;
+                        $s['paid_amount'][$curr] = ($s['paid_amount'][$curr] ?? 0) + (float)$it['total'];
+                    } elseif ($it['is_overdue']) {
+                        $s['overdue_count']++;
+                        $s['overdue_amount'][$curr] = ($s['overdue_amount'][$curr] ?? 0) + (float)$it['remaining'];
+                    } else {
+                        $s['pending_count']++;
+                    }
+                } elseif (($it['kind'] ?? '') === 'payment') {
+                    $s['payments_count']++;
+                    $s['payment_amount'][$curr] = ($s['payment_amount'][$curr] ?? 0) + (float)$it['amount'];
+                }
+            }
+        }
+        foreach (['invoice_amount', 'paid_amount', 'overdue_amount', 'payment_amount'] as $k) {
+            $s[$k]['PLN'] = round($s[$k]['PLN'], 2);
+            $s[$k]['EUR'] = round($s[$k]['EUR'], 2);
+        }
+        return $s;
     }
 
     /**
