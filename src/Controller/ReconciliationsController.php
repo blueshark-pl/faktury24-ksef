@@ -2551,8 +2551,17 @@ class ReconciliationsController extends AppController
 
         $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
 
+        // Sprawdzenie czy tabela istnieje (migracja musiała być uruchomiona)
+        try {
+            $IbanHistory = $this->fetchTable('ContractorIbanHistories');
+            $IbanHistory->getSchema(); // wywołuje describeColumns — błąd jeśli brak tabeli
+        } catch (\Exception $e) {
+            $this->Flash->error('Tabela contractor_iban_history nie istnieje. Uruchom migrację: bin/cake migrations migrate');
+            \Cake\Log\Log::error('backfillIbanHistory: ' . $e->getMessage());
+            return $this->redirect(['action' => 'checkIntegrity']);
+        }
+
         $Allocations  = $this->fetchTable('BankTransactionAllocations');
-        $IbanHistory  = $this->fetchTable('ContractorIbanHistories');
 
         // Pobierz wszystkie alokacje system + tx + contractor — 1 zapytanie
         $rows = $Allocations->find()
