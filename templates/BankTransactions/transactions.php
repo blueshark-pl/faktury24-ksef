@@ -574,14 +574,17 @@ document.addEventListener('click', function (e) {
     // Wyczyść poprzedni stan
     document.getElementById('sm-search').value         = '';
     document.getElementById('sm-search-results').innerHTML =
-        '<div id="sm-search-hint" class="text-muted small fst-italic p-3">'
-      + '<i class="ri-lightbulb-line me-1"></i>Wpisz min. 2 znaki, aby znaleźć fakturę.</div>';
+        '<div class="text-muted small p-3 text-center fst-italic">'
+      + '<span class="spinner-border spinner-border-sm me-2"></span>Ładowanie nieopłaconych faktur…</div>';
     document.getElementById('sm-alloc-form').style.display = 'none';
     document.getElementById('sm-alloc-form').innerHTML = '';
     updateModalProgress(0, currentTxAmount, currentTxCurr);
 
     smModal.show();
     loadModalAllocations();
+
+    // Auto-load wszystkich nieopłaconych faktur (system + legacy) od razu
+    loadUnpaidInvoices();
 
     // Focus na szukajkę po otwarciu modala
     smEl.addEventListener('shown.bs.modal', function focusCb() {
@@ -768,15 +771,38 @@ document.getElementById('sm-search-source').addEventListener('change', runSearch
 function runSearch() {
     var q   = document.getElementById('sm-search').value.trim();
     var src = document.getElementById('sm-search-source').value;
+    // Pusty/krótki query → ładujemy wszystkie nieopłacone (zamiast hinta)
     if (q.length < 2) {
-        document.getElementById('sm-search-results').innerHTML =
-            '<div class="text-muted small fst-italic p-3"><i class="ri-lightbulb-line me-1"></i>Wpisz min. 2 znaki.</div>';
+        loadUnpaidInvoices();
         return;
     }
-    fetch('/wyciagi/invoice-search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(src),
+    fetch('/wyciagi/invoice-search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(src) + '&unpaid=1',
           { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(function (r) { return r.json(); })
         .then(function (d) { renderSearchResults(d.results || []); });
+}
+
+// Pobiera listę wszystkich nieopłaconych faktur (sys + legacy) po otwarciu modala
+function loadUnpaidInvoices() {
+    var src = document.getElementById('sm-search-source').value;
+    fetch('/wyciagi/invoice-search?q=&source=' + encodeURIComponent(src) + '&unpaid=1',
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var results = d.results || [];
+            if (!results.length) {
+                document.getElementById('sm-search-results').innerHTML =
+                    '<div class="text-muted small fst-italic p-3 text-center">'
+                  + '<i class="ri-checkbox-circle-line me-1"></i>Brak nieopłaconych faktur.</div>';
+                return;
+            }
+            renderSearchResults(results);
+        })
+        .catch(function () {
+            document.getElementById('sm-search-results').innerHTML =
+                '<div class="text-danger small p-3"><i class="ri-error-warning-line me-1"></i>'
+              + 'Błąd ładowania faktur.</div>';
+        });
 }
 
 function renderSearchResults(results) {

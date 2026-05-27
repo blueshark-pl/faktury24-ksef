@@ -708,39 +708,68 @@ class BankTransactionsController extends AppController
         $this->request->allowMethod(['get']);
         $this->viewBuilder()->disableAutoLayout();
 
-        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
-        $q         = trim((string)$this->request->getQuery('q', ''));
-        $source    = (string)$this->request->getQuery('source', 'all'); // all|system|legacy
+        $companyId  = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $q          = trim((string)$this->request->getQuery('q', ''));
+        $source     = (string)$this->request->getQuery('source', 'all'); // all|system|legacy
+        $unpaidOnly = (string)$this->request->getQuery('unpaid', '') === '1';
+        $showAll    = $q === ''; // gdy pusty q — zwracaj listę nieopłaconych
 
         $results = [];
 
-        if (mb_strlen($q) >= 2) {
-            $like = '%' . $q . '%';
+        // Warianty zapytania — dla numerów faktur typu fw/5/04/2026 vs FW/05/04/2026
+        $qVariants = [$q];
+        if ($q !== '') {
+            $qVariants[] = str_replace('/', '', $q);
+            // Dodaj zera wiodące do pojedynczych cyfr w środkowych segmentach
+            $withZeros = preg_replace_callback('#/(\d)(?=/|$)#', function ($m) { return '/0' . $m[1]; }, $q);
+            if ($withZeros && $withZeros !== $q) {
+                $qVariants[] = $withZeros;
+                $qVariants[] = str_replace('/', '', $withZeros);
+            }
+            // Skrócony rok 2026 → 26
+            $shortYear = preg_replace('/(\d{2})(\d{2})$/', '$2', $q);
+            if ($shortYear && $shortYear !== $q) {
+                $qVariants[] = $shortYear;
+                $qVariants[] = str_replace('/', '', $shortYear);
+            }
+            $qVariants = array_unique($qVariants);
+        }
 
+        if ($q !== '' || $showAll) {
             // ── Faktury systemowe ──────────────────────────────────────────
             if ($source !== 'legacy') {
+                $conditions = [
+                    'Invoices.company_id'       => $companyId,
+                    'Invoices.workflow_status'  => 'issued',
+                ];
+                if ($unpaidOnly || $showAll) {
+                    $conditions['Invoices.paymentstate IN'] = ['unpaid', 'partial'];
+                }
+                if (!$showAll) {
+                    $or = [];
+                    foreach ($qVariants as $v) {
+                        $or[]['Invoices.fullnumber LIKE']      = '%' . $v . '%';
+                        $or[]['InvoiceContractors.name LIKE']  = '%' . $v . '%';
+                    }
+                    $or[]['InvoiceContractors.nip'] = $q;
+                    $conditions['OR'] = $or;
+                }
+
                 $rows = $this->fetchTable('Invoices')->find()
                     ->contain([
                         'InvoiceContractors' => function (\Cake\ORM\Query\SelectQuery $q2) {
                             return $q2->select(['id', 'invoice_id', 'name', 'nip']);
                         },
                     ])
-                    ->where([
-                        'Invoices.company_id'       => $companyId,
-                        'Invoices.workflow_status'  => 'issued',
-                        'OR' => [
-                            'Invoices.fullnumber LIKE' => $like,
-                            'InvoiceContractors.name LIKE' => $like,
-                            'InvoiceContractors.nip'       => $q,
-                        ],
-                    ])
+                    ->where($conditions)
                     ->select([
                         'Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.netto',
                         'Invoices.remaining', 'Invoices.currency',
                         'Invoices.currency_exchange', 'Invoices.paymentstate',
                         'Invoices.paymentdate', 'Invoices.date',
                     ])
-                    ->limit(15)
+                    ->orderByDesc('Invoices.date')
+                    ->limit($showAll ? 30 : 15)
                     ->all();
 
                 foreach ($rows as $inv) {
@@ -786,19 +815,27 @@ class BankTransactionsController extends AppController
 
             // ── Faktury legacy ─────────────────────────────────────────────
             if ($source !== 'system') {
+                $legacyConditions = ['company_id' => $companyId];
+                if ($unpaidOnly || $showAll) {
+                    $legacyConditions['paymentstate IN'] = ['unpaid', 'partial'];
+                }
+                if (!$showAll) {
+                    $or = [];
+                    foreach ($qVariants as $v) {
+                        $or[]['fullnumber LIKE']      = '%' . $v . '%';
+                        $or[]['contractor_name LIKE'] = '%' . $v . '%';
+                    }
+                    $or[]['contractor_nip'] = $q;
+                    $legacyConditions['OR'] = $or;
+                }
+
                 $legacyRows = $this->fetchTable('LegacyInvoices')->find()
-                    ->where([
-                        'company_id' => $companyId,
-                        'OR' => [
-                            'fullnumber LIKE'       => $like,
-                            'contractor_name LIKE'  => $like,
-                            'contractor_nip'        => $q,
-                        ],
-                    ])
+                    ->where($legacyConditions)
                     ->select(['id', 'fullnumber', 'contractor_name', 'contractor_nip',
                               'total', 'netto', 'remaining', 'remaining_wal', 'total_wal',
                               'currency', 'exchange_rate', 'paymentstate', 'date'])
-                    ->limit(15)
+                    ->orderByDesc('date')
+                    ->limit($showAll ? 30 : 15)
                     ->all();
 
                 foreach ($legacyRows as $inv) {
