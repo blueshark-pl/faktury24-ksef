@@ -2672,26 +2672,101 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Wpłata już ma alokację.'];
         }
 
-        // Szukaj bank_tx po (invoice_id, kwota). Tx.currency to ŹRÓDŁO PRAWDY
-        // (stare invoice_payments mają currency='PLN' z DB default — błędne dla EUR).
-        //
-        // Kwota porównywana z tolerancją ±0.01 — chroni przed floating-point
-        // i różnymi precyzjami kolumn (decimal(15,2) vs decimal(15,4) = 1782.2600).
+        // Szukaj bank_tx — strategia wielopoziomowa:
+        //   1. Dokładny match: ten sam invoice_id + kwota (±0.01)
+        //   2. Fallback: tx z NULL invoice_id + kwota + data ±60 dni od payment_date
+        //   3. Ostatnia próba: tx z parsed_inv = invoice.fullnumber + kwota
         $pAmt = round((float)$payment->amount, 2);
+        $minAmt = $pAmt - 0.01;
+        $maxAmt = $pAmt + 0.01;
+
+        // Krok 1: exact match po invoice_id
         $tx = $BankTxs->find()
             ->where([
-                'BankTransactions.company_id'      => $companyId,
-                'BankTransactions.invoice_id'      => $payment->invoice_id,
-                'BankTransactions.amount >='       => $pAmt - 0.01,
-                'BankTransactions.amount <='       => $pAmt + 0.01,
+                'BankTransactions.company_id'  => $companyId,
+                'BankTransactions.invoice_id'  => $payment->invoice_id,
+                'BankTransactions.amount >='   => $minAmt,
+                'BankTransactions.amount <='   => $maxAmt,
             ])
             ->orderByDesc('value_date')
             ->first();
         if ($tx !== null && $Allocations->exists(['bank_transaction_id' => $tx->id])) {
             $tx = null;
         }
+
+        // Krok 2: fallback — tx z NULL invoice_id + ta sama kwota + bliska data
         if ($tx === null) {
-            return ['ok' => false, 'message' => 'Brak pasującego przelewu (invoice_id + kwota ' . number_format($pAmt, 2) . ').'];
+            $pDate = $payment->payment_date;
+            $pDateStr = '';
+            if ($pDate instanceof \DateTimeInterface) {
+                $pDateStr = $pDate->format('Y-m-d');
+            } elseif (is_object($pDate) && method_exists($pDate, 'format')) {
+                $pDateStr = $pDate->format('Y-m-d');
+            } elseif ($pDate) {
+                $pDateStr = substr((string)$pDate, 0, 10);
+            }
+
+            $candidates = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id'         => $companyId,
+                    'BankTransactions.invoice_id IS'      => null,
+                    'BankTransactions.direction'          => 'C',
+                    'BankTransactions.amount >='          => $minAmt,
+                    'BankTransactions.amount <='          => $maxAmt,
+                ])
+                ->orderByDesc('value_date')
+                ->all();
+
+            foreach ($candidates as $cand) {
+                if ($Allocations->exists(['bank_transaction_id' => $cand->id])) continue;
+                // Sprawdź bliskość daty (±60 dni)
+                if ($pDateStr) {
+                    $cDate = $cand->value_date;
+                    $cDateStr = '';
+                    if ($cDate instanceof \DateTimeInterface) $cDateStr = $cDate->format('Y-m-d');
+                    elseif (is_object($cDate) && method_exists($cDate, 'format')) $cDateStr = $cDate->format('Y-m-d');
+                    elseif ($cDate) $cDateStr = substr((string)$cDate, 0, 10);
+
+                    if ($cDateStr) {
+                        $diff = abs((new \DateTime($pDateStr))->diff(new \DateTime($cDateStr))->days);
+                        if ($diff > 60) continue;
+                    }
+                }
+                $tx = $cand;
+                break;
+            }
+        }
+
+        // Krok 3: ostatnia próba — tx z parsed_inv matching fullnumber + amount
+        if ($tx === null) {
+            $invoice = $this->fetchTable('Invoices')->find()
+                ->where(['id' => $payment->invoice_id])
+                ->select(['fullnumber'])
+                ->first();
+            if ($invoice && $invoice->fullnumber) {
+                $tx = $BankTxs->find()
+                    ->where([
+                        'BankTransactions.company_id'    => $companyId,
+                        'BankTransactions.parsed_inv'    => $invoice->fullnumber,
+                        'BankTransactions.amount >='     => $minAmt,
+                        'BankTransactions.amount <='     => $maxAmt,
+                    ])
+                    ->orderByDesc('value_date')
+                    ->first();
+                if ($tx !== null && $Allocations->exists(['bank_transaction_id' => $tx->id])) {
+                    $tx = null;
+                }
+            }
+        }
+
+        if ($tx === null) {
+            return ['ok' => false, 'message' => 'Brak pasującego przelewu (invoice_id + kwota ' . number_format($pAmt, 2, ',', ' ') . '). Sprawdzone: dokładny match, NULL invoice_id ±60 dni, parsed_inv.'];
+        }
+
+        // Jeśli znaleziony tx nie ma invoice_id — ustawiamy go (linkujemy tx → invoice)
+        if (empty($tx->invoice_id)) {
+            $tx->invoice_id = $payment->invoice_id;
+            $BankTxs->save($tx);
         }
 
         $realCurrency = strtoupper((string)($tx->currency ?? 'PLN')) ?: 'PLN';
