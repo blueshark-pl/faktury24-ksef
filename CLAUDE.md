@@ -30,8 +30,33 @@ Gdy skończysz zadanie:
 3. Zrób `git push`
 4. Jeśli zmiana jest znacząca — zaktualizuj ten plik (`CLAUDE.md`) w sekcji Changelog
 
-### 4. Nie zgaduj — czytaj kod
-Przed modyfikacją zawsze przeczytaj aktualny stan pliku.
+### 4. KRYTYCZNE — Nigdy nie halucynuj. To system księgowy.
+**To produkcyjny system fakturowo-księgowy** (faktury VAT, KSeF, JPK, rozliczenia
+bankowe). Błędne dane (numery faktur, kwoty, NIP-y, kody bankowe, nazwy kolumn DB,
+opisy operacji, formaty plików MT940) mogą prowadzić do realnych strat finansowych,
+błędów w JPK/KSeF i niezgodności z urzędem skarbowym.
+
+**Nie wymyślaj. Nie zgaduj. Nie aproksymuj.**
+- Jeśli nie znasz dokładnej nazwy kolumny → otwórz migrację.
+- Jeśli nie znasz dokładnej składni API/biblioteki → przeczytaj kod / docs.
+- Jeśli nie wiesz jak działa funkcja w innej części projektu → przeczytaj ją.
+- Jeśli nie wiesz jakiego formatu używa bank w MT940 → poproś usera o dokument
+  źródłowy lub fragment pliku. NIE wymyślaj kodów typu "D50" / "A61" na
+  podstawie ogólnej wiedzy o SWIFT, jeśli faktyczny bank używa innego formatu.
+- Jeśli nie wiesz jaki jest format numeru faktury w danym roku → pytasz.
+- Jeśli dokumentacja jest niejednoznaczna → pytasz.
+- Jeśli AI/OpenAI ma generować dane wrażliwe (numery faktur, kwoty) → zawsze
+  daj twardą walidację regex/whitelist po stronie serwera. Halucynacja LLM-a
+  nie może trafić do bazy lub UI bez weryfikacji.
+
+**Lepiej zapytać użytkownika niż wyprodukować niepoprawny kod.**
+Użytkownik woli odpowiedzieć na jedno pytanie niż naprawiać 5 błędów,
+których byś nie zrobił gdybyś zapytał.
+
+**Wyjątki gdzie zgadywanie jest OK:** czysto kosmetyczne preferencje
+(odstęp, kolor border, czy `ms-2` czy `me-2`) — tu możesz wybrać i poprawić.
+
+Przed modyfikacją zawsze **przeczytaj aktualny stan pliku** (Read tool).
 Nie opieraj się wyłącznie na pamięci z poprzednich sesji — kod mógł się zmienić.
 
 ### 4a. Pola w migracjach — ZAWSZE sprawdzaj zanim użyjesz
