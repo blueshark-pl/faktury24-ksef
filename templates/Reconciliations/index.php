@@ -680,13 +680,27 @@ if ($status !== '')            $activeFilterCount++;
                 $overpayCurr = $payAgg['overpaid_currency'];
 
                 // ── Weryfikacja invoice.remaining z DB względem sumy wpłat ──
-                // Sprawdzamy czy DB remaining zgadza się z computed = total - sum(payments).
-                // Powód: InvoicePaymentsTable::afterSave wywołuje recalculatePayments które
-                // NIE robi konwersji walut — dla faktur walutowych z wpłatami PLN remaining
-                // w DB jest błędne. Tu liczymy correct computed value używając konwersji.
+                // ŹRÓDŁEM PRAWDY są invoice_payments. Każda wpłata ma swoją walutę
+                // i kwotę. Sumujemy z konwersją do waluty faktury.
                 $computedRemaining = round(max(0.0, (float)$invoice->total - $payAgg['sum_inv_curr']), 2);
                 $dbRemaining       = round((float)$invoice->remaining, 2);
                 $remainingMismatch = !empty($bts) && abs($computedRemaining - $dbRemaining) > 0.01;
+
+                // Edge-case: faktura walutowa BEZ kursu + wpłaty w innej walucie
+                // → konwersja niemożliwa, niepewne wyliczenie
+                $hasUnconvertiblePayments = false;
+                if (strtoupper($invCurr) !== 'PLN' && $invRate <= 0) {
+                    foreach ($bts as $p) {
+                        $pc = strtoupper((string)($p->currency ?? $invCurr));
+                        if ($pc !== $invCurr) { $hasUnconvertiblePayments = true; break; }
+                    }
+                } elseif (strtoupper($invCurr) === 'PLN') {
+                    // PLN invoice z wpłatami w innej walucie ale bez kursu
+                    foreach ($bts as $p) {
+                        $pc = strtoupper((string)($p->currency ?? 'PLN'));
+                        if ($pc !== 'PLN' && $invRate <= 0) { $hasUnconvertiblePayments = true; break; }
+                    }
+                }
 
                 // Kwoty kontrolne — brutto/netto/VAT w EUR i PLN (jak pille w modalu)
                 $invTotalEur = (float)($invoice->total ?? 0);
@@ -887,16 +901,25 @@ if ($status !== '')            $activeFilterCount++;
                                 wpłacono: <?= number_format((float)$invoice->alreadypaid, 2, ',', ' ') ?>
                             </div>
                         <?php endif; ?>
-                        <?php if ($remainingMismatch): ?>
+                        <?php if ($hasUnconvertiblePayments): ?>
+                            <div class="mt-1 small">
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
+                                      title="Faktura w walucie obcej + wpłaty w innej walucie, ale brak currency_exchange. Niemożliwe wyliczenie ile pozostało — ustaw kurs na fakturze."
+                                      style="font-size:.65rem">
+                                    <i class="ri-error-warning-line me-1"></i>Brak kursu faktury
+                                </span>
+                                <div class="text-danger" style="font-size:.7rem">
+                                    nie można policzyć remaining
+                                </div>
+                            </div>
+                        <?php elseif ($remainingMismatch): ?>
                             <?php
-                                // Computed vs DB rozjazd — pokażmy świeże computed jako prawdziwą wartość
-                                $diffLabel = $computedRemaining > $dbRemaining ? 'więcej do zapłaty' : 'mniej do zapłaty';
                                 $diffAbs   = round(abs($computedRemaining - $dbRemaining), 2);
                             ?>
                             <div class="mt-1 small">
                                 <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
                                       title="<?= h(sprintf(
-                                          'Pozostało w DB (%s) różni się od wyliczenia z wpłat (%s %s). Najpewniej recalculatePayments nie zrobił konwersji walut.',
+                                          'Pozostało w DB (%s) różni się od wyliczenia z invoice_payments po konwersji walut (%s %s). Kliknij "Przelicz wszystkie" w panelu integralności.',
                                           number_format($dbRemaining, 2, ',', ' '),
                                           number_format($computedRemaining, 2, ',', ' '),
                                           $invCurr

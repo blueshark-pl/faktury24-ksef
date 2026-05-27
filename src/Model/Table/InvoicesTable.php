@@ -291,10 +291,13 @@ class InvoicesTable extends Table
     /**
      * Recalculate invoice payment totals — z konwersją walut.
      *
-     * Dla faktur walutowych (EUR/USD) z wpłatami w PLN (np. MPP/VAT split):
-     *   - sumuje wpłaty po konwersji do waluty faktury via invoice.currency_exchange
-     *   - alreadypaid jest w walucie faktury (nie raw mix)
-     *   - remaining nigdy nie jest ujemne (clamp do 0)
+     * ŹRÓDŁEM PRAWDY są wpłaty z invoice_payments.
+     * Każda wpłata jest konwertowana do waluty faktury via invoice.currency_exchange
+     * przed sumowaniem.
+     *
+     * Edge-case: faktura walutowa BEZ currency_exchange (NULL/0) + wpłata w innej
+     * walucie → NIE liczymy do paid (niepewna konwersja), zwracamy info żeby UI
+     * mógł pokazać warning. Lepsze pominąć niż dodać błędną kwotę.
      */
     public function recalculatePayments($invoiceId)
     {
@@ -306,20 +309,37 @@ class InvoicesTable extends Table
         $rate    = (float)($invoice->currency_exchange ?? 0);
         $total   = (float)$invoice->total;
 
-        // Sumuj wpłaty w walucie faktury (z konwersją gdy się różnią)
-        $totalPaid = 0.0;
+        $totalPaid       = 0.0;
+        $skippedAmount   = 0.0; // wpłat z niedopasowaną walutą (nieprzeliczalnych)
+        $skippedCount    = 0;
+
         if (!empty($invoice->invoice_payments)) {
             foreach ($invoice->invoice_payments as $payment) {
                 $amt  = (float)$payment->amount;
                 $curr = strtoupper((string)($payment->currency ?? $invCurr)) ?: $invCurr;
+
                 if ($curr === $invCurr) {
+                    // Sama waluta — bez konwersji
                     $totalPaid += $amt;
                 } elseif ($rate > 0) {
-                    if ($invCurr === 'PLN' && $curr !== 'PLN')      $totalPaid += $amt * $rate;
-                    elseif ($curr === 'PLN' && $invCurr !== 'PLN') $totalPaid += $amt / $rate;
-                    else                                            $totalPaid += $amt;
+                    // Różna waluta + mamy kurs faktury → konwertujemy
+                    if ($invCurr === 'PLN' && $curr !== 'PLN') {
+                        $totalPaid += $amt * $rate;       // EUR * 4.30 = PLN
+                    } elseif ($curr === 'PLN' && $invCurr !== 'PLN') {
+                        $totalPaid += $amt / $rate;       // PLN / 4.30 = EUR
+                    } else {
+                        // foreign↔foreign — nie da się bez 2 kursów, zostawiamy raw
+                        $totalPaid += $amt;
+                    }
                 } else {
-                    $totalPaid += $amt;
+                    // Różna waluta + BRAK kursu faktury → NIE liczymy
+                    // (lepiej niedoszacować niż pokazać błędne paid)
+                    $skippedAmount += $amt;
+                    $skippedCount++;
+                    \Cake\Log\Log::warning(sprintf(
+                        'recalculatePayments: skipping payment (invoice=%s, payment=%s) — currency mismatch %s vs %s with no rate',
+                        $invoiceId, $payment->id ?? '?', $curr, $invCurr
+                    ));
                 }
             }
         }
@@ -333,12 +353,21 @@ class InvoicesTable extends Table
             $paymentstate = ($remaining <= 0.01) ? 'paid' : 'partial';
         }
 
-        $this->patchEntity($invoice, [
+        $patchData = [
             'alreadypaid'  => $totalPaid,
             'remaining'    => $remaining,
             'paymentstate' => $paymentstate,
-        ]);
+        ];
 
-        return $this->save($invoice);
+        $this->patchEntity($invoice, $patchData);
+        $result = $this->save($invoice);
+
+        // Expose info o pominiętych wpłatach — caller może to zalogować/wyświetlić
+        if (is_object($result)) {
+            $result->_skipped_payments_count = $skippedCount;
+            $result->_skipped_payments_amount = round($skippedAmount, 2);
+        }
+
+        return $result;
     }
 }
