@@ -6,41 +6,187 @@ namespace App\Service;
 /**
  * Słownik kodów transakcji MT940 dla pola :86: / :61:.
  *
- * Źródło: oficjalna dokumentacja mBank "MT940 - wyciągi dzienne i miesięczne
- * w części detalicznej mBanku" (PDF).
+ * Źródło: WYŁĄCZNIE oficjalna dokumentacja mBank "MT940 — wyciągi dzienne
+ * i miesięczne w części detalicznej mBanku" (PDF).
  *
- * Format kodu mBank: PREFIX (1 litera) + 3-cyfrowy kod operacji.
- *  - N = przelew zwykły (normal)
- *  - S = zlecenie stałe / wpłata własna
- *  - F = przelew przyszły / inne
- *  - G = operacja grupowa
- *  - W = operacja walutowa
- *  - C = BLIK / karty
+ * Format mBank: kod może mieć postać:
+ *  - 3-znakowy alfanumeryczny: A61, B55, C97, FB1, 10A, 27A (głównie operacje
+ *    specjalne: BLIK, SEPA DD, transakcje walutowe natychmiastowe, opłaty)
+ *  - 3-cyfrowy numeryczny: 100, 150, 220, 341 (główny zbiór operacji)
+ *  - 1-2 cyfrowy: 14, 18, 88 (kredyty, karty)
+ *  - 4-znakowy z prefiksem SWIFT: N+3cyfry, S+3cyfry, F+3cyfry — prefix to
+ *    metakategoria SWIFT (N=normal/zwykły, S=zlecenie stałe, F=przyszły)
  *
- * Inne banki (PKO, Santander) używają 3-znakowych kodów typu SWIFT
- * (A61, D50, N94 itd.) — także obsługiwane.
+ * **WAŻNE**: ten serwis pokrywa tylko mBank. Dla innych banków (PKO, Santander,
+ * ING) trzeba dopisać osobne mapy na podstawie ich dokumentacji.
+ * NIE dodawaj kodów na podstawie ogólnej wiedzy o SWIFT — różne banki używają
+ * tego samego kodu (np. A61) z różnym znaczeniem.
  */
 final class Mt940TransactionCodes
 {
     /**
-     * Kategoria po pierwszej literze prefiksu.
+     * Metakategoria SWIFT — prefiks N/S/F/G/W w 4-znakowych kodach.
+     * Sama litera bez 3-cyfrowego kodu operacji jest niewystarczająca.
      */
-    private const PREFIX_LABELS = [
+    private const SWIFT_PREFIX = [
         'N' => 'przelew zwykły',
-        'S' => 'zlecenie stałe / wpłata własna',
-        'F' => 'przelew przyszły / inny',
+        'S' => 'zlecenie stałe',
+        'F' => 'przelew przyszły',
         'G' => 'operacja grupowa',
         'W' => 'operacja walutowa',
-        'C' => 'BLIK / karty',
-        'A' => 'korekta / księgowanie administracyjne',
-        'D' => 'obciążenie',
-        'Z' => 'storno / zwrot',
     ];
 
     /**
-     * 3-cyfrowe kody mBank z PDF (najczęściej spotykane w obrocie firmowym).
-     * Pełna lista to ~500 pozycji — wybrałem te które realnie pojawiają się
-     * w wyciągach z fakturami.
+     * Alfanumeryczne kody mBank (3 znaki, prefix-litera + 2 znaki).
+     * Wzięte 1:1 z oficjalnego PDF mBanku.
+     */
+    private const ALPHANUM_CODES = [
+        // A — głównie transakcje walutowe natychmiastowe + przelewy wewnętrzne
+        'A13' => 'Prowizja — przelew zagraniczny walutowy zdefiniowany',
+        'A14' => 'Anulowanie prowizji — przelew walutowy zdefiniowany',
+        'A15' => 'Przelew przyszły do ZUS',
+        'A16' => 'Opłata za zlecenie stałe do ZUS',
+        'A17' => 'Przelew przyszły podatkowy',
+        'A18' => 'Opłata za zlecenie stałe podatkowe',
+        'A19' => 'Opłata za zlecenie stałe — inny organ podatkowy',
+        'A43' => 'Prowizja — przelew SEPA zdefiniowany',
+        'A44' => 'Prowizja — przelew systemowy walutowy zdefiniowany',
+        'A45' => 'Prowizja przelew SEPA zdefiniowany — anulowanie',
+        'A60' => 'Obciążenie — natychmiastowa transakcja walutowa',
+        'A61' => 'Uznanie — natychmiastowa transakcja walutowa',
+        'A62' => 'Anulowanie obciążenia natychmiastowej transakcji walutowej',
+        'A63' => 'Anulowanie uznania natychmiastowej transakcji walutowej',
+        'A64' => 'Uznanie — transakcja walutowa D+1/D+2',
+        'A65' => 'Obciążenie — transakcja walutowa D+1/D+2',
+        'A66' => 'Prowizja — obciążenie natychmiastowej transakcji walutowej',
+        'A67' => 'Anulowanie prowizji natychmiastowej transakcji walutowej',
+        'A68' => 'Prowizja — obciążenie transakcji D+1/D+2',
+        'A69' => 'Prowizja — uznanie transakcji D+1/D+2',
+        'A70' => 'Anulowanie prowizji za obciążenie transakcji D+1/D+2',
+        'A71' => 'Anulowanie prowizji za uznanie transakcji D+1/D+2',
+        'A72' => 'Przelew wewnętrzny wychodzący',
+        'A73' => 'Opłata — przelew wewnętrzny dowolny bieżący',
+        'A74' => 'Opłata — przelew wewnętrzny zdefiniowany bieżący',
+        'A75' => 'Przelew wewnętrzny wychodzący',
+        'A76' => 'Przelew wewnętrzny wychodzący',
+        'A77' => 'Przelew wewnętrzny wychodzący',
+        'A78' => 'Opłata za przelew wewnętrzny',
+        'A79' => 'Opłata za przelew wewnętrzny dowolny',
+        'A80' => 'Opłata za przelew wewnętrzny',
+        'A81' => 'Opłata — przelew wewnętrzny zdefiniowany',
+        'A82' => 'Przelew wewnętrzny wychodzący',
+        'A83' => 'Przelew wewnętrzny wychodzący',
+        'A84' => 'Opłata — przelew wewnętrzny dowolny przyszły',
+        'A85' => 'Opłata — przelew wewnętrzny zdefiniowany przyszły',
+        'A86' => 'Opłata za zlecenie stałe wewnętrzne',
+        'A87' => 'Przelew podatkowy',
+        'A88' => 'Opłata za przelew — inny organ podatkowy',
+        'A89' => 'Przelew przyszły podatkowy',
+        'A90' => 'Opłata za przelew przyszły — inny organ podatkowy',
+        'A91' => 'Przelew wewnętrzny przychodzący',
+
+        // B — przelewy + SEPA Direct Debit + ubezpieczenia
+        'B00' => 'Przelew wewnętrzny wychodzący',
+        'B01' => 'Opłata — przelew wewnętrzny zdefiniowany',
+        'B02' => 'Opłata — przelew wewnętrzny dowolny',
+        'B03' => 'Opłata — przelew wewnętrzny zdefiniowany',
+        'B04' => 'Opłata — przelew wewnętrzny dowolny',
+        'B21' => 'Przelew wewnętrzny wychodzący',
+        'B22' => 'Przelew zewnętrzny wychodzący',
+        'B23' => 'Przelew zewnętrzny wychodzący',
+        'B24' => 'Przelew wewnętrzny wychodzący',
+        'B25' => 'Przelew wewnętrzny przychodzący',
+        'B31' => 'Opłata — przelew wewnętrzny zdefiniowany',
+        'B32' => 'Opłata — przelew wewnętrzny dowolny',
+        'B33' => 'Opłata za przelew zewnętrzny',
+        'B34' => 'Opłata za przelew zewnętrzny',
+        'B35' => 'Opłata — przelew wewnętrzny dowolny',
+        'B36' => 'Opłata — przelew wewnętrzny zdefiniowany',
+        'B37' => 'Przelew zewnętrzny przychodzący',
+        'B38' => 'Przelew zewnętrzny przychodzący',
+        'B39' => 'Przelew zewnętrzny wychodzący',
+        'B40' => 'Przelew zewnętrzny wychodzący',
+        'B41' => 'Przelew zewnętrzny wychodzący',
+        'B42' => 'Przelew zewnętrzny wychodzący',
+        'B43' => 'Przelew zewnętrzny wychodzący',
+        'B44' => 'Przelew zewnętrzny wychodzący',
+        'B45' => 'Przelew zewnętrzny wychodzący',
+        'B51' => 'PZ SEPA — obciążenie',
+        'B52' => 'PZ SEPA — obciążenie',
+        'B53' => 'PZ SEPA — odwołanie',
+        'B54' => 'PZ SEPA — odwołanie',
+        'B55' => 'PZ SEPA — uznanie',
+        'B56' => 'PZ SEPA — uznanie',
+        'B81' => 'Składka za ubezpieczenie mTransfer',
+        'B82' => 'Anulowanie ubezpieczenia mTransferu',
+
+        // C — BLIK (zakupy, wypłaty, prowizje, reklamacje)
+        'C01' => 'BLIK — zakup',
+        'C02' => 'BLIK — korekta zakupu',
+        'C03' => 'BLIK — anulacja zakupu',
+        'C04' => 'BLIK — zakup z cash back',
+        'C05' => 'BLIK — korekta zakupu z cash back',
+        'C06' => 'BLIK — anulacja zakupu z cash back',
+        'C07' => 'BLIK — wypłata z banku',
+        'C08' => 'BLIK — korekta wypłaty z banku',
+        'C09' => 'BLIK — anulacja wypłaty z banku',
+        'C10' => 'BLIK — wypłata z banku krajowego',
+        'C11' => 'BLIK — korekta wypłaty z banku krajowego',
+        'C12' => 'BLIK — anulacja wypłaty z banku krajowego',
+        'C13' => 'BLIK — wypłata ATM własny',
+        'C14' => 'BLIK — korekta wypłaty ATM własny',
+        'C15' => 'BLIK — anulacja wypłaty ATM własny',
+        'C16' => 'BLIK — wypłata ATM wskazanej sieci',
+        'C17' => 'BLIK — korekta wypłaty ATM wskazanej sieci',
+        'C18' => 'BLIK — anulacja wypłaty ATM wskazanej sieci',
+        'C19' => 'BLIK — wypłata ATM krajowy',
+        'C20' => 'BLIK — korekta wypłaty ATM krajowy',
+        'C21' => 'BLIK — anulacja wypłaty ATM krajowy',
+        'C22' => 'BLIK — zakup e-commerce',
+        'C23' => 'BLIK — korekta zakupu e-commerce',
+        'C24' => 'BLIK — anulacja zakupu e-commerce',
+        'C25' => 'BLIK — prowizja zakup',
+        'C26' => 'BLIK — korekta prowizji zakup',
+        'C27' => 'BLIK — anulacja prowizji zakup',
+        // C28-C96 to dalsze prowizje/korekty BLIK — generujemy opis ogólny
+        'C97' => 'Uznanie reklamacyjne BLIK',
+        'C98' => 'Obciążenie reklamacyjne RT BLIK',
+        'C99' => 'Obciążenie reklamacyjne BLIK',
+        'C9A' => 'Uznanie reklamacyjne RT BLIK',
+
+        // F — promocje / MOKAZJE
+        'FB1' => 'MOKAZJE — uznanie',
+        'FB2' => 'MOKAZJE — korekta',
+
+        // Mieszane (cyfra + litera)
+        '00A' => 'Opłata za pakiet do eKonta',
+        '00B' => 'Przelew zewnętrzny wychodzący',
+        '00C' => 'Przelew zewnętrzny wychodzący',
+        '00D' => 'Opłata za przelew zewn. dowolny',
+        '00E' => 'Opłata za przelew zewn. zdefiniowany',
+        '00F' => 'Opłata za przelew zewn. dowolny',
+        '01A' => 'Opłata za przelew zewn. zdefiniowany',
+        '01B' => 'Promo-odsetki za nowe środki',
+        '10A' => 'Opłata za mKonto',
+        '10B' => 'Opłata za mKonto — anulowanie',
+        '27A' => 'Opłata za prowadzenie rachunku',
+        '78A' => 'Opłata za przelew przyszły — inny organ podatkowy',
+        '85A' => 'Opłata za zawieszenie PZ',
+        '85B' => 'Anulowanie opłaty — zawieszenie PZ',
+        '85C' => 'Opłata za wznowienie PZ',
+        '85D' => 'Anulowanie opłaty — wznowienie PZ',
+        '86A' => 'Opłata za odnowienie PZ',
+        '86B' => 'Anulowanie opłaty — odnowienie PZ',
+        '86C' => 'Opłata za przywrócenie PZ',
+        '86D' => 'Anulowanie opłaty — przywrócenie PZ',
+        '91A' => 'Raporty MT940 — opłata za dostęp',
+        '91B' => 'Raporty MT940 — opłata, anulowanie',
+        '4A2' => 'Korekta odsetek',
+        '4A3' => 'Anulowanie korekty odsetek',
+    ];
+
+    /**
+     * 3-cyfrowe kody mBank z PDF (zbiór najczęstszych dla operacji firmowych).
      */
     private const NUMERIC_CODES = [
         // Wpłaty / wypłaty gotówkowe
@@ -282,51 +428,9 @@ final class Mt940TransactionCodes
     ];
 
     /**
-     * Legacy 3-znakowe kody SWIFT (PKO, Santander, ING — w starszym formacie).
-     */
-    private const SWIFT_3CHAR = [
-        'C20' => 'Wpłata gotówkowa (uznanie)',
-        'C44' => 'Czek otrzymany',
-        'C50' => 'Przelew otrzymany (zwykły)',
-        'C57' => 'Czek skupowy',
-        'C61' => 'Przelew otrzymany',
-        'C62' => 'Przelew zagraniczny otrzymany',
-        'C95' => 'Uznanie — opłata bankowa',
-        'D20' => 'Wypłata gotówkowa (obciążenie)',
-        'D44' => 'Czek wystawiony',
-        'D50' => 'Przelew wychodzący (zwykły)',
-        'D57' => 'Czek rozliczeniowy',
-        'D61' => 'Przelew własny',
-        'D62' => 'Przelew zagraniczny wychodzący',
-        'D94' => 'Przelew krajowy (Elixir wychodzący)',
-        'D95' => 'Obciążenie — opłata bankowa',
-        'D99' => 'Inne obciążenie',
-        'N20' => 'Wpłata gotówkowa zewnętrzna',
-        'N31' => 'Przelew SEPA Credit Transfer',
-        'N32' => 'Przelew SEPA Direct Debit',
-        'N44' => 'Odsetki',
-        'N50' => 'Przelew SEPA wychodzący',
-        'N57' => 'Przelew międzybankowy SEPA',
-        'N94' => 'Przelew krajowy Elixir',
-        'N95' => 'Opłata bankowa (zewnętrzna)',
-        'S20' => 'Wpłata własna gotówkowa',
-        'S50' => 'Przelew okresowy / zlecenie stałe',
-        'S61' => 'Polecenie zapłaty',
-        'A61' => 'Korekta / księgowanie administracyjne (uznanie)',
-        'A95' => 'Opłaty bankowe (uznanie kredytowe)',
-        'F50' => 'Express Elixir / przelew natychmiastowy',
-        'F94' => 'Przelew natychmiastowy krajowy',
-        'Z61' => 'Storno przelewu',
-        'Z50' => 'Zwrot przelewu',
-        'G50' => 'Przelew gwarancyjny',
-        'W50' => 'Przewalutowanie',
-    ];
-
-    /**
-     * Zwraca opis kodu MT940. Próbuje:
-     * 1) dokładne dopasowanie 3-znakowe SWIFT (A61, D50…)
-     * 2) 4-znakowe mBank: prefix + 3-cyfrowy kod → "Opis (kategoria)"
-     * 3) fallback na samą kategorię z prefiksu.
+     * Zwraca opis kodu MT940.
+     * Priorytet: alfanumeryczny exact → 4-char SWIFT prefix + numeric →
+     * sam numeric → ogólny fallback.
      */
     public static function describe(?string $code): string
     {
@@ -334,17 +438,17 @@ final class Mt940TransactionCodes
         $code = strtoupper(trim($code));
         if ($code === '') return '';
 
-        // 1. Dokładny SWIFT 3-znakowy
-        if (isset(self::SWIFT_3CHAR[$code])) {
-            return self::SWIFT_3CHAR[$code];
+        // 1. Dokładny match w alfanumerycznej mapie mBanku (A61, B55, C97, FB1, 10A...)
+        if (isset(self::ALPHANUM_CODES[$code])) {
+            return self::ALPHANUM_CODES[$code];
         }
 
-        // 2. mBank 4-znakowy: pierwsza litera + 3 cyfry
-        if (preg_match('/^([A-Z])(\d{3})$/', $code, $m)) {
+        // 2. 4-znakowy SWIFT (N+3cyfry, S+3cyfry, F+3cyfry, G+3cyfry, W+3cyfry)
+        if (preg_match('/^([NSFGW])(\d{3})$/', $code, $m)) {
             $prefix = $m[1];
             $num    = $m[2];
-            $numDesc  = self::NUMERIC_CODES[$num]    ?? self::NUMERIC_CODES[ltrim($num, '0')] ?? null;
-            $prefDesc = self::PREFIX_LABELS[$prefix] ?? null;
+            $numDesc  = self::NUMERIC_CODES[$num] ?? self::NUMERIC_CODES[ltrim($num, '0')] ?? null;
+            $prefDesc = self::SWIFT_PREFIX[$prefix] ?? null;
 
             if ($numDesc !== null && $prefDesc !== null) {
                 return $numDesc . ' (' . $prefDesc . ')';
@@ -359,12 +463,18 @@ final class Mt940TransactionCodes
             if ($numDesc !== null) return $numDesc;
         }
 
-        // 4. Sama pierwsza litera daje kategorię
-        $first = substr($code, 0, 1);
-        if (isset(self::PREFIX_LABELS[$first])) {
-            return ucfirst(self::PREFIX_LABELS[$first]) . ' — kod ' . substr($code, 1);
+        // 4. C-prefiks (zwykle BLIK) bez exact match — zaznacz że to BLIK
+        if (str_starts_with($code, 'C') && preg_match('/^C\d{2}$/', $code)) {
+            return 'BLIK — operacja (kod ' . $code . ', sprawdź dokumentację mBanku)';
         }
 
-        return 'Kod MT940: ' . $code . ' (opis nieznany)';
+        // 5. Sama litera SWIFT bez 3-cyfrowego kodu operacji — zwracamy tylko meta-kategorię
+        $first = substr($code, 0, 1);
+        if (isset(self::SWIFT_PREFIX[$first]) && strlen($code) > 1) {
+            return ucfirst(self::SWIFT_PREFIX[$first]) . ' — kod ' . substr($code, 1)
+                . ' (opis pełny niedostępny — dodaj do mapy)';
+        }
+
+        return 'Kod MT940: ' . $code . ' (opis nieznany — sprawdź dokumentację banku)';
     }
 }
