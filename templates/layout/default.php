@@ -1695,6 +1695,27 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ['class' => 'side-menu__item ' . $navActive('reconciliations', 'indexSpeed')]
                                     ) ?>
                                 </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-bar-chart-2-line me-1"></i> Insights',
+                                        ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'insights'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('reconciliations', 'insights')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-calendar-line me-1"></i> Kalendarz',
+                                        ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'calendar'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('reconciliations', 'calendar')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-layout-column-line me-1"></i> Kanban',
+                                        ['plugin' => false, 'controller' => 'Reconciliations', 'action' => 'kanban'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('reconciliations', 'kanban')]
+                                    ) ?>
+                                </li>
                             </ul>
                             </li>
 

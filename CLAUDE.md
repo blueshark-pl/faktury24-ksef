@@ -296,6 +296,32 @@ Migracja: `20260423100000_CreateBankTransactionAllocations.php`
 > Wpisy w `$_accessible` encji `InvoicePayment`: `currency`, `payment_type`,
 > `bank_transaction_allocation_id` (dodane manualnie — bez tego mass-assign cicho je gubi).
 
+### Pełne kolumny `invoice_notes`
+Migracja: `20260528100100_CreateInvoiceNotes.php`
+Notatki, komentarze, activity log dla faktur (używane głównie przez Kanban).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | FK firma |
+| `invoice_id` | uuid | FK do `invoices` (nullable jeśli legacy) |
+| `legacy_invoice_id` | uuid | FK do `legacy_invoices` (nullable) |
+| `user_id` | uuid | autor (NULL = system) |
+| `note_type` | string(20) | `note` / `system` / `reminder` / `phone_call` / `email` |
+| `body` | text | treść |
+| `payload_json` | text | metadane akcji (np. action, target_column, changes) |
+
+### Pola Kanban na `invoices`
+Migracja: `20260528100000_AddKanbanFieldsToInvoices.php`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `snooze_until` | date | data odłożenia karty (NULL = aktywna) |
+| `dispute_flag` | bool | spór/windykacja |
+| `dispute_reason` | text | powód sporu |
+| `assigned_to_user_id` | uuid | FK do `users.id` (kto pilnuje) |
+| `kanban_pinned` | bool | przypięcie karty na górze kolumny |
+
 ---
 
 ## ORM — pułapki i konwencje
@@ -373,6 +399,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-05-28 | Feat: Kanban rozliczeń `/rozliczenia/kanban` — 6 kolumn (W terminie, Wysłane, Za 7 dni, Przeterminowane, Spór, Opłacone), drag-drop, kebab menu na karcie, notatki + activity log, snooze, severity gradient, mini-stats (DSO, Inkaso, At-risk), saved views (localStorage), bulk actions, compact mode, assign do usera, AI: następna akcja | `ReconciliationsController.php`, `templates/Reconciliations/kanban.php`, `templates/element/Reconciliations/kanban_card.php`, migracje, `InvoiceNotes*`, sidebar |
 | 2026-05-27 | Feat: serwis `Mt940TransactionCodes` (pełna mapa mBank z PDF + legacy SWIFT) + popovery z opisem kodów (`A61`, `D50`, `N150` itp.) w liście transakcji | `src/Service/Mt940TransactionCodes.php`, `templates/BankTransactions/transactions.php` |
 | 2026-05-27 | Feat: AI parser tytułu przelewu — `/wyciagi/ai-parse-title/{id}` → OpenAI wyciąga numery faktur (system + legacy), modal pokazuje listę z copy/search; fix wyszukiwania faktur (pokazuj WSZYSTKIE gdy user wpisuje query) | `BankTransactionsController.php`, `templates/BankTransactions/transactions.php`, `config/routes.php` |
 | 2026-05-27 | Doc: kompletna mapa kolumn `bank_transactions`, `bank_transaction_allocations`, `invoice_payments` + zasada #4a (sprawdzać migracje przed użyciem nazw pól) | `CLAUDE.md` |

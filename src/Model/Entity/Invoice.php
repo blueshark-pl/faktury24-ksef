@@ -199,5 +199,11 @@ class Invoice extends Entity
         'invoice_charges' => true,
         'invoice_factor_banks' => true,
         'invoice_authorized_entities' => true,
+        // Kanban
+        'snooze_until' => true,
+        'dispute_flag' => true,
+        'dispute_reason' => true,
+        'assigned_to_user_id' => true,
+        'kanban_pinned' => true,
     ];
 }

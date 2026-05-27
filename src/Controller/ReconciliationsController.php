@@ -2434,6 +2434,744 @@ class ReconciliationsController extends AppController
         $this->set('title', 'Kalendarz rozliczeń');
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // KANBAN — pipeline rozliczeniowy
+    // ──────────────────────────────────────────────────────────────────────
+
+    public function kanban(): void
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $today = date('Y-m-d');
+
+        // Filtry
+        $filterNip       = (string)$this->request->getQuery('contractor_nip', '');
+        $filterCurrency  = (string)$this->request->getQuery('currency', '');
+        $filterMinAmount = (float)$this->request->getQuery('min_amount', 0);
+        $filterAssigned  = (string)$this->request->getQuery('assigned', '');
+        $showSnoozed     = (string)$this->request->getQuery('show_snoozed', '') === '1';
+        $showArchived    = (string)$this->request->getQuery('show_archived', '') === '1';
+        $compactMode     = (string)$this->request->getQuery('compact', '') === '1';
+
+        // Pobieramy faktury z bufora -90/+90 dni (relevant dla pipeline)
+        $rangeStart = date('Y-m-d', strtotime($today . ' -90 days'));
+        $rangeEnd   = date('Y-m-d', strtotime($today . ' +90 days'));
+
+        $Invoices = $this->fetchTable('Invoices');
+        $q = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($qc) {
+                    return $qc->select(['id', 'invoice_id', 'name', 'nip']);
+                },
+            ])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'OR' => [
+                    ['Invoices.workflow_status IS' => null],
+                    ['Invoices.workflow_status !=' => 'draft'],
+                ],
+            ])
+            ->select([
+                'Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
+                'Invoices.paymentstate', 'Invoices.total', 'Invoices.remaining', 'Invoices.alreadypaid',
+                'Invoices.currency', 'Invoices.currency_exchange', 'Invoices.type',
+                'Invoices.workflow_status', 'Invoices.sent_at', 'Invoices.paid_at',
+                'Invoices.snooze_until', 'Invoices.dispute_flag', 'Invoices.dispute_reason',
+                'Invoices.assigned_to_user_id', 'Invoices.kanban_pinned',
+                'Invoices.modified',
+            ]);
+
+        // Filtr archiwum: ukrywaj opłacone starsze niż 30d chyba że showArchived
+        if (!$showArchived) {
+            $cutoff = date('Y-m-d', strtotime($today . ' -30 days'));
+            $q->where(['OR' => [
+                ['Invoices.paymentstate !=' => 'paid'],
+                ['Invoices.paymentstate IS' => null],
+                ['Invoices.paid_at >=' => $cutoff],
+                ['Invoices.paid_at IS' => null],
+            ]]);
+        }
+
+        if ($filterNip !== '') {
+            $q->where(['InvoiceContractors.nip' => $filterNip]);
+        }
+        if ($filterCurrency !== '') {
+            $q->where(['Invoices.currency' => $filterCurrency]);
+        }
+        if ($filterMinAmount > 0) {
+            $q->where(['Invoices.total >=' => $filterMinAmount]);
+        }
+        if ($filterAssigned === 'me') {
+            $userId = $this->request->getAttribute('identity')?->get('id');
+            if ($userId) $q->where(['Invoices.assigned_to_user_id' => $userId]);
+        } elseif ($filterAssigned === 'unassigned') {
+            $q->where(['Invoices.assigned_to_user_id IS' => null]);
+        } elseif ($filterAssigned !== '') {
+            $q->where(['Invoices.assigned_to_user_id' => $filterAssigned]);
+        }
+
+        // Pomijaj zakres tylko dla aktywnych — opłacone z buforem +30d w przeszłość mogą być starsze
+        $q->where(['OR' => [
+            ['Invoices.paymentdate >=' => $rangeStart, 'Invoices.paymentdate <=' => $rangeEnd],
+            ['Invoices.paymentstate' => 'paid'],
+        ]]);
+
+        $rows = $q->all();
+
+        // Bucket logic
+        $buckets = [
+            'in_term'    => [],  // W terminie
+            'sent'       => [],  // Wysłane — czekają na potwierdzenie
+            'due_soon'   => [],  // Za 7 dni
+            'overdue'    => [],  // Przeterminowane
+            'dispute'    => [],  // Spór / windykacja
+            'paid'       => [],  // Opłacone (ostatnie 30d)
+            'snoozed'    => [],  // Odłożone (osobna sekcja jeśli showSnoozed)
+        ];
+
+        foreach ($rows as $inv) {
+            $card = $this->_buildKanbanCard($inv, $today);
+
+            if ($card['is_snoozed']) {
+                if ($showSnoozed) $buckets['snoozed'][] = $card;
+                continue;
+            }
+            if ($card['paymentstate'] === 'paid') {
+                $buckets['paid'][] = $card;
+                continue;
+            }
+            if ($card['dispute_flag']) {
+                $buckets['dispute'][] = $card;
+                continue;
+            }
+            if ($card['days_to_due'] !== null && $card['days_to_due'] < 0) {
+                $buckets['overdue'][] = $card;
+                continue;
+            }
+            if ($card['days_to_due'] !== null && $card['days_to_due'] <= 7) {
+                $buckets['due_soon'][] = $card;
+                continue;
+            }
+            // Sent: workflow=sent oraz sent_at niedawno (max 3 dni)
+            if ($card['workflow_status'] === 'sent' && $card['days_since_sent'] !== null && $card['days_since_sent'] <= 3) {
+                $buckets['sent'][] = $card;
+                continue;
+            }
+            $buckets['in_term'][] = $card;
+        }
+
+        // Sortowanie wewnątrz każdej kolumny: pinned na górę, potem wg pilności
+        foreach ($buckets as $col => &$cards) {
+            usort($cards, function ($a, $b) use ($col) {
+                if ($a['pinned'] !== $b['pinned']) return $b['pinned'] <=> $a['pinned'];
+                if ($col === 'overdue') {
+                    return ($a['days_to_due'] ?? 0) <=> ($b['days_to_due'] ?? 0);
+                }
+                if ($col === 'paid') {
+                    return strcmp($b['paid_at_str'] ?? '', $a['paid_at_str'] ?? '');
+                }
+                return strcmp($a['paymentdate_str'] ?? '', $b['paymentdate_str'] ?? '');
+            });
+        }
+        unset($cards);
+
+        // Statystyki
+        $stats = $this->_buildKanbanStats($buckets, $today, $companyId);
+
+        // Lista kontrahentów + użytkowników do filtrów
+        $contractorsForFilter = $this->_buildContractorsList($companyId);
+        $usersForFilter = $this->_buildKanbanUsersList($companyId);
+
+        $this->set(compact('buckets', 'stats', 'today',
+            'filterNip', 'filterCurrency', 'filterMinAmount', 'filterAssigned',
+            'showSnoozed', 'showArchived', 'compactMode',
+            'contractorsForFilter', 'usersForFilter'));
+        $this->set('title', 'Kanban rozliczeń');
+    }
+
+    private function _buildKanbanCard($inv, string $today): array
+    {
+        $pdStr = $this->_extractDateStr($inv->paymentdate);
+        $sentStr = $this->_extractDateStr($inv->sent_at);
+        $paidStr = $this->_extractDateStr($inv->paid_at);
+        $snoozeStr = $this->_extractDateStr($inv->snooze_until);
+        $modifiedStr = $this->_extractDateStr($inv->modified);
+
+        $daysToDue = null;
+        if ($pdStr) {
+            $daysToDue = (int)floor((strtotime($pdStr) - strtotime($today)) / 86400);
+        }
+        $daysSinceSent = null;
+        if ($sentStr) {
+            $daysSinceSent = (int)floor((strtotime($today) - strtotime($sentStr)) / 86400);
+        }
+        $daysSinceTouch = null;
+        if ($modifiedStr) {
+            $daysSinceTouch = (int)floor((strtotime($today) - strtotime($modifiedStr)) / 86400);
+        }
+
+        $isSnoozed = $snoozeStr && $snoozeStr >= $today;
+        $total = (float)$inv->total;
+        $remaining = (float)$inv->remaining;
+        $alreadypaid = (float)$inv->alreadypaid;
+        $progressPct = $total > 0 ? min(100, max(0, round(($alreadypaid / $total) * 100))) : 0;
+
+        // Severity dla overdue — używamy do gradientu
+        $severity = 'none';
+        if ($daysToDue !== null && $daysToDue < 0 && (string)$inv->paymentstate !== 'paid') {
+            $od = abs($daysToDue);
+            if ($od >= 60)       $severity = 'critical';
+            elseif ($od >= 30)   $severity = 'high';
+            elseif ($od >= 8)    $severity = 'medium';
+            else                 $severity = 'low';
+        }
+
+        // Stale alert: niezmodyfikowana >7d i jest w overdue
+        $isStale = ($daysSinceTouch !== null && $daysSinceTouch > 7
+            && $daysToDue !== null && $daysToDue < 0
+            && (string)$inv->paymentstate !== 'paid');
+
+        return [
+            'id'              => (string)$inv->id,
+            'fullnumber'      => (string)$inv->fullnumber,
+            'contractor'      => (string)($inv->invoice_contractor->name ?? ''),
+            'nip'             => (string)($inv->invoice_contractor->nip ?? ''),
+            'total'           => $total,
+            'remaining'       => $remaining,
+            'alreadypaid'     => $alreadypaid,
+            'currency'        => (string)($inv->currency ?? 'PLN'),
+            'currency_exchange' => (float)($inv->currency_exchange ?? 0),
+            'type'            => (string)$inv->type,
+            'paymentstate'    => (string)($inv->paymentstate ?? 'unpaid'),
+            'paymentdate_str' => $pdStr,
+            'sent_at_str'     => $sentStr,
+            'paid_at_str'     => $paidStr,
+            'snooze_until_str'=> $snoozeStr,
+            'workflow_status' => (string)($inv->workflow_status ?? ''),
+            'days_to_due'     => $daysToDue,
+            'days_since_sent' => $daysSinceSent,
+            'days_since_touch'=> $daysSinceTouch,
+            'progress_pct'    => $progressPct,
+            'severity'        => $severity,
+            'is_stale'        => $isStale,
+            'is_snoozed'      => $isSnoozed,
+            'dispute_flag'    => (bool)$inv->dispute_flag,
+            'dispute_reason'  => (string)($inv->dispute_reason ?? ''),
+            'assigned_to_user_id' => $inv->assigned_to_user_id ? (string)$inv->assigned_to_user_id : null,
+            'pinned'          => (bool)$inv->kanban_pinned,
+        ];
+    }
+
+    private function _buildKanbanStats(array $buckets, string $today, string $companyId): array
+    {
+        $sumByCurr = ['PLN' => 0.0, 'EUR' => 0.0];
+        $countByCol = [];
+        $totalAtRisk = ['PLN' => 0.0, 'EUR' => 0.0];
+
+        foreach ($buckets as $col => $cards) {
+            $countByCol[$col] = count($cards);
+            $colSum = ['PLN' => 0.0, 'EUR' => 0.0];
+            foreach ($cards as $c) {
+                $curr = strtoupper($c['currency']);
+                if ($curr !== 'EUR') $curr = 'PLN';
+                $amt = (float)$c['remaining'];
+                $colSum[$curr] += $amt;
+                if ($col !== 'paid') {
+                    $sumByCurr[$curr] += $amt;
+                }
+                if (in_array($col, ['overdue', 'dispute'], true)) {
+                    $totalAtRisk[$curr] += $amt;
+                }
+            }
+            $countByCol[$col . '_sum_pln'] = round($colSum['PLN'], 2);
+            $countByCol[$col . '_sum_eur'] = round($colSum['EUR'], 2);
+        }
+
+        // DSO bieżący — uproszczona formuła: średnie days_to_due dla wszystkich nieopłaconych
+        $dso = 0;
+        $dsoCount = 0;
+        foreach (['in_term', 'sent', 'due_soon', 'overdue'] as $col) {
+            foreach (($buckets[$col] ?? []) as $c) {
+                if ($c['days_to_due'] !== null) {
+                    $dso += abs($c['days_to_due']);
+                    $dsoCount++;
+                }
+            }
+        }
+        $dso = $dsoCount > 0 ? round($dso / $dsoCount, 1) : 0;
+
+        // Collected % this month (z invoice_payments)
+        $monthStart = date('Y-m-01');
+        $monthEnd   = date('Y-m-t');
+        $collectedThisMonth = 0.0;
+        try {
+            $db = $this->fetchTable('Invoices')->getConnection();
+            $stmt = $db->execute(
+                "SELECT COALESCE(SUM(ip.amount), 0) AS collected
+                 FROM invoice_payments ip
+                 JOIN invoices i ON i.id = ip.invoice_id
+                 WHERE i.company_id = ?
+                   AND ip.payment_date >= ? AND ip.payment_date <= ?",
+                [$companyId, $monthStart, $monthEnd]
+            );
+            $row = $stmt->fetch('assoc');
+            $collectedThisMonth = (float)($row['collected'] ?? 0);
+        } catch (\Exception $e) {
+            // ignore
+        }
+
+        return [
+            'count_by_col'    => $countByCol,
+            'sum_pln'         => round($sumByCurr['PLN'], 2),
+            'sum_eur'         => round($sumByCurr['EUR'], 2),
+            'at_risk_pln'     => round($totalAtRisk['PLN'], 2),
+            'at_risk_eur'     => round($totalAtRisk['EUR'], 2),
+            'dso'             => $dso,
+            'collected_month' => round($collectedThisMonth, 2),
+            'overdue_count'   => $countByCol['overdue'] ?? 0,
+            'dispute_count'   => $countByCol['dispute'] ?? 0,
+        ];
+    }
+
+    private function _buildKanbanUsersList(string $companyId): array
+    {
+        try {
+            $Users = $this->fetchTable('Users');
+            $rows = $Users->find()
+                ->where(['company_id' => $companyId, 'active' => true])
+                ->select(['id', 'first_name', 'last_name', 'email', 'avatar'])
+                ->orderAsc('first_name')
+                ->all();
+            $out = [];
+            foreach ($rows as $u) {
+                $out[] = [
+                    'id'    => (string)$u->id,
+                    'name'  => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: (string)$u->email,
+                    'email' => (string)$u->email,
+                    'avatar'=> (string)($u->avatar ?? ''),
+                ];
+            }
+            return $out;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    // ── Akcje drag-drop i pojedyncze ───────────────────────────────────────
+
+    public function kanbanMove(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $targetCol = (string)$this->request->getData('target_column');
+        $allowedCols = ['in_term', 'sent', 'due_soon', 'overdue', 'dispute', 'paid', 'snoozed'];
+        if (!in_array($targetCol, $allowedCols, true)) {
+            return $this->_jsonStatusError('Nieprawidłowa kolumna docelowa.', 400);
+        }
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()
+            ->where(['id' => $id, 'company_id' => $companyId])
+            ->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $changes = [];
+        $logBody = '';
+
+        if ($targetCol === 'dispute') {
+            $reason = trim((string)$this->request->getData('reason', ''));
+            $invoice->dispute_flag = true;
+            $invoice->dispute_reason = $reason ?: 'Brak powodu';
+            $changes['dispute_flag'] = true;
+            $logBody = 'Przeniesiono do "Spór / windykacja"' . ($reason ? ': ' . $reason : '');
+        } elseif ($targetCol === 'snoozed') {
+            $until = (string)$this->request->getData('snooze_until', date('Y-m-d', strtotime('+7 days')));
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $until)) {
+                $until = date('Y-m-d', strtotime('+7 days'));
+            }
+            $invoice->snooze_until = $until;
+            $changes['snooze_until'] = $until;
+            $logBody = 'Odłożono do ' . $until;
+        } else {
+            // Przeniesienie do innej kolumny niż dispute / snoozed = wyczyść flagi
+            if ($invoice->dispute_flag) {
+                $invoice->dispute_flag = false;
+                $invoice->dispute_reason = null;
+                $logBody = 'Usunięto flagę sporu (przeniesiono do "' . $targetCol . '")';
+            }
+            if ($invoice->snooze_until) {
+                $invoice->snooze_until = null;
+                $logBody = trim($logBody . ' · Anulowano odłożenie');
+            }
+            if ($logBody === '') {
+                $logBody = 'Przeniesiono do kolumny "' . $targetCol . '" (zmiana wizualna)';
+            }
+        }
+
+        if (!$Invoices->save($invoice)) {
+            return $this->_jsonStatusError('Błąd zapisu: ' . json_encode($invoice->getErrors()), 500);
+        }
+
+        $this->_logKanbanAction($id, $userId, $companyId, 'move', $logBody, [
+            'target_column' => $targetCol,
+            'changes' => $changes,
+        ]);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success' => true,
+                'invoice_id' => $id,
+                'target_column' => $targetCol,
+            ]));
+    }
+
+    public function kanbanNote(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $body = trim((string)$this->request->getData('body'));
+        $type = (string)$this->request->getData('note_type', 'note');
+        if ($body === '') return $this->_jsonStatusError('Treść notatki nie może być pusta.', 400);
+
+        $InvoiceNotes = $this->fetchTable('InvoiceNotes');
+        $note = $InvoiceNotes->newEntity([
+            'id'         => Text::uuid(),
+            'company_id' => $companyId,
+            'invoice_id' => $id,
+            'user_id'    => $userId,
+            'note_type'  => in_array($type, ['note', 'reminder', 'phone_call', 'email'], true) ? $type : 'note',
+            'body'       => $body,
+        ]);
+        if (!$InvoiceNotes->save($note)) {
+            return $this->_jsonStatusError('Błąd zapisu notatki.', 500);
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'success' => true,
+                'note' => [
+                    'id'        => (string)$note->id,
+                    'body'      => $body,
+                    'note_type' => $note->note_type,
+                    'created'   => date('Y-m-d H:i'),
+                ],
+            ]));
+    }
+
+    public function kanbanSnooze(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $until = (string)$this->request->getData('until');
+        if ($until !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $until)) {
+            return $this->_jsonStatusError('Nieprawidłowy format daty.', 400);
+        }
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()->where(['id' => $id, 'company_id' => $companyId])->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $invoice->snooze_until = $until ?: null;
+        if (!$Invoices->save($invoice)) {
+            return $this->_jsonStatusError('Błąd zapisu.', 500);
+        }
+
+        $log = $until === ''
+            ? 'Anulowano odłożenie'
+            : 'Odłożono do ' . $until;
+        $this->_logKanbanAction($id, $userId, $companyId, 'snooze', $log, ['until' => $until]);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'snooze_until' => $until]));
+    }
+
+    public function kanbanDispute(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $flag = (string)$this->request->getData('flag') === '1';
+        $reason = trim((string)$this->request->getData('reason', ''));
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()->where(['id' => $id, 'company_id' => $companyId])->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $invoice->dispute_flag = $flag;
+        $invoice->dispute_reason = $flag ? ($reason ?: 'Brak powodu') : null;
+        if (!$Invoices->save($invoice)) return $this->_jsonStatusError('Błąd zapisu.', 500);
+
+        $log = $flag ? 'Oznaczono jako spór: ' . ($reason ?: '—') : 'Usunięto flagę sporu';
+        $this->_logKanbanAction($id, $userId, $companyId, 'dispute', $log, ['flag' => $flag, 'reason' => $reason]);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true]));
+    }
+
+    public function kanbanAssign(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $actorId   = $this->request->getAttribute('identity')?->get('id');
+
+        $targetUserId = (string)$this->request->getData('user_id');
+        if ($targetUserId !== '' && !preg_match('/^[0-9a-f-]{36}$/i', $targetUserId)) {
+            return $this->_jsonStatusError('Nieprawidłowy ID użytkownika.', 400);
+        }
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()->where(['id' => $id, 'company_id' => $companyId])->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        // Walidacja: target user musi należeć do tej samej firmy
+        if ($targetUserId !== '') {
+            $u = $this->fetchTable('Users')->find()
+                ->where(['id' => $targetUserId, 'company_id' => $companyId])
+                ->first();
+            if (!$u) return $this->_jsonStatusError('Użytkownik nie z tej firmy.', 403);
+            $userName = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: (string)$u->email;
+        }
+
+        $invoice->assigned_to_user_id = $targetUserId ?: null;
+        if (!$Invoices->save($invoice)) return $this->_jsonStatusError('Błąd zapisu.', 500);
+
+        $log = $targetUserId === ''
+            ? 'Cofnięto przypisanie'
+            : 'Przypisano do: ' . ($userName ?? '?');
+        $this->_logKanbanAction($id, $actorId, $companyId, 'assign', $log, ['user_id' => $targetUserId]);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true]));
+    }
+
+    public function kanbanPin(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()->where(['id' => $id, 'company_id' => $companyId])->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $invoice->kanban_pinned = !((bool)$invoice->kanban_pinned);
+        if (!$Invoices->save($invoice)) return $this->_jsonStatusError('Błąd zapisu.', 500);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'pinned' => $invoice->kanban_pinned]));
+    }
+
+    public function kanbanBulkAction(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $ids = (array)$this->request->getData('ids', []);
+        $action = (string)$this->request->getData('action');
+        $payload = (array)$this->request->getData('payload', []);
+
+        $ids = array_filter(array_map('strval', $ids), function ($v) {
+            return preg_match('/^[0-9a-f-]{36}$/i', $v);
+        });
+        if (empty($ids)) return $this->_jsonStatusError('Brak ID faktur.', 400);
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoices = $Invoices->find()
+            ->where(['id IN' => $ids, 'company_id' => $companyId])
+            ->all()->toArray();
+
+        $count = 0;
+        foreach ($invoices as $inv) {
+            switch ($action) {
+                case 'snooze':
+                    $until = (string)($payload['until'] ?? date('Y-m-d', strtotime('+7 days')));
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $until)) continue 2;
+                    $inv->snooze_until = $until;
+                    break;
+                case 'unsnooze':
+                    $inv->snooze_until = null;
+                    break;
+                case 'dispute':
+                    $inv->dispute_flag = true;
+                    $inv->dispute_reason = (string)($payload['reason'] ?? 'Bulk action');
+                    break;
+                case 'undispute':
+                    $inv->dispute_flag = false;
+                    $inv->dispute_reason = null;
+                    break;
+                case 'assign':
+                    $inv->assigned_to_user_id = (string)($payload['user_id'] ?? '') ?: null;
+                    break;
+                default:
+                    return $this->_jsonStatusError('Nieznana akcja bulk: ' . $action, 400);
+            }
+            if ($Invoices->save($inv)) {
+                $count++;
+                $this->_logKanbanAction((string)$inv->id, $userId, $companyId, 'bulk_' . $action, 'Akcja masowa: ' . $action, $payload);
+            }
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'affected' => $count, 'total' => count($ids)]));
+    }
+
+    public function kanbanGetNotes(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $InvoiceNotes = $this->fetchTable('InvoiceNotes');
+        $notes = $InvoiceNotes->find()
+            ->where(['company_id' => $companyId, 'invoice_id' => $id])
+            ->contain(['Users' => function ($q) {
+                return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
+            }])
+            ->select(['id', 'invoice_id', 'user_id', 'note_type', 'body', 'payload_json', 'created'])
+            ->orderDesc('created')
+            ->limit(50)
+            ->all();
+
+        $out = [];
+        foreach ($notes as $n) {
+            $u = $n->user;
+            $out[] = [
+                'id'        => (string)$n->id,
+                'note_type' => (string)$n->note_type,
+                'body'      => (string)$n->body,
+                'payload'   => $n->payload_json ? json_decode($n->payload_json, true) : null,
+                'created'   => $n->created instanceof \DateTimeInterface ? $n->created->format('Y-m-d H:i') : (string)$n->created,
+                'user_name' => $u ? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: (string)$u->email : 'System',
+                'user_avatar' => $u ? (string)($u->avatar ?? '') : '',
+            ];
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['notes' => $out]));
+    }
+
+    public function kanbanAiSuggest(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()
+            ->contain(['InvoiceContractors' => function ($q) {
+                return $q->select(['id', 'invoice_id', 'name', 'nip']);
+            }])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.total', 'Invoices.remaining',
+                      'Invoices.currency', 'Invoices.paymentdate', 'Invoices.paymentstate',
+                      'Invoices.sent_at', 'Invoices.workflow_status', 'Invoices.dispute_flag'])
+            ->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        // Historia notatek dla tego kontrahenta
+        $contractorNip = (string)($invoice->invoice_contractor->nip ?? '');
+        $InvoiceNotes = $this->fetchTable('InvoiceNotes');
+        $recentNotes = [];
+        if ($contractorNip !== '') {
+            $db = $InvoiceNotes->getConnection();
+            try {
+                $stmt = $db->execute(
+                    "SELECT n.body, n.note_type, n.created
+                     FROM invoice_notes n
+                     JOIN invoices i ON i.id = n.invoice_id
+                     JOIN invoice_contractors ic ON ic.invoice_id = i.id
+                     WHERE n.company_id = ? AND ic.nip = ?
+                     ORDER BY n.created DESC LIMIT 10",
+                    [$companyId, $contractorNip]
+                );
+                $recentNotes = $stmt->fetchAll('assoc') ?: [];
+            } catch (\Exception $e) {
+                // ignore
+            }
+        }
+
+        $today = date('Y-m-d');
+        $pdStr = $this->_extractDateStr($invoice->paymentdate);
+        $daysOverdue = $pdStr ? max(0, (int)floor((strtotime($today) - strtotime($pdStr)) / 86400)) : 0;
+
+        $context = [
+            'invoice'      => (string)$invoice->fullnumber,
+            'contractor'   => (string)($invoice->invoice_contractor->name ?? ''),
+            'amount'       => (float)$invoice->remaining . ' ' . $invoice->currency,
+            'paymentdate'  => $pdStr,
+            'days_overdue' => $daysOverdue,
+            'workflow'     => (string)$invoice->workflow_status,
+            'paymentstate' => (string)$invoice->paymentstate,
+            'is_dispute'   => (bool)$invoice->dispute_flag,
+            'recent_actions_with_contractor' => array_map(fn($n) => $n['note_type'] . ': ' . $n['body'], $recentNotes),
+        ];
+
+        $system = <<<SYS
+Jesteś asystentem od windykacji w firmie transportowej. Na podstawie kontekstu zaproponuj 3 KONKRETNE następne kroki dla tego rozliczenia. Bądź zwięzły. Zwróć JSON:
+{
+  "suggestions": [
+    {"action": "krótka nazwa", "description": "1 zdanie co i dlaczego", "urgency": "low|medium|high"}
+  ],
+  "summary": "1 zdanie podsumowania sytuacji"
+}
+Zasady:
+- Jeśli faktura niewysłana → najpierw wyślij
+- Jeśli przeterminowana ≤7d → email z grzecznym przypomnieniem
+- Jeśli ≤30d → telefon + email z monitem
+- Jeśli >30d → wezwanie do zapłaty, możliwy spór
+- Jeśli >60d → rozważ windykację zewnętrzną / zachowek
+- Jeśli klient ma w historii notatkę "obiecał wpłatę X" — zaproponuj kontakt po tej dacie
+- NIE wymyślaj danych nie podanych w kontekście
+SYS;
+
+        $user = "Kontekst rozliczenia:\n" . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->chatJson($system, $user, 600);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[kanban-ai] ' . $e->getMessage());
+            return $this->_jsonStatusError('Błąd AI: ' . $e->getMessage(), 502);
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'suggestions' => $result['suggestions'] ?? [],
+                'summary' => (string)($result['summary'] ?? ''),
+            ], JSON_UNESCAPED_UNICODE));
+    }
+
+    private function _logKanbanAction(string $invoiceId, ?string $userId, string $companyId, string $action, string $body, array $payload = []): void
+    {
+        try {
+            $InvoiceNotes = $this->fetchTable('InvoiceNotes');
+            $note = $InvoiceNotes->newEntity([
+                'id'         => Text::uuid(),
+                'company_id' => $companyId,
+                'invoice_id' => $invoiceId,
+                'user_id'    => $userId,
+                'note_type'  => 'system',
+                'body'       => $body,
+                'payload_json' => json_encode(array_merge(['action' => $action], $payload), JSON_UNESCAPED_UNICODE),
+            ]);
+            $InvoiceNotes->save($note);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[kanban-log] ' . $e->getMessage());
+        }
+    }
+
+    private function _jsonStatusError(string $message, int $status = 400): Response
+    {
+        return $this->response->withType('application/json')
+            ->withStatus($status)
+            ->withStringBody(json_encode(['error' => $message]));
+    }
+
     private function _buildContractorsList(string $companyId): array
     {
         try {

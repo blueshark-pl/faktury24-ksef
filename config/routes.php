@@ -146,6 +146,26 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/rozliczenia/ksef/insights/top-debtors', ['controller' => 'Reconciliations', 'action' => 'topDebtorsPage']);
         $builder->get('/rozliczenia/ksef/insights/contractor/{nip}', ['controller' => 'Reconciliations', 'action' => 'contractorProfile'])
             ->setPass(['nip']);
+
+        // Kanban — pipeline rozliczeniowy
+        $builder->get('/rozliczenia/kanban', ['controller' => 'Reconciliations', 'action' => 'kanban']);
+        $builder->post('/rozliczenia/kanban/move/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanMove'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/note/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanNote'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/snooze/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanSnooze'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/dispute/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanDispute'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/assign/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanAssign'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/pin/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanPin'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/bulk-action', ['controller' => 'Reconciliations', 'action' => 'kanbanBulkAction']);
+        $builder->post('/rozliczenia/kanban/ai-suggest/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanAiSuggest'])
+            ->setPass(['id']);
+        $builder->get('/rozliczenia/kanban/notes/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanGetNotes'])
+            ->setPass(['id']);
         $builder->get('/rozliczenia/speed', ['controller' => 'Reconciliations', 'action' => 'indexSpeed']);
         $builder->post('/rozliczenia/add-payment', ['controller' => 'Reconciliations', 'action' => 'addPayment']);
         $builder->post('/rozliczenia/delete-payment/{id}', ['controller' => 'Reconciliations', 'action' => 'deletePayment'])
