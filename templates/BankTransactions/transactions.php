@@ -225,59 +225,9 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                                 <span class="text-muted fst-italic" style="font-size:.8em">—</span>
                             </div>
                             <?php endif; ?>
-                            <?php
+                            <?php /* Sugerowane faktury — ukryte na razie (user decision). Dane dalej generowane w controlerze; można odkomentować poniżej żeby przywrócić.
                                 $candidates = $candidatesByTx[(string)$tx->id] ?? [];
-                            ?>
-                            <?php if (!empty($candidates)): ?>
-                                <div class="mt-2 pt-1 border-top" style="font-size:.7em">
-                                    <div class="text-muted mb-1" style="font-size:.95em">
-                                        <i class="ri-magic-line text-warning"></i>
-                                        Sugerowane (<?= count($candidates) ?>):
-                                    </div>
-                                    <div class="d-flex flex-column gap-1">
-                                        <?php foreach ($candidates as $c): ?>
-                                            <?php
-                                                $scoreColor = $c['score'] >= 80 ? 'success' : ($c['score'] >= 50 ? 'primary' : 'info');
-                                                $srcBadge   = $c['source'] === 'legacy' ? 'arch' : 'sys';
-                                                $srcClass   = $c['source'] === 'legacy' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary';
-                                                $reasonsStr = implode(' · ', $c['reasons']);
-                                            ?>
-                                            <div class="tx-candidate d-flex align-items-center gap-1"
-                                                 data-tx-id="<?= h($tx->id) ?>"
-                                                 data-cand-id="<?= h($c['id']) ?>"
-                                                 data-cand-source="<?= h($c['source']) ?>"
-                                                 data-cand-fullnumber="<?= h($c['fullnumber']) ?>"
-                                                 data-cand-total="<?= h($c['total']) ?>"
-                                                 data-cand-remaining="<?= h($c['remaining']) ?>"
-                                                 data-cand-currency="<?= h($c['currency']) ?>"
-                                                 title="<?= h($reasonsStr) ?>"
-                                                 style="border:1px solid #e5e7eb;border-radius:.3rem;padding:.2rem .35rem;cursor:pointer;background:#fafbfc">
-                                                <span class="badge <?= $srcClass ?> border" style="font-size:.65em"><?= $srcBadge ?></span>
-                                                <span class="fw-semibold text-truncate" style="max-width:120px"><?= h($c['fullnumber']) ?></span>
-                                                <span class="badge bg-<?= $scoreColor ?>-subtle text-<?= $scoreColor ?> border ms-auto" style="font-size:.62em" title="Match score">
-                                                    <?= (int)$c['score'] ?>
-                                                </span>
-                                                <span class="text-muted text-nowrap" style="font-size:.95em">
-                                                    <?= number_format($c['remaining'] > 0.01 ? $c['remaining'] : $c['total'], 2, ',', ' ') ?> <?= h($c['currency']) ?>
-                                                </span>
-                                                <button type="button" class="btn btn-xs btn-success p-0 px-1 ms-1 btn-link-candidate"
-                                                        data-tx-id="<?= h($tx->id) ?>"
-                                                        data-cand-id="<?= h($c['id']) ?>"
-                                                        data-cand-source="<?= h($c['source']) ?>"
-                                                        data-cand-fullnumber="<?= h($c['fullnumber']) ?>"
-                                                        data-cand-remaining="<?= h($c['remaining']) ?>"
-                                                        data-cand-currency="<?= h($c['currency']) ?>"
-                                                        data-tx-amount="<?= h($tx->amount) ?>"
-                                                        data-tx-currency="<?= h($tx->currency) ?>"
-                                                        title="Powiąż całą kwotę z tą fakturą"
-                                                        style="font-size:.72em;line-height:1">
-                                                    <i class="ri-link"></i>
-                                                </button>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
+                            */ ?>
                         </td>
 
                         <!-- Kwota -->
