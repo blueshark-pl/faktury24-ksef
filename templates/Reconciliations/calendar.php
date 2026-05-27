@@ -9,6 +9,9 @@
  * @var string $show
  * @var bool   $showTx
  * @var string $txDateField
+ * @var int    $debugTxFetched
+ * @var int    $debugTxRendered
+ * @var string|null $debugTxError
  * @var array  $weeks
  * @var array  $byDate
  * @var string $firstDay
@@ -202,6 +205,17 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                     <i class="ri-time-line"></i> wal.
                 </a>
             </div>
+            <!-- Diagnostic pill -->
+            <span class="badge bg-light text-dark border" style="font-size:.7rem"
+                  title="Pobrane z DB / wrenderowane w widoku (po filtrach i zakresie)">
+                <i class="ri-database-2-line"></i> DB: <?= (int)$debugTxFetched ?>
+                · widok: <?= (int)$debugTxRendered ?>
+            </span>
+            <?php if (!empty($debugTxError)): ?>
+                <span class="badge bg-danger" title="<?= h($debugTxError) ?>">
+                    <i class="ri-error-warning-line"></i> błąd: <?= h(mb_strimwidth($debugTxError, 0, 40, '…')) ?>
+                </span>
+            <?php endif; ?>
         <?php endif; ?>
 
         <!-- Mode toggle (effective vs paymentdate) -->

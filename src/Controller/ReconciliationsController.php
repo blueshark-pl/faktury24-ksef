@@ -2269,13 +2269,15 @@ class ReconciliationsController extends AppController
                     ])
                     ->where([
                         'BankTransactions.company_id' => $companyId,
-                        // Bierzemy szerszy zakres na obu kolumnach — anchor wyliczymy w PHP
+                        // Bierzemy szerszy zakres na obu kolumnach — anchor wyliczymy w PHP.
+                        // Numeryczne klucze (każda sub-tablica = AND, lista = OR).
                         'OR' => [
-                            'AND' => [
+                            [
                                 'BankTransactions.value_date >=' => $gridStart,
                                 'BankTransactions.value_date <=' => $gridEnd,
                             ],
-                            'AND_b' => [
+                            [
+                                'BankTransactions.booking_date IS NOT' => null,
                                 'BankTransactions.booking_date >=' => $gridStart,
                                 'BankTransactions.booking_date <=' => $gridEnd,
                             ],
@@ -2302,6 +2304,13 @@ class ReconciliationsController extends AppController
                 }
 
                 $txRows = $txQuery->all();
+                // Diagnostyka — można odczytać w logu / przy dispatchu
+                \Cake\Log\Log::info(sprintf(
+                    '[calendar] bank_transactions: company=%s range=[%s..%s] anchor=%s rows=%d',
+                    $companyId, $gridStart, $gridEnd, $txDateField, $txRows->count()
+                ));
+                $debugTxFetched = $txRows->count();
+                $debugTxRendered = 0;
                 foreach ($txRows as $tx) {
                     $vdStr = $this->_extractDateStr($tx->value_date);
                     $bdStr = $this->_extractDateStr($tx->booking_date);
@@ -2321,6 +2330,7 @@ class ReconciliationsController extends AppController
                         ];
                     }
 
+                    $debugTxRendered++;
                     $byDate[$anchor][] = [
                         'kind'             => 'transfer',
                         'id'               => (string)$tx->id,
@@ -2346,8 +2356,12 @@ class ReconciliationsController extends AppController
                 }
             } catch (\Exception $e) {
                 \Cake\Log\Log::warning('[calendar] bank_transactions fetch failed: ' . $e->getMessage());
+                $debugTxError = $e->getMessage();
             }
         }
+        $debugTxFetched  ??= 0;
+        $debugTxRendered ??= 0;
+        $debugTxError    ??= null;
 
         // Sortuj elementy w każdym dniu (overdue → pending → paid → payment → transfer)
         foreach ($byDate as &$list) {
@@ -2410,7 +2424,8 @@ class ReconciliationsController extends AppController
             'prevDay', 'nextDay', 'prevWeek', 'nextWeek',
             'gridStart', 'gridEnd',
             'filterNip', 'filterCurrency', 'filterType', 'filterOverdue',
-            'contractorsForFilter', 'summary', 'maxOverduePln'));
+            'contractorsForFilter', 'summary', 'maxOverduePln',
+            'debugTxFetched', 'debugTxRendered', 'debugTxError'));
         $this->set('title', 'Kalendarz rozliczeń');
     }
 
