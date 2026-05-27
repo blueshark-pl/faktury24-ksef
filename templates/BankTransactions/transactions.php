@@ -435,8 +435,20 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                             <span id="sm-allocated-lbl" class="text-success fw-semibold">—</span>
                         </div>
                         <div class="d-flex justify-content-between align-items-baseline small">
-                            <span class="text-muted">Pozostało</span>
+                            <span class="text-muted" id="sm-saldo-lbl">Pozostało</span>
                             <span id="sm-remaining-lbl2" class="fw-bold text-danger">ładowanie…</span>
+                        </div>
+                        <!-- Komunikat o przekroczeniu (over-allocation) — pokazywany dynamicznie -->
+                        <div id="sm-overalloc-warning" class="alert alert-warning py-2 px-2 mt-2 mb-0 small" style="display:none">
+                            <div class="d-flex align-items-start gap-2">
+                                <i class="ri-error-warning-line fs-6 flex-shrink-0 mt-1"></i>
+                                <div>
+                                    <strong>Przypisano więcej niż kwota przelewu.</strong>
+                                    Suma alokacji przekracza dostępną kwotę o
+                                    <strong id="sm-overalloc-diff">—</strong>.
+                                    Operacja dopuszczalna — przelew może pokrywać też notę uznaniową lub rozliczenie wielofakturowe.
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <!-- Lista alokacji -->
@@ -601,19 +613,48 @@ smEl.addEventListener('hidden.bs.modal', function () {
 
 // ── Pasek progresu w nagłówku ─────────────────────────────────────────────────
 function updateModalProgress(allocated, txAmt, curr) {
-    var pct = txAmt > 0 ? Math.min(100, Math.round(allocated / txAmt * 100)) : 0;
-    var remaining = Math.max(0, txAmt - allocated);
+    var pct       = txAmt > 0 ? Math.min(100, Math.round(allocated / txAmt * 100)) : 0;
+    var overflow  = allocated - txAmt;
+    var isOver    = overflow > 0.005;
+    var remaining = isOver ? 0 : (txAmt - allocated);
+
     var bar = document.getElementById('sm-progress');
     bar.style.width = pct + '%';
-    bar.className   = 'progress-bar ' + (pct >= 100 ? 'bg-success' : pct > 0 ? 'bg-primary' : 'bg-secondary');
-    document.getElementById('sm-pct-lbl').textContent      = pct + '%';
-    document.getElementById('sm-remaining-lbl').textContent  = fmtC(remaining, curr);
-    document.getElementById('sm-remaining-lbl2').textContent = fmtC(remaining, curr);
+    bar.className   = 'progress-bar ' + (isOver ? 'bg-warning' : pct >= 100 ? 'bg-success' : pct > 0 ? 'bg-primary' : 'bg-secondary');
+    document.getElementById('sm-pct-lbl').textContent = isOver ? '100%+' : (pct + '%');
+
+    // Header label (lewy panel)
     var remEl = document.getElementById('sm-remaining-lbl');
-    var remEl2 = document.getElementById('sm-remaining-lbl2');
-    var cls = remaining > 0.005 ? 'fw-semibold text-warning' : 'fw-semibold text-success';
-    if (remEl)  remEl.className  = cls;
-    if (remEl2) remEl2.className = 'fw-bold ' + (remaining > 0.005 ? 'text-warning' : 'text-success');
+    if (remEl) {
+        remEl.textContent = isOver ? '+' + fmtC(overflow, curr) : fmtC(remaining, curr);
+        remEl.className   = 'fw-semibold ' + (isOver ? 'text-warning' : remaining > 0.005 ? 'text-warning' : 'text-success');
+    }
+
+    // Saldo panel po prawej
+    var saldoLbl = document.getElementById('sm-saldo-lbl');
+    var remEl2   = document.getElementById('sm-remaining-lbl2');
+    if (isOver) {
+        if (saldoLbl) saldoLbl.textContent = 'Przekroczenie';
+        if (remEl2) {
+            remEl2.textContent = '+' + fmtC(overflow, curr);
+            remEl2.className   = 'fw-bold text-warning';
+        }
+    } else {
+        if (saldoLbl) saldoLbl.textContent = 'Pozostało';
+        if (remEl2) {
+            remEl2.textContent = fmtC(remaining, curr);
+            remEl2.className   = 'fw-bold ' + (remaining > 0.005 ? 'text-warning' : 'text-success');
+        }
+    }
+
+    // Komunikat over-allocation
+    var warnEl = document.getElementById('sm-overalloc-warning');
+    var diffEl = document.getElementById('sm-overalloc-diff');
+    if (warnEl) {
+        warnEl.style.display = isOver ? '' : 'none';
+        if (isOver && diffEl) diffEl.textContent = fmtC(overflow, curr);
+    }
+
     document.getElementById('sm-allocated-lbl').textContent = fmtC(allocated, curr);
 }
 
