@@ -238,17 +238,19 @@ $currentUrl = function (array $extra = []) use ($baseAction, $search, $status, $
     return ['action' => $baseAction, '?' => $params];
 };
 
-// Pomocnik sortowania (link z odwróconym kierunkiem)
+// Pomocnik sortowania (link z odwróconym kierunkiem + wyraźny indicator aktywnej kolumny)
 $sortLink = function (string $col, string $label) use ($sort, $dir, $currentUrl): string {
-    $newDir = ($sort === $col && $dir === 'asc') ? 'desc' : 'asc';
-    $icon   = '';
-    if ($sort === $col) {
-        $icon = $dir === 'asc'
-            ? ' <i class="ri-arrow-up-s-line"></i>'
-            : ' <i class="ri-arrow-down-s-line"></i>';
-    }
-    $url = $currentUrl(['sort' => $col, 'dir' => $newDir, 'page' => 1]);
-    return '<a href="' . \Cake\Routing\Router::url($url) . '" class="text-dark text-decoration-none fw-semibold">'
+    $isActive = ($sort === $col);
+    $newDir   = ($isActive && $dir === 'asc') ? 'desc' : 'asc';
+    $icon     = $isActive
+        ? ($dir === 'asc'
+            ? ' <i class="ri-arrow-up-s-fill text-primary"></i>'
+            : ' <i class="ri-arrow-down-s-fill text-primary"></i>')
+        : ' <i class="ri-arrow-up-down-line text-muted opacity-50" style="font-size:.85em"></i>';
+    $url   = $currentUrl(['sort' => $col, 'dir' => $newDir, 'page' => 1]);
+    $cls   = 'text-decoration-none fw-semibold sort-link'
+           . ($isActive ? ' text-primary' : ' text-dark');
+    return '<a href="' . \Cake\Routing\Router::url($url) . '" class="' . $cls . '">'
         . h($label) . $icon . '</a>';
 };
 
@@ -578,6 +580,29 @@ if ($status !== '')            $activeFilterCount++;
                 </div>
                 <!-- Limit -->
                 <div class="col-auto">
+                    <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Sortuj</label>
+                    <?php
+                        $sortOptions = [
+                            'fullnumber'  => 'Nr faktury',
+                            'date'        => 'Data wystawienia',
+                            'paymentdate' => 'Termin płatności',
+                            'total'       => 'Brutto',
+                            'remaining'   => 'Pozostało',
+                        ];
+                    ?>
+                    <div class="d-flex gap-1">
+                        <select name="sort" id="sortField" class="form-select form-select-sm" style="min-width:140px" onchange="this.form.submit()">
+                            <?php foreach ($sortOptions as $val => $lbl): ?>
+                                <option value="<?= h($val) ?>" <?= $sort === $val ? 'selected' : '' ?>><?= h($lbl) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <select name="dir" id="sortDir" class="form-select form-select-sm" style="min-width:60px" onchange="this.form.submit()" title="Kierunek sortowania">
+                            <option value="desc" <?= $dir === 'desc' ? 'selected' : '' ?>>↓</option>
+                            <option value="asc"  <?= $dir === 'asc'  ? 'selected' : '' ?>>↑</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-auto">
                     <label class="form-label form-label-sm text-muted mb-0" style="font-size:.72rem">Na str.</label>
                     <select name="limit" class="form-select form-select-sm" style="min-width:65px">
                         <?php foreach ([25, 50, 100, 200] as $l): ?>
@@ -585,8 +610,6 @@ if ($status !== '')            $activeFilterCount++;
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <input type="hidden" name="sort" value="<?= h($sort) ?>">
-                <input type="hidden" name="dir"  value="<?= h($dir) ?>">
                 <!-- Przyciski -->
                 <div class="col-auto ms-auto d-flex gap-1 align-items-end">
                     <?php if ($activeFilterCount > 0): ?>
@@ -1611,6 +1634,13 @@ document.addEventListener('DOMContentLoaded', function () {
 .popover.popover-amounts .popover-body { padding: .75rem; }
 .btn-amounts-info { vertical-align: middle; }
 .btn-amounts-info:hover { color: #0d6efd !important; }
+
+/* Sort indicator — wyraźny dla aktywnej kolumny */
+.sort-link:hover { text-decoration: underline; }
+.sort-link.text-primary {
+    background: linear-gradient(180deg, transparent 70%, rgba(13, 110, 253, .15) 70%);
+    padding: 0 .15rem;
+}
 
 /* Custom context menu — prawy klik na komórce kontrahenta */
 .contractor-cell { cursor: context-menu; }
