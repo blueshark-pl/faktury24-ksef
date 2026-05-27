@@ -247,20 +247,31 @@ class ReconciliationsController extends AppController
                     ],
                 ]);
 
-            // Chronologiczny natural-sort dla fullnumber typu FV/NUM/MM/YYYY:
-            //   1. ROK (ostatni segment po /) — np. 2026
-            //   2. MIESIĄC (przedostatni segment) — np. 04
-            //   3. NUMER (drugi segment, po prefixie) — np. 1, 2, 10, ...
-            // Wszystko CAST AS UNSIGNED — żeby numeryczne porównanie (FV/10 po FV/9).
-            //
-            // Działa dla formatów PREFIX/NUM/MONTH/YEAR (najczęstszy w PL). Dla innych
-            // formatów (np. PREFIX/YEAR/NUM) cast da 0 → wiersze trafią na początek
-            // grupy "0", ale lista wciąż się posortuje (bez crashu).
+            // Sortowanie po fullnumber: grupowane po TYPIE faktury, potem chronologicznie.
+            //   1. TYP faktury — priorytet: currency (Walutowa) → vat → novat → reszta
+            //   2. ROK (ostatni segment fullnumber po /) — np. 2026
+            //   3. MIESIĄC (przedostatni segment) — np. 04
+            //   4. NUMER (drugi segment, po prefixie) — np. 1, 2, 10, ...
+            // Typ ZAWSZE w ustalonej kolejności (priorytet) niezależnie od sortDir —
+            // sortDir wpływa tylko na chronologię (najnowsze/najstarsze najpierw).
             if ($sortCol === 'fullnumber') {
+                $typeExpr  = "CASE Invoices.type "
+                           . "WHEN 'currency' THEN 1 "
+                           . "WHEN 'vat'      THEN 2 "
+                           . "WHEN 'novat'    THEN 3 "
+                           . "WHEN 'correction' THEN 4 "
+                           . "WHEN 'proforma'   THEN 5 "
+                           . "WHEN 'advance'    THEN 6 "
+                           . "WHEN 'final'      THEN 7 "
+                           . "WHEN 'margin'     THEN 8 "
+                           . "WHEN 'rental'     THEN 9 "
+                           . "WHEN 'credit_note' THEN 10 "
+                           . "ELSE 99 END";
                 $yearExpr  = "CAST(SUBSTRING_INDEX(Invoices.fullnumber, '/', -1) AS UNSIGNED)";
                 $monthExpr = "CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(Invoices.fullnumber, '/', -2), '/', 1) AS UNSIGNED)";
                 $numExpr   = "CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(Invoices.fullnumber, '/', 2), '/', -1) AS UNSIGNED)";
                 $invoiceQuery->orderBy([
+                    new \Cake\Database\Expression\QueryExpression($typeExpr  . ' ASC'),         // typ zawsze wg priorytetu
                     new \Cake\Database\Expression\QueryExpression($yearExpr  . ' ' . $sortDir),
                     new \Cake\Database\Expression\QueryExpression($monthExpr . ' ' . $sortDir),
                     new \Cake\Database\Expression\QueryExpression($numExpr   . ' ' . $sortDir),
