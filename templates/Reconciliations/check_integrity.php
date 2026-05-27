@@ -71,6 +71,14 @@ $fdate = static function ($d): string {
                 Przelicz alreadypaid/remaining wszystkich faktur
             </button>
         <?= $this->Form->end() ?>
+
+        <?= $this->Form->create(null, ['url' => ['action' => 'backfillIbanHistory'], 'class' => 'mb-0']) ?>
+            <button type="submit" class="btn btn-success"
+                    onclick="return confirm('Wypełnić contractor_iban_history z istniejących potwierdzonych alokacji?\n\nAnalizuje wszystkie bank_transaction_allocations + invoice_contractors w bazie i buduje mapę IBAN↔NIP. Dla każdej pary inkrementuje confirmed_count. Bezpieczne — tylko INSERT/UPDATE w nowej tabeli.')">
+                <i class="ri-database-2-line me-1"></i>
+                Backfill IBAN history (z historycznych matchów)
+            </button>
+        <?= $this->Form->end() ?>
     </div>
 
     <?php

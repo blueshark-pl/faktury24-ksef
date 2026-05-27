@@ -2539,6 +2539,143 @@ class ReconciliationsController extends AppController
     }
 
     /**
+     * Backfill contractor_iban_history z istniejących potwierdzonych alokacji.
+     * Przechodzi po wszystkich bank_transaction_allocations dla system invoices,
+     * łączy z bank_transactions (account_number) i invoice_contractors (nip)
+     * i wpisuje/inkrementuje rekordy w contractor_iban_history.
+     */
+    public function backfillIbanHistory(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Allocations  = $this->fetchTable('BankTransactionAllocations');
+        $IbanHistory  = $this->fetchTable('ContractorIbanHistories');
+
+        // Pobierz wszystkie alokacje system + tx + contractor — 1 zapytanie
+        $rows = $Allocations->find()
+            ->contain([
+                'BankTransactions' => function (\Cake\ORM\Query\SelectQuery $q) {
+                    return $q->select(['id', 'account_number', 'amount', 'currency']);
+                },
+            ])
+            ->where([
+                'BankTransactionAllocations.company_id'     => $companyId,
+                'BankTransactionAllocations.invoice_id IS NOT' => null,
+            ])
+            ->select([
+                'BankTransactionAllocations.id',
+                'BankTransactionAllocations.invoice_id',
+                'BankTransactionAllocations.bank_transaction_id',
+                'BankTransactionAllocations.allocated_amount',
+                'BankTransactionAllocations.created',
+            ])
+            ->all()
+            ->toArray();
+
+        // Pobierz wszystkich kontrahentów dla invoice_ids
+        $invIds = array_unique(array_filter(array_map(fn($r) => $r->invoice_id, $rows)));
+        $contractorMap = []; // invoice_id => ['nip' => ..., 'name' => ...]
+        if (!empty($invIds)) {
+            $InvoiceContractors = $this->fetchTable('InvoiceContractors');
+            $contracts = $InvoiceContractors->find()
+                ->where(['invoice_id IN' => $invIds])
+                ->select(['invoice_id', 'nip', 'name'])
+                ->all();
+            foreach ($contracts as $c) {
+                $contractorMap[(string)$c->invoice_id] = [
+                    'nip'  => (string)($c->nip ?? ''),
+                    'name' => (string)($c->name ?? ''),
+                ];
+            }
+        }
+
+        // Agreguj w PHP — żeby ograniczyć ilość zapytań INSERT/UPDATE
+        // klucz = nip|iban
+        $aggregated = []; // key => ['nip', 'iban', 'name', 'count', 'amount', 'first', 'last']
+        foreach ($rows as $r) {
+            $tx = $r->bank_transaction ?? null;
+            if (!$tx || empty($tx->account_number)) continue;
+            $iban = \App\Model\Table\ContractorIbanHistoriesTable::normalizeIban((string)$tx->account_number);
+            if ($iban === '') continue;
+            $contractor = $contractorMap[(string)$r->invoice_id] ?? null;
+            if (!$contractor || empty($contractor['nip'])) continue;
+            $nip = $contractor['nip'];
+            $key = $nip . '|' . $iban;
+
+            $created = $r->created;
+            $createdStr = '';
+            if ($created instanceof \DateTimeInterface) $createdStr = $created->format('Y-m-d H:i:s');
+            elseif (is_object($created) && method_exists($created, 'format')) $createdStr = $created->format('Y-m-d H:i:s');
+            elseif ($created) $createdStr = (string)$created;
+            if ($createdStr === '') $createdStr = date('Y-m-d H:i:s');
+
+            if (!isset($aggregated[$key])) {
+                $aggregated[$key] = [
+                    'nip'    => $nip,
+                    'iban'   => $iban,
+                    'name'   => $contractor['name'],
+                    'count'  => 0,
+                    'amount' => 0.0,
+                    'first'  => $createdStr,
+                    'last'   => $createdStr,
+                ];
+            }
+            $aggregated[$key]['count']++;
+            $aggregated[$key]['amount'] += (float)($r->allocated_amount ?? 0);
+            if ($createdStr < $aggregated[$key]['first']) $aggregated[$key]['first'] = $createdStr;
+            if ($createdStr > $aggregated[$key]['last'])  $aggregated[$key]['last']  = $createdStr;
+        }
+
+        // Zapisz/zaktualizuj rekordy
+        $inserted = 0;
+        $updated  = 0;
+        foreach ($aggregated as $key => $a) {
+            $existing = $IbanHistory->find()
+                ->where([
+                    'company_id'     => $companyId,
+                    'contractor_nip' => $a['nip'],
+                    'iban'           => $a['iban'],
+                ])
+                ->first();
+            if ($existing !== null) {
+                // Aktualizuj count (zsumuj z istniejącym), amount, last_used (max)
+                $existing->confirmed_count   = (int)$existing->confirmed_count + $a['count'];
+                $existing->total_amount_pln  = (float)$existing->total_amount_pln + $a['amount'];
+                if ($a['last'] > (string)$existing->last_used) $existing->last_used = $a['last'];
+                if (empty($existing->first_used) || $a['first'] < (string)$existing->first_used) {
+                    $existing->first_used = $a['first'];
+                }
+                if ($a['name'] && empty($existing->contractor_name_snapshot)) {
+                    $existing->contractor_name_snapshot = $a['name'];
+                }
+                if ($IbanHistory->save($existing)) $updated++;
+            } else {
+                $entity = $IbanHistory->newEntity([
+                    'id'                       => \Cake\Utility\Text::uuid(),
+                    'company_id'               => $companyId,
+                    'contractor_nip'           => $a['nip'],
+                    'contractor_name_snapshot' => $a['name'],
+                    'iban'                     => $a['iban'],
+                    'confirmed_count'          => $a['count'],
+                    'total_amount_pln'         => $a['amount'],
+                    'first_used'               => $a['first'],
+                    'last_used'                => $a['last'],
+                ]);
+                if ($IbanHistory->save($entity)) $inserted++;
+            }
+        }
+
+        $this->Flash->success(sprintf(
+            'IBAN history backfill: utworzono %d nowych powiązań, zaktualizowano %d. Łącznie pokrycie: %d par (NIP, IBAN).',
+            $inserted, $updated, count($aggregated)
+        ));
+        return $this->redirect(['action' => 'checkIntegrity']);
+    }
+
+    /**
      * Bulk: przelicza paymentstate/alreadypaid/remaining wszystkich faktur
      * używając currency-aware InvoicesTable::recalculatePayments.
      * Naprawia ujemne remaining z czasów przed fixem konwersji walut.
