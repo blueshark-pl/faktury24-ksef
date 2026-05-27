@@ -774,7 +774,7 @@ if ($status !== '')            $activeFilterCount++;
                         <?php endforeach; ?>
                     </td>
                     <!-- Kontrahent -->
-                    <td style="max-width:200px">
+                    <td style="max-width:200px" class="contractor-cell" data-contractor-name="<?= h($contractorName) ?>" title="Kliknij prawym klawiszem aby filtrować">
                         <div class="d-flex align-items-center gap-1">
                             <span class="small text-truncate" title="<?= h($contractorName) ?>"><?= h($contractorName) ?></span>
                             <button type="button"
@@ -1302,7 +1302,7 @@ if (!empty($legacyInvoices) || ($sourceFilter === 'legacy')):
                         <span class="ms-1 badge bg-secondary" style="font-size:.65rem">Arch.</span>
                     </td>
                     <!-- Kontrahent -->
-                    <td style="max-width:200px">
+                    <td style="max-width:200px" class="contractor-cell" data-contractor-name="<?= h($leg->contractor_name ?? '') ?>" title="Kliknij prawym klawiszem aby filtrować">
                         <div class="text-truncate small" title="<?= h($leg->contractor_name ?? '') ?>">
                             <?= h($leg->contractor_name ?? '—') ?>
                         </div>
@@ -1611,7 +1611,169 @@ document.addEventListener('DOMContentLoaded', function () {
 .popover.popover-amounts .popover-body { padding: .75rem; }
 .btn-amounts-info { vertical-align: middle; }
 .btn-amounts-info:hover { color: #0d6efd !important; }
+
+/* Custom context menu — prawy klik na komórce kontrahenta */
+.contractor-cell { cursor: context-menu; }
+.contractor-cell:hover { background-color: rgba(13, 110, 253, .04); }
+#contractorContextMenu {
+    position: fixed;
+    z-index: 9999;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: .375rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+    padding: .25rem;
+    min-width: 220px;
+    font-size: .8rem;
+    display: none;
+}
+#contractorContextMenu .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem .7rem;
+    cursor: pointer;
+    border-radius: .25rem;
+    color: #374151;
+    user-select: none;
+}
+#contractorContextMenu .ctx-item:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+#contractorContextMenu .ctx-divider {
+    height: 1px;
+    background: #e5e7eb;
+    margin: .25rem 0;
+}
+#contractorContextMenu .ctx-header {
+    padding: .35rem .7rem;
+    font-size: .7rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 1px solid #f3f4f6;
+    margin-bottom: .25rem;
+    max-width: 240px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 </style>
+
+<!-- Context menu for contractor cell -->
+<div id="contractorContextMenu" role="menu">
+    <div class="ctx-header" id="ctxContractorName">—</div>
+    <div class="ctx-item" data-action="filter-contractor">
+        <i class="ri-filter-line text-primary"></i>
+        <span>Filtruj po tym kontrahencie</span>
+    </div>
+    <div class="ctx-item" data-action="filter-add">
+        <i class="ri-add-line text-success"></i>
+        <span>Dodaj do filtra (jeśli inny)</span>
+    </div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" data-action="clear-filter">
+        <i class="ri-close-circle-line text-muted"></i>
+        <span>Wyczyść filtr</span>
+    </div>
+    <div class="ctx-item" data-action="copy">
+        <i class="ri-clipboard-line text-muted"></i>
+        <span>Kopiuj nazwę</span>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var menu        = document.getElementById('contractorContextMenu');
+    var ctxNameEl   = document.getElementById('ctxContractorName');
+    if (!menu) return;
+    var currentName = '';
+
+    function hideMenu() { menu.style.display = 'none'; }
+    function showMenu(x, y, name) {
+        currentName = name;
+        ctxNameEl.textContent = name || '—';
+        menu.style.display = 'block';
+        // Korekta pozycji jeśli wychodzi poza ekran
+        var rect = menu.getBoundingClientRect();
+        var maxX = window.innerWidth - rect.width - 10;
+        var maxY = window.innerHeight - rect.height - 10;
+        menu.style.left = Math.min(x, maxX) + 'px';
+        menu.style.top  = Math.min(y, maxY) + 'px';
+    }
+
+    function getQueryParams() {
+        var p = new URLSearchParams(window.location.search);
+        return p;
+    }
+
+    function reloadWithParam(key, value) {
+        var p = getQueryParams();
+        if (value === null || value === '') p.delete(key);
+        else                                p.set(key, value);
+        p.delete('page'); // reset paginacji
+        window.location.search = '?' + p.toString();
+    }
+
+    // Right-click na komórce kontrahenta
+    document.addEventListener('contextmenu', function (e) {
+        var cell = e.target.closest('.contractor-cell');
+        if (!cell) return;
+        e.preventDefault();
+        var name = (cell.dataset.contractorName || '').trim();
+        if (!name || name === '—') return;
+        showMenu(e.clientX, e.clientY, name);
+    });
+
+    // Klik na zewnątrz zamyka menu
+    document.addEventListener('click', function (e) {
+        if (!menu.contains(e.target)) hideMenu();
+    });
+    // Esc też zamyka
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideMenu();
+    });
+    // Scroll lub resize → ukryj
+    window.addEventListener('scroll', hideMenu, true);
+    window.addEventListener('resize', hideMenu);
+
+    // Akcje menu
+    menu.addEventListener('click', function (e) {
+        var item = e.target.closest('.ctx-item');
+        if (!item) return;
+        var action = item.dataset.action;
+        if (action === 'filter-contractor') {
+            reloadWithParam('q', currentName);
+        } else if (action === 'filter-add') {
+            var p = getQueryParams();
+            var existing = (p.get('q') || '').trim();
+            if (existing && existing !== currentName) {
+                // Dodaj po spacji (CakePHP LIKE %q% i tak złapie czemkolwiek)
+                reloadWithParam('q', existing + ' ' + currentName);
+            } else {
+                reloadWithParam('q', currentName);
+            }
+        } else if (action === 'clear-filter') {
+            reloadWithParam('q', null);
+        } else if (action === 'copy') {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(currentName).then(hideMenu);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = currentName;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(ta);
+                hideMenu();
+            }
+        }
+        hideMenu();
+    });
+})();
+</script>
 
 <script>
 (function () {
