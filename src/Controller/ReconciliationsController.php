@@ -1918,11 +1918,34 @@ class ReconciliationsController extends AppController
         // Suma alokacji dla tego tx vs amount → matched/proposed.
         $this->_updateBankTxMatchState($txId, $companyId);
 
+        // ── Twardo wymuś recalc faktury — żeby UI od razu pokazywał paid/partial
+        // (afterSave na invoice_payments też to robi, ale dla pewności).
+        $invoiceStateAfter = null;
+        if ($invoiceId !== '') {
+            try {
+                $this->fetchTable('Invoices')->recalculatePayments($invoiceId);
+                $invAfter = $this->fetchTable('Invoices')->find()
+                    ->where(['id' => $invoiceId])
+                    ->select(['paymentstate', 'alreadypaid', 'remaining'])
+                    ->first();
+                if ($invAfter) {
+                    $invoiceStateAfter = [
+                        'paymentstate' => (string)$invAfter->paymentstate,
+                        'alreadypaid'  => (float)$invAfter->alreadypaid,
+                        'remaining'    => (float)$invAfter->remaining,
+                    ];
+                }
+            } catch (\Exception $e) {
+                \Cake\Log\Log::warning('addAllocation: recalc failed - ' . $e->getMessage());
+            }
+        }
+
         return $this->response->withType('application/json')
             ->withStringBody(json_encode([
                 'success'            => true,
                 'allocation_id'      => (string)$allocation->id,
                 'invoice_payment_id' => $paymentId,
+                'invoice_state'      => $invoiceStateAfter, // do podglądu w JS
             ]));
     }
 
