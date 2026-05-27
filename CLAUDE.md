@@ -348,6 +348,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-05-27 | Feat: AI parser tytułu przelewu — `/wyciagi/ai-parse-title/{id}` → OpenAI wyciąga numery faktur (system + legacy), modal pokazuje listę z copy/search; fix wyszukiwania faktur (pokazuj WSZYSTKIE gdy user wpisuje query) | `BankTransactionsController.php`, `templates/BankTransactions/transactions.php`, `config/routes.php` |
 | 2026-05-27 | Doc: kompletna mapa kolumn `bank_transactions`, `bank_transaction_allocations`, `invoice_payments` + zasada #4a (sprawdzać migracje przed użyciem nazw pól) | `CLAUDE.md` |
 | 2026-05-27 | Feat: kalendarz rozliczeń — przelewy MT940 z statusem dopasowania, booking_date jako kotwica, Select2 dla kontrahentów | `ReconciliationsController.php`, `templates/Reconciliations/calendar.php` |
 | 2026-05-09 | Feat: panel admina — CRUD klientów portalu (lista, dodawanie, edycja, usuwanie); pozycja w sidebarze | `AdminClientsController.php`, `templates/AdminClients/{index,add,edit}.php`, `templates/layout/default.php` |

@@ -379,7 +379,14 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                 <div class="d-flex flex-column overflow-y-auto p-3 gap-3" style="width:44%;background:#f8fafc">
                     <!-- Tytuł / Opis przelewu — dane z banku -->
                     <div class="bg-white border rounded-3 p-3" id="sm-tx-info-card" style="display:none">
-                        <div class="sm-section-label"><i class="ri-file-text-line"></i>Tytuł / Opis przelewu</div>
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <div class="sm-section-label mb-0"><i class="ri-file-text-line"></i>Tytuł / Opis przelewu</div>
+                            <button type="button" id="sm-ai-parse-btn"
+                                    class="btn btn-sm btn-outline-primary" style="font-size:.7rem;padding:.15rem .5rem"
+                                    title="Wyciągnij numery faktur z tytułu i opisu (AI)">
+                                <i class="ri-sparkling-2-line"></i> AI: wykryj nr faktur
+                            </button>
+                        </div>
                         <div id="sm-tx-title-wrap" class="mb-2" style="display:none">
                             <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.03em">Tytuł</div>
                             <div id="sm-tx-title" class="small" style="word-break:break-word;line-height:1.4;font-family:'Roboto Mono',Consolas,monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.25rem;padding:.4rem .55rem">—</div>
@@ -399,6 +406,14 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                                     <i class="ri-hashtag me-1"></i>ref: <span id="sm-tx-bank-ref">—</span>
                                 </span>
                             </div>
+                        </div>
+                        <!-- Wyniki AI -->
+                        <div id="sm-ai-results" class="mt-2" style="display:none">
+                            <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.03em">
+                                <i class="ri-sparkling-2-line text-primary"></i> Wykryte numery (AI)
+                                <span id="sm-ai-note" class="text-muted" style="text-transform:none;letter-spacing:0;font-weight:400"></span>
+                            </div>
+                            <div id="sm-ai-list" class="d-flex flex-column gap-1 mt-1"></div>
                         </div>
                     </div>
 
@@ -627,6 +642,14 @@ document.addEventListener('click', function (e) {
     smModal.show();
     loadModalAllocations();
 
+    // Reset wyników AI z poprzedniego przelewu
+    var aiResults = document.getElementById('sm-ai-results');
+    var aiList    = document.getElementById('sm-ai-list');
+    var aiNote    = document.getElementById('sm-ai-note');
+    if (aiResults) aiResults.style.display = 'none';
+    if (aiList)    aiList.innerHTML = '';
+    if (aiNote)    aiNote.textContent = '';
+
     // Auto-load wszystkich nieopłaconych faktur (system + legacy) od razu
     loadUnpaidInvoices();
 
@@ -849,7 +872,8 @@ function runSearch() {
         loadUnpaidInvoices();
         return;
     }
-    fetch('/wyciagi/invoice-search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(src) + '&unpaid=1',
+    // Aktywne wyszukiwanie: zwracaj WSZYSTKIE (też opłacone) — bez &unpaid=1
+    fetch('/wyciagi/invoice-search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(src),
           { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(function (r) { return r.json(); })
         .then(function (d) { renderSearchResults(d.results || []); });
@@ -931,6 +955,119 @@ document.getElementById('sm-search-results').addEventListener('click', function 
     selectedInvoice = JSON.parse(row.dataset.inv || '{}');
     renderAllocForm(selectedInvoice);
 });
+
+// ── AI: wyciągnij numery faktur z tytułu/opisu ────────────────────────────────
+(function () {
+    var btn = document.getElementById('sm-ai-parse-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        if (!currentTxId) return;
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>analizuję…';
+
+        var resultsBox = document.getElementById('sm-ai-results');
+        var listBox    = document.getElementById('sm-ai-list');
+        var noteEl     = document.getElementById('sm-ai-note');
+        if (listBox) listBox.innerHTML = '';
+        if (resultsBox) resultsBox.style.display = 'none';
+
+        fetch('/wyciagi/ai-parse-title/' + encodeURIComponent(currentTxId), {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': getCsrf() },
+        })
+        .then(function (r) {
+            return r.json().then(function (d) { return { ok: r.ok, body: d }; });
+        })
+        .then(function (res) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            if (!res.ok) {
+                resultsBox.style.display = '';
+                listBox.innerHTML = '<div class="text-danger small">'
+                    + '<i class="ri-error-warning-line me-1"></i>' + esc(res.body.error || 'Błąd AI.') + '</div>';
+                return;
+            }
+            var numbers = (res.body.numbers || []);
+            var note    = (res.body.note || '');
+            if (noteEl && note) { noteEl.textContent = ' — ' + note; }
+            resultsBox.style.display = '';
+            if (!numbers.length) {
+                listBox.innerHTML = '<div class="text-muted small fst-italic">'
+                    + '<i class="ri-information-line me-1"></i>AI nie znalazło numerów faktur w tytule/opisie.</div>';
+                return;
+            }
+            // Render każdego numeru
+            var html = '';
+            numbers.forEach(function (n) {
+                var confCol = n.confidence >= 80 ? 'success' : (n.confidence >= 50 ? 'warning' : 'secondary');
+                var typeBadge = n.type === 'legacy'
+                    ? '<span class="badge bg-secondary-subtle text-secondary border" style="font-size:.6rem">arch</span>'
+                    : '<span class="badge bg-primary-subtle text-primary border" style="font-size:.6rem">sys</span>';
+                html += '<div class="d-flex align-items-center gap-2 p-1 border rounded" style="background:#f8fafc">'
+                      + '<span class="fw-semibold flex-grow-1" style="font-family:Consolas,monospace;font-size:.85rem">'
+                      +    esc(n.normalized)
+                      + '</span>'
+                      + typeBadge
+                      + '<span class="badge bg-' + confCol + '-subtle text-' + confCol + ' border" '
+                      +    'title="Pewność AI" style="font-size:.6rem">' + n.confidence + '%</span>'
+                      + '<button type="button" class="btn btn-xs btn-outline-secondary ai-copy-btn" '
+                      +    'data-num="' + esc(n.normalized) + '" title="Kopiuj">'
+                      +    '<i class="ri-clipboard-line"></i>'
+                      + '</button>'
+                      + '<button type="button" class="btn btn-xs btn-outline-primary ai-search-btn" '
+                      +    'data-num="' + esc(n.normalized) + '" title="Wyszukaj w fakturach po lewej">'
+                      +    '<i class="ri-search-line"></i>'
+                      + '</button>'
+                      + '</div>';
+            });
+            listBox.innerHTML = html;
+        })
+        .catch(function (e) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            resultsBox.style.display = '';
+            listBox.innerHTML = '<div class="text-danger small">'
+                + '<i class="ri-error-warning-line me-1"></i>Błąd sieci: ' + esc(e.message || '') + '</div>';
+        });
+    });
+
+    // Klik w ikonkę kopiowania
+    document.addEventListener('click', function (e) {
+        var copyBtn = e.target.closest('.ai-copy-btn');
+        if (!copyBtn) return;
+        var num = copyBtn.dataset.num || '';
+        if (!num) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(num).then(function () {
+                var orig = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="ri-check-line text-success"></i>';
+                setTimeout(function () { copyBtn.innerHTML = orig; }, 1200);
+            });
+        } else {
+            // Fallback
+            var ta = document.createElement('textarea');
+            ta.value = num; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+    });
+
+    // Klik w ikonkę wyszukiwania — wstaw do pola sm-search i odpal wyszukiwarkę
+    document.addEventListener('click', function (e) {
+        var searchBtn = e.target.closest('.ai-search-btn');
+        if (!searchBtn) return;
+        var num = searchBtn.dataset.num || '';
+        if (!num) return;
+        var input = document.getElementById('sm-search');
+        if (!input) return;
+        input.value = num;
+        input.focus();
+        // Wymuś natychmiastowy search (bez 280ms debounce)
+        runSearch();
+    });
+})();
 
 // ── Formularz alokacji ────────────────────────────────────────────────────────
 function renderAllocForm(inv) {

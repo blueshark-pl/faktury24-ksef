@@ -200,6 +200,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/wyciagi/invoice-search', ['controller' => 'BankTransactions', 'action' => 'invoiceSearch']);
         $builder->get('/wyciagi/tx-allocations/{id}', ['controller' => 'BankTransactions', 'action' => 'txAllocations'])
             ->setPass(['id']);
+        $builder->post('/wyciagi/ai-parse-title/{id}', ['controller' => 'BankTransactions', 'action' => 'aiParseTitle'])
+            ->setPass(['id']);
 
         // Screen lock — odblokowanie po bezczynności + zarządzanie PIN-em + avatar
         $builder->post('/unlock',        ['controller' => 'Security', 'action' => 'unlock']);

@@ -766,8 +766,11 @@ class BankTransactionsController extends AppController
                     ->orderByDesc('Invoices.date')
                     ->limit($showAll ? 30 : 15);
 
-                if ($unpaidOnly || $showAll) {
-                    // Paymentstate: NULL traktujemy jako unpaid + unpaid + partial
+                // Filtr unpaid działa tylko gdy user JAWNIE go zażąda (unpaid=1)
+                // lub gdy nie wpisuje nic (showAll = default lista nieopłaconych).
+                // Gdy user wpisuje query — zwracamy WSZYSTKIE (też zapłacone),
+                // bo czasem trzeba podpiąć fakturę już opłaconą do innego przelewu.
+                if ($showAll && $unpaidOnly) {
                     $query->where(['OR' => [
                         ['Invoices.paymentstate IS' => null],
                         ['Invoices.paymentstate IN' => ['unpaid', 'partial']],
@@ -824,7 +827,7 @@ class BankTransactionsController extends AppController
                     ->orderByDesc('date')
                     ->limit($showAll ? 30 : 15);
 
-                if ($unpaidOnly || $showAll) {
+                if ($showAll && $unpaidOnly) {
                     $legacyQuery->where(['OR' => [
                         ['paymentstate IS' => null],
                         ['paymentstate IN' => ['unpaid', 'partial']],
@@ -953,6 +956,116 @@ class BankTransactionsController extends AppController
                 'remaining_amount' => $remaining,
                 'allocations'      => $mapped,
             ]));
+    }
+
+    /**
+     * AJAX POST: wysyła `title` + `description` przelewu do OpenAI
+     * i prosi o wyciągnięcie numerów faktur. Zwraca posortowaną listę
+     * numerów (system FW/FV/FK i legacy 0000/MM/YYYY).
+     *
+     * Konwencja numerów:
+     *  - System (od 2026-04-01): FW/1/4/2026, FV/12/4/2026, FK/3/4/2026 (prefix/index/month/year)
+     *  - Legacy (przed 2026-04-01): 0102/03/2026 (NNNN/MM/YYYY)
+     */
+    public function aiParseTitle(string $txId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $tx = $this->fetchTable('BankTransactions')->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->select(['id', 'title', 'description', 'party_name', 'parsed_inv'])
+            ->first();
+
+        if ($tx === null) {
+            return $this->response->withType('application/json')
+                ->withStatus(404)
+                ->withStringBody(json_encode(['error' => 'Przelew nie istnieje.']));
+        }
+
+        $title = trim((string)$tx->title);
+        $desc  = trim((string)$tx->description);
+        $payload = trim($title . "\n" . ($desc !== $title ? $desc : ''));
+
+        if ($payload === '') {
+            return $this->response->withType('application/json')
+                ->withStringBody(json_encode(['numbers' => [], 'note' => 'Tytuł i opis są puste.']));
+        }
+
+        $system = <<<SYS
+Jesteś asystentem księgowym. Z tekstu tytułu/opisu przelewu wyciągasz NUMERY FAKTUR.
+
+Obowiązują DWIE konwencje numeracji:
+1) System od 2026-04-01: PREFIX/INDEX/MIESIĄC/ROK
+   - PREFIX: FW (walutowa), FV (VAT), FK (korekta), FZ (zaliczka), PRO (proforma), NU (no-VAT)
+   - INDEX: 1+ cyfr (np. 1, 12, 234)
+   - MIESIĄC: 1-12 (jedno- lub dwucyfrowy: 4 albo 04)
+   - ROK: 4 cyfry (2026, 2025)
+   - Przykłady: FW/1/4/2026, FV/12/04/2026, FK/3/4/2026
+2) Legacy przed 2026-04-01: NNNN/MM/YYYY
+   - Przykłady: 0102/03/2026, 0035/12/2025
+
+NORMALIZUJ:
+- Dodaj zera wiodące w miesiącu nie wymagane (zostaw jak jest w tekście).
+- Małe litery zamień na duże (fw → FW).
+- Numery oddzielone spacjami, średnikami, przecinkami, "i", "oraz", "+" — to OSOBNE wpisy.
+- Ignoruj kwoty, NIP, daty bez kontekstu numeru, identyfikatory płatności (np. /PAY/, /VAT/), nr CMR.
+- Jeśli widzisz tylko fragment (np. "FW1" bez ukośników) — zwróć tylko jeśli możesz to sensownie zinterpretować jako PREFIX+INDEX (np. "FW1/4/2026").
+
+ZWRÓĆ JSON:
+{"numbers": [{"raw": "FW1/4/2026", "normalized": "FW/1/4/2026", "type": "system|legacy", "confidence": 0..100}], "note": "krótkie uzasadnienie"}
+
+Posortuj według malejącej pewności. Jeśli nic nie znaleziono — zwróć pusty array.
+SYS;
+
+        $user = "Tytuł przelewu:\n{$title}\n\n";
+        if ($desc !== '' && $desc !== $title) {
+            $user .= "Opis dodatkowy:\n{$desc}\n\n";
+        }
+        if (!empty($tx->party_name)) {
+            $user .= "Nadawca: {$tx->party_name}\n";
+        }
+        if (!empty($tx->parsed_inv)) {
+            $user .= "Wstępnie wyparsowane przez regex: {$tx->parsed_inv}\n";
+        }
+
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->chatJson($system, $user, 800);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[ai-parse-title] ' . $e->getMessage());
+            return $this->response->withType('application/json')
+                ->withStatus(502)
+                ->withStringBody(json_encode([
+                    'error' => 'Błąd AI: ' . $e->getMessage(),
+                ]));
+        }
+
+        $numbers = is_array($result['numbers'] ?? null) ? $result['numbers'] : [];
+        // Deduplikacja po `normalized`
+        $seen = [];
+        $clean = [];
+        foreach ($numbers as $n) {
+            $norm = trim((string)($n['normalized'] ?? $n['raw'] ?? ''));
+            if ($norm === '' || isset($seen[$norm])) continue;
+            $seen[$norm] = true;
+            $clean[] = [
+                'raw'        => (string)($n['raw'] ?? $norm),
+                'normalized' => $norm,
+                'type'       => (string)($n['type'] ?? 'system'),
+                'confidence' => max(0, min(100, (int)($n['confidence'] ?? 50))),
+            ];
+        }
+        usort($clean, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'numbers' => $clean,
+                'note'    => (string)($result['note'] ?? ''),
+                'tx_id'   => $txId,
+            ], JSON_UNESCAPED_UNICODE));
     }
 
     // ── Usunięcie importu ─────────────────────────────────────────────────────
