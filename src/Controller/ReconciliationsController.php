@@ -2672,13 +2672,43 @@ class ReconciliationsController extends AppController
             return ['ok' => false, 'message' => 'Wpłata już ma alokację.'];
         }
 
-        // Szukaj bank_tx — strategia wielopoziomowa:
-        //   1. Dokładny match: ten sam invoice_id + kwota (±0.01)
-        //   2. Fallback: tx z NULL invoice_id + kwota + data ±60 dni od payment_date
-        //   3. Ostatnia próba: tx z parsed_inv = invoice.fullnumber + kwota
         $pAmt = round((float)$payment->amount, 2);
         $minAmt = $pAmt - 0.01;
         $maxAmt = $pAmt + 0.01;
+
+        // ── KROK 0: Czy istnieje już orphan allocation (kat. C) dla tego invoice + kwota?
+        // Wtedy tylko linkujemy istniejącą zamiast tworzyć nową.
+        $orphanAlloc = $Allocations->find()
+            ->where([
+                'company_id'              => $companyId,
+                'invoice_id'              => $payment->invoice_id,
+                'invoice_payment_id IS'   => null,
+                'allocated_amount >='     => $minAmt,
+                'allocated_amount <='     => $maxAmt,
+            ])
+            ->first();
+        if ($orphanAlloc !== null) {
+            // Linkuj istniejącą alokację z tą wpłatą
+            $orphanAlloc->invoice_payment_id = (string)$payment->id;
+            if (!$Allocations->save($orphanAlloc)) {
+                return ['ok' => false, 'message' => 'Link orphan alokacji: ' . json_encode($orphanAlloc->getErrors())];
+            }
+            $payment->bank_transaction_allocation_id = (string)$orphanAlloc->id;
+            // Zsynchronizuj currency z allocation
+            $allocCurr = strtoupper((string)$orphanAlloc->currency) ?: 'PLN';
+            if (strtoupper((string)$payment->currency) !== $allocCurr) {
+                $payment->currency = $allocCurr;
+            }
+            if (!$Payments->save($payment)) {
+                return ['ok' => false, 'message' => 'Link wpłaty: ' . json_encode($payment->getErrors())];
+            }
+            return ['ok' => true, 'message' => 'Połączono istniejącą alokację z wpłatą (waluta: ' . $allocCurr . ').'];
+        }
+
+        // Brak orphan allocation → szukaj bank_tx (strategia 3-poziomowa)
+        //   1. Dokładny match: ten sam invoice_id + kwota (±0.01)
+        //   2. Fallback: tx z NULL invoice_id + kwota + data ±60 dni od payment_date
+        //   3. Ostatnia próba: tx z parsed_inv = invoice.fullnumber + kwota
 
         // Krok 1: exact match po invoice_id
         $tx = $BankTxs->find()
