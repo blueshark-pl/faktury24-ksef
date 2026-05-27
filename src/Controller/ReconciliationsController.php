@@ -549,6 +549,9 @@ class ReconciliationsController extends AppController
                 ->first();
         }
 
+        // ── Pasek sugerowanych akcji — szybki przegląd "co dziś wymaga uwagi" ──
+        $guidance = $this->_buildGuidanceCounts($companyId, $todayStr);
+
         $this->set(compact(
             'invoices', 'total', 'pages', 'page', 'limit',
             'search', 'status', 'dateFrom', 'dateTo', 'dueDateFrom', 'dueDateTo',
@@ -557,7 +560,7 @@ class ReconciliationsController extends AppController
             'stats', 'bankByInvoice', 'speedByInvoice', 'correctionsByParentId',
             'legacyInvoices', 'legacyTotal', 'legacyPages', 'legacyPage',
             'legacyPaymentsByInvoiceId', 'sourceFilter', 'lastSync',
-            'companyBankAccounts'
+            'companyBankAccounts', 'guidance'
         ));
         $this->set('title', 'Rozliczenia');
     }
@@ -2057,6 +2060,103 @@ class ReconciliationsController extends AppController
                 'invoice_payment_id' => $paymentId,
                 'invoice_state'      => $invoiceStateAfter, // do podglądu w JS
             ]));
+    }
+
+    /**
+     * Pasek sugerowanych akcji — zlicza "co dziś wymaga uwagi".
+     * Lekkie queries (count only), wszystkie razem powinny być <50ms.
+     *
+     * @return array{overdue:int,overdue_amount:float,unmatched_credits:int,unmatched_credits_amount:float,integrity_issues:int,unused_credit_notes:int,unused_credit_notes_amount:float}
+     */
+    private function _buildGuidanceCounts(string $companyId, string $todayStr): array
+    {
+        $result = [
+            'overdue'                  => 0,
+            'overdue_amount'           => 0.0,
+            'unmatched_credits'        => 0,
+            'unmatched_credits_amount' => 0.0,
+            'integrity_issues'         => 0,
+            'unused_credit_notes'      => 0,
+            'unused_credit_notes_amount' => 0.0,
+        ];
+
+        try {
+            $Invoices = $this->fetchTable('Invoices');
+            $BankTxs  = $this->fetchTable('BankTransactions');
+
+            // 1. Faktury przeterminowane (paymentdate < today, paymentstate != paid, nie draft)
+            $overdueRows = $Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.paymentdate <' => $todayStr,
+                    'OR' => [
+                        ['Invoices.paymentstate IS' => null],
+                        ['Invoices.paymentstate !=' => 'paid'],
+                    ],
+                    'AND' => [
+                        ['OR' => [
+                            ['Invoices.workflow_status IS' => null],
+                            ['Invoices.workflow_status !=' => 'draft'],
+                        ]],
+                    ],
+                ])
+                ->select(['cnt' => 'COUNT(*)', 'amt' => 'SUM(Invoices.remaining)'])
+                ->disableHydration()
+                ->first();
+            $result['overdue']        = (int)($overdueRows['cnt'] ?? 0);
+            $result['overdue_amount'] = round((float)($overdueRows['amt'] ?? 0), 2);
+
+            // 2. Przelewy unmatched/proposed (direction C, bez alokacji = niewykorzystane)
+            $unmatchedRows = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id'       => $companyId,
+                    'BankTransactions.direction'        => 'C',
+                    'BankTransactions.match_status IN'  => ['unmatched', 'proposed'],
+                ])
+                ->select(['cnt' => 'COUNT(*)', 'amt' => 'SUM(BankTransactions.amount)'])
+                ->disableHydration()
+                ->first();
+            $result['unmatched_credits']        = (int)($unmatchedRows['cnt'] ?? 0);
+            $result['unmatched_credits_amount'] = round((float)($unmatchedRows['amt'] ?? 0), 2);
+
+            // 3. Problemy integralności — przybliżona suma (kategorie A+B+E)
+            $Payments    = $this->fetchTable('InvoicePayments');
+            $orphanPay   = $Payments->find()
+                ->contain(['Invoices' => function ($q) { return $q->select(['id', 'company_id']); }])
+                ->where([
+                    'InvoicePayments.payment_method' => 'transfer',
+                    'InvoicePayments.bank_transaction_allocation_id IS' => null,
+                    'Invoices.company_id' => $companyId,
+                ])->count();
+            $autoMatched = $BankTxs->find()
+                ->where([
+                    'BankTransactions.company_id'        => $companyId,
+                    'BankTransactions.match_status'      => 'matched',
+                    'BankTransactions.invoice_id IS NOT' => null,
+                    'BankTransactions.match_confidence <' => 100,
+                ])->count();
+            $result['integrity_issues'] = $orphanPay + $autoMatched;
+
+            // 4. NU bez przypisania — credit_note z paymentstate != 'paid' (mają jeszcze saldo)
+            $unusedNu = $Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.type'       => 'credit_note',
+                    'OR' => [
+                        ['Invoices.paymentstate IS' => null],
+                        ['Invoices.paymentstate !=' => 'paid'],
+                    ],
+                ])
+                ->select(['cnt' => 'COUNT(*)', 'amt' => 'SUM(Invoices.remaining)'])
+                ->disableHydration()
+                ->first();
+            $result['unused_credit_notes']        = (int)($unusedNu['cnt'] ?? 0);
+            $result['unused_credit_notes_amount'] = round((float)($unusedNu['amt'] ?? 0), 2);
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('guidance counts failed: ' . $e->getMessage());
+        }
+
+        return $result;
     }
 
     /**

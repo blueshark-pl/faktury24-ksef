@@ -313,6 +313,68 @@ $typeBadge = function (string $type): string {
 
 <?= $this->Flash->render() ?>
 
+<!-- Pasek sugerowanych akcji — "co dziś wymaga uwagi" -->
+<?php
+    $g = $guidance ?? [];
+    $hasOverdue   = ($g['overdue'] ?? 0) > 0;
+    $hasUnmatched = ($g['unmatched_credits'] ?? 0) > 0;
+    $hasIntegrity = ($g['integrity_issues'] ?? 0) > 0;
+    $hasNu        = ($g['unused_credit_notes'] ?? 0) > 0;
+    $anyAction    = $hasOverdue || $hasUnmatched || $hasIntegrity || $hasNu;
+?>
+<?php if ($anyAction): ?>
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3 p-2 rounded" style="background:#fff8e1;border:1px solid #f59e0b">
+    <span class="text-warning fw-semibold ms-2" style="font-size:.85rem">
+        <i class="ri-lightbulb-flash-line"></i> Wymaga uwagi:
+    </span>
+
+    <?php if ($hasOverdue): ?>
+        <a href="<?= $this->Url->build($currentUrl(['status' => 'overdue', 'page' => 1])) ?>"
+           class="btn btn-sm btn-danger-subtle text-danger border border-danger-subtle d-flex align-items-center gap-1"
+           style="font-size:.78rem">
+            <i class="ri-time-line"></i>
+            <strong><?= (int)$g['overdue'] ?> przeterminowanych</strong>
+            <?php if ($g['overdue_amount'] > 0): ?>
+                <span class="text-muted">(<?= number_format($g['overdue_amount'], 0, ',', ' ') ?> PLN)</span>
+            <?php endif; ?>
+        </a>
+    <?php endif; ?>
+
+    <?php if ($hasUnmatched): ?>
+        <a href="<?= $this->Url->build(['plugin' => false, 'controller' => 'BankTransactions', 'action' => 'transactions', '?' => ['status' => 'unmatched']]) ?>"
+           class="btn btn-sm bg-warning-subtle text-warning border border-warning-subtle d-flex align-items-center gap-1"
+           style="font-size:.78rem">
+            <i class="ri-exchange-line"></i>
+            <strong><?= (int)$g['unmatched_credits'] ?> niewykorzystanych przelewów</strong>
+            <?php if ($g['unmatched_credits_amount'] > 0): ?>
+                <span class="text-muted">(<?= number_format($g['unmatched_credits_amount'], 0, ',', ' ') ?> PLN)</span>
+            <?php endif; ?>
+        </a>
+    <?php endif; ?>
+
+    <?php if ($hasIntegrity): ?>
+        <a href="<?= $this->Url->build(['action' => 'checkIntegrity']) ?>"
+           class="btn btn-sm bg-info-subtle text-info border border-info-subtle d-flex align-items-center gap-1"
+           style="font-size:.78rem">
+            <i class="ri-shield-check-line"></i>
+            <strong><?= (int)$g['integrity_issues'] ?> problemów integralności</strong>
+        </a>
+    <?php endif; ?>
+
+    <?php if ($hasNu): ?>
+        <a href="<?= $this->Url->build($currentUrl(['type' => 'credit_note', 'page' => 1])) ?>"
+           class="btn btn-sm bg-success-subtle text-success border border-success-subtle d-flex align-items-center gap-1"
+           style="font-size:.78rem">
+            <i class="ri-file-reduce-line"></i>
+            <strong><?= (int)$g['unused_credit_notes'] ?> NU do wykorzystania</strong>
+            <?php if ($g['unused_credit_notes_amount'] > 0): ?>
+                <span class="text-muted">(<?= number_format($g['unused_credit_notes_amount'], 0, ',', ' ') ?> PLN)</span>
+            <?php endif; ?>
+        </a>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <!-- Kafelki statystyk -->
 <?php if ($stats['count'] > 0): ?>
 <div class="row g-3 mb-4">
