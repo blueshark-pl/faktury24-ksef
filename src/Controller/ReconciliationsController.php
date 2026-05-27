@@ -221,7 +221,8 @@ class ReconciliationsController extends AppController
 
             // ── Główne zapytanie z kontrahentem ───────────────────────────────
             $allowedSort = ['paymentdate', 'date', 'total', 'remaining', 'fullnumber'];
-            $sortCol = in_array($sort, $allowedSort, true) ? $sort : 'paymentdate';
+            // Domyślnie sortujemy po fullnumber (chronologicznie: rok → miesiąc → numer)
+            $sortCol = in_array($sort, $allowedSort, true) ? $sort : 'fullnumber';
             $sortDir = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
 
             $invoiceQuery = $Invoices->find()
