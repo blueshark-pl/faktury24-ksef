@@ -411,20 +411,18 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
                     </form>
 
                     <hr>
-                    <div class="small">
-                        <div class="text-muted mb-1">Legenda:</div>
-                        <div><span class="cal-dot bg-danger d-inline-block">×</span> przeterminowane</div>
-                        <div><span class="cal-dot bg-warning text-dark d-inline-block">×</span> oczekujące</div>
-                        <div><span class="cal-dot bg-success d-inline-block">×</span> zapłacone</div>
-                        <div><span class="cal-dot bg-info d-inline-block">×</span> wpłaty (invoice_payments)</div>
+                    <div class="cal-legend small">
+                        <div class="text-muted text-uppercase mb-1" style="font-size:.65rem;letter-spacing:.04em">Legenda</div>
+                        <div class="cal-legend-row"><span class="cal-dot bg-danger">×</span><span>przeterminowane</span></div>
+                        <div class="cal-legend-row"><span class="cal-dot bg-warning text-dark">×</span><span>oczekujące</span></div>
+                        <div class="cal-legend-row"><span class="cal-dot bg-success">×</span><span>zapłacone</span></div>
+                        <div class="cal-legend-row"><span class="cal-dot bg-info">×</span><span>wpłaty</span></div>
                         <?php if ($showTx): ?>
-                            <div class="mt-1 pt-1 border-top">
-                                <div class="text-muted small mb-1">Przelewy (MT940):</div>
-                                <div><span class="cal-dot bg-success d-inline-block">✓</span> powiązany</div>
-                                <div><span class="cal-dot bg-warning text-dark d-inline-block">?</span> propozycja</div>
-                                <div><span class="cal-dot bg-danger d-inline-block">!</span> bez przypisania</div>
-                                <div><span class="cal-dot bg-secondary d-inline-block">×</span> ignorowany</div>
-                            </div>
+                            <div class="text-muted text-uppercase mt-2 pt-2 border-top mb-1" style="font-size:.65rem;letter-spacing:.04em">Przelewy MT940</div>
+                            <div class="cal-legend-row"><span class="cal-dot bg-success">✓</span><span>powiązany</span></div>
+                            <div class="cal-legend-row"><span class="cal-dot bg-warning text-dark">?</span><span>propozycja</span></div>
+                            <div class="cal-legend-row"><span class="cal-dot bg-danger">!</span><span>bez przypisania</span></div>
+                            <div class="cal-legend-row"><span class="cal-dot bg-secondary">×</span><span>ignorowany</span></div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -723,9 +721,26 @@ $heatmapBg = function (float $overdue) use ($maxOverduePln) {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px;
     font-size: .65rem; font-weight: 700; color: #fff;
+    line-height: 1; flex-shrink: 0;
 }
 .cal-dot.bg-warning { color: #78350f !important; }
 .cal-dot.bg-info { color: #fff !important; }
+
+/* Legenda — równa siatka ikon */
+.cal-legend-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    line-height: 1.35;
+    padding: 2px 0;
+}
+.cal-legend-row .cal-dot {
+    width: 22px; min-width: 22px; height: 22px;
+    font-size: .75rem;
+}
+.cal-legend-row > span:last-child {
+    flex: 1; color: #475569;
+}
 .cal-sum { border-top: 1px dashed #e5e7eb; padding-top: 4px; margin-top: 2px; }
 
 @media (max-width: 991px) {
