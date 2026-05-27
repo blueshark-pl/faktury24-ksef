@@ -258,6 +258,10 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
                                 data-tx-date="<?= h($txDateStr) ?>"
                                 data-tx-party="<?= h($tx->party_name ?? '') ?>"
                                 data-tx-iban="<?= h($tx->party_account ?? '') ?>"
+                                data-tx-title="<?= h($tx->title ?? '') ?>"
+                                data-tx-description="<?= h($tx->description ?? '') ?>"
+                                data-tx-parsed-inv="<?= h($tx->parsed_inv ?? '') ?>"
+                                data-tx-bank-ref="<?= h($tx->bank_reference ?? '') ?>"
                                 title="Rozlicz przelew z fakturami">
                                 <i class="ri-link me-1"></i>Rozlicz
                             </button>
@@ -373,6 +377,31 @@ $statusBadge = function(?string $status, ?int $conf = null): string {
 
                 <!-- Prawa: saldo + lista alokacji -->
                 <div class="d-flex flex-column overflow-y-auto p-3 gap-3" style="width:44%;background:#f8fafc">
+                    <!-- Tytuł / Opis przelewu — dane z banku -->
+                    <div class="bg-white border rounded-3 p-3" id="sm-tx-info-card" style="display:none">
+                        <div class="sm-section-label"><i class="ri-file-text-line"></i>Tytuł / Opis przelewu</div>
+                        <div id="sm-tx-title-wrap" class="mb-2" style="display:none">
+                            <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.03em">Tytuł</div>
+                            <div id="sm-tx-title" class="small" style="word-break:break-word;line-height:1.4;font-family:'Roboto Mono',Consolas,monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.25rem;padding:.4rem .55rem">—</div>
+                        </div>
+                        <div id="sm-tx-description-wrap" class="mb-2" style="display:none">
+                            <div class="text-muted" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.03em">Opis</div>
+                            <div id="sm-tx-description" class="small" style="word-break:break-word;line-height:1.4">—</div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2" style="font-size:.72rem">
+                            <div id="sm-tx-parsed-inv-wrap" style="display:none">
+                                <span class="badge bg-info-subtle text-info border" title="Nr faktury wykryty w tytule">
+                                    <i class="ri-file-search-line me-1"></i>parsed_inv: <span id="sm-tx-parsed-inv">—</span>
+                                </span>
+                            </div>
+                            <div id="sm-tx-bank-ref-wrap" style="display:none">
+                                <span class="badge bg-light text-muted border">
+                                    <i class="ri-hashtag me-1"></i>ref: <span id="sm-tx-bank-ref">—</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Saldo -->
                     <div class="bg-white border rounded-3 p-3">
                         <div class="sm-section-label"><i class="ri-scales-line"></i>Saldo przelewu</div>
@@ -532,6 +561,59 @@ document.addEventListener('click', function (e) {
     document.getElementById('sm-amount').textContent   = fmtC(currentTxAmount, currentTxCurr);
     document.getElementById('sm-date').textContent     = date;
     document.getElementById('sm-tx-total').textContent = fmtC(currentTxAmount, currentTxCurr);
+
+    // Tytuł / Opis przelewu — dane z banku (gdy niepuste)
+    var txTitle      = btn.dataset.txTitle       || '';
+    var txDesc       = btn.dataset.txDescription || '';
+    var txParsedInv  = btn.dataset.txParsedInv   || '';
+    var txBankRef    = btn.dataset.txBankRef     || '';
+    var hasAnyInfo   = !!(txTitle || txDesc || txParsedInv || txBankRef);
+    var infoCard     = document.getElementById('sm-tx-info-card');
+    if (infoCard) infoCard.style.display = hasAnyInfo ? '' : 'none';
+
+    var titleWrap   = document.getElementById('sm-tx-title-wrap');
+    var titleEl     = document.getElementById('sm-tx-title');
+    if (titleEl && titleWrap) {
+        if (txTitle) {
+            titleEl.textContent = txTitle;
+            titleWrap.style.display = '';
+        } else {
+            titleWrap.style.display = 'none';
+        }
+    }
+
+    var descWrap = document.getElementById('sm-tx-description-wrap');
+    var descEl   = document.getElementById('sm-tx-description');
+    if (descEl && descWrap) {
+        if (txDesc && txDesc !== txTitle) {
+            descEl.textContent = txDesc;
+            descWrap.style.display = '';
+        } else {
+            descWrap.style.display = 'none';
+        }
+    }
+
+    var pInvWrap = document.getElementById('sm-tx-parsed-inv-wrap');
+    var pInvEl   = document.getElementById('sm-tx-parsed-inv');
+    if (pInvEl && pInvWrap) {
+        if (txParsedInv) {
+            pInvEl.textContent = txParsedInv;
+            pInvWrap.style.display = '';
+        } else {
+            pInvWrap.style.display = 'none';
+        }
+    }
+
+    var refWrap = document.getElementById('sm-tx-bank-ref-wrap');
+    var refEl   = document.getElementById('sm-tx-bank-ref');
+    if (refEl && refWrap) {
+        if (txBankRef) {
+            refEl.textContent = txBankRef;
+            refWrap.style.display = '';
+        } else {
+            refWrap.style.display = 'none';
+        }
+    }
 
     // Wyczyść poprzedni stan
     document.getElementById('sm-search').value         = '';
