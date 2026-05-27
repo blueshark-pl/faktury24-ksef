@@ -1860,30 +1860,21 @@ class ReconciliationsController extends AppController
             : substr((string)$tx->value_date, 0, 10);
         $desc = $note !== '' ? $note : ('Przelew bankowy: ' . $paymentDate);
 
-        $plnAmount = $amount;
-        if ($currency !== 'PLN' && $allocationType !== 'vat') {
-            // system invoice uses column 'currency_exchange'; legacy uses 'exchange_rate'
-            $rate = $invoiceId !== ''
-                ? (float)($invoice->currency_exchange ?? 0)
-                : (float)($invoice->exchange_rate ?? 0);
-            if ($rate > 0) {
-                $plnAmount = round($amount * $rate, 2);
-            }
-        }
-
         // ── Utwórz wpłatę i przelicz stan faktury ─────────────────────────────
         $paymentId = null;
 
         if ($invoiceId !== '') {
             // Faktura systemowa → invoice_payments
+            // amount/currency zapisywane w ORYGINALNEJ walucie alokacji
+            // (InvoicesTable::recalculatePayments robi konwersję na podstawie tych pól)
             $InvoicePayments = $this->fetchTable('InvoicePayments');
             $payment = $InvoicePayments->newEntity([
                 'id'                             => \Cake\Utility\Text::uuid(),
                 'invoice_id'                     => $invoiceId,
                 'bank_transaction_allocation_id' => (string)$allocation->id,
                 'payment_date'                   => $paymentDate,
-                'amount'                         => $plnAmount,
-                'currency'                       => 'PLN',
+                'amount'                         => round($amount, 2),
+                'currency'                       => $currency,
                 'payment_type'                   => $allocationType,
                 'payment_method'                 => 'transfer',
                 'description'                    => $desc,
@@ -1893,10 +1884,17 @@ class ReconciliationsController extends AppController
                 $paymentId = (string)$payment->id;
                 $allocation->invoice_payment_id = $paymentId;
                 $Allocations->save($allocation);
+                // afterSave na invoice_payments wywołuje InvoicesTable::recalculatePayments
+                // (currency-aware). Wywołujemy _recalcInvoicePaymentState jako fallback safe.
                 $this->_recalcInvoicePaymentState($invoiceId);
             }
         } else {
-            // Faktura archiwalna → legacy_invoice_payments
+            // Faktura archiwalna → legacy_invoice_payments (zostaje stary konwert na PLN)
+            $plnAmount = $amount;
+            if ($currency !== 'PLN' && $allocationType !== 'vat') {
+                $rate = (float)($invoice->exchange_rate ?? 0);
+                if ($rate > 0) $plnAmount = round($amount * $rate, 2);
+            }
             $LegacyInvoicePayments = $this->fetchTable('LegacyInvoicePayments');
             $payment = $LegacyInvoicePayments->newEntity([
                 'id'                => \Cake\Utility\Text::uuid(),
@@ -1910,12 +1908,15 @@ class ReconciliationsController extends AppController
 
             if ($LegacyInvoicePayments->save($payment)) {
                 $paymentId = (string)$payment->id;
-                // Pole invoice_payment_id reużywamy dla legacy (ta sama kolumna, inna tabela)
                 $allocation->invoice_payment_id = $paymentId;
                 $Allocations->save($allocation);
                 $this->_refreshLegacyPaymentState($legacyId);
             }
         }
+
+        // ── Aktualizacja stanu bank_transaction po dodaniu alokacji ──────────
+        // Suma alokacji dla tego tx vs amount → matched/proposed.
+        $this->_updateBankTxMatchState($txId, $companyId);
 
         return $this->response->withType('application/json')
             ->withStringBody(json_encode([
@@ -1923,6 +1924,68 @@ class ReconciliationsController extends AppController
                 'allocation_id'      => (string)$allocation->id,
                 'invoice_payment_id' => $paymentId,
             ]));
+    }
+
+    /**
+     * Aktualizuje bank_transaction match_status i invoice_id na podstawie
+     * sumy alokacji.
+     *   - sum_alloc >= tx.amount → matched, confidence=100
+     *   - 0 < sum_alloc < tx.amount → proposed (jest częściowo rozdysponowany)
+     *   - tx.invoice_id ustawiamy tylko gdy jest dokładnie 1 alokacja do system invoice
+     */
+    private function _updateBankTxMatchState(string $txId, string $companyId): void
+    {
+        $BankTxs     = $this->fetchTable('BankTransactions');
+        $Allocations = $this->fetchTable('BankTransactionAllocations');
+
+        $tx = $BankTxs->find()
+            ->where(['id' => $txId, 'company_id' => $companyId])
+            ->first();
+        if ($tx === null) return;
+
+        $allocs = $Allocations->find()
+            ->where(['bank_transaction_id' => $txId])
+            ->select(['id', 'invoice_id', 'legacy_invoice_id', 'allocated_amount'])
+            ->all()->toArray();
+
+        $sumAllocated = 0.0;
+        $invoiceIds = [];
+        foreach ($allocs as $a) {
+            $sumAllocated += (float)$a->allocated_amount;
+            if ($a->invoice_id) $invoiceIds[(string)$a->invoice_id] = true;
+        }
+
+        $txAmount = (float)$tx->amount;
+        $dirty    = false;
+
+        if ($sumAllocated >= $txAmount - 0.01) {
+            if ($tx->match_status !== 'matched') {
+                $tx->match_status = 'matched';
+                $tx->is_matched   = true;
+                $dirty = true;
+            }
+            if ((int)$tx->match_confidence < 100) {
+                $tx->match_confidence = 100;
+                $dirty = true;
+            }
+        } elseif ($sumAllocated > 0.01) {
+            if ($tx->match_status !== 'proposed') {
+                $tx->match_status = 'proposed';
+                $tx->is_matched   = false;
+                $dirty = true;
+            }
+        }
+
+        // invoice_id: ustawiamy tylko gdy dokładnie 1 systemowa alokacja
+        if (count($invoiceIds) === 1) {
+            $newInvId = array_key_first($invoiceIds);
+            if ((string)($tx->invoice_id ?? '') !== $newInvId) {
+                $tx->invoice_id = $newInvId;
+                $dirty = true;
+            }
+        }
+
+        if ($dirty) $BankTxs->save($tx);
     }
 
     /**
@@ -1964,7 +2027,7 @@ class ReconciliationsController extends AppController
         }
 
         // ── Resetuj bank_transaction — jeśli to BYŁA jedyna alokacja dla tego tx
-        // Inaczej zostawiamy bo inne faktury mogą używać tej samej transakcji.
+        // Inaczej re-evaluate state (zostaje 'proposed' jeśli są jeszcze inne).
         if ($txId) {
             $hasOtherAllocs = $Allocations->exists(['bank_transaction_id' => $txId]);
             if (!$hasOtherAllocs) {
@@ -1979,6 +2042,9 @@ class ReconciliationsController extends AppController
                     $tx->match_confidence = 0;
                     $BankTxs->save($tx);
                 }
+            } else {
+                // Wciąż są alokacje — re-evaluate stan (matched/proposed)
+                $this->_updateBankTxMatchState($txId, $companyId);
             }
         }
 
@@ -2045,50 +2111,16 @@ class ReconciliationsController extends AppController
 
     /**
      * Przelicza alreadypaid / remaining / paymentstate dla faktury systemowej.
+     * Deferuje do currency-aware InvoicesTable::recalculatePayments — eliminuje
+     * podwójną logikę i niespójności.
      */
     private function _recalcInvoicePaymentState(string $invoiceId): void
     {
-        $Invoices        = $this->fetchTable('Invoices');
-        $InvoicePayments = $this->fetchTable('InvoicePayments');
-
-        $invoice = $Invoices->find()
-            ->where(['id' => $invoiceId])
-            ->select(['id', 'total'])
-            ->first();
-
-        if ($invoice === null) {
-            return;
+        try {
+            $this->fetchTable('Invoices')->recalculatePayments($invoiceId);
+        } catch (\Exception $e) {
+            \Cake\Log\Log::warning('_recalcInvoicePaymentState: ' . $e->getMessage());
         }
-
-        $paid = (float)$InvoicePayments->find()
-            ->where(['invoice_id' => $invoiceId])
-            ->select(['s' => 'SUM(amount)'])
-            ->disableHydration()
-            ->first()['s'];
-
-        $total     = (float)$invoice->total;
-        $remaining = round($total - $paid, 2);
-        $paid      = round($paid, 2);
-
-        // CLAMP: remaining nie może być ujemne (przy nadpłacie zostaje 0,
-        // a paymentstate i tak będzie 'paid')
-        if ($remaining < 0) {
-            $remaining = 0.0;
-        }
-
-        if ($remaining <= 0.01 && $paid > 0.01) {
-            $state = 'paid';
-        } elseif ($paid > 0.01) {
-            $state = 'partial';
-        } else {
-            $state = 'unpaid';
-            $remaining = $total; // 0 wpłat = wszystko do zapłaty
-        }
-
-        $Invoices->updateAll(
-            ['alreadypaid' => $paid, 'remaining' => $remaining, 'paymentstate' => $state],
-            ['id' => $invoiceId]
-        );
     }
 
     /**
