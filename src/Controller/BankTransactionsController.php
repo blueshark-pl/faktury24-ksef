@@ -786,27 +786,15 @@ class BankTransactionsController extends AppController
                 $rows = $query->all();
 
                 foreach ($rows as $inv) {
-                    $currency = (string)($inv->currency ?? 'PLN');
-                    $rate     = (float)($inv->currency_exchange ?? 0);
-                    $isEur    = ($currency !== 'PLN') && $rate > 0;
-
-                    // invoices.total / netto / remaining są zawsze w PLN
-                    $totalPln     = (float)$inv->total;
-                    $nettoPln     = (float)$inv->netto;
-                    $remainingPln = (float)$inv->remaining;
-
-                    // Dla faktur walutowych — przelicz na walutę faktury do wyświetlenia
-                    if ($isEur) {
-                        $totalDisp     = round($totalPln / $rate, 2);
-                        $nettoDisp     = round($nettoPln / $rate, 2);
-                        $vatDisp       = round(($totalPln - $nettoPln) / $rate, 2);
-                        $remainingDisp = round($remainingPln / $rate, 2);
-                    } else {
-                        $totalDisp     = $totalPln;
-                        $nettoDisp     = $nettoPln;
-                        $vatDisp       = round($totalPln - $nettoPln, 2);
-                        $remainingDisp = $remainingPln;
-                    }
+                    // invoices.total / netto / remaining są W WALUCIE FAKTURY
+                    // (potwierdza /rozliczenia/ksef bankTransactions endpoint).
+                    // Nie dzielimy przez kurs — to było źródło bugu 307,85 vs 1313,26.
+                    $currency      = (string)($inv->currency ?? 'PLN');
+                    $rate          = (float)($inv->currency_exchange ?? 0);
+                    $total         = (float)$inv->total;
+                    $netto         = (float)$inv->netto;
+                    $remaining     = (float)$inv->remaining;
+                    $vat           = round($total - $netto, 2);
 
                     $results[] = [
                         'id'            => (string)$inv->id,
@@ -814,10 +802,10 @@ class BankTransactionsController extends AppController
                         'fullnumber'    => (string)$inv->fullnumber,
                         'contractor'    => (string)($inv->invoice_contractor->name ?? ''),
                         'nip'           => (string)($inv->invoice_contractor->nip ?? ''),
-                        'total'         => $totalDisp,
-                        'netto'         => $nettoDisp,
-                        'vat'           => $vatDisp,
-                        'remaining'     => $remainingDisp,
+                        'total'         => $total,
+                        'netto'         => $netto,
+                        'vat'           => $vat,
+                        'remaining'     => $remaining,
                         'currency'      => $currency,
                         'exchange_rate' => $rate > 0 ? $rate : null,
                         'paymentstate'  => (string)($inv->paymentstate ?? 'unpaid'),
