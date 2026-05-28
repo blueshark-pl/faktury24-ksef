@@ -233,6 +233,7 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
     <?php endif; ?>
 
     <!-- ── Kanban board ──────────────────────────────────────────────────── -->
+    <div class="kanban-scroll">
     <div class="kanban-board" id="kanbanBoard">
         <?php foreach ($columns as $key => $col): ?>
             <?php
@@ -286,7 +287,8 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                 </div>
             </div>
         <?php endif; ?>
-    </div>
+    </div><!-- /kanban-board -->
+    </div><!-- /kanban-scroll -->
 </div>
 
 <!-- ── Sidebar filtry ───────────────────────────────────────────────────── -->
@@ -398,19 +400,31 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
 }
 .kanban-page-wrap .card.shadow-sm { border: 1px solid #e5e7eb; }
 
-/* ── Board (kontener kolumn) ─────────────────────────────────────────── */
+/* ── Scroll wrapper — osobny element trzymający overflow ─────────────── */
+.kanban-scroll {
+    overflow-x: auto;
+    overflow-y: visible;
+    /* Wyjść poza padding container-fluid layoutu Velzon (lewy/prawy gutter) */
+    margin-left: calc(-1 * var(--bs-gutter-x, 1.5rem) * 0.5);
+    margin-right: calc(-1 * var(--bs-gutter-x, 1.5rem) * 0.5);
+    padding: 4px calc(var(--bs-gutter-x, 1.5rem) * 0.5) 18px calc(var(--bs-gutter-x, 1.5rem) * 0.5);
+    scrollbar-width: thin;
+}
+.kanban-scroll::-webkit-scrollbar { height: 10px; }
+.kanban-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+.kanban-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Board (kontener kolumn) — naturalna szerokość treści ──────────── */
 .kanban-board {
     display: flex;
     gap: 14px;
-    overflow-x: auto;
-    padding: 4px 4px 18px 4px;
+    /* Naturalna szerokość = suma kolumn + gapy. Nigdy mniej niż 100% (żeby tło zajmowało całe pole). */
+    width: max-content;
+    min-width: 100%;
     min-height: 72vh;
-    /* niewielki bias gradient na krawędzi scrolla */
-    scrollbar-width: thin;
+    padding: 4px 0 8px 0;
 }
-.kanban-board::-webkit-scrollbar { height: 10px; }
-.kanban-board::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
-.kanban-board::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Kolumna ─────────────────────────────────────────────────────────── */
 .kanban-col {
