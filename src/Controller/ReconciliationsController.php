@@ -2720,6 +2720,21 @@ class ReconciliationsController extends AppController
             // ignore
         }
 
+        // Funnel pipeline: pojedyncze stage z konwersją na ostatni
+        $funnel = [
+            ['key' => 'in_term',  'label' => 'W terminie',   'count' => $countByCol['in_term']  ?? 0],
+            ['key' => 'sent',     'label' => 'Wysłane',      'count' => $countByCol['sent']     ?? 0],
+            ['key' => 'due_soon', 'label' => 'Za 7 dni',     'count' => $countByCol['due_soon'] ?? 0],
+            ['key' => 'overdue',  'label' => 'Przeterm.',    'count' => $countByCol['overdue']  ?? 0],
+            ['key' => 'dispute',  'label' => 'Spór',         'count' => $countByCol['dispute']  ?? 0],
+            ['key' => 'paid',     'label' => 'Opłacone',     'count' => $countByCol['paid']     ?? 0],
+        ];
+        $funnelTotal = array_sum(array_column($funnel, 'count'));
+        foreach ($funnel as &$stage) {
+            $stage['pct'] = $funnelTotal > 0 ? round(($stage['count'] / $funnelTotal) * 100, 1) : 0;
+        }
+        unset($stage);
+
         return [
             'count_by_col'    => $countByCol,
             'sum_pln'         => round($sumByCurr['PLN'], 2),
@@ -2730,6 +2745,8 @@ class ReconciliationsController extends AppController
             'collected_month' => round($collectedThisMonth, 2),
             'overdue_count'   => $countByCol['overdue'] ?? 0,
             'dispute_count'   => $countByCol['dispute'] ?? 0,
+            'funnel'          => $funnel,
+            'funnel_total'    => $funnelTotal,
         ];
     }
 
@@ -3054,6 +3071,90 @@ class ReconciliationsController extends AppController
 
         return $this->response->withType('application/json')
             ->withStringBody(json_encode(['notes' => $out]));
+    }
+
+    public function kanbanReminderInfo(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'name', 'nip']);
+                },
+            ])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.remaining', 'Invoices.currency',
+                      'Invoices.paymentdate', 'Invoices.contractor_id'])
+            ->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $defaultEmail = '';
+        if (!empty($invoice->contractor_id)) {
+            try {
+                $contractor = $this->fetchTable('Contractors')->find()
+                    ->where(['id' => $invoice->contractor_id, 'company_id' => $companyId])
+                    ->select(['id', 'email'])
+                    ->first();
+                if ($contractor && !empty($contractor->email)) {
+                    $defaultEmail = (string)$contractor->email;
+                }
+            } catch (\Throwable $e) {
+                // brak tabeli/uprawnień — degraduj cicho
+            }
+        }
+
+        $pdStr = $this->_extractDateStr($invoice->paymentdate);
+        $daysOverdue = 0;
+        $daysToDue = 0;
+        if ($pdStr) {
+            $diff = (int)floor((strtotime($pdStr) - strtotime(date('Y-m-d'))) / 86400);
+            if ($diff < 0) $daysOverdue = abs($diff);
+            else $daysToDue = $diff;
+        }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'fullnumber'      => (string)$invoice->fullnumber,
+                'contractor_name' => (string)($invoice->invoice_contractor->name ?? ''),
+                'default_email'   => $defaultEmail,
+                'amount'          => (float)$invoice->remaining,
+                'currency'        => (string)$invoice->currency,
+                'paymentdate'     => $pdStr,
+                'days_overdue'    => $daysOverdue,
+                'days_to_due'     => $daysToDue,
+            ], JSON_UNESCAPED_UNICODE));
+    }
+
+    public function kanbanSendReminder(string $id): Response
+    {
+        $this->request->allowMethod(['post']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+        $userId    = $this->request->getAttribute('identity')?->get('id');
+
+        $email = trim((string)$this->request->getData('email'));
+        $customMessage = trim((string)$this->request->getData('message', ''));
+
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->_jsonStatusError('Nieprawidłowy adres email.', 400);
+        }
+
+        $service = new \App\Service\Invoice\PaymentReminderEmailService();
+        $result = $service->send($id, $companyId, $email, $customMessage);
+
+        if (!$result['success']) {
+            return $this->_jsonStatusError($result['error'] ?? 'Błąd wysyłki', 500);
+        }
+
+        $this->_logKanbanAction($id, $userId, $companyId, 'reminder_sent',
+            'Wysłano przypomnienie na: ' . $email
+            . ($customMessage !== '' ? ' (z własną wiadomością)' : ''),
+            ['email' => $email, 'subject' => $result['subject'] ?? '']);
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode(['success' => true, 'subject' => $result['subject'] ?? '']));
     }
 
     public function kanbanAiSuggest(string $id): Response

@@ -152,6 +152,85 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
         </div>
     <?php endif; ?>
 
+    <!-- ── Pipeline funnel ───────────────────────────────────────────────── -->
+    <?php if (($stats['funnel_total'] ?? 0) > 0): ?>
+        <div class="card shadow-sm mb-3">
+            <div class="card-header py-2 d-flex align-items-center gap-2 bg-light" data-bs-toggle="collapse" data-bs-target="#kanbanFunnel" style="cursor:pointer">
+                <i class="ri-funnel-line text-primary"></i>
+                <strong class="small">Pipeline rozliczeń</strong>
+                <span class="text-muted small ms-auto"><?= (int)$stats['funnel_total'] ?> kart łącznie · klik aby rozwinąć/zwinąć</span>
+            </div>
+            <div class="collapse show" id="kanbanFunnel">
+                <div class="card-body py-3">
+                    <div class="kanban-funnel">
+                        <?php
+                        $funnelColors = [
+                            'in_term'  => '#0ea5e9',
+                            'sent'     => '#3b82f6',
+                            'due_soon' => '#f59e0b',
+                            'overdue'  => '#dc2626',
+                            'dispute'  => '#1e293b',
+                            'paid'     => '#16a34a',
+                        ];
+                        $maxCount = max(array_column($stats['funnel'], 'count')) ?: 1;
+                        foreach ($stats['funnel'] as $stage):
+                            $color = $funnelColors[$stage['key']] ?? '#6b7280';
+                            $widthPct = max(8, round(($stage['count'] / $maxCount) * 100));
+                        ?>
+                            <div class="kanban-funnel-row">
+                                <div class="kanban-funnel-label small text-muted"><?= h($stage['label']) ?></div>
+                                <div class="kanban-funnel-bar-wrap">
+                                    <div class="kanban-funnel-bar" style="width:<?= $widthPct ?>%;background:<?= h($color) ?>">
+                                        <?php if ($stage['count'] > 0): ?>
+                                            <span class="kanban-funnel-count"><?= (int)$stage['count'] ?> · <?= $stage['pct'] ?>%</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <?php
+                    $paidCount = $stats['funnel'][5]['count'] ?? 0;
+                    $totalCount = $stats['funnel_total'] ?? 0;
+                    $conversionRate = $totalCount > 0 ? round(($paidCount / $totalCount) * 100, 1) : 0;
+                    ?>
+                    <div class="mt-3 d-flex flex-wrap gap-4 small">
+                        <div>
+                            <span class="text-muted text-uppercase" style="font-size:.62rem;letter-spacing:.05em">Konwersja na opłacone</span>
+                            <div class="fw-bold fs-6 <?= $conversionRate >= 80 ? 'text-success' : ($conversionRate >= 50 ? 'text-warning' : 'text-danger') ?>">
+                                <?= $conversionRate ?>% <small class="text-muted">(<?= (int)$paidCount ?> z <?= (int)$totalCount ?>)</small>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="text-muted text-uppercase" style="font-size:.62rem;letter-spacing:.05em">Wąskie gardło</span>
+                            <?php
+                            $bottleneck = null;
+                            $bottleneckCount = 0;
+                            foreach (['overdue', 'dispute', 'due_soon'] as $col) {
+                                foreach ($stats['funnel'] as $st) {
+                                    if ($st['key'] === $col && $st['count'] > $bottleneckCount) {
+                                        $bottleneck = $st;
+                                        $bottleneckCount = $st['count'];
+                                    }
+                                }
+                            }
+                            ?>
+                            <div class="fw-bold fs-6">
+                                <?php if ($bottleneck): ?>
+                                    <?= h($bottleneck['label']) ?>
+                                    <small class="text-danger"><?= (int)$bottleneck['count'] ?></small>
+                                <?php else: ?>
+                                    <span class="text-success">brak ✓</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- ── Kanban board ──────────────────────────────────────────────────── -->
     <div class="kanban-board" id="kanbanBoard">
         <?php foreach ($columns as $key => $col): ?>
@@ -404,6 +483,21 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
 }
 .kanban-col-header { position: sticky; top: 0; z-index: 2; }
 
+/* Pipeline funnel */
+.kanban-funnel { display: flex; flex-direction: column; gap: 6px; }
+.kanban-funnel-row { display: flex; align-items: center; gap: 10px; }
+.kanban-funnel-label { width: 100px; flex-shrink: 0; text-align: right; }
+.kanban-funnel-bar-wrap { flex: 1; background: #f1f5f9; border-radius: 4px; overflow: hidden; height: 22px; }
+.kanban-funnel-bar {
+    height: 100%;
+    display: flex; align-items: center; padding: 0 8px;
+    color: #fff; font-weight: 600; font-size: .72rem;
+    border-radius: 4px;
+    transition: width .3s ease;
+    min-width: 2px;
+}
+.kanban-funnel-count { white-space: nowrap; }
+
 /* Select2 — Kanban offcanvas */
 #kanbanFilters .select2-container--default .select2-selection--single {
     height: calc(1.5em + 0.5rem + 2px); line-height: 1.5; font-size: .875rem; padding: 0 .5rem;
@@ -626,6 +720,10 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
             openCardModal(invoiceId, card, 'assign');
             return;
         }
+        if (action === 'reminder') {
+            openCardModal(invoiceId, card, 'reminder');
+            return;
+        }
     });
 
     function openCardModal(invoiceId, card, tab) {
@@ -643,7 +741,85 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
             renderAiTab(body, invoiceId);
         } else if (tab === 'assign') {
             renderAssignTab(body, invoiceId, card);
+        } else if (tab === 'reminder') {
+            renderReminderTab(body, invoiceId);
         }
+    }
+
+    function renderReminderTab(body, invoiceId) {
+        fetch('/rozliczenia/kanban/reminder-info/' + invoiceId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.error) { body.innerHTML = '<div class="p-3 text-danger">' + esc(d.error) + '</div>'; return; }
+
+                // Sugerowana treść maila — różna dla overdue vs pending
+                var suggested = '';
+                if (d.days_overdue > 0) {
+                    suggested = 'Szanowni Państwo,\n\nUprzejmie informujemy, że upłynął termin płatności faktury '
+                              + d.fullnumber + ' (termin: ' + d.paymentdate + ').\n\nProsimy o jak najszybsze uregulowanie należności w wysokości '
+                              + fmt(d.amount) + ' ' + d.currency + '.\n\nZ poważaniem';
+                } else if (d.days_to_due === 0) {
+                    suggested = 'Szanowni Państwo,\n\nUprzejmie przypominamy, że dziś upływa termin płatności faktury '
+                              + d.fullnumber + ' na kwotę ' + fmt(d.amount) + ' ' + d.currency + '.\n\nZ poważaniem';
+                } else {
+                    suggested = 'Szanowni Państwo,\n\nUprzejmie przypominamy o zbliżającym się terminie płatności faktury '
+                              + d.fullnumber + ' (termin: ' + d.paymentdate + ') na kwotę ' + fmt(d.amount) + ' ' + d.currency + '.\n\nZ poważaniem';
+                }
+
+                var html = '<div class="p-3">';
+                html += '<div class="alert alert-info py-2 small mb-3">';
+                html += '<strong>' + esc(d.fullnumber) + '</strong> · ' + esc(d.contractor_name);
+                html += ' · <strong>' + fmt(d.amount) + ' ' + esc(d.currency) + '</strong> do zapłaty';
+                if (d.days_overdue > 0) html += ' · <span class="text-danger">' + d.days_overdue + ' dni po terminie</span>';
+                else if (d.days_to_due === 0) html += ' · <span class="text-warning">dziś termin</span>';
+                else html += ' · termin za ' + d.days_to_due + ' dni';
+                html += '</div>';
+
+                html += '<form id="kanbanReminderForm">';
+                html += '<div class="mb-2"><label class="form-label small text-muted">Adres email odbiorcy</label>';
+                html += '<input type="email" name="email" class="form-control form-control-sm" required value="' + esc(d.default_email) + '" placeholder="email@firma.pl">';
+                if (!d.default_email) html += '<div class="text-warning small mt-1"><i class="ri-error-warning-line"></i> Brak emaila w bazie kontrahenta — wpisz ręcznie.</div>';
+                html += '</div>';
+                html += '<div class="mb-2"><label class="form-label small text-muted">Własna wiadomość (opcjonalne, zastąpi domyślny tekst)</label>';
+                html += '<textarea name="message" class="form-control form-control-sm" rows="8" placeholder="Pozostaw puste aby użyć szablonu domyślnego…">' + esc(suggested) + '</textarea>';
+                html += '<div class="form-text small">Domyślnie email zawiera nr faktury, kwotę, termin i statusowy banner. Tu możesz dodać dodatkową treść.</div>';
+                html += '</div>';
+                html += '<div class="d-flex gap-2 mt-3">';
+                html += '<button type="submit" class="btn btn-warning btn-sm"><i class="ri-mail-send-line"></i> Wyślij przypomnienie</button>';
+                html += '<button type="button" class="btn btn-link btn-sm" id="kanbanReminderUseDefault">Użyj szablonu (bez własnej wiadomości)</button>';
+                html += '</div>';
+                html += '</form>';
+                html += '</div>';
+                body.innerHTML = html;
+
+                document.getElementById('kanbanReminderUseDefault').addEventListener('click', function () {
+                    body.querySelector('textarea[name=message]').value = '';
+                });
+
+                document.getElementById('kanbanReminderForm').addEventListener('submit', function (ev) {
+                    ev.preventDefault();
+                    var fd = new FormData(ev.target);
+                    var btn = ev.target.querySelector('button[type=submit]');
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Wysyłam…';
+                    fetch('/rozliczenia/kanban/send-reminder/' + invoiceId, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        body: fd,
+                    })
+                    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, body: d }; }); })
+                    .then(function (res) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-mail-send-line"></i> Wyślij przypomnienie';
+                        if (!res.ok) {
+                            showToast(res.body.error || 'Błąd wysyłki', 'danger');
+                            return;
+                        }
+                        showToast('Wysłano: ' + (res.body.subject || 'OK'), 'success');
+                        bootstrap.Modal.getInstance(document.getElementById('kanbanCardModal'))?.hide();
+                    });
+                });
+            });
     }
 
     function renderNotesTab(body, invoiceId) {

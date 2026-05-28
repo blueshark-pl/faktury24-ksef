@@ -166,6 +166,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['id']);
         $builder->get('/rozliczenia/kanban/notes/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanGetNotes'])
             ->setPass(['id']);
+        $builder->get('/rozliczenia/kanban/reminder-info/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanReminderInfo'])
+            ->setPass(['id']);
+        $builder->post('/rozliczenia/kanban/send-reminder/{id}', ['controller' => 'Reconciliations', 'action' => 'kanbanSendReminder'])
+            ->setPass(['id']);
         $builder->get('/rozliczenia/speed', ['controller' => 'Reconciliations', 'action' => 'indexSpeed']);
         $builder->post('/rozliczenia/add-payment', ['controller' => 'Reconciliations', 'action' => 'addPayment']);
         $builder->post('/rozliczenia/delete-payment/{id}', ['controller' => 'Reconciliations', 'action' => 'deletePayment'])

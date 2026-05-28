@@ -70,6 +70,7 @@ if ($card['is_stale']) $cardClasses[] = 'stale';
             </button>
             <ul class="dropdown-menu dropdown-menu-end" style="font-size:.8rem">
                 <li><a class="dropdown-item" href="#" data-card-action="open"><i class="ri-external-link-line"></i> Otwórz fakturę</a></li>
+                <li><a class="dropdown-item" href="#" data-card-action="reminder"><i class="ri-mail-send-line text-warning"></i> Wyślij przypomnienie…</a></li>
                 <li><a class="dropdown-item" href="#" data-card-action="note"><i class="ri-chat-1-line"></i> Notatki / log</a></li>
                 <li><a class="dropdown-item" href="#" data-card-action="snooze"><i class="ri-zzz-line"></i> Odłóż…</a></li>
                 <li><a class="dropdown-item" href="#" data-card-action="assign"><i class="ri-user-line"></i> Przypisz…</a></li>
