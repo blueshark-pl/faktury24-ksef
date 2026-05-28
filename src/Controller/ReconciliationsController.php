@@ -3073,6 +3073,82 @@ class ReconciliationsController extends AppController
             ->withStringBody(json_encode(['notes' => $out]));
     }
 
+    public function kanbanCardData(string $id): Response
+    {
+        $this->request->allowMethod(['get']);
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? $this->currentCompanyId;
+
+        $Invoices = $this->fetchTable('Invoices');
+        $invoice = $Invoices->find()
+            ->contain([
+                'InvoiceContractors' => function ($q) {
+                    return $q->select(['id', 'invoice_id', 'name', 'nip']);
+                },
+            ])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->select(['Invoices.id', 'Invoices.fullnumber', 'Invoices.date', 'Invoices.paymentdate',
+                      'Invoices.paymentstate', 'Invoices.total', 'Invoices.remaining', 'Invoices.alreadypaid',
+                      'Invoices.currency', 'Invoices.currency_exchange', 'Invoices.type',
+                      'Invoices.workflow_status', 'Invoices.sent_at', 'Invoices.paid_at',
+                      'Invoices.snooze_until', 'Invoices.dispute_flag', 'Invoices.dispute_reason',
+                      'Invoices.assigned_to_user_id', 'Invoices.kanban_pinned',
+                      'Invoices.modified', 'Invoices.contractor_id'])
+            ->first();
+        if (!$invoice) return $this->_jsonStatusError('Faktura nie istnieje.', 404);
+
+        $card = $this->_buildKanbanCard($invoice, date('Y-m-d'));
+
+        // Doładuj nazwę przypisanego usera + email
+        $assignedUser = null;
+        if (!empty($card['assigned_to_user_id'])) {
+            try {
+                $u = $this->fetchTable('Users')->find()
+                    ->where(['id' => $card['assigned_to_user_id']])
+                    ->select(['id', 'first_name', 'last_name', 'email', 'avatar'])
+                    ->first();
+                if ($u) {
+                    $assignedUser = [
+                        'id'    => (string)$u->id,
+                        'name'  => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: (string)$u->email,
+                        'email' => (string)$u->email,
+                        'avatar'=> (string)($u->avatar ?? ''),
+                    ];
+                }
+            } catch (\Throwable $e) { /* ignore */ }
+        }
+
+        // Wpłaty (invoice_payments) — historia
+        $payments = [];
+        try {
+            $db = $Invoices->getConnection();
+            $stmt = $db->execute(
+                "SELECT ip.id, ip.payment_date, ip.amount, ip.currency, ip.payment_method, ip.payment_type
+                 FROM invoice_payments ip
+                 WHERE ip.invoice_id = ?
+                 ORDER BY ip.payment_date DESC, ip.created DESC",
+                [$id]
+            );
+            foreach ($stmt->fetchAll('assoc') as $p) {
+                $payments[] = [
+                    'id'            => (string)$p['id'],
+                    'payment_date'  => substr((string)$p['payment_date'], 0, 10),
+                    'amount'        => (float)$p['amount'],
+                    'currency'      => (string)$p['currency'],
+                    'payment_method'=> (string)$p['payment_method'],
+                    'payment_type'  => (string)($p['payment_type'] ?? 'manual'),
+                ];
+            }
+        } catch (\Throwable $e) { /* ignore */ }
+
+        return $this->response->withType('application/json')
+            ->withStringBody(json_encode([
+                'card'           => $card,
+                'assigned_user'  => $assignedUser,
+                'payments'       => $payments,
+                'paid_sum'       => array_sum(array_column($payments, 'amount')),
+            ], JSON_UNESCAPED_UNICODE));
+    }
+
     public function kanbanReminderInfo(string $id): Response
     {
         $this->request->allowMethod(['get']);

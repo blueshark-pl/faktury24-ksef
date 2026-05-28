@@ -1030,32 +1030,256 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
         }
     });
 
-    function openCardModal(invoiceId, card, tab) {
-        var body = document.getElementById('kanbanCardModalBody');
-        var header = document.getElementById('kanbanCardModalHeader');
+    // ── Stan modalu — używamy żeby NIE reload-ować strony po akcji, tylko refreshować modal.
+    //    Board reload-ujemy dopiero przy zamknięciu modalu (lazy).
+    var modalState = { invoiceId: null, cardEl: null, dirty: false, lastData: null };
 
-        // Renderuj header z karty
-        renderModalHeader(header, card);
+    function openCardModal(invoiceId, cardEl, tab) {
+        var bodyEl = document.getElementById('kanbanCardModalBody');
+        var headerEl = document.getElementById('kanbanCardModalHeader');
+
+        modalState.invoiceId = invoiceId;
+        modalState.cardEl    = cardEl;
+        modalState.dirty     = false;
+        modalState.lastData  = null;
 
         // Stub loading
-        body.innerHTML = '<div class="p-4 text-center"><div class="spinner-border spinner-border-sm"></div> <span class="ms-2 text-muted small">ładowanie…</span></div>';
+        headerEl.innerHTML = '<h5 class="kanban-modal-title">Faktura</h5><button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>';
+        bodyEl.innerHTML   = '<div class="p-4 text-center"><div class="spinner-border spinner-border-sm"></div> <span class="ms-2 text-muted small">ładowanie…</span></div>';
 
         var modal = bootstrap.Modal.getInstance(document.getElementById('kanbanCardModal'))
                   || new bootstrap.Modal(document.getElementById('kanbanCardModal'));
         modal.show();
 
-        // Tab routing — domyślnie 'main' (Trello-style)
-        tab = tab || 'main';
-        if (tab === 'main') {
-            renderMainModal(body, invoiceId, card);
-        } else if (tab === 'notes') {
-            renderMainModal(body, invoiceId, card, { scrollTo: 'notes' });
-        } else if (tab === 'ai') {
-            renderMainModal(body, invoiceId, card, { panel: 'ai' });
-        } else if (tab === 'assign') {
-            renderMainModal(body, invoiceId, card, { panel: 'assign' });
-        } else if (tab === 'reminder') {
-            renderMainModal(body, invoiceId, card, { panel: 'reminder' });
+        // Pobierz świeże dane z serwera (zamiast polegać tylko na DOM dataset)
+        var initialPanel = ({ ai: 'ai-suggest', assign: 'assign', reminder: 'reminder', notes: null, main: null }[tab || 'main']) || null;
+        refreshModal({ initialPanel: initialPanel });
+    }
+
+    function refreshModal(opts) {
+        opts = opts || {};
+        if (!modalState.invoiceId) return;
+        var headerEl = document.getElementById('kanbanCardModalHeader');
+        var bodyEl   = document.getElementById('kanbanCardModalBody');
+
+        fetch('/rozliczenia/kanban/card-data/' + modalState.invoiceId, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, body: d }; }); })
+            .then(function (res) {
+                if (!res.ok) {
+                    bodyEl.innerHTML = '<div class="p-3 text-danger small"><i class="ri-error-warning-line"></i> ' + esc(res.body.error || 'Błąd ładowania') + '</div>';
+                    return;
+                }
+                modalState.lastData = res.body;
+                renderModalHeader(headerEl, res.body);
+                renderMainModal(bodyEl, res.body, opts);
+            });
+    }
+
+    function renderModalHeader(header, data) {
+        var c = data.card || {};
+        var num = c.fullnumber || '';
+        var contractor = c.contractor || '';
+        var nip = c.nip || '';
+        var amount = parseFloat(c.remaining || 0);
+        var currency = c.currency || 'PLN';
+        var paymentstate = c.paymentstate || 'unpaid';
+        var disputeFlag = !!c.dispute_flag;
+        var snoozeUntil = c.snooze_until_str || '';
+        var daysToDue = c.days_to_due;
+        var pinned = !!c.pinned;
+
+        var stateBadge = '';
+        if (paymentstate === 'paid') {
+            stateBadge = '<span class="badge bg-success-subtle text-success border"><i class="ri-checkbox-circle-fill"></i> Opłacona</span>';
+        } else if (disputeFlag) {
+            stateBadge = '<span class="badge bg-dark-subtle text-dark border"><i class="ri-scales-3-line"></i> Spór / windykacja</span>';
+        } else if (snoozeUntil) {
+            stateBadge = '<span class="badge bg-warning-subtle text-warning border"><i class="ri-zzz-line"></i> Odłożona do ' + esc(snoozeUntil) + '</span>';
+        } else if (daysToDue !== null && daysToDue !== undefined && daysToDue < 0) {
+            stateBadge = '<span class="badge bg-danger-subtle text-danger border"><i class="ri-error-warning-line"></i> ' + Math.abs(daysToDue) + ' dni po terminie</span>';
+        } else if (daysToDue !== null && daysToDue !== undefined && daysToDue <= 7) {
+            stateBadge = '<span class="badge bg-warning-subtle text-warning border"><i class="ri-alarm-warning-line"></i> Termin za ' + daysToDue + ' dni</span>';
+        } else if (daysToDue !== null && daysToDue !== undefined) {
+            stateBadge = '<span class="badge bg-info-subtle text-info border"><i class="ri-time-line"></i> W terminie</span>';
+        }
+
+        var assignedHtml = '';
+        if (data.assigned_user) {
+            var initials = (data.assigned_user.name || '?').split(/\s+/).map(function(p){return p[0]||'';}).join('').toUpperCase().substring(0, 2);
+            assignedHtml = '<span class="badge bg-info-subtle text-info border"><i class="ri-user-fill"></i> ' + esc(data.assigned_user.name) + '</span>';
+        }
+
+        header.innerHTML =
+            '<div class="flex-grow-1 min-w-0">'
+          +   '<h5 class="kanban-modal-title text-truncate">'
+          +     (pinned ? '<i class="ri-pushpin-fill text-warning me-1"></i>' : '')
+          +     esc(num)
+          +   '</h5>'
+          +   '<div class="kanban-modal-subtitle">'
+          +     esc(contractor) + (nip ? ' · NIP ' + esc(nip) : '')
+          +   '</div>'
+          +   '<div class="kanban-modal-meta-row">'
+          +     stateBadge
+          +     ' ' + assignedHtml
+          +     '<span class="text-muted small ms-auto">' + fmt(amount) + ' ' + esc(currency) + ' do zapłaty</span>'
+          +   '</div>'
+          + '</div>'
+          + '<button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Zamknij"></button>';
+    }
+
+    function renderMainModal(body, data, opts) {
+        opts = opts || {};
+        var c = data.card || {};
+        var assignedUser = data.assigned_user;
+        var paidSum = parseFloat(data.paid_sum || 0);
+        var html = '<div class="kanban-modal-grid">';
+
+        // ── LEFT: info + notes ─────────────────────────────────────
+        html += '<div class="km-main">';
+
+        // Info grid
+        html += '<div class="km-section">';
+        html += '<div class="km-section-title"><i class="ri-information-line"></i> Szczegóły</div>';
+        html += '<div class="km-info-grid">';
+        html += infoItem('Kontrahent', c.contractor || '—');
+        html += infoItem('NIP', c.nip || '—');
+        html += infoItem('Brutto', fmt(parseFloat(c.total || 0)) + ' ' + esc(c.currency));
+        html += infoItem('Pozostało', fmt(parseFloat(c.remaining || 0)) + ' ' + esc(c.currency));
+        html += infoItem('Wpłacono', fmt(parseFloat(c.alreadypaid || 0)) + ' ' + esc(c.currency));
+        html += infoItem('Termin płatności', c.paymentdate_str || '—');
+        html += infoItem('Typ faktury', (c.type || '').toUpperCase() || '—');
+        var progressPct = parseFloat(c.progress_pct || 0);
+        html += infoItem('Postęp wpłat', progressPct + '%' +
+            '<div class="kanban-progress mt-1"><div style="width:' + progressPct + '%"></div></div>', true);
+        if (assignedUser) {
+            html += infoItem('Przypisana do', esc(assignedUser.name) + ' <small class="text-muted">' + esc(assignedUser.email) + '</small>', true);
+        }
+        if (c.snooze_until_str) {
+            html += infoItem('Odłożona do', c.snooze_until_str);
+        }
+        html += '</div>';
+        html += '</div>';
+
+        // Dispute reason (jeśli jest)
+        if (c.dispute_flag && c.dispute_reason) {
+            html += '<div class="km-section">';
+            html += '<div class="km-section-title text-dark"><i class="ri-scales-3-line"></i> Powód sporu</div>';
+            html += '<div class="alert alert-dark py-2 small mb-0">' + esc(c.dispute_reason) + '</div>';
+            html += '</div>';
+        }
+
+        // Historia wpłat
+        if (data.payments && data.payments.length > 0) {
+            html += '<div class="km-section">';
+            html += '<div class="km-section-title"><i class="ri-money-dollar-circle-line"></i> Wpłaty (' + data.payments.length + ')</div>';
+            html += '<div class="km-notes-list">';
+            data.payments.forEach(function (p) {
+                html += '<div class="km-note">';
+                html += '<div class="km-note-header">';
+                html += '<i class="ri-arrow-down-circle-line text-success"></i>';
+                html += '<span>' + esc(p.payment_date) + '</span>';
+                html += '<span class="ms-auto fw-bold text-success">' + fmt(p.amount) + ' ' + esc(p.currency) + '</span>';
+                html += '</div>';
+                if (p.payment_method) {
+                    html += '<div class="km-note-body text-muted small">' + esc(p.payment_method) + (p.payment_type ? ' · ' + esc(p.payment_type) : '') + '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+            html += '</div>';
+        }
+
+        // Inline panel — pokazujemy formularz akcji jeśli opts.panel ustawione
+        html += '<div id="kmInlinePanel"></div>';
+
+        // Notatki / log
+        html += '<div class="km-section">';
+        html += '<div class="km-section-title"><i class="ri-chat-3-line"></i> Notatki i historia</div>';
+        html += '<form id="kmNoteForm" class="d-flex gap-2 mb-2">';
+        html += '<select name="note_type" class="form-select form-select-sm" style="width:130px">';
+        html += '<option value="note">Notatka</option>';
+        html += '<option value="phone_call">Rozmowa</option>';
+        html += '<option value="email">Email</option>';
+        html += '<option value="reminder">Przypomnienie</option>';
+        html += '</select>';
+        html += '<input type="text" name="body" class="form-control form-control-sm" placeholder="Dodaj komentarz…" required>';
+        html += '<button type="submit" class="btn btn-sm btn-primary"><i class="ri-add-line"></i></button>';
+        html += '</form>';
+        html += '<div class="km-notes-list" id="kmNotesList"><div class="p-2 text-muted small fst-italic">ładowanie…</div></div>';
+        html += '</div>';
+
+        html += '</div>'; // /km-main
+
+        // ── RIGHT: panel akcji ─────────────────────────────────────
+        html += '<div class="km-side">';
+        html += '<div class="km-section">';
+        html += '<div class="km-section-title"><i class="ri-magic-line"></i> Akcje</div>';
+
+        html += '<button type="button" class="km-action-btn" data-km-action="open">'
+              + '<i class="ri-external-link-line text-secondary"></i> Otwórz fakturę</button>';
+        html += '<button type="button" class="km-action-btn km-action-warning" data-km-action="reminder">'
+              + '<i class="ri-mail-send-line text-warning"></i> Wyślij przypomnienie</button>';
+        html += '<button type="button" class="km-action-btn km-action-warning" data-km-action="snooze">'
+              + '<i class="ri-zzz-line text-warning"></i> Odłóż…</button>';
+        html += '<button type="button" class="km-action-btn" data-km-action="assign">'
+              + '<i class="ri-user-line text-info"></i> Przypisz osobę…</button>';
+        if (c.dispute_flag) {
+            html += '<button type="button" class="km-action-btn km-action-success" data-km-action="undispute">'
+                  + '<i class="ri-check-line text-success"></i> Usuń flagę sporu</button>';
+        } else {
+            html += '<button type="button" class="km-action-btn km-action-danger" data-km-action="dispute">'
+                  + '<i class="ri-scales-3-line text-danger"></i> Oznacz jako spór</button>';
+        }
+        html += '<button type="button" class="km-action-btn" data-km-action="pin">'
+              + '<i class="ri-pushpin-line text-muted"></i> ' + (c.pinned ? 'Odepnij kartę' : 'Przypnij kartę') + '</button>';
+        if (c.snooze_until_str) {
+            html += '<button type="button" class="km-action-btn km-action-success" data-km-action="unsnooze">'
+                  + '<i class="ri-time-line text-success"></i> Anuluj odłożenie</button>';
+        }
+        html += '<hr style="margin: 10px 0; opacity: .3">';
+        html += '<button type="button" class="km-action-btn" data-km-action="ai-suggest">'
+              + '<i class="ri-sparkling-2-line text-primary"></i> AI: następna akcja</button>';
+        html += '</div>';
+        html += '</div>'; // /km-side
+
+        html += '</div>'; // /kanban-modal-grid
+        body.innerHTML = html;
+
+        // Załaduj notatki
+        loadKmNotes(modalState.invoiceId);
+
+        // Form dodawania notatki
+        document.getElementById('kmNoteForm').addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var fd = new FormData(ev.target);
+            fetch('/rozliczenia/kanban/note/' + modalState.invoiceId, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd,
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (rd) {
+                if (rd.success) {
+                    ev.target.querySelector('input[name=body]').value = '';
+                    loadKmNotes(modalState.invoiceId);
+                    modalState.dirty = true;
+                    showToast('Notatka dodana', 'success');
+                } else {
+                    showToast(rd.error || 'Błąd', 'danger');
+                }
+            });
+        });
+
+        // Akcje boczne
+        body.querySelectorAll('[data-km-action]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                handleKmAction(btn.dataset.kmAction);
+            });
+        });
+
+        // Jeśli otwarto z konkretnym panelem (z dropdownu)
+        if (opts.initialPanel) {
+            handleKmAction(opts.initialPanel);
         }
     }
 
@@ -1266,7 +1490,9 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
             });
     }
 
-    function handleKmAction(action, invoiceId, card) {
+    function handleKmAction(action) {
+        var invoiceId = modalState.invoiceId;
+        var card = modalState.lastData && modalState.lastData.card;
         var panel = document.getElementById('kmInlinePanel');
 
         if (action === 'open') {
@@ -1279,9 +1505,10 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                 headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
             })
             .then(function (r) { return r.json(); })
-            .then(function () {
-                showToast('Zmieniono przypięcie', 'success');
-                setTimeout(function () { location.reload(); }, 400);
+            .then(function (d) {
+                showToast(d.pinned ? 'Karta przypięta' : 'Karta odpięta', 'success');
+                modalState.dirty = true;
+                refreshModal();
             });
             return;
         }
@@ -1292,10 +1519,24 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                 headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                 body: fd,
             })
-            .then(function (r) { return r.json(); })
             .then(function () {
                 showToast('Spór usunięty', 'success');
-                setTimeout(function () { location.reload(); }, 500);
+                modalState.dirty = true;
+                refreshModal();
+            });
+            return;
+        }
+        if (action === 'unsnooze') {
+            var fd = new FormData(); fd.append('until', '');
+            fetch('/rozliczenia/kanban/snooze/' + invoiceId, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd,
+            })
+            .then(function () {
+                showToast('Odłożenie anulowane', 'success');
+                modalState.dirty = true;
+                refreshModal();
             });
             return;
         }
@@ -1327,7 +1568,11 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                     headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     body: fd,
                 })
-                .then(function () { showToast('Odłożono do ' + until, 'success'); setTimeout(function () { location.reload(); }, 500); });
+                .then(function () {
+                    showToast('Odłożono do ' + until, 'success');
+                    modalState.dirty = true;
+                    refreshModal();
+                });
             });
             attachInlineCancel(panel);
             return;
@@ -1348,7 +1593,11 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                     headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     body: fd,
                 })
-                .then(function () { showToast('Oznaczono jako spór', 'success'); setTimeout(function () { location.reload(); }, 500); });
+                .then(function () {
+                    showToast('Oznaczono jako spór', 'success');
+                    modalState.dirty = true;
+                    refreshModal();
+                });
             });
             attachInlineCancel(panel);
             return;
@@ -1356,7 +1605,7 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
 
         if (action === 'assign') {
             var users = window.kanbanUsers || [];
-            var currentAssigned = card.dataset.assignedTo || '';
+            var currentAssigned = (card && card.assigned_to_user_id) || '';
             var html = '<div class="d-grid gap-1">';
             html += '<button type="button" class="btn btn-sm btn-outline-secondary text-start" data-assign-user-id="">'
                   + '<i class="ri-user-unfollow-line"></i> Bez przypisania'
@@ -1379,7 +1628,11 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                         headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                         body: fd,
                     })
-                    .then(function () { showToast('Przypisanie zmienione', 'success'); setTimeout(function () { location.reload(); }, 500); });
+                    .then(function () {
+                        showToast('Przypisanie zmienione', 'success');
+                        modalState.dirty = true;
+                        refreshModal();
+                    });
                 });
             });
             attachInlineCancel(panel);
@@ -1427,6 +1680,7 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                         .then(function (res) {
                             if (!res.ok) { showToast(res.body.error || 'Błąd', 'danger'); btn.disabled = false; btn.innerHTML = '<i class="ri-mail-send-line"></i> Wyślij'; return; }
                             showToast('Wysłano przypomnienie', 'success');
+                            modalState.dirty = true;
                             panel.innerHTML = '';
                             loadKmNotes(invoiceId);
                         });
@@ -1489,6 +1743,17 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
         if (!card) return;
         // Otwórz pełny modal
         openCardModal(card.dataset.invoiceId, card, 'main');
+    });
+
+    // ── Hook: po zamknięciu modalu, jeśli były zmiany → reload board (lazy)
+    document.getElementById('kanbanCardModal').addEventListener('hidden.bs.modal', function () {
+        if (modalState.dirty) {
+            location.reload();
+        }
+        modalState.invoiceId = null;
+        modalState.cardEl = null;
+        modalState.dirty = false;
+        modalState.lastData = null;
     });
 
     function renderReminderTab(body, invoiceId) {
