@@ -44,8 +44,24 @@ if ($card['is_stale']) $cardClasses[] = 'stale';
 <div class="<?= h(implode(' ', $cardClasses)) ?>"
      style="border-left-color: <?= h($borderColor) ?>"
      data-invoice-id="<?= h($card['id']) ?>"
+     data-fullnumber="<?= h($card['fullnumber']) ?>"
+     data-contractor="<?= h($card['contractor']) ?>"
+     data-nip="<?= h($card['nip']) ?>"
+     data-total="<?= h($card['total']) ?>"
+     data-remaining="<?= h($card['remaining']) ?>"
+     data-alreadypaid="<?= h($card['alreadypaid']) ?>"
+     data-currency="<?= h($card['currency']) ?>"
+     data-type="<?= h($card['type']) ?>"
+     data-paymentstate="<?= h($card['paymentstate']) ?>"
+     data-paymentdate="<?= h($card['paymentdate_str'] ?? '') ?>"
+     data-snooze-until="<?= h($card['snooze_until_str'] ?? '') ?>"
+     data-dispute-flag="<?= $card['dispute_flag'] ? '1' : '0' ?>"
+     data-dispute-reason="<?= h($card['dispute_reason'] ?? '') ?>"
      data-assigned-to="<?= h($card['assigned_to_user_id'] ?? '') ?>"
-     data-severity="<?= h($severity) ?>">
+     data-pinned="<?= $card['pinned'] ? '1' : '0' ?>"
+     data-severity="<?= h($severity) ?>"
+     data-days-to-due="<?= h($card['days_to_due'] ?? '') ?>"
+     data-progress-pct="<?= h($card['progress_pct']) ?>">
 
     <div class="d-flex justify-content-between align-items-start gap-1">
         <div class="flex-grow-1 min-w-0">
