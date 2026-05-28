@@ -55,7 +55,7 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
     + ($filterMinAmount > 0 ? 1 : 0) + ($filterAssigned !== '' ? 1 : 0);
 ?>
 
-<div class="container-fluid py-3" id="kanbanPage">
+<div class="kanban-page-wrap" id="kanbanPage">
 
     <!-- ── Toolbar ───────────────────────────────────────────────────────── -->
     <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
@@ -159,8 +159,9 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                 <i class="ri-funnel-line text-primary"></i>
                 <strong class="small">Pipeline rozliczeń</strong>
                 <span class="text-muted small ms-auto"><?= (int)$stats['funnel_total'] ?> kart łącznie · klik aby rozwinąć/zwinąć</span>
+                <i class="ri-arrow-down-s-line text-muted"></i>
             </div>
-            <div class="collapse show" id="kanbanFunnel">
+            <div class="collapse" id="kanbanFunnel">
                 <div class="card-body py-3">
                     <div class="kanban-funnel">
                         <?php
@@ -390,62 +391,135 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
 <div class="toast-container position-fixed top-0 end-0 p-3" id="kanbanToasts"></div>
 
 <style>
+/* ── Page wrap — używamy pełnej szerokości viewportu ────────────────── */
+.kanban-page-wrap {
+    padding: 14px 16px 14px 16px;
+    max-width: 100%;
+}
+.kanban-page-wrap .card.shadow-sm { border: 1px solid #e5e7eb; }
+
+/* ── Board (kontener kolumn) ─────────────────────────────────────────── */
 .kanban-board {
     display: flex;
-    gap: 10px;
+    gap: 14px;
     overflow-x: auto;
-    padding-bottom: 12px;
-    min-height: 70vh;
+    padding: 4px 4px 18px 4px;
+    min-height: 72vh;
+    /* niewielki bias gradient na krawędzi scrolla */
+    scrollbar-width: thin;
 }
+.kanban-board::-webkit-scrollbar { height: 10px; }
+.kanban-board::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+.kanban-board::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Kolumna ─────────────────────────────────────────────────────────── */
 .kanban-col {
-    flex: 0 0 290px;
-    background: #f8fafc;
-    border-radius: 8px;
+    flex: 0 0 340px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-radius: 10px;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 220px);
+    max-height: calc(100vh - 200px);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e5e7eb;
+    transition: box-shadow .2s ease;
 }
+.kanban-col:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08); }
+
 .kanban-col-header {
-    padding: 10px 12px;
-    border-radius: 8px 8px 0 0;
-    border-bottom: 1px solid;
+    padding: 12px 14px 10px 14px;
+    border-radius: 10px 10px 0 0;
     flex-shrink: 0;
+    position: sticky; top: 0; z-index: 2;
+    background-color: inherit;
 }
+.kanban-col-header strong {
+    font-size: .82rem;
+    letter-spacing: .01em;
+}
+.kanban-col-header .badge {
+    font-size: .68rem;
+    font-weight: 700;
+    padding: .25em .55em;
+}
+.kanban-col-header .text-muted.small {
+    font-size: .72rem;
+    margin-top: 4px;
+    font-weight: 500;
+}
+
+/* ── Body kolumny — lista kart ─────────────────────────────────────── */
 .kanban-col-body {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 10px 10px 12px 10px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     min-height: 80px;
+    scrollbar-width: thin;
 }
+.kanban-col-body::-webkit-scrollbar { width: 6px; }
+.kanban-col-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.kanban-col-body::-webkit-scrollbar-track { background: transparent; }
+
 .kanban-empty {
     text-align: center;
-    padding: 24px 8px;
+    padding: 28px 12px;
     border: 2px dashed #cbd5e1;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #fff;
+    color: #94a3b8 !important;
 }
+.kanban-empty i { font-size: 1.5rem; display: block; margin-bottom: 4px; opacity: .5; }
+
+/* ── Karta ───────────────────────────────────────────────────────────── */
 .kanban-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e5e7eb;
     border-left: 4px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 8px 10px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     cursor: grab;
     position: relative;
     font-size: .82rem;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
-.kanban-card.sortable-ghost { opacity: .35; background: #dbeafe; }
-.kanban-card.sortable-drag { transform: rotate(2deg); box-shadow: 0 8px 20px rgba(0,0,0,.15); }
-.kanban-card.selected { background: #eff6ff; border-color: #3b82f6; }
-.kanban-card.compact { padding: 4px 8px; font-size: .75rem; }
+.kanban-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
+    border-color: #cbd5e1;
+}
+.kanban-card:active { cursor: grabbing; }
+.kanban-card.sortable-ghost { opacity: .35; background: #dbeafe; border-color: #3b82f6; }
+.kanban-card.sortable-drag { transform: rotate(2deg); box-shadow: 0 12px 24px rgba(15,23,42,.18); }
+.kanban-card.selected {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    border-left-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+}
+.kanban-card.compact { padding: 6px 10px; font-size: .76rem; }
+.kanban-card.compact .kanban-card-num { font-size: .78rem; }
+
+.kanban-card.pinned {
+    border-top: 2px solid #f59e0b;
+}
 .kanban-card.pinned::after {
-    content: "📌"; position: absolute; top: -6px; right: -6px;
-    font-size: .85rem;
+    content: "📌"; position: absolute; top: -8px; right: -6px;
+    font-size: .9rem;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.2));
 }
+
+/* Severity — subtelny ton tła zamiast tylko border-left */
+.kanban-card[data-severity="critical"] {
+    background: linear-gradient(135deg, #fff 0%, #fff5f5 100%);
+}
+.kanban-card[data-severity="high"] {
+    background: linear-gradient(135deg, #fff 0%, #fff7ed 100%);
+}
+
 .kanban-card.stale {
     animation: pulse-red 2s infinite;
 }
@@ -453,35 +527,109 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
     0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.4); }
     50%      { box-shadow: 0 0 0 6px rgba(220,38,38,0.0); }
 }
-.kanban-card-num { font-weight: 600; font-size: .82rem; }
-.kanban-card-contractor { color: #475569; font-size: .72rem; }
-.kanban-card-amount { font-weight: 700; }
-.kanban-card-due { font-size: .7rem; color: #64748b; }
+
+/* ── Treść karty ────────────────────────────────────────────────────── */
+.kanban-card-num {
+    font-weight: 700;
+    font-size: .88rem;
+    color: #1e293b;
+    line-height: 1.25;
+    letter-spacing: .005em;
+}
+.kanban-card-contractor {
+    color: #64748b;
+    font-size: .74rem;
+    line-height: 1.3;
+    margin-top: 2px;
+}
+.kanban-card-amount {
+    font-weight: 700;
+    font-size: .95rem;
+    color: #0f172a;
+    letter-spacing: -.01em;
+}
+.kanban-card-amount.text-success { color: #16a34a !important; }
+
+.kanban-card-due {
+    font-size: .72rem;
+    color: #64748b;
+    margin-top: 5px;
+    line-height: 1.3;
+}
 .kanban-card-due.overdue { color: #dc2626; font-weight: 600; }
-.kanban-progress { height: 3px; background: #e2e8f0; border-radius: 2px; margin-top: 4px; overflow: hidden; }
-.kanban-progress > div { height: 100%; background: #16a34a; }
+
+.kanban-progress {
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+.kanban-progress > div {
+    height: 100%;
+    background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%);
+    transition: width .3s ease;
+    border-radius: 3px;
+}
+
 .kanban-card-actions {
-    display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;
+    display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap;
 }
 .kanban-card-actions .btn {
-    padding: 1px 6px; font-size: .65rem; line-height: 1.4;
+    padding: 2px 8px; font-size: .68rem; line-height: 1.4;
 }
+
 .kanban-card-meta {
-    display: flex; gap: 6px; align-items: center; margin-top: 4px;
-    font-size: .65rem; color: #64748b;
+    display: flex; gap: 6px; align-items: center; margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #e5e7eb;
+    font-size: .68rem; color: #64748b;
 }
 .kanban-card-avatar {
-    width: 18px; height: 18px; border-radius: 50%; background: #cbd5e1;
-    color: #fff; font-size: .55rem; font-weight: 700;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+    color: #fff; font-size: .58rem; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,.08);
 }
+.kanban-card-checkbox {
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+/* ── Bulk action bar (przyklejony dół) ─────────────────────────────── */
 .kanban-bulk-bar {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; color: #fff; padding: 8px 16px; border-radius: 8px;
-    display: flex; align-items: center; gap: 8px;
-    box-shadow: 0 4px 14px rgba(0,0,0,.25); z-index: 1080;
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #fff;
+    padding: 10px 18px; border-radius: 12px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+    z-index: 1080;
+    font-size: .85rem;
 }
-.kanban-col-header { position: sticky; top: 0; z-index: 2; }
+.kanban-bulk-bar .btn { font-size: .78rem; padding: 4px 12px; }
+
+/* ── Stats card (na górze) ─────────────────────────────────────────── */
+#kanbanStats .card-body { gap: 18px !important; }
+#kanbanStats .vr { background-color: #e5e7eb; }
+
+/* ── Min-width na karty wewnątrz kolumny — żeby nigdy nie były węższe niż 280 ─ */
+.kanban-col-body > * { min-width: 0; max-width: 100%; }
+
+/* ── Lepsze kolory kolumn — każda ma subtelny accent w headerze ─── */
+.kanban-col-in_term  .kanban-col-header { background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%); border-bottom: 1px solid #bae6fd; }
+.kanban-col-sent     .kanban-col-header { background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border-bottom: 1px solid #bfdbfe; }
+.kanban-col-due_soon .kanban-col-header { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border-bottom: 1px solid #fde68a; }
+.kanban-col-overdue  .kanban-col-header { background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%); border-bottom: 1px solid #fecaca; }
+.kanban-col-dispute  .kanban-col-header { background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%); border-bottom: 1px solid #cbd5e1; }
+.kanban-col-paid     .kanban-col-header { background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%); border-bottom: 1px solid #bbf7d0; }
+.kanban-col-snoozed  .kanban-col-header { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border-bottom: 1px solid #fde68a; }
+
+/* ── Responsywne: na małych ekranach kolumny zachowują się ok ──────── */
+@media (max-width: 768px) {
+    .kanban-col { flex: 0 0 88vw; }
+    .kanban-page-wrap { padding: 8px; }
+}
 
 /* Pipeline funnel */
 .kanban-funnel { display: flex; flex-direction: column; gap: 6px; }
