@@ -433,7 +433,11 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
     border-radius: 10px;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 200px);
+    /* Explicit height (NIE max-height) — żeby flex:1 na body faktycznie zadziałało
+       i karty były widoczne. Wcześniej z max-height + brak height kolumna kolapsowała
+       do min-height body (80px) i karty znikały. */
+    height: calc(100vh - 210px);
+    min-height: 320px;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
     border: 1px solid #e5e7eb;
     transition: box-shadow .2s ease;
@@ -444,8 +448,9 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
     padding: 12px 14px 10px 14px;
     border-radius: 10px 10px 0 0;
     flex-shrink: 0;
-    position: sticky; top: 0; z-index: 2;
+    /* sticky usunięte — w naszej strukturze (header poza scrollowalnym body) i tak nie działało */
     background-color: inherit;
+    z-index: 2;
 }
 .kanban-col-header strong {
     font-size: .82rem;
