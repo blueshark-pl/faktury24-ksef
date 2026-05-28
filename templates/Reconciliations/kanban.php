@@ -259,29 +259,13 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                     </div>
                 </div>
                 <div class="kanban-col-body" data-col="<?= h($key) ?>">
-                    <div style="background:#fef9c3;color:#854d0e;font-size:.7rem;padding:4px 8px;border-radius:4px;margin-bottom:6px">
-                        DBG: cards=<?= count($cards) ?> · key=<?= h($key) ?>
-                    </div>
                     <?php if (empty($cards)): ?>
                         <div class="kanban-empty text-muted small fst-italic">
                             <i class="ri-inbox-line"></i> brak kart
                         </div>
                     <?php endif; ?>
                     <?php foreach ($cards as $card): ?>
-                        <?php
-                        // ── Diagnostyka: zacznij od bardzo prostego renderu zamiast elementu
-                        try {
-                            $this->element('Reconciliations/kanban_card', ['card' => $card, 'severityColors' => $severityColors, 'compactMode' => $compactMode]);
-                        } catch (\Throwable $e) {
-                            echo '<div style="background:#fee;color:#c00;padding:4px;font-size:.7rem;border:1px solid #f99">ELEMENT ERROR: ' . h($e->getMessage()) . '</div>';
-                            // Fallback render z raw HTML
-                            echo '<div class="kanban-card" data-invoice-id="' . h($card['id']) . '">'
-                               . '<div class="kanban-card-num">' . h($card['fullnumber']) . '</div>'
-                               . '<div class="kanban-card-contractor">' . h($card['contractor']) . '</div>'
-                               . '<div class="kanban-card-amount">' . number_format($card['remaining'], 2, ',', ' ') . ' ' . h($card['currency']) . '</div>'
-                               . '</div>';
-                        }
-                        ?>
+                        <?= $this->element('Reconciliations/kanban_card', ['card' => $card, 'severityColors' => $severityColors, 'compactMode' => $compactMode]) ?>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -298,7 +282,7 @@ $activeFilters = ($filterNip !== '' ? 1 : 0) + ($filterCurrency !== '' ? 1 : 0)
                 </div>
                 <div class="kanban-col-body" data-col="snoozed">
                     <?php foreach ($buckets['snoozed'] as $card): ?>
-                        <?php $this->element('Reconciliations/kanban_card', ['card' => $card, 'severityColors' => $severityColors, 'compactMode' => $compactMode]); ?>
+                        <?= $this->element('Reconciliations/kanban_card', ['card' => $card, 'severityColors' => $severityColors, 'compactMode' => $compactMode]) ?>
                     <?php endforeach; ?>
                 </div>
             </div>
