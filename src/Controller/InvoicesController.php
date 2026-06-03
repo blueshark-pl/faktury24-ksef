@@ -1380,6 +1380,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     $vatRatesMap = $noVat ? [] : $vatRows->combine('id', 'rate')->toArray();
 
         if ($this->request->is('post')) {
+        try {
         $data = $this->request->getData();
         $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
         $doSend = $ksefModeEnabled ? $this->shouldSendToKsefNow((array)$data) : false;
@@ -2783,6 +2784,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         } catch (\Throwable $e) {
             $conn->rollback();
             $this->Flash->error('Błąd zapisu: ' . $e->getMessage());
+        }
+        } catch (\RuntimeException $e) {
+            // Wyjątek walidacyjny rzucony przed transakcją (np. pusta nazwa pozycji)
+            $this->Flash->error($e->getMessage());
         }
     }
 
