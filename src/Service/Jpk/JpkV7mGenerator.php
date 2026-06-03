@@ -4,13 +4,13 @@ declare(strict_types=1);
 namespace App\Service\Jpk;
 
 /**
- * Generator pliku JPK_V7M wg schematu MF (wariant 2).
- * Namespace: http://crd.elektroniczna-administracja.pl/wzor/2021/12/27/11148/
+ * Generator pliku JPK_V7M wg schematu MF (wariant 3, obowiązuje od 2026-02-01).
+ * Namespace: http://crd.gov.pl/wzor/2025/12/19/14090/
  *
  * Wariant SALES-ONLY:
  *  - Naglowek + Podmiot1
- *  - Deklaracja (minimalna, zerowa — żeby przejść walidację XSD)
  *  - Ewidencja: SprzedazWiersz[] + SprzedazCtrl + pusta sekcja zakupów (ZakupCtrl=0)
+ *  - Deklaracja pominięta (minOccurs="0")
  *
  * Mapowanie kwot per stawka VAT do pól K_xx Ewidencji Sprzedaży:
  *   K_15 = netto 5%, K_16 = VAT 5%
@@ -18,12 +18,21 @@ namespace App\Service\Jpk;
  *   K_19 = netto 22%/23%, K_20 = VAT 22%/23%
  *   K_13 = netto 0% (sprzedaż w PL)
  *   K_10 = zwolnienie
+ *
+ * Różnice względem V7M(2):
+ *  - Nowy namespace (2025/12/19/14090)
+ *  - WariantFormularza = 3
+ *  - Usunięto oznaczenia TP, MPP, EE, BSP, BRAK_TP_IFP (mechanika zastąpiona)
+ *  - Dodano KorektaPodstawyOpodt + TerminPlatnosci/DataZaplaty (ulga na złe długi, opcjonalne)
+ *  - DataWytworzeniaJPK musi być >= 2026-02-01
  */
 class JpkV7mGenerator
 {
-    // Namespace zgodny z aktualnym XSD: Schemat_JPK_V7M(2)_v1-0E.xsd
-    private const NS_TNS = 'http://crd.gov.pl/wzor/2021/07/08/07081/';
-    private const NS_ETD = 'http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2021/06/08/eD/DefinicjeTypy/';
+    // Namespace V7M(3) — Schemat_JPK_V7M(3)_v1-0E.xsd (publikacja MF 2025-12-19)
+    private const NS_TNS = 'http://crd.gov.pl/wzor/2025/12/19/14090/';
+    private const NS_ETD = 'http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/09/13/eD/DefinicjeTypy/';
+    private const NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
+    private const SCHEMA_FILE = 'Schemat_JPK_V7M(3)_v1-0E.xsd';
 
     /**
      * @param object $company  Encja firmy sprzedawcy (wymagane: nip, name; opcjonalnie: email, phone)
@@ -46,12 +55,19 @@ class JpkV7mGenerator
         string $telefon = ''
     ): string {
         $xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-        $xml .= '<tns:JPK xmlns:tns="' . self::NS_TNS . '" xmlns:etd="' . self::NS_ETD . '">';
+        // Bez xsi:schemaLocation — oficjalne walidatory MF (e-mikrofirma, e-jpk.pl)
+        // używają WBUDOWANYCH schematów na podstawie xmlns. Zewnętrzne online toole,
+        // które nie znają formatu, próbowały pobrać schemat z crd.gov.pl i czasem
+        // dostawały HTML zamiast XSD ("file_0.xsd: <!doctype html>") → wywalenie się walidacji.
+        $xml .= '<tns:JPK'
+            . ' xmlns:tns="' . self::NS_TNS . '"'
+            . ' xmlns:etd="' . self::NS_ETD . '"'
+            . '>';
 
         // ── Nagłówek ─────────────────────────────────────────────────────────
         $xml .= '<tns:Naglowek>';
-        $xml .= '<tns:KodFormularza kodSystemowy="JPK_V7M (2)" wersjaSchemy="1-0E">JPK_VAT</tns:KodFormularza>';
-        $xml .= '<tns:WariantFormularza>2</tns:WariantFormularza>';
+        $xml .= '<tns:KodFormularza kodSystemowy="JPK_V7M (3)" wersjaSchemy="1-0E">JPK_VAT</tns:KodFormularza>';
+        $xml .= '<tns:WariantFormularza>3</tns:WariantFormularza>';
         $xml .= '<tns:DataWytworzeniaJPK>' . date('Y-m-d\TH:i:s\Z', time()) . '</tns:DataWytworzeniaJPK>';
         $xml .= '<tns:NazwaSystemu>faktury24.com</tns:NazwaSystemu>';
         $xml .= '<tns:CelZlozenia poz="P_7">' . $this->esc($celZlozenia) . '</tns:CelZlozenia>';
@@ -109,8 +125,13 @@ class JpkV7mGenerator
                 'nip'          => $this->stripNip((string)($buyer->nip ?? '')),
                 'nazwa'        => $this->truncate((string)($buyer->name ?? 'BRAK'), 256),
                 'dowod'        => $this->truncate((string)($inv->fullnumber ?? ''), 256),
+                # Pole `ksef_number` (Invoice entity _accessible) — numer KSeF w formacie TNumerKSeF.
+                # ksef_session_reference + ksef_invoice_reference to wewnętrzne ID sesji/faktury KSeF.
+                'ksef_number'  => trim((string)($inv->ksef_number ?? '')),
                 'data_wyst'    => $this->formatDate($inv->date),
-                'data_sprz'    => $this->formatDate($inv->sold_date ?? $inv->date),
+                # sold_date = "Data sprzedaży / wykonania usługi" (migracja 20260318100000_AddMissingInvoiceFields)
+                # Emitujemy DataSprzedazy TYLKO gdy != DataWystawienia (wg XSD documentation).
+                'data_sprz'    => $this->formatDate($inv->sold_date ?? null),
                 'typ_dok'      => $this->resolveTypDokumentu($inv),
                 'gtu_codes'    => $this->collectGtuCodes($inv),
                 'margin_kind'  => $invType === 'margin' ? $this->resolveMarginKind($inv) : '',
@@ -140,11 +161,33 @@ class JpkV7mGenerator
             $xml .= '<tns:NazwaKontrahenta>' . $this->esc($w['nazwa']) . '</tns:NazwaKontrahenta>';
             $xml .= '<tns:DowodSprzedazy>' . $this->esc($w['dowod']) . '</tns:DowodSprzedazy>';
             $xml .= '<tns:DataWystawienia>' . $this->esc($w['data_wyst']) . '</tns:DataWystawienia>';
-            if ($w['data_sprz'] !== '' && $w['data_sprz'] !== $w['data_wyst']) {
+            // DataSprzedazy: XSD documentation MF zaleca pomijać gdy == DataWystawienia, ale to
+            // tylko opis tekstowy (xsd:documentation) — walidator XSD tego nie egzekwuje.
+            // Emitujemy ZAWSZE gdy sold_date jest w bazie — lepsza jednoznaczność dla audytu.
+            if ($w['data_sprz'] !== '') {
                 $xml .= '<tns:DataSprzedazy>' . $this->esc($w['data_sprz']) . '</tns:DataSprzedazy>';
             }
-            if ($w['typ_dok'] !== '') {
-                $xml .= '<tns:TypDokumentu>' . $this->esc($w['typ_dok']) . '</tns:TypDokumentu>';
+            // V7M(3) wymaga DOKŁADNIE JEDNEGO z choice (KSeF):
+            //   NrKSeF — faktura zarejestrowana w KSeF z numerem (format TNumerKSeF: NIP-RRRRMMDD-6HEX-6HEX-2HEX)
+            //   OFF    — faktura wystawiona offline w trybie art. 106nf ust. 1 (czeka na numer KSeF)
+            //   BFK    — faktura elektroniczna lub papierowa BEZ rejestracji w KSeF
+            //   DI     — dowód INNY niż faktura (raport okresowy z kasy, dowód wewnętrzny)
+            // Mapowanie:
+            //   ksef_number niepuste + poprawny format → NrKSeF
+            //   TypDokumentu RO/WEW                     → DI
+            //   pozostałe (faktura zwykła, FP, korekta, marża, walutowa, zaliczkowa) → BFK
+            $typDok = (string)$w['typ_dok'];
+            $ksefNum = (string)($w['ksef_number'] ?? '');
+            $ksefPattern = '/^([1-9]((\d[1-9])|([1-9]\d))\d{7}|M\d{9}|[A-Z]{3}\d{7})-(20[2-9][0-9]|2[1-9][0-9]{2}|[3-9][0-9]{3})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])-([0-9A-F]{6})-?([0-9A-F]{6})-([0-9A-F]{2})$/';
+            if ($ksefNum !== '' && preg_match($ksefPattern, $ksefNum)) {
+                $xml .= '<tns:NrKSeF>' . $this->esc($ksefNum) . '</tns:NrKSeF>';
+            } elseif ($typDok === 'RO' || $typDok === 'WEW') {
+                $xml .= '<tns:DI>1</tns:DI>';
+            } else {
+                $xml .= '<tns:BFK>1</tns:BFK>';
+            }
+            if ($typDok !== '') {
+                $xml .= '<tns:TypDokumentu>' . $this->esc($typDok) . '</tns:TypDokumentu>';
             }
             // Sekcja "Oznaczenia dostawy" (XSD: GTU_01 → GTU_02 → ... → GTU_13).
             // Emitujemy unikalne kody zebrane ze wszystkich pozycji faktury.
@@ -153,9 +196,11 @@ class JpkV7mGenerator
                     $xml .= '<tns:GTU_' . sprintf('%02d', $g) . '>1</tns:GTU_' . sprintf('%02d', $g) . '>';
                 }
             }
-            // Sekcja "Oznaczenia dotyczące procedur" (XSD: WSTO_EE → IED → TP → TT_WNT → TT_D → MR_T → MR_UZ → ...)
-            // Trzymamy się kolejności XSD!
-            // TP — podmiot powiązany (kapitałowo/rodzinnie itp.)
+            // Sekcja "Oznaczenia dotyczące procedur" — kolejność wg XSD V7M(3) (linie 844-861):
+            //   WSTO_EE → IED → TP → TT_WNT → TT_D → MR_T → MR_UZ → I_42 → I_63 → B_SPV → B_SPV_DOSTAWA → B_MPV_PROWIZJA
+            // V7M(3) względem V7M(2): USUNIĘTO MPP, EE, BSP, BRAK_TP_IFP. TP/TT_WNT/TT_D zostały zachowane.
+
+            // TP — transakcja z podmiotem powiązanym (z annotations.tp w JSON)
             if (!empty($w['is_tp'])) {
                 $xml .= '<tns:TP>1</tns:TP>';
             }
@@ -394,11 +439,60 @@ class JpkV7mGenerator
     private function resolveCountryCode(?object $buyer): string
     {
         if (!$buyer) return 'PL';
-        $country = strtoupper(trim((string)($buyer->country ?? 'PL')));
-        // Mapuj nazwy → ISO (jeśli ktoś ma "Polska" zamiast "PL")
-        if ($country === 'POLSKA' || $country === '') return 'PL';
-        if (strlen($country) === 2) return $country;
-        return 'PL';
+
+        // Źródło: invoice_contractors.country (string, może być ISO "PL" lub nazwa "Polska")
+        $country = strtoupper(trim((string)($buyer->country ?? '')));
+        if ($country === '' || $country === 'POLSKA' || $country === 'POLAND') return 'PL';
+        // GR (Grecja) → EL w JPK (XSD TKodKrajuJPK wyklucza GR, używa EL zgodnie z prefiksem VAT)
+        if ($country === 'GR' || $country === 'GRECJA' || $country === 'GREECE') return 'EL';
+
+        // 2-literowy kod ISO — sprawdź czy zgodny z TKodKrajuJPK pattern
+        if (strlen($country) === 2 && $this->isValidJpkCountryCode($country)) return $country;
+
+        // Mapowanie popularnych nazw krajów (PL i EN) → ISO
+        $map = [
+            'NIEMCY' => 'DE', 'GERMANY' => 'DE',
+            'CZECHY' => 'CZ', 'CZECHIA' => 'CZ',
+            'SŁOWACJA' => 'SK', 'SLOWACJA' => 'SK', 'SLOVAKIA' => 'SK',
+            'WIELKA BRYTANIA' => 'GB', 'WIELKABRYTANIA' => 'GB', 'UNITED KINGDOM' => 'GB',
+            'FRANCJA' => 'FR', 'FRANCE' => 'FR',
+            'WŁOCHY' => 'IT', 'WLOCHY' => 'IT', 'ITALY' => 'IT', 'ITALIA' => 'IT',
+            'HISZPANIA' => 'ES', 'SPAIN' => 'ES',
+            'AUSTRIA' => 'AT',
+            'HOLANDIA' => 'NL', 'NIDERLANDY' => 'NL', 'NETHERLANDS' => 'NL',
+            'BELGIA' => 'BE', 'BELGIUM' => 'BE',
+            'WĘGRY' => 'HU', 'WEGRY' => 'HU', 'HUNGARY' => 'HU',
+            'LITWA' => 'LT', 'LITHUANIA' => 'LT',
+            'ŁOTWA' => 'LV', 'LOTWA' => 'LV', 'LATVIA' => 'LV',
+            'ESTONIA' => 'EE',
+            'IRLANDIA' => 'IE', 'IRELAND' => 'IE',
+            'DANIA' => 'DK', 'DENMARK' => 'DK',
+            'SZWECJA' => 'SE', 'SWEDEN' => 'SE',
+            'FINLANDIA' => 'FI', 'FINLAND' => 'FI',
+            'NORWEGIA' => 'NO', 'NORWAY' => 'NO',
+            'SZWAJCARIA' => 'CH', 'SWITZERLAND' => 'CH',
+            'USA' => 'US', 'STANY ZJEDNOCZONE' => 'US', 'UNITED STATES' => 'US',
+            'KANADA' => 'CA', 'CANADA' => 'CA',
+            'UKRAINA' => 'UA', 'UKRAINE' => 'UA',
+            'RUMUNIA' => 'RO', 'ROMANIA' => 'RO',
+            'BUŁGARIA' => 'BG', 'BULGARIA' => 'BG',
+            'CHORWACJA' => 'HR', 'CROATIA' => 'HR',
+            'SŁOWENIA' => 'SI', 'SLOWENIA' => 'SI', 'SLOVENIA' => 'SI',
+            'PORTUGALIA' => 'PT', 'PORTUGAL' => 'PT',
+            'BIAŁORUŚ' => 'BY', 'BIALORUS' => 'BY', 'BELARUS' => 'BY',
+            'TURCJA' => 'TR', 'TURKEY' => 'TR',
+            'JAPONIA' => 'JP', 'JAPAN' => 'JP',
+            'CHINY' => 'CN', 'CHINA' => 'CN',
+        ];
+        return $map[$country] ?? 'PL';
+    }
+
+    /**
+     * Walidacja kodu kraju wg XSD TKodKrajuJPK (2 wielkie litery, GR wykluczony).
+     */
+    private function isValidJpkCountryCode(string $code): bool
+    {
+        return (bool)preg_match('/^([A-FH-Z][A-Z]|[A-Z][A-QS-Z])$/', $code);
     }
 
     private function formatAddress(?object $entity): string
@@ -413,9 +507,15 @@ class JpkV7mGenerator
 
     private function formatDate($date): string
     {
-        if ($date instanceof \DateTimeInterface) return $date->format('Y-m-d');
-        if (is_string($date) && $date !== '')   return substr($date, 0, 10);
-        return date('Y-m-d');
+        if ($date === null || $date === '') return '';
+        # Cake\I18n\Date (Chronos\ChronosDate) NIE implementuje DateTimeInterface — to date-only type.
+        # Dlatego sprawdzamy ogólnie: każdy obiekt z metodą format() (DateTime, DateTimeImmutable,
+        # Chronos, ChronosDate, Cake\I18n\Date, Cake\I18n\DateTime).
+        if (is_object($date) && method_exists($date, 'format')) {
+            return $date->format('Y-m-d');
+        }
+        if (is_string($date)) return substr($date, 0, 10);
+        return '';
     }
 
     private function stripNip(string $nip): string
