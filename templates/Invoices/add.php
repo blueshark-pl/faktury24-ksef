@@ -1807,10 +1807,11 @@ if ($__isEdit && !empty($__prefillItems)) {
 
   /* Autocomplete dropdown */
   .item-lookup-dd { background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:.5rem; box-shadow:0 4px 20px rgba(0,0,0,.1); overflow:hidden; }
-  .item-lookup-item { display:flex; align-items:center; gap:.5rem; width:100%; padding:.4rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; }
+  .item-lookup-item { display:block; width:100%; padding:.45rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; line-height:1.3; }
   .item-lookup-item:hover, .item-lookup-item:focus { background:#f0f4ff; outline:none; }
-  .item-lookup-item .item-lookup-meta { color:#6c757d; font-size:.75rem; white-space:nowrap; flex-shrink:0; }
-  .item-lookup-sep { height:1px; background:#e9ecef; margin:.2rem 0; }
+  .item-lookup-name { display:block; font-size:.8125rem; }
+  .item-lookup-meta { display:block; font-size:.7rem; color:#9aa0a9; margin-top:.1rem; }
+  .item-lookup-sep { height:1px; background:#e9ecef; margin:.25rem 0; }
   .item-lookup-add { display:block; width:100%; padding:.4rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; font-size:.8rem; color:#0d6efd; }
   .item-lookup-add:hover, .item-lookup-add:focus { text-decoration:underline; outline:none; background:transparent; }
   mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:600; text-decoration:underline; text-underline-offset:2px; text-decoration-color:#ffc107; }
@@ -3175,14 +3176,14 @@ $('#gus-fetch-btn').on('click', function(){
         var name = p.name || p.text || '';
         var meta = [p.unit, p.vat_name || (p.vat_rate != null ? p.vat_rate + '%' : null)].filter(Boolean).join(' · ');
         var $btn = $('<button type=”button” class=”item-lookup-item”></button>');
-        $btn.append($('<span class=”flex-grow-1 text-truncate small fw-medium”></span>').html(hl(name, term)));
+        $btn.append($('<span class=”item-lookup-name”></span>').html(hl(name, term)));
         if (meta) $btn.append($('<span class=”item-lookup-meta”></span>').text(meta));
         $btn.on('mousedown', function(e){ e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
         $dd.append($btn);
       });
       if (results.length) $dd.append('<div class=”item-lookup-sep”></div>');
       var safe = $('<b>').text(term).html();
-      var $add = $('<button type=”button” class=”item-lookup-add”>+ Dodaj “<strong>' + safe + '</strong>” jako nowy produkt</button>');
+      var $add = $('<button type=”button” class=”item-lookup-add”>+ Dodaj <strong>' + safe + '</strong> jako nowy produkt</button>');
       $add.on('mousedown', function(e){
         e.preventDefault();
         $('#product-create-name').val(term || '');
