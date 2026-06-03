@@ -3194,7 +3194,7 @@ $('#gus-fetch-btn').on('click', function(){
     .on('select2:select', function(e){
       var d = (e.params && e.params.data) || {};
       if (String(d.id || '').indexOf('NEW:') === 0) {
-        $nameHidden.val(d.text || String(d.id).slice(4));
+        // input.namecapture już zsynchronizował $nameHidden — nie nadpisuj starą wartością
       } else {
         $nameHidden.val(d.name || d.text || '');
         if (d.vat_id) { $tr.find('.item-vatcode').val(d.vat_id); }
