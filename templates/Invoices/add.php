@@ -1803,19 +1803,16 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  /* Ikona w polu nazwy — inset zamiast transform, brak drgań */
-  .item-name-icon { position:absolute; left:0; top:0; bottom:0; width:28px; display:flex; align-items:center; justify-content:center; color:#adb5bd; font-size:.8rem; pointer-events:none; z-index:2; }
-  .item-name { padding-left:26px !important; }
+  .item-name-icon { display:none; }
 
   /* Autocomplete dropdown */
   .item-lookup-dd { background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:.5rem; box-shadow:0 4px 20px rgba(0,0,0,.1); overflow:hidden; }
-  .item-lookup-item, .item-lookup-add { display:flex; align-items:center; gap:.5rem; width:100%; padding:.45rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; }
-  .item-lookup-item:hover, .item-lookup-item:focus,
-  .item-lookup-add:hover, .item-lookup-add:focus { background:#f0f4ff; outline:none; }
+  .item-lookup-item { display:flex; align-items:center; gap:.5rem; width:100%; padding:.4rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; }
+  .item-lookup-item:hover, .item-lookup-item:focus { background:#f0f4ff; outline:none; }
   .item-lookup-item .item-lookup-meta { color:#6c757d; font-size:.75rem; white-space:nowrap; flex-shrink:0; }
   .item-lookup-sep { height:1px; background:#e9ecef; margin:.2rem 0; }
-  .item-lookup-add { color:#0d6efd; font-size:.8125rem; }
-  .item-lookup-add:hover, .item-lookup-add:focus { background:#e8f0fe; }
+  .item-lookup-add { display:block; width:100%; padding:.4rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; font-size:.8rem; color:#0d6efd; }
+  .item-lookup-add:hover, .item-lookup-add:focus { text-decoration:underline; outline:none; background:transparent; }
   mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:600; text-decoration:underline; text-underline-offset:2px; text-decoration-color:#ffc107; }
   @media (max-width:1199.98px) { .item-name { font-size: .8125rem; } }
 
@@ -3185,8 +3182,7 @@ $('#gus-fetch-btn').on('click', function(){
       });
       if (results.length) $dd.append('<div class=”item-lookup-sep”></div>');
       var safe = $('<b>').text(term).html();
-      var $add = $('<button type=”button” class=”item-lookup-add”></button>')
-        .html('<i class=”ri-add-circle-line fs-6 flex-shrink-0”></i><span>Dodaj <strong>' + safe + '</strong> jako nowy produkt</span>');
+      var $add = $('<button type=”button” class=”item-lookup-add”>+ Dodaj “<strong>' + safe + '</strong>” jako nowy produkt</button>');
       $add.on('mousedown', function(e){
         e.preventDefault();
         $('#product-create-name').val(term || '');
