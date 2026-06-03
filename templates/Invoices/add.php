@@ -879,7 +879,6 @@ if ($__isEdit && !empty($__prefillItems)) {
         <div class="item-name-wrap position-relative">
           <i class="ri-search-line item-name-icon"></i>
           <input type="text" name="items[<?= (int)$__i ?>][name]" class="form-control item-name" value="<?= h($__itemName) ?>" placeholder="Nazwa produktu lub usługi" autocomplete="off">
-          <span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
         </div>
       </div>
     </div>
@@ -923,8 +922,7 @@ if ($__isEdit && !empty($__prefillItems)) {
           <div class="item-name-wrap position-relative">
             <i class="ri-search-line item-name-icon"></i>
             <input type="text" name="items[0][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">
-            <span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
-          </div>
+            </div>
         </div>
       </div>
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
@@ -1805,10 +1803,9 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  /* Ikona + spinner w polu nazwy */
-  .item-name-icon { position:absolute; left:8px; top:50%; transform:translateY(-50%); color:#adb5bd; font-size:.8rem; pointer-events:none; z-index:2; }
+  /* Ikona w polu nazwy — inset zamiast transform, brak drgań */
+  .item-name-icon { position:absolute; left:0; top:0; bottom:0; width:28px; display:flex; align-items:center; justify-content:center; color:#adb5bd; font-size:.8rem; pointer-events:none; z-index:2; }
   .item-name { padding-left:26px !important; }
-  .item-name-spinner { position:absolute; right:8px; top:50%; transform:translateY(-50%); width:.75rem; height:.75rem; border-width:2px; }
 
   /* Autocomplete dropdown */
   .item-lookup-dd { background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:.5rem; box-shadow:0 4px 20px rgba(0,0,0,.1); overflow:hidden; }
@@ -3164,8 +3161,7 @@ $('#gus-fetch-btn').on('click', function(){
     if (!$input.length || $input.data('lookupInit')) return;
     $input.data('lookupInit', true);
 
-    var $wrap    = $input.closest('.item-name-wrap');
-    var $spinner = $wrap.find('.item-name-spinner');
+    var $wrap = $input.closest('.item-name-wrap');
     var $dd = $('<div class=”item-lookup-dd position-absolute” style=”z-index:1060;top:calc(100% + 3px);left:0;right:0;max-height:240px;overflow-y:auto;display:none;”></div>');
     $wrap.append($dd);
     var debTimer = null, xhr = null;
@@ -3205,15 +3201,14 @@ $('#gus-fetch-btn').on('click', function(){
       clearTimeout(debTimer);
       if (xhr){ xhr.abort(); xhr = null; }
       var term = (this.value || '').trim();
-      if (!term) { $dd.hide(); $spinner.addClass('d-none'); return; }
+      if (!term) { $dd.hide(); return; }
       $dd.html('<div class=”px-3 py-2 text-muted small d-flex align-items-center gap-2”>' +
         '<span class=”spinner-border spinner-border-sm opacity-50” style=”width:.7rem;height:.7rem;border-width:2px”></span> Szukam…</div>').show();
       debTimer = setTimeout(function(){
-        $spinner.removeClass('d-none');
         xhr = $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
           .done(function(d){ buildDd((d && d.success && d.results) ? d.results : [], term); })
           .fail(function(j,s){ if(s!=='abort') $dd.hide(); })
-          .always(function(){ $spinner.addClass('d-none'); xhr = null; });
+          .always(function(){ xhr = null; });
       }, 250);
     });
 
@@ -3289,7 +3284,6 @@ $('#gus-fetch-btn').on('click', function(){
             '<div class="flex-grow-1 min-w-0"><div class="item-name-wrap position-relative">'+
               '<i class="ri-search-line item-name-icon"></i>'+
               '<input type="text" name="items['+idx+'][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">'+
-              '<span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>'+
             '</div></div>' +
           '</div>'+
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
