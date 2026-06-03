@@ -1803,18 +1803,8 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  .item-name-icon { display:none; }
-
-  /* Autocomplete dropdown */
-  .item-lookup-dd { background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:.5rem; box-shadow:0 4px 20px rgba(0,0,0,.1); overflow:hidden; }
-  .item-lookup-item { display:block; width:100%; padding:.45rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; line-height:1.3; }
-  .item-lookup-item:hover, .item-lookup-item:focus { background:#f0f4ff; outline:none; }
-  .item-lookup-name { display:block; font-size:.8125rem; }
-  .item-lookup-meta { display:block; font-size:.7rem; color:#9aa0a9; margin-top:.1rem; }
-  .item-lookup-sep { height:1px; background:#e9ecef; margin:.25rem 0; }
-  .item-lookup-add { display:block; width:100%; padding:.4rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; font-size:.8rem; color:#0d6efd; }
-  .item-lookup-add:hover, .item-lookup-add:focus { text-decoration:underline; outline:none; background:transparent; }
-  mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:600; text-decoration:underline; text-underline-offset:2px; text-decoration-color:#ffc107; }
+  .item-lookup-dd { min-width: 220px; }
+  mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:700; }
   @media (max-width:1199.98px) { .item-name { font-size: .8125rem; } }
 
   /* Szerokość pola ceny */
@@ -3160,7 +3150,7 @@ $('#gus-fetch-btn').on('click', function(){
     $input.data('lookupInit', true);
 
     var $wrap = $input.closest('.item-name-wrap');
-    var $dd = $('<div class=”item-lookup-dd position-absolute” style=”z-index:1060;top:calc(100% + 3px);left:0;right:0;max-height:240px;overflow-y:auto;display:none;”></div>');
+    var $dd = $('<ul class=”item-lookup-dd dropdown-menu shadow-sm w-100” style=”z-index:1060;top:calc(100% + 2px);left:0;max-height:260px;overflow-y:auto;display:none;position:absolute;”></ul>');
     $wrap.append($dd);
     var debTimer = null, xhr = null;
 
@@ -3175,15 +3165,18 @@ $('#gus-fetch-btn').on('click', function(){
       results.forEach(function(p) {
         var name = p.name || p.text || '';
         var meta = [p.unit, p.vat_name || (p.vat_rate != null ? p.vat_rate + '%' : null)].filter(Boolean).join(' · ');
-        var $btn = $('<button type=”button” class=”item-lookup-item”></button>');
-        $btn.append($('<span class=”item-lookup-name”></span>').html(hl(name, term)));
-        if (meta) $btn.append($('<span class=”item-lookup-meta”></span>').text(meta));
+        var $li = $('<li></li>');
+        var $btn = $('<button type=”button” class=”dropdown-item lh-sm py-2”></button>');
+        $btn.append($('<span class=”d-block small”></span>').html(hl(name, term)));
+        if (meta) $btn.append($('<span class=”d-block text-muted” style=”font-size:.7rem;margin-top:.1rem”></span>').text(meta));
         $btn.on('mousedown', function(e){ e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
-        $dd.append($btn);
+        $li.append($btn);
+        $dd.append($li);
       });
-      if (results.length) $dd.append('<div class=”item-lookup-sep”></div>');
+      if (results.length) $dd.append('<li><hr class=”dropdown-divider my-1”></li>');
       var safe = $('<b>').text(term).html();
-      var $add = $('<button type=”button” class=”item-lookup-add”>+ Dodaj <strong>' + safe + '</strong> jako nowy produkt</button>');
+      var $li = $('<li></li>');
+      var $add = $('<button type=”button” class=”dropdown-item small text-primary”>+ Dodaj <strong>' + safe + '</strong> jako nowy produkt</button>');
       $add.on('mousedown', function(e){
         e.preventDefault();
         $('#product-create-name').val(term || '');
@@ -3191,7 +3184,8 @@ $('#gus-fetch-btn').on('click', function(){
         currentProductRow = $tr;
         $dd.hide();
       });
-      $dd.append($add).show();
+      $li.append($add);
+      $dd.append($li).show();
     }
 
     $input.on('input', function() {
@@ -3199,8 +3193,7 @@ $('#gus-fetch-btn').on('click', function(){
       if (xhr){ xhr.abort(); xhr = null; }
       var term = (this.value || '').trim();
       if (!term) { $dd.hide(); return; }
-      $dd.html('<div class=”px-3 py-2 text-muted small d-flex align-items-center gap-2”>' +
-        '<span class=”spinner-border spinner-border-sm opacity-50” style=”width:.7rem;height:.7rem;border-width:2px”></span> Szukam…</div>').show();
+      $dd.html('<li><span class=”dropdown-item-text text-muted small”>Szukam…</span></li>').show();
       debTimer = setTimeout(function(){
         xhr = $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
           .done(function(d){ buildDd((d && d.success && d.results) ? d.results : [], term); })
@@ -3211,15 +3204,15 @@ $('#gus-fetch-btn').on('click', function(){
 
     $input.on('blur', function(){ setTimeout(function(){ $dd.hide(); }, 180); });
     $input.on('keydown', function(e){
-      var $items = $dd.find('.item-lookup-item,.item-lookup-add');
+      var $items = $dd.find('.dropdown-item');
       if (e.key === 'Escape') { $dd.hide(); }
       if (e.key === 'ArrowDown' && $dd.is(':visible')){ e.preventDefault(); $items.first().focus(); }
-      if (e.key === 'Tab' && $dd.is(':visible') && $dd.find('.item-lookup-item').length){
-        e.preventDefault(); $dd.find('.item-lookup-item').first().trigger('mousedown');
+      if (e.key === 'Tab' && $dd.is(':visible') && $items.length){
+        e.preventDefault(); $items.first().trigger('mousedown');
       }
     });
-    $dd.on('keydown', '.item-lookup-item,.item-lookup-add', function(e){
-      var $items = $dd.find('.item-lookup-item,.item-lookup-add');
+    $dd.on('keydown', '.dropdown-item', function(e){
+      var $items = $dd.find('.dropdown-item');
       var i = $items.index(this);
       if (e.key === 'ArrowDown'){ e.preventDefault(); $items.eq(i+1).focus(); }
       if (e.key === 'ArrowUp')  { e.preventDefault(); i > 0 ? $items.eq(i-1).focus() : $input.focus(); }
