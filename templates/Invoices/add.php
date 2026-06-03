@@ -876,12 +876,10 @@ if ($__isEdit && !empty($__prefillItems)) {
     <div class="d-flex align-items-center gap-1">
       <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
       <div class="flex-grow-1 min-w-0">
-        <div class="item-name-wrap position-relative">
-          <i class="ri-search-line item-name-icon"></i>
-          <input type="text" name="items[<?= (int)$__i ?>][name]" class="form-control item-name" value="<?= h($__itemName) ?>" placeholder="Nazwa produktu lub usługi" autocomplete="off">
-        </div>
+        <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Nazwa produktu lub usługi"><?= $__newOpt ?></select>
       </div>
     </div>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
@@ -919,12 +917,10 @@ if ($__isEdit && !empty($__prefillItems)) {
       <div class="d-flex align-items-center gap-1">
         <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
         <div class="flex-grow-1 min-w-0">
-          <div class="item-name-wrap position-relative">
-            <i class="ri-search-line item-name-icon"></i>
-            <input type="text" name="items[0][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">
-            </div>
+          <select class="form-select item-product-select" data-index="0" data-placeholder="Nazwa produktu lub usługi"></select>
         </div>
       </div>
+    <input type="hidden" name="items[0][name]" class="item-name-hidden" value="">
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
     <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
     <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
@@ -1803,9 +1799,8 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  .item-lookup-dd { min-width: 220px; }
-  mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:700; }
-  @media (max-width:1199.98px) { .item-name { font-size: .8125rem; } }
+  .item-product-select + .select2-container { width: 100% !important; }
+  @media (max-width:1199.98px) { .select2-selection__rendered { font-size: .8125rem !important; } }
 
   /* Szerokość pola ceny */
   .item-price { min-width: 90px; }
@@ -3121,103 +3116,108 @@ $('#gus-fetch-btn').on('click', function(){
     }
   }
 
-  // ====== PRODUKT: AUTOCOMPLETE DLA WIERSZA ======
-  function applyProductToRow($tr, d) {
-    var name = d.name || d.text || '';
-    $tr.find('.item-name').val(name);
-    if (d.vat_id) { $tr.find('.item-vatcode').val(d.vat_id); }
-    if (d.unit)   { $tr.find('.item-unit').val(d.unit); }
-    if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
-      var netPrice = Number(d.price) || 0;
-      var mode  = ($tr.find('.item-price-mode').val() || 'net');
-      var vatId = $tr.find('.item-vatcode').val();
-      var rate  = toNum(vatRates[vatId], 0);
-      var disp  = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
-      $tr.find('.item-price').val(disp.toFixed(2));
-    }
-    if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
-    $tr.find('.item-pkwiu').val(d.pkwiu || '');
-    $tr.find('.item-gtin').val(d.gtin || '');
-    $tr.find('.item-cn-code').val(d.cn_code || '');
-    $tr.find('.item-excise').val(typeof d.excise_amount !== 'undefined' && d.excise_amount !== null ? d.excise_amount : '');
-    $tr.find('.item-procedure').val(d.procedure_marking || '');
-    rowCalc($tr); allCalc();
-  }
-
+  // ====== PRODUKT: SELECT2 DLA WIERSZA ======
   function initProductLookupForRow($tr) {
-    var $input = $tr.find('.item-name');
-    if (!$input.length || $input.data('lookupInit')) return;
-    $input.data('lookupInit', true);
+    if (!($.fn && $.fn.select2)) return;
+    var $sel = $tr.find('.item-product-select');
+    var $nameHidden = $tr.find('.item-name-hidden');
+    if (!$sel.length || $sel.data('select2')) return;
 
-    var $wrap = $input.closest('.item-name-wrap');
-    var $dd = $('<ul class=”item-lookup-dd dropdown-menu shadow-sm w-100” style=”z-index:1060;top:calc(100% + 2px);left:0;max-height:260px;overflow-y:auto;display:none;position:absolute;”></ul>');
-    $wrap.append($dd);
-    var debTimer = null, xhr = null;
-
-    function hl(text, term) {
-      if (!term) return $('<b>').text(text).html();
-      var re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
-      return $('<b>').text(text).html().replace(re, '<mark class=”item-hl”>$1</mark>');
-    }
-
-    function buildDd(results, term) {
-      $dd.empty();
-      results.forEach(function(p) {
-        var name = p.name || p.text || '';
-        var meta = [p.unit, p.vat_name || (p.vat_rate != null ? p.vat_rate + '%' : null)].filter(Boolean).join(' · ');
-        var $li = $('<li></li>');
-        var $btn = $('<button type=”button” class=”dropdown-item lh-sm py-2”></button>');
-        $btn.append($('<span class=”d-block small”></span>').html(hl(name, term)));
-        if (meta) $btn.append($('<span class=”d-block text-muted” style=”font-size:.7rem;margin-top:.1rem”></span>').text(meta));
-        $btn.on('mousedown', function(e){ e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
-        $li.append($btn);
-        $dd.append($li);
-      });
-      if (results.length) $dd.append('<li><hr class=”dropdown-divider my-1”></li>');
-      var safe = $('<b>').text(term).html();
-      var $li = $('<li></li>');
-      var $add = $('<button type=”button” class=”dropdown-item small text-primary”>+ Dodaj <strong>' + safe + '</strong> jako nowy produkt</button>');
-      $add.on('mousedown', function(e){
-        e.preventDefault();
-        $('#product-create-name').val(term || '');
-        $('#product-create-modal').modal('show');
-        currentProductRow = $tr;
-        $dd.hide();
-      });
-      $li.append($add);
-      $dd.append($li).show();
-    }
-
-    $input.on('input', function() {
-      clearTimeout(debTimer);
-      if (xhr){ xhr.abort(); xhr = null; }
-      var term = (this.value || '').trim();
-      if (!term) { $dd.hide(); return; }
-      $dd.html('<li><span class=”dropdown-item-text text-muted small”>Szukam…</span></li>').show();
-      debTimer = setTimeout(function(){
-        xhr = $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
-          .done(function(d){ buildDd((d && d.success && d.results) ? d.results : [], term); })
-          .fail(function(j,s){ if(s!=='abort') $dd.hide(); })
-          .always(function(){ xhr = null; });
-      }, 250);
-    });
-
-    $input.on('blur', function(){ setTimeout(function(){ $dd.hide(); }, 180); });
-    $input.on('keydown', function(e){
-      var $items = $dd.find('.dropdown-item');
-      if (e.key === 'Escape') { $dd.hide(); }
-      if (e.key === 'ArrowDown' && $dd.is(':visible')){ e.preventDefault(); $items.first().focus(); }
-      if (e.key === 'Tab' && $dd.is(':visible') && $items.length){
-        e.preventDefault(); $items.first().trigger('mousedown');
+    $sel.select2({
+      placeholder: $sel.data('placeholder') || 'Nazwa produktu lub usługi',
+      ajax: {
+        url: productUrl, dataType: 'json', delay: 200,
+        data: function(p){ return { q: p.term }; },
+        processResults: function(data){
+          if (data && data.success && data.results) {
+            return { results: $.map(data.results, function(p){ return $.extend({ id: p.id, text: p.name || p.text }, p); }) };
+          }
+          return { results: [] };
+        }
+      },
+      minimumInputLength: 1,
+      tags: true,
+      createTag: function(params){ var t=$.trim(params.term||''); return t ? { id:'NEW:'+t, text:t, isNew:true } : null; },
+      language: {
+        noResults: function(){
+          return '<div class=”p-2 text-center”><div class=”small text-muted mb-1”>Brak produktów</div>'+
+            '<button type=”button” class=”btn btn-sm btn-primary add-product-inline”><i class=”ri-add-line”></i> Dodaj produkt</button></div>';
+        }
+      },
+      escapeMarkup: function(m){ return m; },
+      width: '100%'
+    })
+    // KLUCZOWA POPRAWKA: select2:closing odpala zanim dropdown się zamknie
+    // — search field jest jeszcze widoczny, odczyt bezpośredni bez śledzenia eventów
+    .on('select2:closing', function(){
+      var inst = $sel.data('select2');
+      var q = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
+      if (!q) return;
+      $nameHidden.val(q);
+      var optVal = 'NEW:' + q;
+      $sel.find('option[value=”' + optVal + '”]').remove();
+      $sel.append(new Option(q, optVal, true, true)).trigger('change');
+    })
+    .on('select2:open', function(){
+      // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
+      var $dd = $('.select2-container--open .select2-dropdown');
+      if ($dd.length && !$dd.find('.s2-add-btn').length) {
+        $dd.find('.select2-search--dropdown').after(
+          '<div class=”s2-add-btn px-2 py-1 border-bottom”>'+
+            '<button type=”button” class=”btn btn-sm btn-outline-primary w-100 s2-open-add”><i class=”ri-add-line”></i> Dodaj nowy produkt</button>'+
+          '</div>'
+        );
+        $dd.on('mousedown', '.s2-open-add', function(e){
+          e.preventDefault();
+          var inst2 = $sel.data('select2');
+          var q2 = inst2 && inst2.dropdown && inst2.dropdown.$search ? inst2.dropdown.$search.val() : '';
+          $('#product-create-name').val(q2 || '');
+          $('#product-create-modal').modal('show');
+          currentProductRow = $tr;
+          $sel.select2('close');
+        });
+      }
+      // Prepopuluj search field aktualną nazwą umożliwiając edycję
+      var cur = ($nameHidden.val() || '').trim();
+      if (cur) {
+        setTimeout(function(){
+          var $sf = $('.select2-container--open .select2-search__field');
+          if ($sf.length){ $sf.val(cur); $sf[0].setSelectionRange(cur.length, cur.length); $sf.trigger('input'); }
+        }, 10);
+      }
+    })
+    .on('select2:select', function(e){
+      var d = (e.params && e.params.data) || {};
+      if (String(d.id || '').indexOf('NEW:') === 0) {
+        $nameHidden.val(d.text || String(d.id).slice(4));
+      } else {
+        $nameHidden.val(d.name || d.text || '');
+        if (d.vat_id) { $tr.find('.item-vatcode').val(d.vat_id); }
+        if (d.unit)   { $tr.find('.item-unit').val(d.unit); }
+        if (typeof d.price !== 'undefined' && d.price !== null) {
+          var net  = Number(d.price) || 0;
+          var mode = ($tr.find('.item-price-mode').val() || 'net');
+          var rate = toNum(vatRates[$tr.find('.item-vatcode').val()], 0);
+          $tr.find('.item-price').val(((mode==='gross') ? +(net*(1+rate/100)) : +net).toFixed(2));
+        }
+        if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
+        $tr.find('.item-pkwiu').val(d.pkwiu || '');
+        $tr.find('.item-gtin').val(d.gtin || '');
+        $tr.find('.item-cn-code').val(d.cn_code || '');
+        $tr.find('.item-excise').val(d.excise_amount != null ? d.excise_amount : '');
+        $tr.find('.item-procedure').val(d.procedure_marking || '');
+        rowCalc($tr); allCalc();
       }
     });
-    $dd.on('keydown', '.dropdown-item', function(e){
-      var $items = $dd.find('.dropdown-item');
-      var i = $items.index(this);
-      if (e.key === 'ArrowDown'){ e.preventDefault(); $items.eq(i+1).focus(); }
-      if (e.key === 'ArrowUp')  { e.preventDefault(); i > 0 ? $items.eq(i-1).focus() : $input.focus(); }
-      if (e.key === 'Escape')   { $dd.hide(); $input.focus(); }
-      if (e.key === 'Enter')    { e.preventDefault(); $(this).trigger('mousedown'); }
+
+    $(document).off('mousedown.addProductInline').on('mousedown.addProductInline', '.add-product-inline', function(ev){
+      ev.preventDefault();
+      var inst = $sel.data('select2');
+      var q = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+      $('#product-create-name').val(q || '');
+      $('#product-create-modal').modal('show');
+      currentProductRow = $tr;
+      $sel.select2('close');
     });
   }
 
@@ -3260,7 +3260,13 @@ $('#gus-fetch-btn').on('click', function(){
     $tr.find('.item-excise').val(item.excise_amount || '');
     $tr.find('.item-procedure').val(item.procedure_marking || '');
 
-    $tr.find('.item-name').val(name);
+    $tr.find('.item-name-hidden').val(name);
+    var $sel = $tr.find('.item-product-select');
+    if ($sel.length && name) {
+      var optVal = 'NEW:' + name;
+      $sel.find('option[value="' + optVal + '"]').remove();
+      $sel.append(new Option(name, optVal, true, true)).trigger('change');
+    }
     rowCalc($tr);
   }
 
@@ -3271,11 +3277,9 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<div class="d-flex align-items-center gap-1">'+
             '<span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>'+
-            '<div class="flex-grow-1 min-w-0"><div class="item-name-wrap position-relative">'+
-              '<i class="ri-search-line item-name-icon"></i>'+
-              '<input type="text" name="items['+idx+'][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">'+
-            '</div></div>' +
+            '<div class="flex-grow-1 min-w-0"><select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Nazwa produktu lub usługi"></select></div>'+
           '</div>'+
+          '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
           '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
           '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
@@ -3378,7 +3382,14 @@ $('#gus-fetch-btn').on('click', function(){
     $dst.find('.item-price-mode').val($src.find('.item-price-mode').val());
     $dst.find('.item-disc').val($src.find('.item-disc').val());
     $dst.find('.item-vatcode').val($src.find('.item-vatcode').val());
-    $dst.find('.item-name').val($src.find('.item-name').val());
+    var srcName = $src.find('.item-name-hidden').val() || '';
+    $dst.find('.item-name-hidden').val(srcName);
+    if (srcName) {
+      var $dstSel = $dst.find('.item-product-select');
+      var optVal = 'NEW:' + srcName;
+      $dstSel.find('option[value="' + optVal + '"]').remove();
+      $dstSel.append(new Option(srcName, optVal, true, true)).trigger('change');
+    }
     rowCalc($dst); allCalc(); guardMinRows();
   });
 
@@ -3472,18 +3483,26 @@ $('#gus-fetch-btn').on('click', function(){
         var prodName = product.name || name;
         var netPrice = parseFloat(product.net_price || '0') || 0;
 
-        applyProductToRow(currentProductRow, {
-          name: prodName,
-          price: netPrice,
-          vat_id: product.vat_id,
-          unit: product.unit_name || '',
-          gtu_code: product.gtu_code || '',
-          pkwiu: product.pkwiu || '',
-          gtin: product.gtin || '',
-          cn_code: product.cn_code || '',
-          excise_amount: product.excise_amount !== null && product.excise_amount !== undefined ? product.excise_amount : '',
-          procedure_marking: product.procedure_marking || ''
-        });
+        currentProductRow.find('.item-name-hidden').val(prodName);
+        var $vat = currentProductRow.find('.item-vatcode');
+        if ($vat.length && product.vat_id) $vat.val(product.vat_id);
+        var mode = (currentProductRow.find('.item-price-mode').val() || 'net');
+        var rate = toNum(vatRates[currentProductRow.find('.item-vatcode').val()], 0);
+        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+        currentProductRow.find('.item-price').val(disp.toFixed(2));
+        if (product.gtu_code) currentProductRow.find('.item-gtu').val(product.gtu_code);
+        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
+        currentProductRow.find('.item-gtin').val(product.gtin || '');
+        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
+        currentProductRow.find('.item-excise').val(product.excise_amount != null ? product.excise_amount : '');
+        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
+        if ($.fn && $.fn.select2) {
+          var $sel2 = currentProductRow.find('.item-product-select');
+          var opt2 = new Option(prodName, product.id, true, true);
+          $sel2.find('option[value="' + product.id + '"]').remove();
+          $sel2.append(opt2).trigger('change');
+        }
+        rowCalc(currentProductRow); allCalc();
         $('#product-create-modal').modal('hide');
         $f[0].reset();
         // Przywróć domyślną jednostkę po resecie
@@ -3575,7 +3594,15 @@ $('#gus-fetch-btn').on('click', function(){
 
 
   // ====== WALIDACJA: min 1 wiersz ======
-  function syncItemNamesBeforeSubmit(){ /* item-name is a direct field — nothing to sync */ }
+  function syncItemNamesBeforeSubmit(){
+    $itemsBody.find('tr.item-row').each(function(){
+      var $tr = $(this);
+      var $hidden = $tr.find('.item-name-hidden');
+      if (!$hidden.length || $hidden.val()) return;
+      var txt = ($tr.find('.item-product-select option:selected').text() || '').trim();
+      if (txt && txt !== 'Nazwa produktu lub usługi') $hidden.val(txt);
+    });
+  }
   $form.on('submit', function (e) {
     syncItemNamesBeforeSubmit();
     var rows = countItemRows();
