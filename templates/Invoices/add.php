@@ -875,8 +875,12 @@ if ($__isEdit && !empty($__prefillItems)) {
   <td>
     <div class="d-flex align-items-center gap-1">
       <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-      <div class="flex-grow-1 min-w-0 position-relative">
-        <input type="text" name="items[<?= (int)$__i ?>][name]" class="form-control item-name" value="<?= h($__itemName) ?>" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+      <div class="flex-grow-1 min-w-0">
+        <div class="item-name-wrap position-relative">
+          <i class="ri-search-line item-name-icon"></i>
+          <input type="text" name="items[<?= (int)$__i ?>][name]" class="form-control item-name" value="<?= h($__itemName) ?>" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+          <span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
+        </div>
       </div>
     </div>
     <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
@@ -915,8 +919,12 @@ if ($__isEdit && !empty($__prefillItems)) {
   <td>
       <div class="d-flex align-items-center gap-1">
         <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-        <div class="flex-grow-1 min-w-0 position-relative">
-          <input type="text" name="items[0][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+        <div class="flex-grow-1 min-w-0">
+          <div class="item-name-wrap position-relative">
+            <i class="ri-search-line item-name-icon"></i>
+            <input type="text" name="items[0][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+            <span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
+          </div>
         </div>
       </div>
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
@@ -1797,10 +1805,21 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  /* Autocomplete dropdown pod polem nazwy produktu */
-  .item-lookup-dd { border: 1px solid #dee2e6; border-radius: .375rem; background:#fff; }
-  .item-lookup-dd .list-group-item { cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .item-lookup-dd .list-group-item:focus { outline:none; background:#f0f4ff; }
+  /* Ikona + spinner w polu nazwy */
+  .item-name-icon { position:absolute; left:8px; top:50%; transform:translateY(-50%); color:#adb5bd; font-size:.8rem; pointer-events:none; z-index:2; }
+  .item-name { padding-left:26px !important; }
+  .item-name-spinner { position:absolute; right:8px; top:50%; transform:translateY(-50%); width:.75rem; height:.75rem; border-width:2px; }
+
+  /* Autocomplete dropdown */
+  .item-lookup-dd { background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:.5rem; box-shadow:0 4px 20px rgba(0,0,0,.1); overflow:hidden; }
+  .item-lookup-item, .item-lookup-add { display:flex; align-items:center; gap:.5rem; width:100%; padding:.45rem .75rem; border:0; background:transparent; cursor:pointer; text-align:left; transition:background .1s; }
+  .item-lookup-item:hover, .item-lookup-item:focus,
+  .item-lookup-add:hover, .item-lookup-add:focus { background:#f0f4ff; outline:none; }
+  .item-lookup-item .item-lookup-meta { color:#6c757d; font-size:.75rem; white-space:nowrap; flex-shrink:0; }
+  .item-lookup-sep { height:1px; background:#e9ecef; margin:.2rem 0; }
+  .item-lookup-add { color:#0d6efd; font-size:.8125rem; }
+  .item-lookup-add:hover, .item-lookup-add:focus { background:#e8f0fe; }
+  mark.item-hl { padding:0; background:transparent; color:inherit; font-weight:600; text-decoration:underline; text-underline-offset:2px; text-decoration-color:#ffc107; }
   @media (max-width:1199.98px) { .item-name { font-size: .8125rem; } }
 
   /* Szerokość pola ceny */
@@ -3145,54 +3164,75 @@ $('#gus-fetch-btn').on('click', function(){
     if (!$input.length || $input.data('lookupInit')) return;
     $input.data('lookupInit', true);
 
-    var $wrap = $input.closest('.position-relative');
-    var $dd = $('<div class=”item-lookup-dd list-group position-absolute” style=”z-index:1060;top:100%;left:0;right:0;max-height:220px;overflow-y:auto;display:none;”></div>');
+    var $wrap    = $input.closest('.item-name-wrap');
+    var $spinner = $wrap.find('.item-name-spinner');
+    var $dd = $('<div class=”item-lookup-dd position-absolute” style=”z-index:1060;top:calc(100% + 3px);left:0;right:0;max-height:240px;overflow-y:auto;display:none;”></div>');
     $wrap.append($dd);
-    var debTimer = null;
+    var debTimer = null, xhr = null;
+
+    function hl(text, term) {
+      if (!term) return $('<b>').text(text).html();
+      var re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
+      return $('<b>').text(text).html().replace(re, '<mark class=”item-hl”>$1</mark>');
+    }
 
     function buildDd(results, term) {
       $dd.empty();
       results.forEach(function(p) {
-        var $btn = $('<button type=”button” class=”list-group-item list-group-item-action py-1 px-2 small text-truncate”></button>').text(p.name || p.text || '');
-        $btn.on('mousedown', function(e) { e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
+        var name = p.name || p.text || '';
+        var meta = [p.unit, p.vat_name || (p.vat_rate != null ? p.vat_rate + '%' : null)].filter(Boolean).join(' · ');
+        var $btn = $('<button type=”button” class=”item-lookup-item”></button>');
+        $btn.append($('<span class=”flex-grow-1 text-truncate small fw-medium”></span>').html(hl(name, term)));
+        if (meta) $btn.append($('<span class=”item-lookup-meta”></span>').text(meta));
+        $btn.on('mousedown', function(e){ e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
         $dd.append($btn);
       });
-      var safeterm = $('<span>').text(term).html();
-      var $addBtn = $('<button type=”button” class=”list-group-item list-group-item-action py-1 px-2 small text-primary”></button>')
-        .html('<i class=”ri-add-line me-1”></i>Dodaj <strong>' + safeterm + '</strong> jako nowy produkt');
-      $addBtn.on('mousedown', function(e) {
+      if (results.length) $dd.append('<div class=”item-lookup-sep”></div>');
+      var safe = $('<b>').text(term).html();
+      var $add = $('<button type=”button” class=”item-lookup-add”></button>')
+        .html('<i class=”ri-add-circle-line fs-6 flex-shrink-0”></i><span>Dodaj <strong>' + safe + '</strong> jako nowy produkt</span>');
+      $add.on('mousedown', function(e){
         e.preventDefault();
         $('#product-create-name').val(term || '');
         $('#product-create-modal').modal('show');
         currentProductRow = $tr;
         $dd.hide();
       });
-      $dd.append($addBtn);
-      $dd.show();
+      $dd.append($add).show();
     }
 
     $input.on('input', function() {
       clearTimeout(debTimer);
+      if (xhr){ xhr.abort(); xhr = null; }
       var term = (this.value || '').trim();
-      if (!term) { $dd.hide(); return; }
-      debTimer = setTimeout(function() {
-        $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
-          .done(function(data) {
-            buildDd((data && data.success && data.results) ? data.results : [], term);
-          })
-          .fail(function() { $dd.hide(); });
+      if (!term) { $dd.hide(); $spinner.addClass('d-none'); return; }
+      $dd.html('<div class=”px-3 py-2 text-muted small d-flex align-items-center gap-2”>' +
+        '<span class=”spinner-border spinner-border-sm opacity-50” style=”width:.7rem;height:.7rem;border-width:2px”></span> Szukam…</div>').show();
+      debTimer = setTimeout(function(){
+        $spinner.removeClass('d-none');
+        xhr = $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
+          .done(function(d){ buildDd((d && d.success && d.results) ? d.results : [], term); })
+          .fail(function(j,s){ if(s!=='abort') $dd.hide(); })
+          .always(function(){ $spinner.addClass('d-none'); xhr = null; });
       }, 250);
     });
 
-    $input.on('blur', function() { setTimeout(function(){ $dd.hide(); }, 200); });
-    $input.on('keydown', function(e) {
+    $input.on('blur', function(){ setTimeout(function(){ $dd.hide(); }, 180); });
+    $input.on('keydown', function(e){
+      var $items = $dd.find('.item-lookup-item,.item-lookup-add');
       if (e.key === 'Escape') { $dd.hide(); }
-      if (e.key === 'ArrowDown' && $dd.is(':visible')) { e.preventDefault(); $dd.find('.list-group-item:first').focus(); }
+      if (e.key === 'ArrowDown' && $dd.is(':visible')){ e.preventDefault(); $items.first().focus(); }
+      if (e.key === 'Tab' && $dd.is(':visible') && $dd.find('.item-lookup-item').length){
+        e.preventDefault(); $dd.find('.item-lookup-item').first().trigger('mousedown');
+      }
     });
-    $dd.on('keydown', '.list-group-item', function(e) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); $(this).next('.list-group-item').focus(); }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); var $p=$(this).prev('.list-group-item'); if($p.length){$p.focus();}else{$input.focus();} }
-      if (e.key === 'Escape')    { $dd.hide(); $input.focus(); }
+    $dd.on('keydown', '.item-lookup-item,.item-lookup-add', function(e){
+      var $items = $dd.find('.item-lookup-item,.item-lookup-add');
+      var i = $items.index(this);
+      if (e.key === 'ArrowDown'){ e.preventDefault(); $items.eq(i+1).focus(); }
+      if (e.key === 'ArrowUp')  { e.preventDefault(); i > 0 ? $items.eq(i-1).focus() : $input.focus(); }
+      if (e.key === 'Escape')   { $dd.hide(); $input.focus(); }
+      if (e.key === 'Enter')    { e.preventDefault(); $(this).trigger('mousedown'); }
     });
   }
 
@@ -3246,7 +3286,11 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<div class="d-flex align-items-center gap-1">'+
             '<span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>'+
-            '<div class="flex-grow-1 min-w-0 position-relative"><input type="text" name="items['+idx+'][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off"></div>' +
+            '<div class="flex-grow-1 min-w-0"><div class="item-name-wrap position-relative">'+
+              '<i class="ri-search-line item-name-icon"></i>'+
+              '<input type="text" name="items['+idx+'][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">'+
+              '<span class="item-name-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>'+
+            '</div></div>' +
           '</div>'+
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
           '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
