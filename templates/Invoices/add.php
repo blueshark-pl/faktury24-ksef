@@ -3179,14 +3179,17 @@ $('#gus-fetch-btn').on('click', function(){
           $sel.select2('close');
         });
       }
-      // Prepopuluj search field aktualną nazwą umożliwiając edycję
+      // Prepopuluj search field aktualną nazwą + synchronizuj każdy keystroke do hidden input
       var cur = ($nameHidden.val() || '').trim();
-      if (cur) {
-        setTimeout(function(){
-          var $sf = $('.select2-container--open .select2-search__field');
-          if ($sf.length){ $sf.val(cur); $sf[0].setSelectionRange(cur.length, cur.length); $sf.trigger('input'); }
-        }, 10);
-      }
+      setTimeout(function(){
+        var $sf = $('.select2-container--open .select2-search__field');
+        if (!$sf.length) return;
+        if (cur) { $sf.val(cur); $sf[0].setSelectionRange(cur.length, cur.length); }
+        $sf.off('input.namecapture').on('input.namecapture', function(){
+          var v = (this.value || '').trim();
+          if (v) $nameHidden.val(v);
+        });
+      }, 10);
     })
     .on('select2:select', function(e){
       var d = (e.params && e.params.data) || {};
