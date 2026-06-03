@@ -3164,11 +3164,11 @@ $('#gus-fetch-btn').on('click', function(){
       // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
       var $dd = $('.select2-container--open .select2-dropdown');
       if ($dd.length && !$dd.find('.s2-add-btn').length) {
-        $dd.find('.select2-search--dropdown').after(
-          '<div class=”s2-add-btn px-2 py-1 border-bottom”>'+
-            '<button type=”button” class=”btn btn-sm btn-outline-primary w-100 s2-open-add”><i class=”ri-add-line”></i> Dodaj nowy produkt</button>'+
-          '</div>'
-        );
+        var $addBtn = $('<button>').attr('type','button')
+          .addClass('btn btn-sm btn-outline-primary w-100 s2-open-add')
+          .html('<i class=”ri-add-line”></i> Dodaj nowy produkt');
+        var $addWrap = $('<div>').addClass('s2-add-btn px-2 py-1 border-bottom').append($addBtn);
+        $dd.find('.select2-search--dropdown').after($addWrap);
         $dd.on('mousedown', '.s2-open-add', function(e){
           e.preventDefault();
           var inst2 = $sel.data('select2');
