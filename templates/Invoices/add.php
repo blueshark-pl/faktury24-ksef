@@ -3147,16 +3147,18 @@ $('#gus-fetch-btn').on('click', function(){
       escapeMarkup: function(m){ return m; },
       width: '100%'
     })
-    // KLUCZOWA POPRAWKA: select2:closing odpala zanim dropdown się zamknie
-    // — search field jest jeszcze widoczny, odczyt bezpośredni bez śledzenia eventów
+    // select2:closing — search field jeszcze widoczny, odczytujemy wartość
+    // trigger('change') w setTimeout żeby nie blokować zamknięcia dropdownu
     .on('select2:closing', function(){
       var inst = $sel.data('select2');
       var q = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
       if (!q) return;
       $nameHidden.val(q);
-      var optVal = 'NEW:' + q;
-      $sel.find('option[value=”' + optVal + '”]').remove();
-      $sel.append(new Option(q, optVal, true, true)).trigger('change');
+      setTimeout(function(){
+        var optVal = 'NEW:' + q;
+        $sel.find('option[value=”' + optVal + '”]').remove();
+        $sel.append(new Option(q, optVal, true, true)).trigger('change');
+      }, 0);
     })
     .on('select2:open', function(){
       // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
