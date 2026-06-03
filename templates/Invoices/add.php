@@ -875,9 +875,10 @@ if ($__isEdit && !empty($__prefillItems)) {
   <td>
     <div class="d-flex align-items-center gap-1">
       <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-      <div class="flex-grow-1 min-w-0"><select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Nazwa produktu lub usługi"><?= $__newOpt ?></select></div>
+      <div class="flex-grow-1 min-w-0 position-relative">
+        <input type="text" name="items[<?= (int)$__i ?>][name]" class="form-control item-name" value="<?= h($__itemName) ?>" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+      </div>
     </div>
-    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
     <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
@@ -914,9 +915,10 @@ if ($__isEdit && !empty($__prefillItems)) {
   <td>
       <div class="d-flex align-items-center gap-1">
         <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-        <div class="flex-grow-1 min-w-0"><select class="form-select item-product-select" data-index="0" data-placeholder="Nazwa produktu lub usługi"></select></div>
+        <div class="flex-grow-1 min-w-0 position-relative">
+          <input type="text" name="items[0][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off">
+        </div>
       </div>
-    <input type="hidden" name="items[0][name]" class="item-name-hidden">
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
     <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
     <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
@@ -1795,8 +1797,11 @@ if ($__isEdit && !empty($__prefillItems)) {
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
 
-  /* Szerokość selecta produktu — pełna szerokość kolumny */
-  .item-product-select + .select2-container { width: 100% !important; min-width: 120px; }
+  /* Autocomplete dropdown pod polem nazwy produktu */
+  .item-lookup-dd { border: 1px solid #dee2e6; border-radius: .375rem; background:#fff; }
+  .item-lookup-dd .list-group-item { cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item-lookup-dd .list-group-item:focus { outline:none; background:#f0f4ff; }
+  @media (max-width:1199.98px) { .item-name { font-size: .8125rem; } }
 
   /* Szerokość pola ceny */
   .item-price { min-width: 90px; }
@@ -3112,133 +3117,82 @@ $('#gus-fetch-btn').on('click', function(){
     }
   }
 
-  // ====== PRODUKT: INIT SELECT2 DLA WIERSZA ======
-  function initProductSelectForRow($tr){
-    if (!($.fn && $.fn.select2)) return;
-    var $sel = $tr.find('.item-product-select');
-    var $nameHidden = $tr.find('.item-name-hidden');
+  // ====== PRODUKT: AUTOCOMPLETE DLA WIERSZA ======
+  function applyProductToRow($tr, d) {
+    var name = d.name || d.text || '';
+    $tr.find('.item-name').val(name);
+    if (d.vat_id) { $tr.find('.item-vatcode').val(d.vat_id); }
+    if (d.unit)   { $tr.find('.item-unit').val(d.unit); }
+    if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
+      var netPrice = Number(d.price) || 0;
+      var mode  = ($tr.find('.item-price-mode').val() || 'net');
+      var vatId = $tr.find('.item-vatcode').val();
+      var rate  = toNum(vatRates[vatId], 0);
+      var disp  = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+      $tr.find('.item-price').val(disp.toFixed(2));
+    }
+    if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
+    $tr.find('.item-pkwiu').val(d.pkwiu || '');
+    $tr.find('.item-gtin').val(d.gtin || '');
+    $tr.find('.item-cn-code').val(d.cn_code || '');
+    $tr.find('.item-excise').val(typeof d.excise_amount !== 'undefined' && d.excise_amount !== null ? d.excise_amount : '');
+    $tr.find('.item-procedure').val(d.procedure_marking || '');
+    rowCalc($tr); allCalc();
+  }
 
-    $sel.select2({
-      placeholder: $sel.data('placeholder') || 'Wybierz lub wpisz produkt',
-      ajax: {
-        url: productUrl, dataType: 'json', delay: 200,
-        data: function (p) { return { q: p.term }; },
-        processResults: function (data) {
-          if (data && data.success && data.results) {
-            return { 
-              results: $.map(data.results, function (p) { 
-                return $.extend({ 
-                  id: p.id, 
-                  text: p.name || p.text 
-                }, p); 
-              }) 
-            };
-          }
-          return { results: [] };
-        }
-      },
-      minimumInputLength: 1,
-      tags: true,
-      createTag: function (params) { var term=$.trim(params.term||''); if(!term) return null; return { id:'NEW:'+term, text:term, isNew:true }; },
-      language: {
-        noResults: function(){
-          return ''+
-            '<div class="p-2 text-center">'+
-              '<div class="small text-muted mb-1">Brak produktów</div>'+
-              '<button type="button" class="btn btn-sm btn-primary add-product-inline">'+
-                '<i class="ri-add-line"></i> Dodaj produkt'+
-              '</button>'+
-            '</div>';
-        }
-      },
-      escapeMarkup: function (m) { return m; },
-      width: '100%'
-    })
-    .on('select2:open', function(){
-      var $dd = $('.select2-container--open .select2-dropdown');
-      if ($dd.find('.prod-toolbar').length === 0) {
-        var $search = $dd.find('.select2-search--dropdown');
-        $search.after(
-          '<div class="prod-toolbar p-2 border-bottom bg-white">'+
-            '<button type="button" class="btn btn-sm btn-outline-primary s2-add-product"><i class="ri-add-line"></i> Dodaj produkt</button>'+
-          '</div>'
-        );
-        $dd.on('mousedown', '.s2-add-product', function(e){
-          e.preventDefault(); e.stopPropagation();
-          var inst = $sel.data('select2');
-          var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
-          $('#product-create-name').val(query || '');
-          $('#product-create-modal').modal('show');
-          currentProductRow = $tr;
-          $sel.select2('close');
-        });
-      }
-      // Prepopuluj pole wyszukiwania aktualną nazwą — umożliwia edycję nazwy bez kasowania
-      var currentName = $nameHidden.val() || '';
-      var $searchField = $dd.find('.select2-search__field');
-      if (currentName && $searchField.length) {
-        setTimeout(function(){
-          $searchField.val(currentName).trigger('input');
-          $searchField[0].setSelectionRange(currentName.length, currentName.length);
-        }, 0);
-      }
-      $sel.data('lastQuery', '');
-      $searchField.off('input.manualName').on('input.manualName', function(){ $sel.data('lastQuery', (this.value||'').toString()); });
-      $searchField.off('blur.manualName').on('blur.manualName', function(){
-        $sel.data('lastQuery', (this.value||'').trim());
+  function initProductLookupForRow($tr) {
+    var $input = $tr.find('.item-name');
+    if (!$input.length || $input.data('lookupInit')) return;
+    $input.data('lookupInit', true);
+
+    var $wrap = $input.closest('.position-relative');
+    var $dd = $('<div class=”item-lookup-dd list-group position-absolute” style=”z-index:1060;top:100%;left:0;right:0;max-height:220px;overflow-y:auto;display:none;”></div>');
+    $wrap.append($dd);
+    var debTimer = null;
+
+    function buildDd(results, term) {
+      $dd.empty();
+      results.forEach(function(p) {
+        var $btn = $('<button type=”button” class=”list-group-item list-group-item-action py-1 px-2 small text-truncate”></button>').text(p.name || p.text || '');
+        $btn.on('mousedown', function(e) { e.preventDefault(); applyProductToRow($tr, p); $dd.hide(); });
+        $dd.append($btn);
       });
-    })
-    .on('select2:close', function(){
-      var q = ($sel.data('lastQuery')||'').trim();
-      $sel.data('lastQuery', '');
-      if (!q) return;
-      // Zawsze nadpisuj nazwę jeśli użytkownik coś wpisał (umożliwia edycję nazwy po wyborze produktu)
-      $nameHidden.val(q);
-      var optVal = 'NEW:'+q;
-      $sel.find('option[value="'+optVal+'"]').remove();
-      var opt = new Option(q, optVal, true, true);
-      $sel.append(opt).trigger('change');
-    })
-    .on('select2:select', function (e) {
-      var d = (e.params && e.params.data) || {};
-      if (String(d.id || '').indexOf('NEW:') === 0) {
-        var name = d.text || String(d.id).slice(4);
-        $nameHidden.val(name);
-      } else {
-        $nameHidden.val(d.name || d.text || '');
-        // Set VAT first (if provided)
-        var $vat = $tr.find('.item-vatcode');
-        if ($vat.length && d.vat_id) { $vat.val(d.vat_id); }
-        if (d.unit) { $tr.find('.item-unit').val(d.unit); }
-        // Adjust displayed price based on selected mode (net/gross)
-        if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
-          var netPrice = Number(d.price) || 0;
-          var mode = ($tr.find('.item-price-mode').val() || 'net');
-          var vatId = $tr.find('.item-vatcode').val();
-          var rate = toNum(vatRates[vatId], 0);
-          var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
-          $tr.find('.item-price').val(disp.toFixed(2));
-        }
-        // Fill classification fields from product
-        if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
-        $tr.find('.item-pkwiu').val(d.pkwiu || '');
-        $tr.find('.item-gtin').val(d.gtin || '');
-        $tr.find('.item-cn-code').val(d.cn_code || '');
-        $tr.find('.item-excise').val(d.excise_amount || '');
-        $tr.find('.item-procedure').val(d.procedure_marking || '');
-        rowCalc($tr); allCalc();
-      }
+      var safeterm = $('<span>').text(term).html();
+      var $addBtn = $('<button type=”button” class=”list-group-item list-group-item-action py-1 px-2 small text-primary”></button>')
+        .html('<i class=”ri-add-line me-1”></i>Dodaj <strong>' + safeterm + '</strong> jako nowy produkt');
+      $addBtn.on('mousedown', function(e) {
+        e.preventDefault();
+        $('#product-create-name').val(term || '');
+        $('#product-create-modal').modal('show');
+        currentProductRow = $tr;
+        $dd.hide();
+      });
+      $dd.append($addBtn);
+      $dd.show();
+    }
+
+    $input.on('input', function() {
+      clearTimeout(debTimer);
+      var term = (this.value || '').trim();
+      if (!term) { $dd.hide(); return; }
+      debTimer = setTimeout(function() {
+        $.ajax({ url: productUrl, dataType: 'json', data: { q: term } })
+          .done(function(data) {
+            buildDd((data && data.success && data.results) ? data.results : [], term);
+          })
+          .fail(function() { $dd.hide(); });
+      }, 250);
     });
 
-    // „Dodaj produkt” w „Brak wyników”
-    $(document).off('mousedown.addProductInline').on('mousedown.addProductInline', '.add-product-inline', function (ev) {
-      ev.preventDefault();
-      var inst = $sel.data('select2');
-      var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
-      $('#product-create-name').val(query || '');
-      $('#product-create-modal').modal('show');
-      currentProductRow = $tr;
-      $sel.select2('close');
+    $input.on('blur', function() { setTimeout(function(){ $dd.hide(); }, 200); });
+    $input.on('keydown', function(e) {
+      if (e.key === 'Escape') { $dd.hide(); }
+      if (e.key === 'ArrowDown' && $dd.is(':visible')) { e.preventDefault(); $dd.find('.list-group-item:first').focus(); }
+    });
+    $dd.on('keydown', '.list-group-item', function(e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); $(this).next('.list-group-item').focus(); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); var $p=$(this).prev('.list-group-item'); if($p.length){$p.focus();}else{$input.focus();} }
+      if (e.key === 'Escape')    { $dd.hide(); $input.focus(); }
     });
   }
 
@@ -3247,7 +3201,7 @@ $('#gus-fetch-btn').on('click', function(){
     var $rows = $itemsBody.find('tr.item-row');
     $rows.each(function(){
       var $tr = $(this);
-      initProductSelectForRow($tr);
+      initProductLookupForRow($tr);
       $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
       $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
       $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
@@ -3281,17 +3235,7 @@ $('#gus-fetch-btn').on('click', function(){
     $tr.find('.item-excise').val(item.excise_amount || '');
     $tr.find('.item-procedure').val(item.procedure_marking || '');
 
-    // Show name in Select2 (tag mode)
-    $tr.find('.item-name-hidden').val(name);
-    var $sel = $tr.find('.item-product-select');
-    if ($sel.length) {
-      var optVal = (name ? ('NEW:'+name) : '');
-      if (optVal) {
-        $sel.find('option[value="'+optVal.replace(/"/g,'\\"')+'"]').remove();
-        var opt = new Option(name, optVal, true, true);
-        $sel.append(opt).trigger('change');
-      }
-    }
+    $tr.find('.item-name').val(name);
     rowCalc($tr);
   }
 
@@ -3302,9 +3246,8 @@ $('#gus-fetch-btn').on('click', function(){
         '<td>' +
           '<div class="d-flex align-items-center gap-1">'+
             '<span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>'+
-            '<div class="flex-grow-1 min-w-0"><select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Nazwa produktu lub usługi"></select></div>' +
+            '<div class="flex-grow-1 min-w-0 position-relative"><input type="text" name="items['+idx+'][name]" class="form-control item-name" value="" placeholder="Nazwa produktu lub usługi" autocomplete="off"></div>' +
           '</div>'+
-          '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
           '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
           '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
           '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
@@ -3331,7 +3274,7 @@ $('#gus-fetch-btn').on('click', function(){
       '</tr>';
     $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
     var $tr = $addRow.prev();
-    initProductSelectForRow($tr);
+    initProductLookupForRow($tr);
     $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
     $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
     $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
@@ -3407,17 +3350,7 @@ $('#gus-fetch-btn').on('click', function(){
     $dst.find('.item-price-mode').val($src.find('.item-price-mode').val());
     $dst.find('.item-disc').val($src.find('.item-disc').val());
     $dst.find('.item-vatcode').val($src.find('.item-vatcode').val());
-    $dst.find('.item-name-hidden').val($src.find('.item-name-hidden').val());
-    // Select2 produktu: ustaw taką samą opcję
-    var $srcSel = $src.find('.item-product-select');
-    var pid = $srcSel.val();
-    var ptext = ($srcSel.find('option:selected').text() || $src.find('.item-name-hidden').val() || '').trim();
-    var $dstSel = $dst.find('.item-product-select');
-    if (pid) {
-      $dstSel.find('option[value="'+pid+'"]').remove();
-      var opt = new Option(ptext, pid, true, true);
-      $dstSel.append(opt).trigger('change');
-    }
+    $dst.find('.item-name').val($src.find('.item-name').val());
     rowCalc($dst); allCalc(); guardMinRows();
   });
 
@@ -3511,39 +3444,18 @@ $('#gus-fetch-btn').on('click', function(){
         var prodName = product.name || name;
         var netPrice = parseFloat(product.net_price || '0') || 0;
 
-        // Nazwa
-        currentProductRow.find('.item-name-hidden').val(prodName);
-
-        // VAT + cena
-        var $vat = currentProductRow.find('.item-vatcode');
-        if ($vat.length && product.vat_id) $vat.val(product.vat_id);
-        var mode           = (currentProductRow.find('.item-price-mode').val() || 'net');
-        var effectiveVatId = currentProductRow.find('.item-vatcode').val();
-        var rate           = toNum(vatRates[effectiveVatId], 0);
-        var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
-        currentProductRow.find('.item-price').val(disp.toFixed(2));
-
-        // GTU + pola klasyfikacyjne KSeF/JPK
-        if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
-          currentProductRow.find('.item-gtu').val(product.gtu_code);
-        }
-        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
-        currentProductRow.find('.item-gtin').val(product.gtin || '');
-        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
-        currentProductRow.find('.item-excise').val(product.excise_amount !== null && product.excise_amount !== undefined ? product.excise_amount : '');
-        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
-
-        // Select2 – pokaż nazwę produktu
-        if ($.fn && $.fn.select2) {
-          var $sel        = currentProductRow.find('.item-product-select');
-          var displayText = prodName;
-          if (product.is_service) displayText += ' (usługa)';
-          var opt = new Option(displayText, product.id, true, true);
-          $sel.append(opt).trigger('change');
-        }
-
-        rowCalc(currentProductRow);
-        allCalc();
+        applyProductToRow(currentProductRow, {
+          name: prodName,
+          price: netPrice,
+          vat_id: product.vat_id,
+          unit: product.unit_name || '',
+          gtu_code: product.gtu_code || '',
+          pkwiu: product.pkwiu || '',
+          gtin: product.gtin || '',
+          cn_code: product.cn_code || '',
+          excise_amount: product.excise_amount !== null && product.excise_amount !== undefined ? product.excise_amount : '',
+          procedure_marking: product.procedure_marking || ''
+        });
         $('#product-create-modal').modal('hide');
         $f[0].reset();
         // Przywróć domyślną jednostkę po resecie
@@ -3635,18 +3547,7 @@ $('#gus-fetch-btn').on('click', function(){
 
 
   // ====== WALIDACJA: min 1 wiersz ======
-  function syncItemNamesBeforeSubmit(){
-    $itemsBody.find('tr').each(function(){
-      var $tr = $(this);
-      if (!$tr.find('.item-name-hidden').length) return;
-      var $nameHidden = $tr.find('.item-name-hidden');
-      var current = ($nameHidden.val() || '').toString().trim();
-      if (current !== '') return;
-      var selectedText = ($tr.find('.item-product-select option:selected').text() || '').toString().trim();
-      if (!selectedText || selectedText === 'Wybierz lub wpisz produkt') return;
-      $nameHidden.val(selectedText);
-    });
-  }
+  function syncItemNamesBeforeSubmit(){ /* item-name is a direct field — nothing to sync */ }
   $form.on('submit', function (e) {
     syncItemNamesBeforeSubmit();
     var rows = countItemRows();
