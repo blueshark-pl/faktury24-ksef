@@ -470,7 +470,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-advance"><i class="ri-coin-line text-warning"></i><span>Zaliczka</span></a></li>
                                 <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-correction"><i class="ri-edit-2-line text-danger"></i><span>Korekta</span></a></li>
                                 <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-currency"><i class="ri-exchange-dollar-line text-success"></i><span>Walutowa</span></a></li>
-                                <li><a class="dropdown-item d-flex align-items-center gap-2 py-2" href="/invoices/add-no-vat"><i class="ri-file-forbid-line text-muted"></i><span>Bez VAT</span></a></li>
                             </ul>
                         </li>
                         <!-- End::header-element: CTA -->
