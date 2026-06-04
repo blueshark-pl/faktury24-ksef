@@ -483,17 +483,20 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                 <i class="ri-file-copy-line"></i>
               </span>
               <?php
+                $statusBadges = [
+                  'pending' => '<span class="badge bg-warning-light text-dark"><i class="ri-time-line me-1"></i>Oczekuje</span>',
+                  'sending' => '<span class="badge bg-info-light text-dark"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
+                  'sent' => '<span class="badge bg-success-light text-dark"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
+                  'failed' => '<span class="badge bg-danger-light text-dark"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
+                ];
+
                 if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
                   $lastEmail = $inv->invoice_email_queue[0];
-                  $statusBadges = [
-                    'pending' => '<span class="badge bg-warning-light text-dark"><i class="ri-time-line me-1"></i>Oczekuje</span>',
-                    'sending' => '<span class="badge bg-info-light text-dark"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
-                    'sent' => '<span class="badge bg-success-light text-dark"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
-                    'failed' => '<span class="badge bg-danger-light text-dark"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
-                  ];
                   echo '<span class="ms-1" title="Email: ' . h($lastEmail->email) . '" data-bs-toggle="tooltip">';
                   echo $statusBadges[$lastEmail->status] ?? '<span class="badge bg-light text-dark">' . h($lastEmail->status) . '</span>';
                   echo '</span>';
+                } else {
+                  echo '<span class="ms-1 badge bg-light text-muted"><i class="ri-mail-line me-1"></i>Nie wysłano</span>';
                 }
               ?>
               <?php if ($inv->description): ?>
