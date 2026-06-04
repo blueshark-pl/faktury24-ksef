@@ -476,6 +476,11 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               <span role="button" tabindex="0" class="ms-1 text-muted copy-btn" data-copy="<?= h((string)($inv->fullnumber ?: $inv->id)) ?>" title="Kopiuj numer" data-bs-toggle="tooltip">
                 <i class="ri-file-copy-line"></i>
               </span>
+              <?php if (!empty($inv->email_sent_at)): ?>
+                <span class="ms-1 text-success" title="Email wysłany" data-bs-toggle="tooltip">
+                  <i class="ri-mail-check-line"></i>
+                </span>
+              <?php endif; ?>
               <?php if ($inv->description): ?>
                 <br><small class="text-muted"><?= h(Text::truncate((string)$inv->description, 40, ['ellipsis' => '...', 'exact' => false])) ?></small>
               <?php endif; ?>
