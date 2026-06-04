@@ -2450,8 +2450,14 @@ $(function () {
         if ($tcUI.length) try { $tcUI.countrySelect('selectCountry', (data.tax_id_other_country || '').toLowerCase()); } catch(e) {}
       }
     }, 50);
-    // Domyślnie pokazuj NIP PL
-    snapIdChipSwitch('nip_pl');
+    // Automatycznie wybierz chip na podstawie danych kontrahenta
+    var idType = 'nip_pl';
+    if (data.vat_eu || data.vat_prefix) {
+      idType = 'vat_eu';
+    } else if (data.tax_id_other || data.tax_id_other_country) {
+      idType = 'non_eu';
+    }
+    snapIdChipSwitch(idType);
   }
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
