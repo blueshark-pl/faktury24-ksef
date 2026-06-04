@@ -87,6 +87,12 @@ $this->assign('title', 'Faktury');
 }
 
 /* Tabela podsumowania po walutach - minimal Bootstrap style */
+.currency-summary-table thead th {
+  padding: 16px 12px !important;
+}
+.currency-summary-table tbody td {
+  padding: 14px 12px !important;
+}
 .currency-summary-table td.amount {
   text-align: right;
 }
