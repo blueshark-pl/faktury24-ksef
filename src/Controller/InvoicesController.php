@@ -617,14 +617,18 @@ public function index()
     if ($to)   { $query->where(['Invoices.date <=' => $to]); }
     if ($emailStatus) {
       if ($emailStatus === 'not_sent') {
-        $query->leftJoinWith('InvoiceEmailQueue', function($j) {
-          return $j->where(['InvoiceEmailQueue.invoice_id IS NULL']);
-        })->where(['InvoiceEmailQueue.invoice_id IS NULL']);
+        // Faktury bez żadnych wysyłek
+        $subquery = $this->Invoices->InvoiceEmailQueue->find()
+            ->select(['invoice_id'])
+            ->distinct(['invoice_id']);
+        $query->where(['Invoices.id NOT IN' => $subquery]);
       } else {
-        $query->leftJoinWith('InvoiceEmailQueue')
-              ->where(['InvoiceEmailQueue.status' => $emailStatus])
-              ->group('Invoices.id')
-              ->select('Invoices.*');
+        // Faktury które mają co najmniej jedną wysyłkę z danym statusem
+        $subquery = $this->Invoices->InvoiceEmailQueue->find()
+            ->select(['invoice_id'])
+            ->where(['InvoiceEmailQueue.status' => $emailStatus])
+            ->distinct(['invoice_id']);
+        $query->where(['Invoices.id IN' => $subquery]);
       }
     }
 
