@@ -3147,18 +3147,21 @@ $('#gus-fetch-btn').on('click', function(){
       escapeMarkup: function(m){ return m; },
       width: '100%'
     })
-    // select2:closing — odczytaj search field; jeśli pusty użyj tego co input.namecapture zebrał
+    // select2:closing — zapisz nazwę do hidden input
     .on('select2:closing', function(){
       var inst = $sel.data('select2');
       var sfVal = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
       var name = sfVal || $nameHidden.val().trim();
+      if (name) $nameHidden.val(name);
+    })
+    // select2:close — odpala PO zamknięciu, bezpiecznie aktualizuj wyświetlenie Select2
+    .on('select2:close', function(){
+      var name = $nameHidden.val().trim();
       if (!name) return;
-      $nameHidden.val(name);
-      setTimeout(function(){
-        var optVal = 'NEW:' + name;
-        $sel.find('option[value=”' + optVal + '”]').remove();
-        $sel.append(new Option(name, optVal, true, true)).trigger('change');
-      }, 0);
+      var optVal = 'NEW:' + name;
+      $sel.find('option[value=”' + optVal + '”]').remove();
+      $sel.append(new Option(name, optVal, true, true));
+      $sel.trigger('change');
     })
     .on('select2:open', function(){
       // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
