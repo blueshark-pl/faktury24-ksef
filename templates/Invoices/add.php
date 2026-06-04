@@ -3154,14 +3154,19 @@ $('#gus-fetch-btn').on('click', function(){
       var name = sfVal || $nameHidden.val().trim();
       if (name) $nameHidden.val(name);
     })
-    // select2:close — odpala PO zamknięciu, bezpiecznie aktualizuj wyświetlenie Select2
+    // select2:close — aktualizuj opcję i wyświetlenie bezpośrednio w DOM
     .on('select2:close', function(){
       var name = $nameHidden.val().trim();
       if (!name) return;
       var optVal = 'NEW:' + name;
-      $sel.find('option[value=”' + optVal + '”]').remove();
-      $sel.append(new Option(name, optVal, true, true));
-      $sel.trigger('change');
+      // Zaktualizuj underlying <select>
+      $sel.find('option').filter(function(){ return String(this.value).indexOf('NEW:') === 0; }).remove();
+      $sel.append($('<option></option>').val(optVal).text(name).prop('selected', true));
+      $sel.val(optVal);
+      // Bezpośrednia aktualizacja renderowanego tekstu Select2
+      $sel.siblings('.select2-container').find('.select2-selection__rendered')
+        .attr('title', name)
+        .text(name);
     })
     .on('select2:open', function(){
       // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
