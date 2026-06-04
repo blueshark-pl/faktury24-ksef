@@ -683,7 +683,8 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
               <!-- Snapshot kontrahenta — UKRYTY NA START, rozwinięty po wyborze / w edit -->
               <div id="contractor-snapshot" class="mt-3 bg-white border rounded p-4"<?= ($__isEdit) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
-                <input type="hidden" id="snapshot-is-person" value="<?= !empty($__prefillContractor['is_person']) ? '1' : '0' ?>"><?php // dla edit mode auto-detect sekcji
+                <input type="hidden" id="snapshot-is-person" value="<?= !empty($__prefillContractor['is_person']) ? '1' : '0' ?>">
+                <!-- snapshot-is-person: dla edit mode auto-detect visibility -->
 
                 <div class="vstack gap-3">
 
