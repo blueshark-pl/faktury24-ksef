@@ -2042,6 +2042,9 @@ body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
 /* --- toolbar pod nabywcą --- */
 .ctr-toolbar{ position:sticky; top:0; z-index:2; background:#fff; padding:.5rem; border:1px dashed #e9ecef; border-radius:.5rem; }
 
+/* --- snapshot kontrahenta: reset marginesu labelów --- */
+#contractor-snapshot .form-label { margin-bottom: 0; }
+
 </style>
 <script>
 (function(){
