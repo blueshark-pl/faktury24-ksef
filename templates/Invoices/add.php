@@ -3147,17 +3147,17 @@ $('#gus-fetch-btn').on('click', function(){
       escapeMarkup: function(m){ return m; },
       width: '100%'
     })
-    // select2:closing — search field jeszcze widoczny, odczytujemy wartość
-    // trigger('change') w setTimeout żeby nie blokować zamknięcia dropdownu
+    // select2:closing — odczytaj search field; jeśli pusty użyj tego co input.namecapture zebrał
     .on('select2:closing', function(){
       var inst = $sel.data('select2');
-      var q = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
-      if (!q) return;
-      $nameHidden.val(q);
+      var sfVal = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
+      var name = sfVal || $nameHidden.val().trim();
+      if (!name) return;
+      $nameHidden.val(name);
       setTimeout(function(){
-        var optVal = 'NEW:' + q;
+        var optVal = 'NEW:' + name;
         $sel.find('option[value=”' + optVal + '”]').remove();
-        $sel.append(new Option(q, optVal, true, true)).trigger('change');
+        $sel.append(new Option(name, optVal, true, true)).trigger('change');
       }, 0);
     })
     .on('select2:open', function(){
