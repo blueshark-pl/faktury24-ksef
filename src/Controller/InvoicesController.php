@@ -777,6 +777,10 @@ foreach ($currencies as $curr) {
         'paid_brutto'   => 0,
         'pending_brutto'=> 0,
         'overdue_brutto'=> 0,
+        'invoice_count' => 0,
+        'paid_count'    => 0,
+        'pending_count' => 0,
+        'overdue_count' => 0,
     ];
 
     // Oblicz netto i brutto dla roku (z VAT)
@@ -799,23 +803,31 @@ foreach ($currencies as $curr) {
 
         $currencyStats[$curr]['year_brutto'] += $brutto;
         $currencyStats[$curr]['year_netto'] += $netto;
+        $currencyStats[$curr]['invoice_count']++;
 
         if ($inv['paymentstate'] === 'paid') {
             $currencyStats[$curr]['paid_brutto'] += $brutto;
             $currencyStats[$curr]['paid_netto'] += $netto;
+            $currencyStats[$curr]['paid_count']++;
         } elseif (in_array($inv['paymentstate'], ['unpaid', 'partial'])) {
             $currencyStats[$curr]['pending_brutto'] += $brutto;
+            $currencyStats[$curr]['pending_count']++;
         } elseif ($inv['paymentstate'] === 'overdue') {
             $currencyStats[$curr]['overdue_brutto'] += $brutto;
+            $currencyStats[$curr]['overdue_count']++;
         }
     }
 
-    // Zaokrąglij
+    // Zaokrąglij i oblicz procenty
     foreach ($currencyStats[$curr] as $key => $value) {
         if (is_float($value)) {
             $currencyStats[$curr][$key] = round($value, 2);
         }
     }
+    // % opłacenia
+    $currencyStats[$curr]['paid_percent'] = $currencyStats[$curr]['year_brutto'] > 0
+        ? round(($currencyStats[$curr]['paid_brutto'] / $currencyStats[$curr]['year_brutto']) * 100, 1)
+        : 0;
 }
 
 $stats = [

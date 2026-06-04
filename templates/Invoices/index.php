@@ -85,6 +85,115 @@ $this->assign('title', 'Faktury');
   color: #a1a5b7;
   background-color: #f5f5f9;
 }
+
+/* Tabela podsumowania po walutach */
+.currency-summary-table {
+  table-layout: auto;
+}
+.currency-summary-table thead {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.currency-summary-table thead th {
+  padding: 16px 12px;
+  font-weight: 600;
+  border: none;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.currency-summary-table thead th:hover {
+  background: linear-gradient(135deg, #6571e8 0%, #7650b0 100%);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+.currency-summary-table thead th i {
+  opacity: 0.7;
+  margin-left: 4px;
+  font-size: 0.85rem;
+}
+.currency-summary-table tbody tr {
+  transition: all 0.15s ease;
+  border-bottom: 1px solid #e3e6f0;
+}
+.currency-summary-table tbody tr:hover {
+  background-color: rgba(102, 126, 234, 0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.currency-summary-table tbody tr.currency-total {
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  font-weight: 600;
+  border-top: 2px solid #667eea;
+  border-bottom: 2px solid #667eea;
+}
+.currency-summary-table tbody tr.currency-total:hover {
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+}
+.currency-summary-table td {
+  padding: 12px;
+  vertical-align: middle;
+}
+.currency-summary-table td.currency-name {
+  font-weight: 600;
+  cursor: pointer;
+  color: #667eea;
+  transition: all 0.2s ease;
+}
+.currency-summary-table td.currency-name:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+.currency-summary-table td.amount {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+  font-size: 0.95rem;
+}
+.currency-summary-table .icon-status {
+  margin-right: 4px;
+  font-size: 0.85rem;
+}
+.currency-summary-table .badge-count {
+  display: inline-block;
+  min-width: 24px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+.currency-summary-table .progress-mini {
+  height: 4px;
+  margin-top: 4px;
+  background-color: #e3e6f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.currency-summary-table .progress-mini-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #1cc88a 0%, #28a745 100%);
+  transition: width 0.3s ease;
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+  .currency-summary-table thead {
+    position: relative;
+  }
+  .currency-summary-table thead th {
+    padding: 12px 8px;
+    font-size: 0.85rem;
+  }
+  .currency-summary-table td {
+    padding: 10px 8px;
+    font-size: 0.9rem;
+  }
+  .currency-summary-table .badge-count {
+    display: none;
+  }
+}
 </style>
 <style>
 /* Column resizer styles */
@@ -1194,52 +1303,122 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
 <div class="row mt-4">
   <div class="col-12">
     <div class="card custom-card">
-      <div class="card-header">
-        <h6 class="card-title">Podsumowanie po walutach</h6>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">
+          <i class="ri-exchange-rate-line me-2"></i>Podsumowanie po walutach
+        </h6>
+        <small class="text-muted">Kliknij na walutę aby filtrować</small>
       </div>
       <div class="table-responsive">
-        <table class="table table-sm mb-0">
+        <table class="table currency-summary-table mb-0" id="currencySummaryTable">
           <thead>
             <tr>
-              <th>Waluta</th>
-              <th class="text-end">Netto (rok)</th>
-              <th class="text-end">Brutto (rok)</th>
-              <th class="text-end">Opłacone</th>
-              <th class="text-end">Do zapłaty</th>
-              <th class="text-end">Po terminie</th>
+              <th data-sort="currency">Waluta <i class="ri-arrow-down-s-line"></i></th>
+              <th class="text-end" data-sort="invoice_count" title="Liczba wystawionych faktur">
+                <i class="ri-file-line icon-status"></i>Faktury
+              </th>
+              <th class="text-end" data-sort="year_netto" title="Wartość netto za rok">
+                Netto (rok)
+              </th>
+              <th class="text-end" data-sort="year_brutto" title="Wartość brutto za rok">
+                Brutto (rok)
+              </th>
+              <th class="text-end" data-sort="paid_brutto" title="Kwota opłacona">
+                <i class="ri-check-line icon-status"></i>Opłacone
+              </th>
+              <th class="text-end" data-sort="pending_brutto" title="Kwota oczekująca na płatność">
+                <i class="ri-time-line icon-status"></i>Do zapłaty
+              </th>
+              <th class="text-end" data-sort="overdue_brutto" title="Kwota przeterminowana">
+                <i class="ri-alert-line icon-status"></i>Po terminie
+              </th>
+              <th class="text-end" data-sort="paid_percent" title="Procent opłacenia">
+                % Opłacenia
+              </th>
             </tr>
           </thead>
           <tbody>
             <?php
+              $sumInvoiceCount = 0;
               $sumNetto = 0;
               $sumBrutto = 0;
               $sumPaid = 0;
               $sumPending = 0;
               $sumOverdue = 0;
+              $totalPaidPercent = 0;
 
               foreach ($stats['by_currency'] as $cs):
+                $sumInvoiceCount += $cs['invoice_count'];
                 $sumNetto += $cs['year_netto'];
                 $sumBrutto += $cs['year_brutto'];
                 $sumPaid += $cs['paid_brutto'];
                 $sumPending += $cs['pending_brutto'];
                 $sumOverdue += $cs['overdue_brutto'];
             ?>
-            <tr>
-              <td><strong><?= h($cs['currency']) ?></strong></td>
-              <td class="text-end"><?= $this->Number->format($cs['year_netto'], ['places' => 2]) ?></td>
-              <td class="text-end"><?= $this->Number->format($cs['year_brutto'], ['places' => 2]) ?></td>
-              <td class="text-end text-success"><?= $this->Number->format($cs['paid_brutto'], ['places' => 2]) ?></td>
-              <td class="text-end text-warning"><?= $this->Number->format($cs['pending_brutto'], ['places' => 2]) ?></td>
-              <td class="text-end text-danger"><?= $this->Number->format($cs['overdue_brutto'], ['places' => 2]) ?></td>
+            <tr class="currency-row" data-currency="<?= h($cs['currency']) ?>">
+              <td class="currency-name">
+                <span class="badge bg-light text-dark me-2"><?= h($cs['currency']) ?></span>
+              </td>
+              <td class="amount">
+                <span class="badge-count bg-light text-dark"><?= (int)$cs['invoice_count'] ?></span>
+              </td>
+              <td class="amount">
+                <span title="<?= $cs['year_netto'] ?>"><?= $this->Number->format($cs['year_netto'], ['places' => 0]) ?></span>
+              </td>
+              <td class="amount">
+                <span title="<?= $cs['year_brutto'] ?>"><?= $this->Number->format($cs['year_brutto'], ['places' => 0]) ?></span>
+              </td>
+              <td class="amount">
+                <span class="text-success" title="<?= $cs['paid_brutto'] ?>">
+                  <i class="ri-check-circle-line me-1"></i><?= $this->Number->format($cs['paid_brutto'], ['places' => 0]) ?>
+                </span>
+                <span class="badge-count bg-success-transparent text-success"><?= (int)$cs['paid_count'] ?></span>
+              </td>
+              <td class="amount">
+                <span class="text-warning" title="<?= $cs['pending_brutto'] ?>">
+                  <i class="ri-time-line me-1"></i><?= $this->Number->format($cs['pending_brutto'], ['places' => 0]) ?>
+                </span>
+                <span class="badge-count bg-warning-transparent text-warning"><?= (int)$cs['pending_count'] ?></span>
+              </td>
+              <td class="amount">
+                <span class="text-danger" title="<?= $cs['overdue_brutto'] ?>">
+                  <i class="ri-alert-line me-1"></i><?= $this->Number->format($cs['overdue_brutto'], ['places' => 0]) ?>
+                </span>
+                <span class="badge-count bg-danger-transparent text-danger"><?= (int)$cs['overdue_count'] ?></span>
+              </td>
+              <td class="amount">
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                  <span class="fw-semibold"><?= $cs['paid_percent'] ?>%</span>
+                  <div class="currency-summary-table progress-mini" style="width: 60px;">
+                    <div class="progress-mini-bar" style="width: <?= min($cs['paid_percent'], 100) ?>%"></div>
+                  </div>
+                </div>
+              </td>
             </tr>
             <?php endforeach; ?>
-            <tr class="border-top fw-semibold">
-              <td>RAZEM</td>
-              <td class="text-end"><?= $this->Number->format($sumNetto, ['places' => 2]) ?></td>
-              <td class="text-end"><?= $this->Number->format($sumBrutto, ['places' => 2]) ?></td>
-              <td class="text-end text-success"><?= $this->Number->format($sumPaid, ['places' => 2]) ?></td>
-              <td class="text-end text-warning"><?= $this->Number->format($sumPending, ['places' => 2]) ?></td>
-              <td class="text-end text-danger"><?= $this->Number->format($sumOverdue, ['places' => 2]) ?></td>
+            <tr class="currency-total">
+              <td class="currency-name"><i class="ri-sum-line me-2"></i>RAZEM</td>
+              <td class="amount"><?= (int)$sumInvoiceCount ?></td>
+              <td class="amount" title="<?= $sumNetto ?>"><?= $this->Number->format($sumNetto, ['places' => 0]) ?></td>
+              <td class="amount" title="<?= $sumBrutto ?>"><?= $this->Number->format($sumBrutto, ['places' => 0]) ?></td>
+              <td class="amount">
+                <i class="ri-check-circle-line me-1"></i><?= $this->Number->format($sumPaid, ['places' => 0]) ?>
+              </td>
+              <td class="amount">
+                <i class="ri-time-line me-1"></i><?= $this->Number->format($sumPending, ['places' => 0]) ?>
+              </td>
+              <td class="amount">
+                <i class="ri-alert-line me-1"></i><?= $this->Number->format($sumOverdue, ['places' => 0]) ?>
+              </td>
+              <td class="amount">
+                <?php $totalPaidPercent = $sumBrutto > 0 ? round(($sumPaid / $sumBrutto) * 100, 1) : 0; ?>
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                  <span class="fw-semibold"><?= $totalPaidPercent ?>%</span>
+                  <div class="currency-summary-table progress-mini" style="width: 60px;">
+                    <div class="progress-mini-bar" style="width: <?= min($totalPaidPercent, 100) ?>%"></div>
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -2483,6 +2662,129 @@ function deletePayment(paymentId) {
       })
       .catch(err => alert('Błąd sieci: ' + err));
     });
+
+    // Currency Summary Table: Sorting & Filtering
+    (function() {
+      const table = document.getElementById('currencySummaryTable');
+      if (!table) return;
+
+      let sortColumn = 'currency';
+      let sortDirection = 'asc';
+      let currentFilter = null;
+
+      // Click na nagłówek → sortowanie
+      Array.from(table.querySelectorAll('thead th[data-sort]')).forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', function() {
+          const newSort = this.dataset.sort;
+          if (sortColumn === newSort) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortColumn = newSort;
+            sortDirection = 'asc';
+          }
+          updateSort();
+        });
+      });
+
+      // Click na walutę → filtrowanie
+      Array.from(table.querySelectorAll('tbody tr.currency-row .currency-name')).forEach(cell => {
+        cell.addEventListener('click', function() {
+          const currency = this.closest('tr').dataset.currency;
+          if (currentFilter === currency) {
+            currentFilter = null;
+          } else {
+            currentFilter = currency;
+          }
+          updateFilter();
+        });
+      });
+
+      function updateSort() {
+        const rows = Array.from(table.querySelectorAll('tbody tr.currency-row'));
+
+        rows.sort((a, b) => {
+          let aVal = a.dataset.currency;
+          let bVal = b.dataset.currency;
+
+          // Dla kolumn numerycznych
+          if (sortColumn !== 'currency') {
+            const aCell = a.querySelector(`[data-sort="${sortColumn}"]`) || a.querySelectorAll('td')[0];
+            const bCell = b.querySelector(`[data-sort="${sortColumn}"]`) || b.querySelectorAll('td')[0];
+
+            let aNum = parseFloat((aCell?.textContent || '').replace(/[^\d.,\-]/g, '').replace(/\s/g, '').replace(',', '.'));
+            let bNum = parseFloat((bCell?.textContent || '').replace(/[^\d.,\-]/g, '').replace(/\s/g, '').replace(',', '.'));
+
+            if (isNaN(aNum)) aNum = 0;
+            if (isNaN(bNum)) bNum = 0;
+
+            return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+
+          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+
+        const tbody = table.querySelector('tbody');
+        const totalRow = tbody.querySelector('tr.currency-total');
+
+        rows.forEach(row => tbody.insertBefore(row, totalRow));
+
+        // Update ikony sortowania
+        Array.from(table.querySelectorAll('thead th[data-sort]')).forEach(th => {
+          const icon = th.querySelector('i');
+          if (th.dataset.sort === sortColumn) {
+            icon.className = sortDirection === 'asc'
+              ? 'ri-arrow-up-s-line'
+              : 'ri-arrow-down-s-line';
+            icon.style.opacity = '1';
+          } else {
+            icon.className = 'ri-arrow-down-s-line';
+            icon.style.opacity = '0.3';
+          }
+        });
+      }
+
+      function updateFilter() {
+        Array.from(table.querySelectorAll('tbody tr.currency-row')).forEach(row => {
+          const currency = row.dataset.currency;
+          const show = !currentFilter || currency === currentFilter;
+          row.style.display = show ? '' : 'none';
+          if (show && currentFilter === currency) {
+            row.style.background = 'linear-gradient(90deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)';
+            row.classList.add('table-active');
+          } else {
+            row.style.background = '';
+            row.classList.remove('table-active');
+          }
+        });
+
+        // Update klasy dla currency-name
+        Array.from(table.querySelectorAll('tbody tr.currency-row .currency-name')).forEach(cell => {
+          const row = cell.closest('tr');
+          const isFiltered = currentFilter === row.dataset.currency;
+          if (isFiltered) {
+            cell.style.fontWeight = '700';
+            cell.style.color = '#764ba2';
+          } else {
+            cell.style.fontWeight = '600';
+            cell.style.color = '#667eea';
+          }
+        });
+
+        // Filtruj też faktury na głównej liście jeśli kliknięto
+        if (currentFilter) {
+          const currencySelect = document.querySelector('select[name="currency"]');
+          if (currencySelect) {
+            currencySelect.value = currentFilter;
+            // Odśwież stronę z filterem
+            const params = new URLSearchParams(window.location.search);
+            params.set('currency', currentFilter);
+            params.delete('page'); // reset strona
+            window.location.search = params.toString();
+          }
+        }
+      }
+    })();
   })();
 })();
 </script>
