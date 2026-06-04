@@ -3407,8 +3407,26 @@ $('#gus-fetch-btn').on('click', function(){
   $(document).on('click', '#snap-id-chips button', function(){
     snapIdChipSwitch($(this).data('snap-id'));
   });
-  // Page load: zawsze NIP PL (po wyborze kontrahenta z katalogu auto-detect w fillContractorSnapshot)
-  snapIdChipSwitch('nip_pl');
+  // Page load: ustaw chip na podstawie trybu
+  (function(){
+    var idType = 'nip_pl';
+    // W edit mode: auto-detect typ na podstawie danych
+    if (<?= $__isEdit ? 'true' : 'false' ?>) {
+      var vpRaw = ($('[name="invoice_contractor[vat_prefix]"]').val() || '').trim();
+      var vpIsNone = vpRaw === 'NONE';
+      var hasVatEu = !!($('[name="invoice_contractor[vat_eu]"]').val() || '').trim();
+      var hasEori = !!($('[name="invoice_contractor[eori]"]').val() || '').trim();
+      var hasTaxOther = !!($('[name="invoice_contractor[tax_id_other]"]').val() || '').trim();
+      var hasTaxOtherCountry = !!($('[name="invoice_contractor[tax_id_other_country]"]').val() || '').trim();
+
+      if (vpIsNone || hasTaxOther || hasTaxOtherCountry) {
+        idType = 'non_eu';
+      } else if ((vpRaw && vpRaw !== 'NONE') || hasVatEu || hasEori) {
+        idType = 'vat_eu';
+      }
+    }
+    snapIdChipSwitch(idType);
+  })();
 
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
