@@ -91,7 +91,7 @@ $this->assign('title', 'Faktury');
   table-layout: auto;
 }
 .currency-summary-table thead {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: #4f46e5;
   color: white;
   position: sticky;
   top: 0;
@@ -107,7 +107,7 @@ $this->assign('title', 'Faktury');
   transition: all 0.2s ease;
 }
 .currency-summary-table thead th:hover {
-  background: linear-gradient(135deg, #6571e8 0%, #7650b0 100%);
+  background-color: #4338ca;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
 }
 .currency-summary-table thead th i {
@@ -120,17 +120,17 @@ $this->assign('title', 'Faktury');
   border-bottom: 1px solid #e3e6f0;
 }
 .currency-summary-table tbody tr:hover {
-  background-color: rgba(102, 126, 234, 0.05);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  background-color: rgba(79, 70, 229, 0.02);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
 .currency-summary-table tbody tr.currency-total {
-  background: linear-gradient(90deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  background-color: rgba(79, 70, 229, 0.02);
   font-weight: 600;
-  border-top: 2px solid #667eea;
-  border-bottom: 2px solid #667eea;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 .currency-summary-table tbody tr.currency-total:hover {
-  background: linear-gradient(90deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+  background-color: rgba(79, 70, 229, 0.04);
 }
 .currency-summary-table td {
   padding: 12px;
@@ -139,11 +139,11 @@ $this->assign('title', 'Faktury');
 .currency-summary-table td.currency-name {
   font-weight: 600;
   cursor: pointer;
-  color: #667eea;
+  color: #4f46e5;
   transition: all 0.2s ease;
 }
 .currency-summary-table td.currency-name:hover {
-  color: #764ba2;
+  color: #4338ca;
   text-decoration: underline;
 }
 .currency-summary-table td.amount {
@@ -167,13 +167,13 @@ $this->assign('title', 'Faktury');
 .currency-summary-table .progress-mini {
   height: 4px;
   margin-top: 4px;
-  background-color: #e3e6f0;
+  background-color: #e5e7eb;
   border-radius: 2px;
   overflow: hidden;
 }
 .currency-summary-table .progress-mini-bar {
   height: 100%;
-  background: linear-gradient(90deg, #1cc88a 0%, #28a745 100%);
+  background-color: #10b981;
   transition: width 0.3s ease;
 }
 
@@ -2750,7 +2750,7 @@ function deletePayment(paymentId) {
           const show = !currentFilter || currency === currentFilter;
           row.style.display = show ? '' : 'none';
           if (show && currentFilter === currency) {
-            row.style.background = 'linear-gradient(90deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)';
+            row.style.background = 'rgba(79, 70, 229, 0.06)';
             row.classList.add('table-active');
           } else {
             row.style.background = '';
@@ -2764,10 +2764,10 @@ function deletePayment(paymentId) {
           const isFiltered = currentFilter === row.dataset.currency;
           if (isFiltered) {
             cell.style.fontWeight = '700';
-            cell.style.color = '#764ba2';
+            cell.style.color = '#4f46e5';
           } else {
             cell.style.fontWeight = '600';
-            cell.style.color = '#667eea';
+            cell.style.color = '#4f46e5';
           }
         });
 
