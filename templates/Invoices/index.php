@@ -188,6 +188,11 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
   </div>
   <div class="btn-list">
     <?= $this->Html->link(
+      '<i class="ri-bar-chart-line align-middle me-1"></i> Dashboard',
+      ['action' => 'dashboard'],
+      ['class' => 'btn btn-primary btn-wave me-0', 'escape' => false, 'title' => 'Wykresy i statystyki']
+    ) ?>
+    <?= $this->Html->link(
       '<i class="ri-draft-line align-middle me-1"></i> Robocze',
       ['action' => 'drafts'],
       ['class' => 'btn btn-outline-warning btn-wave me-0', 'escape' => false, 'title' => 'Lista faktur roboczych']

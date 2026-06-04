@@ -9629,6 +9629,165 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         return null;
     }
 
+    public function dashboard(): void
+    {
+        // Pobranie danych użytkownika
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity->company_id ?? null;
+
+        if (empty($companyId)) {
+            $this->Flash->error('Brak dostępu do firmy.');
+            return;
+        }
+
+        // Filtry: dateFrom, dateTo
+        $dateFrom = $this->request->getQuery('dateFrom');
+        $dateTo = $this->request->getQuery('dateTo');
+
+        // Defaults: ostatni rok
+        $today = new \DateTime();
+        $yearStart = (new \DateTime())->setDate((int)$today->format('Y'), 1, 1);
+
+        if (!empty($dateFrom)) {
+            $dateFrom = new \DateTime($dateFrom);
+        } else {
+            $dateFrom = $yearStart;
+        }
+
+        if (!empty($dateTo)) {
+            $dateTo = new \DateTime($dateTo);
+        } else {
+            $dateTo = $today;
+        }
+
+        // ===== 1. REVENUE TREND (po miesiącach) =====
+        $monthlyRevenue = [];
+        $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo);
+
+        foreach ($period as $date) {
+            $monthStart = (clone $date)->setDate((int)$date->format('Y'), (int)$date->format('m'), 1);
+            $monthEnd = (clone $monthStart)->modify('last day of this month');
+
+            $invoices = $this->Invoices->find()
+                ->select(['total'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $monthStart->format('Y-m-d'),
+                    'Invoices.date <=' => $monthEnd->format('Y-m-d'),
+                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            $monthlyRevenue[$date->format('Y-m')] = array_sum(array_column($invoices->toArray(), 'total'));
+        }
+
+        // ===== 2. PAYMENT STATUS (pie chart) =====
+        $paymentStatus = [];
+        foreach (['paid', 'unpaid', 'partial', 'overdue'] as $state) {
+            $count = $this->Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.paymentstate' => $state,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                ])
+                ->count();
+
+            $total = $this->Invoices->find()
+                ->select(['total'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.paymentstate' => $state,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            $paymentStatus[$state] = [
+                'count' => $count,
+                'total' => array_sum(array_column($total->toArray(), 'total')),
+            ];
+        }
+
+        // ===== 3. REVENUE BY CURRENCY (bar chart) =====
+        $currencyData = $this->Invoices->find()
+            ->select(['currency', 'total', 'netto'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false)
+            ->all()
+            ->groupBy('currency')
+            ->map(function($group) {
+                return [
+                    'brutto' => array_sum(array_column($group, 'total')),
+                    'netto' => array_sum(array_column($group, 'netto')),
+                ];
+            });
+
+        // ===== 4. TOP CONTRACTORS (bar chart) =====
+        $topContractors = $this->Invoices->find()
+            ->select(['Invoices.total', 'InvoiceContractors.name'])
+            ->contain(['InvoiceContractors'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false)
+            ->all()
+            ->groupBy(function($inv) { return $inv['invoice_contractors']['name'] ?? 'Unknown'; })
+            ->map(function($group) {
+                return array_sum(array_column($group, 'total'));
+            })
+            ->sort(function($a, $b) { return $b <=> $a; })
+            ->take(10);
+
+        // ===== 5. KPI CARDS =====
+        $allInvoices = $this->Invoices->find()
+            ->select(['total', 'remaining', 'paymentstate'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false)
+            ->all();
+
+        $totalRevenue = array_sum(array_column($allInvoices->toArray(), 'total'));
+        $invoiceCount = $allInvoices->count();
+        $avgInvoiceValue = $invoiceCount > 0 ? $totalRevenue / $invoiceCount : 0;
+
+        $paidTotal = array_sum(array_map(function($inv) {
+            return $inv['paymentstate'] === 'paid' ? $inv['total'] : 0;
+        }, $allInvoices->toArray()));
+
+        $paymentPercent = $totalRevenue > 0 ? round(($paidTotal / $totalRevenue) * 100, 1) : 0;
+
+        // Przekaż dane do widoku
+        $this->set(compact(
+            'monthlyRevenue',
+            'paymentStatus',
+            'currencyData',
+            'topContractors',
+            'totalRevenue',
+            'invoiceCount',
+            'avgInvoiceValue',
+            'paymentPercent',
+            'dateFrom',
+            'dateTo'
+        ));
+    }
+
     private function _sendAdminReplyEmail(\App\Model\Entity\SupportTicket $ticket, \App\Model\Entity\SupportTicketReply $reply): void
     {
         // Pobierz email użytkownika
