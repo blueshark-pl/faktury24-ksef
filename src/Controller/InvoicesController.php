@@ -9744,7 +9744,10 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ])
             ->enableHydration(false)
             ->all()
-            ->groupBy('name')
+            ->groupBy(function($inv) {
+                // leftJoinWith zwraca pola z prefixem AssocTable__fieldname
+                return $inv['InvoiceContractors__name'] ?? $inv['name'] ?? 'Unknown';
+            })
             ->map(function($group) {
                 return array_sum(array_column($group, 'total'));
             })
