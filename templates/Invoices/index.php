@@ -36,6 +36,14 @@ $this->assign('title', 'Faktury');
 .cursor-pointer {
     cursor: pointer !important;
 }
+/* Email status alert animation */
+@keyframes pulse-alert {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+.email-status-alert {
+    animation: pulse-alert 2s infinite;
+}
 .modal-lg {
     max-width: 900px;
 }
@@ -767,14 +775,22 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             <td class="col-email_status text-center">
               <?php
                 $statusBadges = [
-                  'pending' => '<span class="badge bg-warning-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-time-line me-1"></i>Oczekuje</span>',
-                  'sending' => '<span class="badge bg-info-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
-                  'sent' => '<span class="badge bg-success-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
-                  'failed' => '<span class="badge bg-danger-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
+                  'pending' => '<i class="ri-time-line me-1"></i>Oczekuje',
+                  'sending' => '<i class="ri-mail-send-line me-1"></i>Wysyłanie',
+                  'sent' => '<i class="ri-mail-check-line me-1"></i>Wysłano',
+                  'failed' => '<i class="ri-mail-close-line me-1"></i>Błąd',
+                ];
+
+                $badgeClasses = [
+                  'pending' => 'bg-warning-light text-dark',
+                  'sending' => 'bg-info-light text-dark',
+                  'sent' => 'bg-success-light text-dark',
+                  'failed' => 'bg-danger-light text-dark email-status-alert',
                 ];
 
                 $popoverContent = '';
                 if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
+                  $emailCount = count($inv->invoice_email_queue);
                   $popoverContent = '<div class="small">';
                   foreach ($inv->invoice_email_queue as $eq) {
                     $statusLabel = [
@@ -792,8 +808,30 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                   $popoverContent .= '</div>';
 
                   $lastEmail = $inv->invoice_email_queue[0];
-                  echo '<span class="email-status-badge" data-bs-toggle="popover" data-bs-html="true" data-bs-content="' . h($popoverContent) . '" data-bs-trigger="hover focus">';
-                  echo $statusBadges[$lastEmail->status] ?? '<span class="badge bg-light text-dark">' . h($lastEmail->status) . '</span>';
+                  $lastDateFormatted = is_object($lastEmail->created) && method_exists($lastEmail->created, 'format')
+                    ? $lastEmail->created->format('d.m.Y H:i')
+                    : (string)$lastEmail->created;
+
+                  // Oblicz jak dawno była ostatnia wysyłka
+                  $lastDate = is_object($lastEmail->created) ? $lastEmail->created : new \DateTime($lastEmail->created);
+                  $now = new \DateTime();
+                  $interval = $lastDate->diff($now);
+
+                  $timeAgo = '';
+                  if ($interval->days > 0) {
+                    $timeAgo = $interval->days === 1 ? 'wczoraj' : ($interval->days . ' dni temu');
+                  } elseif ($interval->h > 0) {
+                    $timeAgo = $interval->h === 1 ? 'godzinę temu' : ($interval->h . ' h temu');
+                  } elseif ($interval->i > 0) {
+                    $timeAgo = $interval->i === 1 ? 'minutę temu' : ($interval->i . ' min temu');
+                  } else {
+                    $timeAgo = 'chwilę temu';
+                  }
+
+                  $badgeClass = $badgeClasses[$lastEmail->status] ?? 'bg-light text-dark';
+                  echo '<span class="email-status-badge ' . $badgeClass . ' badge cursor-pointer" data-bs-toggle="popover" data-bs-html="true" data-bs-content="' . h($popoverContent) . '" data-bs-trigger="hover focus">';
+                  echo $statusBadges[$lastEmail->status] ?? $lastEmail->status;
+                  echo ' (' . $emailCount . ')<br><small class="fw-normal" style="font-size: 0.75rem;">' . h($timeAgo) . '</small>';
                   echo '</span>';
                 } else {
                   echo '<span class="badge bg-light text-muted"><i class="ri-mail-line me-1"></i>Nie wysłano</span>';
