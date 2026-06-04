@@ -783,9 +783,9 @@ foreach ($currencies as $curr) {
         'overdue_count' => 0,
     ];
 
-    // Oblicz netto i brutto dla roku (z VAT)
+    // Oblicz netto i brutto dla roku
     $yearInvoices = $this->Invoices->find()
-        ->contain(['InvoiceVatContents'])
+        ->select(['id', 'total', 'netto', 'paymentstate', 'currency'])
         ->where([
             'Invoices.company_id' => $companyId,
             'Invoices.currency' => $curr,
@@ -798,8 +798,7 @@ foreach ($currencies as $curr) {
 
     foreach ($yearInvoices as $inv) {
         $brutto = (float)($inv['total'] ?? 0);
-        $vat = array_sum(array_column($inv['invoice_vat_contents'] ?? [], 'amount'));
-        $netto = $brutto - $vat;
+        $netto = (float)($inv['netto'] ?? 0);
 
         $currencyStats[$curr]['year_brutto'] += $brutto;
         $currencyStats[$curr]['year_netto'] += $netto;
