@@ -218,6 +218,7 @@ return [
                 'upoHtml',
                 'metadataKsef',
                 'drafts',
+                'dashboard',
                 'sendDraftNow',
                 'scheduleDraft',
                 'promoteToIssued',
