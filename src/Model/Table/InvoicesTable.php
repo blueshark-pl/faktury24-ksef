@@ -105,6 +105,9 @@ class InvoicesTable extends Table
         $this->hasMany('InvoiceAuthorizedEntities', [
             'foreignKey' => 'invoice_id',
         ]);
+        $this->hasMany('InvoiceEmailQueue', [
+            'foreignKey' => 'invoice_id',
+        ]);
     }
 
     /**

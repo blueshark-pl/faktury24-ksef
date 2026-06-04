@@ -589,7 +589,10 @@ public function index()
     $currency = $this->request->getQuery('currency');
 
                 $query = $this->Invoices->find()
-            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); }])
+            ->contain([
+                'InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); },
+                'InvoiceEmailQueue' => function($q){ return $q->select(['invoice_id','email','status','created'])->order(['created' => 'DESC']); }
+            ])
             ->where(['Invoices.company_id' => $companyId])
             ->where($this->nonDraftConditions());
 

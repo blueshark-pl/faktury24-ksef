@@ -27,6 +27,12 @@ $this->assign('title', 'Faktury');
 .bg-warning-light {
     background-color: #fff3cd !important;
 }
+.bg-info-light {
+    background-color: #cfe2ff !important;
+}
+.bg-danger-light {
+    background-color: #f8d7da !important;
+}
 .modal-lg {
     max-width: 900px;
 }
@@ -476,11 +482,20 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               <span role="button" tabindex="0" class="ms-1 text-muted copy-btn" data-copy="<?= h((string)($inv->fullnumber ?: $inv->id)) ?>" title="Kopiuj numer" data-bs-toggle="tooltip">
                 <i class="ri-file-copy-line"></i>
               </span>
-              <?php if (!empty($inv->email_sent_at)): ?>
-                <span class="ms-1 text-success" title="Email wysłany" data-bs-toggle="tooltip">
-                  <i class="ri-mail-check-line"></i>
-                </span>
-              <?php endif; ?>
+              <?php
+                if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
+                  $lastEmail = $inv->invoice_email_queue[0];
+                  $statusBadges = [
+                    'pending' => '<span class="badge bg-warning-light text-dark"><i class="ri-time-line me-1"></i>Oczekuje</span>',
+                    'sending' => '<span class="badge bg-info-light text-dark"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
+                    'sent' => '<span class="badge bg-success-light text-dark"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
+                    'failed' => '<span class="badge bg-danger-light text-dark"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
+                  ];
+                  echo '<span class="ms-1" title="Email: ' . h($lastEmail->email) . '" data-bs-toggle="tooltip">';
+                  echo $statusBadges[$lastEmail->status] ?? '<span class="badge bg-light text-dark">' . h($lastEmail->status) . '</span>';
+                  echo '</span>';
+                }
+              ?>
               <?php if ($inv->description): ?>
                 <br><small class="text-muted"><?= h(Text::truncate((string)$inv->description, 40, ['ellipsis' => '...', 'exact' => false])) ?></small>
               <?php endif; ?>
