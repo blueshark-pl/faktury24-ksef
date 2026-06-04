@@ -768,7 +768,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                   <div data-snap-panel="non_eu" class="d-none">
                     <div class="row g-3">
                       <div class="col-md-4">
-                        <label class="form-label small mb-1">Kraj (NrID)</label>
+                        <label class="form-label small mb-1 d-block">Kraj (NrID)</label>
                         <input type="hidden" name="invoice_contractor[tax_id_other_country]" id="inv-tax-id-country-hidden" value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
                         <input type="text" id="inv-tax-id-country-ui" class="form-control form-control-sm" placeholder="Wybierz kraj">
                       </div>
