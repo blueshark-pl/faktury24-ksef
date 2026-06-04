@@ -680,25 +680,31 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
 
               <!-- Snapshot kontrahenta — UKRYTY NA START, rozwinięty po wyborze / w edit -->
-              <div id="contractor-snapshot" class="mt-3 vstack gap-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
+              <div id="contractor-snapshot" class="mt-3 bg-white border rounded p-4"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
+
+                <div class="vstack gap-3">
 
                 <!-- Dane podstawowe -->
                 <div class="border rounded p-3">
-                  <strong class="small">Dane podstawowe</strong>
-                  <div class="row g-2 mt-2">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-id-card-line me-1 text-primary"></i>Dane podstawowe</strong>
+                  </div>
+                  <div class="row g-3">
                     <div class="col-12">
-                      <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa*', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '', 'placeholder' => 'np. ACME Sp. z o.o.']) ?>
+                      <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa*', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '', 'placeholder' => 'np. ACME Sp. z o.o.', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?>
                     </div>
                   </div>
                 </div>
 
                 <!-- Dane kontaktowe -->
                 <div class="border rounded p-3">
-                  <strong class="small">Dane kontaktowe</strong>
-                  <div class="row g-2 mt-2">
-                    <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'placeholder' => 'biuro@firma.pl', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
-                    <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-phone-line me-1 text-primary"></i>Dane kontaktowe</strong>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'type' => 'email', 'placeholder' => 'biuro@firma.pl', 'value' => $invoice->invoice_contractor->email ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
                   </div>
                   <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
                     <i class="ri-mail-close-line me-1"></i>
@@ -708,8 +714,10 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                 <!-- Identyfikacja kontrahenta -->
                 <div class="border rounded p-3">
-                  <strong class="small">Identyfikacja kontrahenta</strong>
-                  <div class="btn-group btn-group-sm flex-wrap mt-2 mb-3" role="group" id="snap-id-chips">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <strong class="small"><i class="ri-global-line me-1 text-primary"></i>Identyfikacja kontrahenta</strong>
+                  </div>
+                  <div class="btn-group btn-group-sm flex-wrap mb-3" role="group" id="snap-id-chips">
                     <button type="button" class="btn btn-outline-primary active" data-snap-id="nip_pl"><i class="ri-flag-line me-1"></i> NIP (PL)</button>
                     <button type="button" class="btn btn-outline-primary" data-snap-id="vat_eu"><i class="ri-global-line me-1"></i> VAT UE</button>
                     <button type="button" class="btn btn-outline-primary" data-snap-id="non_eu"><i class="ri-earth-line me-1"></i> Spoza UE</button>
@@ -717,7 +725,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                   <!-- Panel: NIP PL -->
                   <div data-snap-panel="nip_pl">
-                    <div class="row g-2">
+                    <div class="row g-3">
                       <div class="col-md-8">
                         <label class="form-label small mb-1">NIP polski</label>
                         <div class="input-group">
@@ -737,7 +745,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                       <i class="ri-information-line mt-1 flex-shrink-0"></i>
                       <span>Dotyczy także <strong>polskich firm</strong> rozliczających transakcje wewnątrzwspólnotowe — wybierz <strong>PL</strong> jako prefiks.</span>
                     </div>
-                    <div class="row g-2">
+                    <div class="row g-3">
                       <div class="col-md-3">
                         <label class="form-label small mb-1">Prefiks UE</label>
                         <input type="hidden" name="invoice_contractor[vat_prefix]" id="inv-vat-prefix-hidden" value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
@@ -758,7 +766,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                   <!-- Panel: Spoza UE -->
                   <div data-snap-panel="non_eu" class="d-none">
-                    <div class="row g-2">
+                    <div class="row g-3">
                       <div class="col-md-4">
                         <label class="form-label small mb-1">Kraj (NrID)</label>
                         <input type="hidden" name="invoice_contractor[tax_id_other_country]" id="inv-tax-id-country-hidden" value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
@@ -774,39 +782,45 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
                 <!-- Dane adresowe -->
                 <div class="border rounded p-3">
-                  <strong class="small">Dane adresowe</strong>
-                  <div class="row g-2 mt-2">
-                    <div class="col-md-3"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
-                    <div class="col-md-3"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miejscowość', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
-                    <div class="col-md-4"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica i nr', 'class' => 'form-control', 'placeholder' => 'ul. i nr', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
-                    <div class="col-md-2"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod pocztowy', 'class' => 'form-control', 'placeholder' => '00-000', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-map-pin-line me-1 text-primary"></i>Dane adresowe</strong>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-3"><?= $this->element('Invoices/contractor_country_select', ['fieldName' => 'invoice_contractor[country]', 'selectId' => 'contractor-country-select', 'value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
+                    <div class="col-md-3"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miejscowość', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-4"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica i nr', 'class' => 'form-control', 'placeholder' => 'ul. i nr', 'value' => $invoice->invoice_contractor->street ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-2"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod pocztowy', 'class' => 'form-control', 'placeholder' => '00-000', 'value' => $invoice->invoice_contractor->zip ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
                   </div>
                 </div>
 
+                </div><!-- /vstack -->
+
                 <!-- Opcje zapisu -->
-                <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="1" id="save-to-catalog" name="save_to_catalog">
-                    <label class="form-check-label" for="save-to-catalog">Zapisz zmiany do katalogu kontrahentów</label>
+                <div class="mt-3 pt-3 border-top">
+                  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" value="1" id="save-to-catalog" name="save_to_catalog">
+                      <label class="form-check-label" for="save-to-catalog">Zapisz zmiany do katalogu kontrahentów</label>
+                    </div>
+                    <button type="button" class="btn btn-link p-0 align-baseline text-decoration-none" id="catalog-help"
+                      data-bs-toggle="popover" data-bs-placement="right"
+                      title="Katalog kontrahentów — jak działa?" data-bs-html="true"
+                      data-bs-content="<div class='small text-start'><p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p><ul class='mb-2 ps-3'><li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li><li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li></ul></div>">
+                      <i class="ri-question-line"></i><span class="ms-1">Co to daje?</span>
+                    </button>
+                    <small id="save-to-catalog-hint" class="text-success d-none">
+                      <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
+                    </small>
                   </div>
-                  <button type="button" class="btn btn-link p-0 align-baseline text-decoration-none" id="catalog-help"
-                    data-bs-toggle="popover" data-bs-placement="right"
-                    title="Katalog kontrahentów — jak działa?" data-bs-html="true"
-                    data-bs-content="<div class='small text-start'><p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p><ul class='mb-2 ps-3'><li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li><li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li></ul></div>">
-                    <i class="ri-question-line"></i><span class="ms-1">Co to daje?</span>
-                  </button>
-                  <small id="save-to-catalog-hint" class="text-success d-none">
-                    <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
-                  </small>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                    title="Automatyczna wysyłka"
-                    data-bs-content="<div class='small text-start'>Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.</div>">
-                    <i class="ri-question-line"></i>
-                  </button>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                    <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                    <button type="button" class="btn btn-link p-0 align-baseline ms-1" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Automatyczna wysyłka"
+                      data-bs-content="<div class='small text-start'>Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
