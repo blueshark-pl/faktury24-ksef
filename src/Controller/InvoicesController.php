@@ -9733,7 +9733,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             });
 
         // ===== 4. TOP CONTRACTORS (bar chart) =====
-        $topContractors = $this->Invoices->find()
+        $topContractorsRaw = $this->Invoices->find()
             ->select(['Invoices.total', 'InvoiceContractors.name'])
             ->contain(['InvoiceContractors'])
             ->where([
@@ -9748,8 +9748,11 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ->map(function($group) {
                 return array_sum(array_column($group, 'total'));
             })
-            ->sort(function($a, $b) { return $b <=> $a; })
-            ->take(10);
+            ->toArray();
+
+        // Sortuj descending i weź top 10
+        arsort($topContractorsRaw);
+        $topContractors = array_slice($topContractorsRaw, 0, 10, true);
 
         // ===== 5. KPI CARDS =====
         $allInvoices = $this->Invoices->find()
