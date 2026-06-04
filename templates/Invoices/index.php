@@ -90,6 +90,9 @@ $this->assign('title', 'Faktury');
 .currency-summary-table td.amount {
   text-align: right;
 }
+.currency-summary-table thead th.text-end {
+  text-align: right;
+}
 .currency-summary-table .badge-count {
   margin-left: 4px;
 }
@@ -99,6 +102,11 @@ $this->assign('title', 'Faktury');
 }
 .currency-summary-table .progress-mini-bar {
   background-color: #10b981;
+}
+
+/* Ukryj stare kafelki statystyk */
+.row-cols-xxl-5.row-cols-xl-3 {
+  display: none;
 }
 </style>
 <style>
@@ -1216,7 +1224,7 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
         <small class="text-muted">Kliknij na walutę aby filtrować</small>
       </div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle text-nowrap mb-0" id="currencySummaryTable">
+        <table class="table table-sm align-middle text-nowrap mb-0 currency-summary-table" id="currencySummaryTable">
           <thead>
             <tr>
               <th data-sort="currency">Waluta</th>
