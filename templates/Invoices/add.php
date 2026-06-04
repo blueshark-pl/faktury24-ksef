@@ -2454,11 +2454,12 @@ $(function () {
       }
     }, 50);
     // Automatycznie wybierz chip na podstawie danych kontrahenta
+    var vpIsNone = (data.vat_prefix || '') === 'NONE';
     var idType = 'nip_pl';
-    if (data.vat_eu || data.vat_prefix) {
-      idType = 'vat_eu';
-    } else if (data.tax_id_other || data.tax_id_other_country) {
+    if (vpIsNone || data.tax_id_other || data.tax_id_other_country) {
       idType = 'non_eu';
+    } else if ((data.vat_prefix && data.vat_prefix !== 'NONE') || data.vat_eu || data.eori) {
+      idType = 'vat_eu';
     }
     snapIdChipSwitch(idType);
   }
@@ -3414,14 +3415,14 @@ $('#gus-fetch-btn').on('click', function(){
     if (<?= $__isEdit ? 'true' : 'false' ?>) {
       var vpRaw = ($('[name="invoice_contractor[vat_prefix]"]').val() || '').trim();
       var vpIsNone = vpRaw === 'NONE';
-      var hasVatEu = !!($('[name="invoice_contractor[vat_eu]"]').val() || '').trim();
-      var hasEori = !!($('[name="invoice_contractor[eori]"]').val() || '').trim();
-      var hasTaxOther = !!($('[name="invoice_contractor[tax_id_other]"]').val() || '').trim();
-      var hasTaxOtherCountry = !!($('[name="invoice_contractor[tax_id_other_country]"]').val() || '').trim();
+      var vatEu = ($('[name="invoice_contractor[vat_eu]"]').val() || '').trim();
+      var eori = ($('[name="invoice_contractor[eori]"]').val() || '').trim();
+      var taxIdOther = ($('[name="invoice_contractor[tax_id_other]"]').val() || '').trim();
+      var taxIdOtherCountry = ($('[name="invoice_contractor[tax_id_other_country]"]').val() || '').trim();
 
-      if (vpIsNone || hasTaxOther || hasTaxOtherCountry) {
+      if (vpIsNone || taxIdOther || taxIdOtherCountry) {
         idType = 'non_eu';
-      } else if ((vpRaw && vpRaw !== 'NONE') || hasVatEu || hasEori) {
+      } else if ((vpRaw && vpRaw !== 'NONE') || vatEu || eori) {
         idType = 'vat_eu';
       }
     }
