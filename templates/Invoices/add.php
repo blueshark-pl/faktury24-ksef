@@ -3407,13 +3407,20 @@ $('#gus-fetch-btn').on('click', function(){
   $(document).on('click', '#snap-id-chips button', function(){
     snapIdChipSwitch($(this).data('snap-id'));
   });
-  // Auto-detect on edit if values present
+  // Auto-detect typ identyfikatora na page load
   (function(){
     var hasIntl = ['vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].some(function(f){
       return !!($('[name="invoice_contractor['+f+']"]').val()||'').trim();
     });
-    // Domyślnie zawsze NIP PL
-    snapIdChipSwitch('nip_pl');
+    var idType = 'nip_pl';
+    if (hasIntl) {
+      if ($('[name="invoice_contractor[vat_eu]"]').val() || $('[name="invoice_contractor[vat_prefix]"]').val()) {
+        idType = 'vat_eu';
+      } else if ($('[name="invoice_contractor[tax_id_other]"]').val() || $('[name="invoice_contractor[tax_id_other_country]"]').val()) {
+        idType = 'non_eu';
+      }
+    }
+    snapIdChipSwitch(idType);
   })();
 
   // ====== DODAJ WIERSZ ======
