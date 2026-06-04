@@ -680,7 +680,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
 
               <!-- Snapshot kontrahenta — UKRYTY NA START, rozwinięty po wyborze / w edit -->
-              <div id="contractor-snapshot" class="mt-3 bg-white border rounded p-4"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
+              <div id="contractor-snapshot" class="mt-3 bg-white border rounded p-4"<?= ($__isEdit) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
 
                 <div class="vstack gap-3">
