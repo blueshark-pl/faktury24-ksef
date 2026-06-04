@@ -1188,6 +1188,67 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
   </div>
 </div>
 <!-- End::row-1 -->
+
+<!-- Podsumowanie po walutach -->
+<?php if (!empty($stats['by_currency'])): ?>
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card custom-card">
+      <div class="card-header">
+        <h6 class="card-title">Podsumowanie po walutach</h6>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th>Waluta</th>
+              <th class="text-end">Netto (rok)</th>
+              <th class="text-end">Brutto (rok)</th>
+              <th class="text-end">Opłacone</th>
+              <th class="text-end">Do zapłaty</th>
+              <th class="text-end">Po terminie</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php
+              $sumNetto = 0;
+              $sumBrutto = 0;
+              $sumPaid = 0;
+              $sumPending = 0;
+              $sumOverdue = 0;
+
+              foreach ($stats['by_currency'] as $cs):
+                $sumNetto += $cs['year_netto'];
+                $sumBrutto += $cs['year_brutto'];
+                $sumPaid += $cs['paid_brutto'];
+                $sumPending += $cs['pending_brutto'];
+                $sumOverdue += $cs['overdue_brutto'];
+            ?>
+            <tr>
+              <td><strong><?= h($cs['currency']) ?></strong></td>
+              <td class="text-end"><?= $this->Number->format($cs['year_netto'], ['places' => 2]) ?></td>
+              <td class="text-end"><?= $this->Number->format($cs['year_brutto'], ['places' => 2]) ?></td>
+              <td class="text-end text-success"><?= $this->Number->format($cs['paid_brutto'], ['places' => 2]) ?></td>
+              <td class="text-end text-warning"><?= $this->Number->format($cs['pending_brutto'], ['places' => 2]) ?></td>
+              <td class="text-end text-danger"><?= $this->Number->format($cs['overdue_brutto'], ['places' => 2]) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="border-top fw-semibold">
+              <td>RAZEM</td>
+              <td class="text-end"><?= $this->Number->format($sumNetto, ['places' => 2]) ?></td>
+              <td class="text-end"><?= $this->Number->format($sumBrutto, ['places' => 2]) ?></td>
+              <td class="text-end text-success"><?= $this->Number->format($sumPaid, ['places' => 2]) ?></td>
+              <td class="text-end text-warning"><?= $this->Number->format($sumPending, ['places' => 2]) ?></td>
+              <td class="text-end text-danger"><?= $this->Number->format($sumOverdue, ['places' => 2]) ?></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <script>
 // Initialize Bootstrap tooltips for info icons (conversion hint)
 document.addEventListener('DOMContentLoaded', function(){

@@ -757,8 +757,70 @@ $cnt = function(array $where): int {
 };
 
 // STATYSTYKI
+// Przygotuj stats po walutach (do tabeli podsumowania)
+$currencyStats = [];
+$currencies = $this->Invoices->find()
+    ->select(['currency'])
+    ->where(['Invoices.company_id' => $companyId])
+    ->distinct(['currency'])
+    ->enableHydration(false)
+    ->all()
+    ->extract('currency')
+    ->toArray();
+
+foreach ($currencies as $curr) {
+    $currencyStats[$curr] = [
+        'currency'      => $curr,
+        'year_netto'    => 0,
+        'year_brutto'   => 0,
+        'paid_netto'    => 0,
+        'paid_brutto'   => 0,
+        'pending_brutto'=> 0,
+        'overdue_brutto'=> 0,
+    ];
+
+    // Oblicz netto i brutto dla roku (z VAT)
+    $yearInvoices = $this->Invoices->find()
+        ->contain(['InvoiceVatContents'])
+        ->where([
+            'Invoices.company_id' => $companyId,
+            'Invoices.currency' => $curr,
+            'Invoices.date >='  => $yearStart,
+            'Invoices.date <='  => $today,
+            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+        ])
+        ->enableHydration(false)
+        ->all();
+
+    foreach ($yearInvoices as $inv) {
+        $brutto = (float)($inv['total'] ?? 0);
+        $vat = array_sum(array_column($inv['invoice_vat_contents'] ?? [], 'amount'));
+        $netto = $brutto - $vat;
+
+        $currencyStats[$curr]['year_brutto'] += $brutto;
+        $currencyStats[$curr]['year_netto'] += $netto;
+
+        if ($inv['paymentstate'] === 'paid') {
+            $currencyStats[$curr]['paid_brutto'] += $brutto;
+            $currencyStats[$curr]['paid_netto'] += $netto;
+        } elseif (in_array($inv['paymentstate'], ['unpaid', 'partial'])) {
+            $currencyStats[$curr]['pending_brutto'] += $brutto;
+        } elseif ($inv['paymentstate'] === 'overdue') {
+            $currencyStats[$curr]['overdue_brutto'] += $brutto;
+        }
+    }
+
+    // Zaokrąglij
+    foreach ($currencyStats[$curr] as $key => $value) {
+        if (is_float($value)) {
+            $currencyStats[$curr][$key] = round($value, 2);
+        }
+    }
+}
+
 $stats = [
     'currency'         => 'PLN',
+    'by_currency'      => $currencyStats,
 
     // rok bieżący:
     // - faktury zwykłe (bez proform, zaliczek, korekt) które NIE mają korekty → ich pełna kwota
