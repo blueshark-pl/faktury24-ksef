@@ -896,14 +896,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     <span class="side-menu__label">Instrukcja obsługi</span>
                                 </a>
                             </li>
-                            <li class="slide <?= $navActive('SupportTickets', 'index') || $navActive('SupportTickets', 'add') || $navActive('SupportTickets', 'view') ?>">
-                                <?= $this->Html->link(
-                                    '<i class="ri-customer-service-2-line side-menu__icon"></i>
-                                    <span class="side-menu__label">Zgłoszenia i uwagi</span>',
-                                    ['plugin' => false, 'controller' => 'SupportTickets', 'action' => 'index'],
-                                    ['escape' => false, 'class' => 'side-menu__item']
-                                ) ?>
-                            </li>
 
                             <?php
                             // Sekcja administracyjna – widoczna tylko dla administratorów
