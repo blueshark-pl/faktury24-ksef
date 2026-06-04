@@ -124,11 +124,12 @@ $this->assign('title', 'Faktury');
 echo $this->Html->meta('csrfToken', $this->request->getAttribute('csrfToken'));
 
 // filtry z query
-$q        = trim((string)$this->request->getQuery('q'));
-$state    = $this->request->getQuery('state');
-$from     = $this->request->getQuery('from');
-$to       = $this->request->getQuery('to');
-$currency = $this->request->getQuery('currency');
+$q           = trim((string)$this->request->getQuery('q'));
+$state       = $this->request->getQuery('state');
+$from        = $this->request->getQuery('from');
+$to          = $this->request->getQuery('to');
+$currency    = $this->request->getQuery('currency');
+$emailStatus = $this->request->getQuery('email_status');
 
 $money = function($amount, $currency = 'PLN') {
     return number_format($amount, 2, ',', ' ') . ' ' . $currency;
@@ -398,6 +399,21 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
           'value' => $to,
           'class' => 'form-control form-control-sm',
           'aria-label' => 'Data do'
+        ]) ?>
+        <?= $this->Form->control('email_status', [
+          'type' => 'select',
+          'label' => false,
+          'empty' => 'Status wysyłki',
+          'options' => [
+            'not_sent' => 'Nie wysłano',
+            'pending'  => 'Oczekuje',
+            'sending'  => 'Wysyłanie',
+            'sent'     => 'Wysłano',
+            'failed'   => 'Błąd',
+          ],
+          'value' => $emailStatus,
+          'class' => 'form-select form-select-sm',
+          'aria-label' => 'Status wysyłki'
         ]) ?>
         <div class="btn-group btn-group-sm">
           <button class="btn btn-primary btn-wave" type="submit" title="Zastosuj filtry">

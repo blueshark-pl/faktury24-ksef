@@ -582,11 +582,12 @@ public function index()
     $identity  = $this->request->getAttribute('identity');
     $companyId = $identity?->get('company_id'); // char(36)
 
-    $q        = trim((string)$this->request->getQuery('q'));
-    $state    = $this->request->getQuery('state');
-    $from     = $this->request->getQuery('from');
-    $to       = $this->request->getQuery('to');
-    $currency = $this->request->getQuery('currency');
+    $q           = trim((string)$this->request->getQuery('q'));
+    $state       = $this->request->getQuery('state');
+    $from        = $this->request->getQuery('from');
+    $to          = $this->request->getQuery('to');
+    $currency    = $this->request->getQuery('currency');
+    $emailStatus = $this->request->getQuery('email_status');
 
                 $query = $this->Invoices->find()
             ->contain([
@@ -614,6 +615,18 @@ public function index()
     }
     if ($from) { $query->where(['Invoices.date >=' => $from]); }
     if ($to)   { $query->where(['Invoices.date <=' => $to]); }
+    if ($emailStatus) {
+      if ($emailStatus === 'not_sent') {
+        $query->leftJoinWith('InvoiceEmailQueue', function($j) {
+          return $j->where(['InvoiceEmailQueue.invoice_id IS NULL']);
+        })->where(['InvoiceEmailQueue.invoice_id IS NULL']);
+      } else {
+        $query->leftJoinWith('InvoiceEmailQueue')
+              ->where(['InvoiceEmailQueue.status' => $emailStatus])
+              ->group('Invoices.id')
+              ->select('Invoices.*');
+      }
+    }
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
