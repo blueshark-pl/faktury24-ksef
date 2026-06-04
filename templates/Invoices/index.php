@@ -148,7 +148,6 @@ $this->assign('title', 'Faktury');
 }
 .currency-summary-table td.amount {
   text-align: right;
-  font-family: 'Courier New', monospace;
   font-size: 0.95rem;
 }
 .currency-summary-table .icon-status {
