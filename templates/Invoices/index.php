@@ -808,6 +808,8 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                 if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
                   $emailCount = count($inv->invoice_email_queue);
                   $popoverContent = '<div class="small">';
+                  $lastStatus = null;
+                  $lastEmail = null;
                   foreach ($inv->invoice_email_queue as $eq) {
                     $statusLabel = [
                       'pending' => 'Oczekuje',
@@ -820,7 +822,20 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       : (string)$eq->created;
                     $popoverContent .= '<div class="mb-2"><strong>' . h($eq->email) . '</strong><br>';
                     $popoverContent .= '<small class="text-muted">' . h($statusLabel) . '<br>' . h($dateFormatted) . '</small></div>';
+                    if ($lastStatus === null) {
+                      $lastStatus = $eq->status;
+                      $lastEmail = $eq->email;
+                    }
                   }
+                  // Dodaj przyciski akcji
+                  $popoverContent .= '<div class="mt-2 pt-2" style="border-top: 1px solid #dee2e6;">';
+                  if ($lastStatus === 'failed') {
+                    $popoverContent .= '<button type="button" class="btn btn-sm btn-warning w-100 mb-1 resend-email-btn" data-invoice-id="' . h($inv->id) . '" data-email="' . h($lastEmail) . '" style="font-size: 0.75rem;">';
+                    $popoverContent .= '<i class="ri-mail-send-line me-1"></i>Wyślij ponownie</button>';
+                  }
+                  $popoverContent .= '<button type="button" class="btn btn-sm btn-primary w-100 send-to-other-email-btn" data-invoice-id="' . h($inv->id) . '" style="font-size: 0.75rem;">';
+                  $popoverContent .= '<i class="ri-mail-line me-1"></i>Wyślij na inny email</button>';
+                  $popoverContent .= '</div>';
                   $popoverContent .= '</div>';
 
                   $lastEmail = $inv->invoice_email_queue[0];
@@ -2173,6 +2188,30 @@ function deletePayment(paymentId) {
   </div>
 </div>
 
+<!-- Modal: Wyślij fakturę na inny email -->
+<div class="modal fade" id="sendEmailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Wyślij fakturę na email</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="send-email-form">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="send-email-input" class="form-label">Adres email</label>
+            <input type="email" id="send-email-input" class="form-control" placeholder="np. klient@example.com" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+          <button type="submit" class="btn btn-primary">Wyślij</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <style>
 #ksef-log-list li { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f0f0f0; }
 #ksef-log-list li:last-child { border-bottom:none; }
@@ -2292,6 +2331,97 @@ function deletePayment(paymentId) {
         });
       });
     }
+  })();
+  // Email send actions
+  (function() {
+    var sendModal = null;
+    var currentInvoiceId = null;
+
+    // Resend email
+    document.body.addEventListener('click', function(e) {
+      var btn = e.target.closest('.resend-email-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var invoiceId = btn.dataset.invoiceId;
+      var email = btn.dataset.email;
+
+      if (!email) {
+        alert('Brak adresu email do ponownej wysyłki');
+        return;
+      }
+
+      if (!confirm('Wysłać fakturę na adres: ' + email + '?')) return;
+
+      var formData = new FormData();
+      formData.append('emails[]', email);
+
+      fetch('/invoices/email-invoice/' + invoiceId, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData,
+        credentials: 'same-origin'
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          alert('Faktura wysłana na: ' + email);
+          location.reload();
+        } else {
+          alert('Błąd: ' + (data.error || 'Nie udało się wysłać'));
+        }
+      })
+      .catch(err => alert('Błąd sieci: ' + err));
+    });
+
+    // Send to other email
+    document.body.addEventListener('click', function(e) {
+      var btn = e.target.closest('.send-to-other-email-btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      currentInvoiceId = btn.dataset.invoiceId;
+      document.getElementById('send-email-input').value = '';
+
+      if (!sendModal) {
+        sendModal = new bootstrap.Modal(document.getElementById('sendEmailModal'));
+      }
+      sendModal.show();
+    });
+
+    // Submit send email form
+    document.getElementById('send-email-form')?.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      var email = document.getElementById('send-email-input').value.trim();
+      if (!email) {
+        alert('Wpisz adres email');
+        return;
+      }
+
+      var formData = new FormData();
+      formData.append('emails[]', email);
+
+      fetch('/invoices/email-invoice/' + currentInvoiceId, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData,
+        credentials: 'same-origin'
+      })
+      .then(r => r.json())
+      .then(data => {
+        sendModal.hide();
+        if (data.success) {
+          alert('Faktura wysłana na: ' + email);
+          location.reload();
+        } else {
+          alert('Błąd: ' + (data.error || 'Nie udało się wysłać'));
+        }
+      })
+      .catch(err => alert('Błąd sieci: ' + err));
+    });
   })();
 })();
 </script>
