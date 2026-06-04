@@ -33,6 +33,9 @@ $this->assign('title', 'Faktury');
 .bg-danger-light {
     background-color: #f8d7da !important;
 }
+.cursor-pointer {
+    cursor: pointer !important;
+}
 .modal-lg {
     max-width: 900px;
 }
@@ -424,6 +427,7 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             <th class="col-ksef_status">KSeF status</th>
             <th class="col-ksef_number">KSeF nr</th>
             <th class="col-ksef_desc">KSeF opis</th>
+            <th class="col-email_status">Status wysyłki</th>
             <th class="text-end col-actions">Akcje</th>
           </tr>
         </thead>
@@ -482,23 +486,6 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               <span role="button" tabindex="0" class="ms-1 text-muted copy-btn" data-copy="<?= h((string)($inv->fullnumber ?: $inv->id)) ?>" title="Kopiuj numer" data-bs-toggle="tooltip">
                 <i class="ri-file-copy-line"></i>
               </span>
-              <?php
-                $statusBadges = [
-                  'pending' => '<span class="badge bg-warning-light text-dark"><i class="ri-time-line me-1"></i>Oczekuje</span>',
-                  'sending' => '<span class="badge bg-info-light text-dark"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
-                  'sent' => '<span class="badge bg-success-light text-dark"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
-                  'failed' => '<span class="badge bg-danger-light text-dark"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
-                ];
-
-                if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
-                  $lastEmail = $inv->invoice_email_queue[0];
-                  echo '<span class="ms-1" title="Email: ' . h($lastEmail->email) . '" data-bs-toggle="tooltip">';
-                  echo $statusBadges[$lastEmail->status] ?? '<span class="badge bg-light text-dark">' . h($lastEmail->status) . '</span>';
-                  echo '</span>';
-                } else {
-                  echo '<span class="ms-1 badge bg-light text-muted"><i class="ri-mail-line me-1"></i>Nie wysłano</span>';
-                }
-              ?>
               <?php if ($inv->description): ?>
                 <br><small class="text-muted"><?= h(Text::truncate((string)$inv->description, 40, ['ellipsis' => '...', 'exact' => false])) ?></small>
               <?php endif; ?>
@@ -776,6 +763,42 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
             </td>
             <td class="col-ksef_desc">
               <?= $inv->ksef_desc ? h(Text::truncate((string)$inv->ksef_desc, 40, ['ellipsis' => '…', 'exact' => false])) : '<span class="text-muted">—</span>' ?>
+            </td>
+            <td class="col-email_status text-center">
+              <?php
+                $statusBadges = [
+                  'pending' => '<span class="badge bg-warning-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-time-line me-1"></i>Oczekuje</span>',
+                  'sending' => '<span class="badge bg-info-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-send-line me-1"></i>Wysyłanie</span>',
+                  'sent' => '<span class="badge bg-success-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-check-line me-1"></i>Wysłano</span>',
+                  'failed' => '<span class="badge bg-danger-light text-dark cursor-pointer" data-bs-toggle="popover"><i class="ri-mail-close-line me-1"></i>Błąd</span>',
+                ];
+
+                $popoverContent = '';
+                if (!empty($inv->invoice_email_queue) && count($inv->invoice_email_queue) > 0) {
+                  $popoverContent = '<div class="small">';
+                  foreach ($inv->invoice_email_queue as $eq) {
+                    $statusLabel = [
+                      'pending' => 'Oczekuje',
+                      'sending' => 'Wysyłanie',
+                      'sent' => 'Wysłano',
+                      'failed' => 'Błąd',
+                    ][$eq->status] ?? $eq->status;
+                    $dateFormatted = is_object($eq->created) && method_exists($eq->created, 'format')
+                      ? $eq->created->format('d.m.Y H:i')
+                      : (string)$eq->created;
+                    $popoverContent .= '<div class="mb-2"><strong>' . h($eq->email) . '</strong><br>';
+                    $popoverContent .= '<small class="text-muted">' . h($statusLabel) . '<br>' . h($dateFormatted) . '</small></div>';
+                  }
+                  $popoverContent .= '</div>';
+
+                  $lastEmail = $inv->invoice_email_queue[0];
+                  echo '<span class="email-status-badge" data-bs-toggle="popover" data-bs-html="true" data-bs-content="' . h($popoverContent) . '" data-bs-trigger="hover focus">';
+                  echo $statusBadges[$lastEmail->status] ?? '<span class="badge bg-light text-dark">' . h($lastEmail->status) . '</span>';
+                  echo '</span>';
+                } else {
+                  echo '<span class="badge bg-light text-muted"><i class="ri-mail-line me-1"></i>Nie wysłano</span>';
+                }
+              ?>
             </td>
             <td class="text-end col-actions">
               <div class="dropdown position-static">
@@ -2203,5 +2226,18 @@ function deletePayment(paymentId) {
       document.getElementById('ksef-log-empty').classList.remove('d-none');
     });
   });
+
+  // Initialize email status popovers
+  (function() {
+    if (typeof bootstrap !== 'undefined') {
+      document.querySelectorAll('.email-status-badge').forEach(function(el) {
+        new bootstrap.Popover(el, {
+          html: true,
+          trigger: 'hover focus',
+          placement: 'left'
+        });
+      });
+    }
+  })();
 })();
 </script>
