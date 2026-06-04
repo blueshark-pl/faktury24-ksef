@@ -226,7 +226,7 @@ public function gusLookup()
         $all = $this->request->getQuery('all') === 'true' || $this->request->getQuery('all') === '1'; // dla katalogu
         
         $query = $this->Contractors->find()
-            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
+            ->select(['id','name','altname','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country','is_person'])
             ->where([
                 'company_id' => $companyId
             ])
@@ -265,6 +265,7 @@ public function gusLookup()
                 'eori'                 => $c->eori,
                 'tax_id_other'         => $c->tax_id_other,
                 'tax_id_other_country' => $c->tax_id_other_country,
+                'is_person'            => (bool)$c->is_person,
             ];
         })->toList();
 

@@ -51,6 +51,7 @@ try {
       'eori'                 => (string)($c->eori ?? ''),
       'tax_id_other'         => (string)($c->tax_id_other ?? ''),
       'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
+      'is_person'            => !empty($c->is_person),
     ];
   }
 } catch (\Throwable) {
@@ -2410,7 +2411,7 @@ $(function () {
   function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
   function fillContractorSnapshot(c){
     console.log('fillContractorSnapshot called with:', c);
-    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'' };
+    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'', is_person:c.is_person||false };
     console.log('Contractor data to fill:', data);
     function setField(key, val){
       var $targets = $('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+'"],#invoice-contractor-'+key+',#invoice_contractor_'+key);
@@ -2423,6 +2424,12 @@ $(function () {
       }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
+    // Ustaw widoczność chip-picker — ukryj VAT EU/Spoza UE dla osób fizycznych
+    if (data.is_person) {
+      jQuery('#snap-id-chips button[data-snap-id="vat_eu"], #snap-id-chips button[data-snap-id="non_eu"]').addClass('d-none');
+    } else {
+      jQuery('#snap-id-chips button[data-snap-id="vat_eu"], #snap-id-chips button[data-snap-id="non_eu"]').removeClass('d-none');
+    }
     // Zaktualizuj pickery krajów (countrySelect) po wyborze kontrahenta
     setTimeout(function(){
       if (window.jQuery && jQuery.fn.countrySelect) {
@@ -2454,12 +2461,14 @@ $(function () {
       }
     }, 50);
     // Automatycznie wybierz chip na podstawie danych kontrahenta
-    var vpIsNone = (data.vat_prefix || '') === 'NONE';
     var idType = 'nip_pl';
-    if (vpIsNone || data.tax_id_other || data.tax_id_other_country) {
-      idType = 'non_eu';
-    } else if ((data.vat_prefix && data.vat_prefix !== 'NONE') || data.vat_eu || data.eori) {
-      idType = 'vat_eu';
+    if (!data.is_person) {
+      var vpIsNone = (data.vat_prefix || '') === 'NONE';
+      if (vpIsNone || data.tax_id_other || data.tax_id_other_country) {
+        idType = 'non_eu';
+      } else if ((data.vat_prefix && data.vat_prefix !== 'NONE') || data.vat_eu || data.eori) {
+        idType = 'vat_eu';
+      }
     }
     snapIdChipSwitch(idType);
   }
@@ -2487,6 +2496,8 @@ $(function () {
     });
     $('#contractor-id-input').val('');
     snapIdChipSwitch('nip_pl');
+    // Pokaż wszystkie chip buttons (reset widoczności)
+    jQuery('#snap-id-chips button[data-snap-id="vat_eu"], #snap-id-chips button[data-snap-id="non_eu"]').removeClass('d-none');
     // reset pickerów
     if (window.jQuery && jQuery.fn.countrySelect) {
       try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', ''); } catch(e) {}
