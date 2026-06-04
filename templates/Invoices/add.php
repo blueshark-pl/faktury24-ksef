@@ -680,32 +680,62 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
 
               <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, rozwinięty w edit -->
-              <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
+              <div id="contractor-snapshot" class="mt-3 vstack gap-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
-                <div class="row g-2">
-                  <div class="col-12 col-md-8">
-                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
+
+                <!-- Dane podstawowe -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-id-card-line me-1 text-primary"></i>Dane podstawowe</strong>
                   </div>
-                  <div class="col-12 col-md-4">
-                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
-                  </div>
-                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
-                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
-                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
-                  <!-- Identyfikatory międzynarodowe nabywcy -->
-                  <div class="col-12">
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                      <small class="text-muted">Identyfikatory UE / zagraniczne</small>
-                      <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle">
-                        <label class="form-check-label small" for="snapshot-intl-toggle">Wypełnij</label>
-                      </div>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-8">
+                      <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
                     </div>
                   </div>
-                  <div class="col-12 d-none" id="snapshot-intl-fields">
+                </div>
+
+                <!-- Dane kontaktowe -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-phone-line me-1 text-primary"></i>Dane kontaktowe</strong>
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
+                    <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
+                  </div>
+                  <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
+                    <i class="ri-mail-close-line me-1"></i>
+                    Brak adresu e-mail nabywcy — można zapisać, ale wysyłka mailowa będzie niedostępna.
+                  </div>
+                </div>
+
+                <!-- Adres -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-map-pin-line me-1 text-primary"></i>Adres</strong>
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
+                    <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
+                    <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
+                    <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
+                  </div>
+                </div>
+
+                <!-- Identyfikatory UE / zagraniczne -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <strong class="small"><i class="ri-global-line me-1 text-primary"></i>Identyfikatory UE / zagraniczne</strong>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle">
+                      <label class="form-check-label small" for="snapshot-intl-toggle">Wypełnij</label>
+                    </div>
+                  </div>
+                  <div class="d-none mt-2" id="snapshot-intl-fields">
                     <div class="row g-2">
                       <div class="col-3">
                         <input type="hidden" name="invoice_contractor[vat_prefix]" id="inv-vat-prefix-hidden" value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
@@ -739,59 +769,29 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     </div>
                   </div>
                 </div>
-                <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
-                  <i class="ri-mail-close-line me-1"></i>
-                  Brak adresu e-mail nabywcy — można zapisać, ale wysyłka mailowa będzie niedostępna.
-                </div>
 
-                <!-- Checkbox: zapisz do katalogu + popover info -->
-                <div class="mt-2 d-flex align-items-center gap-2">
+                <!-- Opcje zapisu -->
+                <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
                   <div class="form-check">
                     <input class="form-check-input" type="checkbox" value="1" id="save-to-catalog" name="save_to_catalog">
                     <label class="form-check-label" for="save-to-catalog">Zapisz zmiany do katalogu kontrahentów</label>
                   </div>
-
-                  <button
-                    type="button"
-                    class="btn btn-link p-0 align-baseline text-decoration-none"
-                    id="catalog-help"
-                    data-bs-toggle="popover"
-                    data-bs-placement="right"
-                    title="Katalog kontrahentów — jak działa?"
-                    data-bs-html="true"
-                    data-bs-content="
-                      <div class='small text-start'>
-                        <p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p>
-                        <ul class='mb-2 ps-3'>
-                          <li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li>
-                          <li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li>
-                          <li>Dodawanie/edycja/usuwanie w: <em>CRM → Kontrahenci</em>.</li>
-                          <li>Możesz też dodać podczas wystawiania faktury — zaznaczając tę opcję.</li>
-                        </ul>
-                        <p>Dodatkowe korzyści:</p>
-                        <ul class='mb-0 ps-3'>
-                          <li>Możliwość zdefiniowania e-maila do wysyłki faktur i przypomnień.</li>
-                          <li>Podgląd historii faktur i płatności danego kontrahenta.</li>
-                        </ul>
-                      </div>
-                    ">
+                  <button type="button" class="btn btn-link p-0 align-baseline text-decoration-none" id="catalog-help"
+                    data-bs-toggle="popover" data-bs-placement="right"
+                    title="Katalog kontrahentów — jak działa?" data-bs-html="true"
+                    data-bs-content="<div class='small text-start'><p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p><ul class='mb-2 ps-3'><li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li><li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li></ul></div>">
                     <i class="ri-question-line"></i><span class="ms-1">Co to daje?</span>
                   </button>
-
                   <small id="save-to-catalog-hint" class="text-success d-none">
                     <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
                   </small>
                 </div>
-                <div class="form-check mt-1">
+                <div class="form-check">
                   <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
                   <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
                   <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
                     title="Automatyczna wysyłka"
-                    data-bs-content="
-                      <div class='small text-start'>
-                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                      </div>
-                    ">
+                    data-bs-content="<div class='small text-start'>Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.</div>">
                     <i class="ri-question-line"></i>
                   </button>
                 </div>
