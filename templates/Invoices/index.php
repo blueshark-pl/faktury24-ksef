@@ -956,12 +956,9 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                   </li>
                   <?php if (in_array($__typeKeyForEdit, ['vat', 'proforma', 'currency', 'margin'], true)): ?>
                   <li>
-                    <?= $this->Form->postLink(
-                      '<i class="ri-file-copy-line me-2"></i> Duplikuj',
-                      ['action' => 'duplicateInvoice', $inv->id],
-                      ['class' => 'dropdown-item', 'escape' => false, 'title' => 'Duplikuj fakturę',
-                       'confirm' => 'Zduplikować fakturę ' . h($inv->fullnumber ?: $inv->id) . '? Nowa będzie w trybie roboczym.']
-                    ) ?>
+                    <a href="#" class="dropdown-item" onclick="duplicateInvoiceDialog('<?= h($inv->id) ?>', '<?= h($inv->fullnumber ?: $inv->id) ?>'); return false;" title="Duplikuj fakturę">
+                      <i class="ri-file-copy-line me-2"></i> Duplikuj
+                    </a>
                   </li>
                   <?php endif; ?>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
@@ -2168,6 +2165,82 @@ function deletePayment(paymentId) {
         alert('Błąd usuwania płatności');
         console.error('Error:', error);
     });
+}
+
+function duplicateInvoiceDialog(invoiceId, invoiceNumber) {
+  Swal.fire({
+    title: 'Duplikować fakturę?',
+    html: `Zduplikować fakturę <strong>${invoiceNumber}</strong>? Nowa będzie w trybie roboczym.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Tak, duplikuj',
+    cancelButtonText: 'Anuluj',
+    confirmButtonColor: '#0d6efd',
+    cancelButtonColor: '#6c757d',
+  }).then((result) => {
+    if (result.isConfirmed) {
+      duplicateInvoiceSubmit(invoiceId);
+    }
+  });
+}
+
+function duplicateInvoiceSubmit(invoiceId) {
+  Swal.fire({
+    title: 'Duplikowanie...',
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: () => {
+      Swal.showLoading();
+    }
+  });
+
+  fetch('<?= $this->Url->build(['action' => 'duplicateInvoice']) ?>/' + invoiceId, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-Token': CSRF_TOKEN || document.querySelector('input[name="_csrfToken"]')?.value || ''
+    }
+  })
+  .then(r => {
+    if (!r.ok) throw new Error('Network response was not ok');
+    return r.json();
+  })
+  .then(data => {
+    if (data.success) {
+      Swal.fire({
+        title: 'Faktura zduplikowana ✓',
+        html: `<div style="text-align: left; font-size: 0.95rem;">
+          <p><strong>Nowa faktura jest w trybie roboczym.</strong></p>
+          <p style="margin-bottom: 1rem; color: #666;">Pamiętaj:</p>
+          <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+            <li><strong>Data wystawienia:</strong> <em>dzisiejsza</em></li>
+            <li><strong>Data sprzedaży:</strong> <em>zachowana z oryginału</em></li>
+            <li><strong>Bez numeracji KSeF, płatności i statusów</strong></li>
+          </ul>
+        </div>`,
+        icon: 'success',
+        confirmButtonText: 'Przejdź do faktury',
+        confirmButtonColor: '#0d6efd',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+      }).then((result) => {
+        if (result.isConfirmed) {
+          window.location.href = '<?= $this->Url->build(['action' => 'view']) ?>/' + data.duplicatedInvoiceId;
+        }
+      });
+    } else {
+      throw new Error(data.message || 'Błąd duplikacji');
+    }
+  })
+  .catch(error => {
+    Swal.fire({
+      icon: 'error',
+      title: 'Błąd',
+      text: error.message || 'Nie udało się zduplikować faktury. Spróbuj ponownie.'
+    });
+    console.error('Error:', error);
+  });
 }
 </script>
 

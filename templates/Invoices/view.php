@@ -93,12 +93,9 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
         ) ?>
         <?php endif; ?>
         <?php if (in_array($invoiceType, ['vat', 'proforma', 'currency', 'margin'], true)): ?>
-          <?= $this->Form->postLink(
-              '<i class="ri-file-copy-line me-1"></i>Duplikuj',
-              ['action' => 'duplicateInvoice', $invoice->id],
-              ['class' => 'btn btn-outline-secondary btn-sm', 'escape' => false,
-               'confirm' => 'Zduplikować fakturę ' . h($invoice->fullnumber ?: $invoice->id) . '? Nowa będzie w trybie roboczym.']
-          ) ?>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="duplicateInvoiceDialog('<?= h($invoice->id) ?>', '<?= h($invoice->fullnumber ?: $invoice->id) ?>')" title="Duplikuj fakturę">
+            <i class="ri-file-copy-line me-1"></i>Duplikuj
+          </button>
         <?php endif; ?>
         <?php if ($canSendToKsef): ?>
           <button id="btn-send-ksef-test"
