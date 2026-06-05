@@ -705,5 +705,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Load saved layout on startup
   restoreDashboardLayout();
+
+  // ===== AMOUNT TYPE TOGGLE (Netto/Brutto) =====
+  const amountTypeRadios = document.querySelectorAll('input[name="amount_type"]');
+  const dualData = <?= $dualAmountData ?>;
+
+  amountTypeRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+      const amountType = this.value; // 'brutto' or 'netto'
+      updateDashboardValues(amountType);
+    });
+  });
+
+  function updateDashboardValues(amountType) {
+    const data = dualData[amountType];
+    if (!data) return;
+
+    // Update KPI cards
+    document.getElementById('item-revenue-total').querySelector('.kpi-value').textContent =
+      new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(data.totalRevenue);
+
+    document.getElementById('item-avg-invoice').querySelector('.kpi-value').textContent =
+      new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(data.avgInvoiceValue);
+
+    document.getElementById('item-paid-percent').querySelector('.kpi-value').textContent =
+      data.paymentPercent + '%';
+
+    const pendingAmount = data.totalRevenue - (data.totalRevenue * data.paymentPercent / 100);
+    document.getElementById('item-pending-amount').querySelector('.kpi-value').textContent =
+      new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(pendingAmount);
+
+    // Update revenue trend chart
+    updateRevenueChart(data.monthlyRevenue);
+  }
+
+  function updateRevenueChart(monthlyData) {
+    // Find and update the revenue trend chart
+    const canvas = document.getElementById('revenueChart');
+    if (canvas && Chart.instances) {
+      const chart = Chart.instances.find(c => c.canvas === canvas);
+      if (chart) {
+        chart.data.datasets[0].data = Object.values(monthlyData);
+        chart.update();
+      }
+    }
+  }
 });
 </script>

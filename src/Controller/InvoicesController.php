@@ -9712,6 +9712,29 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             $monthlyRevenue[$date->format('Y-m')] = array_sum(array_column($invoices->toArray(), 'total'));
         }
 
+        // NETTO monthly revenue
+        $monthlyRevenueNetto = [];
+        $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo->modify('+1 day'));
+        foreach ($period as $date) {
+            $monthStart = (clone $date)->setDate((int)$date->format('Y'), (int)$date->format('m'), 1);
+            $monthEnd = (clone $monthStart)->modify('last day of this month');
+
+            $invoicesNetto = $this->Invoices->find()
+                ->select(['netto'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $monthStart->format('Y-m-d'),
+                    'Invoices.date <=' => $monthEnd->format('Y-m-d'),
+                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                    $notDraftWhere,
+                    $currencyWhere,
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            $monthlyRevenueNetto[$date->format('Y-m')] = array_sum(array_column($invoicesNetto->toArray(), 'netto'));
+        }
+
         // ===== 2. PAYMENT STATUS (pie chart) =====
         $paymentStatus = [];
         foreach (['paid', 'unpaid', 'partial', 'overdue'] as $state) {
@@ -9799,6 +9822,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ->enableHydration(false)
             ->all();
 
+        // BRUTTO values
         $totalRevenue = array_sum(array_column($allInvoices->toArray(), 'total'));
         $invoiceCount = $allInvoices->count();
         $avgInvoiceValue = $invoiceCount > 0 ? $totalRevenue / $invoiceCount : 0;
@@ -9808,6 +9832,29 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         }, $allInvoices->toArray()));
 
         $paymentPercent = $totalRevenue > 0 ? round(($paidTotal / $totalRevenue) * 100, 1) : 0;
+
+        // NETTO values (same data but with 'netto' field)
+        $nettoInvoices = $this->Invoices->find()
+            ->select(['netto', 'remaining', 'paymentstate'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
+                $currencyWhere,
+            ])
+            ->enableHydration(false)
+            ->all();
+
+        $totalRevenueNetto = array_sum(array_column($nettoInvoices->toArray(), 'netto'));
+        $avgInvoiceValueNetto = $invoiceCount > 0 ? $totalRevenueNetto / $invoiceCount : 0;
+
+        $paidTotalNetto = array_sum(array_map(function($inv) {
+            return $inv['paymentstate'] === 'paid' ? $inv['netto'] : 0;
+        }, $nettoInvoices->toArray()));
+
+        $paymentPercentNetto = $totalRevenueNetto > 0 ? round(($paidTotalNetto / $totalRevenueNetto) * 100, 1) : 0;
 
         // ===== 6. BIGGEST INVOICE =====
         $biggestInvoice = $this->Invoices->find()
@@ -10043,16 +10090,36 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ];
         }
 
+        // Prepare dual-amount data for frontend switching
+        $dualAmountData = json_encode([
+            'brutto' => [
+                'monthlyRevenue' => $monthlyRevenue,
+                'totalRevenue' => $totalRevenue,
+                'avgInvoiceValue' => $avgInvoiceValue,
+                'paymentPercent' => $paymentPercent,
+            ],
+            'netto' => [
+                'monthlyRevenue' => $monthlyRevenueNetto,
+                'totalRevenue' => $totalRevenueNetto,
+                'avgInvoiceValue' => $avgInvoiceValueNetto,
+                'paymentPercent' => $paymentPercentNetto,
+            ]
+        ]);
+
         // Przekaż dane do widoku
         $this->set(compact(
             'monthlyRevenue',
+            'monthlyRevenueNetto',
             'paymentStatus',
             'currencyData',
             'topContractors',
             'totalRevenue',
+            'totalRevenueNetto',
             'invoiceCount',
             'avgInvoiceValue',
+            'avgInvoiceValueNetto',
             'paymentPercent',
+            'paymentPercentNetto',
             'currencyMetrics',
             'currencies',
             'biggestInvoice',
@@ -10066,6 +10133,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             'avgContractorValue',
             'selectedCurrency',
             'amountType',
+            'dualAmountData',
             'dateFrom',
             'dateTo'
         ));
