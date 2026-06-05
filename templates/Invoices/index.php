@@ -2185,6 +2185,30 @@ function duplicateInvoiceDialog(invoiceId, invoiceNumber) {
 }
 
 function duplicateInvoiceSubmit(invoiceId) {
+  // First ask about payment status
+  Swal.fire({
+    title: 'Jaki status płatności?',
+    html: '<p style="text-align: left; margin-bottom: 1.5rem;">Wybierz status płatności dla duplikatu:</p>',
+    input: 'radio',
+    inputOptions: {
+      'unpaid': 'Niezapłacono (reset)',
+      'original': 'Jak oryginał (skopiuj)'
+    },
+    inputValue: 'unpaid',
+    confirmButtonText: 'Duplikuj',
+    confirmButtonColor: '#0d6efd',
+    showCancelButton: true,
+    cancelButtonText: 'Anuluj',
+    cancelButtonColor: '#6c757d',
+  }).then((result) => {
+    if (result.isConfirmed) {
+      const paymentStatus = result.value;
+      duplicateInvoicePerform(invoiceId, paymentStatus);
+    }
+  });
+}
+
+function duplicateInvoicePerform(invoiceId, paymentStatus) {
   Swal.fire({
     title: 'Duplikowanie...',
     allowOutsideClick: false,
@@ -2194,13 +2218,17 @@ function duplicateInvoiceSubmit(invoiceId) {
     }
   });
 
+  const fd = new FormData();
+  fd.append('paymentStatus', paymentStatus);
+
   fetch('<?= $this->Url->build(['action' => 'duplicateInvoice']) ?>/' + invoiceId, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
       'X-CSRF-Token': CSRF_TOKEN || document.querySelector('input[name="_csrfToken"]')?.value || ''
-    }
+    },
+    body: fd
   })
   .then(r => r.json())
   .then(data => {
@@ -2213,7 +2241,8 @@ function duplicateInvoiceSubmit(invoiceId) {
           <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
             <li><strong>Data wystawienia:</strong> <em>dzisiejsza</em></li>
             <li><strong>Data sprzedaży:</strong> <em>zachowana z oryginału</em></li>
-            <li><strong>Bez numeracji KSeF, płatności i statusów</strong></li>
+            <li><strong>Status płatności:</strong> <em>${paymentStatus === 'unpaid' ? 'niezapłacono (reset)' : 'jak oryginał'}</em></li>
+            <li><strong>Bez numeracji KSeF</strong></li>
           </ul>
         </div>`,
         icon: 'success',

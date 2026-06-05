@@ -9688,6 +9688,9 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             return $this->response->withStatus(403)->withStringBody('Access denied');
         }
 
+        // Get payment status preference from request
+        $paymentStatusPreference = $this->request->getData('paymentStatus') ?? 'unpaid';
+
         // Load source invoice with all relationships
         $sourceInvoice = $this->Invoices->find()
             ->contain([
@@ -9726,11 +9729,11 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             // Create new invoice entity from source
             $newInvoice = $this->Invoices->newEmptyEntity();
 
-            // Copy all safe fields
+            // Copy all safe fields (paymentstate handled separately)
             $copyFields = [
                 'company_id', 'invoice_series_id', 'contractor_id',
                 'parent_id', 'type', 'currency', 'total', 'netto', 'tax',
-                'alreadypaid', 'remaining', 'paymentmethod', 'paymentstate',
+                'alreadypaid', 'remaining', 'paymentmethod',
                 'simplified_invoice', 'is_receipt_invoice', 'is_split_payment',
                 'buyer_is_jst', 'buyer_in_vat_group', 'seller_vat_prefix',
                 'seller_vat_eu', 'buyer_vat_prefix', 'buyer_vat_eu',
@@ -9746,6 +9749,16 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 if ($sourceInvoice->has($field)) {
                     $newInvoice->set($field, $sourceInvoice->get($field));
                 }
+            }
+
+            // Set paymentstate based on user preference
+            if ($paymentStatusPreference === 'unpaid') {
+                $newInvoice->set('paymentstate', 'unpaid');
+                $newInvoice->set('alreadypaid', 0);
+                $newInvoice->set('remaining', $sourceInvoice->total ?? 0);
+            } else {
+                // 'original' - copy from source
+                $newInvoice->set('paymentstate', $sourceInvoice->paymentstate ?? 'unpaid');
             }
 
             // Set workflow to draft and reset identity fields
