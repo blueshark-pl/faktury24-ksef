@@ -9769,7 +9769,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             // Set workflow to draft and reset identity fields
             $newInvoice->set('workflow_status', 'draft');
             $newInvoice->set('fullnumber', null);
-            $newInvoice->set('number', null);
+            $newInvoice->set('number', 1);  // Same as draft creation in handleAdd
 
             // Set date to today (issued date)
             $todayDate = new \DateTime();
