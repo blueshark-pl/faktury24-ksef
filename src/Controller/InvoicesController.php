@@ -9764,15 +9764,14 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             // Set workflow to draft and reset identity fields
             $newInvoice->set('workflow_status', 'draft');
             $newInvoice->set('fullnumber', null);
-            $newInvoice->set('number', 1);  // Same as draft creation in handleAdd
+            $newInvoice->set('number', null);
+            $newInvoice->set('day', null);
+            $newInvoice->set('month', null);
+            $newInvoice->set('year', null);
+            $newInvoice->set('day_year', null);
 
             // Set date to today (issued date)
-            $todayDate = new \DateTime();
-            $newInvoice->set('date', $todayDate);
-            $newInvoice->set('day', (int)$todayDate->format('d'));
-            $newInvoice->set('month', (int)$todayDate->format('m'));
-            $newInvoice->set('year', (int)$todayDate->format('Y'));
-            $newInvoice->set('day_year', (int)$todayDate->format('z') + 1);  // 1-366
+            $newInvoice->set('date', new \DateTime());
 
             // Reset KSeF, email, payment tracking fields
             $newInvoice->set('ksef_status', null);
