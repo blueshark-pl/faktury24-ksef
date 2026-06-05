@@ -16,6 +16,29 @@ $this->assign('title', 'Dashboard Faktur');
 ?>
 
 <style>
+  .dashboard-grid {
+    touch-action: none;
+  }
+
+  .dashboard-item {
+    cursor: move;
+    transition: box-shadow 0.2s ease;
+  }
+
+  .dashboard-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .dashboard-item.sortable-ghost {
+    opacity: 0.5;
+    background: #f0f0f0 !important;
+  }
+
+  .dashboard-item.sortable-drag {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+    z-index: 1000;
+  }
+
   .kpi-card {
     padding: 20px;
     border-radius: 6px;
@@ -56,6 +79,9 @@ $this->assign('title', 'Dashboard Faktur');
     </ol>
   </div>
   <div class="btn-list">
+    <button type="button" id="resetLayoutBtn" class="btn btn-outline-secondary btn-wave me-2" title="Przywróć domyślny układ">
+      <i class="ri-refresh-line align-middle me-1"></i>Reset
+    </button>
     <?= $this->Html->link(
       '<i class="ri-arrow-left-line align-middle me-1"></i> Wróć do listy',
       ['action' => 'index'],
@@ -116,29 +142,29 @@ $this->assign('title', 'Dashboard Faktur');
 </div>
 
 <!-- KPI Cards -->
-<div class="row mb-4">
-  <div class="col-md-3">
+<div class="row mb-4" id="dashboard-grid">
+  <div class="col-md-3 dashboard-item" id="item-revenue-total">
     <div class="kpi-card">
       <div class="kpi-label">Przychód razem</div>
       <div class="kpi-value"><?= $this->Number->format($totalRevenue, ['places' => 0]) ?></div>
       <small class="text-muted"><?= (int)$invoiceCount ?> faktury</small>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-3 dashboard-item" id="item-avg-invoice">
     <div class="kpi-card">
       <div class="kpi-label">Średnia faktura</div>
       <div class="kpi-value"><?= $this->Number->format($avgInvoiceValue, ['places' => 0]) ?></div>
       <small class="text-muted">Wartość brutto</small>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-3 dashboard-item" id="item-paid-percent">
     <div class="kpi-card">
       <div class="kpi-label">Opłacone</div>
       <div class="kpi-value text-success"><?= $paymentPercent ?>%</div>
       <small class="text-muted">Z przychodu razem</small>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-3 dashboard-item" id="item-pending-amount">
     <div class="kpi-card">
       <div class="kpi-label">Do zapłaty</div>
       <div class="kpi-value text-warning"><?= $this->Number->format($totalRevenue - (($totalRevenue * $paymentPercent) / 100), ['places' => 0]) ?></div>
@@ -189,9 +215,9 @@ $this->assign('title', 'Dashboard Faktur');
 <?php endif; ?>
 
 <!-- Wykresy -->
-<div class="row">
+<div class="row" id="dashboard-grid">
   <!-- Revenue Trend -->
-  <div class="col-lg-8">
+  <div class="col-lg-8 dashboard-item" id="item-revenue-chart">
     <div class="card">
       <div class="card-header">
         <h6 class="card-title">Przychód - trend (brutto)</h6>
@@ -205,7 +231,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- Payment Status -->
-  <div class="col-lg-4">
+  <div class="col-lg-4 dashboard-item" id="item-payment-status">
     <div class="card">
       <div class="card-header">
         <h6 class="card-title">Status płatności</h6>
@@ -596,5 +622,88 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   });
+});
+</script>
+
+<!-- SortableJS Library -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize SortableJS for all dashboard grids
+  const grids = document.querySelectorAll('#dashboard-grid');
+  const STORAGE_KEY = 'dashboard_layout_' + window.location.pathname;
+
+  grids.forEach(grid => {
+    Sortable.create(grid, {
+      handle: '.dashboard-item',
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      dragClass: 'sortable-drag',
+      onEnd: function(evt) {
+        saveDashboardLayout();
+      }
+    });
+  });
+
+  // Save layout to localStorage
+  function saveDashboardLayout() {
+    const layouts = {};
+    grids.forEach((grid, index) => {
+      const items = Array.from(grid.querySelectorAll('.dashboard-item'));
+      layouts['grid_' + index] = items.map(item => item.id);
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts));
+  }
+
+  // Restore layout from localStorage
+  function restoreDashboardLayout() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+      const layouts = JSON.parse(saved);
+      grids.forEach((grid, index) => {
+        const targetLayout = layouts['grid_' + index];
+        if (!targetLayout || !Array.isArray(targetLayout)) return;
+
+        const items = Array.from(grid.querySelectorAll('.dashboard-item'));
+        const itemMap = {};
+        items.forEach(item => {
+          itemMap[item.id] = item;
+        });
+
+        // Sort items according to saved layout
+        const sortedItems = targetLayout
+          .filter(id => itemMap[id])
+          .map(id => itemMap[id]);
+
+        // Add any missing items at the end
+        items.forEach(item => {
+          if (!sortedItems.includes(item)) {
+            sortedItems.push(item);
+          }
+        });
+
+        // Reorder DOM
+        sortedItems.forEach(item => {
+          grid.appendChild(item);
+        });
+      });
+    } catch (e) {
+      console.warn('Failed to restore dashboard layout:', e);
+    }
+  }
+
+  // Reset layout button
+  document.getElementById('resetLayoutBtn')?.addEventListener('click', function() {
+    if (confirm('Przywrócić domyślny układ kafelków?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    }
+  });
+
+  // Load saved layout on startup
+  restoreDashboardLayout();
 });
 </script>
