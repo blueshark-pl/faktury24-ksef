@@ -9713,8 +9713,13 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         $allowedTypes = ['vat', 'proforma', 'currency', 'margin'];
         $invoiceType = strtolower((string)($sourceInvoice->type ?? ''));
         if (!in_array($invoiceType, $allowedTypes, true)) {
-            $this->Flash->error('Duplikacja nie jest dostępna dla tego typu faktury.');
-            return $this->redirect(['action' => 'view', $id]);
+            return $this->response
+                ->withStatus(400)
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'message' => 'Duplikacja nie jest dostępna dla tego typu faktury.'
+                ]));
         }
 
         try {
@@ -9746,14 +9751,15 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             // Set workflow to draft and reset identity fields
             $newInvoice->set('workflow_status', 'draft');
             $newInvoice->set('fullnumber', null);
-            $newInvoice->set('number', null);
-            $newInvoice->set('day', null);
-            $newInvoice->set('month', null);
-            $newInvoice->set('year', null);
-            $newInvoice->set('day_year', null);
+            $newInvoice->set('number', 0);
 
             // Set date to today (issued date)
-            $newInvoice->set('date', new \DateTime());
+            $todayDate = new \DateTime();
+            $newInvoice->set('date', $todayDate);
+            $newInvoice->set('day', (int)$todayDate->format('d'));
+            $newInvoice->set('month', (int)$todayDate->format('m'));
+            $newInvoice->set('year', (int)$todayDate->format('Y'));
+            $newInvoice->set('day_year', (int)$todayDate->format('z') + 1);  // 1-366
 
             // Reset KSeF, email, payment tracking fields
             $newInvoice->set('ksef_status', null);

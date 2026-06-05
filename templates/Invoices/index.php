@@ -2202,10 +2202,7 @@ function duplicateInvoiceSubmit(invoiceId) {
       'X-CSRF-Token': CSRF_TOKEN || document.querySelector('input[name="_csrfToken"]')?.value || ''
     }
   })
-  .then(r => {
-    if (!r.ok) throw new Error('Network response was not ok');
-    return r.json();
-  })
+  .then(r => r.json())
   .then(data => {
     if (data.success) {
       Swal.fire({
