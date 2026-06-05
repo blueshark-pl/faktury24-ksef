@@ -9816,8 +9816,8 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         if ($paidInvoices->count() > 0) {
             $totalDays = 0;
             foreach ($paidInvoices as $inv) {
-                $invoiceDate = new \DateTime($inv['date']);
-                $paymentDate = new \DateTime($inv['paymentdate']);
+                $invoiceDate = new \DateTime((string)$inv['date']);
+                $paymentDate = new \DateTime((string)$inv['paymentdate']);
                 $totalDays += $paymentDate->diff($invoiceDate)->days;
             }
             $avgPaymentDays = round($totalDays / $paidInvoices->count(), 1);
@@ -9909,7 +9909,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         $today = new \DateTime();
         foreach ($overdueInvoices as $inv) {
             if ($inv['paymentdate']) {
-                $dueDate = new \DateTime($inv['paymentdate']);
+                $dueDate = new \DateTime((string)$inv['paymentdate']);
                 $daysOverdue = $today->diff($dueDate)->days;
 
                 if ($daysOverdue <= 7) {
