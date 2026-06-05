@@ -175,7 +175,7 @@ $this->assign('title', 'Dashboard Faktur');
 
 <!-- KPI Cards per Currency -->
 <?php if (!empty($currencyMetrics)): ?>
-<div class="row mt-4">
+<div class="row mt-4" id="dashboard-grid">
   <?php foreach ($currencyMetrics as $cm): ?>
   <div class="col-lg-6 col-xl-4">
     <div class="card border-left-4" style="border-left: 4px solid #4f46e5;">
@@ -275,9 +275,9 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 </div>
 
-<div class="row mt-4">
+<div class="row mt-4" id="dashboard-grid">
   <!-- Invoice Types -->
-  <div class="col-lg-4">
+  <div class="col-lg-4 dashboard-item" id="item-invoice-types">
     <div class="card">
       <div class="card-header">
         <h6 class="card-title">Typ faktury</h6>
@@ -291,7 +291,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- Payment Methods -->
-  <div class="col-lg-4">
+  <div class="col-lg-4 dashboard-item" id="item-payment-methods">
     <div class="card">
       <div class="card-header">
         <h6 class="card-title">Forma płatności</h6>
@@ -305,7 +305,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- Days Overdue -->
-  <div class="col-lg-4">
+  <div class="col-lg-4 dashboard-item" id="item-overdue-distribution">
     <div class="card">
       <div class="card-header">
         <h6 class="card-title">Rozkład przeterminowania</h6>
@@ -319,9 +319,9 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 </div>
 
-<div class="row mt-4">
+<div class="row mt-4" id="dashboard-grid">
   <!-- Biggest Invoice -->
-  <div class="col-lg-6 col-xl-3">
+  <div class="col-lg-6 col-xl-3 dashboard-item" id="item-biggest-invoice">
     <div class="card border-left-4" style="border-left: 4px solid #e74c3c;">
       <div class="card-body">
         <div class="kpi-label">Największa faktura</div>
@@ -341,7 +341,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- Avg Payment Time -->
-  <div class="col-lg-6 col-xl-3">
+  <div class="col-lg-6 col-xl-3 dashboard-item" id="item-avg-payment-time">
     <div class="card border-left-4" style="border-left: 4px solid #f6c23e;">
       <div class="card-body">
         <div class="kpi-label">Średni czas płatności</div>
@@ -352,7 +352,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- YoY Growth -->
-  <div class="col-lg-6 col-xl-3">
+  <div class="col-lg-6 col-xl-3 dashboard-item" id="item-yoy-growth">
     <div class="card border-left-4" style="border-left: 4px solid #1cc88a;">
       <div class="card-body">
         <div class="kpi-label">Wzrost rok do roku</div>
@@ -363,7 +363,7 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 
   <!-- Contractor Avg Value -->
-  <div class="col-lg-6 col-xl-3">
+  <div class="col-lg-6 col-xl-3 dashboard-item" id="item-contractor-avg-value">
     <div class="card border-left-4" style="border-left: 4px solid #4f46e5;">
       <div class="card-body">
         <div class="kpi-label">Śr. wartość per kontrahent</div>
