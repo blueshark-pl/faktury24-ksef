@@ -764,8 +764,13 @@ document.addEventListener('DOMContentLoaded', function() {
   })
   .then(data => {
     if (data.fullnumber) {
-      // Replace loader with actual number
-      displaySpan.innerHTML = '<strong>' + escapeHtml(data.fullnumber) + '</strong>';
+      // Replace loader with actual number + info icon
+      displaySpan.innerHTML = '<strong>' + escapeHtml(data.fullnumber) + '</strong>'
+        + ' <i class="ri-information-line" style="color: #6c757d; margin-left: 4px;" '
+        + 'data-bs-toggle="tooltip" data-bs-placement="top" '
+        + 'title="Numer proponowany na podstawie schematu serii"></i>';
+      // Initialize Bootstrap tooltip
+      new bootstrap.Tooltip(displaySpan.querySelector('[data-bs-toggle="tooltip"]'));
     }
   })
   .catch(error => {
