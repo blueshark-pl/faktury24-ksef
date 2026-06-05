@@ -9660,6 +9660,12 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             $dateTo = $today;
         }
 
+        // Helper: wyklucz faktury robocze (draft)
+        $notDraftWhere = ['OR' => [
+            ['Invoices.workflow_status IS' => null],
+            ['Invoices.workflow_status !=' => 'draft']
+        ]];
+
         // ===== 1. REVENUE TREND (po miesiącach) =====
         $monthlyRevenue = [];
         $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo);
@@ -9675,6 +9681,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $monthStart->format('Y-m-d'),
                     'Invoices.date <=' => $monthEnd->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                    $notDraftWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
@@ -9692,6 +9699,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                    $notDraftWhere,
                 ])
                 ->count();
 
@@ -9703,6 +9711,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                    $notDraftWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
@@ -9721,6 +9730,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
             ])
             ->enableHydration(false)
             ->all()
@@ -9758,6 +9768,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
             ])
             ->enableHydration(false)
             ->all();
@@ -9781,6 +9792,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
             ])
             ->order(['total' => 'DESC'])
             ->first();
@@ -9795,6 +9807,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.paymentstate' => 'paid',
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
                 'Invoices.paymentdate IS NOT' => null,
+                $notDraftWhere,
             ])
             ->enableHydration(false)
             ->all();
@@ -9820,6 +9833,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type' => $type,
+                    $notDraftWhere,
                 ])
                 ->count();
 
@@ -9830,6 +9844,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type' => $type,
+                    $notDraftWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
@@ -9853,6 +9868,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.paymentmethod' => $method,
+                    $notDraftWhere,
                 ])
                 ->count();
 
@@ -9863,6 +9879,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.paymentmethod' => $method,
+                    $notDraftWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
@@ -9883,6 +9900,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.company_id' => $companyId,
                 'Invoices.paymentstate' => 'overdue',
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
             ])
             ->enableHydration(false)
             ->all();
@@ -9938,6 +9956,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                $notDraftWhere,
             ])
             ->enableHydration(false)
             ->all()
@@ -9973,6 +9992,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date >=' => $dateFrom->format('Y-m-d'),
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                    $notDraftWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
