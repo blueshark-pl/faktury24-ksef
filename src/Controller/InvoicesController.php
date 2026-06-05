@@ -9772,6 +9772,50 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         $paymentPercent = $totalRevenue > 0 ? round(($paidTotal / $totalRevenue) * 100, 1) : 0;
 
+        // ===== 6. KPI CARDS PER CURRENCY =====
+        $currencyMetrics = [];
+        $currencies = $this->Invoices->find()
+            ->select(['currency'])
+            ->where(['Invoices.company_id' => $companyId])
+            ->distinct(['currency'])
+            ->enableHydration(false)
+            ->all()
+            ->extract('currency')
+            ->toArray();
+
+        foreach ($currencies as $curr) {
+            $currInvoices = $this->Invoices->find()
+                ->select(['total', 'netto', 'paymentstate'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.currency' => $curr,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            $currTotal = array_sum(array_column($currInvoices->toArray(), 'total'));
+            $currCount = $currInvoices->count();
+            $currAvg = $currCount > 0 ? $currTotal / $currCount : 0;
+            $currPaid = array_sum(array_map(function($inv) {
+                return $inv['paymentstate'] === 'paid' ? $inv['total'] : 0;
+            }, $currInvoices->toArray()));
+            $currPaidPercent = $currTotal > 0 ? round(($currPaid / $currTotal) * 100, 1) : 0;
+            $currPending = $currTotal - $currPaid;
+
+            $currencyMetrics[$curr] = [
+                'currency' => $curr,
+                'total' => $currTotal,
+                'count' => $currCount,
+                'avg' => $currAvg,
+                'paid' => $currPaid,
+                'paid_percent' => $currPaidPercent,
+                'pending' => $currPending,
+            ];
+        }
+
         // Przekaż dane do widoku
         $this->set(compact(
             'monthlyRevenue',
@@ -9782,6 +9826,8 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             'invoiceCount',
             'avgInvoiceValue',
             'paymentPercent',
+            'currencyMetrics',
+            'currencies',
             'dateFrom',
             'dateTo'
         ));

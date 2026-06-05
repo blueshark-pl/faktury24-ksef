@@ -117,6 +117,47 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 </div>
 
+<!-- KPI Cards per Currency -->
+<?php if (!empty($currencyMetrics)): ?>
+<div class="row mt-4">
+  <?php foreach ($currencyMetrics as $cm): ?>
+  <div class="col-lg-6 col-xl-4">
+    <div class="card border-left-4" style="border-left: 4px solid #4f46e5;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <div class="kpi-label">Waluta <?= h($cm['currency']) ?></div>
+            <div class="kpi-value" style="font-size: 1.8rem;"><?= $this->Number->format($cm['total'], ['places' => 0]) ?></div>
+          </div>
+          <span class="badge bg-light text-dark" style="font-size: 0.9rem;"><?= (int)$cm['count'] ?> faktury</span>
+        </div>
+
+        <div class="row text-center small mb-2">
+          <div class="col-6">
+            <div class="text-muted">Średnia</div>
+            <div class="fw-semibold text-primary"><?= $this->Number->format($cm['avg'], ['places' => 0]) ?></div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Opłacone</div>
+            <div class="fw-semibold text-success"><?= $cm['paid_percent'] ?>%</div>
+          </div>
+        </div>
+
+        <div class="progress mt-2" style="height: 6px;">
+          <div class="progress-bar" role="progressbar" style="width: <?= min($cm['paid_percent'], 100) ?>%; background-color: #10b981;" aria-valuenow="<?= $cm['paid_percent'] ?>" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+
+        <div class="d-flex justify-content-between mt-3 small">
+          <span class="text-success">✓ <?= $this->Number->format($cm['paid'], ['places' => 0]) ?></span>
+          <span class="text-warning">⏳ <?= $this->Number->format($cm['pending'], ['places' => 0]) ?></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <!-- Wykresy -->
 <div class="row">
   <!-- Revenue Trend -->
