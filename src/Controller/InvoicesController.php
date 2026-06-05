@@ -9733,28 +9733,28 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             });
 
         // ===== 4. TOP CONTRACTORS (bar chart) =====
-        $topContractorsRaw = $this->Invoices->find()
-            ->select(['Invoices.total', 'Invoices.id'])
-            ->contain(['InvoiceContractors'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-            ])
-            ->enableHydration(false)
-            ->all()
-            ->groupBy(function($inv) {
-                return $inv['invoice_contractors']['name'] ?? 'Unknown';
-            })
-            ->map(function($group) {
-                return array_sum(array_column($group, 'total'));
-            })
-            ->toArray();
+        $Invoices = $this->Invoices;
+        $conn = $Invoices->getConnection();
 
-        // Sortuj descending i weź top 10
-        arsort($topContractorsRaw);
-        $topContractors = array_slice($topContractorsRaw, 0, 10, true);
+        $topContractorsQuery = $conn->selectQuery()
+            ->select(['contractor_name' => 'COALESCE(ic.name, \'Unknown\')', 'total_amount' => $conn->func('SUM', ['i.total'])])
+            ->from(['i' => 'invoices'])
+            ->leftJoin(['ic' => 'invoice_contractors'], ['ic.invoice_id = i.id'])
+            ->where([
+                'i.company_id' => $companyId,
+                'i.date >=' => $dateFrom->format('Y-m-d'),
+                'i.date <=' => $dateTo->format('Y-m-d'),
+                'i.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->group(['COALESCE(ic.name, \'Unknown\')'])
+            ->order(['total_amount' => 'DESC'])
+            ->limit(10);
+
+        $topContractorsResult = $conn->execute($topContractorsQuery)->fetchAll('assoc');
+        $topContractors = [];
+        foreach ($topContractorsResult as $row) {
+            $topContractors[$row['contractor_name']] = (float)$row['total_amount'];
+        }
 
         // ===== 5. KPI CARDS =====
         $allInvoices = $this->Invoices->find()
