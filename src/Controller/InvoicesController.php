@@ -318,7 +318,10 @@ class InvoicesController extends AppController
         $invoice->set('fullnumber', $fullnumber);
 
         $dateObject = new \DateTimeImmutable($issueDate);
-        $invoice->set('number', (int)substr(strrchr($fullnumber, '/'), 1) ?: 1);
+        // Safe extraction: if no '/', default to 1
+        $lastSlash = strrpos($fullnumber, '/');
+        $number = $lastSlash !== false ? (int)substr($fullnumber, $lastSlash + 1) : 1;
+        $invoice->set('number', $number ?: 1);
         $invoice->set('day', (int)$dateObject->format('d'));
         $invoice->set('month', (int)$dateObject->format('m'));
         $invoice->set('year', (int)$dateObject->format('Y'));
