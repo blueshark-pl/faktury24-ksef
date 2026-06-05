@@ -231,6 +231,7 @@ return [
                 'generatePdfInternal',
                 'processEmailQueue',
                 'debugKsefXml',
+                'duplicateInvoice',
             ],
 
         ],
