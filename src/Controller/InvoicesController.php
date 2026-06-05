@@ -820,7 +820,7 @@ foreach ($currencies as $curr) {
         'overdue_count' => 0,
     ];
 
-    // Oblicz netto i brutto dla roku
+    // Oblicz netto i brutto dla roku (wyklucz draft)
     $yearInvoices = $this->Invoices->find()
         ->select(['id', 'total', 'netto', 'paymentstate', 'currency'])
         ->where([
@@ -829,6 +829,10 @@ foreach ($currencies as $curr) {
             'Invoices.date >='  => $yearStart,
             'Invoices.date <='  => $today,
             'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            'OR' => [
+                ['Invoices.workflow_status IS' => null],
+                ['Invoices.workflow_status !=' => 'draft']
+            ],
         ])
         ->enableHydration(false)
         ->all();
