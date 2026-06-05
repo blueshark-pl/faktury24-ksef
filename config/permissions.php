@@ -232,6 +232,7 @@ return [
                 'processEmailQueue',
                 'debugKsefXml',
                 'duplicateInvoice',
+                'ajaxGetDraftNumber',
             ],
 
         ],
