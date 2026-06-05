@@ -64,19 +64,49 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 </div>
 
-<!-- Filter Daty -->
+<!-- Filtry -->
 <div class="card mb-4">
   <div class="card-body">
     <form method="GET" class="row g-3 align-items-end">
-      <div class="col-md-4">
+      <!-- Date Range -->
+      <div class="col-md-3">
         <label class="form-label">Od</label>
         <input type="date" name="dateFrom" class="form-control" value="<?= $dateFrom->format('Y-m-d') ?>">
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label">Do</label>
         <input type="date" name="dateTo" class="form-control" value="<?= $dateTo->format('Y-m-d') ?>">
       </div>
-      <div class="col-md-4">
+
+      <!-- Currency Selector -->
+      <div class="col-md-3">
+        <label class="form-label">Waluta</label>
+        <select name="currency" class="form-select">
+          <option value="">Wszystkie</option>
+          <?php foreach ($currencies as $curr): ?>
+            <option value="<?= h($curr) ?>" <?= $this->request->getQuery('currency') === $curr ? 'selected' : '' ?>>
+              <?= h($curr) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <!-- Netto/Brutto Toggle -->
+      <div class="col-md-3">
+        <label class="form-label">Typ kwoty</label>
+        <div class="btn-group w-100" role="group">
+          <input type="radio" class="btn-check" name="amount_type" id="amount_brutto" value="brutto"
+            <?= ($this->request->getQuery('amount_type') === 'netto') ? '' : 'checked' ?>>
+          <label class="btn btn-outline-primary" for="amount_brutto">Brutto</label>
+
+          <input type="radio" class="btn-check" name="amount_type" id="amount_netto" value="netto"
+            <?= ($this->request->getQuery('amount_type') === 'netto') ? 'checked' : '' ?>>
+          <label class="btn btn-outline-primary" for="amount_netto">Netto</label>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="col-12">
         <button type="submit" class="btn btn-primary">
           <i class="ri-search-line me-1"></i>Filtruj
         </button>

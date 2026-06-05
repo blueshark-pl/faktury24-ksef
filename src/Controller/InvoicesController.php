@@ -9640,9 +9640,11 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             return;
         }
 
-        // Filtry: dateFrom, dateTo
+        // Filtry: dateFrom, dateTo, currency, amount_type
         $dateFrom = $this->request->getQuery('dateFrom');
         $dateTo = $this->request->getQuery('dateTo');
+        $selectedCurrency = $this->request->getQuery('currency');
+        $amountType = $this->request->getQuery('amount_type') === 'netto' ? 'netto' : 'brutto';
 
         // Defaults: ostatni rok
         $today = new \DateTime();
@@ -9680,6 +9682,12 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ['Invoices.workflow_status !=' => 'draft']
         ]];
 
+        // Helper: filtruj po walucie jeśli wybrany
+        $currencyWhere = [];
+        if (!empty($selectedCurrency)) {
+            $currencyWhere = ['Invoices.currency' => $selectedCurrency];
+        }
+
         // ===== 1. REVENUE TREND (po miesiącach) =====
         $monthlyRevenue = [];
         $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo);
@@ -9696,6 +9704,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date <=' => $monthEnd->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
                     $notDraftWhere,
+                    $currencyWhere,
                 ])
                 ->enableHydration(false)
                 ->all();
@@ -9714,6 +9723,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                     'Invoices.date <=' => $dateTo->format('Y-m-d'),
                     'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
                     $notDraftWhere,
+                    $currencyWhere,
                 ])
                 ->count();
 
@@ -9745,6 +9755,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
                 $notDraftWhere,
+                $currencyWhere,
             ])
             ->enableHydration(false)
             ->all()
@@ -9783,6 +9794,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'Invoices.date <=' => $dateTo->format('Y-m-d'),
                 'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
                 $notDraftWhere,
+                $currencyWhere,
             ])
             ->enableHydration(false)
             ->all();
@@ -10052,6 +10064,8 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             'lastYearTotal',
             'yoyGrowth',
             'avgContractorValue',
+            'selectedCurrency',
+            'amountType',
             'dateFrom',
             'dateTo'
         ));
