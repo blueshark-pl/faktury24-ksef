@@ -258,12 +258,13 @@ class InvoicesController extends AppController
         $year = (int)$dateObject->format('Y');
         $month = (int)$dateObject->format('m');
 
-        $where = [
-            'company_id' => $companyId,
-            'invoice_series_id' => $series->id,
-            'fullnumber IS NOT' => null,
-            'id !=' => $invoiceId,
-        ];
+        $where = function($exp, $q) use ($companyId, $series, $invoiceId) {
+            return $exp
+                ->eq('Invoices.company_id', $companyId)
+                ->eq('Invoices.invoice_series_id', $series->id)
+                ->notEq('Invoices.id', $invoiceId)
+                ->isNotNull('Invoices.fullnumber');
+        };
 
         $periodName = (string)($series->invoice_series_period->name ?? '');
         if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
