@@ -261,6 +261,7 @@ class InvoicesController extends AppController
         $where = [
             'company_id' => $companyId,
             'invoice_series_id' => $series->id,
+            'fullnumber IS NOT' => null,
             'id !=' => $invoiceId,
         ];
 
@@ -272,14 +273,8 @@ class InvoicesController extends AppController
             $where['year'] = $year;
         }
 
-        // Use closure for isNotNull check
-        $whereExpr = function($exp, $q) {
-            return $exp->isNotNull('fullnumber');
-        };
-
         $lastInvoice = $this->Invoices->find()
             ->where($where)
-            ->where($whereExpr)
             ->order(['number' => 'DESC', 'id' => 'DESC'])
             ->first();
 
