@@ -209,91 +209,6 @@ class InvoicesController extends AppController
         return null;
     }
 
-    /**
-     * AJAX endpoint: get predicted draft number without saving
-     */
-    public function ajaxGetDraftNumber()
-    {
-        $this->request->allowMethod('post');
-        $invoiceId = $this->request->getData('invoice_id');
-        $seriesId = $this->request->getData('series_id');
-        $invoiceDate = $this->request->getData('date') ?? date('Y-m-d');
-
-        $identity = $this->request->getAttribute('identity');
-        $companyId = $identity->company_id ?? null;
-
-        if (!$invoiceId || !$seriesId || !$companyId) {
-            return $this->response->withStatus(400)->withType('application/json')->withStringBody(
-                json_encode(['error' => 'Missing parameters'])
-            );
-        }
-
-        try {
-            $fullnumber = $this->generateDraftNumber($seriesId, $invoiceId, $invoiceDate, $companyId);
-            return $this->response->withType('application/json')->withStringBody(
-                json_encode(['fullnumber' => $fullnumber])
-            );
-        } catch (\Exception $e) {
-            return $this->response->withStatus(500)->withType('application/json')->withStringBody(
-                json_encode(['error' => $e->getMessage()])
-            );
-        }
-    }
-
-    /**
-     * Generate draft number without modifying database
-     */
-    private function generateDraftNumber(string $seriesId, string $invoiceId, string $invoiceDate, string $companyId): string
-    {
-        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-        $series = $InvoiceSeries->find()
-            ->contain(['InvoiceSeriesPeriods'])
-            ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
-            ->first();
-        if (!$series) {
-            throw new \RuntimeException('Nie znaleziono serii numeracji dla dokumentu.');
-        }
-
-        $dateObject = new \DateTimeImmutable($invoiceDate);
-        $year = (int)$dateObject->format('Y');
-        $month = (int)$dateObject->format('m');
-
-        $where = [
-            'company_id' => $companyId,
-            'invoice_series_id' => $series->id,
-            'fullnumber IS NOT' => null,
-            'id !=' => $invoiceId,
-        ];
-
-        $periodName = (string)($series->invoice_series_period->name ?? '');
-        if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
-            $where['year'] = $year;
-            $where['month'] = $month;
-        } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
-            $where['year'] = $year;
-        }
-
-        $lastInvoice = $this->Invoices->find()
-            ->where($where)
-            ->order(['number' => 'DESC', 'id' => 'DESC'])
-            ->first();
-
-        $overrideNext = $series->override_next_number ?? null;
-        if ($overrideNext !== null && (int)$overrideNext > 0) {
-            $nextNumber = (int)$overrideNext;
-        } elseif ($lastInvoice) {
-            $extractedNumber = !empty($lastInvoice->number)
-                ? (int)$lastInvoice->number
-                : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
-            $nextNumber = $extractedNumber + 1;
-        } else {
-            $nextNumber = (int)($series->starting_number ?: 1);
-        }
-
-        $template = (string)($series->series_template ?: '[numer]');
-        return $this->formatInvoicePattern($template, $nextNumber, $invoiceDate);
-    }
-
     private function ensureInvoiceNumberForSend(Invoice $invoice, string $companyId): void
     {
         $fullnumber = trim((string)($invoice->fullnumber ?? ''));
@@ -314,11 +229,59 @@ class InvoicesController extends AppController
             $issueDate = date('Y-m-d');
         }
 
-        $fullnumber = $this->generateDraftNumber($seriesId, $invoice->id, $issueDate, $companyId);
-        $invoice->set('fullnumber', $fullnumber);
+        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+        $series = $InvoiceSeries->find()
+            ->contain(['InvoiceSeriesPeriods'])
+            ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
+            ->first();
+        if (!$series) {
+            throw new \RuntimeException('Nie znaleziono serii numeracji dla dokumentu.');
+        }
 
         $dateObject = new \DateTimeImmutable($issueDate);
-        $invoice->set('number', (int)substr(strrchr($fullnumber, '/'), 1) ?: 1);
+        $year = (int)$dateObject->format('Y');
+        $month = (int)$dateObject->format('m');
+
+        $where = [
+            'company_id' => $companyId,
+            'invoice_series_id' => $series->id,
+            'fullnumber IS NOT' => null,
+            'id !=' => $invoice->id,
+        ];
+
+        $periodName = (string)($series->invoice_series_period->name ?? '');
+        if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
+            $where['year'] = $year;
+            $where['month'] = $month;
+        } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
+            $where['year'] = $year;
+        }
+
+        $lastInvoice = $this->Invoices->find()
+            ->where($where)
+            ->order(['number' => 'DESC', 'id' => 'DESC'])
+            ->first();
+
+        // Jednorazowy override numeru (np. przy migracji z innego systemu)
+        $overrideNext = $series->override_next_number ?? null;
+        if ($overrideNext !== null && (int)$overrideNext > 0) {
+            $nextNumber = (int)$overrideNext;
+            $this->Invoices->getConnection()->execute(
+                'UPDATE invoice_series SET override_next_number = NULL WHERE id = ?',
+                [$series->id]
+            );
+        } elseif ($lastInvoice) {
+            $extractedNumber = !empty($lastInvoice->number)
+                ? (int)$lastInvoice->number
+                : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
+            $nextNumber = $extractedNumber + 1;
+        } else {
+            $nextNumber = (int)($series->starting_number ?: 1);
+        }
+
+        $template = (string)($series->series_template ?: '[numer]');
+        $invoice->set('fullnumber', $this->formatInvoicePattern($template, $nextNumber, $issueDate));
+        $invoice->set('number', $nextNumber);
         $invoice->set('day', (int)$dateObject->format('d'));
         $invoice->set('month', (int)$dateObject->format('m'));
         $invoice->set('year', (int)$dateObject->format('Y'));
@@ -378,7 +341,6 @@ class InvoicesController extends AppController
     $data = (array)$this->request->getData();
         $errors = [];
     $isNoVat = strtolower((string)($data['kind'] ?? '')) === 'novat';
-    $isCorrection = !empty($data['parent_id']);
 
         // Basic fields
         $date = $data['date'] ?? null;
@@ -415,7 +377,7 @@ class InvoicesController extends AppController
                 if ($name === '') {
                     $errors["items.$idx.name"] = 'Nazwa jest wymagana.';
                 }
-                if (!$isCorrection && $qty <= 0) {
+                if ($qty <= 0) {
                     $errors["items.$idx.quantity"] = 'Ilość musi być większa od zera.';
                 }
                 if ($sale < 0) {
@@ -446,7 +408,7 @@ class InvoicesController extends AppController
                 if ($name === '') {
                     $errors["items.$idx.name"] = 'Nazwa jest wymagana.';
                 }
-                if (!$isCorrection && $qty <= 0) {
+                if ($qty <= 0) {
                     $errors["items.$idx.quantity"] = 'Ilość musi być większa od zera.';
                 }
                 if ($price < 0) {
@@ -619,30 +581,25 @@ public function index()
     $identity  = $this->request->getAttribute('identity');
     $companyId = $identity?->get('company_id'); // char(36)
 
-    $q           = trim((string)$this->request->getQuery('q'));
-    $state       = $this->request->getQuery('state');
-    $from        = $this->request->getQuery('from');
-    $to          = $this->request->getQuery('to');
-    $currency    = $this->request->getQuery('currency');
-    $emailStatus = $this->request->getQuery('email_status');
+    $q        = trim((string)$this->request->getQuery('q'));
+    $state    = $this->request->getQuery('state');
+    $from     = $this->request->getQuery('from');
+    $to       = $this->request->getQuery('to');
+    $currency = $this->request->getQuery('currency');
 
                 $query = $this->Invoices->find()
-            ->contain([
-                'InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); },
-                'InvoiceEmailQueue' => function($q){ return $q->select(['invoice_id','email','status','created'])->order(['created' => 'DESC']); }
-            ])
+            ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); }])
             ->where(['Invoices.company_id' => $companyId])
             ->where($this->nonDraftConditions());
 
     if ($q !== '') {
-      $query->leftJoinWith('InvoiceContractors')
-            ->where(function($exp) use ($q) {
-                return $exp->or([
-                    'Invoices.fullnumber LIKE' => "%$q%",
-                    'InvoiceContractors.name LIKE' => "%$q%",
-                    'InvoiceContractors.nip LIKE' => "%$q%",
-                ]);
-            });
+      $query->where(function($exp) use ($q) {
+        return $exp->or_([
+          'Invoices.fullnumber LIKE' => "%$q%",
+          'InvoiceContractors.name LIKE' => "%$q%",
+          'InvoiceContractors.nip LIKE' => "%$q%",
+        ]);
+      });
     }
     if ($state) {
       $query->where(['Invoices.paymentstate' => $state]);
@@ -652,22 +609,6 @@ public function index()
     }
     if ($from) { $query->where(['Invoices.date >=' => $from]); }
     if ($to)   { $query->where(['Invoices.date <=' => $to]); }
-    if ($emailStatus) {
-      if ($emailStatus === 'not_sent') {
-        // Faktury bez żadnych wysyłek
-        $subquery = $this->Invoices->InvoiceEmailQueue->find()
-            ->select(['invoice_id'])
-            ->distinct(['invoice_id']);
-        $query->where(['Invoices.id NOT IN' => $subquery]);
-      } else {
-        // Faktury które mają co najmniej jedną wysyłkę z danym statusem
-        $subquery = $this->Invoices->InvoiceEmailQueue->find()
-            ->select(['invoice_id'])
-            ->where(['InvoiceEmailQueue.status' => $emailStatus])
-            ->distinct(['invoice_id']);
-        $query->where(['Invoices.id IN' => $subquery]);
-      }
-    }
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
@@ -794,125 +735,16 @@ $cnt = function(array $where): int {
 };
 
 // STATYSTYKI
-// Przygotuj stats po walutach (do tabeli podsumowania)
-$currencyStats = [];
-$currencies = $this->Invoices->find()
-    ->select(['currency'])
-    ->where(['Invoices.company_id' => $companyId])
-    ->distinct(['currency'])
-    ->enableHydration(false)
-    ->all()
-    ->extract('currency')
-    ->toArray();
-
-foreach ($currencies as $curr) {
-    $currencyStats[$curr] = [
-        'currency'      => $curr,
-        'year_netto'    => 0,
-        'year_brutto'   => 0,
-        'paid_netto'    => 0,
-        'paid_brutto'   => 0,
-        'pending_brutto'=> 0,
-        'overdue_brutto'=> 0,
-        'invoice_count' => 0,
-        'paid_count'    => 0,
-        'pending_count' => 0,
-        'overdue_count' => 0,
-    ];
-
-    // Oblicz netto i brutto dla roku (wyklucz draft)
-    $yearInvoices = $this->Invoices->find()
-        ->select(['id', 'total', 'netto', 'paymentstate', 'currency'])
-        ->where([
-            'Invoices.company_id' => $companyId,
-            'Invoices.currency' => $curr,
-            'Invoices.date >='  => $yearStart,
-            'Invoices.date <='  => $today,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-            'OR' => [
-                ['Invoices.workflow_status IS' => null],
-                ['Invoices.workflow_status !=' => 'draft']
-            ],
-        ])
-        ->enableHydration(false)
-        ->all();
-
-    foreach ($yearInvoices as $inv) {
-        $brutto = (float)($inv['total'] ?? 0);
-        $netto = (float)($inv['netto'] ?? 0);
-
-        $currencyStats[$curr]['year_brutto'] += $brutto;
-        $currencyStats[$curr]['year_netto'] += $netto;
-        $currencyStats[$curr]['invoice_count']++;
-
-        if ($inv['paymentstate'] === 'paid') {
-            $currencyStats[$curr]['paid_brutto'] += $brutto;
-            $currencyStats[$curr]['paid_netto'] += $netto;
-            $currencyStats[$curr]['paid_count']++;
-        } elseif (in_array($inv['paymentstate'], ['unpaid', 'partial'])) {
-            $currencyStats[$curr]['pending_brutto'] += $brutto;
-            $currencyStats[$curr]['pending_count']++;
-        } elseif ($inv['paymentstate'] === 'overdue') {
-            $currencyStats[$curr]['overdue_brutto'] += $brutto;
-            $currencyStats[$curr]['overdue_count']++;
-        }
-    }
-
-    // Zaokrąglij i oblicz procenty
-    foreach ($currencyStats[$curr] as $key => $value) {
-        if (is_float($value)) {
-            $currencyStats[$curr][$key] = round($value, 2);
-        }
-    }
-    // % opłacenia
-    $currencyStats[$curr]['paid_percent'] = $currencyStats[$curr]['year_brutto'] > 0
-        ? round(($currencyStats[$curr]['paid_brutto'] / $currencyStats[$curr]['year_brutto']) * 100, 1)
-        : 0;
-}
-
 $stats = [
     'currency'         => 'PLN',
-    'by_currency'      => $currencyStats,
 
-    // rok bieżący:
-    // - faktury zwykłe (bez proform, zaliczek, korekt) które NIE mają korekty → ich pełna kwota
-    // - faktury zwykłe które MAJĄ korektę → pominięte (zastąpione przez kwotę korekty)
-    // - korekty → ich kwota (już po zmianie)
-    'year_total'       => (function() use ($sum, $companyId, $yearStart, $today): float {
-        $T    = \Cake\ORM\TableRegistry::getTableLocator()->get('Invoices');
-        $conn = $T->getConnection();
-        // Podzapytanie: id faktur które mają korektę w tym samym zakresie dat lub ogólnie
-        $correctedIds = $conn->execute(
-            'SELECT DISTINCT parent_id FROM invoices WHERE company_id = ? AND type = ? AND parent_id IS NOT NULL',
-            [$companyId, 'correction']
-        )->fetchAll('assoc');
-        $correctedIdList = array_column($correctedIds, 'parent_id');
-
-        $baseWhere = [
-            'Invoices.company_id'  => $companyId,
-            'Invoices.date >='     => $yearStart,
-            'Invoices.date <='     => $today,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-            'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-        ];
-        // Wyklucz faktury które zostały skorygowane
-        if (!empty($correctedIdList)) {
-            $baseWhere['Invoices.id NOT IN'] = $correctedIdList;
-        }
-
-        $sumBase = $sum($baseWhere);
-
-        // Dodaj kwoty korekt (finalna wartość po korekcie)
-        $sumCorrections = $sum([
-            'Invoices.company_id' => $companyId,
-            'Invoices.date >='    => $yearStart,
-            'Invoices.date <='    => $today,
-            'Invoices.type'       => 'correction',
-            'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-        ]);
-
-        return round($sumBase + $sumCorrections, 2);
-    })(),
+    // rok bieżący
+    'year_total'       => $sum([
+                            'Invoices.company_id' => $companyId,
+                                     'Invoices.date >='    => $yearStart,
+                            'Invoices.date <='    => $today,
+                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
+                         ]),
     'year_count'       => $cnt([
                             'Invoices.company_id' => $companyId,
                                      'Invoices.date >='    => $yearStart,
@@ -954,7 +786,7 @@ $stats = [
 ];
 
     $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
-    $this->set(compact('invoices','stats','advanceCounts','finalByProforma','advancesByProforma','ksefModeEnabled','q','state','from','to','currency'));
+    $this->set(compact('invoices','stats','advanceCounts','finalByProforma','advancesByProforma','ksefModeEnabled'));
 }
 
     // requireAdmin() jest w AppController
@@ -1147,15 +979,6 @@ $stats = [
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
-        // Filtry z query stringa
-        $q     = trim((string)$this->request->getQuery('q', ''));
-        $type  = trim((string)$this->request->getQuery('type', ''));
-        $from  = trim((string)$this->request->getQuery('from', ''));
-        $to    = trim((string)$this->request->getQuery('to', ''));
-        $limit = (int)$this->request->getQuery('limit', 20);
-        if ($limit < 5)   $limit = 20;
-        if ($limit > 200) $limit = 200;
-
         $query = $this->Invoices->find()
             ->contain(['InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip']); }])
             ->where([
@@ -1164,52 +987,8 @@ $stats = [
             ])
             ->orderDesc('Invoices.created');
 
-        if ($q !== '') {
-            $like = '%' . str_replace(['%','_'], ['\%','\_'], $q) . '%';
-            $query->leftJoinWith('InvoiceContractors')
-                  ->andWhere(function ($exp) use ($like) {
-                      return $exp->or([
-                          'Invoices.fullnumber LIKE'        => $like,
-                          'InvoiceContractors.name LIKE'    => $like,
-                          'InvoiceContractors.nip LIKE'     => $like,
-                      ]);
-                  })
-                  ->group(['Invoices.id']);
-        }
-        if ($type !== '') {
-            $query->andWhere(['Invoices.type' => $type]);
-        }
-        if ($from !== '') {
-            $query->andWhere(['Invoices.date >=' => $from]);
-        }
-        if ($to !== '') {
-            $query->andWhere(['Invoices.date <=' => $to]);
-        }
-
-        $drafts = $this->paginate($query, ['limit' => $limit]);
-
-        // Przekaż wartości filtrów do widoku (potrzebne do renderowania pól)
-        $this->set(compact('q', 'type', 'from', 'to', 'limit'));
-
-        // Mapa contractor_id → is_person (osoba fizyczna z katalogu) dla decyzji
-        // czy pokazać przycisk "Przenieś do faktur" w drafts.php (bez KSeF).
-        $contractorIds = [];
-        foreach ($drafts as $d) {
-            $cid = (string)($d->contractor_id ?? '');
-            if ($cid !== '') { $contractorIds[$cid] = true; }
-        }
-        $personMap = [];
-        if (!empty($contractorIds)) {
-            $rows = $this->fetchTable('Contractors')->find()
-                ->select(['id', 'is_person'])
-                ->where(['id IN' => array_keys($contractorIds), 'company_id' => $companyId])
-                ->all();
-            foreach ($rows as $r) {
-                $personMap[(string)$r->id] = ((int)($r->is_person ?? 0) === 1);
-            }
-        }
-
-        $this->set(compact('drafts', 'personMap'));
+        $drafts = $this->paginate($query, ['limit' => 20]);
+        $this->set(compact('drafts'));
     }
 
     public function promoteToIssued(string $id)
@@ -1314,12 +1093,12 @@ $stats = [
     public function view($id = null)
     {
         $invoice = $this->Invoices->get($id, contain: [
-            'Companies',
-            'ParentInvoices',
-            'InvoiceCompanyDetails',
-            'InvoiceContractors',
+            'Companies', 
+            'ParentInvoices', 
+            'InvoiceCompanyDetails', 
+            'InvoiceContractors', 
             'InvoiceContents' => ['Vats'],
-            'InvoiceVatContents',
+            'InvoiceVatContents', 
             'ChildInvoices',
             'InvoicePayments',
             'InvoiceAdditionalDescriptions',
@@ -1330,37 +1109,7 @@ $stats = [
             'InvoiceAuthorizedEntities',
             'InvoiceOrderLines',
         ]);
-
-        $this->trackRecentlyViewed(
-            'invoices',
-            (string)$invoice->id,
-            (string)($invoice->fullnumber ?? '(brak numeru)'),
-            '/invoices/view/' . $invoice->id,
-            (string)($invoice->invoice_contractors->name ?? $invoice->invoice_contractor->name ?? '')
-        );
-
-        // Czy faktura jest wystawiona osobie fizycznej?
-        // 1) source contractor z katalogu (po contractor_id) ma is_person=1
-        // 2) fallback: snapshot kontrahenta nie ma NIP (typowo osoba fizyczna)
-        $isPersonInvoice = false;
-        $cid = (string)($invoice->contractor_id ?? '');
-        if ($cid !== '') {
-            $src = $this->fetchTable('Contractors')->find()
-                ->select(['id', 'is_person'])
-                ->where(['id' => $cid])
-                ->first();
-            if ($src && (int)($src->is_person ?? 0) === 1) {
-                $isPersonInvoice = true;
-            }
-        }
-        if (!$isPersonInvoice) {
-            $snapNip = trim((string)($invoice->invoice_contractors->nip ?? $invoice->invoice_contractor->nip ?? ''));
-            if ($snapNip === '') {
-                $isPersonInvoice = true;
-            }
-        }
-
-        $this->set(compact('invoice', 'isPersonInvoice'));
+        $this->set(compact('invoice'));
     }
 
     /**
@@ -1514,7 +1263,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     $vatRatesMap = $noVat ? [] : $vatRows->combine('id', 'rate')->toArray();
 
         if ($this->request->is('post')) {
-        try {
         $data = $this->request->getData();
         $ksefModeEnabled = $this->isKsefModeEnabled((string)$companyId);
         $doSend = $ksefModeEnabled ? $this->shouldSendToKsefNow((array)$data) : false;
@@ -1668,7 +1416,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             }
             $Proformas = $this->fetchTable('Invoices');
             $proforma  = $Proformas->find()
-                ->contain(['InvoiceContractors', 'InvoiceContents' => ['Vats']])
+                ->contain(['InvoiceContractors'])
                 ->where(['Invoices.id' => $proformaId, 'Invoices.company_id' => $companyId, 'Invoices.type' => 'proforma'])
                 ->first();
             if (!$proforma) {
@@ -1737,48 +1485,18 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                 }
             }
-            // ── Buduj grupy stawkowe z pozycji proformy (VAT, GTU, nazwy) ──────────────
-            // Proforma jest źródłem prawdy: VAT, GTU i nazwy pozycji zaliczki
-            // pochodzą stąd, nie z formularza.
-            $proformaItems    = (array)($proforma->invoice_contents ?? []);
-            $rateGroups       = [];
-            $proformaBruttoTotal = 0.0;
-            foreach ($proformaItems as $pi) {
-                $piVatCodeId = $pi->vat_code_id;
-                $piBrutto    = (float)($pi->brutto ?? 0);
-                $piRate      = isset($pi->vat) ? (float)$pi->vat->rate : 0.0;
-                $rateKey     = $piVatCodeId !== null ? (string)$piVatCodeId : ('zw_' . $piRate);
-                if (!isset($rateGroups[$rateKey])) {
-                    $rateGroups[$rateKey] = [
-                        'vat_code_id' => $piVatCodeId,
-                        'rate'        => $piRate,
-                        'brutto'      => 0.0,
-                        'names'       => [],
-                        'gtu'         => '',
-                    ];
-                }
-                $rateGroups[$rateKey]['brutto'] += $piBrutto;
-                $proformaBruttoTotal += $piBrutto;
-                $piName = trim((string)($pi->name ?? ''));
-                if ($piName !== '') { $rateGroups[$rateKey]['names'][] = $piName; }
-                if ($rateGroups[$rateKey]['gtu'] === '') {
-                    $piGtu = trim((string)($pi->gtu_code ?? ''));
-                    if ($piGtu !== '') { $rateGroups[$rateKey]['gtu'] = $piGtu; }
-                }
+            $vatCodeId    = $data['advance_vat_code_id'] ?? null;
+            if (!$noVat && !$vatCodeId) {
+                $this->Flash->error('Wybierz stawkę VAT dla zaliczki.');
+                $this->set(compact('invoice','vats','vatRatesMap','kind'));
+                $this->render('add_advance');
+                return null;
             }
-
-            // Fallback nazwy gdy proforma nie ma pozycji z nazwą
-            $lineNameFallback = ($isFinal ? 'Faktura końcowa do zamówienia ' : 'Zaliczka do zamówienia ')
-                . (string)($proforma->fullnumber ?? $proforma->id);
-
-            // VAT code dla single-rate (multi-rate: każda grupa ma swój vat_code_id)
-            $firstGroup = !empty($rateGroups) ? reset($rateGroups) : null;
-            $vatCodeId  = $firstGroup['vat_code_id'] ?? null;
-            $rate       = $noVat ? 0.0 : (float)($vatRatesMap[$vatCodeId] ?? 0);
-            // Oblicz netto/tax/brutto z kwoty zaliczki i stawki pierwszej grupy
-            $netto  = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
-            $tax    = round($advanceGross - $netto, 2);
-            $brutto = round($advanceGross, 2);
+            $rate         = $noVat ? 0.0 : (float)($vatRatesMap[$vatCodeId] ?? 0);
+            // compute net from gross using rate
+            $netto        = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
+            $tax          = round($advanceGross - $netto, 2);
+            $brutto       = round($advanceGross, 2);
 
             // Opcjonalna aktualizacja kwoty proformy gdy zaliczka/końcowa ją przekracza
             if (!empty($data['update_proforma_total']) && (int)$data['update_proforma_total'] === 1) {
@@ -1787,12 +1505,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $proforma->set('total', $newProformaTotal);
                     $proforma->set('remaining', $newProformaTotal - $sumAdvances);
                     $Proformas->save($proforma, ['checkRules' => false, 'validate' => false]);
+                    // Przelicz remaining na nowo
                     $remainingToSettle = round(max(0.0, $newProformaTotal - $sumAdvances), 2);
                 }
             }
 
             // Validate against remaining (prevent overpayment)
             $isFinalExplicit = !empty($data['is_final']) && (int)$data['is_final'] === 1;
+            // Auto-classify as final if amount equals remaining (tolerance)
             $shouldBeFinalByAmount = ($remainingToSettle > 0.0) && (abs($brutto - $remainingToSettle) <= 0.01) && ($brutto > 0.0);
             $isFinal = $isFinalExplicit || $shouldBeFinalByAmount;
 
@@ -1821,79 +1541,31 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 return null;
             }
 
-            // ── Buduj pozycje faktury zaliczkowej ────────────────────────────────────
-            $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
+            $sumNet   = $netto;
+            $sumTax   = $tax;
+            $sumGross = $brutto;
 
-            if (count($rateGroups) <= 1 || $proformaBruttoTotal <= 0.0 || $noVat) {
-                // Jedna stawka lub noVAT — jedna linia z nazwami wszystkich pozycji proformy
-                $allNames = [];
-                foreach ($rateGroups as $g) {
-                    foreach ($g['names'] as $n) { $allNames[] = $n; }
-                }
-                $lineName = implode(', ', array_unique(array_filter($allNames)));
-                if ($lineName === '') { $lineName = $lineNameFallback; }
-                $lineGtu  = $firstGroup['gtu'] ?? '';
+            // Ustal prefiks nazwy pozycji na podstawie wyliczonej flagi $isFinal (a nie tylko danych z formularza)
+            $lineNamePrefix = $isFinal ? 'Faktura końcowa do oferty ' : 'Zaliczka do oferty ';
+            $contents[] = [
+                'vat_code_id'      => $noVat ? null : $vatCodeId,
+                'name'             => $lineNamePrefix . (string)($proforma->fullnumber ?? $proforma->id),
+                'product_desc'     => '',
+                'quantity'         => 1,
+                'unit'             => 'szt.',
+                'price'            => $netto,
+                'discount_percent' => 0,
+                'netto'            => $netto,
+                'brutto'           => $brutto,
+            ];
 
-                $contents[] = [
-                    'vat_code_id'      => $noVat ? null : $vatCodeId,
-                    'name'             => $lineName,
-                    'product_desc'     => '',
-                    'quantity'         => 1,
-                    'unit'             => 'szt.',
-                    'price'            => $netto,
-                    'discount_percent' => 0,
-                    'netto'            => $netto,
-                    'brutto'           => $brutto,
-                    'vat_amount'       => $noVat ? null : $tax,
-                    'gtu_code'         => $lineGtu !== '' ? $lineGtu : null,
-                ];
-                $sumNet = $netto; $sumTax = $tax; $sumGross = $brutto;
-                $bucketKey = $vatCodeId ?: 'no_vat';
-                $vatBuckets[$bucketKey] = ['vat_code_id' => $vatCodeId, 'netto' => $netto, 'tax' => $tax, 'brutto' => $brutto];
-            } else {
-                // Wiele stawek — podział proporcjonalny zaliczki per stawkę (art. 106f ust. 1 pkt 3)
-                // Każda linia otrzymuje nazwy pozycji proformy ze swojej grupy stawkowej.
-                $groups = array_values($rateGroups);
-                $remaining = $brutto;
-                foreach ($groups as $idx => $grp) {
-                    $isLast = ($idx === count($groups) - 1);
-                    $splitBrutto = $isLast
-                        ? round($remaining, 2)
-                        : round($brutto * ($grp['brutto'] / $proformaBruttoTotal), 2);
-                    $splitRate  = $grp['rate'];
-                    $splitNetto = $splitRate > 0 ? round($splitBrutto / (1 + $splitRate / 100), 2) : round($splitBrutto, 2);
-                    $splitTax   = round($splitBrutto - $splitNetto, 2);
-                    $remaining -= $splitBrutto;
-
-                    $grpNames   = implode(', ', array_unique(array_filter($grp['names'])));
-                    if ($grpNames === '') { $grpNames = $lineNameFallback; }
-
-                    $contents[] = [
-                        'vat_code_id'      => $grp['vat_code_id'],
-                        'name'             => $grpNames,
-                        'product_desc'     => '',
-                        'quantity'         => 1,
-                        'unit'             => 'szt.',
-                        'price'            => $splitNetto,
-                        'discount_percent' => 0,
-                        'netto'            => $splitNetto,
-                        'brutto'           => $splitBrutto,
-                        'vat_amount'       => $noVat ? null : $splitTax,
-                        'gtu_code'         => $grp['gtu'] !== '' ? $grp['gtu'] : null,
-                    ];
-                    $sumNet   += $splitNetto;
-                    $sumTax   += $splitTax;
-                    $sumGross += $splitBrutto;
-
-                    $bucketKey = $grp['vat_code_id'] ?: ('no_vat_' . $splitRate);
-                    $vatBuckets[$bucketKey] = [
-                        'vat_code_id' => $grp['vat_code_id'],
-                        'netto'       => $splitNetto,
-                        'tax'         => $splitTax,
-                        'brutto'      => $splitBrutto,
-                    ];
-                }
-            }
+            $bucketKey = $vatCodeId ?: 'no_vat';
+            $vatBuckets[$bucketKey] = [
+                'vat_code_id' => $vatCodeId,
+                'netto' => $netto,
+                'tax' => $tax,
+                'brutto' => $brutto,
+            ];
 
             // Bind parent proforma
             $data['parent_id'] = $proforma->id;
@@ -1942,20 +1614,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 // [noVAT] stawka zawsze 0
                 $rate      = $noVat ? 0.0 : (float)($vatRatesMap[$vatCodeId] ?? 0);
 
-                // price_mode: 'gross' → price to cena brutto/szt., obróć do netto
-                $priceIsGross = !$noVat && $rate > 0 && (($row['price_mode'] ?? 'net') === 'gross');
-                if ($priceIsGross) {
-                    $netUnitPrice  = round($price / (1 + $rate / 100), 2);
-                    $brutto        = round($qty * $price * (1 - ($disc / 100)), 2);
-                    $netto         = round($brutto / (1 + $rate / 100), 2);
-                    $tax           = round($brutto - $netto, 2);
-                } else {
-                    $netUnitPrice  = $price;
-                    $unitAfterDisc = $price * (1 - ($disc / 100));
-                    $netto  = round($qty * $unitAfterDisc, 2);
-                    $tax    = $noVat ? 0.0 : round($netto * ($rate / 100), 2);
-                    $brutto = round($netto + $tax, 2);
-                }
+                $unitAfterDisc = $price * (1 - ($disc / 100));
+                $netto  = round($qty * $unitAfterDisc, 2);
+                $tax    = $noVat ? 0.0 : round($netto * ($rate / 100), 2); // [noVAT]
+                $brutto = round($netto + $tax, 2);
 
                 $sumNet   += $netto;
                 $sumTax   += $tax;
@@ -1968,10 +1630,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'product_desc'     => (string)($row['product_desc'] ?? ''),
                     'quantity'         => $qty,
                     'unit'             => (string)($row['unit'] ?? 'szt.'),
-                    'price'            => $netUnitPrice,  // zawsze netto/szt.
+                    'price'            => $price,
                     'purchase_price'   => !empty($row['purchase_price']) ? $num($row['purchase_price']) : null,
                     'discount_percent' => $disc,
-                    'discount_amount'  => $disc > 0 ? round($qty * $netUnitPrice * ($disc / 100), 2) : null,
+                    'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                     'netto'            => $netto,
                     'brutto'           => $brutto,
                     'gtu_code'         => (string)($row['gtu_code'] ?? ''),
@@ -1987,7 +1649,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
                     'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
                     'pkwiu'            => (string)($row['pkwiu'] ?? ''),
-                    'gross_unit_price' => round($netUnitPrice * (1 + ($rate / 100)), 2),
+                    'gross_unit_price' => round($price * (1 + ($rate / 100)), 2),
                 ];
                 
                 // Grupowanie VAT
@@ -2050,19 +1712,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $today = new \DateTimeImmutable('today');
                 if ($due < $today) $paymentstate = 'overdue';
             } catch (\Throwable) { /* ignore */ }
-        }
-        // Faktura zaliczkowa: checkbox "advance_paid" + data otrzymania → paymentstate=paid
-        if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid']) && !empty($data['advance_received_date'])) {
-            $paymentstate = 'paid';
-            $alreadypaid  = $total;
-            $remaining    = 0.0;
-            if (empty($data['paid_at'])) {
-                $data['paid_at'] = $data['advance_received_date'];
-            }
-            // partial_paid_at używana przez buildPaymentXml jako DataZaplaty
-            if (empty($data['partial_paid_at'])) {
-                $data['partial_paid_at'] = $data['advance_received_date'];
-            }
         }
 
         // VAT grouped rows
@@ -2417,10 +2066,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'alreadypaid' => $alreadypaid,
             'remaining' => $remaining,
             'fullnumber' => $isDraftWorkflow ? null : ($data['fullnumber'] ?? null),
-            // NrFaKorygowany — tylko dla korekt; opcjonalne nawet wtedy.
-            'corrected_invoice_number' => ($kind === 'correction' && !empty($data['corrected_invoice_number']))
-                ? trim((string)$data['corrected_invoice_number'])
-                : null,
             'currency' => $cur,
             'currency_date' => $currencyDate,
             'currency_exchange' => $currencyExchange,
@@ -2437,10 +2082,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             'receipt_number'     => $data['receipt_number'] ?? null,
             'receipt_date'       => !empty($data['receipt_date']) ? $data['receipt_date'] : null,
             // Data sprzedaży i daty płatności — fallback na datę wystawienia gdy pole puste
-            'sold_date'               => !empty($data['sold_date']) ? $data['sold_date'] : (!empty($data['date']) ? $data['date'] : date('Y-m-d')),
-            'advance_received_date'   => !empty($data['advance_received_date']) ? $data['advance_received_date'] : null,
-            'paid_at'                 => !empty($data['paid_at']) ? $data['paid_at'] : null,
-            'partial_paid_at'         => !empty($data['partial_paid_at']) ? $data['partial_paid_at'] : null,
+            'sold_date'          => !empty($data['sold_date']) ? $data['sold_date'] : (!empty($data['date']) ? $data['date'] : date('Y-m-d')),
+            'paid_at'            => !empty($data['paid_at']) ? $data['paid_at'] : null,
+            'partial_paid_at'    => !empty($data['partial_paid_at']) ? $data['partial_paid_at'] : null,
             // Język, auto-wysyłka, flagi nabywcy
             'lang'               => !empty($data['lang']) ? (string)$data['lang'] : 'pl',
             'auto_send'          => !empty($data['auto_send']) ? 1 : 0,
@@ -2786,11 +2430,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
             // Zapisz pozycje faktury (invoice_contents)
             $InvoiceContentsTable = $this->fetchTable('InvoiceContents');
-            foreach ($contents as $idx => $contentData) {
+            foreach ($contents as $contentData) {
                 $contentEntity = $InvoiceContentsTable->newEmptyEntity();
                 $contentData['invoice_id'] = $invoiceId;
-                $contentData['sort_order'] = $idx;
-
+                
                 $contentEntity = $InvoiceContentsTable->patchEntity($contentEntity, $contentData);
                 if (!$InvoiceContentsTable->save($contentEntity)) {
                     throw new \RuntimeException('Błąd zapisu pozycji faktury');
@@ -2919,10 +2562,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $conn->rollback();
             $this->Flash->error('Błąd zapisu: ' . $e->getMessage());
         }
-        } catch (\RuntimeException $e) {
-            // Wyjątek walidacyjny rzucony przed transakcją (np. pusta nazwa pozycji)
-            $this->Flash->error($e->getMessage());
-        }
     }
 
     // GET — osobny widok dla noVAT
@@ -2993,11 +2632,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         $identity  = $this->getRequest()->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
-        // Załaduj fakturę z pozycjami i snapshotami kontrahenta + danych firmy (rachunek, swift itd.)
+        // Załaduj fakturę z pozycjami i snapshotem kontrahenta
         $invoice = $this->Invoices->get($id, contain: [
             'InvoiceSeries',
             'InvoiceContractors',
-            'InvoiceCompanyDetails',
             'InvoiceContents' => ['Vats'],
             'InvoicePayments',
             'InvoiceAdditionalDescriptions',
@@ -3111,13 +2749,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 }
                 $invoice->set('advance_vat_code_id', $firstVat);
                 $invoice->set('is_final', $kind === 'final' ? 1 : 0);
-                // Prefill GTU z pierwszej pozycji
-                $firstGtu = null;
-                if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
-                    foreach ($invoice->invoice_contents as $it) { $firstGtu = $it->gtu_code ?? null; break; }
-                }
-                $invoice->set('advance_gtu_code', $firstGtu ?? '');
-                // advance_received_date — już załadowane z DB przez ORM
             } catch (\Throwable) { /* ignore */ }
         }
 
@@ -3158,7 +2789,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
 
                 // Pobierz proformę (weryfikacja company_id jeśli dostępne)
                 $Proformas = $this->fetchTable('Invoices');
-                $proformaQ = $Proformas->find()->contain(['InvoiceContractors', 'InvoiceContents' => ['Vats']])
+                $proformaQ = $Proformas->find()->contain(['InvoiceContractors'])
                     ->where(['Invoices.id' => $proformaId, 'Invoices.type' => 'proforma']);
                 if (!empty($companyId)) {
                     $proformaQ->where(['Invoices.company_id' => $companyId]);
@@ -3221,40 +2852,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     return null;
                 }
 
-                // ── Buduj grupy stawkowe z pozycji proformy (VAT, GTU, nazwy) ────────────
-                $proformaItems    = (array)($proforma->invoice_contents ?? []);
-                $rateGroupsE      = [];
-                $proformaBruttoTotalE = 0.0;
-                foreach ($proformaItems as $pi) {
-                    $piVatCodeId = $pi->vat_code_id;
-                    $piBrutto    = (float)($pi->brutto ?? 0);
-                    $piRate      = isset($pi->vat) ? (float)$pi->vat->rate : 0.0;
-                    $rateKey     = $piVatCodeId !== null ? (string)$piVatCodeId : ('zw_' . $piRate);
-                    if (!isset($rateGroupsE[$rateKey])) {
-                        $rateGroupsE[$rateKey] = [
-                            'vat_code_id' => $piVatCodeId,
-                            'rate'        => $piRate,
-                            'brutto'      => 0.0,
-                            'names'       => [],
-                            'gtu'         => '',
-                        ];
-                    }
-                    $rateGroupsE[$rateKey]['brutto'] += $piBrutto;
-                    $proformaBruttoTotalE += $piBrutto;
-                    $piName = trim((string)($pi->name ?? ''));
-                    if ($piName !== '') { $rateGroupsE[$rateKey]['names'][] = $piName; }
-                    if ($rateGroupsE[$rateKey]['gtu'] === '') {
-                        $piGtu = trim((string)($pi->gtu_code ?? ''));
-                        if ($piGtu !== '') { $rateGroupsE[$rateKey]['gtu'] = $piGtu; }
-                    }
+                $vatCodeId = $data['advance_vat_code_id'] ?? null;
+                if (!$noVat && !$vatCodeId) {
+                    $this->Flash->error('Wybierz stawkę VAT dla zaliczki.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
                 }
 
-                $lineNameFallbackE = ($isFinal ? 'Faktura końcowa do zamówienia ' : 'Zaliczka do zamówienia ')
-                    . (string)($proforma->fullnumber ?? $proforma->id);
-
-                // VAT code dla single-rate (multi-rate: każda grupa ma swój vat_code_id)
-                $firstGroupE = !empty($rateGroupsE) ? reset($rateGroupsE) : null;
-                $vatCodeId   = $firstGroupE['vat_code_id'] ?? null;
                 $rate   = $noVat ? 0.0 : (float)($vatRatesMap[$vatCodeId] ?? 0);
                 $nettoA = $rate > 0 ? round($advanceGross / (1 + $rate/100), 2) : round($advanceGross, 2);
                 $taxA   = round($advanceGross - $nettoA, 2);
@@ -3271,68 +2875,23 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     return null;
                 }
 
-                // ── Buduj pozycje faktury zaliczkowej ────────────────────────────────
-                $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
+                $sumNet   = $nettoA;
+                $sumTax   = $taxA;
+                $sumGross = $bruttoA;
 
-                if (count($rateGroupsE) <= 1 || $proformaBruttoTotalE <= 0.0 || $noVat) {
-                    // Jedna stawka lub noVAT — jedna linia z nazwami wszystkich pozycji proformy
-                    $allNamesE = [];
-                    foreach ($rateGroupsE as $g) {
-                        foreach ($g['names'] as $n) { $allNamesE[] = $n; }
-                    }
-                    $lineNameE = implode(', ', array_unique(array_filter($allNamesE)));
-                    if ($lineNameE === '') { $lineNameE = $lineNameFallbackE; }
-                    $lineGtuE  = $firstGroupE['gtu'] ?? '';
-
-                    $contents[] = [
-                        'vat_code_id'      => $noVat ? null : $vatCodeId,
-                        'name'             => $lineNameE,
-                        'product_desc'     => '',
-                        'quantity'         => 1,
-                        'unit'             => 'szt.',
-                        'price'            => $nettoA,
-                        'discount_percent' => 0,
-                        'netto'            => $nettoA,
-                        'brutto'           => $bruttoA,
-                        'vat_amount'       => $noVat ? null : $taxA,
-                        'gtu_code'         => $lineGtuE !== '' ? $lineGtuE : null,
-                    ];
-                    $sumNet = $nettoA; $sumTax = $taxA; $sumGross = $bruttoA;
-                } else {
-                    // Wiele stawek — podział proporcjonalny, każda linia ma nazwy ze swojej grupy
-                    $groups = array_values($rateGroupsE);
-                    $remaining = $bruttoA;
-                    foreach ($groups as $idx => $grp) {
-                        $isLast = ($idx === count($groups) - 1);
-                        $splitBrutto = $isLast
-                            ? round($remaining, 2)
-                            : round($bruttoA * ($grp['brutto'] / $proformaBruttoTotalE), 2);
-                        $splitRate  = $grp['rate'];
-                        $splitNetto = $splitRate > 0 ? round($splitBrutto / (1 + $splitRate / 100), 2) : round($splitBrutto, 2);
-                        $splitTax   = round($splitBrutto - $splitNetto, 2);
-                        $remaining -= $splitBrutto;
-
-                        $grpNamesE = implode(', ', array_unique(array_filter($grp['names'])));
-                        if ($grpNamesE === '') { $grpNamesE = $lineNameFallbackE; }
-
-                        $contents[] = [
-                            'vat_code_id'      => $grp['vat_code_id'],
-                            'name'             => $grpNamesE,
-                            'product_desc'     => '',
-                            'quantity'         => 1,
-                            'unit'             => 'szt.',
-                            'price'            => $splitNetto,
-                            'discount_percent' => 0,
-                            'netto'            => $splitNetto,
-                            'brutto'           => $splitBrutto,
-                            'vat_amount'       => $noVat ? null : $splitTax,
-                            'gtu_code'         => $grp['gtu'] !== '' ? $grp['gtu'] : null,
-                        ];
-                        $sumNet   += $splitNetto;
-                        $sumTax   += $splitTax;
-                        $sumGross += $splitBrutto;
-                    }
-                }
+                $lineNamePrefix = $isFinal ? 'Faktura końcowa do oferty ' : 'Zaliczka do oferty ';
+                $contents[] = [
+                    'vat_code_id'      => $vatCodeId,
+                    'name'             => $lineNamePrefix . (string)($proforma->fullnumber ?? $proforma->id),
+                    'product_desc'     => '',
+                    'quantity'         => 1,
+                    'unit'             => 'szt.',
+                    'price'            => $nettoA,
+                    'discount_percent' => 0,
+                    'netto'            => $nettoA,
+                    'brutto'           => $bruttoA,
+                    'gtu_code'         => '',
+                ];
 
                 // Bind parent proforma + currency from proforma
                 $data['parent_id'] = $proforma->id;
@@ -3458,20 +3017,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $vatId = $row['vat_code_id'] ?? null;
                     $rate  = $noVat ? 0.0 : (float)($vatRatesMap[$vatId] ?? 0);
 
-                    // price_mode: 'gross' → price to cena brutto/szt., obróć do netto
-                    $priceIsGross = !$noVat && $rate > 0 && (($row['price_mode'] ?? 'net') === 'gross');
-                    if ($priceIsGross) {
-                        $netUnitPrice = round($price / (1 + $rate / 100), 2);
-                        $brutto       = round($qty * $price * (1 - ($disc / 100)), 2);
-                        $netto        = round($brutto / (1 + $rate / 100), 2);
-                        $tax          = round($brutto - $netto, 2);
-                    } else {
-                        $netUnitPrice  = $price;
-                        $unitAfterDisc = $price * (1 - ($disc / 100));
-                        $netto  = round($qty * $unitAfterDisc, 2);
-                        $tax    = $noVat ? 0.0 : round($netto * ($rate / 100), 2);
-                        $brutto = round($netto + $tax, 2);
-                    }
+                    $unitAfterDisc = $price * (1 - ($disc/100));
+                    $netto  = round($qty * $unitAfterDisc, 2);
+                    $tax    = $noVat ? 0.0 : round($netto * ($rate/100), 2);
+                    $brutto = round($netto + $tax, 2);
 
                     $sumNet   += $netto;
                     $sumTax   += $tax;
@@ -3483,10 +3032,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'product_desc'     => (string)($row['product_desc'] ?? ''),
                         'quantity'         => $qty,
                         'unit'             => (string)($row['unit'] ?? 'szt.'),
-                        'price'            => $netUnitPrice,  // zawsze netto/szt.
+                        'price'            => $price,
                         'purchase_price'   => !empty($row['purchase_price']) ? $num($row['purchase_price']) : null,
                         'discount_percent' => $disc,
-                        'discount_amount'  => $disc > 0 ? round($qty * $netUnitPrice * ($disc / 100), 2) : null,
+                        'discount_amount'  => $disc > 0 ? round($qty * $price * ($disc / 100), 2) : null,
                         'netto'            => $netto,
                         'brutto'           => $brutto,
                         'gtu_code'         => (string)($row['gtu_code'] ?? ''),
@@ -3501,7 +3050,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
                         'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
                         'pkwiu'            => (string)($row['pkwiu'] ?? ''),
-                        'gross_unit_price' => round($netUnitPrice * (1 + ($rate / 100)), 2),
+                        'gross_unit_price' => round($price * (1 + ($rate / 100)), 2),
                     ];
                 }
             }
@@ -3532,18 +3081,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $today = new \DateTimeImmutable('today');
                     if ($due < $today) $paymentstate = 'overdue';
                 } catch (\Throwable) { /* ignore */ }
-            }
-            // Faktura zaliczkowa: checkbox "advance_paid" + data otrzymania → paymentstate=paid
-            if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid']) && !empty($data['advance_received_date'])) {
-                $paymentstate = 'paid';
-                $alreadypaid  = $total;
-                $remaining    = 0.0;
-                if (empty($data['paid_at'])) {
-                    $data['paid_at'] = $data['advance_received_date'];
-                }
-                if (empty($data['partial_paid_at'])) {
-                    $data['partial_paid_at'] = $data['advance_received_date'];
-                }
             }
 
             // Seria → invoice_series_id: preferuj UUID, fallback na nazwę
@@ -3583,104 +3120,22 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $data['number'] = $this->extractNumberFromFullnumber($data['fullnumber']);
             }
 
-            // Waluta + kurs: gdy zmienia się data wystawienia/sprzedaży, przelicz z NBP.
-            // Wyjątek: jeśli użytkownik *jawnie* nadpisał ORAZ kurs ORAZ datę kursu (oba różne od starych) — uszanuj.
-            // UWAGA: Cake\I18n\Date::__toString() używa locale (PL → DD.MM.YYYY).
-            // Zawsze używamy ->format('Y-m-d'), żeby validator dostał ISO.
-            $toIso = static function ($v): ?string {
-                if (empty($v)) return null;
-                if (is_object($v) && method_exists($v, 'format')) return $v->format('Y-m-d');
-                $s = (string)$v;
-                if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})/', $s, $m)) return "{$m[3]}-{$m[2]}-{$m[1]}";
-                if (preg_match('/^\d{4}-\d{2}-\d{2}/', $s)) return substr($s, 0, 10);
-                return null;
-            };
-
-            $cur          = strtoupper((string)($data['currency'] ?? $invoice->currency ?? 'PLN'));
-            $issueDateStr = !empty($data['date'])      ? $toIso($data['date'])      : $toIso($invoice->date);
-            $soldDateStr  = !empty($data['sold_date']) ? $toIso($data['sold_date']) : $toIso($invoice->sold_date ?? null);
-            $baseDateStr  = $soldDateStr ?: $issueDateStr;
-
-            $oldIssueDate = $toIso($invoice->date);
-            $oldSoldDate  = $toIso($invoice->sold_date ?? null);
-            $oldBaseDate  = $oldSoldDate ?: $oldIssueDate;
-            $datesChanged = ($baseDateStr !== $oldBaseDate);
-
-            $formCurrencyDate = !empty($data['currency_date']) ? $toIso($data['currency_date']) : null;
-            $formFxRaw = (isset($data['currency_exchange']) && $data['currency_exchange'] !== '')
-                ? $data['currency_exchange']
-                : ((isset($data['fx_rate']) && $data['fx_rate'] !== '') ? $data['fx_rate'] : null);
-            $formRate = $formFxRaw !== null ? max(0.0001, $num($formFxRaw)) : null;
-
-            $oldCurrencyDate = $toIso($invoice->currency_date ?? null);
-            $oldRate         = !empty($invoice->currency_exchange) ? (float)$invoice->currency_exchange : null;
-
-            $rateChangedExplicitly         = $formRate !== null && ($oldRate === null || abs($formRate - $oldRate) > 0.00001);
-            $currencyDateChangedExplicitly = $formCurrencyDate !== null && $formCurrencyDate !== $oldCurrencyDate;
-            $explicitOverride = $rateChangedExplicitly && $currencyDateChangedExplicitly;
-
-            $currencyExchange = $formRate ?? ($oldRate ?? 1.0);
-            $currencyDate     = $formCurrencyDate ?? $oldCurrencyDate;
-
-            if ($cur === 'PLN') {
-                $currencyExchange = 1.0;
-                $currencyDate = $currencyDate ?: $issueDateStr;
-            } elseif ($explicitOverride) {
-                // użytkownik jawnie nadpisał — nie ruszamy
-            } elseif ($datesChanged) {
-                try {
-                    $base = new \DateTimeImmutable($baseDateStr);
-                    $nbp = $this->computeNbpAvgRate($cur, $base);
-                    if (!empty($nbp['success']) && !empty($nbp['rate'])) {
-                        $currencyExchange = (float)$nbp['rate'];
-                        $currencyDate     = $toIso($nbp['effectiveDate'] ?? null) ?: ($currencyDate ?: $issueDateStr);
-                    }
-                } catch (\Throwable) { /* zostaw poprzednie wartości */ }
-            } else {
-                // daty się nie zmieniły — uzupełnij brakujące tak jak w handleAdd
-                if ($currencyExchange <= 0.0001) {
-                    try {
-                        $base = new \DateTimeImmutable($baseDateStr);
-                        $nbp = $this->computeNbpAvgRate($cur, $base);
-                        if (!empty($nbp['success']) && !empty($nbp['rate'])) {
-                            $currencyExchange = (float)$nbp['rate'];
-                            $currencyDate     = $toIso($nbp['effectiveDate'] ?? null) ?: ($currencyDate ?: $issueDateStr);
-                        }
-                    } catch (\Throwable) { /* ignore */ }
-                } elseif (empty($currencyDate)) {
-                    try {
-                        $base = new \DateTimeImmutable($baseDateStr);
-                        $nbp = $this->computeNbpAvgRate($cur, $base);
-                        $currencyDate = $toIso($nbp['effectiveDate'] ?? null) ?: $issueDateStr;
-                    } catch (\Throwable) { $currencyDate = $issueDateStr; }
-                }
-            }
-
             // Dane do patchowania faktury (whitelist)
             $invoicePatch = [
                 'paymentmethod' => $data['paymentmethod'] ?? $invoice->paymentmethod,
                 'paymentdate'   => $data['paymentdate'] ?? $invoice->paymentdate,
                 'paymentstate'  => $paymentstate,
                 'date'          => $data['date'] ?? $invoice->date,
-                'sold_date'             => !empty($data['sold_date']) ? $data['sold_date'] : ($invoice->sold_date ?? null),
-                'advance_received_date' => !empty($data['advance_received_date']) ? $data['advance_received_date'] : ($invoice->advance_received_date ?? null),
-                'paid_at'         => !empty($data['paid_at']) ? $data['paid_at'] : ($invoice->paid_at ?? null),
-                'partial_paid_at' => !empty($data['partial_paid_at']) ? $data['partial_paid_at'] : ($invoice->partial_paid_at ?? null),
+                'sold_date'     => !empty($data['sold_date']) ? $data['sold_date'] : ($invoice->sold_date ?? null),
                 'total'         => $total,
                 'netto'         => $netto,
                 'tax'           => $tax,
                 'alreadypaid'   => $alreadypaid,
                 'remaining'     => $remaining,
                 'fullnumber'    => $invoice->fullnumber ?? null, // zachowaj istniejący numer, nie nadpisuj
-                // NrFaKorygowany — poprawny numer faktury w korekcie (opcjonalny, tylko dla korekt)
-                'corrected_invoice_number' => ($kind === 'correction')
-                    ? (array_key_exists('corrected_invoice_number', $data)
-                        ? (trim((string)$data['corrected_invoice_number']) ?: null)
-                        : ($invoice->corrected_invoice_number ?? null))
-                    : null,
-                'currency'      => $cur,
-                'currency_date' => $currencyDate,
-                'currency_exchange' => $currencyExchange,
+                'currency'      => $data['currency'] ?? $invoice->currency,
+                'currency_date' => $data['currency_date'] ?? $invoice->currency_date,
+                'currency_exchange' => $data['currency_exchange'] ?? $invoice->currency_exchange,
                 'description'   => $data['description'] ?? $invoice->description,
                 'issuer'        => $data['issuer'] ?? $invoice->issuer,
                 // New flags
@@ -3730,10 +3185,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             } elseif (array_key_exists('tc_umowy', $data) || array_key_exists('tc_zamowienia', $data)) {
                 $invoicePatch['transaction_conditions_json'] = null;
             }
-            // Rachunek bankowy
-            if (array_key_exists('company_bank_account_id', $data)) {
-                $invoicePatch['company_bank_account_id'] = !empty($data['company_bank_account_id']) ? (string)$data['company_bank_account_id'] : null;
-            }
             // Optional: allow updating receipt details if provided
             foreach (['receipt_number','receipt_date'] as $k) {
                 if (array_key_exists($k, $data)) {
@@ -3763,56 +3214,6 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     throw new \RuntimeException('Błąd zapisu faktury: ' . json_encode($invoice->getErrors()));
                 }
 
-                // Snapshot sprzedawcy — aktualizuj rachunek bankowy jeśli zmieniony
-                // Aktualizacja snapshotu rachunku — nie tylko IBAN ale też nazwa, opis, swift, bank_correspondent.
-                // Bierzemy dane z CompanyBankAccounts na podstawie wybranego company_bank_account_id;
-                // form-overrides (jeśli user ręcznie wpisał) mają priorytet.
-                $newBankIban   = trim((string)($data['invoice_company_detail']['bank_account'] ?? ''));
-                $newBankName   = null;
-                $newBankDesc   = null;
-                $newSwift      = null;
-                $newBankCorr   = null;
-                if (!empty($data['company_bank_account_id'])) {
-                    try {
-                        $cbaRec = $this->fetchTable('CompanyBankAccounts')->find()
-                            ->select(['iban', 'bank_name', 'bank_desc', 'swift', 'bank_correspondent'])
-                            ->where(['id' => $data['company_bank_account_id'], 'company_id' => $companyId])
-                            ->first();
-                        if ($cbaRec) {
-                            if ($newBankIban === '') {
-                                $newBankIban = trim((string)($cbaRec->iban ?? ''));
-                            }
-                            $newBankName = (string)($cbaRec->bank_name ?? '');
-                            $newBankDesc = (string)($cbaRec->bank_desc ?? '');
-                            $newSwift    = (string)($cbaRec->swift ?? '');
-                            $newBankCorr = (string)($cbaRec->bank_correspondent ?? '');
-                        }
-                    } catch (\Throwable) {}
-                }
-                // Form-overrides (user może wpisać ręcznie inną nazwę/opis)
-                if (isset($data['invoice_company_detail']['bank_name']) && $data['invoice_company_detail']['bank_name'] !== '') {
-                    $newBankName = (string)$data['invoice_company_detail']['bank_name'];
-                }
-                if (isset($data['invoice_company_detail']['bank_desc']) && $data['invoice_company_detail']['bank_desc'] !== '') {
-                    $newBankDesc = (string)$data['invoice_company_detail']['bank_desc'];
-                }
-                if (isset($data['invoice_company_detail']['swift']) && $data['invoice_company_detail']['swift'] !== '') {
-                    $newSwift = (string)$data['invoice_company_detail']['swift'];
-                }
-
-                try {
-                    $IcdTable = $this->fetchTable('InvoiceCompanyDetails');
-                    $icd = $IcdTable->find()->where(['invoice_id' => $invoice->id])->first();
-                    if ($icd) {
-                        if ($newBankIban !== '')          { $icd->set('bank_account', $newBankIban); }
-                        if ($newBankName !== null)        { $icd->set('bank_name', $newBankName); }
-                        if ($newBankDesc !== null)        { $icd->set('bank_desc', $newBankDesc); }
-                        if ($newSwift !== null)           { $icd->set('swift', $newSwift); }
-                        if ($newBankCorr !== null)        { $icd->set('bank_correspondent', $newBankCorr); }
-                        $IcdTable->save($icd);
-                    }
-                } catch (\Throwable) {}
-
                 // Snapshot nabywcy
                 if (!empty($data['invoice_contractor'])) {
                     $InvoiceContractors = $this->fetchTable('InvoiceContractors');
@@ -3824,37 +3225,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                 }
 
-                // Snapshot odbiorcy (opcjonalny)
-                if (!empty($data['invoice_recipient']) && !empty(trim((string)($data['invoice_recipient']['name'] ?? '')))) {
-                    $InvoiceRecipients = $this->fetchTable('InvoiceRecipients');
-                    $rec = $InvoiceRecipients->find()->where(['invoice_id' => $invoice->id])->first() ?? $InvoiceRecipients->newEmptyEntity();
-                    $recData = (array)$data['invoice_recipient'] + ['invoice_id' => $invoice->id];
-                    $rec = $InvoiceRecipients->patchEntity($rec, $recData);
-                    if (!$InvoiceRecipients->save($rec)) {
-                        throw new \RuntimeException('Błąd zapisu danych odbiorcy');
-                    }
-                } elseif (isset($data['invoice_recipient']) && empty(trim((string)($data['invoice_recipient']['name'] ?? '')))) {
-                    // Jeśli nazwa pusta — usuń odbiorcę jeśli istnieje
-                    $InvoiceRecipients = $this->fetchTable('InvoiceRecipients');
-                    $InvoiceRecipients->deleteAll(['invoice_id' => $invoice->id]);
-                }
-
                 // Pozycje: prosty model replace-all
                 $InvoiceContents = $this->fetchTable('InvoiceContents');
                 $InvoiceContents->deleteAll(['invoice_id' => $invoice->id]);
-                foreach ($contents as $idx => $c) {
+                foreach ($contents as $c) {
                     $ent = $InvoiceContents->newEmptyEntity();
                     $c['invoice_id'] = $invoice->id;
-                    $c['sort_order'] = $idx;
                     $ent = $InvoiceContents->patchEntity($ent, $c);
                     if (!$InvoiceContents->save($ent)) {
                         throw new \RuntimeException('Błąd zapisu pozycji faktury');
                     }
                 }
-
-                // FA(3) — relacyjne tabele: charges, factor_banks, authorized_entities,
-                // order_lines, additional_descriptions (add_desc). Replace-all wewnątrz metody.
-                $this->saveInvoiceRelationalFa3((string)$invoice->id, $data);
 
                 $conn->commit();
 
@@ -3941,27 +3322,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     {
         $this->request->allowMethod(['post', 'delete']);
         $invoice = $this->Invoices->get($id);
-        $wasDraft = empty($invoice->fullnumber);
-        $ok = (bool)$this->Invoices->delete($invoice);
-
-        $isAjax = $this->request->is('ajax')
-            || str_contains((string)$this->request->getHeaderLine('Accept'), 'application/json');
-
-        if ($isAjax) {
-            $this->viewBuilder()->setClassName('Json');
-            $this->set('success', $ok);
-            $this->set('error', $ok ? null : 'Nie udało się usunąć faktury.');
-            $this->viewBuilder()->setOption('serialize', ['success', 'error']);
-            return null;
-        }
-
-        if ($ok) {
+        if ($this->Invoices->delete($invoice)) {
             $this->Flash->success(__('The invoice has been deleted.'));
         } else {
             $this->Flash->error(__('The invoice could not be deleted. Please, try again.'));
         }
 
-        return $this->redirect(['action' => $wasDraft ? 'drafts' : 'index']);
+        return $this->redirect(['action' => 'index']);
     }
 private function makeClient(string $environment): KsefClient
     {
@@ -4904,7 +4271,6 @@ private function makeClient(string $environment): KsefClient
             if (count($emails) > 1) {
                 $mailer->addCc(array_slice($emails, 1));
             }
-            $mailer->addBcc('k@3ck.pl');
             $mailer->setSubject($subject);
             $mailer->setEmailFormat('html');
             $mailer->setAttachments([
@@ -4922,12 +4288,6 @@ private function makeClient(string $environment): KsefClient
             return $this->response->withType('application/json')
                 ->withStringBody(json_encode(['success' => false, 'error' => 'Błąd wysyłki: ' . $e->getMessage()]));
         }
-
-        // Zapisz znacznik czasu wysyłki
-        $this->Invoices->updateAll(
-            ['email_sent_at' => new \DateTimeImmutable()],
-            ['id' => $invoice->id]
-        );
 
         return $this->response->withType('application/json')
             ->withStringBody(json_encode(['success' => true, 'sent_to' => $emails]));
@@ -5492,33 +4852,22 @@ private function makeClient(string $environment): KsefClient
         }
 
         // compute advances/final sums and list already issued documents
-        // exclude_id: when editing an existing advance, exclude it from the sum so it is not double-counted
-        $excludeId = $this->request->getQuery('exclude_id');
-        $advWhere = [
-            'company_id' => $companyId,
-            'parent_id'  => $id,
-            'type IN'    => ['advance','final'],
-        ];
-        if (!empty($excludeId)) {
-            $advWhere['id !='] = $excludeId;
-        }
         $sumAdvances = (float)$Invoices->find()
             ->select(['s' => $Invoices->find()->func()->sum('total')])
-            ->where($advWhere)
+            ->where([
+                'company_id' => $companyId,
+                'parent_id' => $id,
+                'type IN' => ['advance','final']
+            ])
             ->enableHydration(false)
             ->first()['s'] ?? 0.0;
-        $hasFinalWhere = [
-            'company_id' => $companyId,
-            'parent_id'  => $id,
-            'type'       => 'final',
-        ];
-        if (!empty($excludeId)) {
-            $hasFinalWhere['id !='] = $excludeId;
-        }
         $hasFinal = (bool)$Invoices->find()
             ->select(['id'])
-            ->where($hasFinalWhere)
-            ->limit(1)->count();
+            ->where([
+                'company_id' => $companyId,
+                'parent_id' => $id,
+                'type' => 'final'
+            ])->limit(1)->count();
         $remaining = round(max(0.0, ((float)$p->total) - $sumAdvances), 2);
 
         // children list (advance/final) already issued for this offer
@@ -5848,30 +5197,6 @@ private function makeClient(string $environment): KsefClient
             return ['success' => false, 'error' => $dateError . ' Wysyłka do KSeF została zablokowana.'];
         }
 
-        // 1) Idempotencja: faktura już wysłana z numerem KSeF → zwróć istniejące dane.
-        // Reason: drugie kliknięcie / refresh + ponowny POST nie może uruchomić ponownej wysyłki
-        // i nadpisać ksef_number pustą wartością z błędu "duplikat".
-        $existingKsefNumber = trim((string)($invoice->ksef_number ?? ''));
-        $existingStatus     = trim((string)($invoice->workflow_status ?? ''));
-        if ($existingKsefNumber !== '' && $existingStatus === 'sent') {
-            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'idempotent_skip', [
-                'source'      => $source,
-                'message'     => 'Faktura już wysłana do KSeF — pomijam ponowną wysyłkę.',
-                'ksef_number' => $existingKsefNumber,
-            ]);
-            return [
-                'success' => true,
-                'result'  => [
-                    'ok'               => true,
-                    'statusCode'       => (string)($invoice->ksef_status ?? '200'),
-                    'statusDesc'       => (string)($invoice->ksef_desc ?? 'Faktura była już wysłana do KSeF.'),
-                    'ksefNumber'       => $existingKsefNumber,
-                    'sessionReference' => (string)($invoice->ksef_session_reference ?? ''),
-                    'invoiceReference' => (string)($invoice->ksef_invoice_reference ?? ''),
-                ],
-            ];
-        }
-
         try {
             $this->ensureInvoiceNumberForSend($invoice, $companyId);
         } catch (\Throwable $e) {
@@ -5882,57 +5207,8 @@ private function makeClient(string $environment): KsefClient
             return ['success' => false, 'error' => $e->getMessage()];
         }
 
-        // 2) Atomic check-and-set blokady wysyłki: tylko jeden proces na raz może wysyłać tę fakturę.
-        // Zwalniamy lock po 5 minutach na wypadek crashu PHP (timeout / fatal) — KSeF zwykle odpowiada w sekundach.
-        $conn = $this->Invoices->getConnection();
-        $lockStmt = $conn->execute(
-            "UPDATE invoices
-             SET workflow_status = 'sending', modified = NOW()
-             WHERE id = ?
-               AND (ksef_number IS NULL OR ksef_number = '')
-               AND (workflow_status IS NULL
-                    OR workflow_status NOT IN ('sent','sending')
-                    OR (workflow_status = 'sending' AND modified < (NOW() - INTERVAL 5 MINUTE)))",
-            [(string)$invoice->id]
-        );
-        $acquired = $lockStmt->rowCount() === 1;
-        if (!$acquired) {
-            // Re-fetch w celu sprawdzenia czy inny proces właśnie ukończył wysyłkę (race during this exact moment)
-            $fresh = $this->Invoices->find()
-                ->select(['id', 'workflow_status', 'ksef_number', 'ksef_status', 'ksef_desc', 'ksef_session_reference', 'ksef_invoice_reference'])
-                ->where(['id' => (string)$invoice->id])
-                ->first();
-            $freshKsefNumber = trim((string)($fresh->ksef_number ?? ''));
-            if ($freshKsefNumber !== '' && (string)($fresh->workflow_status ?? '') === 'sent') {
-                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'idempotent_skip', [
-                    'source'      => $source,
-                    'message'     => 'Faktura wysłana w międzyczasie — pomijam.',
-                    'ksef_number' => $freshKsefNumber,
-                ]);
-                return [
-                    'success' => true,
-                    'result'  => [
-                        'ok'               => true,
-                        'statusCode'       => (string)($fresh->ksef_status ?? '200'),
-                        'statusDesc'       => (string)($fresh->ksef_desc ?? 'Faktura była już wysłana do KSeF.'),
-                        'ksefNumber'       => $freshKsefNumber,
-                        'sessionReference' => (string)($fresh->ksef_session_reference ?? ''),
-                        'invoiceReference' => (string)($fresh->ksef_invoice_reference ?? ''),
-                    ],
-                ];
-            }
-            // Inny proces właśnie wysyła — odmów ponownego startu
-            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'lock_busy', [
-                'source'  => $source,
-                'message' => 'Wysyłka tej faktury jest już w toku przez inne żądanie.',
-            ]);
-            return [
-                'success' => false,
-                'error'   => 'Wysyłka tej faktury jest już w toku. Poczekaj chwilę i odśwież stronę.',
-            ];
-        }
-        // Lock przejęty — synchronizuj encję w pamięci (UPDATE zmienił bazę, ale obiekt jeszcze nie wie)
         $invoice->set('workflow_status', 'sending');
+        $this->Invoices->save($invoice);
 
         if (!is_string($xml) || trim($xml) === '') {
             try {
@@ -6000,26 +5276,10 @@ private function makeClient(string $environment): KsefClient
             $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
             $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
             $invoice->set('ksef_desc', trim($desc . $refs));
-
-            // 3) Nigdy nie nadpisuj niepustych pól KSeF wartością pustą.
-            // Reason: odpowiedź "duplikat" z KSeF zwraca brak ksefNumber/sessionReference — ale
-            // pierwsza udana wysyłka już wypełniła te pola. Nie wolno ich wyczyścić.
-            $newKsefNumber = (string)($res['ksefNumber'] ?? '');
-            $newSessionRef = (string)($res['sessionReference'] ?? '');
-            $newInvoiceRef = (string)($res['invoiceReference'] ?? '');
-            if ($newKsefNumber !== '') $invoice->set('ksef_number',            $newKsefNumber);
-            if ($newSessionRef !== '') $invoice->set('ksef_session_reference', $newSessionRef);
-            if ($newInvoiceRef !== '') $invoice->set('ksef_invoice_reference', $newInvoiceRef);
-
-            // workflow_status: 'sent' przy ok; przy błędzie NIE downgradujemy do 'error' jeśli mamy już ksef_number
-            // (oznacza, że wcześniejsza udana wysyłka istnieje — błąd dotyczy duplikatu / re-trya).
-            if (!empty($res['ok'])) {
-                $invoice->set('workflow_status', 'sent');
-            } elseif (!empty(trim((string)($invoice->ksef_number ?? '')))) {
-                $invoice->set('workflow_status', 'sent');
-            } else {
-                $invoice->set('workflow_status', 'error');
-            }
+            $invoice->set('ksef_number', (string)($res['ksefNumber'] ?? ''));
+            $invoice->set('ksef_session_reference', (string)($res['sessionReference'] ?? ''));
+            $invoice->set('ksef_invoice_reference', (string)($res['invoiceReference'] ?? ''));
+            $invoice->set('workflow_status', !empty($res['ok']) ? 'sent' : 'error');
             $invoice->set('planned_ksef_send_at', null);
             if (!empty($res['ok'])) {
                 // Zapisz hash dokładnie tych bajtów XML, które trafiły do KSeF – potrzebny do QR kodu.
@@ -6050,21 +5310,8 @@ private function makeClient(string $environment): KsefClient
                 'result' => $res,
             ];
         } catch (\Throwable $e) {
-            // Nie downgraduj 'sent' do 'error' jeśli mamy już ksef_number (re-fetch zabezpiecza
-            // przed wyścigiem z innym wątkiem, który właśnie zapisał sukces).
-            $reload = $this->Invoices->find()
-                ->select(['id', 'ksef_number', 'workflow_status'])
-                ->where(['id' => (string)$invoice->id])
-                ->first();
-            $hasKsefNumber = !empty(trim((string)($reload->ksef_number ?? $invoice->ksef_number ?? '')));
-            if (!$hasKsefNumber) {
-                $invoice->set('workflow_status', 'error');
-                $this->Invoices->save($invoice);
-            } else {
-                // Zostaw status 'sent' jeżeli istnieje numer KSeF — błąd to retry/duplikat
-                $invoice->set('workflow_status', 'sent');
-                $this->Invoices->save($invoice);
-            }
+            $invoice->set('workflow_status', 'error');
+            $this->Invoices->save($invoice);
             $ksefContext = null;
             if (property_exists($e, 'context') && $e->context !== null) {
                 try { $ksefContext = json_decode(json_encode($e->context), true); } catch (\Throwable) {}
@@ -6102,105 +5349,6 @@ private function makeClient(string $environment): KsefClient
             }
             $errorMsg = $ksefMessage ?: get_class($e);
             return ['success' => false, 'error' => 'Błąd wysyłki do KSeF (' . $httpCode . '): ' . $errorMsg];
-        }
-    }
-
-    /**
-     * GET /invoices/preview-ksef-number/{id}
-     * Zwraca podgląd numeru który zostanie nadany fakturze przy wysyłce do KSeF — bez zapisu.
-     */
-    public function previewKsefNumber(string $id)
-    {
-        $this->request->allowMethod(['get']);
-        $identity  = $this->getRequest()->getAttribute('identity');
-        $companyId = (string)($identity?->get('company_id') ?? '');
-
-        $invoice = $this->Invoices->find()
-            ->select(['id', 'fullnumber', 'number', 'invoice_series_id', 'date', 'type', 'company_id'])
-            ->where(['id' => $id, 'company_id' => $companyId])
-            ->first();
-
-        if (!$invoice) {
-            return $this->response->withStatus(404)->withType('application/json')
-                ->withStringBody(json_encode(['success' => false, 'error' => 'Nie znaleziono faktury.']));
-        }
-
-        // Jeśli numer już nadany — zwróć go od razu
-        $fullnumber = trim((string)($invoice->fullnumber ?? ''));
-        if ($fullnumber !== '') {
-            return $this->response->withType('application/json')
-                ->withStringBody(json_encode(['success' => true, 'fullnumber' => $fullnumber, 'already_assigned' => true]));
-        }
-
-        // Oblicz przewidywany numer — bez zapisu
-        try {
-            $seriesId = (string)($invoice->invoice_series_id ?? '');
-            if ($seriesId === '') {
-                throw new \RuntimeException('Brak przypisanej serii numeracji.');
-            }
-
-            $issueDateRaw = $invoice->date;
-            $issueDate = is_object($issueDateRaw) && method_exists($issueDateRaw, 'format')
-                ? $issueDateRaw->format('Y-m-d')
-                : (string)$issueDateRaw;
-            if ($issueDate === '') {
-                $issueDate = date('Y-m-d');
-            }
-
-            $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-            $series = $InvoiceSeries->find()
-                ->contain(['InvoiceSeriesPeriods'])
-                ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
-                ->first();
-            if (!$series) {
-                throw new \RuntimeException('Nie znaleziono serii numeracji.');
-            }
-
-            $dateObject = new \DateTimeImmutable($issueDate);
-            $year  = (int)$dateObject->format('Y');
-            $month = (int)$dateObject->format('m');
-
-            $where = [
-                'company_id'        => $companyId,
-                'invoice_series_id' => $series->id,
-                'fullnumber IS NOT' => null,
-                'id !='             => $invoice->id,
-            ];
-
-            $periodName = (string)($series->invoice_series_period->name ?? '');
-            if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
-                $where['year']  = $year;
-                $where['month'] = $month;
-            } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
-                $where['year'] = $year;
-            }
-
-            $lastInvoice = $this->Invoices->find()
-                ->where($where)
-                ->order(['number' => 'DESC', 'id' => 'DESC'])
-                ->first();
-
-            // override_next_number — tylko odczyt, bez kasowania
-            $overrideNext = $series->override_next_number ?? null;
-            if ($overrideNext !== null && (int)$overrideNext > 0) {
-                $nextNumber = (int)$overrideNext;
-            } elseif ($lastInvoice) {
-                $extractedNumber = !empty($lastInvoice->number)
-                    ? (int)$lastInvoice->number
-                    : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
-                $nextNumber = $extractedNumber + 1;
-            } else {
-                $nextNumber = (int)($series->starting_number ?: 1);
-            }
-
-            $template   = (string)($series->series_template ?: '[numer]');
-            $fullnumber = $this->formatInvoicePattern($template, $nextNumber, $issueDate);
-
-            return $this->response->withType('application/json')
-                ->withStringBody(json_encode(['success' => true, 'fullnumber' => $fullnumber, 'already_assigned' => false]));
-        } catch (\Throwable $e) {
-            return $this->response->withStatus(400)->withType('application/json')
-                ->withStringBody(json_encode(['success' => false, 'error' => $e->getMessage()]));
         }
     }
 
@@ -6416,7 +5564,6 @@ private function makeClient(string $environment): KsefClient
             try {
                 $mailer = new \Cake\Mailer\Mailer('default');
                 $mailer->setTo($entry->email);
-                $mailer->addBcc('k@3ck.pl');
                 $mailer->setSubject($subject);
                 $mailer->setEmailFormat('html');
                 $mailer->setAttachments([
@@ -6433,11 +5580,6 @@ private function makeClient(string $environment): KsefClient
                 $entry->status  = 'sent';
                 $entry->sent_at = new \DateTimeImmutable();
                 $Queue->save($entry);
-
-                $this->Invoices->updateAll(
-                    ['email_sent_at' => new \DateTimeImmutable()],
-                    ['id' => $entry->invoice_id]
-                );
 
                 $results['sent']++;
                 $results['details'][] = ['number' => $fullnumber, 'to' => $entry->email];
@@ -6806,41 +5948,11 @@ private function makeClient(string $environment): KsefClient
         $buyer  = $inv->invoice_contractor ?? null;
         $items  = (array)($inv->invoice_contents ?? []);
 
-        // Dla ROZ: zastąp pozycje faktury pozycjami proformy (pełne wartości zamówienia/umowy).
-        // Wymóg XSD FaWiersz: „W przypadku faktur art. 106f ust. 3 należy wykazać pełne wartości
-        // zamówienia lub umowy." P_15 pozostaje jako kwota pozostała = suma oryginalnych invoice_contents.
-        $rozP15Override = null; // kwota pozostała do zapłaty (przed podmianą $items)
-        if ($this->resolveRodzajFaktury($inv) === 'ROZ' && !empty($inv->parent_id)) {
-            // Zapamiętaj sumę brutto z oryginalnych pozycji faktury (= kwota pozostała) PRZED podmianą
-            $rozP15Override = array_sum(array_map(
-                fn($it) => (float)($it->brutto ?? $it['brutto'] ?? 0),
-                $items
-            ));
-            if ($rozP15Override <= 0.0) {
-                $rozP15Override = (float)($inv->total ?? 0);
-            }
-
-            $proformaForRoz = $this->fetchTable('Invoices')->find()
-                ->where(['id' => $inv->parent_id])
-                ->contain(['InvoiceContents' => ['Vats']])
-                ->first();
-            if ($proformaForRoz && !empty($proformaForRoz->invoice_contents)) {
-                $items = (array)$proformaForRoz->invoice_contents;
-            } else {
-                $rozP15Override = null; // brak proformy – nie podmieniamy
-            }
-        }
-
         $issueDate   = $inv->date ? $inv->date->format('Y-m-d') : date('Y-m-d');
         $soldDate    = $inv->sold_date ? $inv->sold_date->format('Y-m-d') : null;
         $isDraftInv  = ((string)($inv->workflow_status ?? '')) === 'draft';
         $number      = $isDraftInv
-            ? $this->generateDraftNumber(
-                (string)($inv->invoice_series_id ?? ''),
-                (string)$inv->id,
-                $issueDate,
-                (string)($inv->company_id ?? '')
-              )
+            ? ((string)$inv->id) . ' - robocza'
             : (string)($inv->fullnumber ?? $inv->id);
         $currency    = strtoupper((string)($inv->currency ?? 'PLN'));
         $placeIssued = trim((string)($inv->place_of_issue ?? $seller?->city ?? ''));
@@ -6858,15 +5970,12 @@ private function makeClient(string $environment): KsefClient
         $xml = array_merge($xml, $this->buildSellerXml($seller, $inv));
         $xml = array_merge($xml, $this->buildBuyerXml($buyer, $inv));
 
-        // Podmiot3 — odbiorca (opcjonalny, przed PodmiotUpowazniony wg XSD FA3)
-        $xml = array_merge($xml, $this->buildRecipientXml($inv));
-
-        // PodmiotUpowazniony — optional, after Podmiot3
+        // PodmiotUpowazniony — optional, after Podmiot2
         $xml = array_merge($xml, $this->buildPodmiotUpowaznionyXml($inv));
 
         $xml = array_merge(
             $xml,
-            $this->buildFaXml($inv, $items, $currency, $issueDate, $soldDate, $placeIssued, $number, $rozP15Override)
+            $this->buildFaXml($inv, $items, $currency, $issueDate, $soldDate, $placeIssued, $number)
         );
 
         // Stopka (footer)
@@ -7120,10 +6229,8 @@ private function makeClient(string $environment): KsefClient
         $buyerName   = trim((string)($buyer->name ?? ''));
         $countryCode = $this->normalizeCountryCode((string)($buyer->country ?? ''));
 
-        // Identyfikatory międzynarodowe z invoice_contractors snapshot.
-        // "NONE" to marker z katalogu kontrahentów oznaczający "Brak (spoza UE)" — traktujemy jak puste.
+        // Identyfikatory międzynarodowe z invoice_contractors snapshot
         $buyerVatPrefix  = trim((string)($buyer->vat_prefix ?? ''));
-        if (strtoupper($buyerVatPrefix) === 'NONE') { $buyerVatPrefix = ''; }
         $buyerVatEu      = trim((string)($buyer->vat_eu ?? ''));
         $buyerTaxIdOther = trim((string)($buyer->tax_id_other ?? ''));
         $buyerTaxIdOtherCountry = strtoupper(trim((string)($buyer->tax_id_other_country ?? '')));
@@ -7144,14 +6251,8 @@ private function makeClient(string $environment): KsefClient
         $xml[] = '    <DaneIdentyfikacyjne>';
         if ($buyerVatEu !== '') {
             // VAT UE: KodUE + NrVatUE
-            $kodUE = $buyerVatPrefix !== '' ? $buyerVatPrefix : ($countryCode !== 'PL' ? $countryCode : '');
-            // Jeśli NrVatUE zaczyna się od kodu kraju (np. "FR00951228071"), odetnij prefix
-            $nrVatUE = $buyerVatEu;
-            if ($kodUE !== '' && strncasecmp($nrVatUE, $kodUE, strlen($kodUE)) === 0) {
-                $nrVatUE = substr($nrVatUE, strlen($kodUE));
-            }
-            $xml[] = '      <KodUE>' . $this->esc($kodUE) . '</KodUE>';
-            $xml[] = '      <NrVatUE>' . $this->esc($nrVatUE) . '</NrVatUE>';
+            $xml[] = '      <KodUE>' . $this->esc($buyerVatPrefix !== '' ? $buyerVatPrefix : ($countryCode !== 'PL' ? $countryCode : '')) . '</KodUE>';
+            $xml[] = '      <NrVatUE>' . $this->esc($buyerVatEu) . '</NrVatUE>';
         } elseif ($buyerTaxIdOther !== '') {
             // Inny identyfikator: opcjonalny KodKraju + NrID
             if ($buyerTaxIdOtherCountry !== '') {
@@ -7396,8 +6497,7 @@ private function buildFaXml(
     string $issueDate,
     ?string $soldDate,
     string $placeIssued,
-    string $number,
-    ?float $rozP15Override = null
+    string $number
 ): array {
     $xml = [];
 
@@ -7421,25 +6521,8 @@ private function buildFaXml(
         $xml[] = '    <WZ>' . $this->esc((string)$inv->wz_number) . '</WZ>';
     }
 
-    // P_6 – data dostawy/usługi lub data otrzymania zapłaty (ZAL: advance_received_date)
-    // Dla ZAL/KOR_ZAL P_6 = data otrzymania zaliczki (art. 106b ust. 1 pkt 4 ustawy)
-    if (in_array($rodzaj, ['ZAL', 'KOR_ZAL'], true)) {
-        $advRecDate = $inv->advance_received_date;
-        if ($advRecDate instanceof \DateTimeInterface) {
-            $p6 = $advRecDate->format('Y-m-d');
-        } elseif (!empty($advRecDate) && is_object($advRecDate) && method_exists($advRecDate, 'format')) {
-            // FrozenDate (Chronos 2.x) nie implementuje \DateTimeInterface bezpośrednio,
-            // ale ma metodę format() — użyj jej zamiast (string) który zwraca locale-zależny format
-            $p6 = $advRecDate->format('Y-m-d');
-        } elseif (!empty($advRecDate)) {
-            $str = (string)$advRecDate;
-            // akceptuj tylko Y-m-d; każdy inny format (np. DD.MM.YYYY z locale) → fallback
-            $p6 = preg_match('/^\d{4}-\d{2}-\d{2}/', $str) ? substr($str, 0, 10) : ($soldDate ?? $issueDate);
-        } else {
-            $p6 = $soldDate ?? $issueDate;
-        }
-        $xml[] = '    <P_6>' . $this->esc($p6) . '</P_6>';
-    } elseif ($soldDate !== null && $soldDate !== $issueDate) {
+    // P_6 – wspólna data dostawy/usługi, jeśli różna od daty wystawienia
+    if ($soldDate !== null && $soldDate !== $issueDate) {
         $xml[] = '    <P_6>' . $this->esc($soldDate) . '</P_6>';
     }
 
@@ -7460,15 +6543,13 @@ private function buildFaXml(
         $xml[] = '    </OkresFa>';
     }
 
-    // VAT summary: P_13/P_14 per stawkę.
-    // Dla ROZ: proporcjonalny podział P_15 (kwota pozostała) across stawek proformy.
-    // Dla ZAL/zwykłych: suma z pozycji.
-[$vatSummaryXml, $sumGross] = $this->buildVatSummaryXml($inv, $items, $rozP15Override);
+    // VAT summary: P_13_1..P_13_3 & P_14_1..P_14_3 liczone z pozycji
+    // VAT summary
+[$vatSummaryXml, $sumGross] = $this->buildVatSummaryXml($inv, $items);
 $xml = array_merge($xml, $vatSummaryXml);
 
-// P_15 — dla ROZ: kwota pozostała do zapłaty (oryginalne pozycje faktury), nie suma proformy
-$p15Value = ($rozP15Override !== null) ? $rozP15Override : $sumGross;
-$xml[] = '    <P_15>' . $this->fmtAmount($p15Value) . '</P_15>';
+// P_15
+$xml[] = '    <P_15>' . $this->fmtAmount($sumGross) . '</P_15>';
 
 // KursWalutyZ – jak miałeś
 if (!empty($inv->currency_exchange) && $currency !== 'PLN') {
@@ -7481,19 +6562,10 @@ $xml = array_merge($xml, $this->buildAnnotationsXml($inv, $items));
 // ✅ potem RodzajFaktury
 $xml[] = '    <RodzajFaktury>' . $rodzaj . '</RodzajFaktury>';
 
-// DataOtrzym — nie istnieje w schemacie FA(3); data otrzymania zaliczki idzie jako P_6 (powyżej)
-
 // ✅ dopiero teraz sekcja korekty (TypKorekty, DaneFaKorygowanej, itd.)
 if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
     $xml = array_merge($xml, $this->buildCorrectionHeaderXml($inv, $rodzaj));
 }
-
-    // FP – faktura do paragonu (art. 109 ust. 3d ustawy)
-    // XSD: <FP type="TWybor1" minOccurs="0"/> — wartość "1" gdy faktura wystawiona do paragonu fiskalnego.
-    // Pozycja w sekwencji Fa: po sekcji korekty, przed <TP>.
-    if (!empty($inv->is_receipt_invoice)) {
-        $xml[] = '    <FP>1</FP>';
-    }
 
     // TP – powiązania między nabywcą a sprzedawcą
     // XSD sequence: ...korekta → (ZaliczkaCzesciowa) → (FP) → TP → DodatkowyOpis → FakturaZaliczkowa → ZwrotAkcyzy → FaWiersz
@@ -7545,9 +6617,8 @@ if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
  *  - correction_reason          (string|null)     – opis przyczyny korekty
  *  - correction_type            (string|int|null) – "1", "2", "3" wg dokumentacji (typ skutku korekty)
  *  - original_issue_date        (\DateTimeInterface|null) – data wystawienia faktury pierwotnej
- *  - original_number            (string|null)     – numer faktury pierwotnej (NrFaKorygowanej, błędny gdy korygujemy numer)
+ *  - original_number            (string|null)     – numer faktury pierwotnej
  *  - original_ksef_number       (string|null)     – numer KSeF faktury pierwotnej (jeśli była w KSeF)
- *  - corrected_invoice_number   (string|null)     – NrFaKorygowany – poprawny numer faktury (tylko gdy przyczyną korekty jest błędny numer)
  *  - p_15zk                     (float|null)      – P_15ZK – kwota przed korektą (zaliczka / pozostała do zapłaty)
  *  - currency_rate_before_corr  (float|null)      – KursWalutyZK – kurs przed korektą (dla zaliczek w walucie)
  */
@@ -7633,13 +6704,6 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     //     $xml[] = '    </OkresFaKorygowanej>';
     // }
 
-    // 4.5) NrFaKorygowany – poprawny numer faktury, gdy przyczyną korekty jest błędny numer.
-    // Per XSD FA(3) sequence: po DaneFaKorygowanej i OkresFaKorygowanej, przed Podmiot1K.
-    // Per broszura linie 2728-2737: pole opcjonalne; emitujemy TYLKO gdy wypełnione.
-    if (!empty($inv->corrected_invoice_number)) {
-        $xml[] = '    <NrFaKorygowany>' . $this->esc((string)$inv->corrected_invoice_number) . '</NrFaKorygowany>';
-    }
-
     // 5) P_15ZK – kwota przed korektą dla zaliczek / rozliczeniowych
     //    - przy korektach faktur zaliczkowych – kwota zapłaty przed korektą
     //    - przy korektach faktur "ROZ" – kwota pozostała do zapłaty przed korektą
@@ -7675,39 +6739,6 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             $xml[] = '    </DodatkowyOpis>';
         }
 
-        // Faktura do paragonu (FP) — dodaj dane paragonu jeśli istnieją.
-        // FA(3) nie ma dedykowanych elementów NrParagonu/DataParagonu,
-        // dlatego per broszura (Przykład 17) używamy DodatkowyOpis (klucz-wartość).
-        if (!empty($inv->is_receipt_invoice)) {
-            $receiptNumber = trim((string)($inv->receipt_number ?? ''));
-            if ($receiptNumber !== '') {
-                $xml[] = '    <DodatkowyOpis>';
-                $xml[] = '      <Klucz>' . $this->esc('Numer paragonu') . '</Klucz>';
-                $xml[] = '      <Wartosc>' . $this->esc($receiptNumber) . '</Wartosc>';
-                $xml[] = '    </DodatkowyOpis>';
-            }
-            $receiptDateRaw = $inv->receipt_date ?? null;
-            $receiptDateStr = '';
-            if ($receiptDateRaw !== null && $receiptDateRaw !== '') {
-                if (is_object($receiptDateRaw) && method_exists($receiptDateRaw, 'format')) {
-                    $receiptDateStr = $receiptDateRaw->format('Y-m-d');
-                } else {
-                    $s = (string)$receiptDateRaw;
-                    if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})/', $s, $m)) {
-                        $receiptDateStr = "{$m[3]}-{$m[2]}-{$m[1]}";
-                    } elseif (preg_match('/^\d{4}-\d{2}-\d{2}/', $s)) {
-                        $receiptDateStr = substr($s, 0, 10);
-                    }
-                }
-            }
-            if ($receiptDateStr !== '') {
-                $xml[] = '    <DodatkowyOpis>';
-                $xml[] = '      <Klucz>' . $this->esc('Data paragonu') . '</Klucz>';
-                $xml[] = '      <Wartosc>' . $this->esc($receiptDateStr) . '</Wartosc>';
-                $xml[] = '    </DodatkowyOpis>';
-            }
-        }
-
         $descriptions = (array)($inv->invoice_additional_descriptions ?? []);
         foreach ($descriptions as $desc) {
             $klucz  = trim((string)($desc->klucz ?? $desc['klucz'] ?? ''));
@@ -7741,79 +6772,38 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             return $xml;
         }
 
-        $companyId    = $inv->company_id;
-        $InvTable     = $this->fetchTable('Invoices');
-        $collected    = [];
-        $seenIds      = [];
-
-        $addResults = function (array $rows) use (&$collected, &$seenIds): void {
-            foreach ($rows as $row) {
-                $rid = (string)$row->id;
-                if (!isset($seenIds[$rid])) {
-                    $seenIds[$rid] = true;
-                    $collected[]   = $row;
-                }
-            }
-        };
-
-        // Typy DB odpowiadające ZAL (bieżący + legacy)
-        $advanceTypes = ['advance', 'zaliczkowa'];
-
-        // Strategia 1: Faktury zaliczkowe powiązane z tą samą proformą (parent_id = proforma.id)
-        if (!empty($inv->parent_id)) {
-            $addResults($InvTable->find()
-                ->where([
-                    'parent_id'  => $inv->parent_id,
-                    'id !='      => $inv->id,
-                    'type IN'    => $advanceTypes,
-                    'company_id' => $companyId,
-                ])
-                ->orderAsc('date')
-                ->all()->toArray()
-            );
-        }
-
-        // Strategia 2: Faktury zaliczkowe, które mają ROZ jako bezpośredniego rodzica
-        // (rzadszy schemat danych, ale możliwy jeśli invoice.parent_id = null lub inny)
-        $addResults($InvTable->find()
+        // Szukamy powiązanych faktur zaliczkowych — albo przez parent_id, albo inv jest parentem
+        $parentId = $inv->parent_id ?: $inv->id;
+        $advances = $this->fetchTable('Invoices')->find()
             ->where([
-                'parent_id'  => $inv->id,
-                'type IN'    => $advanceTypes,
-                'company_id' => $companyId,
+                'Invoices.parent_id' => $parentId,
+                'Invoices.id !=' => $inv->id,
+                'Invoices.type IN' => ['advance', 'ZAL'],
             ])
-            ->orderAsc('date')
-            ->all()->toArray()
-        );
+            ->orderAsc('Invoices.date')
+            ->all()
+            ->toArray();
 
-        // Sortuj po dacie (łączny wynik obu strategii)
-        usort($collected, fn($a, $b) => strcmp((string)($a->date ?? ''), (string)($b->date ?? '')));
-
-        foreach ($collected as $adv) {
-            $advKsef   = trim((string)($adv->ksef_number ?? ''));
-            $advNumber = trim((string)($adv->fullnumber  ?? ''));
-
-            // Dla szkiców bez numeru: użyj ID jako zastępczego numeru (jak przy P_2 dla draftu)
-            if ($advNumber === '' && $advKsef === '') {
-                $isDraftAdv = ((string)($adv->workflow_status ?? '')) === 'draft';
-                if ($isDraftAdv) {
-                    $advNumber = (string)$adv->id . ' - robocza';
-                }
-            }
+        foreach ($advances as $adv) {
+            $advKsef = trim((string)($adv->ksef_number ?? ''));
 
             // XSD choice: albo NrKSeFFaZaliczkowej (KSeF), albo NrKSeFZN + NrFaZaliczkowej (poza KSeF)
             if ($advKsef !== '') {
-                // Faktura zaliczkowa wystawiona w KSeF — użyj numeru KSeF
+                // Faktura zaliczkowa wystawiona w KSeF
                 $xml[] = '    <FakturaZaliczkowa>';
                 $xml[] = '      <NrKSeFFaZaliczkowej>' . $this->esc($advKsef) . '</NrKSeFFaZaliczkowej>';
                 $xml[] = '    </FakturaZaliczkowa>';
-            } elseif ($advNumber !== '') {
-                // Faktura zaliczkowa wystawiona poza KSeF (lub szkic)
+            } else {
+                // Faktura zaliczkowa wystawiona poza KSeF
+                $advNumber = trim((string)($adv->fullnumber ?? ''));
+                if ($advNumber === '') {
+                    continue;
+                }
                 $xml[] = '    <FakturaZaliczkowa>';
                 $xml[] = '      <NrKSeFZN>1</NrKSeFZN>';
                 $xml[] = '      <NrFaZaliczkowej>' . $this->esc($advNumber) . '</NrFaZaliczkowej>';
                 $xml[] = '    </FakturaZaliczkowa>';
             }
-            // Jeśli nie draft i brak numeru — pomijamy (nie powinno się zdarzyć dla wydanych faktur)
         }
 
         return $xml;
@@ -7822,38 +6812,13 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
     // ======================== VAT SUMMARY (P_13_x / P_14_x) ========================
 
-    /** Mapuje stawkę VAT (float) + nazwę na klucz grupy zgodny z TStawkaPodatku FA(3). */
-    private function rateToGrpKey(float $rate, string $vatName): string
-    {
-        if ($rate >= 22.5)  return '23';
-        if ($rate >= 7.5)   return '8';
-        if ($rate >= 4.5)   return '5';
-        if ($rate > 0)      return (string)(int)$rate;
-        if (str_starts_with($vatName, 'zw'))                                    return 'zw';
-        if (str_starts_with($vatName, 'oo'))                                    return 'oo';
-        if (str_contains($vatName, 'wdt'))                                      return '0wdt';
-        if (str_contains($vatName, 'exp') || str_contains($vatName, 'eks'))     return '0ex';
-        // "nie podl. spoza UE" → np I (P_13_8: poza terytorium kraju, nabywca spoza UE)
-        if (str_contains($vatName, 'spoza'))                                    return 'np_i';
-        // "nie podl. UE" → np II (P_13_9: wewnątrzwspólnotowe usługi, art. 100 ust. 1 pkt 4)
-        if (str_contains($vatName, 'ue'))                                       return 'np_ii';
-        // "nie podl." bez kwalifikatora → np I (default poza terytorium kraju)
-        if (str_contains($vatName, 'nie podl'))                                 return 'np_i';
-        if (str_starts_with($vatName, 'np'))                                    return 'np_i';
-        return '0kr';
-    }
-
-    private function buildVatSummaryXml(Invoice $inv, array $items, ?float $rozP15Override = null): array
+    private function buildVatSummaryXml(Invoice $inv, array $items): array
 {
     $xml    = [];
     $rodzaj = $this->resolveRodzajFaktury($inv);
 
-    $currency          = strtoupper((string)($inv->currency ?? 'PLN'));
-    $currencyExchange  = (float)($inv->currency_exchange ?? 1.0);
-    $isForeignCurrency = $currency !== 'PLN' && $currencyExchange > 0.0001;
-
     // ======================
-    // 1) ZWYKŁE FAKTURY + ZAL + ROZ
+    // 1) ZWYKŁE FAKTURY
     // ======================
     if (!in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
         // Grupy zgodnie z TStawkaPodatku FA(3)
@@ -7872,96 +6837,64 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
         $sumGross = 0.0;
 
-        // Dla ROZ: P_13/P_14 = proporcjonalny podział P_15 (kwota pozostała) per stawkę proformy.
-        // FaWiersz pokazuje pełne wartości zamówienia, ale P_13/P_14 odzwierciedlają tylko pozostałą część.
-        if ($rodzaj === 'ROZ' && $rozP15Override !== null && $rozP15Override > 0.0) {
-            // Zsumuj brutto proformy per stawkę
-            $proformaBruttoPerGrp = [];
-            $proformaBruttoTotal  = 0.0;
-            foreach ($items as $it) {
-                $rate    = isset($it->vat) ? (float)$it->vat->rate : 0.0;
-                $vatName = strtolower(trim((string)($it->vat->name ?? '')));
-                $gross   = (float)($it->brutto ?? 0.0);
-                $grpKey  = $this->rateToGrpKey($rate, $vatName);
-                $proformaBruttoPerGrp[$grpKey] = ($proformaBruttoPerGrp[$grpKey] ?? 0.0) + $gross;
-                $proformaBruttoTotal += $gross;
-            }
-
-            if ($proformaBruttoTotal > 0.0) {
-                $remaining = $rozP15Override;
-                $keys = array_keys($proformaBruttoPerGrp);
-                foreach ($keys as $idx => $grpKey) {
-                    $isLast     = ($idx === count($keys) - 1);
-                    $splitGross = $isLast
-                        ? round($remaining, 2)
-                        : round($rozP15Override * ($proformaBruttoPerGrp[$grpKey] / $proformaBruttoTotal), 2);
-                    $remaining -= $splitGross;
-
-                    // Wyznacz rate z klucza (np. '23', '8', '5', lub fallback numeryczny)
-                    $splitRate = match(true) {
-                        $grpKey === '23'    => 23.0,
-                        $grpKey === '8'     => 8.0,
-                        $grpKey === '5'     => 5.0,
-                        is_numeric($grpKey) => (float)$grpKey,
-                        default             => 0.0,
-                    };
-                    $splitNet = $splitRate > 0 ? round($splitGross / (1 + $splitRate / 100), 2) : round($splitGross, 2);
-                    $splitVat = round($splitGross - $splitNet, 2);
-
-                    if (!isset($grp[$grpKey])) {
-                        $grp[$grpKey] = ['net' => 0.0, 'vat' => 0.0];
-                    }
-                    $grp[$grpKey]['net'] += $splitNet;
-                    $grp[$grpKey]['vat'] += $splitVat;
-                    $sumGross += $splitGross;
-                }
-            } else {
-                $sumGross = $rozP15Override;
-            }
-        } else {
-            // ZAL / zwykłe: sumuj bezpośrednio z pozycji
         foreach ($items as $it) {
-            $rate    = isset($it->vat) ? (float)$it->vat->rate : 0.0;
-            $vatName = strtolower(trim((string)($it->vat->name ?? '')));
-            $net     = (float)($it->netto  ?? 0.0);
-            $gross   = (float)($it->brutto ?? 0.0);
-            $vat     = (float)($it->vat_amount ?? max(0.0, $gross - $net));
+            $rate     = isset($it->vat) ? (float)$it->vat->rate : 0.0;
+            $vatName  = strtolower(trim((string)($it->vat->name ?? '')));
+            $net      = (float)($it->netto ?? 0.0);
+            $vat      = (float)($it->vat_amount ?? max(0.0, $rate * $net / 100.0));
+            $gross    = (float)($it->brutto ?? ($net + $vat));
 
-            $gk = $this->rateToGrpKey($rate, $vatName);
-            if (!isset($grp[$gk])) {
-                $grp[$gk] = ['net' => 0.0, 'vat' => 0.0];
+            if ($rate >= 22.5) {
+                $grp['23']['net'] += $net;
+                $grp['23']['vat'] += $vat;
+            } elseif ($rate >= 7.5) {
+                $grp['8']['net']  += $net;
+                $grp['8']['vat']  += $vat;
+            } elseif ($rate >= 4.5) {
+                $grp['5']['net']  += $net;
+                $grp['5']['vat']  += $vat;
+            } elseif (str_starts_with($vatName, 'zw')) {
+                $grp['zw']['net'] += $net;
+            } elseif (str_contains($vatName, 'wdt')) {
+                $grp['0wdt']['net'] += $net;
+            } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
+                $grp['0ex']['net'] += $net;
+            } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+                // niepodlegające UE / art. 100 ust. 1 pkt 4 → np II → P_13_9
+                $grp['np_ii']['net'] += $net;
+            } elseif (str_starts_with($vatName, 'np')) {
+                // niepodlegające krajowe/poza PL → np I → P_13_8
+                $grp['np_i']['net'] += $net;
+            } elseif (str_starts_with($vatName, 'oo')) {
+                // odwrotne obciążenie → P_13_10
+                $grp['oo']['net'] += $net;
+            } else {
+                // 0% krajowe
+                $grp['0kr']['net'] += $net;
             }
-            $grp[$gk]['net'] += $net;
-            $grp[$gk]['vat'] += $vat;
+
             $sumGross += $gross;
         }
-        } // end else (ZAL/zwykłe)
 
         // P_13_1 / P_14_1 – stawka podstawowa 23/22%
         if ($grp['23']['net'] !== 0.0) {
             $xml[] = '    <P_13_1>' . $this->fmtAmount($grp['23']['net']) . '</P_13_1>';
             $xml[] = '    <P_14_1>' . $this->fmtAmount($grp['23']['vat']) . '</P_14_1>';
-            if ($isForeignCurrency) {
-                $xml[] = '    <P_14_1W>' . $this->fmtAmount(round($grp['23']['vat'] * $currencyExchange, 2)) . '</P_14_1W>';
-            }
+            // P_14_1W – VAT w PLN przy fakturach walutowych – można dodać osobno.
         }
 
         // P_13_2 / P_14_2 – stawka 8/7%
         if ($grp['8']['net'] !== 0.0) {
             $xml[] = '    <P_13_2>' . $this->fmtAmount($grp['8']['net']) . '</P_13_2>';
             $xml[] = '    <P_14_2>' . $this->fmtAmount($grp['8']['vat']) . '</P_14_2>';
-            if ($isForeignCurrency) {
-                $xml[] = '    <P_14_2W>' . $this->fmtAmount(round($grp['8']['vat'] * $currencyExchange, 2)) . '</P_14_2W>';
-            }
+            // P_14_2W – VAT w PLN przy fakturach walutowych – opcja.
         }
 
         // P_13_3 / P_14_3 – stawka 5%
         if ($grp['5']['net'] !== 0.0) {
             $xml[] = '    <P_13_3>' . $this->fmtAmount($grp['5']['net']) . '</P_13_3>';
             $xml[] = '    <P_14_3>' . $this->fmtAmount($grp['5']['vat']) . '</P_14_3>';
-            if ($isForeignCurrency) {
-                $xml[] = '    <P_14_3W>' . $this->fmtAmount(round($grp['5']['vat'] * $currencyExchange, 2)) . '</P_14_3W>';
-            }
+            // P_14_3W – VAT w PLN przy fakturach walutowych – opcja.
         }
 
         // P_13_4 / P_14_4 / P_14_4W – ryczałt dla taksówek osobowych
@@ -8055,12 +6988,8 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             $grpBefore['0wdt']['net']  += $net;
         } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
             $grpBefore['0ex']['net']   += $net;
-        } elseif (str_contains($vatName, 'spoza')) {
-            $grpBefore['np_i']['net']  += $net;
-        } elseif (str_contains($vatName, 'ue')) {
+        } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
             $grpBefore['np_ii']['net'] += $net;
-        } elseif (str_contains($vatName, 'nie podl')) {
-            $grpBefore['np_i']['net']  += $net;
         } elseif (str_starts_with($vatName, 'np')) {
             $grpBefore['np_i']['net']  += $net;
         } elseif (str_starts_with($vatName, 'oo')) {
@@ -8092,12 +7021,8 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             $grpAfter['0wdt']['net']  += $net;
         } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
             $grpAfter['0ex']['net']   += $net;
-        } elseif (str_contains($vatName, 'spoza')) {
-            $grpAfter['np_i']['net']  += $net;
-        } elseif (str_contains($vatName, 'ue')) {
+        } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
             $grpAfter['np_ii']['net'] += $net;
-        } elseif (str_contains($vatName, 'nie podl')) {
-            $grpAfter['np_i']['net']  += $net;
         } elseif (str_starts_with($vatName, 'np')) {
             $grpAfter['np_i']['net']  += $net;
         } elseif (str_starts_with($vatName, 'oo')) {
@@ -8127,23 +7052,14 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     if ($d23net !== 0.0) {
         $xml[] = '    <P_13_1>' . $this->fmtAmount($d23net) . '</P_13_1>';
         $xml[] = '    <P_14_1>' . $this->fmtAmount($d23vat) . '</P_14_1>';
-        if ($isForeignCurrency) {
-            $xml[] = '    <P_14_1W>' . $this->fmtAmount(round($d23vat * $currencyExchange, 2)) . '</P_14_1W>';
-        }
     }
     if ($d8net !== 0.0) {
         $xml[] = '    <P_13_2>' . $this->fmtAmount($d8net) . '</P_13_2>';
         $xml[] = '    <P_14_2>' . $this->fmtAmount($d8vat) . '</P_14_2>';
-        if ($isForeignCurrency) {
-            $xml[] = '    <P_14_2W>' . $this->fmtAmount(round($d8vat * $currencyExchange, 2)) . '</P_14_2W>';
-        }
     }
     if ($d5net !== 0.0) {
         $xml[] = '    <P_13_3>' . $this->fmtAmount($d5net) . '</P_13_3>';
         $xml[] = '    <P_14_3>' . $this->fmtAmount($d5vat) . '</P_14_3>';
-        if ($isForeignCurrency) {
-            $xml[] = '    <P_14_3W>' . $this->fmtAmount(round($d5vat * $currencyExchange, 2)) . '</P_14_3W>';
-        }
     }
 
     $sumGrossDiff = $sumGrossAfter - $sumGrossBefore;
@@ -8452,10 +7368,9 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
     $xml[] = '      <NrWierszaFa>' . $rowNo . '</NrWierszaFa>';
 
     // UU_ID — identyfikator UUID wiersza (dla korekt) [pozycja 2 w XSD]
-    // Tymczasowo zakomentowane — nie przesyłać do KSeF
-    // if (!empty($it->uu_id)) {
-    //     $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
-    // }
+    if (!empty($it->uu_id)) {
+        $xml[] = '      <UU_ID>' . $this->esc((string)$it->uu_id) . '</UU_ID>';
+    }
 
     // P_6A — data dostawy/usługi per-wiersz [pozycja 3 w XSD]
     if (!empty($it->line_date)) {
@@ -8528,16 +7443,11 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $p12 = '0 WDT';
     } elseif (str_contains($vatName, 'exp') || str_contains($vatName, 'eks')) {
         $p12 = '0 EX';
-    } elseif (str_contains($vatName, 'spoza')) {
-        // "nie podl. spoza UE" → np I (P_13_8: poza terytorium kraju, nabywca spoza UE)
-        $p12 = 'np I';
-    } elseif (str_contains($vatName, 'ue')) {
-        // "nie podl. UE" → np II (P_13_9: wewnątrzwspólnotowe usługi, art. 100 ust. 1 pkt 4)
+    } elseif (str_contains($vatName, 'ue') || str_contains($vatName, 'nie podl')) {
+        // niepodlegające — usługi art. 100 ust. 1 pkt 4 (UE) → np II
         $p12 = 'np II';
-    } elseif (str_contains($vatName, 'nie podl')) {
-        // "nie podl." bez kwalifikatora → np I (default poza terytorium kraju)
-        $p12 = 'np I';
     } elseif (str_starts_with($vatName, 'np')) {
+        // niepodlegające — dostawa poza terytorium kraju (bez UE) → np I
         $p12 = 'np I';
     } else {
         // 0% krajowe
@@ -8589,77 +7499,32 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '    <Platnosc>';
 
         // ZaplataCzesciowa — preferencja: wielokrotne wpłaty z invoice_payments, fallback na skalary
-        // XSD <xsd:choice minOccurs="0"> w <Platnosc>:
-        //   A) Zaplacono=1 + DataZaplaty              → jedna pełna zapłata jednorazowa
-        //   B) ZnacznikZaplatyCzesciowej=1 + ZaplataCzesciowa[]  → zapłata częściowa
-        //   C) ZnacznikZaplatyCzesciowej=2 + ZaplataCzesciowa[]  → zapłata w całości poprzez 2+ raty
-        $invoiceTotal = round((float)($inv->total ?? 0.0), 2);
         $payments = (array)($inv->invoice_payments ?? []);
         if (!empty($payments)) {
-            $sumPaid = round(array_sum(array_map(fn($p) => (float)($p->amount ?? $p['amount'] ?? 0), $payments)), 2);
-            if ($sumPaid > 0.0 && $sumPaid < $invoiceTotal) {
-                // Przypadek B: zapłata częściowa — ZnacznikZaplatyCzesciowej=1
-                $xml[] = '      <ZnacznikZaplatyCzesciowej>1</ZnacznikZaplatyCzesciowej>';
-                foreach ($payments as $pay) {
-                    $pAmt  = (float)($pay->amount ?? $pay['amount'] ?? 0);
-                    $pDate = isset($pay->payment_date)
-                        ? ($pay->payment_date instanceof \DateTimeInterface ? $pay->payment_date->format('Y-m-d') : (string)$pay->payment_date)
-                        : $issueDate;
-                    $xml[] = '      <ZaplataCzesciowa>';
-                    $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($pAmt) . '</KwotaZaplatyCzesciowej>';
-                    $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($pDate) . '</DataZaplatyCzesciowej>';
-                    array_push($xml, ...$this->buildFormaPlatnosciXml($pay->payment_method ?? $pay['payment_method'] ?? null, '        '));
-                    $xml[] = '      </ZaplataCzesciowa>';
-                }
-            } elseif ($sumPaid >= $invoiceTotal && $invoiceTotal > 0.0) {
-                if (count($payments) >= 2) {
-                    // Przypadek C: zapłacono w całości w 2+ ratach — ZnacznikZaplatyCzesciowej=2
-                    $xml[] = '      <ZnacznikZaplatyCzesciowej>2</ZnacznikZaplatyCzesciowej>';
-                    foreach ($payments as $pay) {
-                        $pAmt  = (float)($pay->amount ?? $pay['amount'] ?? 0);
-                        $pDate = isset($pay->payment_date)
-                            ? ($pay->payment_date instanceof \DateTimeInterface ? $pay->payment_date->format('Y-m-d') : (string)$pay->payment_date)
-                            : $issueDate;
-                        $xml[] = '      <ZaplataCzesciowa>';
-                        $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($pAmt) . '</KwotaZaplatyCzesciowej>';
-                        $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($pDate) . '</DataZaplatyCzesciowej>';
-                        array_push($xml, ...$this->buildFormaPlatnosciXml($pay->payment_method ?? $pay['payment_method'] ?? null, '        '));
-                        $xml[] = '      </ZaplataCzesciowa>';
-                    }
-                } else {
-                    // Przypadek A: jedna wpłata = pełna kwota faktury → Zaplacono=1 + DataZaplaty
-                    $pay   = $payments[0];
-                    $pDate = isset($pay->payment_date)
-                        ? ($pay->payment_date instanceof \DateTimeInterface ? $pay->payment_date->format('Y-m-d') : (string)$pay->payment_date)
-                        : $issueDate;
-                    $xml[] = '      <Zaplacono>1</Zaplacono>';
-                    $xml[] = '      <DataZaplaty>' . $this->esc($pDate) . '</DataZaplaty>';
-                }
+            $xml[] = '      <ZnacznikZaplatyCzesciowej>1</ZnacznikZaplatyCzesciowej>';
+            foreach ($payments as $pay) {
+                $pAmt  = (float)($pay->amount ?? $pay['amount'] ?? 0);
+                $pDate = isset($pay->payment_date)
+                    ? ($pay->payment_date instanceof \DateTimeInterface ? $pay->payment_date->format('Y-m-d') : (string)$pay->payment_date)
+                    : $issueDate;
+                $pMethod = $this->mapPaymentMethod($pay->payment_method ?? $pay['payment_method'] ?? null);
+                $xml[] = '      <ZaplataCzesciowa>';
+                $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($pAmt) . '</KwotaZaplatyCzesciowej>';
+                $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($pDate) . '</DataZaplatyCzesciowej>';
+                $xml[] = '        <FormaPlatnosci>' . $this->esc($pMethod) . '</FormaPlatnosci>';
+                $xml[] = '      </ZaplataCzesciowa>';
             }
         } else {
             // Fallback: skalarny alreadypaid
-            $alreadyPaid = round((float)($inv->alreadypaid ?? 0.0), 2);
-            if ($alreadyPaid > 0.0 && $alreadyPaid < $invoiceTotal) {
-                // Przypadek B: zapłata częściowa — ZnacznikZaplatyCzesciowej=1
+            $alreadyPaid = (float)($inv->alreadypaid ?? 0.0);
+            if ($alreadyPaid > 0.0) {
                 $xml[] = '      <ZnacznikZaplatyCzesciowej>1</ZnacznikZaplatyCzesciowej>';
                 $xml[] = '      <ZaplataCzesciowa>';
                 $xml[] = '        <KwotaZaplatyCzesciowej>' . $this->fmtAmount($alreadyPaid) . '</KwotaZaplatyCzesciowej>';
-                // Preferuj partial_paid_at, fallback paid_at, ostatecznie issueDate.
-                $ppDate = $inv->partial_paid_at
-                    ? $inv->partial_paid_at->format('Y-m-d')
-                    : ($inv->paid_at ? $inv->paid_at->format('Y-m-d') : $issueDate);
+                $ppDate = $inv->partial_paid_at ? $inv->partial_paid_at->format('Y-m-d') : $issueDate;
                 $xml[] = '        <DataZaplatyCzesciowej>' . $this->esc($ppDate) . '</DataZaplatyCzesciowej>';
-                array_push($xml, ...$this->buildFormaPlatnosciXml($inv->paymentmethod ?? null, '        '));
+                $xml[] = '        <FormaPlatnosci>' . $this->esc($this->mapPaymentMethod($inv->paymentmethod ?? null)) . '</FormaPlatnosci>';
                 $xml[] = '      </ZaplataCzesciowa>';
-            } elseif ($alreadyPaid >= $invoiceTotal && $invoiceTotal > 0.0) {
-                // Przypadek A: kwota zapłaty = kwota faktury → Zaplacono=1 + DataZaplaty
-                // Preferuj paid_at (to pole jest wypełniane przez "Oznacz jako opłacone"),
-                // fallback partial_paid_at, ostatecznie issueDate.
-                $ppDate = $inv->paid_at
-                    ? $inv->paid_at->format('Y-m-d')
-                    : ($inv->partial_paid_at ? $inv->partial_paid_at->format('Y-m-d') : $issueDate);
-                $xml[] = '      <Zaplacono>1</Zaplacono>';
-                $xml[] = '      <DataZaplaty>' . $this->esc($ppDate) . '</DataZaplaty>';
             }
         }
 
@@ -8670,7 +7535,8 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         $xml[] = '      <TerminPlatnosci>';
         $xml[] = '        <Termin>' . $this->esc($due) . '</Termin>';
         $xml[] = '      </TerminPlatnosci>';
-        array_push($xml, ...$this->buildFormaPlatnosciXml($inv->paymentmethod ?? null, '      '));
+        $paymentMethod = $this->mapPaymentMethod($inv->paymentmethod ?? null);
+        $xml[] = '      <FormaPlatnosci>' . $this->esc($paymentMethod) . '</FormaPlatnosci>';
 
         $seller      = $inv->invoice_company_detail ?? null;
         $rb          = trim((string)($seller?->bank_account ?? ''));
@@ -8746,38 +7612,22 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
 
         return $xml;
     }
-private function mapPaymentMethod(?string $method): ?string
+private function mapPaymentMethod(?string $method): string
 {
     return match ($method) {
-        'cash'     => '1',
-        'card'     => '2',
-        'voucher'  => '3',
-        'cheque'   => '4',
-        'credit'   => '5',
-        'transfer' => '6',
-        'mobile'   => '7',
-        default    => null, // 'other' i każda nieznana wartość → PlatnoscInna
-    };
-}
+        'cash'      => '1', // gotówka
+        'transfer'  => '6', // przelew
 
-/**
- * Buduje XML dla formy płatności (FormaPlatnosci lub PlatnoscInna+OpisPlatnosci).
- * @param string $indent Wcięcie (np. '        ' dla 8 spacji)
- */
-private function buildFormaPlatnosciXml(?string $method, string $indent): array
-{
-    $code = $this->mapPaymentMethod($method);
-    if ($code !== null) {
-        return [$indent . '<FormaPlatnosci>' . $code . '</FormaPlatnosci>'];
-    }
-    // Nieznana/inna forma — użyj PlatnoscInna + OpisPlatnosci
-    $opis = ($method !== null && $method !== '' && $method !== 'other')
-        ? ucfirst($method)
-        : 'Inna forma płatności';
-    return [
-        $indent . '<PlatnoscInna>1</PlatnoscInna>',
-        $indent . '<OpisPlatnosci>' . $this->esc($opis) . '</OpisPlatnosci>',
-    ];
+        // wszystko inne to "inne formy płatności"
+        'voucher' => '3',
+        'cheque' => '4',
+        'card'   => '2',
+        'credit' => '5',
+        'mobile' => '7',
+        'other'     => '8',
+
+        default     => '8', // fallback
+    };
 }
 
     // ======================== ROZLICZENIE (Obciążenia/Odliczenia) ========================
@@ -8785,12 +7635,6 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
     private function buildRozliczenieXml(Invoice $inv): array
     {
         $charges = (array)($inv->invoice_charges ?? []);
-
-        // Dla ROZ zaliczki NIE trafiają do Rozliczenie/Odliczenia.
-        // Per broszura FA(3): P_15 dla art. 106f ust. 3 = "kwota pozostała do zapłaty" (już po zaliczkach).
-        // Odliczenie zaliczek jest deklarowane przez element FakturaZaliczkowa (numery ZAL).
-        // Rozliczenie/Odliczenia służy tylko do innych odliczeń (np. saldo klienta, opłaty urzędowe).
-
         if (empty($charges)) {
             return [];
         }
@@ -8830,8 +7674,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             $xml[] = '      <SumaOdliczen>' . $this->fmtAmount($sumaOdliczen) . '</SumaOdliczen>';
         }
 
-        // DoZaplaty = P_15 + SumaObciazen - SumaOdliczen (per broszura FA(3) s. 105)
-        // Dla ROZ: P_15 to już kwota pozostała po zaliczkach; zaliczki nie są w Odliczenia.
+        // DoZaplaty lub DoRozliczenia — obliczamy na podstawie P_15 +/- obciążenia/odliczenia
         $p15 = (float)($inv->total ?? 0);
         $doZaplaty = $p15 + $sumaObciazen - $sumaOdliczen;
         if ($doZaplaty >= 0) {
@@ -8942,106 +7785,6 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
     private function buildZamowienieXml(Invoice $inv): array
     {
         $orderLines = (array)($inv->invoice_order_lines ?? []);
-        $rodzaj     = $this->resolveRodzajFaktury($inv);
-
-        // Dla ZAL: jeśli brak ręcznie wpisanych linii zamówienia — ładujemy je z proformy (parent_id)
-        // Proforma jest "zamówieniem/umową" w rozumieniu art. 106f ust. 1 pkt 4 ustawy VAT.
-        if (empty($orderLines) && $rodzaj === 'ZAL' && !empty($inv->parent_id)) {
-            $proforma = $this->fetchTable('Invoices')->find()
-                ->select(['id', 'total'])
-                ->where(['id' => $inv->parent_id])
-                ->contain(['InvoiceContents' => ['Vats']])
-                ->first();
-
-            if ($proforma && !empty($proforma->invoice_contents)) {
-                $wartoscZamowienia = 0.0;
-                $syntheticLines    = [];
-                $nr = 1;
-
-                foreach ($proforma->invoice_contents as $ci) {
-                    $qty     = (float)($ci->quantity ?? 1);
-                    $price   = (float)($ci->price   ?? 0);
-                    $netto   = (float)($ci->netto    ?? 0);
-                    $brutto  = (float)($ci->brutto   ?? 0);
-                    $vatRate = isset($ci->vat) ? (float)$ci->vat->rate : 0.0;
-                    $vatAmt  = round($brutto - $netto, 2);
-
-                    $wartoscZamowienia += $brutto;
-                    $syntheticLines[]   = [
-                        'nr'       => $nr++,
-                        'name'     => trim((string)($ci->name ?? '')),
-                        'unit'     => trim((string)($ci->unit ?? 'szt.')),
-                        'qty'      => $qty,
-                        'price'    => $price,
-                        'netto'    => $netto,
-                        'vat_amt'  => $vatAmt,
-                        'vat_rate' => $vatRate,
-                        'vat_name' => strtolower(trim((string)($ci->vat->name ?? ''))),
-                        'gtu'      => trim((string)($ci->gtu_code ?? '')),
-                    ];
-                }
-
-                if (!empty($syntheticLines)) {
-                    $xml = [];
-                    $xml[] = '    <Zamowienie>';
-                    $xml[] = '      <WartoscZamowienia>' . $this->fmtAmount($wartoscZamowienia) . '</WartoscZamowienia>';
-
-                    foreach ($syntheticLines as $sl) {
-                        $xml[] = '      <ZamowienieWiersz>';
-                        $xml[] = '        <NrWierszaZam>' . $sl['nr'] . '</NrWierszaZam>';
-                        if ($sl['name'] !== '') {
-                            $xml[] = '        <P_7Z>' . $this->esc($sl['name']) . '</P_7Z>';
-                        }
-                        if ($sl['unit'] !== '') {
-                            $xml[] = '        <P_8AZ>' . $this->esc($sl['unit']) . '</P_8AZ>';
-                        }
-                        $xml[] = '        <P_8BZ>'      . $this->fmtAmount($sl['qty'])      . '</P_8BZ>';
-                        $xml[] = '        <P_9AZ>'      . $this->fmtAmount($sl['price'])    . '</P_9AZ>';
-                        $xml[] = '        <P_11NettoZ>' . $this->fmtAmount($sl['netto'])    . '</P_11NettoZ>';
-                        $xml[] = '        <P_11VatZ>'   . $this->fmtAmount($sl['vat_amt'])  . '</P_11VatZ>';
-                        // P_12Z: wartość enumeracyjna per TStawkaPodatku FA(3) (np. "23", "8", "zw", "0 KR")
-                        $slRate    = $sl['vat_rate'];
-                        $slVatName = $sl['vat_name'];
-                        if ($slRate >= 22.5) {
-                            $p12z = '23';
-                        } elseif ($slRate >= 7.5) {
-                            $p12z = '8';
-                        } elseif ($slRate >= 4.5) {
-                            $p12z = '5';
-                        } elseif ($slRate > 0) {
-                            $p12z = (string)(int)$slRate;
-                        } elseif (str_starts_with($slVatName, 'zw')) {
-                            $p12z = 'zw';
-                        } elseif (str_starts_with($slVatName, 'oo')) {
-                            $p12z = 'oo';
-                        } elseif (str_contains($slVatName, 'wdt')) {
-                            $p12z = '0 WDT';
-                        } elseif (str_contains($slVatName, 'exp') || str_contains($slVatName, 'eks')) {
-                            $p12z = '0 EX';
-                        } elseif (str_contains($slVatName, 'spoza')) {
-                            $p12z = 'np I';
-                        } elseif (str_contains($slVatName, 'ue')) {
-                            $p12z = 'np II';
-                        } elseif (str_contains($slVatName, 'nie podl')) {
-                            $p12z = 'np I';
-                        } elseif (str_starts_with($slVatName, 'np')) {
-                            $p12z = 'np I';
-                        } else {
-                            $p12z = '0 KR';
-                        }
-                        $xml[] = '        <P_12Z>' . $p12z . '</P_12Z>';
-                        if ($sl['gtu'] !== '') {
-                            $xml[] = '        <GTUZ>' . $this->esc($sl['gtu']) . '</GTUZ>';
-                        }
-                        $xml[] = '      </ZamowienieWiersz>';
-                    }
-
-                    $xml[] = '    </Zamowienie>';
-                    return $xml;
-                }
-            }
-        }
-
         if (empty($orderLines) && empty($inv->order_total_gross)) {
             return [];
         }
@@ -9089,39 +7832,10 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 }
             }
 
-            // P_12Z stawka — wartość enumeracyjna per TStawkaPodatku FA(3)
+            // P_12Z stawka
             $vatRate = $line->vat_rate ?? $line['vat_rate'] ?? null;
-            if ($vatRate !== null && $vatRate !== '') {
-                $vatRateFloat = (float)$vatRate;
-                $vatRateName  = strtolower(trim((string)$vatRate));
-                if ($vatRateFloat >= 22.5) {
-                    $p12z = '23';
-                } elseif ($vatRateFloat >= 7.5) {
-                    $p12z = '8';
-                } elseif ($vatRateFloat >= 4.5) {
-                    $p12z = '5';
-                } elseif ($vatRateFloat > 0) {
-                    $p12z = (string)(int)$vatRateFloat;
-                } elseif (str_starts_with($vatRateName, 'zw')) {
-                    $p12z = 'zw';
-                } elseif (str_starts_with($vatRateName, 'oo')) {
-                    $p12z = 'oo';
-                } elseif (str_contains($vatRateName, 'wdt')) {
-                    $p12z = '0 WDT';
-                } elseif (str_contains($vatRateName, 'exp') || str_contains($vatRateName, 'eks')) {
-                    $p12z = '0 EX';
-                } elseif (str_contains($vatRateName, 'spoza')) {
-                    $p12z = 'np I';
-                } elseif (str_contains($vatRateName, 'ue')) {
-                    $p12z = 'np II';
-                } elseif (str_contains($vatRateName, 'nie podl')) {
-                    $p12z = 'np I';
-                } elseif (str_starts_with($vatRateName, 'np')) {
-                    $p12z = 'np I';
-                } else {
-                    $p12z = '0 KR';
-                }
-                $xml[] = '        <P_12Z>' . $p12z . '</P_12Z>';
+            if (!empty($vatRate)) {
+                $xml[] = '        <P_12Z>' . $this->esc((string)$vatRate) . '</P_12Z>';
             }
 
             // GTU
@@ -9160,98 +7874,6 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
     }
 
     // ======================== PODMIOT UPOWAŻNIONY ========================
-
-    private function buildRecipientXml(Invoice $inv): array
-    {
-        // Lazy-load jeśli nie załadowane
-        $recipient = $inv->invoice_recipient ?? null;
-        if ($recipient === null) {
-            try {
-                $recipient = $this->fetchTable('InvoiceRecipients')
-                    ->find()->where(['invoice_id' => $inv->id])->first() ?: null;
-                if ($recipient !== null) {
-                    $inv->set('invoice_recipient', $recipient);
-                }
-            } catch (\Throwable) {}
-        }
-
-        if ($recipient === null) {
-            return [];
-        }
-
-        $name = trim((string)($recipient->name ?? ''));
-        if ($name === '') {
-            return [];
-        }
-
-        $xml = [];
-        $countryCode = $this->normalizeCountryCode((string)($recipient->country ?? ''));
-
-        $nipParsed  = $this->parseNip((string)($recipient->nip ?? ''));
-        $vatEu      = trim((string)($recipient->vat_eu ?? ''));
-        $vatPrefix  = trim((string)($recipient->vat_prefix ?? ''));
-        $taxIdOther = trim((string)($recipient->tax_id_other ?? ''));
-        $taxIdOtherCountry = strtoupper(trim((string)($recipient->tax_id_other_country ?? '')));
-
-        if ($nipParsed['type'] === 'VatUE' && $vatEu === '') {
-            $vatPrefix = $vatPrefix !== '' ? $vatPrefix : $nipParsed['prefix'];
-            $vatEu     = $nipParsed['value'];
-        }
-
-        $xml[] = '  <Podmiot3>';
-
-        $eori = trim((string)($recipient->eori ?? ''));
-        if ($eori !== '') {
-            $xml[] = '    <NrEORI>' . $this->esc($eori) . '</NrEORI>';
-        }
-
-        $xml[] = '    <DaneIdentyfikacyjne>';
-        if ($vatEu !== '') {
-            $xml[] = '      <KodUE>' . $this->esc($vatPrefix !== '' ? $vatPrefix : ($countryCode !== 'PL' ? $countryCode : '')) . '</KodUE>';
-            $xml[] = '      <NrVatUE>' . $this->esc($vatEu) . '</NrVatUE>';
-        } elseif ($taxIdOther !== '') {
-            if ($taxIdOtherCountry !== '') {
-                $xml[] = '      <KodKraju>' . $this->esc($taxIdOtherCountry) . '</KodKraju>';
-            }
-            $xml[] = '      <NrID>' . $this->esc($taxIdOther) . '</NrID>';
-        } elseif ($nipParsed['type'] === 'NIP') {
-            $xml[] = '      <NIP>' . $this->esc($nipParsed['value']) . '</NIP>';
-        } else {
-            $xml[] = '      <BrakID>1</BrakID>';
-        }
-        $xml[] = '      <Nazwa>' . $this->esc($name) . '</Nazwa>';
-        $xml[] = '    </DaneIdentyfikacyjne>';
-
-        $xml[] = '    <Adres>';
-        $xml[] = '      <KodKraju>' . $this->esc($countryCode) . '</KodKraju>';
-        $street = trim((string)($recipient->street ?? ''));
-        $adresL1 = $street !== '' ? $street : trim((string)($recipient->city ?? $name));
-        $xml[] = '      <AdresL1>' . $this->esc($adresL1 !== '' ? $adresL1 : '-') . '</AdresL1>';
-        $adresL2 = trim(((string)($recipient->zip ?? '')) . ' ' . ((string)($recipient->city ?? '')));
-        if ($adresL2 !== '') {
-            $xml[] = '      <AdresL2>' . $this->esc($adresL2) . '</AdresL2>';
-        }
-        $gln = trim((string)($recipient->gln ?? ''));
-        if ($gln !== '') {
-            $xml[] = '      <GLN>' . $this->esc($gln) . '</GLN>';
-        }
-        $xml[] = '    </Adres>';
-
-        // Rola odbiorcy — wymagana wg XSD (choice: Rola 1-11 | RolaInna+OpisRoli)
-        $rola = (int)($recipient->rola ?? 0);
-        $rolaOpis = trim((string)($recipient->rola_opis ?? ''));
-        if ($rola >= 1 && $rola <= 11) {
-            $xml[] = '    <Rola>' . $rola . '</Rola>';
-        } else {
-            // "Inny podmiot" — RolaInna=1 + OpisRoli
-            $xml[] = '    <RolaInna>1</RolaInna>';
-            $xml[] = '    <OpisRoli>' . $this->esc($rolaOpis !== '' ? $rolaOpis : 'Odbiorca') . '</OpisRoli>';
-        }
-
-        $xml[] = '  </Podmiot3>';
-
-        return $xml;
-    }
 
     private function buildPodmiotUpowaznionyXml(Invoice $inv): array
     {
@@ -9471,22 +8093,22 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         $type = $inv->type ?? 'vat';
 
         return match ($type) {
-            'advance', 'zaliczkowa'           => 'ZAL',
-            'novat'                           => 'VAT',
-            'margin'                          => 'VAT',
-            'currency'                        => 'VAT',
-            'final', 'rozliczeniowa'          => 'ROZ',
-            'correction'                      => 'KOR',
-            'zal_korekta'                     => 'KOR_ZAL',
-            'roz_korekta'                     => 'KOR_ROZ',
-            'upr'                             => 'UPR',
+            'advance'           => 'ZAL',
+            'novat'             => 'VAT',
+            'margin'            => 'VAT',
+            'currency'          => 'VAT',
+            'final'             => 'ROZ',
+            'correction'        => 'KOR',
+            'zal_korekta'       => 'KOR_ZAL',
+            'roz_korekta'       => 'KOR_ROZ',
+            'upr'               => 'UPR',
             // Typy blokowane przez KSEF_BLOCKED_TYPES — nie powinny tu dotrzeć,
             // ale jako zabezpieczenie zwracamy VAT (buildFa3Xml nie jest wywoływany dla tych typów)
-            'proforma'                        => 'VAT',
-            'internal'                        => 'VAT',
-            'internalEvidence'                => 'VAT',
-            'oss'                             => 'VAT',
-            default                           => 'VAT',
+            'proforma'          => 'VAT',
+            'internal'          => 'VAT',
+            'internalEvidence'  => 'VAT',
+            'oss'               => 'VAT',
+            default             => 'VAT',
         };
     }
     private function buildFa3XmlCurrency(\App\Model\Entity\Invoice $inv): string
@@ -9611,7 +8233,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         $ticket = $SupportTickets->find()
             ->where(['SupportTickets.id' => $id])
-            ->contain(['SupportTicketReplies', 'Users', 'Companies'])
+            ->contain(['SupportTicketReplies'])
             ->first();
 
         if (!$ticket) {
@@ -9656,10 +8278,9 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             } elseif ($action === 'update') {
                 // Zmień status / typ / notatkę
                 $ticket = $SupportTickets->patchEntity($ticket, [
-                    'status'             => $this->request->getData('status'),
-                    'type'               => $this->request->getData('type') ?: null,
-                    'admin_note'         => $this->request->getData('admin_note'),
-                    'is_for_accountant'  => (bool)$this->request->getData('is_for_accountant'),
+                    'status'     => $this->request->getData('status'),
+                    'type'       => $this->request->getData('type') ?: null,
+                    'admin_note' => $this->request->getData('admin_note'),
                 ]);
                 if ($SupportTickets->save($ticket)) {
                     $this->Flash->success('Zgłoszenie zaktualizowane.');
@@ -9673,742 +8294,6 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         $this->set(compact('ticket', 'statuses', 'types', 'categories'));
         return null;
-    }
-
-    /**
-     * Duplicate invoice: create a new draft copy with all content
-     */
-    public function duplicateInvoice($id = null)
-    {
-        $this->request->allowMethod('post');
-
-        $identity = $this->request->getAttribute('identity');
-        $companyId = $identity->company_id ?? null;
-        if (empty($companyId)) {
-            return $this->response->withStatus(403)->withStringBody('Access denied');
-        }
-
-        // Load source invoice with all relationships
-        $sourceInvoice = $this->Invoices->find()
-            ->contain([
-                'InvoiceContractors',
-                'InvoiceCompanyDetails',
-                'InvoiceRecipients',
-                'InvoiceContents' => ['Vats'],
-                'InvoiceVatContents',
-                'InvoiceNewTransports',
-                'InvoiceCharges',
-                'InvoiceFactorBanks',
-                'InvoiceAuthorizedEntities',
-                'InvoiceOrderLines',
-            ])
-            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
-            ->first();
-
-        if (!$sourceInvoice) {
-            return $this->response->withStatus(404);
-        }
-
-        // Check if type is allowed (vat, proforma, currency, margin only)
-        $allowedTypes = ['vat', 'proforma', 'currency', 'margin'];
-        $invoiceType = strtolower((string)($sourceInvoice->type ?? ''));
-        if (!in_array($invoiceType, $allowedTypes, true)) {
-            $this->Flash->error('Duplikacja nie jest dostępna dla tego typu faktury.');
-            return $this->redirect(['action' => 'view', $id]);
-        }
-
-        try {
-            // Create new invoice entity from source
-            $newInvoice = $this->Invoices->newEmptyEntity();
-
-            // Copy all safe fields
-            $copyFields = [
-                'company_id', 'invoice_series_id', 'contractor_id',
-                'parent_id', 'type', 'currency', 'total', 'netto', 'tax',
-                'alreadypaid', 'remaining', 'paymentmethod', 'paymentstate',
-                'simplified_invoice', 'is_receipt_invoice', 'is_split_payment',
-                'buyer_is_jst', 'buyer_in_vat_group', 'seller_vat_prefix',
-                'seller_vat_eu', 'buyer_vat_prefix', 'buyer_vat_eu',
-                'buyer_eori', 'buyer_tax_id_other', 'buyer_tax_id_other_country',
-                'sold_date', 'advance_received_date', 'receipt_date', 'receipt_number',
-                'period_from', 'period_to', 'currency_date', 'currency_exchange',
-                'company_bank_account_id', 'description', 'margin_type',
-                'lang', 'auto_send', 'footer_text', 'place_of_issue',
-                'correction_type', 'correction_reason',
-            ];
-
-            foreach ($copyFields as $field) {
-                if ($sourceInvoice->has($field)) {
-                    $newInvoice->set($field, $sourceInvoice->get($field));
-                }
-            }
-
-            // Set workflow to draft and reset identity fields
-            $newInvoice->set('workflow_status', 'draft');
-            $newInvoice->set('fullnumber', null);
-            $newInvoice->set('number', null);
-            $newInvoice->set('day', null);
-            $newInvoice->set('month', null);
-            $newInvoice->set('year', null);
-            $newInvoice->set('day_year', null);
-
-            // Set date to today (issued date)
-            $newInvoice->set('date', new \DateTime());
-
-            // Reset KSeF, email, payment tracking fields
-            $newInvoice->set('ksef_status', null);
-            $newInvoice->set('ksef_number', null);
-            $newInvoice->set('ksef_session_reference', null);
-            $newInvoice->set('ksef_invoice_reference', null);
-            $newInvoice->set('ksef_xml_hash', null);
-            $newInvoice->set('ksef_desc', null);
-            $newInvoice->set('upo_xml', null);
-            $newInvoice->set('upo_downloaded_at', null);
-            $newInvoice->set('planned_ksef_send_at', null);
-            $newInvoice->set('email_sent_at', null);
-            $newInvoice->set('is_sent', false);
-            $newInvoice->set('is_api', false);
-
-            // Generate new hash
-            $newInvoice->set('hash', md5(uniqid('inv_', true)));
-
-            // Save new invoice
-            if (!$this->Invoices->save($newInvoice)) {
-                $this->Flash->error('Nie udało się zduplikować faktury.');
-                return $this->redirect(['action' => 'view', $id]);
-            }
-
-            $newInvoiceId = $newInvoice->id;
-
-            // Copy InvoiceContractors snapshot
-            if ($sourceInvoice->invoice_contractor) {
-                $newContractor = $this->fetchTable('InvoiceContractors')->newEmptyEntity();
-                $contractorData = $sourceInvoice->invoice_contractor->toArray();
-                unset($contractorData['id']);
-                unset($contractorData['invoice_id']);
-                unset($contractorData['created']);
-                unset($contractorData['modified']);
-                $contractorData['invoice_id'] = $newInvoiceId;
-                $newContractor = $this->fetchTable('InvoiceContractors')->patchEntity($newContractor, $contractorData);
-                $this->fetchTable('InvoiceContractors')->save($newContractor);
-            }
-
-            // Copy InvoiceCompanyDetails snapshot
-            if ($sourceInvoice->invoice_company_detail) {
-                $newCompanyDetail = $this->fetchTable('InvoiceCompanyDetails')->newEmptyEntity();
-                $companyData = $sourceInvoice->invoice_company_detail->toArray();
-                unset($companyData['id']);
-                unset($companyData['invoice_id']);
-                unset($companyData['created']);
-                unset($companyData['modified']);
-                $companyData['invoice_id'] = $newInvoiceId;
-                $newCompanyDetail = $this->fetchTable('InvoiceCompanyDetails')->patchEntity($newCompanyDetail, $companyData);
-                $this->fetchTable('InvoiceCompanyDetails')->save($newCompanyDetail);
-            }
-
-            // Copy InvoiceRecipients snapshot if present
-            if ($sourceInvoice->invoice_recipient) {
-                $newRecipient = $this->fetchTable('InvoiceRecipients')->newEmptyEntity();
-                $recipientData = $sourceInvoice->invoice_recipient->toArray();
-                unset($recipientData['id']);
-                unset($recipientData['invoice_id']);
-                unset($recipientData['created']);
-                unset($recipientData['modified']);
-                $recipientData['invoice_id'] = $newInvoiceId;
-                $newRecipient = $this->fetchTable('InvoiceRecipients')->patchEntity($newRecipient, $recipientData);
-                $this->fetchTable('InvoiceRecipients')->save($newRecipient);
-            }
-
-            // Copy InvoiceContents (line items) - replace-all pattern
-            $InvoiceContentsTable = $this->fetchTable('InvoiceContents');
-            $InvoiceContentsTable->deleteAll(['invoice_id' => $newInvoiceId]);
-
-            if (!empty($sourceInvoice->invoice_contents)) {
-                foreach ($sourceInvoice->invoice_contents as $idx => $item) {
-                    $newItem = $InvoiceContentsTable->newEmptyEntity();
-                    $itemData = $item->toArray();
-                    unset($itemData['id']);
-                    unset($itemData['invoice_id']);
-                    unset($itemData['created']);
-                    unset($itemData['modified']);
-                    $itemData['invoice_id'] = $newInvoiceId;
-                    $itemData['sort_order'] = $idx;
-                    $newItem = $InvoiceContentsTable->patchEntity($newItem, $itemData);
-                    $InvoiceContentsTable->save($newItem);
-                }
-            }
-
-            // Copy InvoiceVatContents
-            $InvoiceVatTable = $this->fetchTable('InvoiceVatContents');
-            $InvoiceVatTable->deleteAll(['invoice_id' => $newInvoiceId]);
-
-            if (!empty($sourceInvoice->invoice_vat_contents)) {
-                foreach ($sourceInvoice->invoice_vat_contents as $vat) {
-                    $newVat = $InvoiceVatTable->newEmptyEntity();
-                    $vatData = $vat->toArray();
-                    unset($vatData['id']);
-                    unset($vatData['invoice_id']);
-                    unset($vatData['created']);
-                    unset($vatData['modified']);
-                    $vatData['invoice_id'] = $newInvoiceId;
-                    $newVat = $InvoiceVatTable->patchEntity($newVat, $vatData);
-                    $InvoiceVatTable->save($newVat);
-                }
-            }
-
-            // Copy FA(3) relational data - using existing pattern
-            $fa3Tables = [
-                'InvoiceNewTransports',
-                'InvoiceCharges',
-                'InvoiceFactorBanks',
-                'InvoiceAuthorizedEntities',
-                'InvoiceOrderLines',
-            ];
-
-            foreach ($fa3Tables as $tableName) {
-                $Table = $this->fetchTable($tableName);
-                $Table->deleteAll(['invoice_id' => $newInvoiceId]);
-
-                $sourceRelation = lcfirst(\Cake\Utility\Inflector::camelize($tableName));
-                if ($sourceInvoice->has($sourceRelation) && !empty($sourceInvoice->get($sourceRelation))) {
-                    foreach ($sourceInvoice->get($sourceRelation) as $relation) {
-                        $newRel = $Table->newEmptyEntity();
-                        $relData = $relation->toArray();
-                        unset($relData['id']);
-                        unset($relData['invoice_id']);
-                        unset($relData['created']);
-                        unset($relData['modified']);
-                        $relData['invoice_id'] = $newInvoiceId;
-                        $newRel = $Table->patchEntity($newRel, $relData);
-                        $Table->save($newRel);
-                    }
-                }
-            }
-
-            // Success! Return JSON response
-            return $this->response
-                ->withType('application/json')
-                ->withStringBody(json_encode([
-                    'success' => true,
-                    'duplicatedInvoiceId' => $newInvoiceId,
-                    'message' => 'Faktura zduplikowana pomyślnie'
-                ]));
-
-        } catch (\Throwable $e) {
-            \Cake\Log\Log::error('Invoice duplication error: ' . $e->getMessage(), ['invoice_duplicate']);
-            $this->Flash->error('Błąd przy duplikacji faktury: ' . $e->getMessage());
-            return $this->redirect(['action' => 'view', $id]);
-        }
-    }
-
-    public function dashboard(): void
-    {
-        // Pobranie danych użytkownika
-        $identity = $this->request->getAttribute('identity');
-        $companyId = $identity->company_id ?? null;
-
-        if (empty($companyId)) {
-            $this->Flash->error('Brak dostępu do firmy.');
-            return;
-        }
-
-        // Filtry: dateFrom, dateTo, currency, amount_type
-        $dateFrom = $this->request->getQuery('dateFrom');
-        $dateTo = $this->request->getQuery('dateTo');
-        $selectedCurrency = $this->request->getQuery('currency');
-        $amountType = $this->request->getQuery('amount_type') === 'netto' ? 'netto' : 'brutto';
-
-        // Defaults: ostatni rok
-        $today = new \DateTime();
-        $yearStart = (new \DateTime())->setDate((int)$today->format('Y'), 1, 1);
-
-        if (!empty($dateFrom)) {
-            $dateFrom = new \DateTime($dateFrom);
-        } else {
-            $dateFrom = $yearStart;
-        }
-
-        if (!empty($dateTo)) {
-            $dateTo = new \DateTime($dateTo);
-        } else {
-            $dateTo = $today;
-        }
-
-        // Helper functions
-        $sum = function(array $where, string $col = 'Invoices.total'): float {
-            $q = $this->Invoices->find();
-            $q->select(['s' => $q->func()->sum($col)])
-              ->where($where)
-              ->enableHydration(false);
-            $row = $q->first();
-            return (float)($row['s'] ?? 0);
-        };
-
-        $cnt = function(array $where): int {
-            return (int)$this->Invoices->find()->where($where)->count();
-        };
-
-        // Helper: wyklucz faktury robocze (draft)
-        $notDraftWhere = ['OR' => [
-            ['Invoices.workflow_status IS' => null],
-            ['Invoices.workflow_status !=' => 'draft']
-        ]];
-
-        // Helper: filtruj po walucie jeśli wybrany
-        $currencyWhere = [];
-        if (!empty($selectedCurrency)) {
-            $currencyWhere = ['Invoices.currency' => $selectedCurrency];
-        }
-
-        // ===== 1. REVENUE TREND (po miesiącach) =====
-        $monthlyRevenue = [];
-        $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo);
-
-        foreach ($period as $date) {
-            $monthStart = (clone $date)->setDate((int)$date->format('Y'), (int)$date->format('m'), 1);
-            $monthEnd = (clone $monthStart)->modify('last day of this month');
-
-            $invoices = $this->Invoices->find()
-                ->select(['total'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $monthStart->format('Y-m-d'),
-                    'Invoices.date <=' => $monthEnd->format('Y-m-d'),
-                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                    $notDraftWhere,
-                    $currencyWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            $monthlyRevenue[$date->format('Y-m')] = array_sum(array_column($invoices->toArray(), 'total'));
-        }
-
-        // NETTO monthly revenue
-        $monthlyRevenueNetto = [];
-        $period = new \DatePeriod($dateFrom, new \DateInterval('P1M'), $dateTo->modify('+1 day'));
-        foreach ($period as $date) {
-            $monthStart = (clone $date)->setDate((int)$date->format('Y'), (int)$date->format('m'), 1);
-            $monthEnd = (clone $monthStart)->modify('last day of this month');
-
-            $invoicesNetto = $this->Invoices->find()
-                ->select(['netto'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $monthStart->format('Y-m-d'),
-                    'Invoices.date <=' => $monthEnd->format('Y-m-d'),
-                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                    $notDraftWhere,
-                    $currencyWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            $monthlyRevenueNetto[$date->format('Y-m')] = array_sum(array_column($invoicesNetto->toArray(), 'netto'));
-        }
-
-        // ===== 2. PAYMENT STATUS (pie chart) =====
-        $paymentStatus = [];
-        foreach (['paid', 'unpaid', 'partial', 'overdue'] as $state) {
-            $count = $this->Invoices->find()
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.paymentstate' => $state,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                    $notDraftWhere,
-                    $currencyWhere,
-                ])
-                ->count();
-
-            $total = $this->Invoices->find()
-                ->select(['total'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.paymentstate' => $state,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                    $notDraftWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            $paymentStatus[$state] = [
-                'count' => $count,
-                'total' => array_sum(array_column($total->toArray(), 'total')),
-            ];
-        }
-
-        // ===== 3. REVENUE BY CURRENCY (bar chart) =====
-        $currencyData = $this->Invoices->find()
-            ->select(['currency', 'total', 'netto'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-                $currencyWhere,
-            ])
-            ->enableHydration(false)
-            ->all()
-            ->groupBy('currency')
-            ->map(function($group) {
-                return [
-                    'brutto' => array_sum(array_column($group, 'total')),
-                    'netto' => array_sum(array_column($group, 'netto')),
-                ];
-            });
-
-        // ===== 4. TOP CONTRACTORS (bar chart) =====
-        $topContractorsRaw = $this->Invoices
-            ->find('topContractors', [
-                'companyId' => $companyId,
-                'dateFrom' => $dateFrom->format('Y-m-d'),
-                'dateTo' => $dateTo->format('Y-m-d'),
-            ])
-            ->all()
-            ->groupBy('contractor_name')
-            ->map(function($group) {
-                return array_sum(array_column($group, 'total'));
-            })
-            ->toArray();
-
-        // Sortuj descending i weź top 10
-        arsort($topContractorsRaw);
-        $topContractors = array_slice($topContractorsRaw, 0, 10, true);
-
-        // ===== 5. KPI CARDS =====
-        $allInvoices = $this->Invoices->find()
-            ->select(['total', 'remaining', 'paymentstate'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-                $currencyWhere,
-            ])
-            ->enableHydration(false)
-            ->all();
-
-        // BRUTTO values
-        $totalRevenue = array_sum(array_column($allInvoices->toArray(), 'total'));
-        $invoiceCount = $allInvoices->count();
-        $avgInvoiceValue = $invoiceCount > 0 ? $totalRevenue / $invoiceCount : 0;
-
-        $paidTotal = array_sum(array_map(function($inv) {
-            return $inv['paymentstate'] === 'paid' ? $inv['total'] : 0;
-        }, $allInvoices->toArray()));
-
-        $paymentPercent = $totalRevenue > 0 ? round(($paidTotal / $totalRevenue) * 100, 1) : 0;
-
-        // NETTO values (same data but with 'netto' field)
-        $nettoInvoices = $this->Invoices->find()
-            ->select(['netto', 'remaining', 'paymentstate'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-                $currencyWhere,
-            ])
-            ->enableHydration(false)
-            ->all();
-
-        $totalRevenueNetto = array_sum(array_column($nettoInvoices->toArray(), 'netto'));
-        $avgInvoiceValueNetto = $invoiceCount > 0 ? $totalRevenueNetto / $invoiceCount : 0;
-
-        $paidTotalNetto = array_sum(array_map(function($inv) {
-            return $inv['paymentstate'] === 'paid' ? $inv['netto'] : 0;
-        }, $nettoInvoices->toArray()));
-
-        $paymentPercentNetto = $totalRevenueNetto > 0 ? round(($paidTotalNetto / $totalRevenueNetto) * 100, 1) : 0;
-
-        // ===== 6. BIGGEST INVOICE =====
-        $biggestInvoice = $this->Invoices->find()
-            ->select(['id', 'fullnumber', 'date', 'total', 'currency'])
-            ->contain(['InvoiceContractors'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-            ])
-            ->order(['total' => 'DESC'])
-            ->first();
-
-        // ===== 7. AVERAGE PAYMENT TIME (dni do zapłaty) =====
-        $paidInvoices = $this->Invoices->find()
-            ->select(['date', 'paymentdate'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.paymentstate' => 'paid',
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                'Invoices.paymentdate IS NOT' => null,
-                $notDraftWhere,
-            ])
-            ->enableHydration(false)
-            ->all();
-
-        $avgPaymentDays = 0;
-        if ($paidInvoices->count() > 0) {
-            $totalDays = 0;
-            foreach ($paidInvoices as $inv) {
-                $invoiceDate = new \DateTime((string)$inv['date']);
-                $paymentDate = new \DateTime((string)$inv['paymentdate']);
-                $totalDays += $paymentDate->diff($invoiceDate)->days;
-            }
-            $avgPaymentDays = round($totalDays / $paidInvoices->count(), 1);
-        }
-
-        // ===== 8. INVOICE TYPE BREAKDOWN =====
-        $invoiceTypes = [];
-        $types = ['vat', 'proforma', 'advance', 'currency', 'margin', 'novat'];
-        foreach ($types as $type) {
-            $count = $this->Invoices->find()
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.type' => $type,
-                    $notDraftWhere,
-                ])
-                ->count();
-
-            $total = $this->Invoices->find()
-                ->select(['total'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.type' => $type,
-                    $notDraftWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            if ($count > 0) {
-                $invoiceTypes[$type] = [
-                    'type' => $type,
-                    'count' => $count,
-                    'total' => array_sum(array_column($total->toArray(), 'total')),
-                ];
-            }
-        }
-
-        // ===== 9. PAYMENT METHOD BREAKDOWN =====
-        $paymentMethods = [];
-        $methods = ['transfer', 'cash', 'card', 'other'];
-        foreach ($methods as $method) {
-            $count = $this->Invoices->find()
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.paymentmethod' => $method,
-                    $notDraftWhere,
-                ])
-                ->count();
-
-            $total = $this->Invoices->find()
-                ->select(['total'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.paymentmethod' => $method,
-                    $notDraftWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            if ($count > 0) {
-                $paymentMethods[$method] = [
-                    'method' => $method,
-                    'count' => $count,
-                    'total' => array_sum(array_column($total->toArray(), 'total')),
-                ];
-            }
-        }
-
-        // ===== 10. DAYS OVERDUE DISTRIBUTION =====
-        $overdueInvoices = $this->Invoices->find()
-            ->select(['paymentdate'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.paymentstate' => 'overdue',
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-            ])
-            ->enableHydration(false)
-            ->all();
-
-        $overdueDistribution = ['0-7' => 0, '8-14' => 0, '15-30' => 0, '30+' => 0];
-        $today = new \DateTime();
-        foreach ($overdueInvoices as $inv) {
-            if ($inv['paymentdate']) {
-                $dueDate = new \DateTime((string)$inv['paymentdate']);
-                $daysOverdue = $today->diff($dueDate)->days;
-
-                if ($daysOverdue <= 7) {
-                    $overdueDistribution['0-7']++;
-                } elseif ($daysOverdue <= 14) {
-                    $overdueDistribution['8-14']++;
-                } elseif ($daysOverdue <= 30) {
-                    $overdueDistribution['15-30']++;
-                } else {
-                    $overdueDistribution['30+']++;
-                }
-            }
-        }
-
-        // ===== 11. YEAR-OVER-YEAR COMPARISON =====
-        $currentYear = (int)$today->format('Y');
-        $currentYearTotal = $sum([
-            'Invoices.company_id' => $companyId,
-            'Invoices.date >=' => new \DateTime($currentYear . '-01-01'),
-            'Invoices.date <=' => $today,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-        ]);
-
-        $lastYearStart = new \DateTime(($currentYear - 1) . '-01-01');
-        $lastYearEnd = new \DateTime(($currentYear - 1) . '-12-31');
-        $lastYearTotal = $sum([
-            'Invoices.company_id' => $companyId,
-            'Invoices.date >=' => $lastYearStart,
-            'Invoices.date <=' => $lastYearEnd,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-        ]);
-
-        $yoyGrowth = $lastYearTotal > 0
-            ? round((($currentYearTotal - $lastYearTotal) / $lastYearTotal) * 100, 1)
-            : 0;
-
-        // ===== 12. AVERAGE CONTRACTOR VALUE =====
-        $avgContractorValue = [];
-        $ContractorInvoices = $this->Invoices->find()
-            ->select(['Invoices.total'])
-            ->contain(['InvoiceContractors'])
-            ->where([
-                'Invoices.company_id' => $companyId,
-                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                $notDraftWhere,
-            ])
-            ->enableHydration(false)
-            ->all()
-            ->groupBy(function($inv) {
-                return $inv['invoice_contractors']['name'] ?? 'Unknown';
-            })
-            ->map(function($group) {
-                return [
-                    'count' => count($group),
-                    'total' => array_sum(array_column($group, 'total')),
-                    'avg' => array_sum(array_column($group, 'total')) / count($group),
-                ];
-            })
-            ->toArray();
-
-        // ===== 6. KPI CARDS PER CURRENCY =====
-        $currencyMetrics = [];
-        $currencies = $this->Invoices->find()
-            ->select(['currency'])
-            ->where(['Invoices.company_id' => $companyId])
-            ->distinct(['currency'])
-            ->enableHydration(false)
-            ->all()
-            ->extract('currency')
-            ->toArray();
-
-        foreach ($currencies as $curr) {
-            $currInvoices = $this->Invoices->find()
-                ->select(['total', 'netto', 'paymentstate'])
-                ->where([
-                    'Invoices.company_id' => $companyId,
-                    'Invoices.currency' => $curr,
-                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
-                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
-                    'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-                    $notDraftWhere,
-                ])
-                ->enableHydration(false)
-                ->all();
-
-            $currTotal = array_sum(array_column($currInvoices->toArray(), 'total'));
-            $currCount = $currInvoices->count();
-            $currAvg = $currCount > 0 ? $currTotal / $currCount : 0;
-            $currPaid = array_sum(array_map(function($inv) {
-                return $inv['paymentstate'] === 'paid' ? $inv['total'] : 0;
-            }, $currInvoices->toArray()));
-            $currPaidPercent = $currTotal > 0 ? round(($currPaid / $currTotal) * 100, 1) : 0;
-            $currPending = $currTotal - $currPaid;
-
-            $currencyMetrics[$curr] = [
-                'currency' => $curr,
-                'total' => $currTotal,
-                'count' => $currCount,
-                'avg' => $currAvg,
-                'paid' => $currPaid,
-                'paid_percent' => $currPaidPercent,
-                'pending' => $currPending,
-            ];
-        }
-
-        // Prepare dual-amount data for frontend switching
-        $dualAmountData = json_encode([
-            'brutto' => [
-                'monthlyRevenue' => $monthlyRevenue,
-                'totalRevenue' => $totalRevenue,
-                'avgInvoiceValue' => $avgInvoiceValue,
-                'paymentPercent' => $paymentPercent,
-            ],
-            'netto' => [
-                'monthlyRevenue' => $monthlyRevenueNetto,
-                'totalRevenue' => $totalRevenueNetto,
-                'avgInvoiceValue' => $avgInvoiceValueNetto,
-                'paymentPercent' => $paymentPercentNetto,
-            ]
-        ]);
-
-        // Przekaż dane do widoku
-        $this->set(compact(
-            'monthlyRevenue',
-            'monthlyRevenueNetto',
-            'paymentStatus',
-            'currencyData',
-            'topContractors',
-            'totalRevenue',
-            'totalRevenueNetto',
-            'invoiceCount',
-            'avgInvoiceValue',
-            'avgInvoiceValueNetto',
-            'paymentPercent',
-            'paymentPercentNetto',
-            'currencyMetrics',
-            'currencies',
-            'biggestInvoice',
-            'avgPaymentDays',
-            'invoiceTypes',
-            'paymentMethods',
-            'overdueDistribution',
-            'currentYearTotal',
-            'lastYearTotal',
-            'yoyGrowth',
-            'avgContractorValue',
-            'selectedCurrency',
-            'amountType',
-            'dualAmountData',
-            'dateFrom',
-            'dateTo'
-        ));
     }
 
     private function _sendAdminReplyEmail(\App\Model\Entity\SupportTicket $ticket, \App\Model\Entity\SupportTicketReply $reply): void
