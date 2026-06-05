@@ -6831,7 +6831,12 @@ private function makeClient(string $environment): KsefClient
         $soldDate    = $inv->sold_date ? $inv->sold_date->format('Y-m-d') : null;
         $isDraftInv  = ((string)($inv->workflow_status ?? '')) === 'draft';
         $number      = $isDraftInv
-            ? ((string)$inv->id) . ' - robocza'
+            ? $this->generateDraftNumber(
+                (string)($inv->invoice_series_id ?? ''),
+                (string)$inv->id,
+                $issueDate,
+                (string)($inv->company_id ?? '')
+              ) . ' - robocza'
             : (string)($inv->fullnumber ?? $inv->id);
         $currency    = strtoupper((string)($inv->currency ?? 'PLN'));
         $placeIssued = trim((string)($inv->place_of_issue ?? $seller?->city ?? ''));
