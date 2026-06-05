@@ -219,6 +219,111 @@ $this->assign('title', 'Dashboard Faktur');
   </div>
 </div>
 
+<div class="row mt-4">
+  <!-- Invoice Types -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title">Typ faktury</h6>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-sm">
+          <canvas id="invoiceTypesChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Methods -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title">Forma płatności</h6>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-sm">
+          <canvas id="paymentMethodsChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Days Overdue -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title">Rozkład przeterminowania</h6>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-sm">
+          <canvas id="overdueChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <!-- Biggest Invoice -->
+  <div class="col-lg-6 col-xl-3">
+    <div class="card border-left-4" style="border-left: 4px solid #e74c3c;">
+      <div class="card-body">
+        <div class="kpi-label">Największa faktura</div>
+        <?php if ($biggestInvoice): ?>
+          <div class="kpi-value text-danger" style="font-size: 1.5rem;"><?= $this->Number->format($biggestInvoice->total, ['places' => 0]) ?> <?= h($biggestInvoice->currency) ?></div>
+          <small class="text-muted"><?= h($biggestInvoice->fullnumber) ?></small>
+          <br/>
+          <small class="text-muted"><?= $biggestInvoice->date->format('d.m.Y') ?></small>
+          <?php if ($biggestInvoice->invoice_contractors): ?>
+            <br/><small class="text-primary fw-semibold"><?= h($biggestInvoice->invoice_contractors->name) ?></small>
+          <?php endif; ?>
+        <?php else: ?>
+          <div class="text-muted">Brak danych</div>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+
+  <!-- Avg Payment Time -->
+  <div class="col-lg-6 col-xl-3">
+    <div class="card border-left-4" style="border-left: 4px solid #f6c23e;">
+      <div class="card-body">
+        <div class="kpi-label">Średni czas płatności</div>
+        <div class="kpi-value text-warning"><?= $avgPaymentDays ?></div>
+        <small class="text-muted">dni</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- YoY Growth -->
+  <div class="col-lg-6 col-xl-3">
+    <div class="card border-left-4" style="border-left: 4px solid #1cc88a;">
+      <div class="card-body">
+        <div class="kpi-label">Wzrost rok do roku</div>
+        <div class="kpi-value <?= $yoyGrowth >= 0 ? 'text-success' : 'text-danger' ?>"><?= $yoyGrowth >= 0 ? '+' : '' ?><?= $yoyGrowth ?>%</div>
+        <small class="text-muted"><?= (int)$currentYear ?> vs <?= (int)$currentYear - 1 ?></small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contractor Avg Value -->
+  <div class="col-lg-6 col-xl-3">
+    <div class="card border-left-4" style="border-left: 4px solid #4f46e5;">
+      <div class="card-body">
+        <div class="kpi-label">Śr. wartość per kontrahent</div>
+        <?php
+          $overallAvg = 0;
+          if (!empty($avgContractorValue)) {
+              $overallAvg = array_sum(array_column($avgContractorValue, 'avg')) / count($avgContractorValue);
+          }
+        ?>
+        <div class="kpi-value text-primary"><?= $this->Number->format($overallAvg, ['places' => 0]) ?></div>
+        <small class="text-muted"><?= count($avgContractorValue) ?> kontrahentów</small>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Chart.js Library -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -373,6 +478,90 @@ document.addEventListener('DOMContentLoaded', function() {
               return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(value);
             }
           }
+        }
+      }
+    }
+  });
+
+  // ===== 5. INVOICE TYPES =====
+  const invoiceTypesData = <?= json_encode($invoiceTypes) ?>;
+  const typeLabels = {
+    'vat': 'Faktura VAT',
+    'proforma': 'Proforma',
+    'advance': 'Zaliczka',
+    'currency': 'Walutowa',
+    'margin': 'Marża',
+    'novat': 'Rachunek'
+  };
+
+  new Chart(document.getElementById('invoiceTypesChart'), {
+    type: 'pie',
+    data: {
+      labels: Object.keys(invoiceTypesData).map(k => typeLabels[k] || k),
+      datasets: [{
+        data: Object.values(invoiceTypesData).map(d => d.total),
+        backgroundColor: ['#4f46e5', '#e74c3c', '#f6c23e', '#1cc88a', '#3498db', '#9b59b6'],
+        borderColor: '#f8f9fc',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+
+  // ===== 6. PAYMENT METHODS =====
+  const paymentMethodsData = <?= json_encode($paymentMethods) ?>;
+  const methodLabels = {
+    'transfer': 'Przelew',
+    'cash': 'Gotówka',
+    'card': 'Karta',
+    'other': 'Inne'
+  };
+
+  new Chart(document.getElementById('paymentMethodsChart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(paymentMethodsData).map(k => methodLabels[k] || k),
+      datasets: [{
+        data: Object.values(paymentMethodsData).map(d => d.count),
+        backgroundColor: ['#2e59d9', '#10b981', '#ffc107', '#6c757d'],
+        borderColor: '#f8f9fc',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+
+  // ===== 7. DAYS OVERDUE =====
+  const overdueData = <?= json_encode($overdueDistribution) ?>;
+
+  new Chart(document.getElementById('overdueChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(overdueData),
+      datasets: [{
+        label: 'Faktury',
+        data: Object.values(overdueData),
+        backgroundColor: ['#ffc107', '#fd7e14', '#e74c3c', '#721c24'],
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true
         }
       }
     }
