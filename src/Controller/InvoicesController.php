@@ -9660,6 +9660,20 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             $dateTo = $today;
         }
 
+        // Helper functions
+        $sum = function(array $where, string $col = 'Invoices.total'): float {
+            $q = $this->Invoices->find();
+            $q->select(['s' => $q->func()->sum($col)])
+              ->where($where)
+              ->enableHydration(false);
+            $row = $q->first();
+            return (float)($row['s'] ?? 0);
+        };
+
+        $cnt = function(array $where): int {
+            return (int)$this->Invoices->find()->where($where)->count();
+        };
+
         // Helper: wyklucz faktury robocze (draft)
         $notDraftWhere = ['OR' => [
             ['Invoices.workflow_status IS' => null],
