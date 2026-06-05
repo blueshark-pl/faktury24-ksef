@@ -9896,8 +9896,13 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         } catch (\Throwable $e) {
             \Cake\Log\Log::error('Invoice duplication error: ' . $e->getMessage(), ['invoice_duplicate']);
-            $this->Flash->error('Błąd przy duplikacji faktury: ' . $e->getMessage());
-            return $this->redirect(['action' => 'view', $id]);
+            return $this->response
+                ->withStatus(400)
+                ->withType('application/json')
+                ->withStringBody(json_encode([
+                    'success' => false,
+                    'message' => 'Błąd przy duplikacji faktury: ' . $e->getMessage()
+                ]));
         }
     }
 
