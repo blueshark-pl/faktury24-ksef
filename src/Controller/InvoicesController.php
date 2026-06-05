@@ -6836,7 +6836,7 @@ private function makeClient(string $environment): KsefClient
                 (string)$inv->id,
                 $issueDate,
                 (string)($inv->company_id ?? '')
-              ) . ' - robocza'
+              )
             : (string)($inv->fullnumber ?? $inv->id);
         $currency    = strtoupper((string)($inv->currency ?? 'PLN'));
         $placeIssued = trim((string)($inv->place_of_issue ?? $seller?->city ?? ''));
