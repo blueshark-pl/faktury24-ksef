@@ -9772,6 +9772,187 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         $paymentPercent = $totalRevenue > 0 ? round(($paidTotal / $totalRevenue) * 100, 1) : 0;
 
+        // ===== 6. BIGGEST INVOICE =====
+        $biggestInvoice = $this->Invoices->find()
+            ->select(['id', 'fullnumber', 'date', 'total', 'currency'])
+            ->contain(['InvoiceContractors'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->order(['total' => 'DESC'])
+            ->first();
+
+        // ===== 7. AVERAGE PAYMENT TIME (dni do zapłaty) =====
+        $paidInvoices = $this->Invoices->find()
+            ->select(['date', 'paymentdate'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.paymentstate' => 'paid',
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+                'Invoices.paymentdate IS NOT' => null,
+            ])
+            ->enableHydration(false)
+            ->all();
+
+        $avgPaymentDays = 0;
+        if ($paidInvoices->count() > 0) {
+            $totalDays = 0;
+            foreach ($paidInvoices as $inv) {
+                $invoiceDate = new \DateTime($inv['date']);
+                $paymentDate = new \DateTime($inv['paymentdate']);
+                $totalDays += $paymentDate->diff($invoiceDate)->days;
+            }
+            $avgPaymentDays = round($totalDays / $paidInvoices->count(), 1);
+        }
+
+        // ===== 8. INVOICE TYPE BREAKDOWN =====
+        $invoiceTypes = [];
+        $types = ['vat', 'proforma', 'advance', 'currency', 'margin', 'novat'];
+        foreach ($types as $type) {
+            $count = $this->Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.type' => $type,
+                ])
+                ->count();
+
+            $total = $this->Invoices->find()
+                ->select(['total'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.type' => $type,
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            if ($count > 0) {
+                $invoiceTypes[$type] = [
+                    'type' => $type,
+                    'count' => $count,
+                    'total' => array_sum(array_column($total->toArray(), 'total')),
+                ];
+            }
+        }
+
+        // ===== 9. PAYMENT METHOD BREAKDOWN =====
+        $paymentMethods = [];
+        $methods = ['transfer', 'cash', 'card', 'other'];
+        foreach ($methods as $method) {
+            $count = $this->Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.paymentmethod' => $method,
+                ])
+                ->count();
+
+            $total = $this->Invoices->find()
+                ->select(['total'])
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                    'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                    'Invoices.paymentmethod' => $method,
+                ])
+                ->enableHydration(false)
+                ->all();
+
+            if ($count > 0) {
+                $paymentMethods[$method] = [
+                    'method' => $method,
+                    'count' => $count,
+                    'total' => array_sum(array_column($total->toArray(), 'total')),
+                ];
+            }
+        }
+
+        // ===== 10. DAYS OVERDUE DISTRIBUTION =====
+        $overdueInvoices = $this->Invoices->find()
+            ->select(['paymentdate'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.paymentstate' => 'overdue',
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false)
+            ->all();
+
+        $overdueDistribution = ['0-7' => 0, '8-14' => 0, '15-30' => 0, '30+' => 0];
+        $today = new \DateTime();
+        foreach ($overdueInvoices as $inv) {
+            if ($inv['paymentdate']) {
+                $dueDate = new \DateTime($inv['paymentdate']);
+                $daysOverdue = $today->diff($dueDate)->days;
+
+                if ($daysOverdue <= 7) {
+                    $overdueDistribution['0-7']++;
+                } elseif ($daysOverdue <= 14) {
+                    $overdueDistribution['8-14']++;
+                } elseif ($daysOverdue <= 30) {
+                    $overdueDistribution['15-30']++;
+                } else {
+                    $overdueDistribution['30+']++;
+                }
+            }
+        }
+
+        // ===== 11. YEAR-OVER-YEAR COMPARISON =====
+        $currentYear = (int)$today->format('Y');
+        $currentYearTotal = $sum([
+            'Invoices.company_id' => $companyId,
+            'Invoices.date >=' => new \DateTime($currentYear . '-01-01'),
+            'Invoices.date <=' => $today,
+            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+        ]);
+
+        $lastYearStart = new \DateTime(($currentYear - 1) . '-01-01');
+        $lastYearEnd = new \DateTime(($currentYear - 1) . '-12-31');
+        $lastYearTotal = $sum([
+            'Invoices.company_id' => $companyId,
+            'Invoices.date >=' => $lastYearStart,
+            'Invoices.date <=' => $lastYearEnd,
+            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+        ]);
+
+        $yoyGrowth = $lastYearTotal > 0
+            ? round((($currentYearTotal - $lastYearTotal) / $lastYearTotal) * 100, 1)
+            : 0;
+
+        // ===== 12. AVERAGE CONTRACTOR VALUE =====
+        $avgContractorValue = [];
+        $ContractorInvoices = $this->Invoices->find()
+            ->select(['Invoices.total'])
+            ->contain(['InvoiceContractors'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom->format('Y-m-d'),
+                'Invoices.date <=' => $dateTo->format('Y-m-d'),
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false)
+            ->all()
+            ->groupBy(function($inv) {
+                return $inv['invoice_contractors']['name'] ?? 'Unknown';
+            })
+            ->map(function($group) {
+                return [
+                    'count' => count($group),
+                    'total' => array_sum(array_column($group, 'total')),
+                    'avg' => array_sum(array_column($group, 'total')) / count($group),
+                ];
+            })
+            ->toArray();
+
         // ===== 6. KPI CARDS PER CURRENCY =====
         $currencyMetrics = [];
         $currencies = $this->Invoices->find()
@@ -9828,6 +10009,15 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             'paymentPercent',
             'currencyMetrics',
             'currencies',
+            'biggestInvoice',
+            'avgPaymentDays',
+            'invoiceTypes',
+            'paymentMethods',
+            'overdueDistribution',
+            'currentYearTotal',
+            'lastYearTotal',
+            'yoyGrowth',
+            'avgContractorValue',
             'dateFrom',
             'dateTo'
         ));
