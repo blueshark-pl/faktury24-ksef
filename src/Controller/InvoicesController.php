@@ -9734,8 +9734,8 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         // ===== 4. TOP CONTRACTORS (bar chart) =====
         $topContractorsRaw = $this->Invoices->find()
-            ->select(['Invoices.total', 'Invoices.id', 'InvoiceContractors.name'])
-            ->leftJoinWith('InvoiceContractors')
+            ->select(['Invoices.total', 'Invoices.id'])
+            ->contain(['InvoiceContractors'])
             ->where([
                 'Invoices.company_id' => $companyId,
                 'Invoices.date >=' => $dateFrom->format('Y-m-d'),
@@ -9745,8 +9745,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             ->enableHydration(false)
             ->all()
             ->groupBy(function($inv) {
-                // leftJoinWith zwraca pola z prefixem AssocTable__fieldname
-                return $inv['InvoiceContractors__name'] ?? $inv['name'] ?? 'Unknown';
+                return $inv['invoice_contractors']['name'] ?? 'Unknown';
             })
             ->map(function($group) {
                 return array_sum(array_column($group, 'total'));
