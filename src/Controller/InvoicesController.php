@@ -209,6 +209,91 @@ class InvoicesController extends AppController
         return null;
     }
 
+    /**
+     * AJAX endpoint: get predicted draft number without saving
+     */
+    public function ajaxGetDraftNumber()
+    {
+        $this->request->allowMethod('post');
+        $invoiceId = $this->request->getData('invoice_id');
+        $seriesId = $this->request->getData('series_id');
+        $invoiceDate = $this->request->getData('date') ?? date('Y-m-d');
+
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity->company_id ?? null;
+
+        if (!$invoiceId || !$seriesId || !$companyId) {
+            return $this->response->withStatus(400)->withType('application/json')->withStringBody(
+                json_encode(['error' => 'Missing parameters'])
+            );
+        }
+
+        try {
+            $fullnumber = $this->generateDraftNumber($seriesId, $invoiceId, $invoiceDate, $companyId);
+            return $this->response->withType('application/json')->withStringBody(
+                json_encode(['fullnumber' => $fullnumber])
+            );
+        } catch (\Exception $e) {
+            return $this->response->withStatus(500)->withType('application/json')->withStringBody(
+                json_encode(['error' => $e->getMessage()])
+            );
+        }
+    }
+
+    /**
+     * Generate draft number without modifying database
+     */
+    private function generateDraftNumber(string $seriesId, string $invoiceId, string $invoiceDate, string $companyId): string
+    {
+        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
+        $series = $InvoiceSeries->find()
+            ->contain(['InvoiceSeriesPeriods'])
+            ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
+            ->first();
+        if (!$series) {
+            throw new \RuntimeException('Nie znaleziono serii numeracji dla dokumentu.');
+        }
+
+        $dateObject = new \DateTimeImmutable($invoiceDate);
+        $year = (int)$dateObject->format('Y');
+        $month = (int)$dateObject->format('m');
+
+        $where = [
+            'company_id' => $companyId,
+            'invoice_series_id' => $series->id,
+            'fullnumber IS NOT' => null,
+            'id !=' => $invoiceId,
+        ];
+
+        $periodName = (string)($series->invoice_series_period->name ?? '');
+        if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
+            $where['year'] = $year;
+            $where['month'] = $month;
+        } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
+            $where['year'] = $year;
+        }
+
+        $lastInvoice = $this->Invoices->find()
+            ->where($where)
+            ->order(['number' => 'DESC', 'id' => 'DESC'])
+            ->first();
+
+        $overrideNext = $series->override_next_number ?? null;
+        if ($overrideNext !== null && (int)$overrideNext > 0) {
+            $nextNumber = (int)$overrideNext;
+        } elseif ($lastInvoice) {
+            $extractedNumber = !empty($lastInvoice->number)
+                ? (int)$lastInvoice->number
+                : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
+            $nextNumber = $extractedNumber + 1;
+        } else {
+            $nextNumber = (int)($series->starting_number ?: 1);
+        }
+
+        $template = (string)($series->series_template ?: '[numer]');
+        return $this->formatInvoicePattern($template, $nextNumber, $invoiceDate);
+    }
+
     private function ensureInvoiceNumberForSend(Invoice $invoice, string $companyId): void
     {
         $fullnumber = trim((string)($invoice->fullnumber ?? ''));
@@ -229,59 +314,11 @@ class InvoicesController extends AppController
             $issueDate = date('Y-m-d');
         }
 
-        $InvoiceSeries = $this->fetchTable('InvoiceSeries');
-        $series = $InvoiceSeries->find()
-            ->contain(['InvoiceSeriesPeriods'])
-            ->where(['InvoiceSeries.id' => $seriesId, 'InvoiceSeries.company_id' => $companyId])
-            ->first();
-        if (!$series) {
-            throw new \RuntimeException('Nie znaleziono serii numeracji dla dokumentu.');
-        }
+        $fullnumber = $this->generateDraftNumber($seriesId, $invoice->id, $issueDate, $companyId);
+        $invoice->set('fullnumber', $fullnumber);
 
         $dateObject = new \DateTimeImmutable($issueDate);
-        $year = (int)$dateObject->format('Y');
-        $month = (int)$dateObject->format('m');
-
-        $where = [
-            'company_id' => $companyId,
-            'invoice_series_id' => $series->id,
-            'fullnumber IS NOT' => null,
-            'id !=' => $invoice->id,
-        ];
-
-        $periodName = (string)($series->invoice_series_period->name ?? '');
-        if (stripos($periodName, 'miesięczn') !== false || stripos($periodName, 'monthly') !== false) {
-            $where['year'] = $year;
-            $where['month'] = $month;
-        } elseif (stripos($periodName, 'roczn') !== false || stripos($periodName, 'yearly') !== false) {
-            $where['year'] = $year;
-        }
-
-        $lastInvoice = $this->Invoices->find()
-            ->where($where)
-            ->order(['number' => 'DESC', 'id' => 'DESC'])
-            ->first();
-
-        // Jednorazowy override numeru (np. przy migracji z innego systemu)
-        $overrideNext = $series->override_next_number ?? null;
-        if ($overrideNext !== null && (int)$overrideNext > 0) {
-            $nextNumber = (int)$overrideNext;
-            $this->Invoices->getConnection()->execute(
-                'UPDATE invoice_series SET override_next_number = NULL WHERE id = ?',
-                [$series->id]
-            );
-        } elseif ($lastInvoice) {
-            $extractedNumber = !empty($lastInvoice->number)
-                ? (int)$lastInvoice->number
-                : $this->extractNumberFromFullnumber((string)$lastInvoice->fullnumber);
-            $nextNumber = $extractedNumber + 1;
-        } else {
-            $nextNumber = (int)($series->starting_number ?: 1);
-        }
-
-        $template = (string)($series->series_template ?: '[numer]');
-        $invoice->set('fullnumber', $this->formatInvoicePattern($template, $nextNumber, $issueDate));
-        $invoice->set('number', $nextNumber);
+        $invoice->set('number', (int)substr(strrchr($fullnumber, '/'), 1) ?: 1);
         $invoice->set('day', (int)$dateObject->format('d'));
         $invoice->set('month', (int)$dateObject->format('m'));
         $invoice->set('year', (int)$dateObject->format('Y'));

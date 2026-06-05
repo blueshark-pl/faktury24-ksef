@@ -61,7 +61,16 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
   <h4 class="fw-medium mb-0 d-flex align-items-center">
     <i class="ri-file-text-line me-2 fs-20"></i>
-    Podgląd Faktury: <span id="invoice-fullnumber-display"><?= h($invoice->fullnumber ?: $invoice->id) ?></span>
+    Podgląd Faktury: <span id="invoice-fullnumber-display">
+      <?php if ($invoice->workflow_status === 'draft' && !$invoice->fullnumber): ?>
+        <span class="draft-number-loader">
+          <span class="spinner-border spinner-border-sm text-primary" role="status" aria-label="Ładowanie"></span>
+          <span id="draft-number-text">Ładowanie numeru…</span>
+        </span>
+      <?php else: ?>
+        <?= h($invoice->fullnumber ?: $invoice->id) ?>
+      <?php endif; ?>
+    </span>
   </h4>
   <div class="d-flex align-items-center gap-2">
     
@@ -147,6 +156,17 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 .skeleton .sk-row { display: grid; grid-template-columns: 1fr 3fr 1fr 1fr; gap: 10px; align-items: center; margin-top: 8px; }
 .skeleton .sk-head .sk-cell { height: 14px; }
 .skeleton .sk-body .sk-cell { height: 12px; }
+
+.draft-number-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.draft-number-loader .spinner-border {
+  width: 1rem;
+  height: 1rem;
+  border-width: 0.2em;
+}
 </style>
 
 <div class="mt-3" id="invoice-preview">
@@ -712,5 +732,51 @@ document.addEventListener('click', function (e) {
             });
         }
     });
+});
+
+// ===== LOAD DRAFT NUMBER FOR DRAFT VIEW =====
+document.addEventListener('DOMContentLoaded', function() {
+  const displaySpan = document.getElementById('invoice-fullnumber-display');
+  const draftNumberText = document.getElementById('draft-number-text');
+
+  // Only load if showing loader
+  if (!draftNumberText) return;
+
+  const invoiceId = '<?= h($invoice->id) ?>';
+  const seriesId = '<?= h($invoice->invoice_series_id) ?>';
+  const invoiceDate = '<?= $invoice->date ? $invoice->date->format('Y-m-d') : date('Y-m-d') ?>';
+
+  fetch('<?= $this->Url->build(['action' => 'ajaxGetDraftNumber']) ?>', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('input[name="_csrfToken"]')?.value || ''
+    },
+    body: JSON.stringify({
+      invoice_id: invoiceId,
+      series_id: seriesId,
+      date: invoiceDate
+    })
+  })
+  .then(response => {
+    if (!response.ok) throw new Error('Failed to get draft number');
+    return response.json();
+  })
+  .then(data => {
+    if (data.fullnumber) {
+      // Replace loader with actual number
+      displaySpan.innerHTML = '<strong>' + escapeHtml(data.fullnumber) + '</strong>';
+    }
+  })
+  .catch(error => {
+    console.error('Error loading draft number:', error);
+    draftNumberText.textContent = 'Nie udało się wczytać numeru';
+  });
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 });
 </script>
