@@ -9733,28 +9733,22 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             });
 
         // ===== 4. TOP CONTRACTORS (bar chart) =====
-        $Invoices = $this->Invoices;
-        $conn = $Invoices->getConnection();
-
-        $topContractorsQuery = $conn->selectQuery()
-            ->select(['contractor_name' => 'COALESCE(ic.name, \'Unknown\')', 'total_amount' => $conn->func('SUM', ['i.total'])])
-            ->from(['i' => 'invoices'])
-            ->leftJoin(['ic' => 'invoice_contractors'], ['ic.invoice_id = i.id'])
-            ->where([
-                'i.company_id' => $companyId,
-                'i.date >=' => $dateFrom->format('Y-m-d'),
-                'i.date <=' => $dateTo->format('Y-m-d'),
-                'i.type NOT IN' => ['correction', 'proforma', 'advance'],
+        $topContractorsRaw = $this->Invoices
+            ->find('topContractors', [
+                'companyId' => $companyId,
+                'dateFrom' => $dateFrom->format('Y-m-d'),
+                'dateTo' => $dateTo->format('Y-m-d'),
             ])
-            ->group(['COALESCE(ic.name, \'Unknown\')'])
-            ->order(['total_amount' => 'DESC'])
-            ->limit(10);
+            ->all()
+            ->groupBy('contractor_name')
+            ->map(function($group) {
+                return array_sum(array_column($group, 'total'));
+            })
+            ->toArray();
 
-        $topContractorsResult = $conn->execute($topContractorsQuery)->fetchAll('assoc');
-        $topContractors = [];
-        foreach ($topContractorsResult as $row) {
-            $topContractors[$row['contractor_name']] = (float)$row['total_amount'];
-        }
+        // Sortuj descending i weź top 10
+        arsort($topContractorsRaw);
+        $topContractors = array_slice($topContractorsRaw, 0, 10, true);
 
         // ===== 5. KPI CARDS =====
         $allInvoices = $this->Invoices->find()

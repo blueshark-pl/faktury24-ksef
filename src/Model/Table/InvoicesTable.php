@@ -327,4 +327,27 @@ class InvoicesTable extends Table
 
         return $this->save($invoice);
     }
+
+    public function findTopContractors(SelectQuery $query, array $options): SelectQuery
+    {
+        $companyId = $options['companyId'] ?? null;
+        $dateFrom = $options['dateFrom'] ?? null;
+        $dateTo = $options['dateTo'] ?? null;
+        $limit = $options['limit'] ?? 10;
+
+        return $query
+            ->select([
+                'id' => 'Invoices.id',
+                'total' => 'Invoices.total',
+                'contractor_name' => 'COALESCE(InvoiceContractors.name, \'Unknown\')',
+            ])
+            ->contain(['InvoiceContractors'])
+            ->where([
+                'Invoices.company_id' => $companyId,
+                'Invoices.date >=' => $dateFrom,
+                'Invoices.date <=' => $dateTo,
+                'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            ])
+            ->enableHydration(false);
+    }
 }
