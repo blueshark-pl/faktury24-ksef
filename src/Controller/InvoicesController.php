@@ -9675,6 +9675,229 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
         return null;
     }
 
+    /**
+     * Duplicate invoice: create a new draft copy with all content
+     */
+    public function duplicateInvoice($id = null)
+    {
+        $this->request->allowMethod('post');
+
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity->company_id ?? null;
+        if (empty($companyId)) {
+            return $this->response->withStatus(403)->withStringBody('Access denied');
+        }
+
+        // Load source invoice with all relationships
+        $sourceInvoice = $this->Invoices->find()
+            ->contain([
+                'InvoiceContractors',
+                'InvoiceCompanyDetails',
+                'InvoiceRecipients',
+                'InvoiceContents' => ['Vats'],
+                'InvoiceVatContents',
+                'InvoiceNewTransports',
+                'InvoiceCharges',
+                'InvoiceFactorBanks',
+                'InvoiceAuthorizedEntities',
+                'InvoiceOrderLines',
+            ])
+            ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
+            ->first();
+
+        if (!$sourceInvoice) {
+            return $this->response->withStatus(404);
+        }
+
+        // Check if type is allowed (vat, proforma, currency, margin only)
+        $allowedTypes = ['vat', 'proforma', 'currency', 'margin'];
+        $invoiceType = strtolower((string)($sourceInvoice->type ?? ''));
+        if (!in_array($invoiceType, $allowedTypes, true)) {
+            $this->Flash->error('Duplikacja nie jest dostępna dla tego typu faktury.');
+            return $this->redirect(['action' => 'view', $id]);
+        }
+
+        try {
+            // Create new invoice entity from source
+            $newInvoice = $this->Invoices->newEmptyEntity();
+
+            // Copy all safe fields
+            $copyFields = [
+                'company_id', 'invoice_series_id', 'contractor_id',
+                'parent_id', 'type', 'currency', 'total', 'netto', 'tax',
+                'alreadypaid', 'remaining', 'paymentmethod', 'paymentstate',
+                'simplified_invoice', 'is_receipt_invoice', 'is_split_payment',
+                'buyer_is_jst', 'buyer_in_vat_group', 'seller_vat_prefix',
+                'seller_vat_eu', 'buyer_vat_prefix', 'buyer_vat_eu',
+                'buyer_eori', 'buyer_tax_id_other', 'buyer_tax_id_other_country',
+                'sold_date', 'advance_received_date', 'receipt_date', 'receipt_number',
+                'period_from', 'period_to', 'currency_date', 'currency_exchange',
+                'company_bank_account_id', 'description', 'margin_type',
+                'lang', 'auto_send', 'footer_text', 'place_of_issue',
+                'correction_type', 'correction_reason',
+            ];
+
+            foreach ($copyFields as $field) {
+                if ($sourceInvoice->has($field)) {
+                    $newInvoice->set($field, $sourceInvoice->get($field));
+                }
+            }
+
+            // Set workflow to draft and reset identity fields
+            $newInvoice->set('workflow_status', 'draft');
+            $newInvoice->set('fullnumber', null);
+            $newInvoice->set('number', null);
+            $newInvoice->set('day', null);
+            $newInvoice->set('month', null);
+            $newInvoice->set('year', null);
+            $newInvoice->set('day_year', null);
+
+            // Set date to today (issued date)
+            $newInvoice->set('date', new \DateTime());
+
+            // Reset KSeF, email, payment tracking fields
+            $newInvoice->set('ksef_status', null);
+            $newInvoice->set('ksef_number', null);
+            $newInvoice->set('ksef_session_reference', null);
+            $newInvoice->set('ksef_invoice_reference', null);
+            $newInvoice->set('ksef_xml_hash', null);
+            $newInvoice->set('ksef_desc', null);
+            $newInvoice->set('upo_xml', null);
+            $newInvoice->set('upo_downloaded_at', null);
+            $newInvoice->set('planned_ksef_send_at', null);
+            $newInvoice->set('email_sent_at', null);
+            $newInvoice->set('is_sent', false);
+            $newInvoice->set('is_api', false);
+
+            // Generate new hash
+            $newInvoice->set('hash', md5(uniqid('inv_', true)));
+
+            // Save new invoice
+            if (!$this->Invoices->save($newInvoice)) {
+                $this->Flash->error('Nie udało się zduplikować faktury.');
+                return $this->redirect(['action' => 'view', $id]);
+            }
+
+            $newInvoiceId = $newInvoice->id;
+
+            // Copy InvoiceContractors snapshot
+            if ($sourceInvoice->invoice_contractor) {
+                $newContractor = $this->fetchTable('InvoiceContractors')->newEmptyEntity();
+                $contractorData = $sourceInvoice->invoice_contractor->toArray();
+                unset($contractorData['id']);
+                unset($contractorData['invoice_id']);
+                unset($contractorData['created']);
+                unset($contractorData['modified']);
+                $contractorData['invoice_id'] = $newInvoiceId;
+                $newContractor = $this->fetchTable('InvoiceContractors')->patchEntity($newContractor, $contractorData);
+                $this->fetchTable('InvoiceContractors')->save($newContractor);
+            }
+
+            // Copy InvoiceCompanyDetails snapshot
+            if ($sourceInvoice->invoice_company_detail) {
+                $newCompanyDetail = $this->fetchTable('InvoiceCompanyDetails')->newEmptyEntity();
+                $companyData = $sourceInvoice->invoice_company_detail->toArray();
+                unset($companyData['id']);
+                unset($companyData['invoice_id']);
+                unset($companyData['created']);
+                unset($companyData['modified']);
+                $companyData['invoice_id'] = $newInvoiceId;
+                $newCompanyDetail = $this->fetchTable('InvoiceCompanyDetails')->patchEntity($newCompanyDetail, $companyData);
+                $this->fetchTable('InvoiceCompanyDetails')->save($newCompanyDetail);
+            }
+
+            // Copy InvoiceRecipients snapshot if present
+            if ($sourceInvoice->invoice_recipient) {
+                $newRecipient = $this->fetchTable('InvoiceRecipients')->newEmptyEntity();
+                $recipientData = $sourceInvoice->invoice_recipient->toArray();
+                unset($recipientData['id']);
+                unset($recipientData['invoice_id']);
+                unset($recipientData['created']);
+                unset($recipientData['modified']);
+                $recipientData['invoice_id'] = $newInvoiceId;
+                $newRecipient = $this->fetchTable('InvoiceRecipients')->patchEntity($newRecipient, $recipientData);
+                $this->fetchTable('InvoiceRecipients')->save($newRecipient);
+            }
+
+            // Copy InvoiceContents (line items) - replace-all pattern
+            $InvoiceContentsTable = $this->fetchTable('InvoiceContents');
+            $InvoiceContentsTable->deleteAll(['invoice_id' => $newInvoiceId]);
+
+            if (!empty($sourceInvoice->invoice_contents)) {
+                foreach ($sourceInvoice->invoice_contents as $idx => $item) {
+                    $newItem = $InvoiceContentsTable->newEmptyEntity();
+                    $itemData = $item->toArray();
+                    unset($itemData['id']);
+                    unset($itemData['invoice_id']);
+                    unset($itemData['created']);
+                    unset($itemData['modified']);
+                    $itemData['invoice_id'] = $newInvoiceId;
+                    $itemData['sort_order'] = $idx;
+                    $newItem = $InvoiceContentsTable->patchEntity($newItem, $itemData);
+                    $InvoiceContentsTable->save($newItem);
+                }
+            }
+
+            // Copy InvoiceVatContents
+            $InvoiceVatTable = $this->fetchTable('InvoiceVatContents');
+            $InvoiceVatTable->deleteAll(['invoice_id' => $newInvoiceId]);
+
+            if (!empty($sourceInvoice->invoice_vat_contents)) {
+                foreach ($sourceInvoice->invoice_vat_contents as $vat) {
+                    $newVat = $InvoiceVatTable->newEmptyEntity();
+                    $vatData = $vat->toArray();
+                    unset($vatData['id']);
+                    unset($vatData['invoice_id']);
+                    unset($vatData['created']);
+                    unset($vatData['modified']);
+                    $vatData['invoice_id'] = $newInvoiceId;
+                    $newVat = $InvoiceVatTable->patchEntity($newVat, $vatData);
+                    $InvoiceVatTable->save($newVat);
+                }
+            }
+
+            // Copy FA(3) relational data - using existing pattern
+            $fa3Tables = [
+                'InvoiceNewTransports',
+                'InvoiceCharges',
+                'InvoiceFactorBanks',
+                'InvoiceAuthorizedEntities',
+                'InvoiceOrderLines',
+            ];
+
+            foreach ($fa3Tables as $tableName) {
+                $Table = $this->fetchTable($tableName);
+                $Table->deleteAll(['invoice_id' => $newInvoiceId]);
+
+                $sourceRelation = lcfirst(\Cake\Utility\Inflector::camelize($tableName));
+                if ($sourceInvoice->has($sourceRelation) && !empty($sourceInvoice->get($sourceRelation))) {
+                    foreach ($sourceInvoice->get($sourceRelation) as $relation) {
+                        $newRel = $Table->newEmptyEntity();
+                        $relData = $relation->toArray();
+                        unset($relData['id']);
+                        unset($relData['invoice_id']);
+                        unset($relData['created']);
+                        unset($relData['modified']);
+                        $relData['invoice_id'] = $newInvoiceId;
+                        $newRel = $Table->patchEntity($newRel, $relData);
+                        $Table->save($newRel);
+                    }
+                }
+            }
+
+            // Success! Show SweetAlert modal with info and redirect to view
+            $this->set('duplicatedInvoiceId', $newInvoiceId);
+            $this->set('sourceFullnumber', $sourceInvoice->fullnumber ?: $sourceInvoice->id);
+            $this->render('duplicate_invoice');
+            return null;
+
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('Invoice duplication error: ' . $e->getMessage(), ['invoice_duplicate']);
+            $this->Flash->error('Błąd przy duplikacji faktury: ' . $e->getMessage());
+            return $this->redirect(['action' => 'view', $id]);
+        }
+    }
+
     public function dashboard(): void
     {
         // Pobranie danych użytkownika

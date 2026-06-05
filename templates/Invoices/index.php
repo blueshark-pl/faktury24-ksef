@@ -954,6 +954,16 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
                       <i class="ri-printer-line me-2"></i> Pobierz PDF
                     </a>
                   </li>
+                  <?php if (in_array($__typeKeyForEdit, ['vat', 'proforma', 'currency', 'margin'], true)): ?>
+                  <li>
+                    <?= $this->Form->postLink(
+                      '<i class="ri-file-copy-line me-2"></i> Duplikuj',
+                      ['action' => 'duplicateInvoice', $inv->id],
+                      ['class' => 'dropdown-item', 'escape' => false, 'title' => 'Duplikuj fakturę',
+                       'confirm' => 'Zduplikować fakturę ' . h($inv->fullnumber ?: $inv->id) . '? Nowa będzie w trybie roboczym.']
+                    ) ?>
+                  </li>
+                  <?php endif; ?>
                   <?php if ($__invEmail !== '' && (!$ksefModeEnabled || $__ksefExempt || $__invKsefNumber !== '')): ?>
                   <li>
                     <a href="#" class="dropdown-item inv-email-btn"
