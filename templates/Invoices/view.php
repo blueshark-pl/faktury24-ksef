@@ -61,7 +61,7 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
   <h4 class="fw-medium mb-0 d-flex align-items-center">
     <i class="ri-file-text-line me-2 fs-20"></i>
-    Podgląd Faktury: <span id="invoice-fullnumber-display">
+    Podgląd Faktury:&nbsp;<span id="invoice-fullnumber-display">
       <?php if ($invoice->workflow_status === 'draft' && !$invoice->fullnumber): ?>
         <span class="draft-number-loader">
           <span class="spinner-border spinner-border-sm text-primary" role="status" aria-label="Ładowanie"></span>
