@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Faktura xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-06-05T11:56:15+00:00</DataWytworzeniaFa>
+    <SystemInfo>Aplikacja Podatnika KSeF</SystemInfo>
+  </Naglowek>
+  <Podmiot1>
+    <DaneIdentyfikacyjne>
+      <NIP>5272511237</NIP>
+      <Nazwa>Biuro Rachunkowe "PARTNER" s.c., Iwona Morawska, Paweł Maciak</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Erazma Ciołka 10</AdresL1>
+      <AdresL2>01-402 Warszawa</AdresL2>
+    </Adres>
+  </Podmiot1>
+  <Podmiot2>
+    <DaneIdentyfikacyjne>
+      <NIP>8212589295</NIP>
+      <Nazwa>OLGA PANEK Kancelaria Adwokacka</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. gen. Tadeusza Pełczyńskiego 22J/44</AdresL1>
+      <AdresL2>01-471 Warszawa</AdresL2>
+    </Adres>
+    <JST>2</JST>
+    <GV>2</GV>
+  </Podmiot2>
+  <Fa>
+    <KodWaluty>PLN</KodWaluty>
+    <P_1>2026-06-04</P_1>
+    <P_2>7278/06/2026/KHOL</P_2>
+    <P_13_1>119.60</P_13_1>
+    <P_14_1>27.51</P_14_1>
+    <P_15>147.11</P_15>
+    <Adnotacje>
+      <P_16>2</P_16>
+      <P_17>2</P_17>
+      <P_18>2</P_18>
+      <P_18A>2</P_18A>
+      <Zwolnienie>
+        <P_19N>1</P_19N>
+      </Zwolnienie>
+      <NoweSrodkiTransportu>
+        <P_22N>1</P_22N>
+      </NoweSrodkiTransportu>
+      <P_23>2</P_23>
+      <PMarzy>
+        <P_PMarzyN>1</P_PMarzyN>
+      </PMarzy>
+    </Adnotacje>
+    <RodzajFaktury>VAT</RodzajFaktury>
+    <FaWiersz>
+      <NrWierszaFa>1</NrWierszaFa>
+      <P_7>JPK</P_7>
+      <P_8A> szt.</P_8A>
+      <P_8B>1</P_8B>
+      <P_9A>21.34</P_9A>
+      <P_9B>26.25</P_9B>
+      <P_11>21.34</P_11>
+      <P_11A>26.25</P_11A>
+      <P_11Vat>4.91</P_11Vat>
+      <P_12>23</P_12>
+    </FaWiersz>
+    <FaWiersz>
+      <NrWierszaFa>2</NrWierszaFa>
+      <P_7>Opłata za dokumenty zgodnie z umową</P_7>
+      <P_8A> szt.</P_8A>
+      <P_8B>1</P_8B>
+      <P_9A>98.26</P_9A>
+      <P_9B>120.86</P_9B>
+      <P_11>98.26</P_11>
+      <P_11A>120.86</P_11A>
+      <P_11Vat>22.60</P_11Vat>
+      <P_12>23</P_12>
+    </FaWiersz>
+    <FaWiersz>
+      <NrWierszaFa>3</NrWierszaFa>
+      <P_7>Rabat % za dostarczenie dokumentów przed 1 dniem miesiąca</P_7>
+      <P_8A> szt.</P_8A>
+      <P_8B>1</P_8B>
+      <P_9A>0.00</P_9A>
+      <P_9B>0.00</P_9B>
+      <P_11>0.00</P_11>
+      <P_11Vat>0.00</P_11Vat>
+      <P_12>23</P_12>
+    </FaWiersz>
+    <Platnosc>
+      <TerminPlatnosci>
+        <Termin>2026-06-10</Termin>
+      </TerminPlatnosci>
+      <FormaPlatnosci>6</FormaPlatnosci>
+    </Platnosc>
+  </Fa>
+</Faktura>
