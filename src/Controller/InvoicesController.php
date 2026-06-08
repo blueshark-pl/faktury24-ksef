@@ -9813,14 +9813,42 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             // Set workflow to draft and reset identity fields
             $newInvoice->set('workflow_status', 'draft');
             $newInvoice->set('fullnumber', null);
-            $newInvoice->set('number', null);
-            $newInvoice->set('day', null);
-            $newInvoice->set('month', null);
-            $newInvoice->set('year', null);
-            $newInvoice->set('day_year', null);
 
             // Set date to today (issued date)
-            $newInvoice->set('date', new \DateTime());
+            $todayStr = (new \DateTime())->format('Y-m-d');
+            $todayObj = new \DateTime($todayStr);
+            $newInvoice->set('date', $todayObj);
+
+            // number: tak jak przy wystawianiu szkicu — przewidywany kolejny numer w serii
+            // (draft jest wykluczony z numeracji; numer zostanie przeliczony przy wysyłce do KSeF).
+            // Kolumna 'number' jest NOT NULL, więc nie może być null.
+            $draftNumber = 1;
+            try {
+                $seriesIdForNum = (string)($newInvoice->invoice_series_id ?? '');
+                if ($seriesIdForNum !== '') {
+                    // pusty id wykluczenia — nowy draft nie jest jeszcze zapisany,
+                    // więc liczymy prawdziwy kolejny numer (bez wykluczania źródła)
+                    $previewFullnumber = $this->generateDraftNumber(
+                        $seriesIdForNum,
+                        '',
+                        $todayStr,
+                        (string)$companyId
+                    );
+                    $extracted = $this->extractNumberFromFullnumber($previewFullnumber);
+                    if ($extracted >= 1) {
+                        $draftNumber = $extracted;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $draftNumber = 1; // bezpieczny fallback
+            }
+            $newInvoice->set('number', $draftNumber);
+
+            // Składniki daty (NOT NULL w bazie) — ustaw z dzisiejszej daty
+            $newInvoice->set('day', (int)$todayObj->format('d'));
+            $newInvoice->set('month', (int)$todayObj->format('m'));
+            $newInvoice->set('year', (int)$todayObj->format('Y'));
+            $newInvoice->set('day_year', (int)$todayObj->format('z') + 1);
 
             // Reset KSeF, email, payment tracking fields
             $newInvoice->set('ksef_status', null);
