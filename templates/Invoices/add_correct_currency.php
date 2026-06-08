@@ -444,14 +444,14 @@ $gtuSelectHtml .= '</select>';
             <div class="col-lg-2">
             <?= $this->Form->control('date', [
               'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
-              'value' => date('Y-m-d')
+              'value' => ($__isEdit && !empty($invoice->date)) ? $invoice->date->format('Y-m-d') : date('Y-m-d')
             ]) ?>
             </div>
 
             <div class="col-lg-2">
             <?= $this->Form->control('sold_date', [
               'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => !empty($original->sold_date) ? $original->sold_date->format('Y-m-d') : (!empty($original->date) ? $original->date->format('Y-m-d') : date('Y-m-d'))
+              'value' => ($__isEdit && !empty($invoice->sold_date)) ? $invoice->sold_date->format('Y-m-d') : (!empty($original->sold_date) ? $original->sold_date->format('Y-m-d') : (!empty($original->date) ? $original->date->format('Y-m-d') : date('Y-m-d')))
             ]) ?>
             </div>
 
