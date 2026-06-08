@@ -1243,16 +1243,19 @@ class InvoicesController extends AppController
     {
         $InvoiceCompanyDetailsTable = $this->fetchTable('InvoiceCompanyDetails');
 
-        // Bank account — use requested or fall back to default
+        // Bank account — use requested; fall back to default if missing OR invalid
         $snapshotBank = $snapshotBankName = '';
         try {
             $Cba = $this->fetchTable('CompanyBankAccounts');
+            $cba = null;
             if ($bankAccountId !== '') {
                 $cba = $Cba->find()
                     ->select(['iban', 'bank_name'])
                     ->where(['id' => $bankAccountId, 'company_id' => $companyId])
                     ->first();
-            } else {
+            }
+            // Fallback: brak ID lub nieprawidłowe/cudze ID → konto domyślne firmy
+            if ($cba === null) {
                 $cba = $Cba->find()
                     ->select(['iban', 'bank_name'])
                     ->where(['company_id' => $companyId, 'is_default' => 1])
