@@ -1287,6 +1287,9 @@ $stats = [
         $invoice->set('workflow_status', 'issued');
         $this->Invoices->save($invoice);
 
+        // Auto-wysyłka maila po wystawieniu (helper sam pilnuje reguły KSeF i auto_send)
+        $this->enqueueAutoSendEmailIfEnabled($invoice, $companyId, 'promoteToIssued');
+
         $this->Flash->success('Faktura przeniesiona na listę faktur (nr ' . h($invoice->fullnumber) . ').');
         return $this->redirect(['action' => 'index']);
     }
@@ -6084,6 +6087,9 @@ private function makeClient(string $environment): KsefClient
                     'ksef_number' => (string)($res['ksefNumber'] ?? ''),
                     'session_reference' => (string)($res['sessionReference'] ?? ''),
                 ]);
+
+                // Automatyczna wysyłka maila do nabywcy po akceptacji w KSeF (jeśli zaznaczono auto_send)
+                $this->enqueueAutoSendEmailIfEnabled($invoice, $companyId, $source);
             } else {
                 $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_error', [
                     'source' => $source,
@@ -6151,6 +6157,87 @@ private function makeClient(string $environment): KsefClient
             }
             $errorMsg = $ksefMessage ?: get_class($e);
             return ['success' => false, 'error' => 'Błąd wysyłki do KSeF (' . $httpCode . '): ' . $errorMsg];
+        }
+    }
+
+    /**
+     * Automatyczna wysyłka maila do nabywcy po wystawieniu/akceptacji faktury,
+     * jeśli na fakturze zaznaczono `auto_send`.
+     *
+     * Dodaje wpis do InvoiceEmailQueue (faktyczna wysyłka idzie przez processEmailQueue).
+     * Bezpieczne do wołania z wielu miejsc — nie rzuca wyjątków, deduplikuje wpisy i
+     * respektuje regułę KSeF (przy włączonym trybie KSeF mail idzie dopiero gdy faktura
+     * ma numer KSeF; typy zwolnione: proforma/novat/rental — od razu).
+     */
+    public function enqueueAutoSendEmailIfEnabled(Invoice $invoice, string $companyId, string $source = ''): void
+    {
+        try {
+            $fresh = $this->Invoices->find()
+                ->select(['Invoices.id', 'Invoices.auto_send', 'Invoices.type', 'Invoices.ksef_number'])
+                ->contain(['InvoiceContractors' => fn($q) => $q->select(['invoice_id', 'email'])])
+                ->where(['Invoices.id' => (string)$invoice->id, 'Invoices.company_id' => $companyId])
+                ->first();
+
+            if (!$fresh || empty($fresh->auto_send)) {
+                return; // auto-wysyłka nieaktywna
+            }
+
+            // Reguła KSeF — spójna z bulk send_email: przy włączonym KSeF i typie niezwolnionym
+            // mail wysyłamy dopiero gdy faktura ma numer KSeF (czyli po akceptacji).
+            $type = (string)($fresh->type ?? 'vat');
+            $ksefExemptTypes = ['proforma', 'novat', 'rental'];
+            if ($this->isKsefModeEnabled($companyId) && !in_array($type, $ksefExemptTypes, true)) {
+                if (trim((string)($fresh->ksef_number ?? '')) === '') {
+                    return; // jeszcze nie w KSeF — trigger zadziała po udanej wysyłce
+                }
+            }
+
+            $email = trim((string)($fresh->invoice_contractor?->email ?? ''));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'auto_email_skip', [
+                    'source'  => $source,
+                    'message' => 'Auto-wysyłka: brak lub niepoprawny e-mail nabywcy.',
+                ]);
+                return;
+            }
+
+            /** @var \App\Model\Table\InvoiceEmailQueueTable $Queue */
+            $Queue = $this->fetchTable('InvoiceEmailQueue');
+
+            // Unikaj duplikatów pending/sending dla tej faktury + e-maila
+            $exists = $Queue->find()
+                ->where([
+                    'invoice_id' => (string)$invoice->id,
+                    'email'      => $email,
+                    'status IN'  => ['pending', 'sending'],
+                ])
+                ->count();
+            if ($exists > 0) {
+                return;
+            }
+
+            $entry = $Queue->newEntity([
+                'invoice_id'   => (string)$invoice->id,
+                'company_id'   => $companyId,
+                'email'        => $email,
+                'status'       => 'pending',
+                'attempts'     => 0,
+                'scheduled_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ]);
+            if ($Queue->save($entry)) {
+                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'auto_email_queued', [
+                    'source' => $source,
+                    'email'  => $email,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Auto-wysyłka nie może przerwać procesu wystawiania/wysyłki
+            try {
+                $this->logKsefSendEvent($companyId, (string)$invoice->id, 'auto_email_error', [
+                    'source'  => $source,
+                    'message' => $e->getMessage(),
+                ]);
+            } catch (\Throwable) {}
         }
     }
 
