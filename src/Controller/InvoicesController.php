@@ -1685,19 +1685,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $sumGross = round($totalSales, 2);
             $sumNet   = round($sumGross - $sumTax, 2); // w ujęciu księgowym: netto = total - VAT
 
-            // Opcjonalna adnotacja o procedurze marży do opisu faktury
+            // Adnotacja o procedurze marży do opisu faktury — DOKŁADNY zwrot wymagany
+            // przez broszurę FA(3) (np. "procedura marży - towary używane"), wspólna mapa z XML.
             $marginType = (string)($data['margin_type'] ?? '');
-            $map = [
-                'used_goods'   => 'towary używane',
-                'art'          => 'dzieła sztuki',
-                'collectibles' => 'przedmioty kolekcjonerskie',
-                'travel'       => 'usługi turystyki',
-            ];
-            if ($marginType !== '') {
-                $note = 'Procedura marży – ' . ($map[$marginType] ?? $marginType) . '.';
+            $procedure  = $this->marginProcedureMap()[$marginType] ?? null;
+            if ($procedure !== null) {
+                $note = $procedure['phrase'] . '.';
                 $existing = trim((string)($data['description'] ?? ''));
                 if ($existing === '') { $data['description'] = $note; }
-                elseif (!str_contains($existing, 'Procedura marży')) { $data['description'] = $existing . "\n" . $note; }
+                elseif (stripos($existing, 'procedura marży') === false) { $data['description'] = $existing . "\n" . $note; }
             }
 
     } elseif ($kind === 'advance') {
@@ -8498,33 +8494,40 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         return $xml;
     }
 
+    /**
+     * Mapa procedury marży: margin_type → element FA(3) (P_PMarzy_*) + wymagany zwrot na fakturze.
+     * Zgodnie z broszurą MF FA(3) (Tabela 33). JEDNA mapa dla XML i dla adnotacji w opisie,
+     * żeby pole strukturalne i treść faktury się nie rozjeżdżały.
+     */
+    private function marginProcedureMap(): array
+    {
+        return [
+            'travel'       => ['element' => 'P_PMarzy_2',   'phrase' => 'procedura marży dla biur podróży'],
+            'used_goods'   => ['element' => 'P_PMarzy_3_1', 'phrase' => 'procedura marży - towary używane'],
+            'art'          => ['element' => 'P_PMarzy_3_2', 'phrase' => 'procedura marży - dzieła sztuki'],
+            'collectibles' => ['element' => 'P_PMarzy_3_3', 'phrase' => 'procedura marży - przedmioty kolekcjonerskie i antyki'],
+        ];
+    }
+
     private function buildPMarzyXml(Invoice $inv): array
     {
         $xml = [];
 
-        $hasMargin = (bool)($inv->has_margin_procedure ?? false);
-        $xml[]     = '      <PMarzy>';
+        // Procedurę marży wyprowadzamy z zapisanego pola `margin_type` (kolumna istnieje).
+        // XSD: gdy P_PMarzy=1 wymagane jest DOKŁADNIE jedno z P_PMarzy_2 / P_PMarzy_3_1..3.
+        $marginType = (string)($inv->margin_type ?? '');
+        $procedure  = $this->marginProcedureMap()[$marginType] ?? null;
 
-        if ($hasMargin) {
+        $xml[] = '      <PMarzy>';
+
+        if ($procedure !== null) {
             // P_PMarzy – wystąpienie procedur marży (1 – tak)
             $xml[] = '        <P_PMarzy>1</P_PMarzy>';
-
-            // Tu jest „wybór” – tylko jedno pole z P_PMarzy_2 / P_PMarzy_3_1..3
-            if (!empty($inv->p_pmarzy_2)) {
-                // procedura marży dla biur podróży
-                $xml[] = '        <P_PMarzy_2>1</P_PMarzy_2>';
-            } elseif (!empty($inv->p_pmarzy_3_1)) {
-                // procedura marży – towary używane
-                $xml[] = '        <P_PMarzy_3_1>1</P_PMarzy_3_1>';
-            } elseif (!empty($inv->p_pmarzy_3_2)) {
-                // procedura marży – dzieła sztuki
-                $xml[] = '        <P_PMarzy_3_2>1</P_PMarzy_3_2>';
-            } elseif (!empty($inv->p_pmarzy_3_3)) {
-                // procedura marży – przedmioty kolekcjonerskie i antyki
-                $xml[] = '        <P_PMarzy_3_3>1</P_PMarzy_3_3>';
-            }
+            // Dokładnie jedna flaga „wyboru” odpowiadająca rodzajowi procedury
+            $xml[] = '        <' . $procedure['element'] . '>1</' . $procedure['element'] . '>';
         } else {
-            // P_PMarzyN – brak procedur marży
+            // Brak (lub nieokreślona) procedura marży → P_PMarzyN
+            // (bezpieczne dla XSD; faktury marża powinny mieć ustawiony margin_type)
             $xml[] = '        <P_PMarzyN>1</P_PMarzyN>';
         }
 
