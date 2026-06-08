@@ -8004,6 +8004,11 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
         $sumGross = 0.0;
 
+        // Procedura marży (art. 119/120): wartość sprzedaży trafia do P_13_11,
+        // a NIE do zwykłych grup stawek (m.in. 0% krajowe / P_13_6_1). VAT nie jest wykazywany na fakturze.
+        $isMargin = ((string)($inv->type ?? '') === 'margin') || !empty($inv->margin_type);
+        $marginSalesGross = 0.0;
+
         // Dla ROZ: P_13/P_14 = proporcjonalny podział P_15 (kwota pozostała) per stawkę proformy.
         // FaWiersz pokazuje pełne wartości zamówienia, ale P_13/P_14 odzwierciedlają tylko pozostałą część.
         if ($rodzaj === 'ROZ' && $rozP15Override !== null && $rozP15Override > 0.0) {
@@ -8058,6 +8063,14 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
             $net     = (float)($it->netto  ?? 0.0);
             $gross   = (float)($it->brutto ?? 0.0);
             $vat     = (float)($it->vat_amount ?? max(0.0, $gross - $net));
+
+            if ($isMargin) {
+                // Marża: wartość sprzedaży → P_13_11; pozycja nie wchodzi do grup stawek
+                // (brak P_13_6_1 „0% krajowe", brak P_14_*). VAT od marży nie jest wykazywany.
+                $marginSalesGross += $gross;
+                $sumGross         += $gross;
+                continue;
+            }
 
             $gk = $this->rateToGrpKey($rate, $vatName);
             if (!isset($grp[$gk])) {
@@ -8128,8 +8141,9 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         // P_13_10 – odwrotne obciążenie (oo)
         $p13_10 = $grp['oo']['net'] ?: ($inv->p_13_10 ?? null);
         $this->emitIfNotNull($xml, 'P_13_10', $p13_10 ?: null);
-        // P_13_11 – procedura marży (art. 119/120)
-        $this->emitIfNotNull($xml, 'P_13_11', $inv->p_13_11 ?? null);
+        // P_13_11 – procedura marży (art. 119/120): suma wartości sprzedaży w procedurze marży
+        $p13_11 = $isMargin ? ($marginSalesGross ?: null) : ($inv->p_13_11 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_11', $p13_11);
 
         return [$xml, $sumGross];
     }
