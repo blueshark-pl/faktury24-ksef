@@ -3597,3 +3597,15 @@ msgstr "Save error."
 
 msgid "Eksport do CSV (Excel) — z aktualnymi filtrami"
 msgstr "Export to CSV (Excel) — with current filters"
+
+msgid "Pojazd"
+msgstr "Vehicle"
+
+msgid "Ciągnik / Naczepa (nr rej.)"
+msgstr "Tractor / Trailer (reg. number)"
+
+msgid "Ciągnik"
+msgstr "Tractor"
+
+msgid "Naczepa"
+msgstr "Trailer"

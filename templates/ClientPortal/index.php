@@ -232,6 +232,7 @@ $today = date('Y-m-d');
                     <th style="width:200px"><?= __('Załadunek') ?></th>
                     <th style="width:200px"><?= __('Rozładunek') ?></th>
                     <th style="width:160px"><?= __('Status') ?></th>
+                    <th style="width:130px" title="<?= __('Ciągnik / Naczepa (nr rej.)') ?>"><?= __('Pojazd') ?></th>
                     <th><?= __('Faktura') ?></th>
                     <th class="pe-3 text-end" style="width:140px"><?= __('Akcje') ?></th>
                 </tr>
@@ -239,7 +240,7 @@ $today = date('Y-m-d');
             <tbody>
                 <?php if (empty($orders) || count($orders->toArray()) === 0): ?>
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-5">
+                        <td colspan="7" class="text-center text-muted py-5">
                             <i class="ri-inbox-2-line" style="font-size:2.5em"></i><br>
                             <div class="mt-2"><?= __('Brak zleceń pasujących do filtrów.') ?></div>
                             <?php if ($activeFilters > 0 || $q !== ''): ?>
@@ -384,6 +385,32 @@ $today = date('Y-m-d');
                                 <div class="text-danger mt-1" style="font-size:.7em">
                                     <i class="ri-error-warning-line me-1"></i><?= __('Przeterminowane') ?>
                                 </div>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Pojazd: GLO_KONTO (ciągnik) + GLO_MIE_RODZAJ (naczepa) -->
+                        <td class="align-top pt-3">
+                            <?php
+                            $veh = $vehicleMap[$order->id] ?? ['konto' => '', 'rodzaj' => ''];
+                            $hasVeh = $veh['konto'] !== '' || $veh['rodzaj'] !== '';
+                            ?>
+                            <?php if ($hasVeh): ?>
+                                <?php if ($veh['konto'] !== ''): ?>
+                                    <div class="d-flex align-items-center gap-1" style="font-size:.74rem"
+                                         title="<?= __('Ciągnik') ?>">
+                                        <i class="ri-truck-line text-secondary"></i>
+                                        <span class="fw-semibold font-monospace"><?= h($veh['konto']) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if ($veh['rodzaj'] !== '' && $veh['rodzaj'] !== $veh['konto']): ?>
+                                    <div class="d-flex align-items-center gap-1 mt-1" style="font-size:.74rem"
+                                         title="<?= __('Naczepa') ?>">
+                                        <i class="ri-caravan-line text-secondary opacity-75"></i>
+                                        <span class="font-monospace text-muted"><?= h($veh['rodzaj']) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="text-muted small">—</span>
                             <?php endif; ?>
                         </td>
 

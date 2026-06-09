@@ -581,7 +581,7 @@ return [
         [
             'role'       => 'client',
             'controller' => 'ClientPortal',
-            'action'     => ['index', 'view', 'downloadAttachment', 'downloadInvoice', 'setLocale'],
+            'action'     => ['index', 'view', 'downloadAttachment', 'downloadInvoice', 'setLocale', 'exportCsv'],
         ],
         // Każdy zalogowany może przełączać język (PL/EN) — używamy ClientPortal::setLocale
         // jako wspólnego endpointu (zapisuje Config.locale w sesji)

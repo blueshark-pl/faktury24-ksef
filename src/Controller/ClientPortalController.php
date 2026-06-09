@@ -182,13 +182,43 @@ class ClientPortalController extends AppController
             }
         }
 
+        // Pojazd (GLO_KONTO = ciągnik, GLO_MIE_RODZAJ = naczepa) z raw_json,
+        // fallback do speed_orders.vehicle_reg / transport_type.
+        $vehicleMap = $this->_buildVehicleMap($orders->toArray());
+
         $this->set(compact(
-            'orders', 'cmrMap', 'invoicesMap', 'total', 'page', 'pages', 'limit',
+            'orders', 'cmrMap', 'invoicesMap', 'vehicleMap', 'total', 'page', 'pages', 'limit',
             'q', 'status', 'invState', 'cmrState', 'currency', 'dateFrom', 'dateTo',
             'sort', 'stats', 'currencyOptions'
         ));
         $this->set('clientProfile', $this->profile);
         return null;
+    }
+
+    /**
+     * Buduje mapę pojazdów per zlecenie:
+     *   $orderId => ['konto' => 'CBY8800P', 'rodzaj' => 'CBY5478A']
+     *
+     * Priorytet źródeł:
+     *  1. raw_json (GLO_KONTO + GLO_MIE_RODZAJ) — źródło prawdy z Speed ERP
+     *  2. speed_orders.vehicle_reg / transport_type — fallback z synchronizacji
+     */
+    private function _buildVehicleMap(array $orders): array
+    {
+        $map = [];
+        foreach ($orders as $o) {
+            $konto = '';
+            $rodzaj = '';
+            if (!empty($o->raw_json)) {
+                $j = json_decode((string)$o->raw_json, true) ?: [];
+                $konto  = trim((string)($j['GLO_KONTO'] ?? ''));
+                $rodzaj = trim((string)($j['GLO_MIE_RODZAJ'] ?? ''));
+            }
+            if ($konto === '')  { $konto  = trim((string)($o->vehicle_reg ?? '')); }
+            if ($rodzaj === '') { $rodzaj = trim((string)($o->transport_type ?? '')); }
+            $map[$o->id] = ['konto' => $konto, 'rodzaj' => $rodzaj];
+        }
+        return $map;
     }
 
     // -------------------------------------------------------------------------
@@ -313,6 +343,8 @@ class ClientPortalController extends AppController
             default   => '—',
         };
 
+        $vehicleMap = $this->_buildVehicleMap($orders->toArray());
+
         $rows = [];
         $rows[] = [
             'Nr zlecenia',
@@ -325,6 +357,8 @@ class ClientPortalController extends AppController
             'Waluta zlecenia',
             'Status zlecenia',
             'CMR (szt.)',
+            'Ciągnik (nr rej.)',
+            'Naczepa (nr rej.)',
             'Faktura nr',
             'Faktura data',
             'Faktura brutto',
@@ -334,6 +368,7 @@ class ClientPortalController extends AppController
         ];
 
         foreach ($orders as $o) {
+            $veh = $vehicleMap[$o->id] ?? ['konto' => '', 'rodzaj' => ''];
             $base = [
                 (string)$o->symbol,
                 $fmtDate($o->date_doc),
@@ -345,6 +380,8 @@ class ClientPortalController extends AppController
                 (string)($o->currency ?? ''),
                 ((int)($o->status ?? 0)) === 1 ? 'aktywne' : 'zamknięte',
                 (string)($cmrCounts[(int)$o->id] ?? 0),
+                (string)$veh['konto'],
+                (string)$veh['rodzaj'],
             ];
 
             $linkedInvoices = $invoicesMap[$o->id] ?? [];
