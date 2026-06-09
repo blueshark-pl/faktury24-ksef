@@ -3594,3 +3594,6 @@ msgstr "Country code missing."
 
 msgid "Błąd zapisu."
 msgstr "Save error."
+
+msgid "Eksport do CSV (Excel) — z aktualnymi filtrami"
+msgstr "Export to CSV (Excel) — with current filters"

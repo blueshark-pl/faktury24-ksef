@@ -192,6 +192,200 @@ class ClientPortalController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // Eksport zleceń klienta do CSV (respektuje filtry z URL)
+    // -------------------------------------------------------------------------
+    public function exportCsv(): ?Response
+    {
+        if ($r = $this->ensureProfile()) { return $r; }
+
+        $q        = trim((string)$this->request->getQuery('q', ''));
+        $status   = (string)$this->request->getQuery('status', '');
+        $invState = (string)$this->request->getQuery('inv', '');
+        $cmrState = (string)$this->request->getQuery('cmr', '');
+        $currency = strtoupper(trim((string)$this->request->getQuery('currency', '')));
+        $dateFrom = (string)$this->request->getQuery('date_from', '');
+        $dateTo   = (string)$this->request->getQuery('date_to', '');
+        $sort     = (string)$this->request->getQuery('sort', 'date_desc');
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $query = $SpeedOrders->find()
+            ->where(['SpeedOrders.buyer_nip' => $this->profile->nip]);
+
+        if ($q !== '') {
+            $like = '%' . $q . '%';
+            $query->where(['OR' => [
+                'SpeedOrders.symbol LIKE'            => $like,
+                'SpeedOrders.title1 LIKE'            => $like,
+                'SpeedOrders.title2 LIKE'            => $like,
+                'SpeedOrders.route_description LIKE' => $like,
+                'SpeedOrders.place_from_name LIKE'   => $like,
+                'SpeedOrders.place_to_name LIKE'     => $like,
+            ]]);
+        }
+        if ($status === 'active')  { $query->where(['SpeedOrders.status' => 1]); }
+        if ($status === 'closed')  { $query->where(['SpeedOrders.status' => 0]); }
+        if ($currency !== '')      { $query->where(['SpeedOrders.currency' => $currency]); }
+        if ($dateFrom !== '')      { $query->where(['SpeedOrders.date_doc >=' => $dateFrom]); }
+        if ($dateTo   !== '')      { $query->where(['SpeedOrders.date_doc <=' => $dateTo]); }
+        if ($invState === 'with')    { $query->where(['SpeedOrders.invoice_id IS NOT' => null]); }
+        if ($invState === 'without') { $query->where(['SpeedOrders.invoice_id IS' => null]); }
+
+        if (in_array($invState, ['paid', 'unpaid'], true)) {
+            $query->innerJoinWith('Invoices', function ($q) use ($invState) {
+                if ($invState === 'paid')   { $q->where(['Invoices.paymentstate' => 'paid']); }
+                if ($invState === 'unpaid') { $q->where(['Invoices.paymentstate IN' => ['unpaid', 'partial']]); }
+                return $q;
+            });
+        }
+
+        if ($cmrState === 'with') {
+            $sub = $this->fetchTable('SpeedOrderAttachments')->find()
+                ->select(['speed_order_id'])->distinct(['speed_order_id']);
+            $query->where(['SpeedOrders.id IN' => $sub]);
+        } elseif ($cmrState === 'without') {
+            $sub = $this->fetchTable('SpeedOrderAttachments')->find()
+                ->select(['speed_order_id'])->distinct(['speed_order_id']);
+            $query->where(['SpeedOrders.id NOT IN' => $sub]);
+        }
+
+        match ($sort) {
+            'date_asc'      => $query->orderByAsc('SpeedOrders.date_doc'),
+            'delivery_desc' => $query->orderByDesc('SpeedOrders.date_delivery'),
+            'delivery_asc'  => $query->orderByAsc('SpeedOrders.date_delivery'),
+            default         => $query->orderByDesc('SpeedOrders.date_doc'),
+        };
+
+        // Bezpieczny limit: maks 5000 wierszy żeby nie wyłożyć serwera
+        $orders = $query->limit(5000)->all();
+
+        $orderIds = array_map(fn($o) => $o->id, $orders->toArray());
+
+        // CMR — ile załączników per zlecenie
+        $cmrCounts = [];
+        if (!empty($orderIds)) {
+            try {
+                $db = $SpeedOrders->getConnection();
+                $stmt = $db->execute(
+                    "SELECT speed_order_id, COUNT(*) AS cnt
+                     FROM speed_order_attachments
+                     WHERE speed_order_id IN (" . implode(',', array_fill(0, count($orderIds), '?')) . ")
+                     GROUP BY speed_order_id",
+                    $orderIds
+                );
+                foreach ($stmt->fetchAll('assoc') as $r) {
+                    $cmrCounts[(int)$r['speed_order_id']] = (int)$r['cnt'];
+                }
+            } catch (\Throwable) { /* ignore */ }
+        }
+
+        // Faktury powiązane M:N
+        $invoicesMap = [];
+        if (!empty($orderIds)) {
+            try {
+                $rows = $this->fetchTable('SpeedOrderInvoices')->find()
+                    ->select(['SpeedOrderInvoices.speed_order_id',
+                              'Invoices.id', 'Invoices.fullnumber', 'Invoices.date',
+                              'Invoices.total', 'Invoices.currency', 'Invoices.paymentstate',
+                              'Invoices.paymentdate'])
+                    ->contain(['Invoices'])
+                    ->where(['SpeedOrderInvoices.speed_order_id IN' => $orderIds])
+                    ->orderByAsc('SpeedOrderInvoices.id')
+                    ->all();
+                foreach ($rows as $r) {
+                    if ($r->invoice) {
+                        $invoicesMap[$r->speed_order_id][] = $r->invoice;
+                    }
+                }
+            } catch (\Throwable) { $invoicesMap = []; }
+        }
+
+        // ── Generowanie CSV ────────────────────────────────────────────────
+        $fnum = static fn ($v) => number_format((float)$v, 2, ',', '');
+        $fmtDate = static function ($v): string {
+            if (!$v) return '';
+            if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
+            return substr((string)$v, 0, 10);
+        };
+        $stateLabel = static fn (?string $s) => match ($s) {
+            'paid'    => 'opłacona',
+            'partial' => 'częściowo',
+            'unpaid'  => 'do zapłaty',
+            default   => '—',
+        };
+
+        $rows = [];
+        $rows[] = [
+            'Nr zlecenia',
+            'Data dokumentu',
+            'Data dostawy',
+            'Tytuł',
+            'Trasa od',
+            'Trasa do',
+            'Opis trasy',
+            'Waluta zlecenia',
+            'Status zlecenia',
+            'CMR (szt.)',
+            'Faktura nr',
+            'Faktura data',
+            'Faktura brutto',
+            'Faktura waluta',
+            'Faktura termin',
+            'Faktura stan',
+        ];
+
+        foreach ($orders as $o) {
+            $base = [
+                (string)$o->symbol,
+                $fmtDate($o->date_doc),
+                $fmtDate($o->date_delivery),
+                trim((string)($o->title1 ?? '') . ' ' . (string)($o->title2 ?? '')),
+                (string)($o->place_from_name ?? ''),
+                (string)($o->place_to_name ?? ''),
+                (string)($o->route_description ?? ''),
+                (string)($o->currency ?? ''),
+                ((int)($o->status ?? 0)) === 1 ? 'aktywne' : 'zamknięte',
+                (string)($cmrCounts[(int)$o->id] ?? 0),
+            ];
+
+            $linkedInvoices = $invoicesMap[$o->id] ?? [];
+            if (empty($linkedInvoices)) {
+                $rows[] = array_merge($base, ['', '', '', '', '', '']);
+                continue;
+            }
+            // Jedna linia per faktura — nawet jeśli zlecenie ma wiele faktur
+            foreach ($linkedInvoices as $inv) {
+                $rows[] = array_merge($base, [
+                    (string)($inv->fullnumber ?? ''),
+                    $fmtDate($inv->date),
+                    $fnum($inv->total ?? 0),
+                    (string)($inv->currency ?? ''),
+                    $fmtDate($inv->paymentdate ?? null),
+                    $stateLabel($inv->paymentstate ?? null),
+                ]);
+            }
+        }
+
+        // CSV: UTF-8 BOM (Excel friendly), separator ; (locale PL)
+        $output = "\xEF\xBB\xBF";
+        $fh = fopen('php://temp', 'r+');
+        foreach ($rows as $row) {
+            fputcsv($fh, $row, ';', '"', '\\');
+        }
+        rewind($fh);
+        $output .= stream_get_contents($fh);
+        fclose($fh);
+
+        $filename = 'zlecenia_' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string)$this->profile->nip)
+                  . '_' . date('Y-m-d') . '.csv';
+
+        return $this->response
+            ->withType('text/csv')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->withHeader('Cache-Control', 'private, max-age=0, must-revalidate')
+            ->withStringBody($output);
+    }
+
+    // -------------------------------------------------------------------------
     // Szczegóły zlecenia
     // -------------------------------------------------------------------------
     public function view(int $id): ?Response

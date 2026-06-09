@@ -383,6 +383,7 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPass(['invoiceId']);
         $builder->get('/portal/lang/{lang}',           ['controller' => 'ClientPortal', 'action' => 'setLocale'])
             ->setPass(['lang']);
+        $builder->get('/portal/export.csv',            ['controller' => 'ClientPortal', 'action' => 'exportCsv']);
 
         // Kredyt kupiecki (Allianz Trade / Syntesys)
         $builder->get('/kredyt-kupiecki', ['controller' => 'CreditChecks', 'action' => 'index']);

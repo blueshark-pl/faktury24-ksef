@@ -158,6 +158,12 @@ $today = date('Y-m-d');
                         <i class="ri-close-line"></i>
                     </a>
                 <?php endif; ?>
+                <a href="<?= $this->Url->build(['action' => 'exportCsv', '?' => $kept]) ?>"
+                   class="btn btn-outline-success btn-sm"
+                   title="<?= __('Eksport do CSV (Excel) — z aktualnymi filtrami') ?>"
+                   rel="nofollow">
+                    <i class="ri-file-excel-2-line"></i>
+                </a>
             </div>
         </div>
 
