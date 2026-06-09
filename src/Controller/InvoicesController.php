@@ -6494,7 +6494,7 @@ private function makeClient(string $environment): KsefClient
             // Pobierz podstawowe dane faktury
             try {
                 $invoice = $this->Invoices->get($entry->invoice_id, [
-                    'contain' => ['Companies', 'InvoiceCompanyDetails'],
+                    'contain' => ['Companies', 'InvoiceCompanyDetails', 'InvoiceContractors'],
                 ]);
             } catch (\Throwable $e) {
                 $entry->status     = $entry->attempts >= 3 ? 'failed' : 'pending';
