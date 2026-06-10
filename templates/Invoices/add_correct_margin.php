@@ -97,7 +97,7 @@ $gtuSelectHtml .= '</select>';
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
         </ul>
-        <?php if ($this->Identity->hasRole('admin')): ?>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -116,7 +116,7 @@ $gtuSelectHtml .= '</select>';
             </li>
           </ul>
         </div>
-        <?php endif; ?>
+        <?php //endif; ?>
         <script>
         $(function(){
           var $gearBtn = $("#inv-extra-tabs-btn");
