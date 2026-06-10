@@ -154,24 +154,6 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 </head>
 
 <body>
-    <?php if (!empty($maintenanceNotice)): ?>
-    <?php
-        $__mnFmt = function ($iso) {
-            if (!$iso) { return ''; }
-            try { return (new \DateTimeImmutable((string)$iso))->format('d.m.Y H:i'); } catch (\Throwable) { return ''; }
-        };
-        $__mnFrom = $__mnFmt($maintenanceNotice['from'] ?? null);
-        $__mnTo   = $__mnFmt($maintenanceNotice['to'] ?? null);
-        $__mnWin  = trim($__mnFrom . ($__mnTo !== '' ? ' – ' . $__mnTo : ''));
-    ?>
-    <div style="background:#fef3c7;border-bottom:1px solid #fde68a;color:#92400e;padding:10px 16px;text-align:center;font-size:14px;line-height:1.5;">
-        <strong>⚠️ Zaplanowana przerwa techniczna</strong>
-        <?php if ($__mnWin !== ''): ?> — <?= h($__mnWin) ?><?php endif; ?>
-        <?php if (!empty($maintenanceNotice['message'])): ?>
-            <span style="display:block;opacity:.9;"><?= h((string)$maintenanceNotice['message']) ?></span>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
     <!-- Start Switcher -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="switcher-canvas" aria-labelledby="offcanvasRightLabel">
         <div class="offcanvas-header border-bottom d-block p-0 position-relative">
@@ -988,6 +970,28 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
             <!--APP-CONTENT START-->
             <div class="main-content app-content">
+                <?php if (!empty($maintenanceNotice)): ?>
+                <?php
+                    $__mnFmt = function ($iso) {
+                        if (!$iso) { return ''; }
+                        try { return (new \DateTimeImmutable((string)$iso))->format('d.m.Y H:i'); } catch (\Throwable) { return ''; }
+                    };
+                    $__mnFrom = $__mnFmt($maintenanceNotice['from'] ?? null);
+                    $__mnTo   = $__mnFmt($maintenanceNotice['to'] ?? null);
+                    $__mnWin  = trim($__mnFrom . ($__mnTo !== '' ? ' – ' . $__mnTo : ''));
+                ?>
+                <div class="container-fluid pt-3">
+                    <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 mb-0" role="status">
+                        <span style="font-size:18px;">⚠️</span>
+                        <div>
+                            <strong>Zaplanowana przerwa techniczna</strong><?php if ($__mnWin !== ''): ?> — <?= h($__mnWin) ?><?php endif; ?>
+                            <?php if (!empty($maintenanceNotice['message'])): ?>
+                                <div class="small opacity-75"><?= h((string)$maintenanceNotice['message']) ?></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <?php
                     // Banner impersonacji — pod navbarem, w obszarze contentu
                     $impOriginalId = $this->getRequest()->getSession()->read('Impersonation.original_user_id');
