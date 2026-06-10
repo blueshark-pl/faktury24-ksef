@@ -15,6 +15,11 @@ class UsersTable extends BaseUsersTable
 
         // Wymuszamy unikalność e-mail na poziomie reguł aplikacyjnych.
         $this->isValidateEmail = true;
+
+        // Powiązanie z firmą (users.company_id) — m.in. dla wyszukiwania po NIP/nazwie firmy.
+        $this->belongsTo('Companies', [
+            'foreignKey' => 'company_id',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

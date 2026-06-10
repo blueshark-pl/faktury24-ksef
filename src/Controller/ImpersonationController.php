@@ -80,15 +80,28 @@ class ImpersonationController extends AppController
         /** @var \Cake\ORM\Table $Users */
         $Users = $this->fetchTable('Users');
         $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+        // NIP — tylko cyfry z zapytania (akceptujemy wpis z myślnikami/spacjami/"PL")
+        $nipDigits = preg_replace('/\D+/', '', $q);
 
         $query = $Users->find()
             ->select(['id', 'email', 'first_name', 'last_name', 'role', 'company_id'])
-            ->where(function ($exp) use ($like) {
-                return $exp->or([
-                    'Users.email LIKE' => $like,
+            // belongsTo → LEFT JOIN w tym samym zapytaniu: pozwala filtrować po Companies.* i zwraca nazwę firmy bez N+1
+            ->contain(['Companies' => fn($q) => $q->select(['Companies.id', 'Companies.name', 'Companies.nip'])])
+            ->where(function ($exp, $q) use ($like, $nipDigits) {
+                $or = $exp->or([
+                    'Users.email LIKE'      => $like,
                     'Users.first_name LIKE' => $like,
-                    'Users.last_name LIKE' => $like,
+                    'Users.last_name LIKE'  => $like,
+                    'Companies.name LIKE'   => $like,
                 ]);
+                // NIP: porównanie po znormalizowanym numerze (usuwamy -, spacje, kropki z zapisanej wartości).
+                // $nipDigits to wyłącznie cyfry → bezpieczne w surowym wyrażeniu.
+                if (strlen($nipDigits) >= 3) {
+                    $or->add($q->newExpr(
+                        "REPLACE(REPLACE(REPLACE(Companies.nip, '-', ''), ' ', ''), '.', '') LIKE '%" . $nipDigits . "%'"
+                    ));
+                }
+                return $or;
             })
             ->order(['Users.email' => 'ASC'])
             ->limit(20);
@@ -99,22 +112,11 @@ class ImpersonationController extends AppController
             $last  = trim((string)($user->last_name ?? ''));
             $full  = trim($first . ' ' . $last);
 
-            $companyName = null;
-            if (!empty($user->company_id)) {
-                try {
-                    $Companies = $this->fetchTable('Companies');
-                    $c = $Companies->find()->select(['name'])->where(['id' => $user->company_id])->first();
-                    $companyName = $c?->name;
-                } catch (\Throwable) {
-                    $companyName = null;
-                }
-            }
-
             $items[] = [
                 'id'       => (string)$user->id,
                 'email'    => (string)$user->email,
                 'name'     => $full,
-                'company'  => $companyName,
+                'company'  => $user->company?->name,
                 'is_admin' => strtolower((string)($user->role ?? '')) === 'admin',
             ];
         }
