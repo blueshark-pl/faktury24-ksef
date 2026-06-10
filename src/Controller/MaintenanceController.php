@@ -61,8 +61,9 @@ class MaintenanceController extends AppController
         };
 
         $state = [
-            'enabled'     => !empty($d['enabled']),
-            'message'     => trim((string)($d['message'] ?? '')),
+            'enabled'        => !empty($d['enabled']),
+            'message'        => trim((string)($d['message'] ?? '')),
+            'notice_message' => trim((string)($d['notice_message'] ?? '')),
             'from'        => $norm($d['from'] ?? null),
             'to'          => $norm($d['to'] ?? null),
             'notice_from' => $norm($d['notice_from'] ?? null),

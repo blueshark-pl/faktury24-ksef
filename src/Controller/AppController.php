@@ -261,9 +261,9 @@ class AppController extends Controller
                     return $resp;
                 }
             }
-            // Baner zapowiedzi (dla zalogowanych i niezalogowanych)
+            // Baner zapowiedzi (dla zalogowanych i niezalogowanych) — osobny komunikat zapowiedzi
             $this->set('maintenanceNotice', $maint->isNoticeWindow()
-                ? (['message' => $maint->message()] + $maint->window())
+                ? (['message' => $maint->noticeMessage()] + $maint->window())
                 : null);
         } catch (\Throwable) {
             // fail-open — nie blokuj i nie pokazuj bannera, gdy mechanizm zawiedzie

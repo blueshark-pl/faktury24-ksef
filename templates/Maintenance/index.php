@@ -20,8 +20,9 @@ $toLocal = function ($iso): string {
     }
 };
 
-$enabled    = !empty($state['enabled']);
-$message    = (string)($state['message'] ?? '');
+$enabled       = !empty($state['enabled']);
+$message       = (string)($state['message'] ?? '');
+$noticeMessage = (string)($state['notice_message'] ?? '');
 $from       = $toLocal($state['from'] ?? null);
 $to         = $toLocal($state['to'] ?? null);
 $noticeFrom = $toLocal($state['notice_from'] ?? null);
@@ -52,8 +53,15 @@ $allowCron  = array_key_exists('allow_cron', (array)$state) ? !empty($state['all
     </div>
 
     <div class="mb-3">
-      <label class="form-label" for="message">Komunikat dla użytkowników</label>
-      <textarea class="form-control" id="message" name="message" rows="3" placeholder="Trwają prace techniczne, wrócimy ok. 22:30."><?= h($message) ?></textarea>
+      <label class="form-label" for="message">Komunikat <strong>w trakcie</strong> przerwy (strona 503)</label>
+      <textarea class="form-control" id="message" name="message" rows="2" placeholder="Trwają prace techniczne, wrócimy ok. 22:30."><?= h($message) ?></textarea>
+      <div class="form-text">Widoczny dla użytkowników na stronie blokady, gdy przerwa jest aktywna.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label" for="notice_message">Komunikat <strong>zapowiedzi</strong> (baner przed przerwą)</label>
+      <textarea class="form-control" id="notice_message" name="notice_message" rows="2" placeholder="Dziś o 22:00 planujemy krótką przerwę techniczną."><?= h($noticeMessage) ?></textarea>
+      <div class="form-text">Wyświetlany w żółtym banerze przed startem przerwy (wymaga ustawionego „startu blokady" i „banera zapowiedzi od").</div>
     </div>
 
     <div class="row g-3 mb-3">

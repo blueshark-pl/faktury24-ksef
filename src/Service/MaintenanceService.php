@@ -107,11 +107,18 @@ class MaintenanceService
         }
     }
 
+    /** Komunikat na stronie 503 (wyświetlany W TRAKCIE przerwy). */
     public function message(): string
     {
         $m = trim((string)($this->state()['message'] ?? ''));
 
         return $m !== '' ? $m : 'Trwają prace techniczne. Prosimy spróbować ponownie za chwilę.';
+    }
+
+    /** Komunikat banera ZAPOWIEDZI (przed przerwą). Może być pusty → baner pokaże sam tytuł + okno. */
+    public function noticeMessage(): string
+    {
+        return trim((string)($this->state()['notice_message'] ?? ''));
     }
 
     /** ['from'=>?string, 'to'=>?string] — surowe wartości z flagi. */
