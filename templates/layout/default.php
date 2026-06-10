@@ -930,6 +930,14 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+                            <li class="slide <?= $navActive('Maintenance', 'index') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-tools-line side-menu__icon"></i>
+                                    <span class="side-menu__label">Przerwa techniczna</span>',
+                                    ['plugin' => false, 'controller' => 'Maintenance', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
                             <li class="slide <?= $navActive('Invoices', 'adminSupport') || $navActive('Invoices', 'adminSupportView') ?>">
                                 <?php
                                 $adminSupportNewCount = 0;
