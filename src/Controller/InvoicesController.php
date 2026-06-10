@@ -67,6 +67,26 @@ class InvoicesController extends AppController
         }
     }
 
+    /**
+     * Czy na fakturze pokazać kod QR weryfikacji KSeF.
+     * Pokazujemy WYŁĄCZNIE gdy:
+     *  - firma ma włączony tryb KSeF (companies.ksef_mode_enabled),
+     *  - faktura ma nadany numer (fullnumber),
+     *  - faktura jest realnie w KSeF (ma numer KSeF).
+     * Dzięki temu drafty, faktury bez numeru oraz wystawione bez numeru KSeF nie dostają QR.
+     */
+    private function shouldShowKsefQr(Invoice $inv): bool
+    {
+        if (trim((string)($inv->fullnumber ?? '')) === '') {
+            return false;
+        }
+        if (trim((string)($inv->ksef_number ?? '')) === '') {
+            return false;
+        }
+
+        return $this->isKsefModeEnabled((string)($inv->company_id ?? ''));
+    }
+
     private function shouldSendToKsefNow(array $data): bool
     {
         if ((int)($data['ksef_send'] ?? 0) === 1) {
@@ -4914,7 +4934,7 @@ private function makeClient(string $environment): KsefClient
                 $nip      = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
                 $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
                 $invRef   = (string)($invoice->ksef_invoice_reference ?? '');
-                $qrCode   = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+                $qrCode   = ($this->shouldShowKsefQr($invoice) && $nip !== '' && $issueDate !== '' && $invRef !== '')
                     ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
                     : '';
                 $http = new \Cake\Http\Client(['timeout' => 60]);
@@ -5041,7 +5061,7 @@ private function makeClient(string $environment): KsefClient
                     : ((!$isDraft && is_string($xml) && trim($xml) !== '')
                         ? rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '=')
                         : '');
-                $qrCode = ($nip !== '' && $issueDate !== '' && $xmlHash !== '')
+                $qrCode = ($this->shouldShowKsefQr($invoice) && $nip !== '' && $issueDate !== '' && $xmlHash !== '')
                     ? ($qrHost . '/invoice/' . $nip . '/' . $issueDate . '/' . $xmlHash)
                     : '';
 
@@ -6648,7 +6668,7 @@ private function makeClient(string $environment): KsefClient
         $nip       = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
         $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
         $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
-        $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+        $qrCode    = ($this->shouldShowKsefQr($invoice) && $nip !== '' && $issueDate !== '' && $invRef !== '')
             ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
             : '';
 

@@ -94,7 +94,11 @@ class InvoiceEmailSender
             $nip       = preg_replace('/\D+/', '', (string)($seller?->nip ?? ''));
             $issueDate = $invoice->date ? $invoice->date->format('d-m-Y') : '';
             $invRef    = (string)($invoice->ksef_invoice_reference ?? '');
-            $qrCode    = ($nip !== '' && $issueDate !== '' && $invRef !== '')
+            // Kod QR tylko gdy: firma ma włączony tryb KSeF, faktura ma numer i jest realnie w KSeF.
+            $ksefMode    = (bool)($invoice->company?->ksef_mode_enabled ?? true);
+            $hasNumber   = trim((string)($invoice->fullnumber ?? '')) !== '';
+            $hasKsefNum  = trim((string)($invoice->ksef_number ?? '')) !== '';
+            $qrCode    = ($ksefMode && $hasNumber && $hasKsefNum && $nip !== '' && $issueDate !== '' && $invRef !== '')
                 ? ('https://ksef.mf.gov.pl/client-app/invoice/' . $nip . '/' . $issueDate . '/' . $invRef)
                 : '';
 
