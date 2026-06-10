@@ -171,9 +171,9 @@ class MaintenanceService
         $to   = $fmt($win['to'] ?? null);
         $window = '';
         if ($from !== '' || $to !== '') {
-            $window = '<p class="win">Przewidywane okno prac: '
+            $window = '<div class="win"><span class="dot"></span> '
                 . htmlspecialchars(trim($from . ($to !== '' ? ' – ' . $to : '')), ENT_QUOTES, 'UTF-8')
-                . '</p>';
+                . '</div>';
         }
 
         return <<<HTML
@@ -182,28 +182,58 @@ class MaintenanceService
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Przerwa techniczna</title>
+<meta name="robots" content="noindex">
+<title>Przerwa techniczna — Faktury24</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#eef2f7; color:#1f2937; }
-  .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .card { background:#fff; max-width:520px; width:100%; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.08); padding:40px 36px; text-align:center; }
-  .ico { font-size:54px; line-height:1; margin-bottom:14px; }
-  h1 { font-size:22px; margin:0 0 10px; color:#111827; }
-  p { font-size:15px; line-height:1.6; color:#4b5563; margin:0 0 8px; }
-  .win { margin-top:14px; font-size:13px; color:#6b7280; }
-  .bar { height:6px; background:#6fc14b; border-radius:0 0 14px 14px; margin:32px -36px -40px; }
+  html, body { margin:0; padding:0; height:100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(135deg, #eef2f7 0%, #e3ebf6 100%);
+    color:#1f2937; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card {
+    background:#fff; max-width:540px; width:100%;
+    border-radius:18px; box-shadow:0 20px 60px rgba(31,41,55,.12);
+    overflow:hidden; text-align:center; animation:rise .5s ease both;
+  }
+  @keyframes rise { from { opacity:0; transform:translateY(14px);} to { opacity:1; transform:none;} }
+  .top { padding:44px 40px 8px; }
+  .ico {
+    width:88px; height:88px; margin:0 auto 20px; border-radius:50%;
+    background:#f0f9eb; display:flex; align-items:center; justify-content:center;
+    font-size:42px; line-height:1; box-shadow:0 0 0 8px #f7fbf3;
+  }
+  h1 { font-size:24px; margin:0 0 12px; color:#111827; font-weight:700; }
+  .msg { font-size:16px; line-height:1.65; color:#4b5563; margin:0 auto; max-width:420px; }
+  .win {
+    display:inline-flex; align-items:center; gap:8px; margin-top:22px;
+    background:#f3f4f6; color:#374151; font-size:14px;
+    padding:9px 16px; border-radius:999px; font-weight:600;
+  }
+  .win .dot { width:8px; height:8px; border-radius:50%; background:#6fc14b; box-shadow:0 0 0 4px rgba(111,193,75,.2); }
+  .foot {
+    margin-top:32px; padding:16px 40px; border-top:1px solid #f0f2f5;
+    font-size:13px; color:#9ca3af;
+  }
+  .foot a { color:#6b7280; text-decoration:none; border-bottom:1px dashed #cbd5e1; }
+  .foot a:hover { color:#374151; }
+  .bar { height:6px; background:linear-gradient(90deg,#6fc14b,#8fd56f); }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
+  <div class="card">
+    <div class="top">
       <div class="ico">🛠️</div>
       <h1>Przerwa techniczna</h1>
-      <p>{$msg}</p>
+      <p class="msg">{$msg}</p>
       {$window}
-      <div class="bar"></div>
     </div>
+    <div class="foot">
+      Dziękujemy za cierpliwość. &middot; <a href="/login">Panel administratora</a>
+    </div>
+    <div class="bar"></div>
   </div>
 </body>
 </html>
