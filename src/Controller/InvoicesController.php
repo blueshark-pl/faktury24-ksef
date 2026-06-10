@@ -9857,6 +9857,7 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'InvoiceFactorBanks',
                 'InvoiceAuthorizedEntities',
                 'InvoiceOrderLines',
+                'InvoiceAdditionalDescriptions',
             ])
             ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
             ->first();
@@ -9886,15 +9887,15 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
             $copyFields = [
                 'company_id', 'invoice_series_id', 'contractor_id',
                 'parent_id', 'type', 'currency', 'total', 'netto', 'tax',
-                'alreadypaid', 'remaining', 'paymentmethod',
+                'alreadypaid', 'remaining', 'paymentmethod', 'paymentdate',
                 'simplified_invoice', 'is_receipt_invoice', 'is_split_payment',
                 'buyer_is_jst', 'buyer_in_vat_group', 'seller_vat_prefix',
-                'seller_vat_eu', 'buyer_vat_prefix', 'buyer_vat_eu',
+                'seller_vat_eu', 'seller_eori', 'buyer_vat_prefix', 'buyer_vat_eu',
                 'buyer_eori', 'buyer_tax_id_other', 'buyer_tax_id_other_country',
                 'sold_date', 'advance_received_date', 'receipt_date', 'receipt_number',
                 'period_from', 'period_to', 'currency_date', 'currency_exchange',
                 'company_bank_account_id', 'description', 'margin_type',
-                'lang', 'auto_send', 'footer_text', 'place_of_issue',
+                'lang', 'auto_send', 'footer_text', 'place_of_issue', 'issuer',
                 'correction_type', 'correction_reason',
                 // FA(3) — adnotacje i oznaczenia faktury (m.in. podstawa zwolnienia, supply_goods)
                 'annotations', 'annotations_tax_free', 'annotations_tax_free_field',
@@ -9915,9 +9916,14 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 $newInvoice->set('paymentstate', 'unpaid');
                 $newInvoice->set('alreadypaid', 0);
                 $newInvoice->set('remaining', $sourceInvoice->total ?? 0);
+                // wyzeruj znaczniki rozliczenia
+                $newInvoice->set('paid_at', null);
+                $newInvoice->set('partial_paid_at', null);
             } else {
-                // 'original' - copy from source
+                // 'original' - kopiuj stan rozliczenia 1:1
                 $newInvoice->set('paymentstate', $sourceInvoice->paymentstate ?? 'unpaid');
+                $newInvoice->set('paid_at', $sourceInvoice->paid_at ?? null);
+                $newInvoice->set('partial_paid_at', $sourceInvoice->partial_paid_at ?? null);
             }
 
             // Set workflow to draft and reset identity fields
@@ -10068,13 +10074,16 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'InvoiceFactorBanks',
                 'InvoiceAuthorizedEntities',
                 'InvoiceOrderLines',
+                'InvoiceAdditionalDescriptions',
             ];
 
             foreach ($fa3Tables as $tableName) {
                 $Table = $this->fetchTable($tableName);
                 $Table->deleteAll(['invoice_id' => $newInvoiceId]);
 
-                $sourceRelation = lcfirst(\Cake\Utility\Inflector::camelize($tableName));
+                // Właściwość encji dla hasMany jest w snake_case (np. invoice_new_transports),
+                // NIE camelCase — wcześniejsze lcfirst(camelize()) dawało zły klucz i nic nie kopiowało.
+                $sourceRelation = \Cake\Utility\Inflector::underscore($tableName);
                 if ($sourceInvoice->has($sourceRelation) && !empty($sourceInvoice->get($sourceRelation))) {
                     foreach ($sourceInvoice->get($sourceRelation) as $relation) {
                         $newRel = $Table->newEmptyEntity();
