@@ -84,9 +84,13 @@ class ImpersonationController extends AppController
         $nipDigits = preg_replace('/\D+/', '', $q);
 
         $query = $Users->find()
-            ->select(['id', 'email', 'first_name', 'last_name', 'role', 'company_id'])
-            // belongsTo → LEFT JOIN w tym samym zapytaniu: pozwala filtrować po Companies.* i zwraca nazwę firmy bez N+1
-            ->contain(['Companies' => fn($q) => $q->select(['Companies.id', 'Companies.name', 'Companies.nip'])])
+            ->select([
+                'Users.id', 'Users.email', 'Users.first_name', 'Users.last_name', 'Users.role', 'Users.company_id',
+                'company_name' => 'Companies.name',
+            ])
+            // Jawny LEFT JOIN do companies (bez polegania na asocjacji ORM) — pozwala
+            // filtrować po Companies.name/nip i zwraca nazwę firmy bez N+1.
+            ->leftJoin(['Companies' => 'companies'], ['Companies.id = Users.company_id'])
             ->where(function ($exp, $q) use ($like, $nipDigits) {
                 $or = $exp->or([
                     'Users.email LIKE'      => $like,
@@ -116,7 +120,7 @@ class ImpersonationController extends AppController
                 'id'       => (string)$user->id,
                 'email'    => (string)$user->email,
                 'name'     => $full,
-                'company'  => $user->company?->name,
+                'company'  => $user->company_name ?? null,
                 'is_admin' => strtolower((string)($user->role ?? '')) === 'admin',
             ];
         }
