@@ -118,6 +118,10 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/admin/faktury/{id}/delete', ['controller' => 'Invoices', 'action' => 'adminDelete'])
             ->setPass(['id']);
 
+        // Panel przerwy technicznej (maintenance) — tylko admin
+        $builder->get('/admin/maintenance', ['controller' => 'Maintenance', 'action' => 'index']);
+        $builder->post('/admin/maintenance', ['controller' => 'Maintenance', 'action' => 'save']);
+
         // Fallbacks (na końcu)
         $builder->fallbacks();
     });

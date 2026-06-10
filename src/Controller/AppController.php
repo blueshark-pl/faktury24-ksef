@@ -242,7 +242,8 @@ class AppController extends Controller
         try {
             $maint = new \App\Service\MaintenanceService();
             if ($maint->isActive()) {
-                $isAdmin     = (bool)($identity?->get('is_admin') ?? false);
+                $isAdmin     = (bool)($identity?->get('is_admin') ?? false)
+                    || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
                 $controller  = (string)$this->request->getParam('controller');
                 $action      = (string)$this->request->getParam('action');
                 // Crony z kluczem (kolejka maili, planowane wysyłki, PDF wewnętrzny) — działają w trakcie prac
