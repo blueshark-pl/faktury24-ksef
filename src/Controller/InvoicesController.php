@@ -1553,13 +1553,46 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $origId = $pass[0] ?? $this->request->getQuery('parent_id') ?? $this->request->getQuery('original_id') ?? $this->request->getQuery('id');
                 if (!empty($origId)) {
                     $original = $Invoices->find()
-                        ->contain(['InvoiceContractors','InvoiceContents' => ['Vats']])
+                        ->contain([
+                            'InvoiceContractors',
+                            'InvoiceContents' => ['Vats'],
+                            'InvoiceNewTransports',
+                            'InvoiceCharges',
+                            'InvoiceFactorBanks',
+                            'InvoiceAuthorizedEntities',
+                            'InvoiceOrderLines',
+                        ])
                         ->where(['Invoices.company_id' => $companyId, 'Invoices.id' => $origId])
                         ->first();
                     if ($original) {
                         // Preselect series same as original if not set
                         if (empty($invoice->series) && !empty($original->series)) {
                             $invoice->set('series', (string)$original->series);
+                        }
+                        // Prefill pól FA(3) + adnotacji z faktury pierwotnej.
+                        // Formularz (FormHelper / elementy tab_*) czyta z $invoice, więc kopiujemy do niego.
+                        foreach ([
+                            'annotations', 'annotations_tax_free', 'annotations_tax_free_field',
+                            'skonto_conditions', 'skonto_amount', 'status_info_podatnika',
+                            'is_new_transport_wdt', 'p_42_5', 'transaction_conditions_json',
+                            'order_total_gross', 'is_split_payment', 'is_receipt_invoice',
+                            'buyer_is_jst', 'buyer_in_vat_group', 'place_of_issue', 'footer_text',
+                            'payment_link',
+                        ] as $__f) {
+                            $__v = $original->get($__f);
+                            if ($invoice->get($__f) === null && $__v !== null) {
+                                $invoice->set($__f, $__v);
+                            }
+                        }
+                        // Prefill relacji FA(3) (transport WDT, opłaty, rachunki faktora, podmioty, pozycje zamówienia)
+                        foreach ([
+                            'invoice_new_transports', 'invoice_charges', 'invoice_factor_banks',
+                            'invoice_authorized_entities', 'invoice_order_lines',
+                        ] as $__rel) {
+                            $__rv = $original->get($__rel);
+                            if (!empty($__rv) && empty($invoice->get($__rel))) {
+                                $invoice->set($__rel, $__rv);
+                            }
                         }
                         // Pass original to the view to prefill form and items
                         $this->set('original', $original);

@@ -273,7 +273,7 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
         <span class="badge bg-secondary-transparent ms-auto">opcjonalne</span>
       </div>
       <small class="text-muted d-block mb-3">Dodatkowe opłaty lub pomniejszenia kwoty faktury (np. rabaty, kaucje, narzuty).</small>
-      <?php $charges = ($__isEdit && !empty($invoice->invoice_charges)) ? $invoice->invoice_charges : []; ?>
+      <?php $charges = (!empty($invoice->invoice_charges)) ? $invoice->invoice_charges : []; ?>
       <div id="charges-list" class="vstack gap-2 mb-2">
         <?php foreach ($charges as $i => $ch): ?>
         <div class="row g-2 align-items-center charge-row">
@@ -311,7 +311,7 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
         <span class="badge bg-secondary-transparent ms-auto">opcjonalne</span>
       </div>
       <small class="text-muted d-block mb-3">Dane rachunku bankowego faktora (faktorowanie wierzytelności — element <code>RachunekBankowyFaktora</code>).</small>
-      <?php $factorBanks = ($__isEdit && !empty($invoice->invoice_factor_banks)) ? $invoice->invoice_factor_banks : []; ?>
+      <?php $factorBanks = (!empty($invoice->invoice_factor_banks)) ? $invoice->invoice_factor_banks : []; ?>
       <div id="factor-banks-list" class="vstack gap-2 mb-2">
         <?php foreach ($factorBanks as $i => $fb): ?>
         <div class="border rounded p-2 factor-bank-row">
@@ -358,7 +358,7 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
         <span class="badge bg-secondary-transparent ms-auto">opcjonalne</span>
       </div>
       <small class="text-muted d-block mb-3">Podmiot upoważniony do wystawiania faktur w imieniu sprzedawcy lub odbiorcy (element <code>PodmiotUpowazniony</code>).</small>
-      <?php $authEntities = ($__isEdit && !empty($invoice->invoice_authorized_entities)) ? $invoice->invoice_authorized_entities : []; ?>
+      <?php $authEntities = (!empty($invoice->invoice_authorized_entities)) ? $invoice->invoice_authorized_entities : []; ?>
       <div id="auth-entities-list" class="vstack gap-2 mb-2">
         <?php foreach ($authEntities as $i => $ae): ?>
         <div class="border rounded p-2 auth-entity-row">
@@ -421,7 +421,7 @@ $__isEdit = $__isEdit ?? (!empty($isEdit) || !empty($invoice?->id));
         <span class="badge bg-warning-transparent ms-auto">ZAL / ROZ</span>
       </div>
       <small class="text-muted d-block mb-3">Pozycje zamówienia dla faktur zaliczkowych i rozliczeniowych (KSeF ZAL/ROZ).</small>
-      <?php $orderLines = ($__isEdit && !empty($invoice->invoice_order_lines)) ? $invoice->invoice_order_lines : []; ?>
+      <?php $orderLines = (!empty($invoice->invoice_order_lines)) ? $invoice->invoice_order_lines : []; ?>
       <div id="order-lines-list" class="vstack gap-1 mb-2">
         <?php foreach ($orderLines as $i => $ol): ?>
         <div class="row g-2 align-items-center order-line-row">
