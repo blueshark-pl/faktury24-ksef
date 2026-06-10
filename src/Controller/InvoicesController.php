@@ -9896,6 +9896,12 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
                 'company_bank_account_id', 'description', 'margin_type',
                 'lang', 'auto_send', 'footer_text', 'place_of_issue',
                 'correction_type', 'correction_reason',
+                // FA(3) — adnotacje i oznaczenia faktury (m.in. podstawa zwolnienia, supply_goods)
+                'annotations', 'annotations_tax_free', 'annotations_tax_free_field',
+                'wz_number', 'payment_link',
+                'skonto_conditions', 'skonto_amount', 'status_info_podatnika',
+                'is_new_transport_wdt', 'p_42_5', 'transaction_conditions_json',
+                'order_total_gross',
             ];
 
             foreach ($copyFields as $field) {
