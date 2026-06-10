@@ -246,11 +246,15 @@ class AppController extends Controller
                     || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
                 $controller  = (string)$this->request->getParam('controller');
                 $action      = (string)$this->request->getParam('action');
+                $plugin      = (string)$this->request->getParam('plugin');
                 // Crony z kluczem (kolejka maili, planowane wysyłki, PDF wewnętrzny) — działają w trakcie prac
                 $cronAllowed = $maint->allowCron()
                     && in_array($action, ['processEmailQueue', 'runPlannedDrafts', 'generatePdfInternal'], true);
                 $isPanel     = ($controller === 'Maintenance'); // panel sterowania trybem
-                if (!$isAdmin && !$cronAllowed && !$isPanel) {
+                // Logowanie/rejestracja/reset hasła/2FA (plugin CakeDC/Users) — MUSZĄ działać,
+                // inaczej admin nie zaloguje się, by wyłączyć tryb.
+                $isAuth      = ($plugin === 'CakeDC/Users');
+                if (!$isAdmin && !$cronAllowed && !$isPanel && !$isAuth) {
                     $resp = $this->response
                         ->withStatus(503)
                         ->withHeader('Retry-After', '3600')
