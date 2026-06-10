@@ -5033,11 +5033,12 @@ private function makeClient(string $environment): KsefClient
                 $ksefEnv = (\Cake\Core\Configure::read('Ksef.env') === 'test') ? 'test' : 'prod';
                 $qrHost = ($ksefEnv === 'test') ? 'https://qr-test.ksef.mf.gov.pl' : 'https://qr.ksef.mf.gov.pl';
                 // QR hash musi być z dokładnych bajtów XML wysłanych do KSeF (zapisany przy wysyłce).
-                // Fallback: policz z bieżącego XML tylko gdy faktury jeszcze nie wysłano.
+                // Fallback: policz z bieżącego XML — ale NIE dla draftów (draft nie jest w KSeF,
+                // więc kod QR weryfikacyjny byłby mylący/niepoprawny → drafty bez QR).
                 $storedHash = (string)($invoice->ksef_xml_hash ?? '');
                 $xmlHash = $storedHash !== ''
                     ? $storedHash
-                    : (is_string($xml) && trim($xml) !== ''
+                    : ((!$isDraft && is_string($xml) && trim($xml) !== '')
                         ? rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '=')
                         : '');
                 $qrCode = ($nip !== '' && $issueDate !== '' && $xmlHash !== '')
