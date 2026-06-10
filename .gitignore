@@ -54,3 +54,6 @@ nbproject/*
 # yarn
 yarn-debug.log
 yarn-error.log
+
+# Tryb przerwy technicznej (stan runtime)
+config/maintenance.json

@@ -154,6 +154,24 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 </head>
 
 <body>
+    <?php if (!empty($maintenanceNotice)): ?>
+    <?php
+        $__mnFmt = function ($iso) {
+            if (!$iso) { return ''; }
+            try { return (new \DateTimeImmutable((string)$iso))->format('d.m.Y H:i'); } catch (\Throwable) { return ''; }
+        };
+        $__mnFrom = $__mnFmt($maintenanceNotice['from'] ?? null);
+        $__mnTo   = $__mnFmt($maintenanceNotice['to'] ?? null);
+        $__mnWin  = trim($__mnFrom . ($__mnTo !== '' ? ' – ' . $__mnTo : ''));
+    ?>
+    <div style="background:#fef3c7;border-bottom:1px solid #fde68a;color:#92400e;padding:10px 16px;text-align:center;font-size:14px;line-height:1.5;">
+        <strong>⚠️ Zaplanowana przerwa techniczna</strong>
+        <?php if ($__mnWin !== ''): ?> — <?= h($__mnWin) ?><?php endif; ?>
+        <?php if (!empty($maintenanceNotice['message'])): ?>
+            <span style="display:block;opacity:.9;"><?= h((string)$maintenanceNotice['message']) ?></span>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <!-- Start Switcher -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="switcher-canvas" aria-labelledby="offcanvasRightLabel">
         <div class="offcanvas-header border-bottom d-block p-0 position-relative">

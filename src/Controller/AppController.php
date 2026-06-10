@@ -237,6 +237,38 @@ class AppController extends Controller
         parent::beforeFilter($event);
 
         $identity = $this->request->getAttribute('identity');
+
+        // ── Tryb przerwy technicznej (FAIL-OPEN: błąd mechanizmu nie może zablokować systemu) ──
+        try {
+            $maint = new \App\Service\MaintenanceService();
+            if ($maint->isActive()) {
+                $isAdmin     = (bool)($identity?->get('is_admin') ?? false);
+                $controller  = (string)$this->request->getParam('controller');
+                $action      = (string)$this->request->getParam('action');
+                // Crony z kluczem (kolejka maili, planowane wysyłki, PDF wewnętrzny) — działają w trakcie prac
+                $cronAllowed = $maint->allowCron()
+                    && in_array($action, ['processEmailQueue', 'runPlannedDrafts', 'generatePdfInternal'], true);
+                $isPanel     = ($controller === 'Maintenance'); // panel sterowania trybem
+                if (!$isAdmin && !$cronAllowed && !$isPanel) {
+                    $resp = $this->response
+                        ->withStatus(503)
+                        ->withHeader('Retry-After', '3600')
+                        ->withType('text/html')
+                        ->withStringBody($maint->renderPage());
+                    $event->setResult($resp);
+
+                    return $resp;
+                }
+            }
+            // Baner zapowiedzi (dla zalogowanych i niezalogowanych)
+            $this->set('maintenanceNotice', $maint->isNoticeWindow()
+                ? (['message' => $maint->message()] + $maint->window())
+                : null);
+        } catch (\Throwable) {
+            // fail-open — nie blokuj i nie pokazuj bannera, gdy mechanizm zawiedzie
+            $this->set('maintenanceNotice', null);
+        }
+
         if (!$identity) {
             $this->set('ksefModeEnabled', true);
             $this->set('rentalEnabled', false);

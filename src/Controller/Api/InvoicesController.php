@@ -51,6 +51,24 @@ class InvoicesController extends AppController
      */
     public function beforeFilter(\Cake\Event\EventInterface $event): void
     {
+        // Przerwa techniczna — API zwraca 503 JSON (fail-open: błąd mechanizmu nie blokuje).
+        try {
+            $maint = new \App\Service\MaintenanceService();
+            if ($maint->isActive()) {
+                $event->setResult(
+                    $this->response->withStatus(503)
+                        ->withHeader('Retry-After', '3600')
+                        ->withType('application/json')
+                        ->withStringBody(json_encode(
+                            ['success' => false, 'error' => 'Trwają prace techniczne. Spróbuj ponownie później.'],
+                            JSON_UNESCAPED_UNICODE
+                        ))
+                );
+
+                return;
+            }
+        } catch (\Throwable) {}
+
         // Skip parent beforeFilter (which checks session identity and sets view vars)
         // to avoid redirect-to-login for unauthenticated requests.
         // We handle auth manually via Bearer token in each action.
