@@ -2051,8 +2051,9 @@ $('#gus-fetch-btn').on('click', function(){
     $('#sum-tax').val(vatOnMargin.toFixed(2));
     $('#sum-gross').val(totalSales.toFixed(2));
     $('.sum-currency-label').text('PLN');
-    // odśwież termin (np. po zmianie daty wystawienia)
-    if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
+    // Nie przesuwaj istniejącego terminu płatności (edycja/korekta) — przelicz z presetu
+    // tylko gdy pole terminu jest puste (nowa faktura). Inaczej tylko odśwież podgląd.
+    if (!$dueDate.val()) { if ($duePreset.val() !== '_custom') recomputeFromPreset(); } else { recomputeFromDate(); }
     if (typeof mirrorSums === 'function') mirrorSums();
   }
   function guardMinRows(){

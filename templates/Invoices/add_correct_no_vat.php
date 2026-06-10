@@ -1907,8 +1907,9 @@ $('#gus-fetch-btn').on('click', function(){
       var orig = toNum($origNet.val().replace(',', '.'), 0);
       $diffNet.val((sn - orig).toFixed(2).replace('.', ','));
     }
-    // odśwież termin (np. po zmianie daty wystawienia)
-    if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
+    // Nie przesuwaj istniejącego terminu płatności (edycja/korekta) — przelicz z presetu
+    // tylko gdy pole terminu jest puste (nowa faktura). Inaczej tylko odśwież podgląd.
+    if (!$dueDate.val()) { if ($duePreset.val() !== '_custom') recomputeFromPreset(); } else { recomputeFromDate(); }
     if (typeof mirrorSums === 'function') mirrorSums();
   }
   function guardMinRows(){
