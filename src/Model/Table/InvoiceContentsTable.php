@@ -75,7 +75,7 @@ class InvoiceContentsTable extends Table
 
         $validator
             ->scalar('name')
-            ->maxLength('name', 255)
+            ->maxLength('name', 512)
             ->requirePresence('name', 'create')
             ->notEmptyString('name');
 
