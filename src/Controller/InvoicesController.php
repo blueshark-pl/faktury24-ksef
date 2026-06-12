@@ -8800,9 +8800,10 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         // 0% krajowe
         $p12 = '0 KR';
     }
-    // Procedura marży: pozycje nie wykazują stawki VAT — pomijamy P_12 (XSD: opcjonalne).
-    // Dzięki temu w wierszu jest "marża", a nie "0% KR". VAT od marży jest tylko w podsumowaniu (P_13_11).
-    if (!$isMargin) {
+    // Procedura marży: stan PO korekcie (oraz zwykła faktura marża) — zawsze "marża",
+    // więc pomijamy P_12 (XSD: opcjonalne) → w wierszu jest "marża", a nie "0% KR".
+    // Stan PRZED korektą zostaje "jaki był" — emitujemy oryginalną stawkę.
+    if (!$isMargin || $isBeforeCorrection) {
         $xml[] = '      <P_12>' . $p12 . '</P_12>';
     }
 
