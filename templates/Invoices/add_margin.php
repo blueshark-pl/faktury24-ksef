@@ -316,6 +316,7 @@ $gtuSelectHtml .= '</select>';
                     'travel' => 'Usługi turystyki'
                   ],
                   'empty' => '— wybierz —',
+                  'required' => true,
                   'id' => 'margin-type',
                   'class' => 'form-select'
                 ]) ?>
