@@ -3076,6 +3076,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
         if ($originalType === 'novat') {
             $this->render('add_correct_no_vat');
         } elseif ($originalType === 'margin') {
+            // Zaznacz procedurę marży w korekcie na podstawie faktury pierwotnej.
+            // resolveMarginType bierze wartość z faktury pierwotnej (a gdy ta jej nie ma — z jej rodzica).
+            if (isset($original)) {
+                $mt = $this->resolveMarginType($original);
+                if ($mt !== '' && empty($invoice->margin_type)) {
+                    $invoice->set('margin_type', $mt);
+                }
+            }
             $this->render('add_correct_margin');
         } elseif ($originalType === 'currency') {
             $this->render('add_correct_currency');
