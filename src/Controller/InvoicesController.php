@@ -1577,7 +1577,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                             'is_new_transport_wdt', 'p_42_5', 'transaction_conditions_json',
                             'order_total_gross', 'is_split_payment', 'is_receipt_invoice',
                             'buyer_is_jst', 'buyer_in_vat_group', 'place_of_issue', 'footer_text',
-                            'payment_link',
+                            'payment_link', 'margin_type',
                         ] as $__f) {
                             $__v = $original->get($__f);
                             if ($invoice->get($__f) === null && $__v !== null) {
@@ -8356,9 +8356,16 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     $this->emitIfNotNull($xml, 'P_13_5', $inv->p_13_5 ?? null);
     $this->emitIfNotNull($xml, 'P_14_5', $inv->p_14_5 ?? null);
 
-    // P_13_6_1 – 0% KR (diff z pozycji + ew. ręczne)
-    $c13_6_1 = $d0kr    ?: ($inv->p_13_6_1 ?? null);
-    $this->emitIfNotNull($xml, 'P_13_6_1', $c13_6_1 ?: null);
+    // Korekta marży: pozycje bez VAT trafiają do grupy 0kr, ale wg broszury FA(3)
+    // sekwencje stawek (m.in. P_13_6_1) "nie dotyczą procedury marży" — wartość różnicy
+    // sprzedaży idzie do P_13_11. Wykrywamy marżę także po fakturze pierwotnej.
+    $marginCorr = ($this->resolveMarginType($inv) !== '');
+
+    // P_13_6_1 – 0% KR (diff z pozycji + ew. ręczne) — pomijamy dla korekty marży
+    if (!$marginCorr) {
+        $c13_6_1 = $d0kr    ?: ($inv->p_13_6_1 ?? null);
+        $this->emitIfNotNull($xml, 'P_13_6_1', $c13_6_1 ?: null);
+    }
     // P_13_6_2 – 0% WDT
     $c13_6_2 = $d0wdt   ?: ($inv->p_13_6_2 ?? null);
     $this->emitIfNotNull($xml, 'P_13_6_2', $c13_6_2 ?: null);
@@ -8381,7 +8388,10 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     // P_13_10 – odwrotne obciążenie (oo)
     $c13_10 = $dooNet ?: ($inv->p_13_10 ?? null);
     $this->emitIfNotNull($xml, 'P_13_10', $c13_10 ?: null);
-    $this->emitIfNotNull($xml, 'P_13_11', $inv->p_13_11 ?? null);
+    // P_13_11 – procedura marży: dla korekty marży KWOTA RÓŻNICY wartości sprzedaży
+    // (pozycje marży mają netto=brutto, więc różnica netto z grupy 0kr = różnica wartości sprzedaży).
+    $c13_11 = $marginCorr ? (round($d0kr, 2) ?: null) : ($inv->p_13_11 ?? null);
+    $this->emitIfNotNull($xml, 'P_13_11', $c13_11);
 
     return [$xml, $sumGrossDiff];
 }
@@ -8577,13 +8587,42 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         ];
     }
 
+    /**
+     * Zwraca margin_type dla faktury — także dla KOREKTY marży.
+     * Jeśli sama faktura nie ma margin_type, a jest korektą (parent_id), bierze go z faktury pierwotnej.
+     * Dzięki temu korekta marży poprawnie deklaruje procedurę marży (P_PMarzy) i sumę w P_13_11,
+     * nawet jeśli margin_type nie został zapisany na samej korekcie.
+     */
+    private function resolveMarginType(Invoice $inv): string
+    {
+        $mt = trim((string)($inv->margin_type ?? ''));
+        if ($mt !== '') {
+            return $mt;
+        }
+        if (!empty($inv->parent_id)) {
+            try {
+                $parent = $this->Invoices->find()
+                    ->select(['id', 'margin_type'])
+                    ->where(['id' => $inv->parent_id])
+                    ->first();
+                if ($parent) {
+                    return trim((string)($parent->margin_type ?? ''));
+                }
+            } catch (\Throwable) {
+                // ignore — brak rodzica/zapytania nie może wywalić budowania XML
+            }
+        }
+
+        return '';
+    }
+
     private function buildPMarzyXml(Invoice $inv): array
     {
         $xml = [];
 
-        // Procedurę marży wyprowadzamy z zapisanego pola `margin_type` (kolumna istnieje).
+        // Procedurę marży wyprowadzamy z `margin_type` (także z faktury pierwotnej dla korekty).
         // XSD: gdy P_PMarzy=1 wymagane jest DOKŁADNIE jedno z P_PMarzy_2 / P_PMarzy_3_1..3.
-        $marginType = (string)($inv->margin_type ?? '');
+        $marginType = $this->resolveMarginType($inv);
         $procedure  = $this->marginProcedureMap()[$marginType] ?? null;
 
         $xml[] = '      <PMarzy>';
