@@ -1680,7 +1680,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
     // Flaga końcowości – domyślnie false; dla innych typów pozostaje false
     $isFinal = false;
 
-    if ($kind === 'margin') {
+    // Korekta faktury marży: pozycje muszą być budowane jak w marży (bez VAT, vat_code_id=null,
+    // netto=brutto), inaczej generyczna ścieżka dodaje im błędnie stawkę 0%.
+    // Sygnał: korekta + formularz marży (margin_type / margin_vat_rate).
+    $marginCorrection = ($kind === 'correction')
+        && (!empty($data['margin_type']) || array_key_exists('margin_vat_rate', $data));
+
+    if ($kind === 'margin' || $marginCorrection) {
             // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
             $totalSales = 0.0; $totalPurchase = 0.0;
             foreach ($items as $idx => $row) {
@@ -1724,7 +1730,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             if ($totalPurchase <= 0.0) {
                 $this->Flash->error('Faktura marżowa wymaga podania ceny nabycia (pola „Cena nabycia") dla co najmniej jednej pozycji.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
-                $this->render('add_margin');
+                $this->render($marginCorrection ? 'add_correct_margin' : 'add_margin');
                 return null;
             }
 
@@ -3482,8 +3488,11 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         }
                     }
                 }
-            } elseif (($invoice->type ?? null) === 'margin') {
-                // Procedura marży: pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż) oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń
+            } elseif (($invoice->type ?? null) === 'margin'
+                || (($invoice->type ?? null) === 'correction'
+                    && (!empty($data['margin_type']) || array_key_exists('margin_vat_rate', $data) || $this->resolveMarginType($invoice) !== ''))) {
+                // Procedura marży (także KOREKTA marży): pozycje zawierają WARTOŚĆ BRUTTO (sprzedaż)
+                // oraz CENA NABYCIA (BRUTTO) tylko do wyliczeń — bez VAT (vat_code_id=null), inaczej dostają błędnie 0%.
                 $totalSales = 0.0; $totalPurchase = 0.0;
                 foreach ($items as $idx => $row) {
                     $name = trim((string)($row['name'] ?? ''));
@@ -8648,11 +8657,13 @@ private function buildLinesXml(Invoice $inv, array $items): array
 {
     $xml    = [];
     $rodzaj = $this->resolveRodzajFaktury($inv);
+    // Procedura marży (także korekta marży) — pozycje nie mają stawki VAT (P_12 pomijane).
+    $isMargin = ($this->resolveMarginType($inv) !== '');
 
     // 🔹 Zwykłe faktury – tak jak było
     if (!in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
         foreach ($items as $i => $it) {
-            $xml = array_merge($xml, $this->buildSingleLineXml($it, $i + 1, false));
+            $xml = array_merge($xml, $this->buildSingleLineXml($it, $i + 1, false, $isMargin));
         }
         return $xml;
     }
@@ -8667,19 +8678,19 @@ private function buildLinesXml(Invoice $inv, array $items): array
 
         // stan przed
         if (isset($origItems[$i])) {
-            $xml = array_merge($xml, $this->buildSingleLineXml($origItems[$i], $rowNo, true));
+            $xml = array_merge($xml, $this->buildSingleLineXml($origItems[$i], $rowNo, true, $isMargin));
         }
 
         // stan po
         if (isset($items[$i])) {
-            $xml = array_merge($xml, $this->buildSingleLineXml($items[$i], $rowNo, false));
+            $xml = array_merge($xml, $this->buildSingleLineXml($items[$i], $rowNo, false, $isMargin));
         }
     }
 
     return $xml;
 }
 
-private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrection): array
+private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrection, bool $isMargin = false): array
 {
     $xml = [];
 
@@ -8789,7 +8800,11 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
         // 0% krajowe
         $p12 = '0 KR';
     }
-    $xml[] = '      <P_12>' . $p12 . '</P_12>';
+    // Procedura marży: pozycje nie wykazują stawki VAT — pomijamy P_12 (XSD: opcjonalne).
+    // Dzięki temu w wierszu jest "marża", a nie "0% KR". VAT od marży jest tylko w podsumowaniu (P_13_11).
+    if (!$isMargin) {
+        $xml[] = '      <P_12>' . $p12 . '</P_12>';
+    }
 
     // KwotaAkcyzy [pozycja 21 w XSD — po P_12_Zal_15]
     if (!empty($it->excise_amount)) {
