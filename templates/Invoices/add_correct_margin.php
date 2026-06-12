@@ -557,12 +557,16 @@ $gtuSelectHtml .= '</select>';
                 </div>
               </div>
 
-        				<?php if (isset($original) && empty($isEdit)): ?>
+        				<?php
+        				// Źródło prefillu: faktura pierwotna (przy tworzeniu korekty) lub sama korekta (przy edycji roboczej).
+        				$__prefillSrc = !empty($isEdit) ? ($invoice ?? null) : (isset($original) ? $original : null);
+        				if (!empty($__prefillSrc)):
+        				?>
                 <?php
-                  // Normalize original contractor to plain array for JS
+                  // Normalize source contractor to plain array for JS
                   $origCtrArr = null;
-                  if (!empty($original->invoice_contractor)) {
-                    $c = $original->invoice_contractor;
+                  if (!empty($__prefillSrc->invoice_contractor)) {
+                    $c = $__prefillSrc->invoice_contractor;
                     $origCtrArr = [
                       'name' => (string)($c->name ?? ''),
                       'nip' => (string)($c->nip ?? ''),
@@ -576,8 +580,8 @@ $gtuSelectHtml .= '</select>';
                   }
                   // Normalize original contents to plain arrays for JS
                   $origItemsArr = [];
-                  if (!empty($original->invoice_contents)) {
-                    foreach ($original->invoice_contents as $it) {
+                  if (!empty($__prefillSrc->invoice_contents)) {
+                    foreach ($__prefillSrc->invoice_contents as $it) {
                       $origItemsArr[] = [
                         'product_id' => isset($it->product_id) ? (string)$it->product_id : null,
                         'code'       => isset($it->product_code) ? (string)$it->product_code : null,
@@ -598,7 +602,7 @@ $gtuSelectHtml .= '</select>';
                   // Prefill contractor from original snapshot
                   if (origCtr) {
                     $('#contractor-snapshot').show();
-                    $('#contractor-id-input').val(<?= json_encode($original->contractor_id ?? null) ?>);
+                    $('#contractor-id-input').val(<?= json_encode($__prefillSrc->contractor_id ?? null) ?>);
                     $('[name="invoice_contractor[name]"]').val(origCtr.name||'');
                     $('[name="invoice_contractor[nip]"]').val(origCtr.nip||'');
                     $('[name="invoice_contractor[street]"]').val(origCtr.street||'');

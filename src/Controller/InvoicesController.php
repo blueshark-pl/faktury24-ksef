@@ -3853,6 +3853,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             foreach (['number','day','month','year','day_year','invoice_series_id'] as $k) {
                 if (array_key_exists($k, $data)) { $invoicePatch[$k] = $data[$k]; }
             }
+            // Procedura marży — pozwól zmienić przy edycji (faktura/korekta marży)
+            if (array_key_exists('margin_type', $data)) {
+                $invoicePatch['margin_type'] = !empty($data['margin_type']) ? (string)$data['margin_type'] : null;
+            }
 
             // Powiązanie z proformą przy zaliczce/końcowej
             if (in_array($kind, ['advance','final'], true) && array_key_exists('parent_id', $data)) {
