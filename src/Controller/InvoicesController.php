@@ -8368,7 +8368,7 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
     // Korekta marży: pozycje bez VAT trafiają do grupy 0kr, ale wg broszury FA(3)
     // sekwencje stawek (m.in. P_13_6_1) "nie dotyczą procedury marży" — wartość różnicy
     // sprzedaży idzie do P_13_11. Wykrywamy marżę także po fakturze pierwotnej.
-    $marginCorr = ($this->resolveMarginType($inv) !== '');
+    $marginCorr = $this->isMarginInvoice($inv);
 
     // P_13_6_1 – 0% KR (diff z pozycji + ew. ręczne) — pomijamy dla korekty marży
     if (!$marginCorr) {
@@ -8625,6 +8625,41 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
         return '';
     }
 
+    /**
+     * Czy faktura jest w procedurze marży (także korekta marży) — detekcja po TYPIE,
+     * nie tylko po margin_type. Faktura marża ma type='margin' nawet jeśli margin_type
+     * nie został wybrany; korektę wykrywamy po fakturze pierwotnej (parent_id).
+     */
+    private function isMarginInvoice(Invoice $inv): bool
+    {
+        if ((string)($inv->type ?? '') === 'margin') {
+            return true;
+        }
+        if (trim((string)($inv->margin_type ?? '')) !== '') {
+            return true;
+        }
+        if (!empty($inv->parent_id)) {
+            try {
+                $parent = $this->Invoices->find()
+                    ->select(['id', 'type', 'margin_type'])
+                    ->where(['id' => $inv->parent_id])
+                    ->first();
+                if ($parent) {
+                    if ((string)($parent->type ?? '') === 'margin') {
+                        return true;
+                    }
+                    if (trim((string)($parent->margin_type ?? '')) !== '') {
+                        return true;
+                    }
+                }
+            } catch (\Throwable) {
+                // ignore — nie wywalaj budowania XML
+            }
+        }
+
+        return false;
+    }
+
     private function buildPMarzyXml(Invoice $inv): array
     {
         $xml = [];
@@ -8658,7 +8693,7 @@ private function buildLinesXml(Invoice $inv, array $items): array
     $xml    = [];
     $rodzaj = $this->resolveRodzajFaktury($inv);
     // Procedura marży (także korekta marży) — pozycje nie mają stawki VAT (P_12 pomijane).
-    $isMargin = ($this->resolveMarginType($inv) !== '');
+    $isMargin = $this->isMarginInvoice($inv);
 
     // 🔹 Zwykłe faktury – tak jak było
     if (!in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
