@@ -655,6 +655,10 @@ $this->assign('title', $__pageTitle);
       $('#final-badge').hide();
       setSoldDateVisible(false);
       ensureAdvanceSeries();
+      // Zaliczka 100% — cała zapłata została otrzymana, więc wymuś podanie daty otrzymania zapłaty (P_6 dla KSeF).
+      if (!$('#adv-paid-chk').is(':checked')) {
+        $('#adv-paid-chk').prop('checked', true).trigger('change');
+      }
     }
   }
   $(document).on('change', 'input[name="hundred_choice"]', applyHundredChoice);
