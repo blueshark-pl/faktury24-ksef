@@ -1821,7 +1821,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 if (empty($data['invoice_contractor']['name']) && !empty($proforma->contractor_id)) {
                     $LiveContractors = $this->fetchTable('Contractors');
                     $liveCtr = $LiveContractors->find()
-                        ->select(['name','nip','street','city','postal_code','country','email','phone','account_number','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
+                        ->select(['name','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
                         ->where(['id' => $proforma->contractor_id, 'company_id' => $companyId])
                         ->first();
                     if ($liveCtr) {
@@ -3502,7 +3502,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     if (empty($data['invoice_contractor']['name']) && !empty($proforma->contractor_id)) {
                         $LiveContractors = $this->fetchTable('Contractors');
                         $liveCtr = $LiveContractors->find()
-                            ->select(['name','nip','street','city','postal_code','country','email','phone','account_number','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
+                            ->select(['name','nip','street','city','postal_code','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'])
                             ->where(['id' => $proforma->contractor_id, 'company_id' => $companyId])
                             ->first();
                         if ($liveCtr) {
@@ -5759,7 +5759,7 @@ private function makeClient(string $environment): KsefClient
         if ($liveForSupplement === null && !empty($p->contractor_id)) {
             $SuppCtr = $this->fetchTable('Contractors');
             $liveForSupplement = $SuppCtr->find()
-                ->select(['name','nip','street','city','postal_code','country','email','phone','account_number'])
+                ->select(['name','nip','street','city','postal_code','country','email','phone'])
                 ->where(['id' => $p->contractor_id, 'company_id' => $companyId])
                 ->first();
         }
