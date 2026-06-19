@@ -1906,14 +1906,20 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // (radio „Czy towar wydany/usługa wykonana?" → pole is_final). Patrz add_advance.php.
             $isFinal = $isFinalExplicit;
 
+            // Faktura rozliczeniowa/końcowa po 100% zaliczek (art. 106f ust. 3 ustawy):
+            // gdy wcześniejsze zaliczki pokrywają już całość, dopuszczamy późniejszą fakturę
+            // rozliczeniową o kwocie pozostałej do zapłaty = 0 (P_15=0). Wymaga jawnego is_final=1.
+            $priorAdvancesCover100 = ($remainingToSettle <= 0.0) && ($sumAdvances > 0.0);
+            $isZeroSettlement      = $isFinal && $priorAdvancesCover100;
+
             if ($hasFinal) {
                 $this->Flash->error('Faktura końcowa została już wystawiona dla tej oferty. Nie można wystawiać kolejnych dokumentów do tej oferty.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
             }
-            if ($remainingToSettle <= 0.0) {
-                $this->Flash->error('Proforma została już w całości rozliczona.');
+            if ($remainingToSettle <= 0.0 && !$isZeroSettlement) {
+                $this->Flash->error('Proforma została już w całości rozliczona. Aby rozliczyć zaliczki, wystaw fakturę rozliczeniową/końcową.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
@@ -1924,7 +1930,9 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $this->render('add_advance');
                 return null;
             }
-            if ($isFinal && !$shouldBeFinalByAmount) {
+            // Dla zwykłej końcowej kwota = pozostała do rozliczenia. Wyjątek: faktura rozliczeniowa
+            // po 100% zaliczek (kwota pozostała = 0) — wtedy brutto=0 jest poprawne.
+            if ($isFinal && !$shouldBeFinalByAmount && !$isZeroSettlement) {
                 $this->Flash->error('Dla faktury końcowej kwota musi równać się pozostałej do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
@@ -3336,6 +3344,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $shouldBeFinalByAmount = $remainingToSettle > 0 && abs($advanceGross - $remainingToSettle) < 0.01;
                 $isFinal = $isFinalExplicit || ($kind === 'final');
 
+                // Faktura rozliczeniowa po 100% zaliczek (art. 106f ust. 3) — kwota pozostała = 0.
+                $priorAdvancesCover100 = ($remainingToSettle <= 0.0) && ($sumAdvances > 0.0);
+                $isZeroSettlement      = $isFinal && $priorAdvancesCover100;
+
                 if ($isFinal && empty($data['sold_date'])) {
                     $this->Flash->error('Dla faktury rozliczeniowej/końcowej podaj datę dokonania dostawy towarów albo wykonania usługi.');
                     $this->set(compact('invoice','vats','vatRatesMap'));
@@ -3347,8 +3359,8 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
                 }
-                if ($remainingToSettle <= 0.0) {
-                    $this->Flash->error('Proforma została już w całości rozliczona.');
+                if ($remainingToSettle <= 0.0 && !$isZeroSettlement) {
+                    $this->Flash->error('Proforma została już w całości rozliczona. Aby rozliczyć zaliczki, wystaw fakturę rozliczeniową/końcową.');
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
                 }
@@ -3397,7 +3409,7 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
                 }
-                if ($isFinal && (abs($bruttoA - $remainingToSettle) > 0.01)) {
+                if ($isFinal && !$isZeroSettlement && (abs($bruttoA - $remainingToSettle) > 0.01)) {
                     $this->Flash->error('Dla faktury końcowej kwota musi równać się pozostałej do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
@@ -8103,7 +8115,9 @@ private function buildCorrectionHeaderXml(Invoice $inv, string $rodzajFaktury): 
 
         // Dla ROZ: P_13/P_14 = proporcjonalny podział P_15 (kwota pozostała) per stawkę proformy.
         // FaWiersz pokazuje pełne wartości zamówienia, ale P_13/P_14 odzwierciedlają tylko pozostałą część.
-        if ($rodzaj === 'ROZ' && $rozP15Override !== null && $rozP15Override > 0.0) {
+        // UWAGA: dopuszczamy override = 0.0 (faktura rozliczeniowa po 100% zaliczek) — wtedy podział
+        // daje P_13/P_14 = 0 i P_15 = 0. Bez tego (gdy >0) kod sumowałby pełne pozycje proformy = błąd.
+        if ($rodzaj === 'ROZ' && $rozP15Override !== null) {
             // Zsumuj brutto proformy per stawkę
             $proformaBruttoPerGrp = [];
             $proformaBruttoTotal  = 0.0;

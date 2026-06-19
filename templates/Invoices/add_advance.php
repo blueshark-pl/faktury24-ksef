@@ -122,6 +122,18 @@ $this->assign('title', $__pageTitle);
               </label>
             </div>
           </div>
+          <!-- Zaliczki pokrywają 100% — możliwość późniejszej faktury rozliczeniowej (art. 106f ust. 3) -->
+          <div id="settlement-prepaid" class="alert alert-secondary mt-2 mb-0 py-2" role="alert" style="display:none;">
+            <div class="fw-medium mb-1"><i class="ri-information-line me-1"></i> Wcześniejsze zaliczki rozliczają 100% wartości proformy.</div>
+            <div class="small mb-2">Możesz wystawić fakturę rozliczeniową/końcową, która rozlicza wystawione zaliczki (kwota pozostała do zapłaty = 0).</div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="settlement-prepaid-chk">
+              <label class="form-check-label fw-medium" for="settlement-prepaid-chk">
+                Wystaw fakturę rozliczeniową/końcową (rozlicza zaliczki)
+              </label>
+            </div>
+            <div class="small text-muted mt-1">Wymagana data dokonania dostawy / wykonania usługi.</div>
+          </div>
         </div>
 
 
@@ -570,6 +582,7 @@ $this->assign('title', $__pageTitle);
     }
 
     if (!isEdit) {
+      $('#settlement-prepaid').hide();
       if (!overpay && remainingTotal > 0) {
         var equalRemaining = (Math.abs(gross - remainingTotal) <= 0.005 && gross > 0);
         if (equalRemaining && !finalExists) {
@@ -585,12 +598,36 @@ $this->assign('title', $__pageTitle);
           setSoldDateVisible(false);
           ensureAdvanceSeries();
         }
+      } else if (remainingTotal <= 0 && advancesTotal > 0 && !finalExists) {
+        // Zaliczki pokrywają już 100% — zaproponuj fakturę rozliczeniową (art. 106f ust. 3).
+        $('#hundred-choice').hide();
+        $('#settlement-prepaid').show();
+        applySettlementPrepaid();
       } else {
-        // Nadpłata lub brak pozostałej — schowaj wybór (nadpłatę obsługuje osobny panel)
+        // Nadpłata — schowaj wybory (nadpłatę obsługuje osobny panel)
         $('#hundred-choice').hide();
       }
     }
   }
+
+  // Faktura rozliczeniowa po 100% zaliczek — toggle.
+  function applySettlementPrepaid(){
+    if (isEdit) { return; }
+    var on = $('#settlement-prepaid-chk').is(':checked');
+    if (on) {
+      $('#is-final').val(1);
+      $('#final-badge').show();
+      setSoldDateVisible(true);
+      $('[name="advance_gross"]').val('0.00'); // kwota pozostała do zapłaty = 0
+      ensureFinalSeries();
+    } else {
+      $('#is-final').val(0);
+      $('#final-badge').hide();
+      setSoldDateVisible(false);
+      ensureAdvanceSeries();
+    }
+  }
+  $(document).on('change', '#settlement-prepaid-chk', applySettlementPrepaid);
 
   // Pokaż/ukryj pole „Data dostawy/wykonania" i ustaw atrybut required.
   function setSoldDateVisible(visible){
@@ -961,7 +998,9 @@ $this->assign('title', $__pageTitle);
 
     if (!$proforma.val()) { markInvalid($('#proforma-select')); }
     var gross = parseFloat($amount.val()||'0')||0;
-    if (gross <= 0) { markInvalid($amount); }
+    // Faktura rozliczeniowa po 100% zaliczek ma kwotę pozostałą = 0 — wtedy 0 jest dozwolone.
+    var isSettlementPrepaid = ($('#is-final').val() === '1') && (remainingTotal <= 0);
+    if (gross <= 0 && !isSettlementPrepaid) { markInvalid($amount); }
     var overpayAllowed = $('#update-proforma-total-chk').is(':checked');
     if (remainingTotal > 0 && gross - remainingTotal > 0.005 && !overpayAllowed) { markInvalid($amount); }
     if (!$series.val()) { markInvalidSelect2($series); }
