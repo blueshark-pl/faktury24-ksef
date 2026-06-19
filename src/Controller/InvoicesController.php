@@ -1765,10 +1765,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 return null;
             }
             $advanceGross = $num($data['advance_gross'] ?? 0);
-            if ($advanceGross <= 0) {
-                $this->Flash->error($advanceGross < 0
-                    ? 'Kwota zaliczki nie może być ujemna (podano: ' . number_format($advanceGross, 2, ',', ' ') . ').'
-                    : 'Kwota zaliczki musi być większa od zera.');
+            $isFinalExplicitEarly = !empty($data['is_final']) && (int)$data['is_final'] === 1;
+            if ($advanceGross < 0) {
+                $this->Flash->error('Kwota zaliczki nie może być ujemna (podano: ' . number_format($advanceGross, 2, ',', ' ') . ').');
+                $this->set(compact('invoice','vats','vatRatesMap','kind'));
+                $this->render('add_advance');
+                return null;
+            }
+            // Kwota 0 dozwolona TYLKO dla faktury rozliczeniowej/końcowej (rozliczenie 100% zaliczek).
+            // Dla zwykłej końcowej z kwotą 0 błąd złapią dalsze guardy (kwota = pozostała).
+            if ($advanceGross == 0.0 && !$isFinalExplicitEarly) {
+                $this->Flash->error('Kwota zaliczki musi być większa od zera.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
@@ -3284,7 +3291,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     return null;
                 }
                 $advanceGross = $num($data['advance_gross'] ?? 0);
-                if ($advanceGross <= 0) {
+                $isFinalExplicitEarly = (!empty($data['is_final']) && (int)$data['is_final'] === 1) || ($kind === 'final');
+                if ($advanceGross < 0) {
+                    $this->Flash->error('Kwota zaliczki nie może być ujemna (podano: ' . number_format($advanceGross, 2, ',', ' ') . ').');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
+                // Kwota 0 dozwolona tylko dla faktury rozliczeniowej/końcowej (rozliczenie 100% zaliczek).
+                if ($advanceGross == 0.0 && !$isFinalExplicitEarly) {
                     $this->Flash->error('Kwota zaliczki musi być większa od zera.');
                     $this->set(compact('invoice','vats','vatRatesMap'));
                     return null;
