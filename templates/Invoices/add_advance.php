@@ -101,16 +101,26 @@ $this->assign('title', $__pageTitle);
             <button type="button" id="btn-finalize" class="btn btn-outline-success btn-sm" <?= $__isEdit ? 'disabled' : '' ?>>
               <i class="ri-check-double-line me-1"></i> Zapłacono całość (ustaw pozostałą kwotę)
             </button>
-            <small class="text-muted"><?= $__isEdit ? 'W trybie edycji nie przełączamy typu dokumentu; możesz ręcznie skorygować kwotę.' : 'Ustawi kwotę zaliczki na pozostałą do rozliczenia i oznaczy dokument jako końcowy.' ?></small>
+            <small class="text-muted"><?= $__isEdit ? 'W trybie edycji nie przełączamy typu dokumentu; możesz ręcznie skorygować kwotę.' : 'Ustawi kwotę na pozostałą do rozliczenia. Przy 100% wybierzesz: faktura zaliczkowa 100% lub rozliczeniowa/końcowa.' ?></small>
             <span id="final-badge" class="badge bg-success" style="<?= $__isFinal ? '' : 'display:none;' ?>">Faktura końcowa</span>
           </div>
-          <div id="auto-final-notice" class="alert alert-info alert-dismissible d-flex align-items-center gap-2 mt-2 mb-0 py-2" role="alert" style="display:none!important;">
-            <i class="ri-information-line fs-5 flex-shrink-0"></i>
-            <div>
-              <strong>Automatycznie oznaczono jako faktura końcowa</strong> — wpisana kwota pokrywa całą pozostałą do rozliczenia kwotę proformy.
-              Jeśli to zaliczka cząstkowa, zmień kwotę lub kliknij "Zapłacono całość" ponownie.
+          <div id="hundred-choice" class="alert alert-info mt-2 mb-0 py-2" role="alert" style="display:none;">
+            <div class="fw-medium mb-2">
+              <i class="ri-question-line me-1"></i>
+              Kwota pokrywa 100% wartości proformy. <strong>Czy towar został już wydany lub usługa wykonana?</strong>
             </div>
-            <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Zamknij"></button>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="hundred_choice" id="hundred-no" value="no" checked>
+              <label class="form-check-label" for="hundred-no">
+                <strong>Nie</strong> — wystaw <strong>fakturę zaliczkową 100%</strong> (towar nie został wydany / usługa niewykonana). Podaj datę otrzymania zapłaty.
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="hundred_choice" id="hundred-yes" value="yes">
+              <label class="form-check-label" for="hundred-yes">
+                <strong>Tak</strong> — wystaw <strong>fakturę rozliczeniową/końcową</strong> (wymagana data dokonania dostawy / wykonania usługi).
+              </label>
+            </div>
           </div>
         </div>
 
@@ -133,15 +143,15 @@ $this->assign('title', $__pageTitle);
             <?= $this->Form->control('date', ['type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'value' => $invoice->isNew() ? date('Y-m-d') : ($invoice->date ? $invoice->date->format('Y-m-d') : date('Y-m-d'))]) ?>
             <small class="text-muted">&nbsp;</small>
           </div>
-          <?php if ($__isFinal): ?>
-          <div class="col-md-2">
+          <div class="col-md-3" id="sold-date-wrap" style="<?= $__isFinal ? '' : 'display:none;' ?>">
             <?= $this->Form->control('sold_date', [
-              'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-              'value' => $invoice->isNew() ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : date('Y-m-d')),
+              'type' => 'date',
+              'label' => 'Data dokonania / zakończenia dostawy lub wykonania usługi',
+              'class' => 'form-control', 'id' => 'sold-date',
+              'value' => !empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : date('Y-m-d'),
             ]) ?>
-            <small class="text-muted">&nbsp;</small>
+            <small class="text-muted">Wymagane dla faktury rozliczeniowej/końcowej.</small>
           </div>
-          <?php endif; ?>
           <div class="col-md-4">
             <?= $this->Form->control('paymentdate', [
               'type' => 'date',
@@ -560,34 +570,57 @@ $this->assign('title', $__pageTitle);
     }
 
     if (!isEdit) {
-      // Auto-mark final when equal to remaining (and > 0)
       if (!overpay && remainingTotal > 0) {
         var equalRemaining = (Math.abs(gross - remainingTotal) <= 0.005 && gross > 0);
         if (equalRemaining && !finalExists) {
-          var wasAlreadyFinal = ($('#is-final').val() === '1');
-          $('#is-final').val(1);
-          $('#final-badge').show();
-          ensureFinalSeries();
-          // Powiadom użytkownika o auto-klasyfikacji (tylko gdy zmiana stanu)
-          if (!wasAlreadyFinal) {
-            var $notice = $('#auto-final-notice');
-            $notice.css('display', 'flex');
-            // Bootstrap 5: usuń klasę dodaną przez poprzednie zamknięcie
-            $notice.removeClass('d-none');
-          }
+          // 100% wartości — NIE oznaczamy automatycznie jako końcowej.
+          // Pokaż wybór: zaliczkowa 100% (Nie) vs rozliczeniowa/końcowa (Tak).
+          $('#hundred-choice').show();
+          applyHundredChoice();
         } else {
-          // Jeżeli kwota nie jest równa pozostałej — traktuj jako zaliczkową
+          // Poniżej 100% — zawsze zaliczkowa
+          $('#hundred-choice').hide();
           $('#is-final').val(0);
           $('#final-badge').hide();
-          $('#auto-final-notice').css('display', 'none');
-          // Jeśli końcowa już istnieje — nie pozwalaj oznaczyć jako końcową (utrzymujemy 0)
+          setSoldDateVisible(false);
           ensureAdvanceSeries();
         }
       } else {
-        $('#auto-final-notice').css('display', 'none');
+        // Nadpłata lub brak pozostałej — schowaj wybór (nadpłatę obsługuje osobny panel)
+        $('#hundred-choice').hide();
       }
     }
   }
+
+  // Pokaż/ukryj pole „Data dostawy/wykonania" i ustaw atrybut required.
+  function setSoldDateVisible(visible){
+    $('#sold-date-wrap').toggle(!!visible);
+    var $sd = $('#sold-date');
+    if (visible) {
+      $sd.attr('required', 'required');
+      if (!$sd.val()) { $sd.val(new Date().toISOString().slice(0, 10)); }
+    } else {
+      $sd.removeAttr('required');
+    }
+  }
+
+  // Zastosuj wybór z radio „Czy towar wydany / usługa wykonana?".
+  function applyHundredChoice(){
+    if (isEdit) { return; }
+    var yes = $('#hundred-yes').is(':checked');
+    if (yes) {
+      $('#is-final').val(1);
+      $('#final-badge').show();
+      setSoldDateVisible(true);
+      ensureFinalSeries();
+    } else {
+      $('#is-final').val(0);
+      $('#final-badge').hide();
+      setSoldDateVisible(false);
+      ensureAdvanceSeries();
+    }
+  }
+  $(document).on('change', 'input[name="hundred_choice"]', applyHundredChoice);
   $(document).on('input change', '[name="advance_gross"]', recompute);
   $(document).on('change', '#update-proforma-total-chk', function(){
     $('#update-proforma-total').val(this.checked ? '1' : '0');
@@ -635,11 +668,9 @@ $this->assign('title', $__pageTitle);
     }
     if (remainingTotal > 0) {
       $('[name="advance_gross"]').val(remainingTotal.toFixed(2));
-      $('#is-final').val(1);
-      $('#final-badge').show();
+      // Nie wymuszamy końcowej — recompute() pokaże wybór (zaliczkowa 100% / rozliczeniowa).
       recompute();
-      ensureFinalSeries();
-      showToast('Ustawiono pełne rozliczenie — przełączono serię na końcową.', 'success');
+      showToast('Ustawiono pełną pozostałą kwotę — wybierz rodzaj faktury poniżej.', 'info');
     }
   });
 
@@ -935,6 +966,12 @@ $this->assign('title', $__pageTitle);
     if (remainingTotal > 0 && gross - remainingTotal > 0.005 && !overpayAllowed) { markInvalid($amount); }
     if (!$series.val()) { markInvalidSelect2($series); }
     if (!$date.val()) { markInvalid($date); }
+    // Faktura rozliczeniowa/końcowa wymaga daty dostawy/wykonania usługi
+    if ($('#is-final').val() === '1') {
+      var $sold = $('#sold-date');
+      unmark($sold);
+      if (!$sold.val()) { markInvalid($sold); }
+    }
 
     if (errors > 0) {
       showToast('Uzupełnij wymagane pola ('+errors+').', 'danger');

@@ -1901,7 +1901,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // Validate against remaining (prevent overpayment)
             $isFinalExplicit = !empty($data['is_final']) && (int)$data['is_final'] === 1;
             $shouldBeFinalByAmount = ($remainingToSettle > 0.0) && (abs($brutto - $remainingToSettle) <= 0.01) && ($brutto > 0.0);
-            $isFinal = $isFinalExplicit || $shouldBeFinalByAmount;
+            // UWAGA: NIE oznaczamy automatycznie faktury jako końcowej przy 100% wpłaty.
+            // Sama zapłata 100% nie oznacza wydania towaru/wykonania usługi — decyduje użytkownik
+            // (radio „Czy towar wydany/usługa wykonana?" → pole is_final). Patrz add_advance.php.
+            $isFinal = $isFinalExplicit;
 
             if ($hasFinal) {
                 $this->Flash->error('Faktura końcowa została już wystawiona dla tej oferty. Nie można wystawiać kolejnych dokumentów do tej oferty.');
@@ -1923,6 +1926,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             }
             if ($isFinal && !$shouldBeFinalByAmount) {
                 $this->Flash->error('Dla faktury końcowej kwota musi równać się pozostałej do rozliczenia (' . number_format($remainingToSettle, 2, ',', ' ') . ').');
+                $this->set(compact('invoice','vats','vatRatesMap','kind'));
+                $this->render('add_advance');
+                return null;
+            }
+            // Faktura rozliczeniowa/końcowa wymaga daty dokonania dostawy / wykonania usługi (data sprzedaży).
+            // Faktura zaliczkowa (także 100%) NIE wymaga tej daty.
+            if ($isFinal && empty($data['sold_date'])) {
+                $this->Flash->error('Dla faktury rozliczeniowej/końcowej podaj datę dokonania dostawy towarów albo wykonania usługi.');
                 $this->set(compact('invoice','vats','vatRatesMap','kind'));
                 $this->render('add_advance');
                 return null;
@@ -3319,11 +3330,17 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     }
                 }
 
-                // $isFinal: bazujemy na zapisanym typie, ale respektujemy jawne pole is_final z formularza
-                // oraz auto-detekcję gdy kwota = remainingToSettle (tak jak w handleAdd)
+                // $isFinal: bazujemy na zapisanym typie oraz jawnym polu is_final z formularza.
+                // NIE oznaczamy automatycznie jako końcowej przy 100% — decyduje użytkownik.
                 $isFinalExplicit = !empty($data['is_final']) && (int)$data['is_final'] === 1;
                 $shouldBeFinalByAmount = $remainingToSettle > 0 && abs($advanceGross - $remainingToSettle) < 0.01;
-                $isFinal = $isFinalExplicit || ($kind === 'final') || $shouldBeFinalByAmount;
+                $isFinal = $isFinalExplicit || ($kind === 'final');
+
+                if ($isFinal && empty($data['sold_date'])) {
+                    $this->Flash->error('Dla faktury rozliczeniowej/końcowej podaj datę dokonania dostawy towarów albo wykonania usługi.');
+                    $this->set(compact('invoice','vats','vatRatesMap'));
+                    return null;
+                }
 
                 if ($hasFinal && !$isFinal) {
                     $this->Flash->error('Faktura końcowa została już wystawiona dla tej oferty.');
