@@ -5140,17 +5140,24 @@ private function makeClient(string $environment): KsefClient
             ]
         ]);
 
-        // 1) Zbuduj FA(3) XML
+        // Proforma NIE jest dokumentem KSeF — pobieramy ją systemowym layoutem (krok 3,
+        // szablon CakePdf 'print' → element Invoices/print_preview), tak jak w widoku /invoices/view,
+        // a NIE przez generator FA(3) (ksef-pdf-generator), który renderowałby ją jak fakturę VAT.
+        $isProforma = (string)($invoice->type ?? '') === 'proforma';
+
+        // 1) Zbuduj FA(3) XML (pomijamy dla proformy)
         $xml = '';
-        try {
-            $xml = $this->buildFa3Xml($invoice);
-        } catch (\Throwable $e) {
-            \Cake\Log\Log::error('[print] buildFa3Xml failed for invoice ' . $id . ': ' . $e->getMessage(), ['print_pdf']);
-            $xml = '';
+        if (!$isProforma) {
+            try {
+                $xml = $this->buildFa3Xml($invoice);
+            } catch (\Throwable $e) {
+                \Cake\Log\Log::error('[print] buildFa3Xml failed for invoice ' . $id . ': ' . $e->getMessage(), ['print_pdf']);
+                $xml = '';
+            }
         }
 
-        // 2) Wyślij do lokalnego API, aby wygenerować PDF
-        if (is_string($xml) && trim($xml) !== '') {
+        // 2) Wyślij do lokalnego API, aby wygenerować PDF (nie dla proformy)
+        if (!$isProforma && is_string($xml) && trim($xml) !== '') {
             try {
                 $lang = (string)$this->request->getQuery('lang');
                 $isDraft = ((string)($invoice->workflow_status ?? '')) === 'draft';
