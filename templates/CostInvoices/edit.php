@@ -57,6 +57,14 @@ $fval = fn(string $field) => h((string)($invoice->$field ?? ''));
                        value="<?= $fval('receipt_date') ?: date('Y-m-d') ?>">
             </div>
 
+            <div class="col-md-6">
+                <label class="form-label fw-medium">Termin płatności</label>
+                <input type="date" name="payment_date" class="form-control"
+                       value="<?= $fval('payment_date') ?>"
+                       placeholder="opcjonalnie">
+                <small class="text-muted">Deadline — kontrola przeterminowanych w panelu.</small>
+            </div>
+
         </div>
     </div>
 </div>

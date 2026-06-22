@@ -441,6 +441,8 @@ class CostInvoicesController extends AppController
 
     // -------------------------------------------------------------------------
     // Zmień status FK (received → verified → paid)
+    // Przy ustawieniu 'paid' i pustym paid_at — automatycznie ustaw paid_at=dziś
+    // i paid_amount=brutto (jeśli paid_amount było 0).
     // -------------------------------------------------------------------------
     public function setStatus(): void
     {
@@ -464,8 +466,120 @@ class CostInvoicesController extends AppController
         }
 
         $ci->set('status', $status);
+
+        // Przy paid: zapisz datę i pełną kwotę jeśli brak
+        if ($status === 'paid') {
+            if (empty($ci->paid_at)) {
+                $ci->set('paid_at', date('Y-m-d'));
+            }
+            if ((float)($ci->paid_amount ?? 0) <= 0) {
+                $ci->set('paid_amount', (float)$ci->brutto);
+            }
+        }
+        // Przy zmianie z paid na inny: NIE czyścimy paid_at/paid_amount —
+        // user może to zrobić jawnie przez unmarkPaid, bez utraty historii.
+
         if ($CI->save($ci)) {
             $this->jsonResp(['success' => true, 'status' => $status]);
+        } else {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Oznacz fakturę jako zapłaconą z konkretną datą i kwotą
+    // POST /koszty/mark-paid
+    // body: { id, paid_at (YYYY-MM-DD), paid_amount, payment_method? }
+    // -------------------------------------------------------------------------
+    public function markPaid(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $id = (int)$this->request->getData('id', 0);
+        $paidAt = trim((string)$this->request->getData('paid_at', ''));
+        $paidAmount = (float)$this->request->getData('paid_amount', 0);
+        $method = trim((string)$this->request->getData('payment_method', ''));
+
+        if ($paidAt !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $paidAt)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowy format daty.']);
+            return;
+        }
+        $allowedMethods = ['transfer', 'cash', 'card', 'compensation', 'other', ''];
+        if (!in_array($method, $allowedMethods, true)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowa metoda płatności.']);
+            return;
+        }
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono.']);
+            return;
+        }
+
+        $brutto = (float)($ci->brutto ?? 0);
+        if ($paidAmount <= 0) {
+            $paidAmount = $brutto; // default: cała kwota
+        }
+        // Clamp do brutto + tolerancja groszowa
+        if ($paidAmount > $brutto + 0.01 && $brutto > 0) {
+            $paidAmount = $brutto;
+        }
+
+        $ci->set('paid_at', $paidAt ?: date('Y-m-d'));
+        $ci->set('paid_amount', $paidAmount);
+        if ($method !== '') {
+            $ci->set('payment_method', $method);
+        }
+        // Status: full paid → 'paid', częściowo → zostaw verified
+        $isFullPaid = $brutto > 0 && abs($paidAmount - $brutto) < 0.01;
+        if ($isFullPaid) {
+            $ci->set('status', 'paid');
+        } elseif ($ci->status === 'received') {
+            $ci->set('status', 'verified');
+        }
+
+        if ($CI->save($ci)) {
+            $this->jsonResp([
+                'success'        => true,
+                'status'         => $ci->status,
+                'paid_at'        => $ci->paid_at instanceof \DateTimeInterface
+                                       ? $ci->paid_at->format('Y-m-d')
+                                       : substr((string)$ci->paid_at, 0, 10),
+                'paid_amount'    => (float)$ci->paid_amount,
+                'is_full_paid'   => $isFullPaid,
+            ]);
+        } else {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Cofnij oznaczenie jako zapłacona — wyczyść paid_at / paid_amount,
+    // status → verified.
+    // POST /koszty/unmark-paid { id }
+    // -------------------------------------------------------------------------
+    public function unmarkPaid(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $id = (int)$this->request->getData('id', 0);
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono.']);
+            return;
+        }
+
+        $ci->set('paid_at', null);
+        $ci->set('paid_amount', 0.00);
+        $ci->set('payment_method', null);
+        $ci->set('status', 'verified');
+
+        if ($CI->save($ci)) {
+            $this->jsonResp(['success' => true, 'status' => 'verified']);
         } else {
             $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
         }

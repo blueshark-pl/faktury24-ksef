@@ -356,6 +356,18 @@ return [
             ],
         ],
 
+        // Faktury kosztowe (od przewoźników)
+        [
+            'role' => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'controller' => 'CostInvoices',
+            'action' => [
+                'index', 'view', 'add', 'edit', 'delete',
+                'importKsef', 'doImportKsef', 'searchAjax',
+                'assignOrder', 'unassignOrder', 'setStatus',
+                'markPaid', 'unmarkPaid',
+            ],
+        ],
+
         // Słownik adresów transportowych — dostępny dla pracowniczych ról
         [
             'role' => ['user', 'asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager'],

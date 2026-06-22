@@ -22,6 +22,39 @@ $fdate = fn($v) => $v ? ($v instanceof \DateTimeInterface ? $v->format('d.m.Y') 
 $csrfToken     = $this->request->getAttribute('csrfToken');
 $setStatusUrl  = $this->Url->build(['action' => 'setStatus']);
 $unassignUrl   = $this->Url->build(['action' => 'unassignOrder']);
+$markPaidUrl   = $this->Url->build(['action' => 'markPaid']);
+$unmarkPaidUrl = $this->Url->build(['action' => 'unmarkPaid']);
+
+// Helpery płatności
+$paidAmount = (float)($invoice->paid_amount ?? 0);
+$brutto     = (float)($invoice->brutto ?? 0);
+$remaining  = max(0, round($brutto - $paidAmount, 2));
+$isPaid     = $invoice->status === 'paid';
+$isPartial  = !$isPaid && $paidAmount > 0;
+$today      = date('Y-m-d');
+
+$pdStr = $invoice->payment_date instanceof \DateTimeInterface
+    ? $invoice->payment_date->format('Y-m-d')
+    : substr((string)($invoice->payment_date ?? ''), 0, 10);
+$paidAtStr = $invoice->paid_at instanceof \DateTimeInterface
+    ? $invoice->paid_at->format('Y-m-d')
+    : substr((string)($invoice->paid_at ?? ''), 0, 10);
+
+$daysOverdue = 0;
+$daysToDue = null;
+if ($pdStr && !$isPaid) {
+    $diff = (int)floor((strtotime($pdStr) - strtotime($today)) / 86400);
+    if ($diff < 0) $daysOverdue = abs($diff);
+    else $daysToDue = $diff;
+}
+
+$methodLabels = [
+    'transfer'     => 'Przelew',
+    'cash'         => 'Gotówka',
+    'card'         => 'Karta',
+    'compensation' => 'Kompensata',
+    'other'        => 'Inna',
+];
 ?>
 
 <!-- Nagłówek -->
@@ -102,6 +135,102 @@ $unassignUrl   = $this->Url->build(['action' => 'unassignOrder']);
                 <tr><th class="ps-3">Brutto</th><td class="fw-bold"><?= $fnum($invoice->brutto) ?> <?= h($invoice->currency) ?></td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+</div>
+
+<!-- Płatność -->
+<div class="col-12">
+<div class="card border-<?= $isPaid ? 'success' : ($daysOverdue > 0 ? 'danger' : 'warning') ?>-subtle">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="ri-bank-card-line text-primary"></i>
+        Płatność
+        <?php if ($isPaid): ?>
+            <span class="badge bg-success ms-2"><i class="ri-checkbox-circle-line me-1"></i>Opłacona</span>
+        <?php elseif ($isPartial): ?>
+            <span class="badge bg-warning text-dark ms-2"><i class="ri-time-line me-1"></i>Częściowo (<?= round(($paidAmount / max($brutto, 0.01)) * 100) ?>%)</span>
+        <?php elseif ($daysOverdue > 0): ?>
+            <span class="badge bg-danger ms-2"><i class="ri-error-warning-line me-1"></i>Przeterminowana o <?= $daysOverdue ?> dni</span>
+        <?php elseif ($daysToDue !== null): ?>
+            <span class="badge bg-warning text-dark ms-2"><i class="ri-alarm-warning-line me-1"></i>Termin za <?= $daysToDue ?> dni</span>
+        <?php else: ?>
+            <span class="badge bg-secondary ms-2"><i class="ri-question-line me-1"></i>Bez terminu</span>
+        <?php endif; ?>
+
+        <div class="ms-auto">
+            <?php if ($isPaid): ?>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-unmark-paid">
+                    <i class="ri-arrow-go-back-line me-1"></i> Cofnij oznaczenie
+                </button>
+            <?php else: ?>
+                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#payForm">
+                    <i class="ri-checkbox-circle-line me-1"></i> Oznacz jako zapłaconą
+                </button>
+            <?php endif; ?>
+        </div>
+    </div>
+    <div class="card-body py-2 px-3">
+        <div class="row g-3 mb-2">
+            <div class="col-md-3">
+                <div class="text-muted small text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Termin płatności</div>
+                <div class="fw-semibold"><?= $pdStr ? $fdate($pdStr) : '<span class="text-muted">— brak —</span>' ?></div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Wpłacono</div>
+                <div class="fw-semibold <?= $isPaid ? 'text-success' : ($isPartial ? 'text-warning' : '') ?>">
+                    <?= $fnum($paidAmount) ?> <?= h($invoice->currency) ?>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Pozostało</div>
+                <div class="fw-semibold <?= $remaining > 0 ? 'text-danger' : 'text-success' ?>">
+                    <?= $fnum($remaining) ?> <?= h($invoice->currency) ?>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small text-uppercase" style="font-size:.65rem;letter-spacing:.04em">Data zapłaty</div>
+                <div class="fw-semibold">
+                    <?= $paidAtStr ? $fdate($paidAtStr) : '<span class="text-muted">— brak —</span>' ?>
+                    <?php if (!empty($invoice->payment_method)): ?>
+                        <span class="badge bg-info-subtle text-info border ms-1" style="font-size:.65rem">
+                            <?= h($methodLabels[$invoice->payment_method] ?? $invoice->payment_method) ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formularz oznaczenia jako zapłacona -->
+        <div class="collapse <?= $isPaid ? '' : '' ?>" id="payForm">
+            <hr class="my-2">
+            <form id="payFormForm" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Data zapłaty</label>
+                    <input type="date" name="paid_at" class="form-control form-control-sm" value="<?= h($today) ?>" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Kwota</label>
+                    <input type="number" name="paid_amount" step="0.01" min="0" class="form-control form-control-sm"
+                           value="<?= number_format($remaining > 0 ? $remaining : $brutto, 2, '.', '') ?>" required>
+                    <div class="form-text small">Brutto: <?= $fnum($brutto) ?> <?= h($invoice->currency) ?></div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Metoda</label>
+                    <select name="payment_method" class="form-select form-select-sm">
+                        <option value="transfer">Przelew</option>
+                        <option value="cash">Gotówka</option>
+                        <option value="card">Karta</option>
+                        <option value="compensation">Kompensata</option>
+                        <option value="other">Inna</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-success btn-sm w-100">
+                        <i class="ri-check-line me-1"></i> Zapisz
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 </div>
@@ -190,6 +319,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var csrfToken  = '<?= h($csrfToken) ?>';
     var setStatusUrl = '<?= $setStatusUrl ?>';
     var unassignUrl  = '<?= $unassignUrl ?>';
+    var markPaidUrl   = '<?= $markPaidUrl ?>';
+    var unmarkPaidUrl = '<?= $unmarkPaidUrl ?>';
 
     function showToast(msg, ok) {
         if (window.Swal) {
@@ -218,6 +349,54 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     showToast('Status zmieniony', true);
                     setTimeout(function(){ location.reload(); }, 800);
+                } else {
+                    showToast(data.error || 'Błąd', false);
+                }
+            }).catch(function(e) { showToast('Błąd: ' + e.message, false); });
+        });
+    }
+
+    // ── Płatność: form oznaczenia jako zapłacona
+    var payForm = document.getElementById('payFormForm');
+    if (payForm) {
+        payForm.addEventListener('submit', function(ev) {
+            ev.preventDefault();
+            var fd = new FormData(ev.target);
+            var payload = {
+                id: invoiceId,
+                paid_at: fd.get('paid_at'),
+                paid_amount: parseFloat(fd.get('paid_amount') || 0),
+                payment_method: fd.get('payment_method') || ''
+            };
+            var btn = ev.target.querySelector('button[type=submit]');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>zapisuję…';
+            post(markPaidUrl, payload).then(function(data) {
+                if (data.success) {
+                    showToast(data.is_full_paid ? 'Oznaczono jako zapłaconą' : 'Zapisano częściową wpłatę', true);
+                    setTimeout(function(){ location.reload(); }, 700);
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="ri-check-line me-1"></i> Zapisz';
+                    showToast(data.error || 'Błąd', false);
+                }
+            }).catch(function(e) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-check-line me-1"></i> Zapisz';
+                showToast('Błąd: ' + e.message, false);
+            });
+        });
+    }
+
+    // ── Cofnij oznaczenie zapłaty
+    var btnUnmark = document.getElementById('btn-unmark-paid');
+    if (btnUnmark) {
+        btnUnmark.addEventListener('click', function() {
+            if (!confirm('Cofnąć oznaczenie jako zapłacona? Status wróci do "Zweryfikowana".')) return;
+            post(unmarkPaidUrl, { id: invoiceId }).then(function(data) {
+                if (data.success) {
+                    showToast('Cofnięto', true);
+                    setTimeout(function(){ location.reload(); }, 600);
                 } else {
                     showToast(data.error || 'Błąd', false);
                 }

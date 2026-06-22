@@ -38,6 +38,8 @@ return function (RouteBuilder $routes): void {
         $builder->post('/koszty/assign-order', 'CostInvoices::assignOrder');
         $builder->post('/koszty/unassign-order', 'CostInvoices::unassignOrder');
         $builder->post('/koszty/set-status', 'CostInvoices::setStatus');
+        $builder->post('/koszty/mark-paid', 'CostInvoices::markPaid');
+        $builder->post('/koszty/unmark-paid', 'CostInvoices::unmarkPaid');
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);

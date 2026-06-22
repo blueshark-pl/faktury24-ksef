@@ -16,6 +16,10 @@ use Cake\ORM\Entity;
  * @property string|null $contractor_nip
  * @property \Cake\I18n\Date|null $issue_date
  * @property \Cake\I18n\Date|null $receipt_date
+ * @property \Cake\I18n\Date|null $payment_date   Termin płatności
+ * @property \Cake\I18n\Date|null $paid_at        Faktyczna data zapłaty
+ * @property float       $paid_amount      Suma wpłacona (0..brutto)
+ * @property string|null $payment_method   transfer|cash|card|compensation|other
  * @property string|null $accounting_month  YYYY-MM
  * @property float       $netto
  * @property float       $vat
