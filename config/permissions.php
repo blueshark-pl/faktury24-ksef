@@ -365,6 +365,7 @@ return [
                 'importKsef', 'doImportKsef', 'searchAjax',
                 'assignOrder', 'unassignOrder', 'setStatus',
                 'markPaid', 'unmarkPaid',
+                'addPayment', 'deletePayment', 'bankTxForCost',
             ],
         ],
 

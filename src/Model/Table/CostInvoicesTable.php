@@ -23,6 +23,12 @@ class CostInvoicesTable extends Table
             'targetForeignKey' => 'speed_order_id',
             'joinTable'        => 'cost_invoice_orders',
         ]);
+
+        $this->hasMany('CostInvoicePayments', [
+            'foreignKey' => 'cost_invoice_id',
+            'dependent'  => true,
+            'cascadeCallbacks' => true,
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

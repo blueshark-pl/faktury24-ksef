@@ -40,6 +40,12 @@ return function (RouteBuilder $routes): void {
         $builder->post('/koszty/set-status', 'CostInvoices::setStatus');
         $builder->post('/koszty/mark-paid', 'CostInvoices::markPaid');
         $builder->post('/koszty/unmark-paid', 'CostInvoices::unmarkPaid');
+        $builder->post('/koszty/{id}/add-payment', ['controller' => 'CostInvoices', 'action' => 'addPayment'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
+        $builder->post('/koszty/payment/{paymentId}/delete', ['controller' => 'CostInvoices', 'action' => 'deletePayment'])
+            ->setPass(['paymentId']);
+        $builder->get('/koszty/{id}/bank-transactions', ['controller' => 'CostInvoices', 'action' => 'bankTxForCost'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);

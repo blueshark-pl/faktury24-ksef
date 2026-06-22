@@ -85,7 +85,17 @@ class CostInvoicesController extends AppController
         $this->request->allowMethod(['get']);
 
         $CI = $this->fetchTable('CostInvoices');
-        $invoice = $CI->get($id, contain: ['SpeedOrders']);
+        $invoice = $CI->get($id, contain: [
+            'SpeedOrders',
+            'CostInvoicePayments' => function ($q) {
+                return $q->orderByDesc('payment_date')->orderByDesc('created')
+                         ->contain(['BankTransactions' => function ($qb) {
+                             return $qb->select(['id', 'value_date', 'booking_date', 'amount', 'currency', 'party_name', 'title']);
+                         }, 'Users' => function ($qu) {
+                             return $qu->select(['id', 'first_name', 'last_name', 'email']);
+                         }]);
+            },
+        ]);
 
         $this->set(compact('invoice'));
     }
@@ -586,8 +596,249 @@ class CostInvoicesController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // Dodaj wpłatę do faktury kosztowej
+    // POST /koszty/{id}/add-payment
+    // body: { payment_date, amount, payment_method, note, bank_transaction_id? }
+    // -------------------------------------------------------------------------
+    public function addPayment(int $id): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) { $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono faktury.']); return; }
+
+        $paymentDate = trim((string)$this->request->getData('payment_date'));
+        $amount      = (float)$this->request->getData('amount', 0);
+        $method      = trim((string)$this->request->getData('payment_method', ''));
+        $note        = trim((string)$this->request->getData('note', ''));
+        $bankTxId    = trim((string)$this->request->getData('bank_transaction_id', ''));
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $paymentDate)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowy format daty.']); return;
+        }
+        if ($amount <= 0) {
+            $this->jsonResp(['success' => false, 'error' => 'Kwota musi być > 0.']); return;
+        }
+        $allowedMethods = ['transfer', 'cash', 'card', 'compensation', 'other', ''];
+        if (!in_array($method, $allowedMethods, true)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowa metoda.']); return;
+        }
+        if ($bankTxId !== '' && !preg_match('/^[0-9a-f-]{36}$/i', $bankTxId)) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowy ID przelewu.']); return;
+        }
+
+        $userId = $this->request->getAttribute('identity')?->get('id');
+
+        $CIP = $this->fetchTable('CostInvoicePayments');
+        $payment = $CIP->newEntity([
+            'id'                  => \Cake\Utility\Text::uuid(),
+            'cost_invoice_id'     => $id,
+            'payment_date'        => $paymentDate,
+            'amount'              => $amount,
+            'currency'            => (string)$ci->currency ?: 'PLN',
+            'payment_method'      => $method ?: null,
+            'payment_type'        => $bankTxId !== '' ? 'bank' : 'manual',
+            'bank_transaction_id' => $bankTxId ?: null,
+            'user_id'             => $userId,
+            'note'                => $note ?: null,
+        ]);
+        if (!$CIP->save($payment)) {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu: ' . json_encode($payment->getErrors())]);
+            return;
+        }
+
+        // Przelicz paid_amount + status
+        $newPaid = $this->_recalcCostInvoicePayments($id);
+
+        $this->jsonResp([
+            'success'     => true,
+            'payment_id'  => (string)$payment->id,
+            'paid_amount' => $newPaid['paid_amount'],
+            'remaining'   => $newPaid['remaining'],
+            'status'      => $newPaid['status'],
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Usuń wpłatę
+    // POST /koszty/payment/{id}/delete
+    // -------------------------------------------------------------------------
+    public function deletePayment(string $paymentId): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $CIP = $this->fetchTable('CostInvoicePayments');
+        $p   = $CIP->find()->where(['id' => $paymentId])->first();
+        if (!$p) { $this->jsonResp(['success' => false, 'error' => 'Wpłata nie istnieje.']); return; }
+
+        $costInvoiceId = (int)$p->cost_invoice_id;
+        if (!$CIP->delete($p)) {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd usuwania.']); return;
+        }
+
+        $newPaid = $this->_recalcCostInvoicePayments($costInvoiceId);
+
+        $this->jsonResp([
+            'success'     => true,
+            'paid_amount' => $newPaid['paid_amount'],
+            'remaining'   => $newPaid['remaining'],
+            'status'      => $newPaid['status'],
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /koszty/{id}/bank-transactions
+    // Zwraca listę pasujących wypłat (direction=D) — kandydatów do alokacji.
+    // Match po: parsed_nip = contractor_nip || party_name contains contractor_name
+    // -------------------------------------------------------------------------
+    public function bankTxForCost(int $id): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) { $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono.']); return; }
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id');
+        if (!$companyId) { $this->jsonResp(['success' => false, 'error' => 'Brak company_id.']); return; }
+
+        // ID już dopiętych przelewów (żeby nie pokazywać duplikatów)
+        $alreadyUsed = $this->fetchTable('CostInvoicePayments')->find()
+            ->where(['cost_invoice_id' => $id, 'bank_transaction_id IS NOT' => null])
+            ->all()
+            ->map(fn($r) => (string)$r->bank_transaction_id)
+            ->toArray();
+
+        $BankTx = $this->fetchTable('BankTransactions');
+        $q = $BankTx->find()
+            ->where([
+                'BankTransactions.company_id' => $companyId,
+                'BankTransactions.direction'  => 'D', // tylko wypłaty
+            ])
+            ->select(['BankTransactions.id', 'BankTransactions.value_date', 'BankTransactions.booking_date',
+                      'BankTransactions.amount', 'BankTransactions.currency',
+                      'BankTransactions.party_name', 'BankTransactions.title',
+                      'BankTransactions.parsed_nip'])
+            ->orderByDesc('BankTransactions.value_date')
+            ->limit(50);
+
+        if (!empty($alreadyUsed)) {
+            $q->where(['BankTransactions.id NOT IN' => $alreadyUsed]);
+        }
+
+        // Heurystyka dopasowania kontrahenta
+        $nip = trim((string)($ci->contractor_nip ?? ''));
+        $name = trim((string)($ci->contractor_name ?? ''));
+        $or = [];
+        if ($nip !== '') {
+            $or['BankTransactions.parsed_nip'] = preg_replace('/\D/', '', $nip);
+        }
+        if ($name !== '') {
+            $or['BankTransactions.party_name LIKE'] = '%' . $name . '%';
+        }
+        if (!empty($or)) {
+            $q->where(['OR' => $or]);
+        }
+
+        $rows = [];
+        foreach ($q->all() as $tx) {
+            $vd = $tx->value_date instanceof \DateTimeInterface ? $tx->value_date->format('Y-m-d') : substr((string)$tx->value_date, 0, 10);
+            $bd = $tx->booking_date instanceof \DateTimeInterface ? $tx->booking_date->format('Y-m-d') : substr((string)$tx->booking_date, 0, 10);
+            $rows[] = [
+                'id'           => (string)$tx->id,
+                'value_date'   => $vd,
+                'booking_date' => $bd,
+                'amount'       => (float)$tx->amount,
+                'currency'     => (string)$tx->currency,
+                'party_name'   => (string)($tx->party_name ?? ''),
+                'title'        => (string)($tx->title ?? ''),
+                'parsed_nip'   => (string)($tx->parsed_nip ?? ''),
+            ];
+        }
+
+        $this->jsonResp([
+            'success' => true,
+            'results' => $rows,
+            'brutto'  => (float)$ci->brutto,
+            'currency'=> (string)$ci->currency,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Przelicza paid_amount na cost_invoices na podstawie sumy z
+     * cost_invoice_payments + dostosowuje status (paid/verified/received).
+     */
+    private function _recalcCostInvoicePayments(int $costInvoiceId): array
+    {
+        $CI = $this->fetchTable('CostInvoices');
+        $CIP = $this->fetchTable('CostInvoicePayments');
+
+        $ci = $CI->find()->where(['id' => $costInvoiceId])->first();
+        if (!$ci) {
+            return ['paid_amount' => 0.0, 'remaining' => 0.0, 'status' => 'received'];
+        }
+
+        $sumRow = $CIP->find()
+            ->select(['s' => $CIP->find()->func()->sum('amount')])
+            ->where(['cost_invoice_id' => $costInvoiceId])
+            ->first();
+        $totalPaid = $sumRow ? (float)$sumRow->s : 0.0;
+
+        $brutto = (float)($ci->brutto ?? 0);
+        $isFullPaid = $brutto > 0 && abs($totalPaid - $brutto) < 0.01;
+        $isOverPaid = $totalPaid > $brutto + 0.01 && $brutto > 0;
+        $remaining = max(0, round($brutto - $totalPaid, 2));
+
+        // Wybierz najnowszą wpłatę żeby ustawić paid_at + method
+        $latest = $CIP->find()
+            ->where(['cost_invoice_id' => $costInvoiceId])
+            ->orderByDesc('payment_date')
+            ->orderByDesc('created')
+            ->first();
+
+        $ci->set('paid_amount', round($totalPaid, 2));
+        if ($totalPaid > 0 && $latest) {
+            $pd = $latest->payment_date instanceof \DateTimeInterface
+                ? $latest->payment_date->format('Y-m-d')
+                : substr((string)$latest->payment_date, 0, 10);
+            $ci->set('paid_at', $pd);
+            if (!empty($latest->payment_method)) {
+                $ci->set('payment_method', $latest->payment_method);
+            }
+        } elseif ($totalPaid <= 0) {
+            $ci->set('paid_at', null);
+            $ci->set('payment_method', null);
+        }
+
+        // Status: paid jeśli pełna kwota, verified jeśli częściowa, w pozostałych
+        // przypadkach zostaw bieżący (chyba że był 'paid' a teraz nie ma pełnej —
+        // wtedy zejdź do verified).
+        if ($isFullPaid || $isOverPaid) {
+            $ci->set('status', 'paid');
+        } elseif ($totalPaid > 0) {
+            if ($ci->status === 'received') $ci->set('status', 'verified');
+            if ($ci->status === 'paid')     $ci->set('status', 'verified');
+        } else {
+            if ($ci->status === 'paid') $ci->set('status', 'verified');
+        }
+
+        $CI->save($ci);
+
+        return [
+            'paid_amount' => round($totalPaid, 2),
+            'remaining'   => $remaining,
+            'status'      => (string)$ci->status,
+            'over_paid'   => $isOverPaid,
+        ];
+    }
 
     private function applyAutoNlStatus(\App\Model\Entity\SpeedOrder $entity): void
     {

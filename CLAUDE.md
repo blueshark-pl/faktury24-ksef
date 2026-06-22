@@ -311,6 +311,57 @@ Notatki, komentarze, activity log dla faktur (używane głównie przez Kanban).
 | `body` | text | treść |
 | `payload_json` | text | metadane akcji (np. action, target_column, changes) |
 
+### Pełne kolumny `cost_invoices`
+Migracje: `20260409160000_CreateCostInvoices.php` + `20260622100000_AddPaymentFieldsToCostInvoices.php`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | int(PK auto) | PK |
+| `source` | string(10) | `ksef` / `manual` |
+| `ksef_number` | string(100) UNIQUE | numer z KSeF (NULL gdy manual) |
+| `invoice_number` | string(100) | nr na fakturze |
+| `contractor_name` / `contractor_nip` | string | przewoźnik |
+| `issue_date` | date | data wystawienia |
+| `receipt_date` | date | data wpływu do nas |
+| `payment_date` | date | **termin płatności** |
+| `paid_at` | date | **faktyczna data zapłaty** |
+| `paid_amount` | decimal(12,2) | suma wpłat (przeliczana z `cost_invoice_payments`) |
+| `payment_method` | string(20) | `transfer` / `cash` / `card` / `compensation` / `other` |
+| `accounting_month` | string(7) | YYYY-MM |
+| `netto` / `vat` / `brutto` | decimal(12,2) | kwoty |
+| `currency` | string(5) | domyślnie PLN |
+| `status` | string(20) | `received` / `verified` / `paid` |
+| `pdf_path` / `xml_path` | string(500) | ścieżki plików |
+| `ksef_raw_json` | text | raw payload z KSeF API |
+| `notes` | text | uwagi |
+
+### Pełne kolumny `cost_invoice_payments`
+Migracja: `20260622110000_CreateCostInvoicePayments.php`
+Historia wpłat per faktura kosztowa. Suma jest przeliczana do `cost_invoices.paid_amount` po każdej zmianie.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `cost_invoice_id` | int | FK do `cost_invoices` (CASCADE) |
+| `payment_date` | date | kiedy zapłacono |
+| `amount` | decimal(12,2) | kwota wpłaty |
+| `currency` | char(3) | domyślnie PLN |
+| `payment_method` | string(20) | sposób |
+| `payment_type` | string(10) | `manual` / `bank` |
+| `bank_transaction_id` | uuid | FK do `bank_transactions` (SET_NULL) — gdy z banku |
+| `user_id` | uuid | kto dodał |
+| `note` | string(255) | komentarz |
+
+### Pivot `cost_invoice_orders`
+Migracja: `20260409160000_CreateCostInvoices.php`
+M:N: jedna FK kosztowa → wiele zleceń, jedno zlecenie → wiele FK kosztowych.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | int(PK auto) | PK |
+| `cost_invoice_id` | int | FK |
+| `speed_order_id` | int | FK |
+
 ### Pola Kanban na `invoices`
 Migracja: `20260528100000_AddKanbanFieldsToInvoices.php`
 
