@@ -862,6 +862,26 @@ $cnt = function(array $where): int {
     return (int)$this->Invoices->find()->where($where)->count();
 };
 
+// ── Filtry podsumowania ──────────────────────────────────────────────────
+// Podsumowanie (karty + tabela walut) ma dotyczyć aktywnego filtra okresu (from/to)
+// oraz waluty, a nie całości. Gdy brak filtra okresu — zostaje bieżący rok (jak dotąd).
+// Filtra stanu płatności NIE nakładamy tu, bo karty rozbijają dane wg stanu.
+$hasDateFilter = (!empty($from) || !empty($to));
+$rangeFrom = !empty($from) ? $from : $yearStart;
+$rangeTo   = !empty($to)   ? $to   : $today;
+$curFilter = !empty($currency) ? strtoupper((string)$currency) : null;
+// Dokłada okres (gdy ustawiony lub wymuszony) i walutę (gdy ustawiona) do warunków agregacji.
+$applyStatFilters = function(array $where, bool $forceDate = false) use ($hasDateFilter, $rangeFrom, $rangeTo, $curFilter): array {
+    if ($hasDateFilter || $forceDate) {
+        $where['Invoices.date >='] = $rangeFrom;
+        $where['Invoices.date <='] = $rangeTo;
+    }
+    if ($curFilter !== null) {
+        $where['Invoices.currency'] = $curFilter;
+    }
+    return $where;
+};
+
 // STATYSTYKI
 // Przygotuj stats po walutach (do tabeli podsumowania)
 $currencyStats = [];
@@ -873,6 +893,10 @@ $currencies = $this->Invoices->find()
     ->all()
     ->extract('currency')
     ->toArray();
+// Filtr waluty — pokaż w tabeli tylko wybraną walutę.
+if ($curFilter !== null) {
+    $currencies = array_values(array_filter($currencies, fn($c) => strtoupper((string)$c) === $curFilter));
+}
 
 foreach ($currencies as $curr) {
     $currencyStats[$curr] = [
@@ -895,8 +919,8 @@ foreach ($currencies as $curr) {
         ->where([
             'Invoices.company_id' => $companyId,
             'Invoices.currency' => $curr,
-            'Invoices.date >='  => $yearStart,
-            'Invoices.date <='  => $today,
+            'Invoices.date >='  => $rangeFrom,
+            'Invoices.date <='  => $rangeTo,
             'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
             'OR' => [
                 ['Invoices.workflow_status IS' => null],
@@ -939,18 +963,24 @@ foreach ($currencies as $curr) {
         : 0;
 }
 
-$stats = [
-    'currency'         => 'PLN',
-    'by_currency'      => $currencyStats,
+$ndraft = ['OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]];
 
-    // rok bieżący:
+$stats = [
+    // Etykieta waluty kart: gdy filtr waluty aktywny — pokaż wybraną walutę.
+    'currency'         => $curFilter ?? 'PLN',
+    'by_currency'      => $currencyStats,
+    // Flaga dla widoku: czy podsumowanie jest zawężone filtrem okresu.
+    'filtered_period'  => $hasDateFilter,
+    'range_from'       => $hasDateFilter ? $rangeFrom : null,
+    'range_to'         => $hasDateFilter ? $rangeTo : null,
+
+    // Suma w okresie (domyślnie bieżący rok; przy filtrze from/to — wybrany zakres):
     // - faktury zwykłe (bez proform, zaliczek, korekt) które NIE mają korekty → ich pełna kwota
     // - faktury zwykłe które MAJĄ korektę → pominięte (zastąpione przez kwotę korekty)
     // - korekty → ich kwota (już po zmianie)
-    'year_total'       => (function() use ($sum, $companyId, $yearStart, $today): float {
+    'year_total'       => (function() use ($sum, $companyId, $rangeFrom, $rangeTo, $curFilter, $ndraft): float {
         $T    = \Cake\ORM\TableRegistry::getTableLocator()->get('Invoices');
         $conn = $T->getConnection();
-        // Podzapytanie: id faktur które mają korektę w tym samym zakresie dat lub ogólnie
         $correctedIds = $conn->execute(
             'SELECT DISTINCT parent_id FROM invoices WHERE company_id = ? AND type = ? AND parent_id IS NOT NULL',
             [$companyId, 'correction']
@@ -959,66 +989,50 @@ $stats = [
 
         $baseWhere = [
             'Invoices.company_id'  => $companyId,
-            'Invoices.date >='     => $yearStart,
-            'Invoices.date <='     => $today,
+            'Invoices.date >='     => $rangeFrom,
+            'Invoices.date <='     => $rangeTo,
             'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-            'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-        ];
-        // Wyklucz faktury które zostały skorygowane
-        if (!empty($correctedIdList)) {
-            $baseWhere['Invoices.id NOT IN'] = $correctedIdList;
-        }
+        ] + $ndraft;
+        if ($curFilter !== null) { $baseWhere['Invoices.currency'] = $curFilter; }
+        if (!empty($correctedIdList)) { $baseWhere['Invoices.id NOT IN'] = $correctedIdList; }
 
         $sumBase = $sum($baseWhere);
 
-        // Dodaj kwoty korekt (finalna wartość po korekcie)
-        $sumCorrections = $sum([
+        $corrWhere = [
             'Invoices.company_id' => $companyId,
-            'Invoices.date >='    => $yearStart,
-            'Invoices.date <='    => $today,
+            'Invoices.date >='    => $rangeFrom,
+            'Invoices.date <='    => $rangeTo,
             'Invoices.type'       => 'correction',
-            'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-        ]);
+        ] + $ndraft;
+        if ($curFilter !== null) { $corrWhere['Invoices.currency'] = $curFilter; }
+        $sumCorrections = $sum($corrWhere);
 
         return round($sumBase + $sumCorrections, 2);
     })(),
-    'year_count'       => $cnt([
-                            'Invoices.company_id' => $companyId,
-                                     'Invoices.date >='    => $yearStart,
-                            'Invoices.date <='    => $today,
-                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-                         ]),
-    'year_paid'        => $sum([
-                            'Invoices.company_id' => $companyId,
-                            'Invoices.paymentstate'=> 'paid',
-                                     'Invoices.date >='    => $yearStart,
-                            'Invoices.date <='    => $today,
-                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-                         ]),
+    'year_count'       => $cnt($applyStatFilters(['Invoices.company_id' => $companyId] + $ndraft, true)),
+    'year_paid'        => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid'] + $ndraft, true)),
 
-    // paid
-    'paid_total'       => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
-    'paid_count'       => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
-    'paid_avg'         => $avg(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    // paid (w okresie gdy filtr aktywny, inaczej całość)
+    'paid_total'       => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid'] + $ndraft)),
+    'paid_count'       => $cnt($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid'] + $ndraft)),
+    'paid_avg'         => $avg($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid'] + $ndraft)),
 
     // pending (unpaid/partial)
-    'pending_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
-    'pending_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
-    'remaining_total'  => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial'], 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]], 'Invoices.remaining'),
+    'pending_count'    => $cnt($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']] + $ndraft)),
+    'pending_total'    => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']] + $ndraft)),
+    'remaining_total'  => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate IN' => ['unpaid','partial']] + $ndraft), 'Invoices.remaining'),
 
     // overdue
-    'overdue_count'    => $cnt(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
-    'overdue_total'    => $sum(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue', 'OR' => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']]]),
+    'overdue_count'    => $cnt($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue'] + $ndraft)),
+    'overdue_total'    => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'overdue'] + $ndraft)),
 
-    // bieżący miesiąc
-    'month_paid_count' => $cnt([
-                            'Invoices.company_id' => $companyId,
+    // bieżący miesiąc (z filtrem waluty, bez nadpisywania zakresu miesiąca)
+    'month_paid_count' => $cnt(($curFilter !== null ? ['Invoices.currency' => $curFilter] : []) + [
+                            'Invoices.company_id'  => $companyId,
                             'Invoices.paymentstate'=> 'paid',
-                            'Invoices.date >='    => $monthStart,
-                                     'OR'                  => [['Invoices.workflow_status IS' => null], ['Invoices.workflow_status !=' => 'draft']],
-                         ]),
+                            'Invoices.date >='     => $monthStart,
+                         ] + $ndraft),
 
-    // opcjonalnie: maks. opóźnienie w dniach (jeśli chcesz policzyć – tu zostaw 0 albo zrób osobne zapytanie)
     'overdue_max_days' => 0,
 ];
 

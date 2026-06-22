@@ -1102,18 +1102,24 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
 </div>
 </div>
 <!-- Start::row-1 (karty statystyk) - przeniesione nad kartę -->
+<?php
+// Etykieta okresu podsumowania: gdy aktywny filtr from/to — pokaż zakres, inaczej bieżący rok.
+$__periodLabel = !empty($stats['filtered_period'])
+    ? ('okres ' . h($stats['range_from']) . ' – ' . h($stats['range_to']))
+    : 'bieżący rok';
+?>
 <div class="row row-cols-xxl-5 row-cols-xl-3 row-cols-md-2 row-cols-1 mt-4">
   <div class="col">
     <div class="card custom-card">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between">
-          <span class="avatar avatar-md bg-primary text-white" data-bs-toggle="tooltip" title="Suma (bieżący rok)">
+          <span class="avatar avatar-md bg-primary text-white" data-bs-toggle="tooltip" title="Suma (<?= h($__periodLabel) ?>)">
             <i class="ri-file-list-3-line" style="font-size: 1.35rem;"></i>
           </span>
         </div>
         <div class="d-flex justify-content-between align-items-center flex-wrap">
           <div>
-            <span class="d-block mb-1 mt-2 text-muted">Suma (bieżący rok)</span>
+            <span class="d-block mb-1 mt-2 text-muted">Suma (<?= h($__periodLabel) ?>)</span>
             <div class="d-flex align-items-center gap-2">
               <h4 class="fw-medium mb-0"><?= h($stats['currency']) . ' ' . $this->Number->format($stats['year_total'] ?? 0, ['places' => 2]) ?></h4>
               <span class="badge bg-primary-transparent" title="Liczba dokumentów"><?= (int)($stats['year_count'] ?? 0) ?></span>
@@ -1247,8 +1253,8 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
             <tr>
               <th data-sort="currency">Waluta</th>
               <th class="text-end" data-sort="invoice_count">Faktury</th>
-              <th class="text-end" data-sort="year_netto">Netto (rok)</th>
-              <th class="text-end" data-sort="year_brutto">Brutto (rok)</th>
+              <th class="text-end" data-sort="year_netto">Netto (<?= !empty($stats['filtered_period']) ? 'okres' : 'rok' ?>)</th>
+              <th class="text-end" data-sort="year_brutto">Brutto (<?= !empty($stats['filtered_period']) ? 'okres' : 'rok' ?>)</th>
               <th class="text-end" data-sort="paid_brutto">Opłacone</th>
               <th class="text-end" data-sort="pending_brutto">Do zapłaty</th>
               <th class="text-end" data-sort="overdue_brutto">Po terminie</th>
