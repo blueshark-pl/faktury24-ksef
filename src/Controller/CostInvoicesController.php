@@ -346,24 +346,46 @@ class CostInvoicesController extends AppController
         $ksefPage     = max(1, (int)$this->request->getQuery('page', 1));
 
         // Środowisko: default 'prod' (tak jak w KsefAuthorizationsController::received).
-        // BEZ tego buildReceivedApiResult schodzi do 'test', a certyfikaty są w 'prod'
-        // → błąd 21115 "Nieprawidłowy certyfikat".
         $ksefEnv = (string)$this->request->getQuery('env', 'prod');
         $ksefEnv = ($ksefEnv === 'test') ? 'test' : 'prod';
 
+        // Daty: default = bieżący miesiąc (KSeF z subjectType=Subject2 + dateType=Issue
+        // wymaga zakresu — bez niego API zwraca pustą listę / błąd autoryzacji).
+        $fromQ = trim((string)$this->request->getQuery('from', ''));
+        $toQ   = trim((string)$this->request->getQuery('to', ''));
+        $defaultFrom = date('Y-m-01');                // pierwszy dzień miesiąca
+        $defaultTo   = date('Y-m-t');                 // ostatni dzień miesiąca
+        $fromUsed = ($fromQ !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromQ)) ? $fromQ : $defaultFrom;
+        $toUsed   = ($toQ   !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $toQ))   ? $toQ   : $defaultTo;
+
         if ($companyId !== '') {
             try {
-                $ksef   = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
-                $result = $ksef->buildReceivedApiResult($companyId, array_merge(
+                $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+                // Używamy buildReceivedViewModel (jak w KsefAuthorizationsController::received) —
+                // ma identyczną semantykę autoryzacji, dateType=PermanentStorage i działa stabilnie.
+                // buildReceivedApiResult ma inny dateType=Issue + tylko queryParams['env'] zamiast
+                // explicit, co dawało błędy autoryzacji w naszym kontekście.
+                $queryParams = array_merge(
                     $this->request->getQueryParams(),
-                    ['page' => $ksefPage, 'env' => $ksefEnv]
-                ));
-                $payload = $result['payload'] ?? [];
-                if (!empty($payload['success'])) {
-                    $ksefInvoices = $payload['invoices'] ?? [];
-                    $ksefTotal    = (int)($payload['total'] ?? 0);
-                } else {
-                    $ksefError = $payload['error'] ?? 'Błąd KSeF';
+                    ['page' => $ksefPage, 'env' => $ksefEnv, 'from' => $fromUsed, 'to' => $toUsed]
+                );
+                $vm = $ksef->buildReceivedViewModel($companyId, $ksefEnv, $queryParams);
+
+                $ksefInvoices = $vm['invoices'] ?? [];
+                $ksefTotal    = (int)($vm['apiInfo']['total'] ?? 0);
+
+                // Konwersja Cake\I18n\FrozenDate → string dla widoku
+                foreach ($ksefInvoices as &$inv) {
+                    if (isset($inv['date']) && $inv['date'] instanceof \DateTimeInterface) {
+                        $inv['date'] = $inv['date']->format('Y-m-d');
+                    }
+                }
+                unset($inv);
+
+                // Komunikat błędu jeśli ViewModel zwraca flash typu error
+                $flash = $vm['flash'] ?? null;
+                if (is_array($flash) && ($flash['type'] ?? '') === 'error') {
+                    $ksefError = (string)($flash['message'] ?? 'Błąd KSeF');
                 }
             } catch (\Throwable $e) {
                 $ksefError = $e->getMessage();
@@ -385,7 +407,8 @@ class CostInvoicesController extends AppController
             }
         }
 
-        $this->set(compact('ksefInvoices', 'ksefError', 'ksefTotal', 'ksefPage', 'existingKsefNumbers', 'ksefEnv'));
+        $this->set(compact('ksefInvoices', 'ksefError', 'ksefTotal', 'ksefPage', 'existingKsefNumbers',
+            'ksefEnv', 'fromUsed', 'toUsed'));
     }
 
     // -------------------------------------------------------------------------

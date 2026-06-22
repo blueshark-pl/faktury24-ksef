@@ -7,6 +7,8 @@
  * @var int $ksefPage
  * @var array $existingKsefNumbers  ksef_number => ksef_number (flip'd)
  * @var string $ksefEnv  prod|test (resolved przez controller)
+ * @var string $fromUsed YYYY-MM-DD (zastosowany filtr daty od; default 1. dzień bieżącego miesiąca)
+ * @var string $toUsed   YYYY-MM-DD (zastosowany filtr daty do; default ostatni dzień bieżącego miesiąca)
  */
 $this->assign('title', 'Import z KSeF');
 $csrfToken    = $this->request->getAttribute('csrfToken');
@@ -34,11 +36,11 @@ $fnum  = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
     </div>
     <div class="col-md-2">
         <input type="date" name="from" class="form-control form-control-sm"
-               value="<?= h($this->request->getQuery('from', '')) ?>" title="Data od">
+               value="<?= h($fromUsed ?? '') ?>" title="Data wystawienia od (KSeF wymaga zakresu)">
     </div>
     <div class="col-md-2">
         <input type="date" name="to" class="form-control form-control-sm"
-               value="<?= h($this->request->getQuery('to', '')) ?>" title="Data do">
+               value="<?= h($toUsed ?? '') ?>" title="Data wystawienia do">
     </div>
     <div class="col-md-2">
         <select name="env" class="form-select form-select-sm" title="Środowisko KSeF (domyślnie produkcja)">
@@ -58,15 +60,38 @@ $fnum  = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
     </div>
 </form>
 
+<div class="alert alert-light border small py-2 mb-2 d-flex align-items-center gap-2">
+    <i class="ri-calendar-line text-primary"></i>
+    <span>Środowisko: <strong><?= h($ksefEnv ?? 'prod') ?></strong>
+        · Okres: <strong><?= h($fromUsed ?? '') ?></strong> → <strong><?= h($toUsed ?? '') ?></strong>
+        <?php if (($fromUsed ?? '') === date('Y-m-01') && ($toUsed ?? '') === date('Y-m-t')): ?>
+            <span class="badge bg-info-subtle text-info border ms-1" style="font-size:.65rem">bieżący miesiąc (default)</span>
+        <?php endif; ?>
+    </span>
+</div>
+
 <?php if ($ksefError): ?>
+<?php $isAuthError = stripos($ksefError, 'unauthor') !== false || stripos($ksefError, '401') !== false; ?>
 <div class="alert alert-danger">
     <i class="ri-error-warning-line me-1"></i>
     <strong>Błąd KSeF:</strong> <?= h($ksefError) ?>
+    <?php if ($isAuthError): ?>
+        <div class="small mt-2">
+            <i class="ri-information-line me-1"></i>
+            <strong>Brak ważnej sesji KSeF.</strong> Token autoryzacyjny mógł wygasnąć
+            lub certyfikat nie jest skonfigurowany. Sprawdź status w
+            <a href="/ksef-authorizations" class="alert-link">Autoryzacje KSeF</a>
+            i zaloguj się ponownie, a następnie wróć tutaj.
+        </div>
+    <?php endif; ?>
 </div>
 <?php elseif (empty($ksefInvoices)): ?>
 <div class="alert alert-info">
     <i class="ri-information-line me-1"></i>
     Brak faktur w KSeF dla podanych kryteriów lub brak autoryzacji KSeF.
+    <div class="small text-muted mt-1">
+        Zakres: <?= h($fromUsed ?? '') ?> → <?= h($toUsed ?? '') ?>. Spróbuj zmienić zakres dat lub środowisko.
+    </div>
 </div>
 <?php else: ?>
 
