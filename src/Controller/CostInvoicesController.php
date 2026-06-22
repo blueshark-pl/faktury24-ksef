@@ -36,12 +36,18 @@ class CostInvoicesController extends AppController
     {
         $this->request->allowMethod(['get']);
 
-        $search   = trim((string)$this->request->getQuery('q', ''));
-        $month    = trim((string)$this->request->getQuery('month', ''));   // YYYY-MM
-        $status   = trim((string)$this->request->getQuery('status', ''));
-        $source   = trim((string)$this->request->getQuery('source', ''));
-        $page     = max(1, (int)$this->request->getQuery('page', 1));
-        $limit    = 50;
+        $search       = trim((string)$this->request->getQuery('q', ''));
+        $month        = trim((string)$this->request->getQuery('month', ''));   // YYYY-MM
+        $status       = trim((string)$this->request->getQuery('status', ''));
+        $source       = trim((string)$this->request->getQuery('source', ''));
+        $paymentState = trim((string)$this->request->getQuery('payment_state', '')); // unpaid|partial|paid|overdue
+        $hasOrder     = trim((string)$this->request->getQuery('has_order', ''));     // with|without
+        $dateFrom     = trim((string)$this->request->getQuery('date_from', ''));     // issue_date >=
+        $dateTo       = trim((string)$this->request->getQuery('date_to', ''));       // issue_date <=
+        $contractorNip = trim((string)$this->request->getQuery('contractor_nip', ''));
+        $page         = max(1, (int)$this->request->getQuery('page', 1));
+        $limit        = 50;
+        $today        = date('Y-m-d');
 
         $CI = $this->fetchTable('CostInvoices');
         $query = $CI->find()->orderByDesc('CostInvoices.issue_date');
@@ -58,8 +64,46 @@ class CostInvoicesController extends AppController
         if ($month  !== '') $query->where(['CostInvoices.accounting_month' => $month]);
         if ($status !== '') $query->where(['CostInvoices.status' => $status]);
         if ($source !== '') $query->where(['CostInvoices.source' => $source]);
+        if ($contractorNip !== '') $query->where(['CostInvoices.contractor_nip' => $contractorNip]);
+        if ($dateFrom !== '') $query->where(['CostInvoices.issue_date >=' => $dateFrom]);
+        if ($dateTo   !== '') $query->where(['CostInvoices.issue_date <=' => $dateTo]);
+
+        // Stan płatności
+        if ($paymentState === 'paid') {
+            $query->where(['CostInvoices.status' => 'paid']);
+        } elseif ($paymentState === 'unpaid') {
+            $query->where([
+                'CostInvoices.status !=' => 'paid',
+                'CostInvoices.paid_amount' => 0,
+            ]);
+        } elseif ($paymentState === 'partial') {
+            $query->where([
+                'CostInvoices.status !=' => 'paid',
+                'CostInvoices.paid_amount >' => 0,
+            ]);
+        } elseif ($paymentState === 'overdue') {
+            $query->where([
+                'CostInvoices.status !=' => 'paid',
+                'CostInvoices.payment_date IS NOT' => null,
+                'CostInvoices.payment_date <' => $today,
+            ]);
+        }
+
+        // Filtr powiązania ze zleceniem
+        if ($hasOrder === 'with') {
+            $sub = $this->fetchTable('CostInvoiceOrders')->find()
+                ->select(['cost_invoice_id'])->distinct(['cost_invoice_id']);
+            $query->where(['CostInvoices.id IN' => $sub]);
+        } elseif ($hasOrder === 'without') {
+            $sub = $this->fetchTable('CostInvoiceOrders')->find()
+                ->select(['cost_invoice_id'])->distinct(['cost_invoice_id']);
+            $query->where(['CostInvoices.id NOT IN' => $sub]);
+        }
 
         $total = (clone $query)->count();
+        // Statystyki przed paginacją — sklonowane zapytanie zachowuje filtry
+        // ale jeszcze nie ma limit/offset.
+        $statsQuery = clone $query;
         $pages = max(1, (int)ceil($total / $limit));
         $page  = min($page, $pages);
         $invoices = $query->limit($limit)->offset(($page - 1) * $limit)->all();
@@ -74,7 +118,100 @@ class CostInvoicesController extends AppController
             ->map(fn($r) => $r->accounting_month)
             ->toArray();
 
-        $this->set(compact('invoices', 'total', 'page', 'pages', 'limit', 'search', 'month', 'status', 'source', 'months'));
+        // Lista kontrahentów (top 50 po liczbie FK)
+        $contractors = [];
+        try {
+            $db = $CI->getConnection();
+            $rows = $db->execute(
+                "SELECT contractor_nip, contractor_name, COUNT(*) AS cnt
+                 FROM cost_invoices
+                 WHERE contractor_nip IS NOT NULL AND contractor_nip != ''
+                 GROUP BY contractor_nip
+                 ORDER BY cnt DESC, contractor_name ASC
+                 LIMIT 50"
+            )->fetchAll('assoc');
+            $contractors = $rows ?: [];
+        } catch (\Throwable) { /* ignore */ }
+
+        // Statystyki — agregaty z całego filtra (bez limit/offset)
+        $stats = $this->_buildCostInvoiceStats($statsQuery, $today);
+
+        // Mapa: cost_invoice_id => liczba powiązanych zleceń (dla bieżącej strony)
+        $invIds = array_map(fn($i) => $i->id, $invoices->toArray());
+        $orderCounts = [];
+        if (!empty($invIds)) {
+            try {
+                $rows = $this->fetchTable('CostInvoiceOrders')->find()
+                    ->select(['cost_invoice_id', 'cnt' => $this->fetchTable('CostInvoiceOrders')->find()->func()->count('*')])
+                    ->where(['cost_invoice_id IN' => $invIds])
+                    ->groupBy('cost_invoice_id')
+                    ->all();
+                foreach ($rows as $r) {
+                    $orderCounts[(int)$r->cost_invoice_id] = (int)$r->cnt;
+                }
+            } catch (\Throwable) { /* ignore */ }
+        }
+
+        $this->set(compact('invoices', 'total', 'page', 'pages', 'limit',
+            'search', 'month', 'status', 'source', 'paymentState', 'hasOrder',
+            'dateFrom', 'dateTo', 'contractorNip',
+            'months', 'contractors', 'stats', 'orderCounts', 'today'));
+    }
+
+    /**
+     * Agregaty dla bieżącego filtra (bez paginacji): count, sumy brutto/paid/remaining
+     * i podział po stanach (paid/unpaid/partial/overdue) w grupach walutowych.
+     */
+    private function _buildCostInvoiceStats($query, string $today): array
+    {
+        try {
+            $rows = $query->select([
+                'currency', 'status', 'brutto', 'paid_amount', 'payment_date',
+            ], true /* override */)->disableAutoFields()->all();
+        } catch (\Throwable) {
+            return ['count' => 0, 'total_pln' => 0, 'total_eur' => 0];
+        }
+
+        $s = [
+            'count'         => 0,
+            'total_pln'     => 0.0,
+            'total_eur'     => 0.0,
+            'paid_pln'      => 0.0,
+            'paid_eur'      => 0.0,
+            'remaining_pln' => 0.0,
+            'remaining_eur' => 0.0,
+            'overdue_count' => 0,
+            'overdue_pln'   => 0.0,
+            'overdue_eur'   => 0.0,
+        ];
+
+        foreach ($rows as $r) {
+            $cur = strtoupper((string)($r->currency ?? 'PLN'));
+            $key = $cur === 'EUR' ? 'eur' : 'pln';
+            $brutto = (float)($r->brutto ?? 0);
+            $paid   = (float)($r->paid_amount ?? 0);
+            $rem    = max(0, round($brutto - $paid, 2));
+            $isPaid = $r->status === 'paid';
+
+            $s['count']++;
+            $s['total_' . $key]     += $brutto;
+            $s['paid_' . $key]      += $paid;
+            $s['remaining_' . $key] += $rem;
+
+            if (!$isPaid && !empty($r->payment_date)) {
+                $pd = $r->payment_date instanceof \DateTimeInterface
+                    ? $r->payment_date->format('Y-m-d')
+                    : substr((string)$r->payment_date, 0, 10);
+                if ($pd < $today) {
+                    $s['overdue_count']++;
+                    $s['overdue_' . $key] += $rem;
+                }
+            }
+        }
+        foreach (['total_pln', 'total_eur', 'paid_pln', 'paid_eur', 'remaining_pln', 'remaining_eur', 'overdue_pln', 'overdue_eur'] as $k) {
+            $s[$k] = round($s[$k], 2);
+        }
+        return $s;
     }
 
     // -------------------------------------------------------------------------
