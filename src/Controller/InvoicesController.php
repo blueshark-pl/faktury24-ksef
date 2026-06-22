@@ -1957,8 +1957,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             // ── Buduj pozycje faktury zaliczkowej ────────────────────────────────────
             $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
 
-            if (count($rateGroups) <= 1 || $proformaBruttoTotal <= 0.0 || $noVat) {
-                // Jedna stawka lub noVAT — jedna linia z nazwami wszystkich pozycji proformy
+            // Pozycje proformy z dodatnim brutto — do proporcjonalnego podziału kwoty zaliczki.
+            $splitItems = [];
+            foreach ($proformaItems as $pi) {
+                if ((float)($pi->brutto ?? 0) > 0.0) { $splitItems[] = $pi; }
+            }
+
+            if (empty($splitItems) || $proformaBruttoTotal <= 0.0) {
+                // Fallback: brak pozycji proformy z wartością — jedna linia zbiorcza
                 $allNames = [];
                 foreach ($rateGroups as $g) {
                     foreach ($g['names'] as $n) { $allNames[] = $n; }
@@ -1984,47 +1990,52 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $bucketKey = $vatCodeId ?: 'no_vat';
                 $vatBuckets[$bucketKey] = ['vat_code_id' => $vatCodeId, 'netto' => $netto, 'tax' => $tax, 'brutto' => $brutto];
             } else {
-                // Wiele stawek — podział proporcjonalny zaliczki per stawkę (art. 106f ust. 1 pkt 3)
-                // Każda linia otrzymuje nazwy pozycji proformy ze swojej grupy stawkowej.
-                $groups = array_values($rateGroups);
+                // Jedna linia faktury zaliczkowej na KAŻDĄ pozycję proformy.
+                // Kwota zaliczki dzielona proporcjonalnie wg udziału brutto pozycji w sumie proformy
+                // (podział wg stawek zachowany — każda pozycja niesie własną stawkę; art. 106f ust. 1 pkt 3).
                 $remaining = $brutto;
-                foreach ($groups as $idx => $grp) {
-                    $isLast = ($idx === count($groups) - 1);
-                    $splitBrutto = $isLast
+                $cnt = count($splitItems);
+                foreach ($splitItems as $idx => $pi) {
+                    $isLast     = ($idx === $cnt - 1);
+                    $piBrutto   = (float)($pi->brutto ?? 0);
+                    $lineBrutto = $isLast
                         ? round($remaining, 2)
-                        : round($brutto * ($grp['brutto'] / $proformaBruttoTotal), 2);
-                    $splitRate  = $grp['rate'];
-                    $splitNetto = $splitRate > 0 ? round($splitBrutto / (1 + $splitRate / 100), 2) : round($splitBrutto, 2);
-                    $splitTax   = round($splitBrutto - $splitNetto, 2);
-                    $remaining -= $splitBrutto;
+                        : round($brutto * ($piBrutto / $proformaBruttoTotal), 2);
+                    $remaining -= $lineBrutto;
 
-                    $grpNames   = implode(', ', array_unique(array_filter($grp['names'])));
-                    if ($grpNames === '') { $grpNames = $lineNameFallback; }
+                    $lineRate  = $noVat ? 0.0 : (isset($pi->vat) ? (float)$pi->vat->rate : 0.0);
+                    $lineNetto = $lineRate > 0 ? round($lineBrutto / (1 + $lineRate / 100), 2) : round($lineBrutto, 2);
+                    $lineTax   = round($lineBrutto - $lineNetto, 2);
+
+                    $piName      = trim((string)($pi->name ?? '')) ?: $lineNameFallback;
+                    $piGtu       = trim((string)($pi->gtu_code ?? ''));
+                    $piVatCodeId = $noVat ? null : $pi->vat_code_id;
 
                     $contents[] = [
-                        'vat_code_id'      => $grp['vat_code_id'],
-                        'name'             => $grpNames,
+                        'vat_code_id'      => $piVatCodeId,
+                        'name'             => $piName,
                         'product_desc'     => '',
                         'quantity'         => 1,
                         'unit'             => 'szt.',
-                        'price'            => $splitNetto,
+                        'price'            => $lineNetto,
                         'discount_percent' => 0,
-                        'netto'            => $splitNetto,
-                        'brutto'           => $splitBrutto,
-                        'vat_amount'       => $noVat ? null : $splitTax,
-                        'gtu_code'         => $grp['gtu'] !== '' ? $grp['gtu'] : null,
+                        'netto'            => $lineNetto,
+                        'brutto'           => $lineBrutto,
+                        'vat_amount'       => $noVat ? null : $lineTax,
+                        'gtu_code'         => $piGtu !== '' ? $piGtu : null,
                     ];
-                    $sumNet   += $splitNetto;
-                    $sumTax   += $splitTax;
-                    $sumGross += $splitBrutto;
+                    $sumNet   += $lineNetto;
+                    $sumTax   += $lineTax;
+                    $sumGross += $lineBrutto;
 
-                    $bucketKey = $grp['vat_code_id'] ?: ('no_vat_' . $splitRate);
-                    $vatBuckets[$bucketKey] = [
-                        'vat_code_id' => $grp['vat_code_id'],
-                        'netto'       => $splitNetto,
-                        'tax'         => $splitTax,
-                        'brutto'      => $splitBrutto,
-                    ];
+                    // VAT bucket per stawkę — agreguj pozycje o tej samej stawce
+                    $bucketKey = $piVatCodeId ?: ('no_vat_' . $lineRate);
+                    if (!isset($vatBuckets[$bucketKey])) {
+                        $vatBuckets[$bucketKey] = ['vat_code_id' => $piVatCodeId, 'netto' => 0.0, 'tax' => 0.0, 'brutto' => 0.0];
+                    }
+                    $vatBuckets[$bucketKey]['netto']  += $lineNetto;
+                    $vatBuckets[$bucketKey]['tax']    += $lineTax;
+                    $vatBuckets[$bucketKey]['brutto'] += $lineBrutto;
                 }
             }
 
@@ -3432,8 +3443,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 // ── Buduj pozycje faktury zaliczkowej ────────────────────────────────
                 $sumNet = 0.0; $sumTax = 0.0; $sumGross = 0.0;
 
-                if (count($rateGroupsE) <= 1 || $proformaBruttoTotalE <= 0.0 || $noVat) {
-                    // Jedna stawka lub noVAT — jedna linia z nazwami wszystkich pozycji proformy
+                // Pozycje proformy z dodatnim brutto — do proporcjonalnego podziału kwoty zaliczki.
+                $splitItemsE = [];
+                foreach ($proformaItems as $pi) {
+                    if ((float)($pi->brutto ?? 0) > 0.0) { $splitItemsE[] = $pi; }
+                }
+
+                if (empty($splitItemsE) || $proformaBruttoTotalE <= 0.0) {
+                    // Fallback: brak pozycji proformy z wartością — jedna linia zbiorcza
                     $allNamesE = [];
                     foreach ($rateGroupsE as $g) {
                         foreach ($g['names'] as $n) { $allNamesE[] = $n; }
@@ -3457,38 +3474,41 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     ];
                     $sumNet = $nettoA; $sumTax = $taxA; $sumGross = $bruttoA;
                 } else {
-                    // Wiele stawek — podział proporcjonalny, każda linia ma nazwy ze swojej grupy
-                    $groups = array_values($rateGroupsE);
+                    // Jedna linia faktury zaliczkowej na KAŻDĄ pozycję proformy (podział proporcjonalny).
                     $remaining = $bruttoA;
-                    foreach ($groups as $idx => $grp) {
-                        $isLast = ($idx === count($groups) - 1);
-                        $splitBrutto = $isLast
+                    $cntE = count($splitItemsE);
+                    foreach ($splitItemsE as $idx => $pi) {
+                        $isLast     = ($idx === $cntE - 1);
+                        $piBrutto   = (float)($pi->brutto ?? 0);
+                        $lineBrutto = $isLast
                             ? round($remaining, 2)
-                            : round($bruttoA * ($grp['brutto'] / $proformaBruttoTotalE), 2);
-                        $splitRate  = $grp['rate'];
-                        $splitNetto = $splitRate > 0 ? round($splitBrutto / (1 + $splitRate / 100), 2) : round($splitBrutto, 2);
-                        $splitTax   = round($splitBrutto - $splitNetto, 2);
-                        $remaining -= $splitBrutto;
+                            : round($bruttoA * ($piBrutto / $proformaBruttoTotalE), 2);
+                        $remaining -= $lineBrutto;
 
-                        $grpNamesE = implode(', ', array_unique(array_filter($grp['names'])));
-                        if ($grpNamesE === '') { $grpNamesE = $lineNameFallbackE; }
+                        $lineRate  = $noVat ? 0.0 : (isset($pi->vat) ? (float)$pi->vat->rate : 0.0);
+                        $lineNetto = $lineRate > 0 ? round($lineBrutto / (1 + $lineRate / 100), 2) : round($lineBrutto, 2);
+                        $lineTax   = round($lineBrutto - $lineNetto, 2);
+
+                        $piName      = trim((string)($pi->name ?? '')) ?: $lineNameFallbackE;
+                        $piGtu       = trim((string)($pi->gtu_code ?? ''));
+                        $piVatCodeId = $noVat ? null : $pi->vat_code_id;
 
                         $contents[] = [
-                            'vat_code_id'      => $grp['vat_code_id'],
-                            'name'             => $grpNamesE,
+                            'vat_code_id'      => $piVatCodeId,
+                            'name'             => $piName,
                             'product_desc'     => '',
                             'quantity'         => 1,
                             'unit'             => 'szt.',
-                            'price'            => $splitNetto,
+                            'price'            => $lineNetto,
                             'discount_percent' => 0,
-                            'netto'            => $splitNetto,
-                            'brutto'           => $splitBrutto,
-                            'vat_amount'       => $noVat ? null : $splitTax,
-                            'gtu_code'         => $grp['gtu'] !== '' ? $grp['gtu'] : null,
+                            'netto'            => $lineNetto,
+                            'brutto'           => $lineBrutto,
+                            'vat_amount'       => $noVat ? null : $lineTax,
+                            'gtu_code'         => $piGtu !== '' ? $piGtu : null,
                         ];
-                        $sumNet   += $splitNetto;
-                        $sumTax   += $splitTax;
-                        $sumGross += $splitBrutto;
+                        $sumNet   += $lineNetto;
+                        $sumTax   += $lineTax;
+                        $sumGross += $lineBrutto;
                     }
                 }
 
