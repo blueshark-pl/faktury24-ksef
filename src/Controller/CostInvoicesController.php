@@ -345,12 +345,18 @@ class CostInvoicesController extends AppController
         $ksefTotal    = 0;
         $ksefPage     = max(1, (int)$this->request->getQuery('page', 1));
 
+        // Środowisko: default 'prod' (tak jak w KsefAuthorizationsController::received).
+        // BEZ tego buildReceivedApiResult schodzi do 'test', a certyfikaty są w 'prod'
+        // → błąd 21115 "Nieprawidłowy certyfikat".
+        $ksefEnv = (string)$this->request->getQuery('env', 'prod');
+        $ksefEnv = ($ksefEnv === 'test') ? 'test' : 'prod';
+
         if ($companyId !== '') {
             try {
                 $ksef   = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
                 $result = $ksef->buildReceivedApiResult($companyId, array_merge(
                     $this->request->getQueryParams(),
-                    ['page' => $ksefPage]
+                    ['page' => $ksefPage, 'env' => $ksefEnv]
                 ));
                 $payload = $result['payload'] ?? [];
                 if (!empty($payload['success'])) {
@@ -379,7 +385,7 @@ class CostInvoicesController extends AppController
             }
         }
 
-        $this->set(compact('ksefInvoices', 'ksefError', 'ksefTotal', 'ksefPage', 'existingKsefNumbers'));
+        $this->set(compact('ksefInvoices', 'ksefError', 'ksefTotal', 'ksefPage', 'existingKsefNumbers', 'ksefEnv'));
     }
 
     // -------------------------------------------------------------------------

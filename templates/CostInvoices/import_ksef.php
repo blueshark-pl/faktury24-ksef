@@ -6,6 +6,7 @@
  * @var int $ksefTotal
  * @var int $ksefPage
  * @var array $existingKsefNumbers  ksef_number => ksef_number (flip'd)
+ * @var string $ksefEnv  prod|test (resolved przez controller)
  */
 $this->assign('title', 'Import z KSeF');
 $csrfToken    = $this->request->getAttribute('csrfToken');
@@ -40,9 +41,9 @@ $fnum  = fn($v) => $v !== null ? number_format((float)$v, 2, ',', ' ') : '—';
                value="<?= h($this->request->getQuery('to', '')) ?>" title="Data do">
     </div>
     <div class="col-md-2">
-        <select name="env" class="form-select form-select-sm">
-            <option value="prod" <?= $this->request->getQuery('env') === 'prod' ? 'selected' : '' ?>>Produkcja</option>
-            <option value="test" <?= $this->request->getQuery('env') !== 'prod' ? 'selected' : '' ?>>Test</option>
+        <select name="env" class="form-select form-select-sm" title="Środowisko KSeF (domyślnie produkcja)">
+            <option value="prod" <?= ($ksefEnv ?? 'prod') === 'prod' ? 'selected' : '' ?>>Produkcja</option>
+            <option value="test" <?= ($ksefEnv ?? 'prod') === 'test' ? 'selected' : '' ?>>Test</option>
         </select>
     </div>
     <div class="col-md-3 d-flex gap-1">
