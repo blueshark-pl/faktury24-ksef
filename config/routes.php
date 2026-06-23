@@ -54,6 +54,12 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->post('/koszty/{id}/lines/ai-suggest', ['controller' => 'CostInvoices', 'action' => 'aiSuggestLines'])
             ->setPass(['id'])->setPatterns(['id' => '\d+']);
+        $builder->get('/koszty/{id}/notes', ['controller' => 'CostInvoices', 'action' => 'getNotes'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
+        $builder->post('/koszty/{id}/notes/add', ['controller' => 'CostInvoices', 'action' => 'addNote'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
+        $builder->post('/koszty/notes/{noteId}/delete', ['controller' => 'CostInvoices', 'action' => 'deleteNote'])
+            ->setPass(['noteId']);
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);

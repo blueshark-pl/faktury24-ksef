@@ -572,6 +572,117 @@ class CostInvoicesController extends AppController
             ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
+    /**
+     * Activity log: zapisuje wpis do cost_invoice_notes.
+     * Typ 'system' = automatyczne logi z akcji (status, dekretacja, wpłata).
+     * Typ 'note'/'phone_call'/'email'/'reminder' = ręczne notatki.
+     */
+    private function _logCostNote(int $costInvoiceId, string $type, string $body, array $payload = []): void
+    {
+        try {
+            $CIN = $this->fetchTable('CostInvoiceNotes');
+            $identity = $this->request->getAttribute('identity');
+            $userId   = $identity?->get('id');
+            $companyId = $identity?->get('company_id') ?? null;
+
+            $note = $CIN->newEntity([
+                'id'              => \Cake\Utility\Text::uuid(),
+                'cost_invoice_id' => $costInvoiceId,
+                'company_id'      => $companyId,
+                'user_id'         => $userId,
+                'note_type'       => $type,
+                'body'            => $body,
+                'payload_json'    => !empty($payload) ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+            ]);
+            $CIN->save($note);
+        } catch (\Throwable $e) {
+            Log::warning('[cost-log] ' . $e->getMessage());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Activity log endpointy
+    // GET  /koszty/{id}/notes        — lista
+    // POST /koszty/{id}/notes/add    — dodaj ręczną notatkę
+    // POST /koszty/notes/{noteId}/delete — usuń (tylko user_id=current lub admin)
+    // -------------------------------------------------------------------------
+    public function getNotes(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $CIN = $this->fetchTable('CostInvoiceNotes');
+        $notes = $CIN->find()
+            ->where(['cost_invoice_id' => $id])
+            ->contain(['Users' => function ($q) {
+                return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
+            }])
+            ->orderByDesc('created')
+            ->limit(100)
+            ->all();
+
+        $out = [];
+        foreach ($notes as $n) {
+            $u = $n->user;
+            $userName = $u ? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: (string)$u->email : 'System';
+            $payload = $n->payload_json ? json_decode((string)$n->payload_json, true) : null;
+            $out[] = [
+                'id'        => (string)$n->id,
+                'note_type' => (string)$n->note_type,
+                'body'      => (string)$n->body,
+                'payload'   => $payload,
+                'created'   => $n->created instanceof \DateTimeInterface ? $n->created->format('Y-m-d H:i') : (string)$n->created,
+                'user_name' => $userName,
+                'user_avatar' => $u ? (string)($u->avatar ?? '') : '',
+            ];
+        }
+
+        return $this->_jsonReturn(['success' => true, 'notes' => $out]);
+    }
+
+    public function addNote(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $body = trim((string)$this->request->getData('body'));
+        $type = (string)$this->request->getData('note_type', 'note');
+        if ($body === '') {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Treść notatki nie może być pusta.']);
+        }
+        $allowedTypes = ['note', 'phone_call', 'email', 'reminder'];
+        if (!in_array($type, $allowedTypes, true)) {
+            $type = 'note';
+        }
+
+        $this->_logCostNote($id, $type, $body);
+
+        return $this->_jsonReturn(['success' => true]);
+    }
+
+    public function deleteNote(string $noteId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $CIN = $this->fetchTable('CostInvoiceNotes');
+        $n = $CIN->find()->where(['id' => $noteId])->first();
+        if (!$n) return $this->_jsonReturn(['success' => false, 'error' => 'Nie znaleziono.']);
+
+        // Zabezpieczenie: tylko autor lub admin może usunąć (system notes — admin only)
+        $identity = $this->request->getAttribute('identity');
+        $userId = $identity?->get('id');
+        $role   = $identity?->get('role') ?? '';
+        if ($n->note_type === 'system' && $role !== 'admin') {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Tylko admin może usunąć log systemowy.']);
+        }
+        if ($n->user_id && $userId && (string)$n->user_id !== (string)$userId && $role !== 'admin') {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Możesz usunąć tylko swoje notatki.']);
+        }
+
+        if (!$CIN->delete($n)) {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Błąd usuwania.']);
+        }
+        return $this->_jsonReturn(['success' => true]);
+    }
+
     // -------------------------------------------------------------------------
     // Zapisz wybrane faktury z KSeF do bazy
     // -------------------------------------------------------------------------
@@ -729,6 +840,10 @@ class CostInvoicesController extends AppController
             $Orders->save($order);
         }
 
+        $this->_logCostNote($ciId, 'system',
+            'Przypisano do zlecenia ' . ($order->symbol ?: '#' . $ordId),
+            ['action' => 'assign_order', 'speed_order_id' => $ordId, 'symbol' => $order->symbol]);
+
         $this->jsonResp([
             'success'           => true,
             'cost_invoice_id'   => $ciId,
@@ -760,7 +875,17 @@ class CostInvoicesController extends AppController
             return;
         }
 
+        $orderSymbol = '';
+        try {
+            $orderRow = $Orders->find()->where(['id' => $ordId])->select(['id', 'symbol'])->first();
+            $orderSymbol = $orderRow ? (string)$orderRow->symbol : '';
+        } catch (\Throwable) { /* ignore */ }
+
         $Pivot->delete($pivot);
+
+        $this->_logCostNote($ciId, 'system',
+            'Odpięto od zlecenia ' . ($orderSymbol ?: '#' . $ordId),
+            ['action' => 'unassign_order', 'speed_order_id' => $ordId, 'symbol' => $orderSymbol]);
 
         // Jeśli to było ostatnie przypisanie FK dla zlecenia — wyczyść fk_at
         $remaining = $Pivot->find()->where(['speed_order_id' => $ordId])->count();
@@ -878,6 +1003,12 @@ class CostInvoicesController extends AppController
         }
 
         if ($CI->save($ci)) {
+            $this->_logCostNote($id, 'system',
+                'Oznaczono jako ' . ($isFullPaid ? 'zapłaconą' : 'częściowo zapłaconą')
+                . ' (' . number_format($paidAmount, 2, ',', ' ') . ' ' . $ci->currency . ', ' . $ci->paid_at . ')'
+                . ($method !== '' ? ' · metoda: ' . $method : ''),
+                ['action' => 'mark_paid', 'amount' => $paidAmount, 'method' => $method, 'is_full_paid' => $isFullPaid]);
+
             $this->jsonResp([
                 'success'        => true,
                 'status'         => $ci->status,
@@ -916,6 +1047,8 @@ class CostInvoicesController extends AppController
         $ci->set('status', 'verified');
 
         if ($CI->save($ci)) {
+            $this->_logCostNote($id, 'system', 'Cofnięto oznaczenie jako zapłaconą (status → verified)',
+                ['action' => 'unmark_paid']);
             $this->jsonResp(['success' => true, 'status' => 'verified']);
         } else {
             $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.']);
@@ -979,6 +1112,13 @@ class CostInvoicesController extends AppController
         // Przelicz paid_amount + status
         $newPaid = $this->_recalcCostInvoicePayments($id);
 
+        $this->_logCostNote($id, 'system',
+            'Dodano wpłatę: ' . number_format($amount, 2, ',', ' ') . ' ' . ($ci->currency ?: 'PLN')
+            . ' (' . $paymentDate . ')'
+            . ($bankTxId !== '' ? ' · z banku' : '')
+            . ($method !== '' ? ' · ' . $method : ''),
+            ['action' => 'add_payment', 'amount' => $amount, 'method' => $method, 'from_bank' => $bankTxId !== '']);
+
         $this->jsonResp([
             'success'     => true,
             'payment_id'  => (string)$payment->id,
@@ -1002,9 +1142,18 @@ class CostInvoicesController extends AppController
         if (!$p) { $this->jsonResp(['success' => false, 'error' => 'Wpłata nie istnieje.']); return; }
 
         $costInvoiceId = (int)$p->cost_invoice_id;
+        $pAmount = (float)$p->amount;
+        $pCurr   = (string)$p->currency;
+        $pDate   = $p->payment_date instanceof \DateTimeInterface
+                    ? $p->payment_date->format('Y-m-d')
+                    : substr((string)$p->payment_date, 0, 10);
         if (!$CIP->delete($p)) {
             $this->jsonResp(['success' => false, 'error' => 'Błąd usuwania.']); return;
         }
+
+        $this->_logCostNote($costInvoiceId, 'system',
+            'Usunięto wpłatę: ' . number_format($pAmount, 2, ',', ' ') . ' ' . $pCurr . ' (' . $pDate . ')',
+            ['action' => 'delete_payment', 'amount' => $pAmount]);
 
         $newPaid = $this->_recalcCostInvoicePayments($costInvoiceId);
 
@@ -1144,9 +1293,23 @@ class CostInvoicesController extends AppController
             $ci->set('notes', trim((string)$body['notes']) ?: null);
         }
 
+        $oldStatus = (int)($ci->getOriginal('cost_status') ?? 1);
+
         if (!$CI->save($ci)) {
             $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.', 'errors' => $ci->getErrors()]);
             return;
+        }
+
+        // Activity log
+        if ($oldStatus !== $costStatus) {
+            $this->_logCostNote($id, 'system',
+                'Status workflow zmieniony: ' . self::costStatusLabel($oldStatus) . ' → ' . self::costStatusLabel($costStatus),
+                ['action' => 'set_cost_status', 'old' => $oldStatus, 'new' => $costStatus]);
+        }
+        if (!empty($body['rejection_reason'])) {
+            $this->_logCostNote($id, 'system',
+                'Powód odrzucenia: ' . trim((string)$body['rejection_reason']),
+                ['action' => 'rejection_reason']);
         }
 
         $this->jsonResp([
@@ -1540,6 +1703,15 @@ SYS;
             $conn->rollback();
             return $this->_jsonReturn(['success' => false, 'error' => 'Błąd zapisu: ' . $e->getMessage()]);
         }
+
+        // Zlicz ile linii ma kategorię
+        $withCat = 0;
+        foreach ($lines as $l) {
+            if (!empty($l['cost_category_id']) || !empty($l['cost_category_name'])) $withCat++;
+        }
+        $this->_logCostNote($id, 'system',
+            'Dekretacja zapisana: ' . count($lines) . ' poz., w tym ' . $withCat . ' z kategorią',
+            ['action' => 'save_lines', 'lines_count' => count($lines), 'with_category' => $withCat]);
 
         return $this->_jsonReturn(['success' => true, 'saved' => count($lines)]);
     }

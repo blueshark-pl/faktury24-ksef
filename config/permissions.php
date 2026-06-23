@@ -368,6 +368,7 @@ return [
                 'addPayment', 'deletePayment', 'bankTxForCost',
                 'syncKsefAuto', 'setCostStatus', 'getLines', 'saveLines',
                 'aiSuggestLines',
+                'getNotes', 'addNote', 'deleteNote',
             ],
         ],
 

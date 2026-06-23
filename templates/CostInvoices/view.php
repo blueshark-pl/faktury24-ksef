@@ -491,6 +491,33 @@ $methodLabels = [
 </div>
 </div>
 
+<!-- Activity log + notatki -->
+<div class="col-12">
+<div class="card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="ri-history-line text-primary"></i>
+        Notatki i historia
+    </div>
+    <div class="card-body py-2">
+        <form id="addNoteForm" class="d-flex gap-2 mb-2">
+            <select name="note_type" class="form-select form-select-sm" style="width:130px">
+                <option value="note">Notatka</option>
+                <option value="phone_call">Rozmowa</option>
+                <option value="email">Email</option>
+                <option value="reminder">Przypomnienie</option>
+            </select>
+            <input type="text" name="body" class="form-control form-control-sm" placeholder="Dodaj komentarz…" required>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="ri-add-line"></i></button>
+        </form>
+        <div id="notesList" class="list-group list-group-flush" style="max-height:400px;overflow-y:auto">
+            <div class="text-muted small fst-italic text-center py-3">
+                <i class="ri-loader-line me-1"></i>ładowanie…
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
 <!-- Powiązane zlecenia -->
 <div class="col-12">
 <div class="card">
@@ -568,6 +595,9 @@ document.addEventListener('DOMContentLoaded', function() {
     var getLinesUrl   = '<?= $getLinesUrl ?>';
     var saveLinesUrl  = '<?= $saveLinesUrl ?>';
     var aiSuggestUrl  = '<?= $this->Url->build(['action' => 'aiSuggestLines', $invoice->id]) ?>';
+    var getNotesUrl   = '<?= $this->Url->build(['action' => 'getNotes', $invoice->id]) ?>';
+    var addNoteUrl    = '<?= $this->Url->build(['action' => 'addNote', $invoice->id]) ?>';
+    var deleteNoteBase= '<?= rtrim($this->Url->build(['action' => 'deleteNote']), '/') ?>';
     var addPaymentUrl    = '<?= $this->Url->build(['action' => 'addPayment', $invoice->id]) ?>';
     var bankTxUrl        = '<?= $this->Url->build(['action' => 'bankTxForCost', $invoice->id]) ?>';
     var deletePaymentBase = '<?= rtrim($this->Url->build(['action' => 'deletePayment']), '/') ?>';
@@ -943,6 +973,87 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Auto-load przy załadowaniu widoku
     loadLines();
+
+    // ── Activity log / notatki ──────────────────────────────────────
+    function loadNotes() {
+        var listEl = document.getElementById('notesList');
+        if (!listEl) return;
+        fetch(getNotesUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.success) { listEl.innerHTML = '<div class="text-danger small p-2">Błąd</div>'; return; }
+                if (!d.notes || !d.notes.length) {
+                    listEl.innerHTML = '<div class="text-muted small fst-italic text-center py-3"><i class="ri-chat-off-line me-1"></i>Brak notatek. Dodaj pierwszą powyżej.</div>';
+                    return;
+                }
+                var typeMeta = {
+                    'note':       { col: 'secondary', lbl: 'Notatka',       ico: 'ri-chat-1-line' },
+                    'system':     { col: 'light',     lbl: 'System',        ico: 'ri-settings-3-line' },
+                    'reminder':   { col: 'warning',   lbl: 'Przypomnienie', ico: 'ri-mail-send-line' },
+                    'phone_call': { col: 'info',      lbl: 'Rozmowa',       ico: 'ri-phone-line' },
+                    'email':      { col: 'primary',   lbl: 'Email',         ico: 'ri-mail-line' }
+                };
+                var html = '';
+                d.notes.forEach(function(n) {
+                    var m = typeMeta[n.note_type] || typeMeta['note'];
+                    html += '<div class="list-group-item py-2 px-3" data-note-id="' + escHtml(n.id) + '">';
+                    html += '<div class="d-flex align-items-center gap-2 mb-1">';
+                    html += '<i class="' + m.ico + ' text-' + m.col + '"></i>';
+                    html += '<span class="badge bg-' + m.col + '-subtle text-' + m.col + ' border" style="font-size:.62rem">' + m.lbl + '</span>';
+                    html += '<span class="ms-auto small text-muted">' + escHtml(n.user_name) + ' · ' + escHtml(n.created) + '</span>';
+                    if (n.note_type !== 'system') {
+                        html += '<button type="button" class="btn btn-xs btn-link text-danger p-0 ms-1 btn-del-note" style="line-height:1" title="Usuń"><i class="ri-close-line"></i></button>';
+                    }
+                    html += '</div>';
+                    html += '<div class="small">' + escHtml(n.body) + '</div>';
+                    html += '</div>';
+                });
+                listEl.innerHTML = html;
+            })
+            .catch(function(e) { listEl.innerHTML = '<div class="text-danger small p-2">Błąd: ' + e.message + '</div>'; });
+    }
+
+    var noteForm = document.getElementById('addNoteForm');
+    if (noteForm) {
+        noteForm.addEventListener('submit', function(ev) {
+            ev.preventDefault();
+            var fd = new FormData(ev.target);
+            fetch(addNoteUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) {
+                    ev.target.elements.body.value = '';
+                    loadNotes();
+                    showToast('Notatka dodana', true);
+                } else {
+                    showToast(d.error || 'Błąd', false);
+                }
+            });
+        });
+    }
+
+    document.getElementById('notesList').addEventListener('click', function(ev) {
+        var del = ev.target.closest('.btn-del-note');
+        if (!del) return;
+        var item = del.closest('[data-note-id]');
+        if (!confirm('Usunąć tę notatkę?')) return;
+        var nid = item.dataset.noteId;
+        fetch(deleteNoteBase + '/' + nid + '/delete', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) { item.remove(); showToast('Usunięto', true); }
+            else showToast(d.error || 'Błąd', false);
+        });
+    });
+
+    loadNotes();
 
     // ── Workflow FV — zmiana cost_status przez AJAX
     document.addEventListener('click', function(ev) {
