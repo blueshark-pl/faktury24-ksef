@@ -1199,6 +1199,217 @@ class CostInvoicesController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // Dekretacja: pozycje faktury kosztowej z kategorią i notą.
+    // GET  /koszty/{id}/lines              — JSON {lines, categories}
+    // POST /koszty/{id}/lines/save         — overwrite (usun + insert)
+    // -------------------------------------------------------------------------
+    public function getLines(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) return $this->_jsonReturn(['success' => false, 'error' => 'Nie znaleziono.']);
+
+        $CIL = $this->fetchTable('CostInvoiceLines');
+        $existing = $CIL->find()
+            ->where(['cost_invoice_id' => $id])
+            ->orderByAsc('line_index')
+            ->all();
+
+        $lines = [];
+        foreach ($existing as $l) {
+            $lines[] = [
+                'id'                 => (string)$l->id,
+                'line_index'         => (int)$l->line_index,
+                'line_id'            => (string)($l->line_id ?? ''),
+                'name'               => (string)$l->name,
+                'quantity'           => $l->quantity !== null ? (float)$l->quantity : null,
+                'unit'               => (string)($l->unit ?? ''),
+                'unit_price'         => $l->unit_price !== null ? (float)$l->unit_price : null,
+                'net_amount'         => $l->net_amount !== null ? (float)$l->net_amount : null,
+                'vat_rate'           => (string)($l->vat_rate ?? ''),
+                'vat_amount'         => $l->vat_amount !== null ? (float)$l->vat_amount : null,
+                'gross_amount'       => $l->gross_amount !== null ? (float)$l->gross_amount : null,
+                'currency'           => (string)($l->currency ?? $ci->currency ?? 'PLN'),
+                'cost_category_id'   => $l->cost_category_id ? (string)$l->cost_category_id : null,
+                'cost_category_name' => (string)($l->cost_category_name ?? ''),
+                'note'               => (string)($l->note ?? ''),
+            ];
+        }
+
+        // Jeśli brak zapisanych linii i mamy ksef_raw_json — spróbuj sparsować
+        $autoFromKsef = false;
+        if (empty($lines) && !empty($ci->ksef_raw_json)) {
+            $raw = json_decode((string)$ci->ksef_raw_json, true) ?: [];
+            $parsed = $this->_parseKsefLines($raw);
+            foreach ($parsed as $idx => $p) {
+                $lines[] = [
+                    'id'                 => null,
+                    'line_index'         => $idx,
+                    'line_id'            => (string)($p['line_id'] ?? ''),
+                    'name'               => (string)($p['name'] ?? ''),
+                    'quantity'           => $p['quantity'] ?? null,
+                    'unit'               => (string)($p['unit'] ?? ''),
+                    'unit_price'         => $p['unit_price'] ?? null,
+                    'net_amount'         => $p['net_amount'] ?? null,
+                    'vat_rate'           => (string)($p['vat_rate'] ?? ''),
+                    'vat_amount'         => $p['vat_amount'] ?? null,
+                    'gross_amount'       => $p['gross_amount'] ?? null,
+                    'currency'           => (string)($p['currency'] ?? $ci->currency ?? 'PLN'),
+                    'cost_category_id'   => null,
+                    'cost_category_name' => '',
+                    'note'               => '',
+                ];
+            }
+            $autoFromKsef = !empty($parsed);
+        }
+
+        // Lista kategorii (per company)
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? '';
+        $categories = [];
+        try {
+            $CC = $this->fetchTable('CostCategories');
+            $rows = $CC->find()
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('sort_order')->orderByAsc('name')
+                ->all();
+            foreach ($rows as $c) {
+                $categories[] = [
+                    'id'   => (string)$c->id,
+                    'name' => (string)$c->name,
+                    'code' => (string)($c->code ?? ''),
+                ];
+            }
+            if (empty($categories)) {
+                // Fallback domyślne (jak w KsefAuthorizations::costCategories)
+                $categories = [
+                    ['id' => '', 'name' => 'Towary', 'code' => 'towary'],
+                    ['id' => '', 'name' => 'Materiały', 'code' => 'materialy'],
+                    ['id' => '', 'name' => 'Usługi', 'code' => 'uslugi'],
+                    ['id' => '', 'name' => 'Inne', 'code' => 'inne'],
+                ];
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $this->_jsonReturn([
+            'success'        => true,
+            'lines'          => $lines,
+            'categories'     => $categories,
+            'auto_from_ksef' => $autoFromKsef,
+            'brutto_invoice' => (float)$ci->brutto,
+            'currency'       => (string)$ci->currency,
+        ]);
+    }
+
+    public function saveLines(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) return $this->_jsonReturn(['success' => false, 'error' => 'Nie znaleziono.']);
+
+        $body  = (array)$this->request->getData();
+        $lines = is_array($body['lines'] ?? null) ? $body['lines'] : [];
+
+        $CIL = $this->fetchTable('CostInvoiceLines');
+
+        // Mapa nazw kategorii dla snapshot
+        $CC = $this->fetchTable('CostCategories');
+        $catNames = [];
+        try {
+            foreach ($CC->find()->select(['id', 'name'])->all() as $c) {
+                $catNames[(string)$c->id] = (string)$c->name;
+            }
+        } catch (\Throwable) { /* ignore */ }
+
+        // Overwrite: usuń stare + insert nowe (w transakcji)
+        $conn = $CIL->getConnection();
+        $conn->begin();
+        try {
+            $CIL->deleteAll(['cost_invoice_id' => $id]);
+
+            foreach ($lines as $idx => $row) {
+                $catId = trim((string)($row['cost_category_id'] ?? ''));
+                if ($catId !== '' && !preg_match('/^[0-9a-f-]{36}$/i', $catId)) {
+                    $catId = ''; // tylko UUID
+                }
+                $catName = $catId !== '' ? ($catNames[$catId] ?? '') : trim((string)($row['cost_category_name'] ?? ''));
+
+                $entity = $CIL->newEntity([
+                    'id'                 => \Cake\Utility\Text::uuid(),
+                    'cost_invoice_id'    => $id,
+                    'line_index'         => (int)$idx,
+                    'line_id'            => trim((string)($row['line_id'] ?? '')) ?: null,
+                    'name'               => trim((string)($row['name'] ?? '')),
+                    'quantity'           => isset($row['quantity']) && $row['quantity'] !== '' ? (float)$row['quantity'] : null,
+                    'unit'               => trim((string)($row['unit'] ?? '')) ?: null,
+                    'unit_price'         => isset($row['unit_price']) && $row['unit_price'] !== '' ? (float)$row['unit_price'] : null,
+                    'net_amount'         => isset($row['net_amount']) && $row['net_amount'] !== '' ? (float)$row['net_amount'] : null,
+                    'vat_rate'           => trim((string)($row['vat_rate'] ?? '')) ?: null,
+                    'vat_amount'         => isset($row['vat_amount']) && $row['vat_amount'] !== '' ? (float)$row['vat_amount'] : null,
+                    'gross_amount'       => isset($row['gross_amount']) && $row['gross_amount'] !== '' ? (float)$row['gross_amount'] : null,
+                    'currency'           => trim((string)($row['currency'] ?? $ci->currency)) ?: null,
+                    'cost_category_id'   => $catId !== '' ? $catId : null,
+                    'cost_category_name' => $catName ?: null,
+                    'note'               => trim((string)($row['note'] ?? '')) ?: null,
+                ]);
+                if (!$CIL->save($entity)) {
+                    throw new \RuntimeException('Zapis linii ' . $idx . ': ' . json_encode($entity->getErrors()));
+                }
+            }
+            $conn->commit();
+        } catch (\Throwable $e) {
+            $conn->rollback();
+            return $this->_jsonReturn(['success' => false, 'error' => 'Błąd zapisu: ' . $e->getMessage()]);
+        }
+
+        return $this->_jsonReturn(['success' => true, 'saved' => count($lines)]);
+    }
+
+    /**
+     * Parsuje pozycje z surowego JSON-a faktury KSeF (ksef_raw_json).
+     * Próbuje kilku możliwych struktur (lines/invoiceLines/items/FaWiersz).
+     * Zwraca tablicę pozycji w ujednoliconym formacie.
+     */
+    private function _parseKsefLines(array $raw): array
+    {
+        $candidates = [];
+        foreach (['lines', 'invoiceLines', 'invoice_lines', 'items', 'positions', 'FaWiersz', 'Pozycje'] as $key) {
+            if (isset($raw[$key]) && is_array($raw[$key])) {
+                $candidates = $raw[$key];
+                break;
+            }
+        }
+        if (empty($candidates)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($candidates as $idx => $row) {
+            if (!is_array($row)) continue;
+            $name = (string)($row['name'] ?? $row['description'] ?? $row['NazwaTowaruUslugi'] ?? '');
+            if ($name === '') $name = 'Pozycja ' . ($idx + 1);
+            $out[] = [
+                'line_id'      => (string)($row['lineId'] ?? $row['NrWierszaFa'] ?? ($idx + 1)),
+                'name'         => $name,
+                'quantity'     => isset($row['quantity']) ? (float)$row['quantity'] : (isset($row['Ilosc']) ? (float)$row['Ilosc'] : null),
+                'unit'         => (string)($row['unit'] ?? $row['JednMiary'] ?? ''),
+                'unit_price'   => isset($row['unitPrice']) ? (float)$row['unitPrice'] : (isset($row['CenaJedn']) ? (float)$row['CenaJedn'] : null),
+                'net_amount'   => isset($row['netAmount']) ? (float)$row['netAmount'] : (isset($row['Wartosc']) ? (float)$row['Wartosc'] : null),
+                'vat_rate'     => (string)($row['vatRate'] ?? $row['StawkaPodatku'] ?? ''),
+                'vat_amount'   => isset($row['vatAmount']) ? (float)$row['vatAmount'] : null,
+                'gross_amount' => isset($row['grossAmount']) ? (float)$row['grossAmount'] : (isset($row['WartoscBrutto']) ? (float)$row['WartoscBrutto'] : null),
+                'currency'     => (string)($row['currency'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

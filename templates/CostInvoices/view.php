@@ -27,6 +27,8 @@ $unassignUrl   = $this->Url->build(['action' => 'unassignOrder']);
 $markPaidUrl   = $this->Url->build(['action' => 'markPaid']);
 $unmarkPaidUrl = $this->Url->build(['action' => 'unmarkPaid']);
 $setCostStatusUrl = $this->Url->build(['action' => 'setCostStatus']);
+$getLinesUrl     = $this->Url->build(['action' => 'getLines', $invoice->id]);
+$saveLinesUrl    = $this->Url->build(['action' => 'saveLines', $invoice->id]);
 
 // Workflow FV
 $cs    = (int)($invoice->cost_status ?? 1);
@@ -215,6 +217,49 @@ $methodLabels = [
         <?php endif; ?>
     </div>
 </div>
+</div>
+
+<!-- Dekretacja (pozycje + kategorie) -->
+<div class="col-12">
+<div class="card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="ri-table-line text-primary"></i>
+        Dekretacja pozycji
+        <span class="text-muted small ms-1">klasyfikacja kosztu</span>
+        <button type="button" class="btn btn-sm btn-primary ms-auto" id="btn-dekretuj">
+            <i class="ri-edit-line me-1"></i> Otwórz dekretację
+        </button>
+    </div>
+    <div class="card-body p-0" id="dekretacjaSummary">
+        <div class="text-muted text-center small fst-italic py-3">
+            <i class="ri-loader-line me-1"></i>ładuje pozycje…
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Modal dekretacji -->
+<div class="modal fade" id="dekretacjaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title">
+                    <i class="ri-table-line me-1 text-primary"></i>
+                    Dekretacja: <?= h($invoice->invoice_number ?: '#' . $invoice->id) ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="dekretacjaModalBody">
+                <div class="text-center p-4"><div class="spinner-border spinner-border-sm me-2"></div>ładuje…</div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-save-lines">
+                    <i class="ri-save-line me-1"></i> Zapisz dekretację
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Płatność -->
@@ -520,6 +565,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var unassignUrl  = '<?= $unassignUrl ?>';
     var markPaidUrl   = '<?= $markPaidUrl ?>';
     var unmarkPaidUrl = '<?= $unmarkPaidUrl ?>';
+    var getLinesUrl   = '<?= $getLinesUrl ?>';
+    var saveLinesUrl  = '<?= $saveLinesUrl ?>';
     var addPaymentUrl    = '<?= $this->Url->build(['action' => 'addPayment', $invoice->id]) ?>';
     var bankTxUrl        = '<?= $this->Url->build(['action' => 'bankTxForCost', $invoice->id]) ?>';
     var deletePaymentBase = '<?= rtrim($this->Url->build(['action' => 'deletePayment']), '/') ?>';
@@ -557,6 +604,199 @@ document.addEventListener('DOMContentLoaded', function() {
             }).catch(function(e) { showToast('Błąd: ' + e.message, false); });
         });
     }
+
+    // ── Dekretacja: lazy summary + modal ───────────────────────────
+    var dekretacjaLines = [];
+    var dekretacjaCategories = [];
+
+    function fmtNum(v) { return v !== null && v !== undefined && v !== '' ? parseFloat(v).toFixed(2).replace('.', ',') : ''; }
+    function escHtml(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function loadLines() {
+        fetch(getLinesUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.success) { renderSummaryError(d.error || 'Błąd'); return; }
+                dekretacjaLines = d.lines || [];
+                dekretacjaCategories = d.categories || [];
+                renderSummary(d);
+            })
+            .catch(function(e) { renderSummaryError(e.message); });
+    }
+
+    function renderSummary(d) {
+        var box = document.getElementById('dekretacjaSummary');
+        if (!d.lines || !d.lines.length) {
+            box.innerHTML = '<div class="text-muted text-center small fst-italic py-3">'
+                + '<i class="ri-inbox-line me-1"></i>Brak pozycji. Kliknij <strong>Otwórz dekretację</strong> aby dodać.'
+                + '</div>';
+            return;
+        }
+        var html = '<table class="table table-sm mb-0"><thead class="table-light"><tr>'
+                 + '<th class="ps-3">#</th><th>Nazwa</th><th class="text-end">Netto</th>'
+                 + '<th class="text-end">VAT</th><th class="text-end">Brutto</th>'
+                 + '<th>Kategoria</th><th>Notatka</th>'
+                 + '</tr></thead><tbody>';
+        d.lines.forEach(function(l, idx) {
+            html += '<tr>'
+                  + '<td class="ps-3 text-muted">' + (idx + 1) + '</td>'
+                  + '<td>' + escHtml(l.name) + '</td>'
+                  + '<td class="text-end">' + fmtNum(l.net_amount) + '</td>'
+                  + '<td class="text-end">' + fmtNum(l.vat_amount) + '</td>'
+                  + '<td class="text-end fw-semibold">' + fmtNum(l.gross_amount) + '</td>'
+                  + '<td>' + (l.cost_category_name ? '<span class="badge bg-info-subtle text-info border" style="font-size:.7rem">' + escHtml(l.cost_category_name) + '</span>' : '<span class="text-muted small">—</span>') + '</td>'
+                  + '<td class="small text-muted">' + escHtml(l.note || '') + '</td>'
+                  + '</tr>';
+        });
+        html += '</tbody></table>';
+        if (d.auto_from_ksef) {
+            html = '<div class="alert alert-warning py-1 px-2 small mb-0 rounded-0">'
+                 + '<i class="ri-information-line me-1"></i>Pozycje wczytane automatycznie z faktury KSeF — '
+                 + 'kliknij <strong>Otwórz dekretację</strong> aby przypisać kategorie i zapisać.'
+                 + '</div>' + html;
+        }
+        box.innerHTML = html;
+    }
+
+    function renderSummaryError(msg) {
+        document.getElementById('dekretacjaSummary').innerHTML =
+            '<div class="text-danger small p-3"><i class="ri-error-warning-line me-1"></i>' + escHtml(msg) + '</div>';
+    }
+
+    // Modal dekretacji
+    document.getElementById('btn-dekretuj').addEventListener('click', function() {
+        var body = document.getElementById('dekretacjaModalBody');
+        body.innerHTML = renderDekretacjaForm();
+        wireDekretacjaForm();
+        new bootstrap.Modal(document.getElementById('dekretacjaModal')).show();
+    });
+
+    function renderDekretacjaForm() {
+        var catOptions = dekretacjaCategories.map(function(c) {
+            return '<option value="' + escHtml(c.id) + '" data-name="' + escHtml(c.name) + '">' + escHtml(c.name) + '</option>';
+        }).join('');
+
+        var html = '<div class="alert alert-info py-2 small mb-3"><i class="ri-information-line me-1"></i> Każda pozycja może mieć kategorię i notę dekretacyjną. Wartości netto/VAT/brutto edytowalne.</div>';
+        html += '<table class="table table-sm align-middle" id="dekretacjaTable"><thead class="table-light"><tr>'
+              + '<th style="width:32px">#</th><th>Nazwa pozycji</th>'
+              + '<th class="text-end" style="width:100px">Netto</th>'
+              + '<th class="text-end" style="width:80px">VAT %</th>'
+              + '<th class="text-end" style="width:100px">VAT</th>'
+              + '<th class="text-end" style="width:100px">Brutto</th>'
+              + '<th style="width:180px">Kategoria</th>'
+              + '<th>Notatka</th><th style="width:40px"></th>'
+              + '</tr></thead><tbody id="dekretacjaTbody"></tbody></table>';
+        html += '<button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-line"><i class="ri-add-line me-1"></i>Dodaj pozycję</button>';
+        html += '<input type="hidden" id="catOptionsBag" value="">';
+        // Embed cat options for later JS use
+        html += '<script id="dekrCatOptionsTpl" type="text/template">' + catOptions + '</script>';
+        return html;
+    }
+
+    function wireDekretacjaForm() {
+        var tbody = document.getElementById('dekretacjaTbody');
+        var catOptions = document.getElementById('dekrCatOptionsTpl').innerHTML;
+
+        function addRow(line) {
+            line = line || { name: '', quantity: '', unit: '', unit_price: '', net_amount: '', vat_rate: '', vat_amount: '', gross_amount: '', cost_category_id: '', cost_category_name: '', note: '' };
+            var idx = tbody.children.length;
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td class="text-muted">' + (idx + 1) + '</td>'
+                + '<td><input type="text" class="form-control form-control-sm" name="name" value="' + escHtml(line.name) + '" required></td>'
+                + '<td><input type="number" step="0.01" class="form-control form-control-sm text-end" name="net_amount" value="' + (line.net_amount ?? '') + '"></td>'
+                + '<td><input type="text" class="form-control form-control-sm text-end" name="vat_rate" value="' + escHtml(line.vat_rate || '') + '" placeholder="23"></td>'
+                + '<td><input type="number" step="0.01" class="form-control form-control-sm text-end" name="vat_amount" value="' + (line.vat_amount ?? '') + '"></td>'
+                + '<td><input type="number" step="0.01" class="form-control form-control-sm text-end" name="gross_amount" value="' + (line.gross_amount ?? '') + '"></td>'
+                + '<td><select class="form-select form-select-sm" name="cost_category_id">'
+                +     '<option value="">— wybierz —</option>' + catOptions
+                + '</select></td>'
+                + '<td><input type="text" class="form-control form-control-sm" name="note" value="' + escHtml(line.note || '') + '"></td>'
+                + '<td><button type="button" class="btn btn-xs btn-outline-danger btn-del-row" title="Usuń"><i class="ri-delete-bin-line"></i></button></td>';
+            tbody.appendChild(tr);
+            // Ustaw selected na kategorii
+            if (line.cost_category_id) {
+                var sel = tr.querySelector('select[name=cost_category_id]');
+                if (sel) sel.value = line.cost_category_id;
+            }
+        }
+
+        dekretacjaLines.forEach(addRow);
+        if (dekretacjaLines.length === 0) addRow();
+
+        document.getElementById('btn-add-line').addEventListener('click', function() { addRow(); });
+        tbody.addEventListener('click', function(ev) {
+            var btn = ev.target.closest('.btn-del-row');
+            if (btn) btn.closest('tr').remove();
+        });
+    }
+
+    // Zapisz dekretację
+    document.getElementById('btn-save-lines').addEventListener('click', function() {
+        var rows = document.querySelectorAll('#dekretacjaTbody tr');
+        var lines = [];
+        rows.forEach(function(tr) {
+            var get = function(name) { var el = tr.querySelector('[name="' + name + '"]'); return el ? el.value : ''; };
+            var getOpt = function(name) {
+                var s = tr.querySelector('select[name="' + name + '"]');
+                if (!s) return '';
+                var opt = s.options[s.selectedIndex];
+                return opt ? (opt.dataset.name || opt.textContent.trim()) : '';
+            };
+            if (!get('name').trim()) return;
+            lines.push({
+                name: get('name'),
+                net_amount: get('net_amount'),
+                vat_rate: get('vat_rate'),
+                vat_amount: get('vat_amount'),
+                gross_amount: get('gross_amount'),
+                cost_category_id: get('cost_category_id'),
+                cost_category_name: getOpt('cost_category_id'),
+                note: get('note'),
+            });
+        });
+
+        var btn = this;
+        btn.disabled = true;
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>zapisuję…';
+
+        var fd = new FormData();
+        fd.append('lines_json', JSON.stringify(lines)); // backup
+        lines.forEach(function(l, idx) {
+            Object.keys(l).forEach(function(k) {
+                fd.append('lines[' + idx + '][' + k + ']', l[k] === null || l[k] === undefined ? '' : l[k]);
+            });
+        });
+
+        fetch(saveLinesUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function(r) { return r.text().then(function(txt) {
+            var d; try { d = JSON.parse(txt); } catch (e) { throw new Error('Nie JSON: ' + txt.substring(0, 100)); }
+            return d;
+        }); })
+        .then(function(d) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            if (d.success) {
+                showToast('Zapisano ' + d.saved + ' pozycji', true);
+                bootstrap.Modal.getInstance(document.getElementById('dekretacjaModal'))?.hide();
+                loadLines();
+            } else {
+                showToast(d.error || 'Błąd', false);
+            }
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            showToast('Błąd: ' + e.message, false);
+        });
+    });
+
+    // Auto-load przy załadowaniu widoku
+    loadLines();
 
     // ── Workflow FV — zmiana cost_status przez AJAX
     document.addEventListener('click', function(ev) {

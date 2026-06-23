@@ -29,6 +29,12 @@ class CostInvoicesTable extends Table
             'dependent'  => true,
             'cascadeCallbacks' => true,
         ]);
+
+        $this->hasMany('CostInvoiceLines', [
+            'foreignKey' => 'cost_invoice_id',
+            'dependent'  => true,
+            'cascadeCallbacks' => true,
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

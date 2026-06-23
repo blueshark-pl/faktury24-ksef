@@ -354,6 +354,25 @@ Historia wpłat per faktura kosztowa. Suma jest przeliczana do `cost_invoices.pa
 | `user_id` | uuid | kto dodał |
 | `note` | string(255) | komentarz |
 
+### Pełne kolumny `cost_invoice_lines`
+Migracja: `20260622130000_CreateCostInvoiceLines.php`
+Pozycje faktur kosztowych — odpowiednik `ksef_booking_items` ale per cost_invoice (nie per ksef_number, więc działa też dla manualnych).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `cost_invoice_id` | int | FK do `cost_invoices` (CASCADE) |
+| `line_index` | int | kolejność |
+| `line_id` | string(64) | ID z XML (FaWiersz NrWierszaFa) |
+| `name` | string(500) | nazwa pozycji |
+| `quantity` / `unit` / `unit_price` | decimal/str | jeśli z FA |
+| `net_amount` / `vat_rate` / `vat_amount` / `gross_amount` | decimal | kwoty pozycji |
+| `currency` | char(3) | jeśli inna od faktury |
+| **`cost_category_id`** | uuid | FK do `cost_categories` (SET NULL) — kategoria dekretacji |
+| `cost_category_name` | string(255) | snapshot nazwy kategorii |
+| `note` | text | uwagi operatora |
+| `source_json` | text | raw fragment FaWiersz |
+
 ### Pivot `cost_invoice_orders`
 Migracja: `20260409160000_CreateCostInvoices.php`
 M:N: jedna FK kosztowa → wiele zleceń, jedno zlecenie → wiele FK kosztowych.

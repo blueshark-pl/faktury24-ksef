@@ -48,6 +48,10 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->post('/koszty/sync-ksef-auto', 'CostInvoices::syncKsefAuto');
         $builder->post('/koszty/set-cost-status', 'CostInvoices::setCostStatus');
+        $builder->get('/koszty/{id}/lines', ['controller' => 'CostInvoices', 'action' => 'getLines'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
+        $builder->post('/koszty/{id}/lines/save', ['controller' => 'CostInvoices', 'action' => 'saveLines'])
+            ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);
