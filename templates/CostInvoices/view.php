@@ -724,17 +724,14 @@ document.addEventListener('DOMContentLoaded', function() {
               + '<th>Notatka</th><th style="width:60px"></th>'
               + '</tr></thead><tbody id="dekretacjaTbody"></tbody></table>';
         html += '<button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-line"><i class="ri-add-line me-1"></i>Dodaj pozycję</button>';
-        html += '<input type="hidden" id="catOptionsBag" value="">';
-        // Embed cat options for later JS use.
-        // UWAGA: '</script>' w stringu wewnątrz <script> kończyłby tag (HTML parser
-        // nie rozumie JS) — rozbijamy na '<\/script>' żeby tego uniknąć.
-        html += '<script id="dekrCatOptionsTpl" type="text/template">' + catOptions + '<\/script>';
+        // Przechowujemy catOptions w window — żaden HTML embed nie jest potrzebny
+        window.__dekrCatOptions = catOptions;
         return html;
     }
 
     function wireDekretacjaForm() {
         var tbody = document.getElementById('dekretacjaTbody');
-        var catOptions = document.getElementById('dekrCatOptionsTpl').innerHTML;
+        var catOptions = window.__dekrCatOptions || '';
 
         function addRow(line) {
             line = line || { name: '', quantity: '', unit: '', unit_price: '', net_amount: '', vat_rate: '', vat_amount: '', gross_amount: '', cost_category_id: '', cost_category_name: '', note: '' };
