@@ -1548,6 +1548,92 @@ class CostInvoicesController extends AppController
     }
 
     /**
+     * Wyszukiwarka zleceń transportowych do przypięcia jako powiązane z FK kosztową.
+     * Filtruje po company_id z sesji + opcjonalnie po NIP kontrahenta FK (top match).
+     *
+     * GET /koszty/{id}/orders-search?q=...
+     */
+    public function searchOrdersForCost(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id');
+        if (!$companyId) return $this->_jsonReturn(['success' => false, 'error' => 'Brak sesji.']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) return $this->_jsonReturn(['success' => false, 'error' => 'FK nie istnieje.']);
+
+        $q = trim((string)$this->request->getQuery('q', ''));
+
+        // ID już przypisanych zleceń (żeby je odfiltrować)
+        $assigned = $this->fetchTable('CostInvoiceOrders')->find()
+            ->where(['cost_invoice_id' => $id])
+            ->select(['speed_order_id'])
+            ->all()
+            ->map(fn($r) => (int)$r->speed_order_id)
+            ->toArray();
+
+        $Orders = $this->fetchTable('SpeedOrders');
+        $query = $Orders->find()
+            ->where(['SpeedOrders.company_id' => $companyId])
+            ->select([
+                'SpeedOrders.id', 'SpeedOrders.symbol', 'SpeedOrders.date_doc', 'SpeedOrders.date_delivery',
+                'SpeedOrders.buyer_name', 'SpeedOrders.buyer_nip', 'SpeedOrders.place_from_name',
+                'SpeedOrders.place_to_name', 'SpeedOrders.netto', 'SpeedOrders.currency',
+                'SpeedOrders.title1', 'SpeedOrders.title2',
+            ])
+            ->orderByDesc('SpeedOrders.date_doc')
+            ->limit(30);
+
+        if (!empty($assigned)) {
+            $query->where(['SpeedOrders.id NOT IN' => $assigned]);
+        }
+
+        if ($q !== '') {
+            $like = '%' . $q . '%';
+            $query->where(['OR' => [
+                'SpeedOrders.symbol LIKE'         => $like,
+                'SpeedOrders.title1 LIKE'         => $like,
+                'SpeedOrders.title2 LIKE'         => $like,
+                'SpeedOrders.buyer_name LIKE'     => $like,
+                'SpeedOrders.buyer_nip LIKE'      => $like,
+                'SpeedOrders.place_from_name LIKE' => $like,
+                'SpeedOrders.place_to_name LIKE'  => $like,
+            ]]);
+        } else {
+            // Bez query: pokaż ostatnie 30 z preferencją zleceń tego samego kontrahenta
+            // (przy pustym query wyświetlamy mix — gdy q wpisany, robi się dokładnie filtr).
+        }
+
+        $rows = [];
+        foreach ($query->all() as $o) {
+            $dateDoc = $o->date_doc instanceof \DateTimeInterface ? $o->date_doc->format('Y-m-d') : substr((string)$o->date_doc, 0, 10);
+            $dateDel = $o->date_delivery instanceof \DateTimeInterface ? $o->date_delivery->format('Y-m-d') : substr((string)$o->date_delivery, 0, 10);
+            $route = trim(((string)($o->place_from_name ?? '')) . ' → ' . ((string)($o->place_to_name ?? '')), ' →');
+            $title = trim(((string)($o->title1 ?? '')) . ' ' . ((string)($o->title2 ?? '')));
+            $rows[] = [
+                'id'          => (int)$o->id,
+                'symbol'      => (string)$o->symbol,
+                'date_doc'    => $dateDoc,
+                'date_delivery' => $dateDel,
+                'buyer_name'  => (string)($o->buyer_name ?? ''),
+                'buyer_nip'   => (string)($o->buyer_nip ?? ''),
+                'route'       => $route,
+                'title'       => $title,
+                'netto'       => $o->netto !== null ? (float)$o->netto : null,
+                'currency'    => (string)($o->currency ?? ''),
+            ];
+        }
+
+        return $this->_jsonReturn([
+            'success' => true,
+            'results' => $rows,
+            'invoice_contractor_nip' => (string)($ci->contractor_nip ?? ''),
+        ]);
+    }
+
+    /**
      * AI-suggest dekretacji: dla każdej linii (lub jednej konkretnej) sugeruje
      * kategorię kosztu na podstawie:
      *  - nazwy pozycji

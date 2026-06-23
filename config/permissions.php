@@ -369,6 +369,7 @@ return [
                 'syncKsefAuto', 'setCostStatus', 'getLines', 'saveLines',
                 'aiSuggestLines',
                 'getNotes', 'addNote', 'deleteNote',
+                'searchOrdersForCost',
             ],
         ],
 

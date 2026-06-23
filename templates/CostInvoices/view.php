@@ -521,9 +521,13 @@ $methodLabels = [
 <!-- Powiązane zlecenia -->
 <div class="col-12">
 <div class="card">
-    <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
-        <span><i class="ri-links-line me-1 text-primary"></i>Powiązane zlecenia transportowe</span>
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="ri-links-line text-primary"></i>
+        Powiązane zlecenia transportowe
         <span class="badge bg-primary-subtle text-primary"><?= count($invoice->speed_orders ?? []) ?></span>
+        <button type="button" class="btn btn-sm btn-primary ms-auto" id="btn-assign-order">
+            <i class="ri-add-line me-1"></i> Powiąż zlecenie
+        </button>
     </div>
     <div class="card-body p-0" id="orders-list">
     <?php if (empty($invoice->speed_orders)): ?>
@@ -570,6 +574,30 @@ $methodLabels = [
 
 </div><!-- /row -->
 
+<!-- Modal: wybór zlecenia transportowego -->
+<div class="modal fade" id="assignOrderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title"><i class="ri-truck-line me-1 text-primary"></i> Powiąż zlecenie transportowe z fakturą</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm" id="assignOrderSearch"
+                           placeholder="Szukaj po symbolu, kliencie, NIP, miejscu załadunku/rozładunku…" autocomplete="off">
+                    <div class="form-text small">
+                        <i class="ri-information-line me-1"></i>Pokazuje ostatnie 30 zleceń. Wpisz frazę aby zawęzić.
+                    </div>
+                </div>
+                <div id="assignOrderResults">
+                    <div class="text-center py-3 text-muted small"><div class="spinner-border spinner-border-sm me-2"></div>ładuję…</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: wybór przelewu z banku -->
 <div class="modal fade" id="bankTxModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -599,6 +627,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var addNoteUrl    = '<?= $this->Url->build(['action' => 'addNote', $invoice->id]) ?>';
     var deleteNoteBase= '<?= rtrim($this->Url->build(['action' => 'deleteNote']), '/') ?>';
     var addPaymentUrl    = '<?= $this->Url->build(['action' => 'addPayment', $invoice->id]) ?>';
+    var assignOrderUrl   = '<?= $this->Url->build(['action' => 'assignOrder']) ?>';
+    var ordersSearchUrl  = '<?= $this->Url->build(['action' => 'searchOrdersForCost', $invoice->id]) ?>';
     var bankTxUrl        = '<?= $this->Url->build(['action' => 'bankTxForCost', $invoice->id]) ?>';
     var deletePaymentBase = '<?= rtrim($this->Url->build(['action' => 'deletePayment']), '/') ?>';
 
@@ -1257,6 +1287,99 @@ document.addEventListener('DOMContentLoaded', function() {
             }).catch(function(e) { showToast('Błąd: ' + e.message, false); });
         });
     }
+
+    // ── Powiąż zlecenie z FK kosztową ──────────────────────────────
+    var assignModal;
+    var assignSearchTimer;
+
+    function renderOrderResults(d) {
+        var box = document.getElementById('assignOrderResults');
+        var rows = d.results || [];
+        if (!rows.length) {
+            box.innerHTML = '<div class="text-muted text-center fst-italic py-4"><i class="ri-search-line me-1"></i>Brak pasujących zleceń.</div>';
+            return;
+        }
+        var fkNip = (d.invoice_contractor_nip || '').replace(/\D/g, '');
+        var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr>'
+                 + '<th class="ps-3">Symbol</th><th>Klient</th><th>Trasa</th>'
+                 + '<th>Data wyst.</th><th>Rozładunek</th>'
+                 + '<th class="text-end">Netto</th>'
+                 + '<th></th>'
+                 + '</tr></thead><tbody>';
+        rows.forEach(function(o) {
+            var nipMatch = fkNip && (o.buyer_nip || '').replace(/\D/g, '') === fkNip;
+            html += '<tr class="order-pick-row" data-order-id="' + o.id + '" data-symbol="' + escHtml(o.symbol) + '" style="cursor:pointer">'
+                  + '<td class="ps-3 fw-semibold">' + escHtml(o.symbol)
+                  +   (nipMatch ? ' <i class="ri-checkbox-circle-fill text-success" title="NIP klienta zgodny"></i>' : '')
+                  + '</td>'
+                  + '<td><div>' + escHtml(o.buyer_name || '—') + '</div>'
+                  +     (o.buyer_nip ? '<div class="small text-muted">' + escHtml(o.buyer_nip) + '</div>' : '')
+                  + '</td>'
+                  + '<td class="small">' + escHtml(o.route || '—') + '</td>'
+                  + '<td class="small">' + escHtml(o.date_doc || '') + '</td>'
+                  + '<td class="small">' + escHtml(o.date_delivery || '') + '</td>'
+                  + '<td class="text-end fw-semibold">' + (o.netto !== null ? fmtNum(o.netto) + ' ' + escHtml(o.currency) : '—') + '</td>'
+                  + '<td class="text-end"><button class="btn btn-xs btn-primary py-0 px-2 btn-pick-order">Powiąż</button></td>'
+                  + '</tr>';
+        });
+        html += '</tbody></table></div>';
+        box.innerHTML = html;
+    }
+
+    function loadOrders(q) {
+        var box = document.getElementById('assignOrderResults');
+        box.innerHTML = '<div class="text-center py-3 text-muted small"><div class="spinner-border spinner-border-sm me-2"></div>ładuję…</div>';
+        var url = ordersSearchUrl + (q ? '?q=' + encodeURIComponent(q) : '');
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.success) {
+                    box.innerHTML = '<div class="text-danger small p-3">' + escHtml(d.error || 'Błąd') + '</div>';
+                    return;
+                }
+                renderOrderResults(d);
+            })
+            .catch(function(e) { box.innerHTML = '<div class="text-danger small p-3">' + escHtml(e.message) + '</div>'; });
+    }
+
+    var btnAssign = document.getElementById('btn-assign-order');
+    if (btnAssign) {
+        btnAssign.addEventListener('click', function() {
+            assignModal = new bootstrap.Modal(document.getElementById('assignOrderModal'));
+            document.getElementById('assignOrderSearch').value = '';
+            loadOrders('');
+            assignModal.show();
+        });
+    }
+
+    var assignSearch = document.getElementById('assignOrderSearch');
+    if (assignSearch) {
+        assignSearch.addEventListener('input', function() {
+            clearTimeout(assignSearchTimer);
+            var v = this.value.trim();
+            assignSearchTimer = setTimeout(function() { loadOrders(v); }, 280);
+        });
+    }
+
+    document.getElementById('assignOrderResults').addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.btn-pick-order') || ev.target.closest('.order-pick-row');
+        if (!btn) return;
+        var row = btn.closest('.order-pick-row') || btn;
+        var ordId = parseInt(row.dataset.orderId, 10);
+        var symbol = row.dataset.symbol || '';
+        if (!ordId) return;
+
+        post(assignOrderUrl, { cost_invoice_id: invoiceId, speed_order_id: ordId })
+        .then(function(d) {
+            if (d.success) {
+                showToast('Powiązano: ' + symbol, true);
+                setTimeout(function(){ location.reload(); }, 500);
+            } else {
+                showToast(d.error || 'Błąd', false);
+            }
+        })
+        .catch(function(e) { showToast('Błąd: ' + e.message, false); });
+    });
 
     // Odepnij zlecenie
     document.querySelectorAll('.btn-unassign').forEach(function(btn) {
