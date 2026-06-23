@@ -43,6 +43,20 @@ $activeFilters = ($paymentState !== '' ? 1 : 0) + ($hasOrder !== '' ? 1 : 0)
                 title="Pobierz nowe faktury z KSeF (ostatnie 7 dni, z dedup)">
             <i class="ri-refresh-line me-1"></i> Pobierz z KSeF (auto)
         </button>
+        <?php
+        $cronToken = (string)\Cake\Core\Configure::read('Cron.token');
+        $companyId = $this->request->getAttribute('identity')?->get('company_id');
+        if ($cronToken !== '' && $companyId):
+            $cronUrl = $this->request->getUri()->getScheme() . '://'
+                     . $this->request->getUri()->getHost()
+                     . '/api/cron/cost-invoices/sync/' . $companyId
+                     . '?token=' . urlencode($cronToken) . '&days=7';
+        ?>
+        <button type="button" id="btn-show-cron-url" class="btn btn-sm btn-outline-info"
+                title="URL do uderzania z cron-a hostingu (bez sesji)">
+            <i class="ri-time-line me-1"></i> Cron URL
+        </button>
+        <?php endif; ?>
         <a href="<?= $this->Url->build(['action' => 'importKsef']) ?>" class="btn btn-sm btn-outline-primary">
             <i class="ri-government-line me-1"></i> Importuj z KSeF (ręcznie)
         </a>
@@ -52,6 +66,38 @@ $activeFilters = ($paymentState !== '' ? 1 : 0) + ($hasOrder !== '' ? 1 : 0)
     </div>
 </div>
 <div id="sync-result" class="mb-2"></div>
+
+<?php if (!empty($cronUrl)): ?>
+<!-- Modal: Cron URL -->
+<div class="modal fade" id="cronUrlModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title"><i class="ri-time-line me-1 text-info"></i> Cron URL — auto-sync KSeF</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body small">
+                <p>Skopiuj URL i wpisz w crontab na hostingu, żeby system <strong>automatycznie</strong> pobierał faktury kosztowe z KSeF (np. co 30 min):</p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control font-monospace" id="cronUrlInput" value="<?= h($cronUrl) ?>" readonly>
+                    <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('cronUrlInput').value).then(function(){alert('Skopiowano!');})">
+                        <i class="ri-clipboard-line"></i> Kopiuj
+                    </button>
+                </div>
+                <p class="text-muted small">Przykład crontab (Linux):</p>
+                <pre class="bg-light p-2 small rounded"><code>*/30 * * * * curl -fsS "<?= h($cronUrl) ?>" >> /var/log/ksef-sync.log 2>&1</code></pre>
+                <p class="text-muted small mt-2">Token w URL jest w pliku <code>config/app_local.php</code> pod kluczem <code>Cron.token</code>. Zmień go gdy chcesz unieważnić ten link.</p>
+                <hr>
+                <div class="d-flex gap-2 small text-muted">
+                    <span><strong>Parametry:</strong></span>
+                    <code>days=N</code> (1-90, default 7) ·
+                    <code>env=prod|test</code> (default prod)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php $this->append('scriptBottom'); ?>
 <script>
@@ -95,6 +141,14 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(function(e) { alert('Błąd: ' + e.message); });
     });
+
+    // Cron URL modal
+    var btnCron = document.getElementById('btn-show-cron-url');
+    if (btnCron) {
+        btnCron.addEventListener('click', function() {
+            new bootstrap.Modal(document.getElementById('cronUrlModal')).show();
+        });
+    }
 
     btn.addEventListener('click', function() {
         var days = prompt('Pobrać faktury z KSeF za ile dni wstecz?', '7');

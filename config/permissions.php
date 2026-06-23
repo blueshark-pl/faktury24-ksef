@@ -662,6 +662,13 @@ return [
             'action' => ['login'],
             'bypassAuth' => true,
         ],
+        // Cron endpoint do sync KSeF faktur kosztowych — bez sesji, token w query
+        [
+            'role' => '*',
+            'controller' => 'CostInvoices',
+            'action' => ['cronSyncKsef'],
+            'bypassAuth' => true,
+        ],
         // Skan QR z etykiety pocztowej — oznaczenie faktury jako wysłanej (bez logowania)
         [
             'role' => '*',

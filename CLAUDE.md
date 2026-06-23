@@ -354,6 +354,20 @@ Historia wpłat per faktura kosztowa. Suma jest przeliczana do `cost_invoices.pa
 | `user_id` | uuid | kto dodał |
 | `note` | string(255) | komentarz |
 
+### Pełne kolumny `cost_invoice_notes`
+Migracja: `20260622140000_CreateCostInvoiceNotes.php`
+Activity log + ręczne notatki per faktura kosztowa.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `cost_invoice_id` | int | FK do `cost_invoices` (CASCADE) |
+| `company_id` | uuid | |
+| `user_id` | uuid | autor (NULL = system) |
+| `note_type` | string(20) | `note` / `system` / `reminder` / `phone_call` / `email` |
+| `body` | text | treść |
+| `payload_json` | text | metadane akcji (action, old/new values, ids) |
+
 ### Pełne kolumny `cost_invoice_lines`
 Migracja: `20260622130000_CreateCostInvoiceLines.php`
 Pozycje faktur kosztowych — odpowiednik `ksef_booking_items` ale per cost_invoice (nie per ksef_number, więc działa też dla manualnych).

@@ -60,6 +60,11 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->post('/koszty/notes/{noteId}/delete', ['controller' => 'CostInvoices', 'action' => 'deleteNote'])
             ->setPass(['noteId']);
+        // Cron endpoint — bez sesji, autoryzacja przez token w query lub header X-Cron-Token
+        $builder->get('/api/cron/cost-invoices/sync/{companyId}', ['controller' => 'CostInvoices', 'action' => 'cronSyncKsef'])
+            ->setPass(['companyId'])->setPatterns(['companyId' => '[0-9a-f-]{36}']);
+        $builder->post('/api/cron/cost-invoices/sync/{companyId}', ['controller' => 'CostInvoices', 'action' => 'cronSyncKsef'])
+            ->setPass(['companyId'])->setPatterns(['companyId' => '[0-9a-f-]{36}']);
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);

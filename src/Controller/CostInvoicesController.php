@@ -29,6 +29,21 @@ use Cake\Log\Log;
  */
 class CostInvoicesController extends AppController
 {
+    /**
+     * Pozwala na nieuwierzytelniony dostęp do akcji cronSyncKsef.
+     * Sama akcja sprawdza token z konfiguracji (Cron.token).
+     */
+    public function beforeFilter(\Cake\Event\EventInterface $event): void
+    {
+        try {
+            $authentication = $this->request->getAttribute('authentication');
+            if ($authentication && method_exists($authentication, 'allowUnauthenticated')) {
+                $authentication->allowUnauthenticated(['cronSyncKsef']);
+            }
+        } catch (\Throwable) {}
+        parent::beforeFilter($event);
+    }
+
     // -------------------------------------------------------------------------
     // Lista FK
     // -------------------------------------------------------------------------
@@ -433,17 +448,50 @@ class CostInvoicesController extends AppController
     //  - przycisku "Pobierz teraz" w UI (manual)
     //  - opcjonalnie cron uderzający w URL (z sesją web)
     // -------------------------------------------------------------------------
-    public function syncKsefAuto(): \Cake\Http\Response
+    /**
+     * Cron-friendly endpoint do synchronizacji KSeF — BEZ sesji web.
+     * Autoryzacja przez token w query string lub headerze X-Cron-Token.
+     *
+     * GET /api/cron/cost-invoices/sync/{companyId}?token=XXX&days=N
+     *
+     * Token konfigurowany w app_local.php:
+     *   'Cron' => ['token' => 'jakiś-długi-losowy-string'],
+     *
+     * Przykład crona (Linux):
+     *   *​/30 * * * * curl -fsS "https://booklio.pl/api/cron/cost-invoices/sync/UUID?token=TOKEN" >> /var/log/ksef-sync.log 2>&1
+     */
+    public function cronSyncKsef(string $companyId): \Cake\Http\Response
     {
-        $this->request->allowMethod(['post']);
+        $this->request->allowMethod(['get', 'post']);
         $this->viewBuilder()->disableAutoLayout();
 
-        $identity  = $this->request->getAttribute('identity');
-        $companyId = (string)($identity?->get('company_id') ?? '');
-        if ($companyId === '') {
-            return $this->_jsonReturn(['success' => false, 'error' => 'Brak sesji firmy.']);
+        // Walidacja companyId (UUID)
+        if (!preg_match('/^[0-9a-f-]{36}$/i', $companyId)) {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Nieprawidłowy companyId.']);
         }
 
+        // Walidacja tokenu
+        $expectedToken = (string)\Cake\Core\Configure::read('Cron.token');
+        if ($expectedToken === '') {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Cron.token nie skonfigurowany w app_local.php.']);
+        }
+        $providedToken = (string)($this->request->getQuery('token')
+            ?? $this->request->getHeaderLine('X-Cron-Token'));
+        if (!hash_equals($expectedToken, $providedToken)) {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Nieprawidłowy token.']);
+        }
+
+        // Walidacja: firma istnieje
+        try {
+            $company = $this->fetchTable('Companies')->find()->where(['id' => $companyId])->first();
+            if (!$company) {
+                return $this->_jsonReturn(['success' => false, 'error' => 'Firma nie istnieje.']);
+            }
+        } catch (\Throwable $e) {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Błąd weryfikacji firmy: ' . $e->getMessage()]);
+        }
+
+        // Wykonaj sync
         $days = max(1, min(90, (int)$this->request->getQuery('days', 7)));
         $env  = (string)$this->request->getQuery('env', 'prod');
         $env  = ($env === 'test') ? 'test' : 'prod';
@@ -451,6 +499,28 @@ class CostInvoicesController extends AppController
         $from = date('Y-m-d', strtotime('-' . $days . ' days'));
         $to   = date('Y-m-d');
 
+        $result = $this->_executeKsefSync($companyId, $env, $from, $to);
+
+        Log::info(sprintf(
+            '[cron-sync-ksef] company=%s env=%s range=%s..%s fetched=%d saved=%d skipped=%d errors=%d',
+            $companyId, $env, $from, $to, $result['fetched'], $result['saved'],
+            $result['skipped'], count($result['errors'])
+        ));
+
+        return $this->_jsonReturn(array_merge($result, [
+            'success' => count($result['errors']) === 0,
+            'range'   => ['from' => $from, 'to' => $to, 'days' => $days],
+            'env'     => $env,
+            'company' => $companyId,
+        ]));
+    }
+
+    /**
+     * Wspólna logika synchronizacji — refaktor z syncKsefAuto.
+     * Używana zarówno z syncKsefAuto (web) jak i cronSyncKsef (cron).
+     */
+    private function _executeKsefSync(string $companyId, string $env, string $from, string $to): array
+    {
         $CI = $this->fetchTable('CostInvoices');
         $saved = 0;
         $skipped = 0;
@@ -459,19 +529,11 @@ class CostInvoicesController extends AppController
 
         try {
             $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
-
-            // Pobierz wszystkie strony (max 20 — safeguard)
             $maxPages = 20;
             $page = 1;
-            $totalApi = null;
 
             while ($page <= $maxPages) {
-                $queryParams = [
-                    'env'  => $env,
-                    'from' => $from,
-                    'to'   => $to,
-                    'page' => $page,
-                ];
+                $queryParams = ['env' => $env, 'from' => $from, 'to' => $to, 'page' => $page];
                 $vm = $ksef->buildReceivedViewModel($companyId, $env, $queryParams);
 
                 $flash = $vm['flash'] ?? null;
@@ -481,19 +543,13 @@ class CostInvoicesController extends AppController
                 }
 
                 $invoices = $vm['invoices'] ?? [];
-                if (empty($invoices)) {
-                    break;
-                }
+                if (empty($invoices)) break;
                 $fetched += count($invoices);
-                if ($totalApi === null) {
-                    $totalApi = (int)($vm['apiInfo']['total'] ?? 0);
-                }
 
                 foreach ($invoices as $item) {
                     $ksefNumber = trim((string)($item['ksef_number'] ?? ''));
                     if ($ksefNumber === '') { $skipped++; continue; }
 
-                    // Dedup
                     if ($CI->find()->where(['ksef_number' => $ksefNumber])->count() > 0) {
                         $skipped++;
                         continue;
@@ -540,29 +596,52 @@ class CostInvoicesController extends AppController
                     }
                 }
 
-                // Jeśli mniej niż pełna strona — koniec
                 if (count($invoices) < 25) break;
                 $page++;
             }
         } catch (\Throwable $e) {
             $errors[] = 'Wyjątek: ' . $e->getMessage();
-            Log::warning('[sync-ksef-auto] ' . $e->getMessage());
+            Log::warning('[execute-ksef-sync] ' . $e->getMessage());
         }
+
+        return [
+            'fetched' => $fetched,
+            'saved'   => $saved,
+            'skipped' => $skipped,
+            'errors'  => $errors,
+        ];
+    }
+
+    public function syncKsefAuto(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Brak sesji firmy.']);
+        }
+
+        $days = max(1, min(90, (int)$this->request->getQuery('days', 7)));
+        $env  = (string)$this->request->getQuery('env', 'prod');
+        $env  = ($env === 'test') ? 'test' : 'prod';
+
+        $from = date('Y-m-d', strtotime('-' . $days . ' days'));
+        $to   = date('Y-m-d');
+
+        $result = $this->_executeKsefSync($companyId, $env, $from, $to);
 
         Log::info(sprintf(
             '[sync-ksef-auto] company=%s env=%s range=%s..%s fetched=%d saved=%d skipped=%d errors=%d',
-            $companyId, $env, $from, $to, $fetched, $saved, count($errors)
+            $companyId, $env, $from, $to, $result['fetched'], $result['saved'], $result['skipped'], count($result['errors'])
         ));
 
-        return $this->_jsonReturn([
-            'success'  => count($errors) === 0,
-            'fetched'  => $fetched,
-            'saved'    => $saved,
-            'skipped'  => $skipped,
-            'errors'   => $errors,
-            'range'    => ['from' => $from, 'to' => $to, 'days' => $days],
-            'env'      => $env,
-        ]);
+        return $this->_jsonReturn(array_merge($result, [
+            'success' => count($result['errors']) === 0,
+            'range'   => ['from' => $from, 'to' => $to, 'days' => $days],
+            'env'     => $env,
+        ]));
     }
 
     private function _jsonReturn(array $data): \Cake\Http\Response
