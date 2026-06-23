@@ -725,8 +725,10 @@ document.addEventListener('DOMContentLoaded', function() {
               + '</tr></thead><tbody id="dekretacjaTbody"></tbody></table>';
         html += '<button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-line"><i class="ri-add-line me-1"></i>Dodaj pozycję</button>';
         html += '<input type="hidden" id="catOptionsBag" value="">';
-        // Embed cat options for later JS use
-        html += '<script id="dekrCatOptionsTpl" type="text/template">' + catOptions + '</script>';
+        // Embed cat options for later JS use.
+        // UWAGA: '</script>' w stringu wewnątrz <script> kończyłby tag (HTML parser
+        // nie rozumie JS) — rozbijamy na '<\/script>' żeby tego uniknąć.
+        html += '<script id="dekrCatOptionsTpl" type="text/template">' + catOptions + '<\/script>';
         return html;
     }
 
