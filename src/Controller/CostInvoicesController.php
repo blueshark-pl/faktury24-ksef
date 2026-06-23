@@ -412,6 +412,154 @@ class CostInvoicesController extends AppController
     }
 
     // -------------------------------------------------------------------------
+    // Automatyczna synchronizacja faktur kosztowych z KSeF.
+    //
+    // POST /koszty/sync-ksef-auto
+    // Query: ?days=N (default 7) — ile dni wstecz pobrać; max 90.
+    //        ?env=prod|test (default prod)
+    //
+    // Wywołuje buildReceivedViewModel za ostatnie N dni, iteruje po stronach
+    // (max 20 stron żeby nie zawiesić), tworzy cost_invoices dla nowych
+    // (dedup po ksef_number). Zwraca JSON statystyk.
+    //
+    // Endpoint przeznaczony dla:
+    //  - przycisku "Pobierz teraz" w UI (manual)
+    //  - opcjonalnie cron uderzający w URL (z sesją web)
+    // -------------------------------------------------------------------------
+    public function syncKsefAuto(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') {
+            $this->jsonResp(['success' => false, 'error' => 'Brak sesji firmy.']);
+            return;
+        }
+
+        $days = max(1, min(90, (int)$this->request->getQuery('days', 7)));
+        $env  = (string)$this->request->getQuery('env', 'prod');
+        $env  = ($env === 'test') ? 'test' : 'prod';
+
+        $from = date('Y-m-d', strtotime('-' . $days . ' days'));
+        $to   = date('Y-m-d');
+
+        $CI = $this->fetchTable('CostInvoices');
+        $saved = 0;
+        $skipped = 0;
+        $errors = [];
+        $fetched = 0;
+
+        try {
+            $ksef = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+
+            // Pobierz wszystkie strony (max 20 — safeguard)
+            $maxPages = 20;
+            $page = 1;
+            $totalApi = null;
+
+            while ($page <= $maxPages) {
+                $queryParams = [
+                    'env'  => $env,
+                    'from' => $from,
+                    'to'   => $to,
+                    'page' => $page,
+                ];
+                $vm = $ksef->buildReceivedViewModel($companyId, $env, $queryParams);
+
+                $flash = $vm['flash'] ?? null;
+                if (is_array($flash) && ($flash['type'] ?? '') === 'error') {
+                    $errors[] = (string)($flash['message'] ?? 'Błąd KSeF');
+                    break;
+                }
+
+                $invoices = $vm['invoices'] ?? [];
+                if (empty($invoices)) {
+                    break;
+                }
+                $fetched += count($invoices);
+                if ($totalApi === null) {
+                    $totalApi = (int)($vm['apiInfo']['total'] ?? 0);
+                }
+
+                foreach ($invoices as $item) {
+                    $ksefNumber = trim((string)($item['ksef_number'] ?? ''));
+                    if ($ksefNumber === '') { $skipped++; continue; }
+
+                    // Dedup
+                    if ($CI->find()->where(['ksef_number' => $ksefNumber])->count() > 0) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $issueDate = $item['date'] ?? null;
+                    if ($issueDate instanceof \DateTimeInterface) {
+                        $issueDate = $issueDate->format('Y-m-d');
+                    } elseif ($issueDate) {
+                        $issueDate = substr((string)$issueDate, 0, 10);
+                    } else {
+                        $issueDate = null;
+                    }
+                    $accMonth = $issueDate ? substr($issueDate, 0, 7) : date('Y-m');
+
+                    $contractorName = '';
+                    $contractorNip  = '';
+                    if (isset($item['InvoiceContractors']) && is_array($item['InvoiceContractors'])) {
+                        $contractorName = (string)($item['InvoiceContractors']['name'] ?? '');
+                        $contractorNip  = (string)($item['InvoiceContractors']['tax_id'] ?? '');
+                    }
+
+                    $entity = $CI->newEntity([
+                        'source'           => 'ksef',
+                        'ksef_number'      => $ksefNumber,
+                        'invoice_number'   => (string)($item['fullnumber'] ?? ''),
+                        'contractor_name'  => $contractorName,
+                        'contractor_nip'   => $contractorNip,
+                        'issue_date'       => $issueDate,
+                        'receipt_date'     => date('Y-m-d'),
+                        'accounting_month' => $accMonth,
+                        'brutto'           => (float)($item['total'] ?? 0),
+                        'netto'            => 0.0,
+                        'vat'              => 0.0,
+                        'currency'         => strtoupper(trim((string)($item['currency'] ?? 'PLN'))) ?: 'PLN',
+                        'status'           => 'received',
+                        'ksef_raw_json'    => json_encode($item, JSON_UNESCAPED_UNICODE),
+                    ]);
+
+                    if ($CI->save($entity)) {
+                        $saved++;
+                    } else {
+                        $errors[] = 'Zapis ' . $ksefNumber . ': ' . json_encode($entity->getErrors(), JSON_UNESCAPED_UNICODE);
+                    }
+                }
+
+                // Jeśli mniej niż pełna strona — koniec
+                if (count($invoices) < 25) break;
+                $page++;
+            }
+        } catch (\Throwable $e) {
+            $errors[] = 'Wyjątek: ' . $e->getMessage();
+            Log::warning('[sync-ksef-auto] ' . $e->getMessage());
+        }
+
+        Log::info(sprintf(
+            '[sync-ksef-auto] company=%s env=%s range=%s..%s fetched=%d saved=%d skipped=%d errors=%d',
+            $companyId, $env, $from, $to, $fetched, $saved, count($errors)
+        ));
+
+        $this->jsonResp([
+            'success'  => count($errors) === 0,
+            'fetched'  => $fetched,
+            'saved'    => $saved,
+            'skipped'  => $skipped,
+            'errors'   => $errors,
+            'range'    => ['from' => $from, 'to' => $to, 'days' => $days],
+            'env'      => $env,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
     // Zapisz wybrane faktury z KSeF do bazy
     // -------------------------------------------------------------------------
     public function doImportKsef(): void

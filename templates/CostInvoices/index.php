@@ -34,14 +34,83 @@ $activeFilters = ($paymentState !== '' ? 1 : 0) + ($hasOrder !== '' ? 1 : 0)
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0 fw-semibold">Faktury kosztowe <span class="text-muted fs-6 fw-normal">od przewoźników</span></h4>
     <div class="d-flex gap-2">
+        <button type="button" id="btn-sync-ksef-auto" class="btn btn-sm btn-success"
+                title="Pobierz nowe faktury z KSeF (ostatnie 7 dni, z dedup)">
+            <i class="ri-refresh-line me-1"></i> Pobierz z KSeF (auto)
+        </button>
         <a href="<?= $this->Url->build(['action' => 'importKsef']) ?>" class="btn btn-sm btn-outline-primary">
-            <i class="ri-government-line me-1"></i> Importuj z KSeF
+            <i class="ri-government-line me-1"></i> Importuj z KSeF (ręcznie)
         </a>
         <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-primary">
             <i class="ri-add-line me-1"></i> Dodaj ręcznie
         </a>
     </div>
 </div>
+<div id="sync-result" class="mb-2"></div>
+
+<?php $this->append('scriptBottom'); ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('btn-sync-ksef-auto');
+    var resultBox = document.getElementById('sync-result');
+    if (!btn) return;
+    var csrfToken = '<?= h($this->request->getAttribute('csrfToken')) ?>';
+    var url = '<?= $this->Url->build(['action' => 'syncKsefAuto']) ?>';
+
+    btn.addEventListener('click', function() {
+        var days = prompt('Pobrać faktury z KSeF za ile dni wstecz?', '7');
+        if (days === null) return;
+        days = parseInt(days, 10);
+        if (!days || days < 1 || days > 90) {
+            alert('Zakres 1-90 dni.');
+            return;
+        }
+
+        btn.disabled = true;
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>pobieram…';
+        resultBox.innerHTML = '<div class="alert alert-info py-2"><i class="ri-loader-line me-1"></i> Pobieram z KSeF (do 20 stron, może chwilę potrwać)…</div>';
+
+        fetch(url + '?days=' + days, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, body: d }; }); })
+        .then(function(res) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            var d = res.body || {};
+            if (d.errors && d.errors.length) {
+                var html = '<div class="alert alert-warning py-2">';
+                html += '<i class="ri-alert-line me-1"></i>';
+                html += '<strong>Pobrano: ' + (d.fetched||0) + ' · Zapisano: ' + (d.saved||0) + ' · Pominięto: ' + (d.skipped||0) + '</strong>';
+                html += '<div class="small mt-1">Zakres: ' + (d.range?.from || '?') + ' → ' + (d.range?.to || '?') + ' (' + (d.env||'?') + ')</div>';
+                html += '<div class="small mt-2 text-danger">Błędy:<ul class="mb-0">';
+                d.errors.forEach(function(e) {
+                    var s = String(e).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    if (s.length > 200) s = s.substring(0, 200) + '…';
+                    html += '<li>' + s + '</li>';
+                });
+                html += '</ul></div></div>';
+                resultBox.innerHTML = html;
+            } else {
+                var msg = 'Pobrano ' + (d.fetched||0) + ', zapisano <strong>' + (d.saved||0) + '</strong>, pominięto (już w bazie) ' + (d.skipped||0);
+                resultBox.innerHTML = '<div class="alert alert-success py-2"><i class="ri-checkbox-circle-line me-1"></i>' + msg + '. Zakres: ' + (d.range?.from || '?') + ' → ' + (d.range?.to || '?') + '.</div>';
+                if ((d.saved||0) > 0) {
+                    setTimeout(function(){ location.reload(); }, 1500);
+                }
+            }
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            resultBox.innerHTML = '<div class="alert alert-danger py-2"><i class="ri-error-warning-line me-1"></i>Błąd: ' + e.message + '</div>';
+        });
+    });
+});
+</script>
+<?php $this->end(); ?>
 
 <!-- Mini-stats -->
 <div class="card shadow-sm mb-3">

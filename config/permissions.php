@@ -366,6 +366,7 @@ return [
                 'assignOrder', 'unassignOrder', 'setStatus',
                 'markPaid', 'unmarkPaid',
                 'addPayment', 'deletePayment', 'bankTxForCost',
+                'syncKsefAuto',
             ],
         ],
 
