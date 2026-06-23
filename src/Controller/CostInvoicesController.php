@@ -426,16 +426,15 @@ class CostInvoicesController extends AppController
     //  - przycisku "Pobierz teraz" w UI (manual)
     //  - opcjonalnie cron uderzający w URL (z sesją web)
     // -------------------------------------------------------------------------
-    public function syncKsefAuto(): void
+    public function syncKsefAuto(): \Cake\Http\Response
     {
-        $this->disableAutoRender();
         $this->request->allowMethod(['post']);
+        $this->viewBuilder()->disableAutoLayout();
 
         $identity  = $this->request->getAttribute('identity');
         $companyId = (string)($identity?->get('company_id') ?? '');
         if ($companyId === '') {
-            $this->jsonResp(['success' => false, 'error' => 'Brak sesji firmy.']);
-            return;
+            return $this->_jsonReturn(['success' => false, 'error' => 'Brak sesji firmy.']);
         }
 
         $days = max(1, min(90, (int)$this->request->getQuery('days', 7)));
@@ -548,7 +547,7 @@ class CostInvoicesController extends AppController
             $companyId, $env, $from, $to, $fetched, $saved, count($errors)
         ));
 
-        $this->jsonResp([
+        return $this->_jsonReturn([
             'success'  => count($errors) === 0,
             'fetched'  => $fetched,
             'saved'    => $saved,
@@ -557,6 +556,13 @@ class CostInvoicesController extends AppController
             'range'    => ['from' => $from, 'to' => $to, 'days' => $days],
             'env'      => $env,
         ]);
+    }
+
+    private function _jsonReturn(array $data): \Cake\Http\Response
+    {
+        return $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
     // -------------------------------------------------------------------------
@@ -1080,6 +1086,109 @@ class CostInvoicesController extends AppController
             'brutto'  => (float)$ci->brutto,
             'currency'=> (string)$ci->currency,
         ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Workflow FV: ustaw cost_status (1-9) + opcjonalnie payment_due_date,
+    // rejection_reason, notes. Analog do KsefAuthorizationsController::setInvoiceStatus.
+    // POST /koszty/set-cost-status
+    // -------------------------------------------------------------------------
+    public function setCostStatus(): void
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['post']);
+
+        $body = (array)$this->request->getData();
+        $id = (int)($body['id'] ?? 0);
+        $costStatus = (int)($body['cost_status'] ?? 0);
+        if ($id < 1 || $costStatus < 1 || $costStatus > 9) {
+            $this->jsonResp(['success' => false, 'error' => 'Nieprawidłowe parametry.']);
+            return;
+        }
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) {
+            $this->jsonResp(['success' => false, 'error' => 'Nie znaleziono faktury.']);
+            return;
+        }
+
+        $ci->set('cost_status', $costStatus);
+
+        // Przy akceptacji (4-6) ustaw payment_date jeśli puste — analogia do
+        // docs_received_at z received. W cost_invoices mamy już payment_date
+        // jako termin (deadline). Używamy go.
+        if ($costStatus >= 4 && $costStatus <= 6 && empty($ci->payment_date)) {
+            // Jeśli przyszedł payment_due_date w body — użyj go, inaczej +14 dni od dziś
+            $pdd = trim((string)($body['payment_due_date'] ?? ''));
+            if ($pdd === '') {
+                $pdd = date('Y-m-d', strtotime('+14 days'));
+            }
+            $ci->set('payment_date', $pdd);
+        } elseif (array_key_exists('payment_due_date', $body)) {
+            $pdd = trim((string)$body['payment_due_date']);
+            $ci->set('payment_date', $pdd !== '' ? $pdd : null);
+        }
+
+        if (array_key_exists('rejection_reason', $body)) {
+            $ci->set('rejection_reason', trim((string)$body['rejection_reason']) ?: null);
+        }
+        if (array_key_exists('notes', $body)) {
+            $ci->set('notes', trim((string)$body['notes']) ?: null);
+        }
+
+        if (!$CI->save($ci)) {
+            $this->jsonResp(['success' => false, 'error' => 'Błąd zapisu.', 'errors' => $ci->getErrors()]);
+            return;
+        }
+
+        $this->jsonResp([
+            'success'          => true,
+            'cost_status'      => $ci->cost_status,
+            'cost_status_label'=> self::costStatusLabel($ci->cost_status),
+            'payment_date'     => $ci->payment_date instanceof \DateTimeInterface
+                                    ? $ci->payment_date->format('Y-m-d')
+                                    : (string)($ci->payment_date ?? ''),
+        ]);
+    }
+
+    /**
+     * Słownik statusów workflow FV (1-9). Spójny z templates/KsefAuthorizations/received.php.
+     * @return array<int, string>
+     */
+    public static function costStatusLabels(): array
+    {
+        return [
+            1 => 'FV DO POTWIERDZENIA',
+            2 => 'FV OCZEKUJĄCA NA DOKUMENTY',
+            3 => 'FV GOTOWA DO AKCEPTACJI',
+            4 => 'FV ZAAKCEPTOWANA',
+            5 => 'FV DO OPŁACENIA',
+            6 => 'FV PRZETERMINOWANA',
+            7 => 'FV ODRZUCONA',
+            8 => 'FV WSTRZYMANA',
+            9 => 'FV DO WYJAŚNIENIA',
+        ];
+    }
+
+    public static function costStatusColors(): array
+    {
+        return [
+            1 => 'warning',
+            2 => 'orange',
+            3 => 'primary',
+            4 => 'success',
+            5 => 'info',
+            6 => 'danger',
+            7 => 'dark',
+            8 => 'secondary',
+            9 => 'warning',
+        ];
+    }
+
+    public static function costStatusLabel(int $s): string
+    {
+        return self::costStatusLabels()[$s] ?? '—';
     }
 
     // -------------------------------------------------------------------------

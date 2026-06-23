@@ -73,10 +73,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
         fetch(url + '?days=' + days, {
             method: 'POST',
-            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
         })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, body: d }; }); })
+        .then(function(r) {
+            return r.text().then(function(txt) {
+                var parsed;
+                try { parsed = JSON.parse(txt); } catch (e) {
+                    // Response nie jest JSON — pokaz surowy snippet zeby user zobaczyl
+                    var snippet = (txt || '').substring(0, 300);
+                    throw new Error('Niepoprawna odpowiedź serwera (nie JSON): ' + snippet);
+                }
+                return { ok: r.ok, body: parsed };
+            });
+        })
         .then(function(res) {
             btn.disabled = false;
             btn.innerHTML = orig;
