@@ -567,6 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var unmarkPaidUrl = '<?= $unmarkPaidUrl ?>';
     var getLinesUrl   = '<?= $getLinesUrl ?>';
     var saveLinesUrl  = '<?= $saveLinesUrl ?>';
+    var aiSuggestUrl  = '<?= $this->Url->build(['action' => 'aiSuggestLines', $invoice->id]) ?>';
     var addPaymentUrl    = '<?= $this->Url->build(['action' => 'addPayment', $invoice->id]) ?>';
     var bankTxUrl        = '<?= $this->Url->build(['action' => 'bankTxForCost', $invoice->id]) ?>';
     var deletePaymentBase = '<?= rtrim($this->Url->build(['action' => 'deletePayment']), '/') ?>';
@@ -676,15 +677,21 @@ document.addEventListener('DOMContentLoaded', function() {
             return '<option value="' + escHtml(c.id) + '" data-name="' + escHtml(c.name) + '">' + escHtml(c.name) + '</option>';
         }).join('');
 
-        var html = '<div class="alert alert-info py-2 small mb-3"><i class="ri-information-line me-1"></i> Każda pozycja może mieć kategorię i notę dekretacyjną. Wartości netto/VAT/brutto edytowalne.</div>';
+        var html = '<div class="alert alert-info py-2 small mb-2 d-flex align-items-center gap-2">'
+                 + '<i class="ri-information-line"></i>'
+                 + '<span>Każda pozycja może mieć kategorię i notę dekretacyjną.</span>'
+                 + '<button type="button" class="btn btn-sm btn-primary ms-auto" id="btn-ai-suggest-all">'
+                 +   '<i class="ri-sparkling-2-line me-1"></i>🪄 AI: zasugeruj kategorie'
+                 + '</button>'
+                 + '</div>';
         html += '<table class="table table-sm align-middle" id="dekretacjaTable"><thead class="table-light"><tr>'
               + '<th style="width:32px">#</th><th>Nazwa pozycji</th>'
               + '<th class="text-end" style="width:100px">Netto</th>'
               + '<th class="text-end" style="width:80px">VAT %</th>'
               + '<th class="text-end" style="width:100px">VAT</th>'
               + '<th class="text-end" style="width:100px">Brutto</th>'
-              + '<th style="width:180px">Kategoria</th>'
-              + '<th>Notatka</th><th style="width:40px"></th>'
+              + '<th style="width:200px">Kategoria</th>'
+              + '<th>Notatka</th><th style="width:60px"></th>'
               + '</tr></thead><tbody id="dekretacjaTbody"></tbody></table>';
         html += '<button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-line"><i class="ri-add-line me-1"></i>Dodaj pozycję</button>';
         html += '<input type="hidden" id="catOptionsBag" value="">';
@@ -711,7 +718,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 +     '<option value="">— wybierz —</option>' + catOptions
                 + '</select></td>'
                 + '<td><input type="text" class="form-control form-control-sm" name="note" value="' + escHtml(line.note || '') + '"></td>'
-                + '<td><button type="button" class="btn btn-xs btn-outline-danger btn-del-row" title="Usuń"><i class="ri-delete-bin-line"></i></button></td>';
+                + '<td class="text-nowrap">'
+                +   '<button type="button" class="btn btn-xs btn-outline-primary btn-ai-suggest-row me-1" title="🪄 AI: sugeruj kategorię dla tej pozycji">'
+                +     '<i class="ri-sparkling-2-line"></i>'
+                +   '</button>'
+                +   '<button type="button" class="btn btn-xs btn-outline-danger btn-del-row" title="Usuń">'
+                +     '<i class="ri-delete-bin-line"></i>'
+                +   '</button>'
+                + '</td>';
             tbody.appendChild(tr);
             // Ustaw selected na kategorii
             if (line.cost_category_id) {
@@ -725,8 +739,140 @@ document.addEventListener('DOMContentLoaded', function() {
 
         document.getElementById('btn-add-line').addEventListener('click', function() { addRow(); });
         tbody.addEventListener('click', function(ev) {
-            var btn = ev.target.closest('.btn-del-row');
-            if (btn) btn.closest('tr').remove();
+            var del = ev.target.closest('.btn-del-row');
+            if (del) { del.closest('tr').remove(); return; }
+            var sug = ev.target.closest('.btn-ai-suggest-row');
+            if (sug) {
+                ev.preventDefault();
+                aiSuggestForRow(sug.closest('tr'));
+            }
+        });
+
+        // Bulk: AI sugeruj dla wszystkich
+        var btnAll = document.getElementById('btn-ai-suggest-all');
+        if (btnAll) {
+            btnAll.addEventListener('click', function() {
+                aiSuggestAll();
+            });
+        }
+    }
+
+    function collectLinesFromForm() {
+        var rows = document.querySelectorAll('#dekretacjaTbody tr');
+        var out = [];
+        rows.forEach(function(tr, idx) {
+            var get = function(name) { var el = tr.querySelector('[name="' + name + '"]'); return el ? el.value : ''; };
+            out.push({
+                idx: idx,
+                name: get('name'),
+                net_amount: get('net_amount'),
+                vat_amount: get('vat_amount'),
+                gross_amount: get('gross_amount'),
+            });
+        });
+        return out;
+    }
+
+    function applySuggestion(tr, sug) {
+        // Ustaw select kategorii
+        var sel = tr.querySelector('select[name=cost_category_id]');
+        if (!sel) return;
+        if (sug.cost_category_id) {
+            sel.value = sug.cost_category_id;
+        } else if (sug.cost_category_name) {
+            // gdy AI zwróciło tylko nazwę — znajdź po data-name
+            for (var i = 0; i < sel.options.length; i++) {
+                if ((sel.options[i].dataset.name || sel.options[i].textContent.trim()) === sug.cost_category_name) {
+                    sel.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        // Wskazówka w notatce: confidence + reasoning (gdy puste)
+        var noteEl = tr.querySelector('input[name=note]');
+        if (noteEl && !noteEl.value.trim() && sug.reasoning) {
+            noteEl.value = '🪄 ' + sug.reasoning + ' (' + sug.confidence + '%)';
+        }
+        // Wizualne highlight
+        tr.style.background = '#ecfdf5';
+        setTimeout(function() { tr.style.background = ''; }, 1500);
+    }
+
+    function aiSuggestAll() {
+        var btn = document.getElementById('btn-ai-suggest-all');
+        var orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>AI analizuje…';
+
+        var lines = collectLinesFromForm();
+        var fd = new FormData();
+        lines.forEach(function(l, idx) {
+            Object.keys(l).forEach(function(k) {
+                fd.append('lines[' + idx + '][' + k + ']', l[k] === null || l[k] === undefined ? '' : l[k]);
+            });
+        });
+
+        fetch(aiSuggestUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function(r) { return r.text().then(function(txt) {
+            var d; try { d = JSON.parse(txt); } catch (e) { throw new Error('Nie JSON: ' + txt.substring(0, 100)); }
+            return d;
+        }); })
+        .then(function(d) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            if (!d.success) { showToast(d.error || 'Błąd AI', false); return; }
+            var rows = document.querySelectorAll('#dekretacjaTbody tr');
+            (d.suggestions || []).forEach(function(s) {
+                var tr = rows[s.line_index];
+                if (tr) applySuggestion(tr, s);
+            });
+            var msg = 'AI zasugerowało ' + (d.suggestions || []).length + ' kategorii';
+            if (d.history_count > 0) msg += ' · historia: ' + d.history_count + ' poprzednich dekretacji';
+            showToast(msg, true);
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            showToast('Błąd AI: ' + e.message, false);
+        });
+    }
+
+    function aiSuggestForRow(tr) {
+        // Wykonaj suggest dla jednej linii (przekazujemy tylko ją)
+        var get = function(name) { var el = tr.querySelector('[name="' + name + '"]'); return el ? el.value : ''; };
+        var fd = new FormData();
+        fd.append('lines[0][idx]', 0);
+        fd.append('lines[0][name]', get('name'));
+        fd.append('lines[0][net_amount]', get('net_amount'));
+        fd.append('lines[0][gross_amount]', get('gross_amount'));
+
+        var btn = tr.querySelector('.btn-ai-suggest-row');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span>'; }
+
+        fetch(aiSuggestUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ri-sparkling-2-line"></i>'; }
+            if (!d.success) { showToast(d.error || 'Błąd AI', false); return; }
+            var sug = (d.suggestions || [])[0];
+            if (sug) {
+                applySuggestion(tr, sug);
+                showToast('Sugestia: ' + sug.cost_category_name + ' (' + sug.confidence + '%)', true);
+            } else {
+                showToast('AI nie zaproponowało kategorii', 'warning');
+            }
+        })
+        .catch(function(e) {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ri-sparkling-2-line"></i>'; }
+            showToast('Błąd: ' + e.message, false);
         });
     }
 

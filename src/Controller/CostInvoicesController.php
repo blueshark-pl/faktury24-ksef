@@ -1304,6 +1304,180 @@ class CostInvoicesController extends AppController
         ]);
     }
 
+    /**
+     * AI-suggest dekretacji: dla każdej linii (lub jednej konkretnej) sugeruje
+     * kategorię kosztu na podstawie:
+     *  - nazwy pozycji
+     *  - kontrahenta (z faktury)
+     *  - HISTORII dekretacji tego kontrahenta (top 30 ostatnich linii)
+     *  - listy dostępnych kategorii
+     *
+     * POST /koszty/{id}/lines/ai-suggest
+     * body: { lines: [{name, net_amount?, ...}, ...], (opcjonalnie target_line_index) }
+     * Zwraca: { suggestions: [{line_index, cost_category_id?, cost_category_name, confidence, reasoning}] }
+     */
+    public function aiSuggestLines(int $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+
+        $CI = $this->fetchTable('CostInvoices');
+        $ci = $CI->find()->where(['id' => $id])->first();
+        if (!$ci) return $this->_jsonReturn(['success' => false, 'error' => 'Nie znaleziono faktury.']);
+
+        $body = (array)$this->request->getData();
+        $linesIn = is_array($body['lines'] ?? null) ? $body['lines'] : [];
+        if (empty($linesIn)) {
+            return $this->_jsonReturn(['success' => false, 'error' => 'Brak pozycji do analizy.']);
+        }
+
+        $companyId = $this->request->getAttribute('identity')?->get('company_id') ?? '';
+
+        // Aktywne kategorie dla tej firmy
+        $categories = [];
+        try {
+            $rows = $this->fetchTable('CostCategories')->find()
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('name')
+                ->select(['id', 'name', 'code'])
+                ->all();
+            foreach ($rows as $c) {
+                $categories[] = [
+                    'id'   => (string)$c->id,
+                    'name' => (string)$c->name,
+                    'code' => (string)($c->code ?? ''),
+                ];
+            }
+        } catch (\Throwable) { /* ignore */ }
+        if (empty($categories)) {
+            // Fallback
+            $categories = [
+                ['id' => '', 'name' => 'Towary',    'code' => 'towary'],
+                ['id' => '', 'name' => 'Materiały', 'code' => 'materialy'],
+                ['id' => '', 'name' => 'Usługi',    'code' => 'uslugi'],
+                ['id' => '', 'name' => 'Inne',      'code' => 'inne'],
+            ];
+        }
+
+        // Historia dekretacji tego kontrahenta (top 30 najnowszych linii z przypisaną kategorią)
+        $history = [];
+        try {
+            $nip = trim((string)$ci->contractor_nip);
+            if ($nip !== '') {
+                $db = $CI->getConnection();
+                $stmt = $db->execute(
+                    "SELECT cil.name, cil.cost_category_name, cil.net_amount
+                     FROM cost_invoice_lines cil
+                     JOIN cost_invoices ci2 ON ci2.id = cil.cost_invoice_id
+                     WHERE ci2.contractor_nip = ?
+                       AND cil.cost_category_name IS NOT NULL
+                       AND cil.cost_category_name != ''
+                     ORDER BY cil.modified DESC
+                     LIMIT 30",
+                    [$nip]
+                );
+                foreach ($stmt->fetchAll('assoc') as $r) {
+                    $history[] = [
+                        'name'     => (string)$r['name'],
+                        'category' => (string)$r['cost_category_name'],
+                    ];
+                }
+            }
+        } catch (\Throwable) { /* ignore */ }
+
+        $catNames = array_map(fn($c) => $c['name'], $categories);
+
+        // Krótka znormalizowana lista pozycji do analizy (max 20 linii)
+        $linesShort = [];
+        foreach (array_slice($linesIn, 0, 20) as $idx => $row) {
+            $linesShort[] = [
+                'idx'         => $idx,
+                'name'        => trim((string)($row['name'] ?? '')),
+                'net_amount'  => isset($row['net_amount']) ? (float)$row['net_amount'] : null,
+                'gross_amount'=> isset($row['gross_amount']) ? (float)$row['gross_amount'] : null,
+            ];
+        }
+
+        $system = <<<SYS
+Jesteś asystentem księgowym. Klasyfikujesz pozycje faktury kosztowej do
+zadanych KATEGORII (z listy). Zwracasz JSON.
+
+ZASADY:
+- Wybieraj wyłącznie z listy kategorii podanych w userze (pole "categories").
+- Jeśli historia tego kontrahenta wyraźnie wskazuje kategorię dla podobnej
+  nazwy pozycji — wybieraj ją (consistency).
+- Confidence (0-100): 90+ tylko gdy nazwa pozycji + historia dają jednoznaczne
+  dopasowanie. 50-80 gdy "prawdopodobne". <50 gdy zgaduję.
+- W "reasoning" 1 zdanie po polsku — dlaczego ta kategoria.
+- NIE zmyślaj kategorii spoza listy.
+
+ZWRÓĆ JSON:
+{
+  "suggestions": [
+    {"idx": <line_index>, "category_name": "<dokładnie z listy>", "confidence": 0..100, "reasoning": "krótko"}
+  ]
+}
+SYS;
+
+        $user = "Kontekst:\n";
+        $user .= "Kontrahent: " . (string)($ci->contractor_name ?? '?') . " (NIP " . (string)($ci->contractor_nip ?? '?') . ")\n";
+        $user .= "Waluta faktury: " . (string)($ci->currency ?? 'PLN') . "\n\n";
+        $user .= "Dostępne kategorie (wybierz dokładnie tę nazwę):\n";
+        foreach ($catNames as $n) { $user .= '- ' . $n . "\n"; }
+        $user .= "\n";
+
+        if (!empty($history)) {
+            $user .= "Historia dekretacji tego kontrahenta (przykłady — nazwa pozycji → kategoria):\n";
+            foreach (array_slice($history, 0, 15) as $h) {
+                $user .= '- "' . mb_substr($h['name'], 0, 80) . '" → ' . $h['category'] . "\n";
+            }
+            $user .= "\n";
+        }
+
+        $user .= "Pozycje do klasyfikacji (JSON):\n" . json_encode($linesShort, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            $result = $ai->chatJson($system, $user, 1200);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[cost-ai-suggest] ' . $e->getMessage());
+            return $this->_jsonReturn(['success' => false, 'error' => 'Błąd AI: ' . $e->getMessage()]);
+        }
+
+        $rawSuggestions = is_array($result['suggestions'] ?? null) ? $result['suggestions'] : [];
+
+        // Walidacja: kategoria musi istnieć w liście, znajdź ID
+        $catByName = [];
+        foreach ($categories as $c) {
+            $catByName[mb_strtolower($c['name'])] = $c;
+        }
+
+        $clean = [];
+        foreach ($rawSuggestions as $s) {
+            $idx = (int)($s['idx'] ?? -1);
+            if ($idx < 0) continue;
+            $catName = trim((string)($s['category_name'] ?? ''));
+            $key = mb_strtolower($catName);
+            if (!isset($catByName[$key])) {
+                // AI zwróciło nazwę spoza listy — odrzuć
+                continue;
+            }
+            $clean[] = [
+                'line_index'         => $idx,
+                'cost_category_id'   => $catByName[$key]['id'],
+                'cost_category_name' => $catByName[$key]['name'],
+                'confidence'         => max(0, min(100, (int)($s['confidence'] ?? 50))),
+                'reasoning'          => (string)($s['reasoning'] ?? ''),
+            ];
+        }
+
+        return $this->_jsonReturn([
+            'success'        => true,
+            'suggestions'    => $clean,
+            'history_count'  => count($history),
+            'categories_count' => count($categories),
+        ]);
+    }
+
     public function saveLines(int $id): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);

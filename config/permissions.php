@@ -367,6 +367,7 @@ return [
                 'markPaid', 'unmarkPaid',
                 'addPayment', 'deletePayment', 'bankTxForCost',
                 'syncKsefAuto', 'setCostStatus', 'getLines', 'saveLines',
+                'aiSuggestLines',
             ],
         ],
 
