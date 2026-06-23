@@ -1560,6 +1560,15 @@ class CostInvoicesController extends AppController
         $companyId = $this->request->getAttribute('identity')?->get('company_id');
         if (!$companyId) return $this->_jsonReturn(['success' => false, 'error' => 'Brak sesji.']);
 
+        // SpeedOrders nie ma company_id, tylko company_nip — musimy odczytać NIP firmy
+        $companyNip = '';
+        try {
+            $company = $this->fetchTable('Companies')->find()
+                ->where(['id' => $companyId])
+                ->select(['id', 'nip'])->first();
+            $companyNip = $company ? preg_replace('/\D/', '', (string)$company->nip) : '';
+        } catch (\Throwable) { /* ignore */ }
+
         $CI = $this->fetchTable('CostInvoices');
         $ci = $CI->find()->where(['id' => $id])->first();
         if (!$ci) return $this->_jsonReturn(['success' => false, 'error' => 'FK nie istnieje.']);
@@ -1575,8 +1584,13 @@ class CostInvoicesController extends AppController
             ->toArray();
 
         $Orders = $this->fetchTable('SpeedOrders');
-        $query = $Orders->find()
-            ->where(['SpeedOrders.company_id' => $companyId])
+        $query = $Orders->find();
+        // Filtr po NIP firmy (jeśli mamy go z sesji). speed_orders.company_nip
+        // ma różne formaty (PL5862378673 albo 5862378673) — sprawdzamy oba.
+        if ($companyNip !== '') {
+            $query->where(['SpeedOrders.company_nip IN' => [$companyNip, 'PL' . $companyNip]]);
+        }
+        $query
             ->select([
                 'SpeedOrders.id', 'SpeedOrders.symbol', 'SpeedOrders.date_doc', 'SpeedOrders.date_delivery',
                 'SpeedOrders.buyer_name', 'SpeedOrders.buyer_nip', 'SpeedOrders.place_from_name',
