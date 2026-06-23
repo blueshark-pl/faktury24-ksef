@@ -247,7 +247,8 @@ class CostInvoicesController extends AppController
         $invoice = $CI->get($id, contain: [
             'SpeedOrders',
             'CostInvoicePayments' => function ($q) {
-                return $q->orderByDesc('payment_date')->orderByDesc('created')
+                return $q->orderByDesc('CostInvoicePayments.payment_date')
+                         ->orderByDesc('CostInvoicePayments.created')
                          ->contain(['BankTransactions' => function ($qb) {
                              return $qb->select(['id', 'value_date', 'booking_date', 'amount', 'currency', 'party_name', 'title']);
                          }, 'Users' => function ($qu) {
@@ -695,7 +696,7 @@ class CostInvoicesController extends AppController
             ->contain(['Users' => function ($q) {
                 return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
             }])
-            ->orderByDesc('created')
+            ->orderByDesc('CostInvoiceNotes.created')
             ->limit(100)
             ->all();
 
@@ -1866,8 +1867,8 @@ SYS;
         // Wybierz najnowszą wpłatę żeby ustawić paid_at + method
         $latest = $CIP->find()
             ->where(['cost_invoice_id' => $costInvoiceId])
-            ->orderByDesc('payment_date')
-            ->orderByDesc('created')
+            ->orderByDesc('CostInvoicePayments.payment_date')
+            ->orderByDesc('CostInvoicePayments.created')
             ->first();
 
         $ci->set('paid_amount', round($totalPaid, 2));
