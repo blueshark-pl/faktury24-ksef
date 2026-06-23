@@ -45,6 +45,7 @@ class CostInvoicesController extends AppController
         $dateFrom     = trim((string)$this->request->getQuery('date_from', ''));     // issue_date >=
         $dateTo       = trim((string)$this->request->getQuery('date_to', ''));       // issue_date <=
         $contractorNip = trim((string)$this->request->getQuery('contractor_nip', ''));
+        $costStatusF  = (int)$this->request->getQuery('cost_status', 0); // 0 = wszystkie
         $page         = max(1, (int)$this->request->getQuery('page', 1));
         $limit        = 50;
         $today        = date('Y-m-d');
@@ -67,6 +68,7 @@ class CostInvoicesController extends AppController
         if ($contractorNip !== '') $query->where(['CostInvoices.contractor_nip' => $contractorNip]);
         if ($dateFrom !== '') $query->where(['CostInvoices.issue_date >=' => $dateFrom]);
         if ($dateTo   !== '') $query->where(['CostInvoices.issue_date <=' => $dateTo]);
+        if ($costStatusF >= 1 && $costStatusF <= 9) $query->where(['CostInvoices.cost_status' => $costStatusF]);
 
         // Stan płatności
         if ($paymentState === 'paid') {
@@ -154,8 +156,10 @@ class CostInvoicesController extends AppController
 
         $this->set(compact('invoices', 'total', 'page', 'pages', 'limit',
             'search', 'month', 'status', 'source', 'paymentState', 'hasOrder',
-            'dateFrom', 'dateTo', 'contractorNip',
+            'dateFrom', 'dateTo', 'contractorNip', 'costStatusF',
             'months', 'contractors', 'stats', 'orderCounts', 'today'));
+        $this->set('costStatusLabels', self::costStatusLabels());
+        $this->set('costStatusColors', self::costStatusColors());
     }
 
     /**
@@ -222,6 +226,9 @@ class CostInvoicesController extends AppController
         $this->request->allowMethod(['get']);
 
         $CI = $this->fetchTable('CostInvoices');
+        $this->set('costStatusLabels', self::costStatusLabels());
+        $this->set('costStatusColors', self::costStatusColors());
+
         $invoice = $CI->get($id, contain: [
             'SpeedOrders',
             'CostInvoicePayments' => function ($q) {

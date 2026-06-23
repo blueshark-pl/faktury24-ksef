@@ -5,12 +5,17 @@
  * @var int $total, $page, $pages, $limit
  * @var string $search, $month, $status, $source, $paymentState, $hasOrder
  * @var string $dateFrom, $dateTo, $contractorNip
+ * @var int $costStatusF
  * @var string[] $months
  * @var array $contractors
  * @var array $stats
  * @var array $orderCounts
+ * @var array $costStatusLabels  1..9 => label
+ * @var array $costStatusColors  1..9 => color (warning|primary|success|info|danger|dark|secondary|orange)
  * @var string $today
  */
+$csrfToken = $this->request->getAttribute('csrfToken');
+$setCostStatusUrl = $this->Url->build(['action' => 'setCostStatus']);
 $this->assign('title', 'Faktury kosztowe');
 
 $statusMap = [
@@ -56,6 +61,40 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!btn) return;
     var csrfToken = '<?= h($this->request->getAttribute('csrfToken')) ?>';
     var url = '<?= $this->Url->build(['action' => 'syncKsefAuto']) ?>';
+
+    // ── Dropdown cost_status — zmiana workflow przez AJAX ───────────
+    document.addEventListener('click', function(ev) {
+        var pick = ev.target.closest('.cost-status-pick');
+        if (!pick) return;
+        ev.preventDefault();
+        var newStatus = parseInt(pick.dataset.status, 10);
+        var id = parseInt(pick.dataset.costInvoiceId, 10);
+        if (!id || newStatus < 1 || newStatus > 9) return;
+
+        // Optymistyczna aktualizacja UI — toggle button w tym samym dropdown
+        var dropdown = pick.closest('.dropdown');
+        var toggle = dropdown?.querySelector('.cost-status-toggle');
+
+        fetch('<?= $setCostStatusUrl ?>', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ id: id, cost_status: newStatus })
+        })
+        .then(function(r) { return r.text().then(function(txt) {
+            var d; try { d = JSON.parse(txt); } catch (e) { throw new Error('Nie JSON: ' + txt.substring(0, 100)); }
+            return d;
+        }); })
+        .then(function(d) {
+            if (d.success) {
+                if (toggle) toggle.textContent = d.cost_status_label;
+                // Wymuś reload żeby badge + filtr + sort się odświeżyły
+                setTimeout(function(){ location.reload(); }, 400);
+            } else {
+                alert(d.error || 'Błąd zmiany statusu');
+            }
+        })
+        .catch(function(e) { alert('Błąd: ' + e.message); });
+    });
 
     btn.addEventListener('click', function() {
         var days = prompt('Pobrać faktury z KSeF za ile dni wstecz?', '7');
@@ -246,6 +285,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <option value="without" <?= $hasOrder === 'without' ? 'selected' : '' ?>>Bez zlecenia</option>
             </select>
         </div>
+        <div class="col-md-3">
+            <select name="cost_status" class="form-select form-select-sm">
+                <option value="">— Status FV (workflow) —</option>
+                <?php foreach ($costStatusLabels as $sv => $sl): ?>
+                <option value="<?= $sv ?>" <?= $costStatusF === $sv ? 'selected' : '' ?>><?= h($sl) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
         <div class="col-md-2 d-flex justify-content-end">
             <?php if ($search || $month || $status || $source || $paymentState || $hasOrder || $dateFrom || $dateTo || $contractorNip): ?>
             <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-sm btn-outline-secondary">
@@ -279,13 +326,14 @@ document.addEventListener('DOMContentLoaded', function() {
             <th>Płatność</th>
             <th>Źródło</th>
             <th>Status</th>
+            <th style="min-width:170px" title="Workflow FV (1-9): od 'Do potwierdzenia' do 'Do wyjaśnienia'">Status FV</th>
             <th>Zlec.</th>
             <th></th>
         </tr>
     </thead>
     <tbody>
     <?php if ($total === 0): ?>
-        <tr><td colspan="12" class="text-center text-muted py-4">
+        <tr><td colspan="13" class="text-center text-muted py-4">
             Brak faktur kosztowych. <a href="<?= $this->Url->build(['action' => 'importKsef']) ?>">Importuj z KSeF</a> lub
             <a href="<?= $this->Url->build(['action' => 'add']) ?>">dodaj ręcznie</a>.
         </td></tr>
@@ -368,6 +416,47 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>
                 <span class="badge <?= $st['cls'] ?>" style="font-size:.72rem"><?= $st['label'] ?></span>
             </td>
+            <!-- Status FV (workflow 1-9, dropdown jak w received) -->
+            <td>
+                <?php
+                $cs = (int)($inv->cost_status ?? 1);
+                $csLbl = $costStatusLabels[$cs] ?? '—';
+                $csCol = $costStatusColors[$cs] ?? 'secondary';
+                ?>
+                <div class="dropdown" data-cost-invoice-id="<?= (int)$inv->id ?>">
+                    <button type="button"
+                            class="btn btn-sm bg-<?= h($csCol) ?>-subtle text-<?= h($csCol) ?> border w-100 text-start dropdown-toggle cost-status-toggle"
+                            data-bs-toggle="dropdown"
+                            data-current-status="<?= $cs ?>"
+                            style="font-size:.68rem;line-height:1.2;padding:.18em .45em;white-space:normal"
+                            title="Kliknij aby zmienić status workflow">
+                        <?= h($csLbl) ?>
+                    </button>
+                    <ul class="dropdown-menu shadow-sm cost-status-dropdown" data-cost-invoice-id="<?= (int)$inv->id ?>">
+                        <?php foreach ($costStatusLabels as $sv => $sl):
+                            $sc = $costStatusColors[$sv] ?? 'secondary';
+                            $dotColor = match($sc) {
+                                'warning' => '#f59e0b', 'primary' => '#3b82f6',
+                                'success' => '#22c55e', 'info' => '#06b6d4',
+                                'danger' => '#ef4444', 'dark' => '#1f2937',
+                                'secondary' => '#6b7280', 'orange' => '#f97316',
+                                default => '#9ca3af',
+                            };
+                        ?>
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item d-flex align-items-center gap-2 cost-status-pick <?= $sv === $cs ? 'fw-semibold' : '' ?>"
+                                    data-status="<?= $sv ?>"
+                                    data-cost-invoice-id="<?= (int)$inv->id ?>"
+                                    style="font-size:.78rem">
+                                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $dotColor ?>"></span>
+                                <?= h($sl) ?>
+                            </button>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </td>
             <td class="text-center">
                 <?php if ($orderCount > 0): ?>
                     <span class="badge bg-primary-subtle text-primary border" title="Powiązanych zleceń"><?= $orderCount ?></span>
@@ -406,6 +495,7 @@ $keptForUrl = array_filter([
     'payment_state'  => $paymentState, 'has_order' => $hasOrder,
     'date_from'      => $dateFrom, 'date_to' => $dateTo,
     'contractor_nip' => $contractorNip,
+    'cost_status'    => $costStatusF >= 1 ? $costStatusF : null,
 ], fn($v) => $v !== '' && $v !== null);
 ?>
 <nav class="mt-3">

@@ -2,6 +2,8 @@
 /**
  * @var \App\View\AppView $this
  * @var \App\Model\Entity\CostInvoice $invoice
+ * @var array $costStatusLabels  1..9 => label
+ * @var array $costStatusColors  1..9 => color name
  */
 $this->assign('title', 'Faktura kosztowa ' . h($invoice->invoice_number ?: $invoice->ksef_number));
 
@@ -24,6 +26,12 @@ $setStatusUrl  = $this->Url->build(['action' => 'setStatus']);
 $unassignUrl   = $this->Url->build(['action' => 'unassignOrder']);
 $markPaidUrl   = $this->Url->build(['action' => 'markPaid']);
 $unmarkPaidUrl = $this->Url->build(['action' => 'unmarkPaid']);
+$setCostStatusUrl = $this->Url->build(['action' => 'setCostStatus']);
+
+// Workflow FV
+$cs    = (int)($invoice->cost_status ?? 1);
+$csLbl = $costStatusLabels[$cs] ?? '—';
+$csCol = $costStatusColors[$cs] ?? 'secondary';
 
 // Helpery płatności
 $paidAmount = (float)($invoice->paid_amount ?? 0);
@@ -66,6 +74,9 @@ $methodLabels = [
         <?= h($invoice->invoice_number ?: '(brak numeru)') ?>
     </h4>
     <span class="badge <?= $st['cls'] ?>"><?= $st['label'] ?></span>
+    <span class="badge bg-<?= h($csCol) ?>-subtle text-<?= h($csCol) ?> border" title="Workflow FV (status operatora)">
+        <i class="ri-flow-chart me-1"></i><?= h($csLbl) ?>
+    </span>
     <span class="badge <?= $src['cls'] ?>"><i class="<?= $src['icon'] ?> me-1"></i><?= $src['label'] ?></span>
     <div class="ms-auto d-flex gap-2">
         <?php if ($st['next']): ?>
@@ -135,6 +146,73 @@ $methodLabels = [
                 <tr><th class="ps-3">Brutto</th><td class="fw-bold"><?= $fnum($invoice->brutto) ?> <?= h($invoice->currency) ?></td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+</div>
+
+<!-- Workflow FV (status operatora) -->
+<div class="col-12">
+<div class="card border-<?= h($csCol) ?>-subtle">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="ri-flow-chart text-<?= h($csCol) ?>"></i>
+        Status FV (workflow)
+        <span class="badge bg-<?= h($csCol) ?>-subtle text-<?= h($csCol) ?> border ms-2"><?= h($csLbl) ?></span>
+        <div class="ms-auto">
+            <div class="dropdown" id="costStatusDropdown" data-cost-invoice-id="<?= (int)$invoice->id ?>">
+                <button type="button"
+                        class="btn btn-sm btn-outline-<?= h($csCol) ?> dropdown-toggle"
+                        data-bs-toggle="dropdown" data-current-status="<?= $cs ?>">
+                    <i class="ri-edit-line me-1"></i> Zmień status
+                </button>
+                <ul class="dropdown-menu shadow-sm">
+                    <?php foreach ($costStatusLabels as $sv => $sl):
+                        $sc = $costStatusColors[$sv] ?? 'secondary';
+                        $dotColor = match($sc) {
+                            'warning' => '#f59e0b', 'primary' => '#3b82f6',
+                            'success' => '#22c55e', 'info' => '#06b6d4',
+                            'danger' => '#ef4444', 'dark' => '#1f2937',
+                            'secondary' => '#6b7280', 'orange' => '#f97316',
+                            default => '#9ca3af',
+                        };
+                    ?>
+                    <li>
+                        <button type="button"
+                                class="dropdown-item d-flex align-items-center gap-2 cost-status-pick <?= $sv === $cs ? 'fw-semibold' : '' ?>"
+                                data-status="<?= $sv ?>" data-cost-invoice-id="<?= (int)$invoice->id ?>">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $dotColor ?>"></span>
+                            <?= h($sl) ?>
+                            <?php if ($sv === $cs): ?><i class="ri-check-line ms-auto text-success"></i><?php endif; ?>
+                        </button>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="card-body py-2 px-3">
+        <?php if ($cs == 7 && !empty($invoice->rejection_reason)): ?>
+            <div class="alert alert-dark py-2 small mb-0">
+                <strong><i class="ri-error-warning-line me-1"></i>Powód odrzucenia:</strong> <?= h($invoice->rejection_reason) ?>
+            </div>
+        <?php elseif ($cs == 7): ?>
+            <div class="text-muted small fst-italic">Faktura odrzucona. Podaj powód:</div>
+            <form id="rejectionReasonForm" class="d-flex gap-2 mt-1">
+                <input type="text" name="rejection_reason" class="form-control form-control-sm" placeholder="Powód odrzucenia…">
+                <button type="submit" class="btn btn-sm btn-dark"><i class="ri-save-line"></i> Zapisz</button>
+            </form>
+        <?php elseif ($cs >= 4 && $cs <= 6 && $pdStr): ?>
+            <div class="text-muted small">
+                <i class="ri-calendar-check-line me-1"></i>
+                Termin płatności: <strong><?= h($pdStr) ?></strong>
+                <?php if ($daysOverdue > 0): ?>
+                    <span class="badge bg-danger ms-1">+<?= $daysOverdue ?> dni</span>
+                <?php elseif ($daysToDue !== null): ?>
+                    <span class="badge bg-info-subtle text-info border ms-1">za <?= $daysToDue ?> dni</span>
+                <?php endif; ?>
+            </div>
+        <?php else: ?>
+            <div class="text-muted small fst-italic">Wybierz status workflow z dropdown po prawej.</div>
+        <?php endif; ?>
     </div>
 </div>
 </div>
@@ -477,6 +555,63 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast(data.error || 'Błąd', false);
                 }
             }).catch(function(e) { showToast('Błąd: ' + e.message, false); });
+        });
+    }
+
+    // ── Workflow FV — zmiana cost_status przez AJAX
+    document.addEventListener('click', function(ev) {
+        var pick = ev.target.closest('.cost-status-pick');
+        if (!pick) return;
+        ev.preventDefault();
+        var newStatus = parseInt(pick.dataset.status, 10);
+        var id = parseInt(pick.dataset.costInvoiceId, 10);
+        if (!id || newStatus < 1 || newStatus > 9) return;
+
+        // Jeśli wybrano 7 (Odrzucona) — zapytaj o powód
+        var payload = { id: id, cost_status: newStatus };
+        if (newStatus === 7) {
+            var reason = prompt('Powód odrzucenia faktury:', '');
+            if (reason === null) return;
+            payload.rejection_reason = reason;
+        }
+
+        fetch(setCostStatusUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(payload)
+        })
+        .then(function(r) { return r.text().then(function(txt) {
+            var d; try { d = JSON.parse(txt); } catch (e) { throw new Error('Nie JSON: ' + txt.substring(0, 100)); }
+            return d;
+        }); })
+        .then(function(d) {
+            if (d.success) {
+                showToast('Status zmieniony: ' + d.cost_status_label, true);
+                setTimeout(function(){ location.reload(); }, 500);
+            } else {
+                showToast(d.error || 'Błąd', false);
+            }
+        })
+        .catch(function(e) { showToast('Błąd: ' + e.message, false); });
+    });
+
+    // ── Form powodu odrzucenia (gdy cost_status = 7 i brak reason)
+    var rejForm = document.getElementById('rejectionReasonForm');
+    if (rejForm) {
+        rejForm.addEventListener('submit', function(ev) {
+            ev.preventDefault();
+            var reason = ev.target.elements.rejection_reason.value.trim();
+            if (!reason) return;
+            fetch(setCostStatusUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ id: invoiceId, cost_status: 7, rejection_reason: reason })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) location.reload();
+                else showToast(d.error || 'Błąd', false);
+            });
         });
     }
 

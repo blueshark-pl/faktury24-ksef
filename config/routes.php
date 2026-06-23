@@ -47,6 +47,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/koszty/{id}/bank-transactions', ['controller' => 'CostInvoices', 'action' => 'bankTxForCost'])
             ->setPass(['id'])->setPatterns(['id' => '\d+']);
         $builder->post('/koszty/sync-ksef-auto', 'CostInvoices::syncKsefAuto');
+        $builder->post('/koszty/set-cost-status', 'CostInvoices::setCostStatus');
         $builder->connect('/koszty/add', ['controller' => 'CostInvoices', 'action' => 'add']);
         $builder->connect('/koszty/edit/{id}', ['controller' => 'CostInvoices', 'action' => 'edit'])->setPass(['id']);
         $builder->post('/koszty/delete/{id}', ['controller' => 'CostInvoices', 'action' => 'delete'])->setPass(['id']);

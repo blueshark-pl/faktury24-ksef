@@ -330,7 +330,9 @@ Migracje: `20260409160000_CreateCostInvoices.php` + `20260622100000_AddPaymentFi
 | `accounting_month` | string(7) | YYYY-MM |
 | `netto` / `vat` / `brutto` | decimal(12,2) | kwoty |
 | `currency` | string(5) | domyślnie PLN |
-| `status` | string(20) | `received` / `verified` / `paid` |
+| `status` | string(20) | `received` / `verified` / `paid` (stan księgowy) |
+| `cost_status` | tinyint(3) | **workflow operatora 1-9** (analog z `ksef_invoice_statuses`): 1=Do potwierdzenia, 2=Oczekuje na dok., 3=Gotowa, 4=Zaakceptowana, 5=Do opłacenia, 6=Przeterminowana, 7=Odrzucona, 8=Wstrzymana, 9=Do wyjaśnienia |
+| `rejection_reason` | string(512) | Powód odrzucenia (gdy cost_status=7) |
 | `pdf_path` / `xml_path` | string(500) | ścieżki plików |
 | `ksef_raw_json` | text | raw payload z KSeF API |
 | `notes` | text | uwagi |
