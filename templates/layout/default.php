@@ -101,6 +101,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
       .nav-pills.tab-style-7 .nav-link { cursor: pointer; }
       .nav-pills.tab-style-7 .nav-item { cursor: pointer; }
 
+      /* Tabela pozycji (faktury/korekty): długa nazwa produktu w Select2 nie może
+         rozpychać kolumny i ukrywać pozostałych komórek. min-width:0 pozwala elementom
+         flex się kurczyć, a max-width ogranicza kontener Select2 do szerokości komórki. */
+      .item-row .d-flex { min-width: 0; }
+      .item-product-select + .select2-container { max-width: 100%; min-width: 0; }
+      .item-row .select2-selection__rendered { overflow: hidden; text-overflow: ellipsis; }
+
       /* Zawsze widoczny scrollbar poziomy w table-responsive */
       .table-responsive {
         overflow-x: scroll !important;
