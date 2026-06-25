@@ -244,7 +244,7 @@ $gtuSelectHtml .= '</select>';
               $psel.find('option').remove();
               $psel.append(opt).trigger('change');
             }
-            if (typeof rowCalc === 'function') { rowCalc($tr); }
+            if (typeof window.rowCalc === 'function') { window.rowCalc($tr); }
           } catch (e) { console.warn('Prefill row error', e); }
         }
         // fill first row, add remaining via addItemRow()
@@ -254,7 +254,7 @@ $gtuSelectHtml .= '</select>';
           var $newTr = (typeof window.addItemRow === 'function') ? window.addItemRow() : null;
           if ($newTr && $newTr.length) { fillRow($newTr, items[i]); }
         }
-        if (typeof allCalc === 'function') { allCalc(); }
+        if (typeof window.allCalc === 'function') { window.allCalc(); }
       }
     } catch (e) { console.warn('Original prefill failed', e); }
     }, 0);
@@ -2483,6 +2483,9 @@ $('#gus-fetch-btn').on('click', function(){
     // render amount in words
     if (typeof renderAmountInWords === 'function') renderAmountInWords();
   }
+  // Udostępnij funkcje liczące dla bloku prefillu wierszy (jest w innym domknięciu).
+  window.rowCalc = rowCalc;
+  window.allCalc = allCalc;
   function guardMinRows(){
     var rows = countItemRows();
     $itemsBody.find('.btn-remove').prop('disabled', rows <= 1).attr('title', rows <= 1 ? 'Musi pozostać co najmniej 1 pozycja' : 'Usuń');
