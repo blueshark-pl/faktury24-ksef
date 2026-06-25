@@ -695,6 +695,9 @@ $gtuSelectHtml .= '</select>';
                 </div>
 
                 <!-- ODBIORCA (opcjonalny) -->
+                <div class="mt-2" id="recipient-add-wrap"<?= !empty($invoice->invoice_recipient->name) ? ' style="display:none;"' : '' ?>>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line me-1"></i> Dodaj odbiorcę (inny podmiot)</button>
+                </div>
                 <div id="recipient-snapshot" class="mt-3 border rounded p-2"<?= !empty($invoice->invoice_recipient->name) ? '' : ' style="display:none;"' ?>>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-semibold">Odbiorca</span>
@@ -886,7 +889,7 @@ $gtuSelectHtml .= '</select>';
 ?>
 <tr class="item-row" draggable="true">
   <td>
-    <div class="d-flex align-items-center gap-1">
+    <div class="align-items-center gap-1">
       <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
       <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
     </div>
@@ -895,7 +898,7 @@ $gtuSelectHtml .= '</select>';
   <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
   <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
   <td>
-    <div class="d-flex align-items-center gap-1">
+    <div class="align-items-center gap-1">
       <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
       <select name="items[<?= (int)$__i ?>][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
         <option value="net"<?= $__pm === 'net' ? ' selected' : '' ?>>Netto</option>
@@ -919,7 +922,7 @@ $gtuSelectHtml .= '</select>';
 <?php else: ?>
                 <!-- pierwszy (wymagany) wiersz -->
                   <tr class="item-row" draggable="true">
-  <td>
+  <td style="width:260px;">
       <div class="d-flex align-items-center gap-1">
         <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
         <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
@@ -2267,6 +2270,12 @@ $(function () {
   }
 
   // ===== Odbiorca (modal + snapshot) =====
+  $('#recipient-add-btn').on('click', function(){
+    $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
+    $('#recipient-country').val('PL');
+    $('#recipient-rola').val('2');
+    $('#recipient-create-modal').modal('show');
+  });
   $('#recipient-save-btn').on('click', function(){
     var data = {
       name:$('#recipient-name').val()||'', nip:$('#recipient-nip').val()||'',
@@ -2279,6 +2288,7 @@ $(function () {
       if ($t.length) $t.val(data[k]).trigger('change');
     });
     $('#recipient-snapshot').slideDown(120);
+    $('#recipient-add-wrap').hide();
     $('#recipient-create-modal').modal('hide');
   });
   $('#recipient-edit-btn').on('click', function(){

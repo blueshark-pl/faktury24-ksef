@@ -389,6 +389,9 @@ $gtuSelectHtml .= '</select>';
                 </div>
 
                 <!-- ODBIORCA (opcjonalny) -->
+                <div class="mt-2" id="recipient-add-wrap"<?= !empty($invoice->invoice_recipient->name) ? ' style="display:none;"' : '' ?>>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line me-1"></i> Dodaj odbiorcę (inny podmiot)</button>
+                </div>
                 <div id="recipient-snapshot" class="mt-3 border rounded p-2"<?= !empty($invoice->invoice_recipient->name) ? '' : ' style="display:none;"' ?>>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-semibold">Odbiorca</span>
@@ -1771,6 +1774,12 @@ $(function () {
   }
 
   // ===== Odbiorca (modal + snapshot) =====
+  $('#recipient-add-btn').on('click', function(){
+    $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
+    $('#recipient-country').val('PL');
+    $('#recipient-rola').val('2');
+    $('#recipient-create-modal').modal('show');
+  });
   $('#recipient-save-btn').on('click', function(){
     var data = {
       name:$('#recipient-name').val()||'', nip:$('#recipient-nip').val()||'',
@@ -1783,6 +1792,7 @@ $(function () {
       if ($t.length) $t.val(data[k]).trigger('change');
     });
     $('#recipient-snapshot').slideDown(120);
+    $('#recipient-add-wrap').hide();
     $('#recipient-create-modal').modal('hide');
   });
   $('#recipient-edit-btn').on('click', function(){
