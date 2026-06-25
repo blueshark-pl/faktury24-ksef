@@ -773,7 +773,7 @@ $gtuSelectHtml .= '</select>';
                 </div>
 
                 <!-- ODBIORCA (opcjonalny) -->
-                <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="display:none;">
+                <div id="recipient-snapshot" class="mt-3 border rounded p-2"<?= !empty($invoice->invoice_recipient->name) ? '' : ' style="display:none;"' ?>>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-semibold">Odbiorca</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-edit-btn"><i class="ri-edit-2-line"></i> Edytuj</button>

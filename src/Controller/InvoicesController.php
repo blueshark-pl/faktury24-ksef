@@ -1529,6 +1529,42 @@ public function addRental(): ?\Cake\Http\Response
     }
     return $this->handleAdd('rental', false);
 }
+
+/**
+ * Zwraca ID najnowszego dokumentu w łańcuchu korekt dla danej faktury.
+ * Kolejną korektę wystawiamy do AKTUALNEGO stanu (po ostatniej korekcie),
+ * a nie do faktury pierwotnej — inaczej kolejna korekta miałaby błędne wartości
+ * (ilość/cena/netto/VAT/brutto sprzed wcześniejszych korekt).
+ * Idzie po łańcuchu parent_id → najnowsza korekta-dziecko, z zabezpieczeniem przed pętlą.
+ */
+private function resolveLatestCorrectionId(string $startId, string $companyId): string
+{
+    $current = $startId;
+    $seen = [$current => true];
+    for ($i = 0; $i < 50; $i++) {
+        $child = $this->Invoices->find()
+            ->select(['id'])
+            ->where([
+                'company_id' => $companyId,
+                'parent_id'  => $current,
+                'type'       => 'correction',
+            ])
+            ->orderDesc('created')
+            ->orderDesc('id')
+            ->first();
+        if (!$child) {
+            break;
+        }
+        $cid = (string)$child->id;
+        if (isset($seen[$cid])) {
+            break;
+        }
+        $seen[$cid] = true;
+        $current = $cid;
+    }
+    return $current;
+}
+
 /**
  * @param string $kind    Typ dokumentu: vat|currency|novat|advance|final|correction|margin|proforma|internal|internalEvidence|oss
  * @param bool   $noVat   Wymuś zerową stawkę VAT — przekazywane TYLKO przez addNoVat(). Dla pozostałych typów zawsze false.
@@ -1566,9 +1602,13 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 $pass = (array)$this->request->getParam('pass', []);
                 $origId = $pass[0] ?? $this->request->getQuery('parent_id') ?? $this->request->getQuery('original_id') ?? $this->request->getQuery('id');
                 if (!empty($origId)) {
+                    // Kolejna korekta bazuje na NAJNOWSZEJ korekcie (aktualny stan pozycji po
+                    // poprzednich korektach), nie na fakturze pierwotnej.
+                    $origId = $this->resolveLatestCorrectionId((string)$origId, (string)$companyId);
                     $original = $Invoices->find()
                         ->contain([
                             'InvoiceContractors',
+                            'InvoiceRecipients',
                             'InvoiceContents' => ['Vats'],
                             'InvoiceNewTransports',
                             'InvoiceCharges',
@@ -1598,8 +1638,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                                 $invoice->set($__f, $__v);
                             }
                         }
-                        // Prefill relacji FA(3) (transport WDT, opłaty, rachunki faktora, podmioty, pozycje zamówienia)
+                        // Prefill relacji FA(3) (odbiorca/inny podmiot, transport WDT, opłaty,
+                        // rachunki faktora, podmioty upoważnione, pozycje zamówienia).
                         foreach ([
+                            'invoice_recipient',
                             'invoice_new_transports', 'invoice_charges', 'invoice_factor_banks',
                             'invoice_authorized_entities', 'invoice_order_lines',
                         ] as $__rel) {
