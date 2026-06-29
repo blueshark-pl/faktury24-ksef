@@ -517,7 +517,8 @@ $gtuSelectHtml .= '</select>';
   <div class="alert alert-info d-flex align-items-center" role="alert">
     <i class="ri-information-line me-2 fs-18"></i>
     <div>
-      Korekta do faktury: <strong><?= h($original->fullnumber ?? ('#'.$original->id)) ?></strong>
+      <?php $__corrDoc = $correctedOriginal ?? $original; ?>
+      Korekta do faktury pierwotnej: <strong><?= h($__corrDoc->fullnumber ?? ('#'.$__corrDoc->id)) ?></strong>
       z dnia <?= h($original->date ? $original->date->format('Y-m-d') : '') ?>.
     </div>
   </div>

@@ -145,7 +145,8 @@ $gtuSelectHtml .= '</select>';
   <div class="alert alert-info d-flex align-items-center" role="alert">
     <i class="ri-information-line me-2 fs-18"></i>
     <div>
-      Wystawiasz korektę do faktury: <strong><?= h($original->fullnumber ?? (string)$original->id) ?></strong>
+      <?php $__corrDoc = $correctedOriginal ?? $original; ?>
+      Wystawiasz korektę do faktury pierwotnej: <strong><?= h($__corrDoc->fullnumber ?? (string)$__corrDoc->id) ?></strong>
       z dnia <strong><?= h($original->date ?? $original->sold_date ?? '') ?></strong>.
       Dane kontrahenta, waluty i pozycji zostaną wstępnie uzupełnione.
     </div>

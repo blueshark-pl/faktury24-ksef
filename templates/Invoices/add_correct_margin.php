@@ -416,7 +416,8 @@ $gtuSelectHtml .= '</select>';
           <?php if (isset($original)): ?>
           <div class="alert alert-info mb-3">
             <i class="ri-information-line me-1"></i>
-            Korekta do dokumentu: <strong><?= h($original->fullnumber ?? $original->id) ?></strong>
+            <?php $__corrDoc = $correctedOriginal ?? $original; ?>
+            Korekta do faktury pierwotnej: <strong><?= h($__corrDoc->fullnumber ?? $__corrDoc->id) ?></strong>
           </div>
           <?php endif; ?>
           <div class="row g-3 align-items-start">

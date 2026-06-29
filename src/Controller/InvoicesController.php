@@ -1652,6 +1652,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         }
                         // Pass original to the view to prefill form and items
                         $this->set('original', $original);
+                        // Faktura PIERWOTNA (korzeń łańcucha) — do nagłówka „korekta do dokumentu".
+                        // Wartości formularza bazują na ostatniej korekcie ($original), ale dokumentem
+                        // korygowanym wg broszury jest faktura pierwotna.
+                        try {
+                            $this->set('correctedOriginal', $this->resolveRootOriginalInvoice($original, $Invoices));
+                        } catch (\Throwable) {
+                            $this->set('correctedOriginal', $original);
+                        }
                     }
                 }
             } catch (\Throwable $e) { /* ignore */ }
@@ -7660,6 +7668,40 @@ private function makeClient(string $environment): KsefClient
         }
     }
 
+/**
+ * Zwraca fakturę PIERWOTNĄ (korzeń łańcucha korekt) dla danego rodzica.
+ * Idzie w górę po parent_id dopóki natrafia na korektę (type='correction').
+ * Pierwsza faktura niebędąca korektą = pierwotna (do DaneFaKorygowanej wg broszury „(pierwotnej)").
+ * Gdy rodzic sam nie jest korektą (1. korekta) — zwraca rodzica.
+ */
+private function resolveRootOriginalInvoice(Invoice $parent, \App\Model\Table\InvoicesTable $Invoices): Invoice
+{
+    $current = $parent;
+    $seen = [(string)$current->id => true];
+    for ($i = 0; $i < 50; $i++) {
+        if ((string)($current->type ?? '') !== 'correction') {
+            break; // to już faktura pierwotna
+        }
+        if (empty($current->parent_id)) {
+            break;
+        }
+        $pid = (string)$current->parent_id;
+        if (isset($seen[$pid])) {
+            break;
+        }
+        $next = $Invoices->find()
+            ->select(['id', 'type', 'parent_id', 'fullnumber', 'date', 'ksef_number'])
+            ->where(['id' => $pid])
+            ->first();
+        if (!$next) {
+            break;
+        }
+        $seen[$pid] = true;
+        $current = $next;
+    }
+    return $current;
+}
+
 private function enrichInvoiceFromParent(Invoice $inv): Invoice
 {
     if (empty($inv->parent_id)) {
@@ -7681,21 +7723,27 @@ private function enrichInvoiceFromParent(Invoice $inv): Invoice
 
     // 🔹 Korekty – KOR / KOR_ZAL / KOR_ROZ
     if (in_array($rodzaj, ['KOR', 'KOR_ZAL', 'KOR_ROZ'], true)) {
+        // ODWOŁANIE (DaneFaKorygowanej) → ZAWSZE faktura PIERWOTNA (korzeń łańcucha korekt),
+        // zgodnie z broszurą MF: NrFaKorygowanej/NrKSeFFaKorygowanej/DataWyst „(pierwotnej)".
+        // Nawet przy 2., 3. korekcie wskazujemy fakturę pierwotną, nie poprzednią korektę.
+        $root = $this->resolveRootOriginalInvoice($parent, $Invoices);
+
         // data wystawienia faktury pierwotnej
-        if (!isset($inv->original_issue_date) && isset($parent->date)) {
+        if (!isset($inv->original_issue_date) && isset($root->date)) {
             // dynamiczna właściwość na encji – nie musi być w DB
-            $inv->original_issue_date = $parent->date;
+            $inv->original_issue_date = $root->date;
         }
-// 🔹 TU: dorzucamy wiersze sprzed korekty
+        // WARTOŚCI „stanu przed korektą" → bezpośredni poprzednik ($parent = ostatnia korekta,
+        // lub pierwotna przy 1. korekcie). To ma odzwierciedlać stan tuż przed tą korektą.
         $inv->original_items = $parent->invoice_contents ?? [];
         // numer faktury pierwotnej
         if (!isset($inv->original_number)) {
-            $inv->original_number = $parent->fullnumber ?? $parent->id;
+            $inv->original_number = $root->fullnumber ?? $root->id;
         }
 
         // numer KSeF faktury pierwotnej (jeśli był wysłany)
-        if (!isset($inv->original_ksef_number) && !empty($parent->ksef_number)) {
-            $inv->original_ksef_number = $parent->ksef_number;
+        if (!isset($inv->original_ksef_number) && !empty($root->ksef_number)) {
+            $inv->original_ksef_number = $root->ksef_number;
         }
 
         // P_15ZK – kwota przed korektą (brutto z faktury pierwotnej)
