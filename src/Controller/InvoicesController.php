@@ -5178,6 +5178,29 @@ private function makeClient(string $environment): KsefClient
             ['id' => $invoice->id]
         );
 
+        // Zapisz ślad wysyłki w kolejce e-maili (status 'sent'), aby lista faktur
+        // pokazała status wysyłki. Ręczna wysyłka idzie bezpośrednio (nie przez
+        // processEmailQueue), więc wpis dokładamy tutaj — po odbiorcy.
+        try {
+            /** @var \App\Model\Table\InvoiceEmailQueueTable $Queue */
+            $Queue = $this->fetchTable('InvoiceEmailQueue');
+            $now   = new \DateTimeImmutable();
+            foreach ($emails as $addr) {
+                $entry = $Queue->newEntity([
+                    'invoice_id'   => (string)$invoice->id,
+                    'company_id'   => (string)$companyId,
+                    'email'        => $addr,
+                    'status'       => 'sent',
+                    'attempts'     => 1,
+                    'sent_at'      => $now,
+                    'scheduled_at' => $now->format('Y-m-d H:i:s'),
+                ]);
+                $Queue->save($entry);
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('[emailInvoice] Nie udało się zapisać statusu wysyłki (InvoiceEmailQueue): ' . $e->getMessage());
+        }
+
         return $this->response->withType('application/json')
             ->withStringBody(json_encode(['success' => true, 'sent_to' => $emails]));
     }
