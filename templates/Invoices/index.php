@@ -1107,19 +1107,38 @@ $__pageCount = (int)($__params['pageCount'] ?? 1);
 $__periodLabel = !empty($stats['filtered_period'])
     ? ('okres ' . h($stats['range_from']) . ' – ' . h($stats['range_to']))
     : 'bieżący rok';
+
+// „Suma widocznych faktur" — dokładnie suma total wierszy pasujących do aktywnych filtrów (1:1 z listą).
+$__visSums  = $stats['visible_sums'] ?? [];
+$__visCount = (int)($stats['visible_count'] ?? 0);
+$__visParts = [];
+foreach ($__visSums as $__c => $__v) {
+    $__visParts[] = $this->Number->format($__v, ['places' => 2]) . ' ' . h($__c);
+}
+$__visText   = $__visParts ? implode('  +  ', $__visParts) : '0,00';
+$__anyFilter = (!empty($q) || !empty($state) || !empty($from) || !empty($to) || !empty($currency));
 ?>
+<div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2 mt-4 mb-0 py-2">
+  <div>
+    <i class="ri-sum-line me-1"></i>
+    <strong>Suma widocznych faktur</strong>
+    <?php if ($__anyFilter): ?><span class="badge bg-primary-transparent ms-1">wg aktywnych filtrów</span><?php endif; ?>
+    <span class="text-muted ms-2 small">(<?= $__visCount ?> dok. — suma kolumny „Wartość", wszystkie typy)</span>
+  </div>
+  <div class="fs-16 fw-semibold"><?= $__visText ?></div>
+</div>
 <div class="row row-cols-xxl-5 row-cols-xl-3 row-cols-md-2 row-cols-1 mt-4">
   <div class="col">
     <div class="card custom-card">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between">
-          <span class="avatar avatar-md bg-primary text-white" data-bs-toggle="tooltip" title="Suma (<?= h($__periodLabel) ?>)">
+          <span class="avatar avatar-md bg-primary text-white" data-bs-toggle="tooltip" title="Przychód (<?= h($__periodLabel) ?>) — bez proform/zaliczek, korekty netowane">
             <i class="ri-file-list-3-line" style="font-size: 1.35rem;"></i>
           </span>
         </div>
         <div class="d-flex justify-content-between align-items-center flex-wrap">
           <div>
-            <span class="d-block mb-1 mt-2 text-muted">Suma (<?= h($__periodLabel) ?>)</span>
+            <span class="d-block mb-1 mt-2 text-muted">Przychód (<?= h($__periodLabel) ?>)</span>
             <div class="d-flex align-items-center gap-2">
               <h4 class="fw-medium mb-0"><?= h($stats['currency']) . ' ' . $this->Number->format($stats['year_total'] ?? 0, ['places' => 2]) ?></h4>
               <span class="badge bg-primary-transparent" title="Liczba dokumentów"><?= (int)($stats['year_count'] ?? 0) ?></span>

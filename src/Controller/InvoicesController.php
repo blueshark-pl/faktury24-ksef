@@ -703,40 +703,36 @@ public function index()
             ->where(['Invoices.company_id' => $companyId])
             ->where($this->nonDraftConditions());
 
-    if ($q !== '') {
-      $query->leftJoinWith('InvoiceContractors')
-            ->where(function($exp) use ($q) {
-                return $exp->or([
-                    'Invoices.fullnumber LIKE' => "%$q%",
-                    'InvoiceContractors.name LIKE' => "%$q%",
-                    'InvoiceContractors.nip LIKE' => "%$q%",
-                ]);
-            });
-    }
-    if ($state) {
-      $query->where(['Invoices.paymentstate' => $state]);
-    }
-    if ($currency) {
-      $query->where(['Invoices.currency' => strtoupper($currency)]);
-    }
-    if ($from) { $query->where(['Invoices.date >=' => $from]); }
-    if ($to)   { $query->where(['Invoices.date <=' => $to]); }
-    if ($emailStatus) {
-      if ($emailStatus === 'not_sent') {
-        // Faktury bez żadnych wysyłek
-        $subquery = $this->Invoices->InvoiceEmailQueue->find()
-            ->select(['invoice_id'])
-            ->distinct(['invoice_id']);
-        $query->where(['Invoices.id NOT IN' => $subquery]);
-      } else {
-        // Faktury które mają co najmniej jedną wysyłkę z danym statusem
-        $subquery = $this->Invoices->InvoiceEmailQueue->find()
-            ->select(['invoice_id'])
-            ->where(['InvoiceEmailQueue.status' => $emailStatus])
-            ->distinct(['invoice_id']);
-        $query->where(['Invoices.id IN' => $subquery]);
-      }
-    }
+    // Wspólne filtry listy — używane do zapytania listy ORAZ do „Sumy widocznych faktur",
+    // żeby podsumowanie zgadzało się 1:1 z tym, co realnie widać na liście.
+    $applyListFilters = function($qb) use ($q, $state, $currency, $from, $to, $emailStatus) {
+        if ($q !== '') {
+            $qb->leftJoinWith('InvoiceContractors')
+               ->where(function($exp) use ($q) {
+                   return $exp->or([
+                       'Invoices.fullnumber LIKE' => "%$q%",
+                       'InvoiceContractors.name LIKE' => "%$q%",
+                       'InvoiceContractors.nip LIKE' => "%$q%",
+                   ]);
+               });
+        }
+        if ($state)    { $qb->where(['Invoices.paymentstate' => $state]); }
+        if ($currency) { $qb->where(['Invoices.currency' => strtoupper($currency)]); }
+        if ($from)     { $qb->where(['Invoices.date >=' => $from]); }
+        if ($to)       { $qb->where(['Invoices.date <=' => $to]); }
+        if ($emailStatus) {
+            if ($emailStatus === 'not_sent') {
+                $sub = $this->Invoices->InvoiceEmailQueue->find()->select(['invoice_id'])->distinct(['invoice_id']);
+                $qb->where(['Invoices.id NOT IN' => $sub]);
+            } else {
+                $sub = $this->Invoices->InvoiceEmailQueue->find()->select(['invoice_id'])
+                    ->where(['InvoiceEmailQueue.status' => $emailStatus])->distinct(['invoice_id']);
+                $qb->where(['Invoices.id IN' => $sub]);
+            }
+        }
+        return $qb;
+    };
+    $applyListFilters($query);
 
     $invoices = $this->paginate($query, [
         'limit' => 20,
@@ -753,6 +749,31 @@ public function index()
             'InvoiceContractors.name',
         ],
     ]);
+
+    // „Suma widocznych faktur" — suma kolumny total WSZYSTKICH wierszy pasujących do aktywnych
+    // filtrów (1:1 z listą, wszystkie typy). Grupujemy po walucie (kwot w różnych walutach nie sumujemy).
+    $visibleSumQuery = $this->Invoices->find()
+        ->where(['Invoices.company_id' => $companyId])
+        ->where($this->nonDraftConditions());
+    $applyListFilters($visibleSumQuery);
+    $visibleSums = [];
+    $visibleCount = 0;
+    foreach (
+        $visibleSumQuery
+            ->select([
+                'cur' => 'Invoices.currency',
+                's'   => $visibleSumQuery->func()->sum('Invoices.total'),
+                'c'   => $visibleSumQuery->func()->count('*'),
+            ])
+            ->group(['Invoices.currency'])
+            ->enableHydration(false)
+            ->all()
+            ->toArray() as $r
+    ) {
+        $cur = (string)($r['cur'] ?: 'PLN');
+        $visibleSums[$cur] = round((float)($r['s'] ?? 0), 2);
+        $visibleCount += (int)($r['c'] ?? 0);
+    }
 
         // Linkage information for proformas (child advances/final)
         $advanceCounts = [];
@@ -870,14 +891,30 @@ $hasDateFilter = (!empty($from) || !empty($to));
 $rangeFrom = !empty($from) ? $from : $yearStart;
 $rangeTo   = !empty($to)   ? $to   : $today;
 $curFilter = !empty($currency) ? strtoupper((string)$currency) : null;
-// Dokłada okres (gdy ustawiony lub wymuszony) i walutę (gdy ustawiona) do warunków agregacji.
-$applyStatFilters = function(array $where, bool $forceDate = false) use ($hasDateFilter, $rangeFrom, $rangeTo, $curFilter): array {
+
+// Netowanie korekt: liczy się TYLKO finalna wartość (najnowsza korekta w łańcuchu).
+// parent_id korekty wskazuje korygowany dokument → zbiór skorygowanych zawiera oryginały
+// ORAZ korekty pośrednie (dalej skorygowane). Wykluczamy je z sum, zostają:
+// czyste faktury sprzedażowe (nieskorygowane) + najnowsze korekty (niebędące niczyim parentem).
+$correctedIds = $this->Invoices->find()
+    ->select(['parent_id'])
+    ->where(['company_id' => $companyId, 'type' => 'correction', 'parent_id IS NOT' => null])
+    ->distinct(['parent_id'])
+    ->enableHydration(false)
+    ->all()->extract('parent_id')->toArray();
+$correctedIdList = array_values(array_filter($correctedIds));
+
+// Dokłada okres (gdy ustawiony/wymuszony), walutę (gdy ustawiona) oraz netowanie korekt.
+$applyStatFilters = function(array $where, bool $forceDate = false) use ($hasDateFilter, $rangeFrom, $rangeTo, $curFilter, $correctedIdList): array {
     if ($hasDateFilter || $forceDate) {
         $where['Invoices.date >='] = $rangeFrom;
         $where['Invoices.date <='] = $rangeTo;
     }
     if ($curFilter !== null) {
         $where['Invoices.currency'] = $curFilter;
+    }
+    if (!empty($correctedIdList)) {
+        $where['Invoices.id NOT IN'] = $correctedIdList;
     }
     return $where;
 };
@@ -913,20 +950,26 @@ foreach ($currencies as $curr) {
         'overdue_count' => 0,
     ];
 
-    // Oblicz netto i brutto dla roku (wyklucz draft)
+    // Oblicz netto i brutto dla okresu (wyklucz draft).
+    // Netowanie korekt: bez proform/zaliczek, bez skorygowanych oryginałów i korekt pośrednich
+    // (id NOT IN correctedIdList) — zostają czyste faktury + najnowsze korekty (finalna wartość).
+    $ciWhere = [
+        'Invoices.company_id' => $companyId,
+        'Invoices.currency' => $curr,
+        'Invoices.date >='  => $rangeFrom,
+        'Invoices.date <='  => $rangeTo,
+        'Invoices.type NOT IN' => ['proforma', 'advance'],
+        'OR' => [
+            ['Invoices.workflow_status IS' => null],
+            ['Invoices.workflow_status !=' => 'draft']
+        ],
+    ];
+    if (!empty($correctedIdList)) {
+        $ciWhere['Invoices.id NOT IN'] = $correctedIdList;
+    }
     $yearInvoices = $this->Invoices->find()
         ->select(['id', 'total', 'netto', 'paymentstate', 'currency'])
-        ->where([
-            'Invoices.company_id' => $companyId,
-            'Invoices.currency' => $curr,
-            'Invoices.date >='  => $rangeFrom,
-            'Invoices.date <='  => $rangeTo,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
-            'OR' => [
-                ['Invoices.workflow_status IS' => null],
-                ['Invoices.workflow_status !=' => 'draft']
-            ],
-        ])
+        ->where($ciWhere)
         ->enableHydration(false)
         ->all();
 
@@ -973,41 +1016,23 @@ $stats = [
     'filtered_period'  => $hasDateFilter,
     'range_from'       => $hasDateFilter ? $rangeFrom : null,
     'range_to'         => $hasDateFilter ? $rangeTo : null,
+    // „Suma widocznych faktur" — 1:1 z aktualnie przefiltrowaną listą (per waluta).
+    'visible_sums'     => $visibleSums,
+    'visible_count'    => $visibleCount,
 
-    // Suma w okresie (domyślnie bieżący rok; przy filtrze from/to — wybrany zakres):
-    // - faktury zwykłe (bez proform, zaliczek, korekt) które NIE mają korekty → ich pełna kwota
-    // - faktury zwykłe które MAJĄ korektę → pominięte (zastąpione przez kwotę korekty)
-    // - korekty → ich kwota (już po zmianie)
-    'year_total'       => (function() use ($sum, $companyId, $rangeFrom, $rangeTo, $curFilter, $ndraft): float {
-        $T    = \Cake\ORM\TableRegistry::getTableLocator()->get('Invoices');
-        $conn = $T->getConnection();
-        $correctedIds = $conn->execute(
-            'SELECT DISTINCT parent_id FROM invoices WHERE company_id = ? AND type = ? AND parent_id IS NOT NULL',
-            [$companyId, 'correction']
-        )->fetchAll('assoc');
-        $correctedIdList = array_column($correctedIds, 'parent_id');
-
-        $baseWhere = [
+    // Przychód w okresie (domyślnie bieżący rok; przy filtrze from/to — wybrany zakres).
+    // Netowanie korekt: bez proform/zaliczek, bez skorygowanych oryginałów i korekt pośrednich —
+    // zostają czyste faktury + najnowsze korekty (finalna wartość). Korekta do 0 zł → wnosi 0.
+    'year_total'       => (function() use ($sum, $companyId, $rangeFrom, $rangeTo, $curFilter, $ndraft, $correctedIdList): float {
+        $where = [
             'Invoices.company_id'  => $companyId,
             'Invoices.date >='     => $rangeFrom,
             'Invoices.date <='     => $rangeTo,
-            'Invoices.type NOT IN' => ['correction', 'proforma', 'advance'],
+            'Invoices.type NOT IN' => ['proforma', 'advance'],
         ] + $ndraft;
-        if ($curFilter !== null) { $baseWhere['Invoices.currency'] = $curFilter; }
-        if (!empty($correctedIdList)) { $baseWhere['Invoices.id NOT IN'] = $correctedIdList; }
-
-        $sumBase = $sum($baseWhere);
-
-        $corrWhere = [
-            'Invoices.company_id' => $companyId,
-            'Invoices.date >='    => $rangeFrom,
-            'Invoices.date <='    => $rangeTo,
-            'Invoices.type'       => 'correction',
-        ] + $ndraft;
-        if ($curFilter !== null) { $corrWhere['Invoices.currency'] = $curFilter; }
-        $sumCorrections = $sum($corrWhere);
-
-        return round($sumBase + $sumCorrections, 2);
+        if ($curFilter !== null) { $where['Invoices.currency'] = $curFilter; }
+        if (!empty($correctedIdList)) { $where['Invoices.id NOT IN'] = $correctedIdList; }
+        return round($sum($where), 2);
     })(),
     'year_count'       => $cnt($applyStatFilters(['Invoices.company_id' => $companyId] + $ndraft, true)),
     'year_paid'        => $sum($applyStatFilters(['Invoices.company_id' => $companyId, 'Invoices.paymentstate' => 'paid'] + $ndraft, true)),
