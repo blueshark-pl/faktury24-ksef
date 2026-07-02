@@ -695,6 +695,18 @@ public function index()
     $currency    = $this->request->getQuery('currency');
     $emailStatus = $this->request->getQuery('email_status');
 
+    // Netowanie korekt (używane w „Sumie widocznych" ORAZ w kartach/tabeli podsumowania):
+    // liczy się tylko finalna wartość — wykluczamy skorygowane oryginały i korekty pośrednie.
+    // parent_id korekty wskazuje korygowany dokument. Dzięki temu para (faktura + korekta)
+    // na tę samą kwotę nie podwaja sumy.
+    $correctedIds = $this->Invoices->find()
+        ->select(['parent_id'])
+        ->where(['company_id' => $companyId, 'type' => 'correction', 'parent_id IS NOT' => null])
+        ->distinct(['parent_id'])
+        ->enableHydration(false)
+        ->all()->extract('parent_id')->toArray();
+    $correctedIdList = array_values(array_filter($correctedIds));
+
                 $query = $this->Invoices->find()
             ->contain([
                 'InvoiceContractors' => function($q){ return $q->select(['invoice_id','name','nip','email']); },
@@ -750,12 +762,16 @@ public function index()
         ],
     ]);
 
-    // „Suma widocznych faktur" — suma kolumny total WSZYSTKICH wierszy pasujących do aktywnych
-    // filtrów (1:1 z listą, wszystkie typy). Grupujemy po walucie (kwot w różnych walutach nie sumujemy).
+    // „Suma widocznych faktur" — suma kolumny total wierszy pasujących do aktywnych filtrów,
+    // z NETOWANIEM korekt (finalna wartość): para faktura+korekta na tę samą kwotę nie podwaja.
+    // Wykluczamy skorygowane oryginały i korekty pośrednie. Grupujemy po walucie.
     $visibleSumQuery = $this->Invoices->find()
         ->where(['Invoices.company_id' => $companyId])
         ->where($this->nonDraftConditions());
     $applyListFilters($visibleSumQuery);
+    if (!empty($correctedIdList)) {
+        $visibleSumQuery->where(['Invoices.id NOT IN' => $correctedIdList]);
+    }
     $visibleSums = [];
     $visibleCount = 0;
     foreach (
@@ -892,18 +908,8 @@ $rangeFrom = !empty($from) ? $from : $yearStart;
 $rangeTo   = !empty($to)   ? $to   : $today;
 $curFilter = !empty($currency) ? strtoupper((string)$currency) : null;
 
-// Netowanie korekt: liczy się TYLKO finalna wartość (najnowsza korekta w łańcuchu).
-// parent_id korekty wskazuje korygowany dokument → zbiór skorygowanych zawiera oryginały
-// ORAZ korekty pośrednie (dalej skorygowane). Wykluczamy je z sum, zostają:
+// $correctedIdList policzone wcześniej (zaraz po filtrach). Netowanie korekt: zostają
 // czyste faktury sprzedażowe (nieskorygowane) + najnowsze korekty (niebędące niczyim parentem).
-$correctedIds = $this->Invoices->find()
-    ->select(['parent_id'])
-    ->where(['company_id' => $companyId, 'type' => 'correction', 'parent_id IS NOT' => null])
-    ->distinct(['parent_id'])
-    ->enableHydration(false)
-    ->all()->extract('parent_id')->toArray();
-$correctedIdList = array_values(array_filter($correctedIds));
-
 // Dokłada okres (gdy ustawiony/wymuszony), walutę (gdy ustawiona) oraz netowanie korekt.
 $applyStatFilters = function(array $where, bool $forceDate = false) use ($hasDateFilter, $rangeFrom, $rangeTo, $curFilter, $correctedIdList): array {
     if ($hasDateFilter || $forceDate) {

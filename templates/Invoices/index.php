@@ -1123,7 +1123,7 @@ $__anyFilter = (!empty($q) || !empty($state) || !empty($from) || !empty($to) || 
     <i class="ri-sum-line me-1"></i>
     <strong>Suma widocznych faktur</strong>
     <?php if ($__anyFilter): ?><span class="badge bg-primary-transparent ms-1">wg aktywnych filtrów</span><?php endif; ?>
-    <span class="text-muted ms-2 small">(<?= $__visCount ?> dok. — suma kolumny „Wartość", wszystkie typy)</span>
+    <span class="text-muted ms-2 small">(<?= $__visCount ?> dok. — korekty netowane: liczy się finalna wartość, oryginał+korekta nie podwaja)</span>
   </div>
   <div class="fs-16 fw-semibold"><?= $__visText ?></div>
 </div>
