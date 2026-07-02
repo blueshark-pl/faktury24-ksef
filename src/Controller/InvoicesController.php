@@ -791,6 +791,61 @@ public function index()
         $visibleCount += (int)($r['c'] ?? 0);
     }
 
+    // Rozbicie „Sumy widocznych" (do modala „jak wyliczono"): per waluta + typ dokumentu,
+    // tylko wiersze WLICZONE do sumy (po netowaniu korekt).
+    $visibleBreakdown = [];
+    $bq = $this->Invoices->find()
+        ->where(['Invoices.company_id' => $companyId])
+        ->where($this->nonDraftConditions());
+    $applyListFilters($bq);
+    if (!empty($correctedIdList)) {
+        $bq->where(['Invoices.id NOT IN' => $correctedIdList]);
+    }
+    foreach (
+        $bq->select([
+                'cur' => 'Invoices.currency',
+                'typ' => 'Invoices.type',
+                's'   => $bq->func()->sum('Invoices.total'),
+                'c'   => $bq->func()->count('*'),
+            ])
+            ->group(['Invoices.currency', 'Invoices.type'])
+            ->enableHydration(false)
+            ->all()->toArray() as $r
+    ) {
+        $visibleBreakdown[] = [
+            'currency' => (string)($r['cur'] ?: 'PLN'),
+            'type'     => (string)($r['typ'] ?? ''),
+            'sum'      => round((float)($r['s'] ?? 0), 2),
+            'count'    => (int)($r['c'] ?? 0),
+        ];
+    }
+
+    // Pominięte skorygowane oryginały / korekty pośrednie pasujące do filtra (wyjaśnienie w modalu).
+    $visibleExcluded = [];
+    if (!empty($correctedIdList)) {
+        $eq = $this->Invoices->find()
+            ->where(['Invoices.company_id' => $companyId])
+            ->where($this->nonDraftConditions());
+        $applyListFilters($eq);
+        $eq->where(['Invoices.id IN' => $correctedIdList]);
+        foreach (
+            $eq->select([
+                    'cur' => 'Invoices.currency',
+                    's'   => $eq->func()->sum('Invoices.total'),
+                    'c'   => $eq->func()->count('*'),
+                ])
+                ->group(['Invoices.currency'])
+                ->enableHydration(false)
+                ->all()->toArray() as $r
+        ) {
+            $visibleExcluded[] = [
+                'currency' => (string)($r['cur'] ?: 'PLN'),
+                'sum'      => round((float)($r['s'] ?? 0), 2),
+                'count'    => (int)($r['c'] ?? 0),
+            ];
+        }
+    }
+
         // Linkage information for proformas (child advances/final)
         $advanceCounts = [];
         $finalByProforma = [];
@@ -1022,9 +1077,11 @@ $stats = [
     'filtered_period'  => $hasDateFilter,
     'range_from'       => $hasDateFilter ? $rangeFrom : null,
     'range_to'         => $hasDateFilter ? $rangeTo : null,
-    // „Suma widocznych faktur" — 1:1 z aktualnie przefiltrowaną listą (per waluta).
-    'visible_sums'     => $visibleSums,
-    'visible_count'    => $visibleCount,
+    // „Suma widocznych faktur" — wg aktywnych filtrów, korekty netowane (per waluta).
+    'visible_sums'      => $visibleSums,
+    'visible_count'     => $visibleCount,
+    'visible_breakdown' => $visibleBreakdown,
+    'visible_excluded'  => $visibleExcluded,
 
     // Przychód w okresie (domyślnie bieżący rok; przy filtrze from/to — wybrany zakres).
     // Netowanie korekt: bez proform/zaliczek, bez skorygowanych oryginałów i korekt pośrednich —

@@ -1125,7 +1125,97 @@ $__anyFilter = (!empty($q) || !empty($state) || !empty($from) || !empty($to) || 
     <?php if ($__anyFilter): ?><span class="badge bg-primary-transparent ms-1">wg aktywnych filtrów</span><?php endif; ?>
     <span class="text-muted ms-2 small">(<?= $__visCount ?> dok. — korekty netowane: liczy się finalna wartość, oryginał+korekta nie podwaja)</span>
   </div>
-  <div class="fs-16 fw-semibold"><?= $__visText ?></div>
+  <div class="fs-16 fw-semibold d-flex align-items-center gap-2">
+    <span><?= $__visText ?></span>
+    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#visible-sum-modal" title="Jak wyliczono tę kwotę?">
+      <i class="ri-information-line"></i> Szczegóły
+    </button>
+  </div>
+</div>
+
+<?php
+// ===== Modal: jak wyliczono „Sumę widocznych faktur" =====
+$__typeLabels = [
+    'vat' => 'Faktura VAT', 'proforma' => 'Proforma', 'advance' => 'Zaliczkowa',
+    'final' => 'Rozliczeniowa / końcowa', 'correction' => 'Korekta', 'margin' => 'Faktura marża',
+    'currency' => 'Walutowa', 'novat' => 'Bez VAT (rachunek)', 'internal' => 'Wewnętrzna',
+    'internalEvidence' => 'Wewnętrzny dowód', 'oss' => 'OSS', 'rental' => 'Najem',
+];
+$__breakdown = $stats['visible_breakdown'] ?? [];
+$__excluded  = $stats['visible_excluded'] ?? [];
+// Grupuj rozbicie po walucie.
+$__byCur = [];
+foreach ($__breakdown as $__b) { $__byCur[$__b['currency']][] = $__b; }
+$__exclByCur = [];
+foreach ($__excluded as $__e) { $__exclByCur[$__e['currency']] = $__e; }
+?>
+<div class="modal fade" id="visible-sum-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ri-sum-line me-1"></i> Jak wyliczono „Sumę widocznych faktur"</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Sumowane są dokumenty pasujące do aktywnych filtrów<?= $__anyFilter ? '' : ' (bez filtra — całość)' ?>.
+          Korekty są <strong>netowane</strong>: liczy się finalna wartość — skorygowany oryginał jest pomijany,
+          a wliczana jest korekta. Kwot w różnych walutach nie sumujemy razem.
+        </p>
+
+        <?php if (empty($__byCur)): ?>
+          <div class="alert alert-secondary mb-0">Brak dokumentów w sumie dla bieżących filtrów.</div>
+        <?php else: ?>
+          <?php foreach ($__byCur as $__cur => $__rows): ?>
+            <?php
+              $__curTotal = 0.0;
+              foreach ($__rows as $__r) { $__curTotal += (float)$__r['sum']; }
+              // sort malejąco po kwocie
+              usort($__rows, fn($a, $b) => $b['sum'] <=> $a['sum']);
+            ?>
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold">Waluta: <?= h($__cur) ?></span>
+                <span class="fw-semibold"><?= $this->Number->format($__curTotal, ['places' => 2]) ?> <?= h($__cur) ?></span>
+              </div>
+              <table class="table table-sm table-bordered mb-1">
+                <thead class="table-light">
+                  <tr><th>Typ dokumentu</th><th class="text-end" style="width:110px;">Liczba</th><th class="text-end" style="width:160px;">Kwota</th></tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($__rows as $__r): ?>
+                    <tr>
+                      <td><?= h($__typeLabels[$__r['type']] ?? ($__r['type'] ?: '—')) ?></td>
+                      <td class="text-end"><?= (int)$__r['count'] ?></td>
+                      <td class="text-end"><?= $this->Number->format($__r['sum'], ['places' => 2]) ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                  <tr class="fw-semibold">
+                    <td>Razem (<?= h($__cur) ?>)</td>
+                    <td class="text-end"><?= array_sum(array_map(fn($x) => (int)$x['count'], $__rows)) ?></td>
+                    <td class="text-end"><?= $this->Number->format($__curTotal, ['places' => 2]) ?></td>
+                  </tr>
+                </tfoot>
+              </table>
+              <?php if (!empty($__exclByCur[$__cur]) && (int)$__exclByCur[$__cur]['count'] > 0): ?>
+                <div class="small text-muted">
+                  <i class="ri-information-line me-1"></i>
+                  Pominięto <strong><?= (int)$__exclByCur[$__cur]['count'] ?></strong> skorygowanych dokumentów
+                  (na <?= $this->Number->format($__exclByCur[$__cur]['sum'], ['places' => 2]) ?> <?= h($__cur) ?>) —
+                  ich wartość zastępuje korekta (finalna wartość).
+                </div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
 </div>
 <div class="row row-cols-xxl-5 row-cols-xl-3 row-cols-md-2 row-cols-1 mt-4">
   <div class="col">
