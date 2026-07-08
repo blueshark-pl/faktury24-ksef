@@ -51,6 +51,10 @@ class InvoiceVatContentsTable extends Table
             'foreignKey' => 'invoice_id',
             'joinType' => 'INNER',
         ]);
+        $this->belongsTo('Vats', [
+            'foreignKey' => 'vat_code_id',
+            'joinType' => 'LEFT',
+        ]);
     }
 
     /**
