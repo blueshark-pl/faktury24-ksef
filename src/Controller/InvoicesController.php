@@ -9259,6 +9259,30 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
             }
         }
 
+        // Fallback wg stanu z UI: jeśli faktura jest oznaczona jako opłacona (paymentstate='paid'),
+        // a powyżej NIE wyemitowano znacznika zapłaty (np. zaliczka oznaczona jako otrzymana
+        // bez zsynchronizowanego alreadypaid / bez wpisu invoice_payments), wykaż pełną zapłatę.
+        // Dzięki temu wizualizacja odzwierciedla stan klikany w UI, a nie „Brak zapłaty".
+        $hasPaymentMarker = false;
+        foreach ($xml as $__l) {
+            if (str_contains($__l, '<Zaplacono>') || str_contains($__l, '<ZnacznikZaplatyCzesciowej>')) {
+                $hasPaymentMarker = true;
+                break;
+            }
+        }
+        if (!$hasPaymentMarker && (string)($inv->paymentstate ?? '') === 'paid' && $invoiceTotal > 0.0) {
+            $fmtDate = static function ($d) {
+                if (empty($d)) { return null; }
+                return method_exists($d, 'format') ? $d->format('Y-m-d') : substr((string)$d, 0, 10);
+            };
+            $payDate = $fmtDate($inv->paid_at)
+                ?? $fmtDate($inv->partial_paid_at)
+                ?? $fmtDate($inv->advance_received_date ?? null)
+                ?? $issueDate;
+            $xml[] = '      <Zaplacono>1</Zaplacono>';
+            $xml[] = '      <DataZaplaty>' . $this->esc($payDate) . '</DataZaplaty>';
+        }
+
         $due = $inv->paymentdate
             ? $inv->paymentdate->format('Y-m-d')
             : ($soldDate ?: $issueDate);
