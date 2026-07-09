@@ -41,7 +41,7 @@ class VehicleCombinationsController extends AppController
                     return $q->select(['id', 'name', 'plate', 'type', 'axle_count']);
                 },
                 'Drivers' => function ($q) {
-                    return $q->select(['id', 'first_name', 'last_name']);
+                    return $q->select(['id', 'full_name']);
                 },
             ])
             ->orderByDesc('VehicleCombinations.is_default')
@@ -126,11 +126,11 @@ class VehicleCombinationsController extends AppController
         $driverOptions = $Drivers->find('list', [
             'keyField' => 'id',
             'valueField' => function ($d) {
-                return trim(($d->first_name ?? '') . ' ' . ($d->last_name ?? ''));
+                return (string)($d->full_name ?? '');
             },
         ])
             ->where(['company_id' => $companyId, 'is_active' => true])
-            ->orderByAsc('last_name')
+            ->orderByAsc('full_name')
             ->toArray();
 
         $this->set(compact('entity', 'vehicleOptions', 'trailerOptions', 'driverOptions'));

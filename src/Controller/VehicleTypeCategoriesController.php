@@ -71,6 +71,7 @@ class VehicleTypeCategoriesController extends AppController
         $this->set(compact('entity'));
         $this->set('title', 'Nowa kategoria typu pojazdu');
         $this->render('form');
+        return null;
     }
 
     public function edit(string $id): ?\Cake\Http\Response
@@ -93,6 +94,7 @@ class VehicleTypeCategoriesController extends AppController
         $this->set(compact('entity'));
         $this->set('title', 'Edytuj kategorię typu pojazdu');
         $this->render('form');
+        return null;
     }
 
     public function delete(string $id): \Cake\Http\Response

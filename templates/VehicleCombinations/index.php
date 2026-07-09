@@ -75,7 +75,7 @@ $this->assign('title', __('Zestawy pojazd + naczepa + kierowca'));
                         </td>
                         <td>
                             <?php if (!empty($c->driver)): ?>
-                                <?= h(trim(($c->driver->first_name ?? '') . ' ' . ($c->driver->last_name ?? ''))) ?>
+                                <?= h((string)($c->driver->full_name ?? '')) ?>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
                             <?php endif ?>
