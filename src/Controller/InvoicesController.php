@@ -588,6 +588,7 @@ public function index()
     $currency = strtoupper(trim((string)$this->request->getQuery('currency', '')));
     $from     = trim((string)$this->request->getQuery('from', ''));
     $to       = trim((string)$this->request->getQuery('to', ''));
+    $sent     = trim((string)$this->request->getQuery('sent', '')); // 'sent' | 'not_sent' | ''
 
     $query = $this->Invoices->find()
         ->contain(['InvoiceContractors' => function ($q) {
@@ -629,8 +630,13 @@ public function index()
     if ($to !== '') {
         $query->andWhere(['Invoices.date <=' => $to]);
     }
+    if ($sent === 'sent') {
+        $query->andWhere(['Invoices.sent_at IS NOT' => null]);
+    } elseif ($sent === 'not_sent') {
+        $query->andWhere(['Invoices.sent_at IS' => null]);
+    }
 
-    $this->set(compact('q', 'state', 'type', 'currency', 'from', 'to'));
+    $this->set(compact('q', 'state', 'type', 'currency', 'from', 'to', 'sent'));
 
     $invoices = $this->paginate($query, [
         'limit' => 20,

@@ -113,7 +113,8 @@ $type     = (string)($type     ?? $this->request->getQuery('type', ''));
 $currency = strtoupper((string)($currency ?? $this->request->getQuery('currency', '')));
 $from     = (string)($from     ?? $this->request->getQuery('from', ''));
 $to       = (string)($to       ?? $this->request->getQuery('to', ''));
-$hasFilters = $q !== '' || $state !== '' || $type !== '' || $currency !== '' || $from !== '' || $to !== '';
+$sent     = (string)($sent     ?? $this->request->getQuery('sent', '')); // '' | 'sent' | 'not_sent'
+$hasFilters = $q !== '' || $state !== '' || $type !== '' || $currency !== '' || $from !== '' || $to !== '' || $sent !== '';
 
 $money = function($amount, $currency = 'PLN') {
     return number_format($amount, 2, ',', ' ') . ' ' . $currency;
@@ -251,6 +252,27 @@ $stateLabels = [
       </div>
       <div class="col-auto">
         <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
+          <i class="ri-mail-check-line me-1"></i>Wysyłka
+        </label>
+        <div class="d-flex gap-1">
+          <?php
+            // Toggle: 'not_sent' → 'sent' → '' — 3 stany na jednym przycisku byłyby myląc.
+            // Rozdzielone na 2 przyciski: "Nie wysłane" i "Wysłane".
+          ?>
+          <button type="submit" name="sent" value="<?= $sent === 'not_sent' ? '' : 'not_sent' ?>"
+                  class="btn btn-sm <?= $sent === 'not_sent' ? 'btn-warning text-white' : 'btn-outline-warning' ?>"
+                  title="Pokaż tylko niewysłane do klienta">
+            <i class="ri-mail-line me-1"></i>Niewysłane
+          </button>
+          <button type="submit" name="sent" value="<?= $sent === 'sent' ? '' : 'sent' ?>"
+                  class="btn btn-sm <?= $sent === 'sent' ? 'btn-success text-white' : 'btn-outline-success' ?>"
+                  title="Pokaż tylko wysłane do klienta">
+            <i class="ri-mail-check-line me-1"></i>Wysłane
+          </button>
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label form-label-sm text-muted mb-1 d-block" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase">
           <i class="ri-calendar-line me-1"></i>Data wystawienia
         </label>
         <div class="d-flex gap-1 align-items-center">
@@ -281,6 +303,8 @@ $stateLabels = [
       <?php if ($type !== '' && isset($typeLabels[$type])): ?><span class="badge bg-primary-subtle text-primary"><?= h($typeLabels[$type]['label']) ?></span><?php endif; ?>
       <?php if ($state !== '' && isset($stateLabels[$state])): ?><span class="badge bg-warning-subtle text-warning-emphasis"><?= h($stateLabels[$state]['label']) ?></span><?php endif; ?>
       <?php if ($currency !== ''): ?><span class="badge bg-info-subtle text-info"><?= h($currency) ?></span><?php endif; ?>
+      <?php if ($sent === 'not_sent'): ?><span class="badge bg-warning-subtle text-warning-emphasis"><i class="ri-mail-line me-1"></i>Niewysłane do klienta</span><?php endif; ?>
+      <?php if ($sent === 'sent'): ?><span class="badge bg-success-subtle text-success"><i class="ri-mail-check-line me-1"></i>Wysłane do klienta</span><?php endif; ?>
       <?php if ($from !== '' || $to !== ''): ?><span class="badge bg-light text-dark border"><?= h($from ?: '…') ?> — <?= h($to ?: '…') ?></span><?php endif; ?>
     </div>
     <?php endif; ?>
