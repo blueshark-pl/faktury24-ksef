@@ -99,7 +99,18 @@ $today = date('Y-m-d');
             <span class="ms-2 badge bg-light text-secondary border">NIP <?= h($clientProfile->nip) ?></span>
         </div>
     </div>
-    <!-- Switcher języka przeniesiony do nagłówka (dropdown z flagami) -->
+    <div class="d-flex gap-2 align-items-center">
+        <?= $this->Html->link(
+            '<i class="ri-file-excel-2-line me-1"></i>' . __('Pobierz CSV (Excel)'),
+            ['action' => 'exportCsv', '?' => $kept],
+            [
+                'class' => 'btn btn-success btn-sm',
+                'escape' => false,
+                'rel' => 'nofollow',
+                'title' => __('Eksport aktualnie widocznej tabeli do pliku CSV — otwiera się w Excelu / LibreOffice'),
+            ]
+        ) ?>
+    </div>
 </div>
 
 <?= $this->Flash->render() ?>
