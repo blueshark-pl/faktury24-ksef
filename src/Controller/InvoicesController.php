@@ -2347,11 +2347,16 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                 if ($due < $today) $paymentstate = 'overdue';
             } catch (\Throwable) { /* ignore */ }
         }
-        // Faktura zaliczkowa: checkbox "advance_paid" + data otrzymania → paymentstate=paid
-        if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid']) && !empty($data['advance_received_date'])) {
+        // Faktura zaliczkowa/końcowa: zaznaczony checkbox "advance_paid" = opłacona.
+        // Sam checkbox wystarcza — datę otrzymania zaliczki domyślamy na datę wystawienia,
+        // gdy pole puste (wcześniej wymóg obu pól powodował, że zaznaczenie bez daty nic nie robiło).
+        if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid'])) {
             $paymentstate = 'paid';
             $alreadypaid  = $total;
             $remaining    = 0.0;
+            if (empty($data['advance_received_date'])) {
+                $data['advance_received_date'] = !empty($data['date']) ? $data['date'] : date('Y-m-d');
+            }
             if (empty($data['paid_at'])) {
                 $data['paid_at'] = $data['advance_received_date'];
             }
@@ -3866,11 +3871,15 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     if ($due < $today) $paymentstate = 'overdue';
                 } catch (\Throwable) { /* ignore */ }
             }
-            // Faktura zaliczkowa: checkbox "advance_paid" + data otrzymania → paymentstate=paid
-            if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid']) && !empty($data['advance_received_date'])) {
+            // Faktura zaliczkowa/końcowa: zaznaczony checkbox "advance_paid" = opłacona
+            // (sam checkbox wystarcza; datę otrzymania domyślamy na datę wystawienia gdy puste).
+            if (in_array($kind, ['advance', 'final'], true) && !empty($data['advance_paid'])) {
                 $paymentstate = 'paid';
                 $alreadypaid  = $total;
                 $remaining    = 0.0;
+                if (empty($data['advance_received_date'])) {
+                    $data['advance_received_date'] = !empty($data['date']) ? $data['date'] : date('Y-m-d');
+                }
                 if (empty($data['paid_at'])) {
                     $data['paid_at'] = $data['advance_received_date'];
                 }
