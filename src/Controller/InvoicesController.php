@@ -9259,10 +9259,10 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
             }
         }
 
-        // Fallback wg stanu z UI: jeśli faktura jest oznaczona jako opłacona (paymentstate='paid'),
-        // a powyżej NIE wyemitowano znacznika zapłaty (np. zaliczka oznaczona jako otrzymana
-        // bez zsynchronizowanego alreadypaid / bez wpisu invoice_payments), wykaż pełną zapłatę.
-        // Dzięki temu wizualizacja odzwierciedla stan klikany w UI, a nie „Brak zapłaty".
+        // Fallback wg stanu z UI: jeśli faktura jest w systemie opłacona, a powyżej NIE wyemitowano
+        // znacznika zapłaty (np. zaliczka oznaczona jako otrzymana bez zsynchronizowanego alreadypaid
+        // / bez wpisu invoice_payments), wykaż pełną zapłatę. Sygnał „opłacona" jak w UI (add_advance.php
+        // $__isPaid): paymentstate='paid' LUB dla zaliczki/końcowej ustawiona data otrzymania zaliczki.
         $hasPaymentMarker = false;
         foreach ($xml as $__l) {
             if (str_contains($__l, '<Zaplacono>') || str_contains($__l, '<ZnacznikZaplatyCzesciowej>')) {
@@ -9270,7 +9270,9 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
                 break;
             }
         }
-        if (!$hasPaymentMarker && (string)($inv->paymentstate ?? '') === 'paid' && $invoiceTotal > 0.0) {
+        $uiPaid = ((string)($inv->paymentstate ?? '') === 'paid')
+            || (in_array((string)($inv->type ?? ''), ['advance', 'final'], true) && !empty($inv->advance_received_date));
+        if (!$hasPaymentMarker && $uiPaid && $invoiceTotal > 0.0) {
             $fmtDate = static function ($d) {
                 if (empty($d)) { return null; }
                 return method_exists($d, 'format') ? $d->format('Y-m-d') : substr((string)$d, 0, 10);
