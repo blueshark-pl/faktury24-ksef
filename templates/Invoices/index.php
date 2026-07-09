@@ -176,6 +176,18 @@ $stateLabels = [
 ];
 ?>
 <form method="get" id="inv-filter-form" class="mb-3">
+  <?php /*
+    Ukryty domyslny submit-button — MUSI byc pierwszy w DOM.
+    Bez tego naciskanie Enter w polu "Szukaj" wyzwala pierwszy widoczny
+    submit (przycisk typu 'Faktura VAT'), przez co user niechcacy nakladal
+    filtr type=vat (widoczny jako "faktury FV w PLN" bo wszystkie VAT to PLN).
+    Ten przycisk nie ma name — tylko submituje formularz bez przelaczania.
+    Uzyty position:absolute + off-screen zamiast display:none bo niektore
+    przegladarki pomijaja display:none jako implicit-submit default.
+  */ ?>
+  <button type="submit"
+          style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;"
+          tabindex="-1" aria-hidden="true"></button>
 <div class="card custom-card">
   <div class="card-body p-2">
 
