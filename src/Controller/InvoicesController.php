@@ -583,6 +583,7 @@ public function index()
     $companyId = $identity?->get('company_id'); // char(36)
 
     $q        = trim((string)$this->request->getQuery('q', ''));
+    $ref      = trim((string)$this->request->getQuery('ref', ''));
     $state    = trim((string)$this->request->getQuery('state', ''));
     $type     = trim((string)$this->request->getQuery('type', ''));
     $currency = strtoupper(trim((string)$this->request->getQuery('currency', '')));
@@ -635,8 +636,49 @@ public function index()
     } elseif ($sent === 'not_sent') {
         $query->andWhere(['Invoices.sent_at IS' => null]);
     }
+    // Dedykowany filtr "Numer ref" — szuka WYLACZNIE w polach referencyjnych,
+    // pomija fullnumber. Bez tego user wpisujac "26" trafial na 2026 (rok) w
+    // fullnumber i widzial wszystkie faktury z 2026 roku zamiast konkretnego
+    // zlecenia o nr 26. Zakres pol:
+    //   - speed_orders.our_ref (GLO_POD — nasz nr referencyjny transportu)
+    //   - invoices.wz_number, invoices.receipt_number
+    //   - invoice_contractors.nr_klienta (numer klienta na snapshocie)
+    //   - invoice_contents.name (pozycje faktury — user czesto wpisuje ref tam)
+    if ($ref !== '') {
+        $refLike = '%' . str_replace(['%', '_'], ['\%', '\_'], $ref) . '%';
 
-    $this->set(compact('q', 'state', 'type', 'currency', 'from', 'to', 'sent'));
+        $speedOrderIds = $this->fetchTable('SpeedOrderInvoices')
+            ->find()
+            ->select(['invoice_id'])
+            ->innerJoinWith('SpeedOrders')
+            ->where(['SpeedOrders.our_ref LIKE' => $refLike]);
+
+        $contractorRefIds = $this->fetchTable('InvoiceContractors')
+            ->find()
+            ->select(['invoice_id'])
+            ->where(['InvoiceContractors.nr_klienta LIKE' => $refLike]);
+
+        $itemRefIds = $this->fetchTable('InvoiceContents')
+            ->find()
+            ->select(['invoice_id'])
+            ->where(['InvoiceContents.name LIKE' => $refLike]);
+
+        // Trzy subqueries dla 'Invoices.id IN (...)' + LIKE po polach lokalnych.
+        // Fluent OR-chain zeby uniknac kolizji klucza w tablicy asocjacyjnej
+        // (kilka 'Invoices.id IN' nadpisywaloby sie nawzajem).
+        $query->andWhere(function ($exp) use ($refLike, $speedOrderIds, $contractorRefIds, $itemRefIds) {
+            return $exp->or(function ($or) use ($refLike, $speedOrderIds, $contractorRefIds, $itemRefIds) {
+                return $or
+                    ->like('Invoices.wz_number', $refLike)
+                    ->like('Invoices.receipt_number', $refLike)
+                    ->in('Invoices.id', $speedOrderIds)
+                    ->in('Invoices.id', $contractorRefIds)
+                    ->in('Invoices.id', $itemRefIds);
+            });
+        });
+    }
+
+    $this->set(compact('q', 'ref', 'state', 'type', 'currency', 'from', 'to', 'sent'));
 
     $invoices = $this->paginate($query, [
         'limit' => 20,

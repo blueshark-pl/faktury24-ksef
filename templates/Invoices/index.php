@@ -108,13 +108,14 @@ echo $this->Html->meta('csrfToken', $this->request->getAttribute('csrfToken'));
 
 // filtry z query (set() przez kontroler, fallback na getQuery)
 $q        = trim((string)($q        ?? $this->request->getQuery('q', '')));
+$ref      = trim((string)($ref      ?? $this->request->getQuery('ref', '')));
 $state    = (string)($state    ?? $this->request->getQuery('state', ''));
 $type     = (string)($type     ?? $this->request->getQuery('type', ''));
 $currency = strtoupper((string)($currency ?? $this->request->getQuery('currency', '')));
 $from     = (string)($from     ?? $this->request->getQuery('from', ''));
 $to       = (string)($to       ?? $this->request->getQuery('to', ''));
 $sent     = (string)($sent     ?? $this->request->getQuery('sent', '')); // '' | 'sent' | 'not_sent'
-$hasFilters = $q !== '' || $state !== '' || $type !== '' || $currency !== '' || $from !== '' || $to !== '' || $sent !== '';
+$hasFilters = $q !== '' || $ref !== '' || $state !== '' || $type !== '' || $currency !== '' || $from !== '' || $to !== '' || $sent !== '';
 
 $money = function($amount, $currency = 'PLN') {
     return number_format($amount, 2, ',', ' ') . ' ' . $currency;
@@ -192,16 +193,26 @@ $stateLabels = [
 <div class="card custom-card">
   <div class="card-body p-2">
 
-    <!-- Wiersz 1: Szukaj + Typ faktury -->
+    <!-- Wiersz 1: Szukaj + Numer ref + Typ faktury -->
     <div class="row g-2 align-items-center mb-2">
-      <div class="col-md-4">
+      <div class="col-md-3">
         <div class="input-group input-group-sm">
           <span class="input-group-text bg-light border-end-0"><i class="ri-search-line text-muted"></i></span>
           <input type="text" name="q" class="form-control form-control-sm border-start-0"
                  placeholder="Numer, kontrahent, NIP…" value="<?= h($q) ?>">
         </div>
       </div>
-      <div class="col-md-8">
+      <div class="col-md-2">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-light border-end-0" title="Numer referencyjny — szuka w polu 'nasz ref' zlecenia, WZ, nr klienta i pozycjach faktury (pomija numer faktury, żeby '26' nie łapało roku 2026)">
+            <i class="ri-hashtag text-muted"></i>
+          </span>
+          <input type="text" name="ref" class="form-control form-control-sm border-start-0"
+                 placeholder="Nr ref…" value="<?= h($ref) ?>"
+                 title="Numer referencyjny (nasz ref zlecenia, WZ, nr klienta lub w pozycjach)">
+        </div>
+      </div>
+      <div class="col-md-7">
         <div class="d-flex gap-1 flex-wrap align-items-center">
           <span class="small text-muted text-nowrap me-1">Typ:</span>
           <?php foreach ($typeLabels as $val => $tl):
@@ -300,6 +311,7 @@ $stateLabels = [
     <div class="mt-2 pt-2 border-top d-flex gap-2 flex-wrap align-items-center" style="font-size:.78rem">
       <span class="text-muted">Aktywne filtry:</span>
       <?php if ($q !== ''): ?><span class="badge bg-secondary-subtle text-secondary">Szukaj: <?= h($q) ?></span><?php endif; ?>
+      <?php if ($ref !== ''): ?><span class="badge bg-secondary-subtle text-secondary"><i class="ri-hashtag me-1"></i>Nr ref: <?= h($ref) ?></span><?php endif; ?>
       <?php if ($type !== '' && isset($typeLabels[$type])): ?><span class="badge bg-primary-subtle text-primary"><?= h($typeLabels[$type]['label']) ?></span><?php endif; ?>
       <?php if ($state !== '' && isset($stateLabels[$state])): ?><span class="badge bg-warning-subtle text-warning-emphasis"><?= h($stateLabels[$state]['label']) ?></span><?php endif; ?>
       <?php if ($currency !== ''): ?><span class="badge bg-info-subtle text-info"><?= h($currency) ?></span><?php endif; ?>
