@@ -2160,6 +2160,59 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
     function fmtMeters(m) { return m < 1000 ? m + ' m' : (m/1000).toFixed(1) + ' km'; }
 
+    // Wyświetla informacje o zsumowanym zestawie (ciągnik + naczepa) + ostrzeżenia backendu
+    function renderCombinationInfo(combo) {
+        var box = document.getElementById('combination-info');
+        if (!box) {
+            // Wstrzyknij kontener przed statystykami jeśli nie istnieje
+            var statsWrap = document.getElementById('stats-bar');
+            if (!statsWrap) return;
+            box = document.createElement('div');
+            box.id = 'combination-info';
+            box.className = 'mb-2';
+            statsWrap.parentNode.insertBefore(box, statsWrap);
+        }
+        if (!combo || (!combo.trailer_name && !combo.warnings?.length)) {
+            box.innerHTML = '';
+            return;
+        }
+        var html = '';
+        // Warningi z backendu (A4)
+        if (combo.warnings && combo.warnings.length) {
+            html += '<div class="alert alert-warning py-2 small mb-2">';
+            html += '<i class="ri-alert-line me-1"></i><strong>Uwaga do zestawu:</strong>';
+            html += '<ul class="mb-0 mt-1">';
+            combo.warnings.forEach(function(w) {
+                html += '<li>' + escapeHtml(w) + '</li>';
+            });
+            html += '</ul></div>';
+        }
+        // Info o zsumowanych parametrach (transparent dla usera co idzie do HERE)
+        if (combo.trailer_name || combo.combined_from) {
+            var parts = [];
+            if (combo.total_axle_count)      parts.push('<strong>' + combo.total_axle_count + ' osi</strong>');
+            if (combo.total_gross_weight_kg) parts.push((combo.total_gross_weight_kg / 1000).toFixed(1) + 't DMC');
+            if (combo.total_length_cm)       parts.push('L=' + (combo.total_length_cm / 100).toFixed(2) + 'm');
+            if (combo.total_width_cm)        parts.push('w=' + (combo.total_width_cm / 100).toFixed(2) + 'm');
+            if (combo.total_height_cm)       parts.push('h=' + (combo.total_height_cm / 100).toFixed(2) + 'm');
+            var trailerLabel = combo.trailer_name ? ' + naczepa "' + escapeHtml(combo.trailer_name) + '"' : '';
+            html += '<div class="alert alert-info py-2 small mb-2">';
+            html += '<i class="ri-truck-line me-1"></i>';
+            html += '<strong>Zestaw łącznie</strong>' + trailerLabel + ': ' + parts.join(' · ');
+            if (combo.combined_from) {
+                var f = combo.combined_from;
+                html += '<div class="text-muted mt-1" style="font-size:.7rem">';
+                html += 'Ciągnik: ' + (f.vehicle?.axle_count ?? 0) + ' osi + '
+                      + ((f.vehicle?.gross_weight_kg ?? 0) / 1000).toFixed(1) + 't · ';
+                html += 'Naczepa: ' + (f.trailer?.axle_count ?? 0) + ' osi + '
+                      + ((f.trailer?.gross_weight_kg ?? 0) / 1000).toFixed(1) + 't';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+        box.innerHTML = html;
+    }
+
     function renderResult(data, animate) {
         lastResponse = data;
         activeAltIdx = 0;
@@ -2186,6 +2239,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         var extra = { eur_pln_rate: data.eur_pln_rate || null, ai_price: data.ai_price || null };
         renderStatsBar(data.routes[0], extra);
+        renderCombinationInfo(data.combination);
         renderAlternatives(data.routes);
         renderDirections(data.routes[0]);
         renderLegs(data.routes[0], data.points || []);

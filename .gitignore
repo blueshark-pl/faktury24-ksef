@@ -54,3 +54,7 @@ nbproject/*
 # yarn
 yarn-debug.log
 yarn-error.log
+
+# Gradle build artifacts od libphonenumber (nie edytujemy tego)
+webroot/assets/libs/intl-tel-input/third_party/libphonenumber/java/**/.gradle/
+webroot/assets/libs/intl-tel-input/third_party/libphonenumber/java/**/build/

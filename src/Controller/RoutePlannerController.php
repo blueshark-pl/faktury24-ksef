@@ -421,7 +421,12 @@ class RoutePlannerController extends AppController
                     'total_gross_weight_kg' => $vehicleData['gross_weight_kg'] ?? null,
                     'total_axle_count'      => $vehicleData['axle_count']      ?? null,
                     'total_length_cm'       => $vehicleData['length_cm']       ?? null,
+                    'total_width_cm'        => $vehicleData['width_cm']        ?? null,
+                    'total_height_cm'       => $vehicleData['height_cm']       ?? null,
                     'trailer_name'          => $vehicleData['_trailer_name']   ?? null,
+                    'trailer_id'            => $vehicleData['_trailer_id']     ?? null,
+                    'combined_from'         => $vehicleData['_combined_from']  ?? null,
+                    'warnings'              => $vehicleData['_combination_warnings'] ?? [],
                 ];
             }
             if ($driverData) {
