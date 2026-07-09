@@ -253,6 +253,42 @@ $gtuSelectHtml .= '</select>';
               </div>
             </div>
 
+            <!-- Waluta i kurs -->
+            <div class="col-12 d-flex align-items-center gap-2">
+              <?= $this->Form->control('currency', [
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency',
+                'value' => $invoice->currency ?? (!$__isEdit ? 'PLN' : null),
+                'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
+              ]) ?>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
+                title="Waluta i kurs"
+                data-bs-content="
+                  <div class='small text-start'>
+                    <p>Po wyborze waluty obcej możesz podać kurs pomocniczy do przeliczeń <em>poglądowo</em> — nie wpływa on na poprawność księgowania.</p>
+                    <p>Na wydruku proformy pojawi się automatycznie średni kurs NBP z ostatniego dnia roboczego poprzedzającego datę wystawienia/sprzedaży.</p>
+                  </div>
+                ">
+                <i class="ri-question-line"></i>
+              </button>
+            </div>
+
+            <div class="col-12" id="fx-rate-group" style="display:none;">
+              <div class="row g-2">
+                <div class="col-8">
+                  <?= $this->Form->control('fx_rate', [
+                    'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
+                    'class' => 'form-control', 'id' => 'fx-rate'
+                  ]) ?>
+                </div>
+                <div class="col-4">
+                  <label class="form-label" for="currency-rate-date">Data kursu</label>
+                  <input type="date" id="currency-rate-date" name="currency_date" class="form-control"
+                    value="<?= h(!empty($invoice->currency_date) ? (($invoice->currency_date instanceof \DateTimeInterface) ? $invoice->currency_date->format('Y-m-d') : (string)$invoice->currency_date) : '') ?>">
+                  <small class="text-muted d-block mt-1" id="fx-rate-date-hint"></small>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
