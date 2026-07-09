@@ -6,7 +6,8 @@
  * @var array $vatRatesMap id => rate
  * @var array|null $recentContractors [['id'=>..,'label'=>..,'name'=>..,'nip'=>..,'street'=>..,'zip'=>..,'city'=>..,'country'=>..,'email'=>..,'phone'=>..], ...]
  */
-$this->assign('title', 'Faktura walutowa');
+$__isEdit = isset($invoice) && method_exists($invoice, 'isNew') ? !$invoice->isNew() : (!empty($isEdit));
+$this->assign('title', $__isEdit ? 'Edytuj korektę walutową' : 'Faktura walutowa');
 // Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
 $__paymentDateVal = '';
 $__dueDaysPreset  = 7;
@@ -27,6 +28,55 @@ if (!empty($invoice->paymentdate)) {
     }
 }
 $__ksefModeEnabled = false;
+
+// Prefill danych w trybie edycji — z zapisanej korekty (kontrahent + pozycje).
+// Bez tego user widzi pusty formularz "nowej korekty" zamiast swojego szkicu.
+$__prefillContractor = null;
+$__prefillItems = [];
+if ($__isEdit) {
+    try {
+        $__c = $invoice->invoice_contractor ?? null;
+        if (!empty($__c)) {
+            $__prefillContractor = [
+                'id'      => $invoice->contractor_id ?? null,
+                'name'    => (string)($__c->name ?? ''),
+                'label'   => (string)($__c->name ?? ''),
+                'nip'     => (string)($__c->nip ?? ''),
+                'street'  => (string)($__c->street ?? ''),
+                'zip'     => (string)($__c->zip ?? ''),
+                'city'    => (string)($__c->city ?? ''),
+                'country' => (string)($__c->country ?? ''),
+                'email'   => (string)($__c->email ?? ''),
+                'phone'   => (string)($__c->phone ?? ''),
+            ];
+        }
+    } catch (\Throwable) { $__prefillContractor = null; }
+
+    try {
+        if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
+            foreach ($invoice->invoice_contents as $__it) {
+                $__prefillItems[] = [
+                    'name'             => (string)($__it->name ?? ''),
+                    'quantity'         => $__it->quantity ?? 1,
+                    'unit'             => (string)($__it->unit ?? 'szt.'),
+                    'price'            => $__it->price ?? 0,
+                    'price_mode'       => (string)($__it->price_mode ?? 'net'),
+                    'vat_code_id'      => (string)($__it->vat_code_id ?? ''),
+                    'discount_percent' => $__it->discount_percent ?? 0,
+                    'gtu_code'         => (string)($__it->gtu_code ?? ''),
+                    'pkwiu'            => (string)($__it->pkwiu ?? ''),
+                    'gtin'             => (string)($__it->gtin ?? ''),
+                    'cn_code'          => (string)($__it->cn_code ?? ''),
+                    'excise_amount'    => $__it->excise_amount ?? '',
+                    'procedure_marking'=> (string)($__it->procedure_marking ?? ''),
+                    'uu_id'            => (string)($__it->uu_id ?? ''),
+                    'netto'            => $__it->netto ?? 0,
+                    'brutto'           => $__it->brutto ?? 0,
+                ];
+            }
+        }
+    } catch (\Throwable) { $__prefillItems = []; }
+}
 
 // pre-render VAT select do klonowania w wierszach
 $vatSelectHtml = '<select class="form-select item-vatcode" name="items[0][vat_code_id]" required>';
@@ -252,6 +302,25 @@ $gtuSelectHtml .= '</select>';
 </script>
 <?php endif; ?>
 
+<?php if ($__isEdit && !empty($__prefillContractor)): ?>
+<script>
+  // Edycja szkicu korekty walutowej — ustaw kontrahenta w Select2 i uzupełnij hidden id.
+  $(function(){
+    var c = <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    if (!c || !c.name) return;
+    var $sel = $('#contractor-select');
+    if ($sel.length && $.fn.select2) {
+      var label = c.label || c.name || 'Kontrahent';
+      var value = c.id || ('LS:' + (c.nip || (c.name||'').slice(0,30)));
+      $sel.find('option[value="'+value+'"]').remove();
+      var opt = new Option(label, value, true, true);
+      $sel.append(opt).trigger('change');
+      $('#contractor-id-input').val(c.id || '');
+    }
+  });
+</script>
+<?php endif; ?>
+
 <div class="row">
     <!-- PRAWA KOLUMNA: karty -->
   <div class="col-xxl-12">
@@ -444,7 +513,8 @@ $gtuSelectHtml .= '</select>';
             <!-- Waluta i kurs przeniesione z zakładki Zaawansowane -->
             <div class="col-12 d-flex align-items-center gap-2">
               <?= $this->Form->control('currency', [
-                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency', 'value' => 'PLN',
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency',
+                'value' => $invoice->currency ?? (!$__isEdit ? 'PLN' : null),
                 'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
               ]) ?>
               <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
@@ -632,8 +702,8 @@ $gtuSelectHtml .= '</select>';
                 </div>
                 </div>
 
-              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START -->
-              <div id="contractor-snapshot" class="mt-2" style="display:none;">
+              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START (widoczny w edycji) -->
+              <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
                     <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true]) ?>
@@ -750,6 +820,48 @@ $gtuSelectHtml .= '</select>';
                 </thead>
 
               <tbody id="items-body">
+<?php if ($__isEdit && !empty($__prefillItems)): ?>
+<?php foreach ($__prefillItems as $__i => $__it):
+    $__vatOpts = '';
+    foreach ($vats as $__vid => $__vlabel) {
+        $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
+        $__vatOpts .= '<option value="'.h($__vid).'"'.$__sel.'>'.h($__vlabel).'</option>';
+    }
+    $__gtuOpts = '';
+    foreach (($gtuOptions ?? []) as $__gval => $__glabel) {
+        $__sel = ((string)$__gval === (string)($__it['gtu_code'] ?? '')) ? ' selected' : '';
+        $__gtuOpts .= '<option value="'.h($__gval).'"'.$__sel.'>'.h($__glabel).'</option>';
+    }
+    $__itemName = (string)($__it['name'] ?? '');
+    $__newOpt = $__itemName !== '' ? '<option value="'.h('NEW:'.$__itemName).'" selected>'.h($__itemName).'</option>' : '';
+    $__pm = (string)($__it['price_mode'] ?? 'net');
+?>
+                <tr>
+  <td>
+    <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
+    <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][price_mode]" class="item-price-mode" value="<?= h($__pm) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][uu_id]" class="item-uu-id" value="<?= h((string)($__it['uu_id'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h((string)($__it['pkwiu'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h((string)($__it['gtin'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h((string)($__it['cn_code'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h((string)($__it['excise_amount'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h((string)($__it['procedure_marking'] ?? '')) ?>">
+  </td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
+  <td><input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required></td>
+  <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="<?= number_format((float)($__it['netto'] ?? 0), 2, '.', '') ?>" readonly></td>
+  <td><input class="form-control text-end item-gross" value="<?= number_format((float)($__it['brutto'] ?? 0), 2, '.', '') ?>" readonly></td>
+  <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
+  <td>
+    <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
+  </td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
                 <!-- pierwszy (wymagany) wiersz -->
                 <tr>
   <td>
@@ -775,6 +887,7 @@ $gtuSelectHtml .= '</select>';
     <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
   </td>
 </tr>
+<?php endif; ?>
 
 
                 <!-- wiersz: Add Product -->
