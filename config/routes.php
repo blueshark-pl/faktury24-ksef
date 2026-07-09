@@ -354,6 +354,16 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/kierowcy/usun/{id}',     ['controller' => 'Drivers', 'action' => 'delete'])
             ->setPass(['id']);
 
+        // Kategorie typów pojazdu (mapowanie typ zestawu → kategoria tolls)
+        $builder->get('/admin/vehicle-type-categories',            ['controller' => 'VehicleTypeCategories', 'action' => 'index']);
+        $builder->connect('/admin/vehicle-type-categories/add',    ['controller' => 'VehicleTypeCategories', 'action' => 'add']);
+        $builder->connect('/admin/vehicle-type-categories/edit/{id}', ['controller' => 'VehicleTypeCategories', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/admin/vehicle-type-categories/delete/{id}', ['controller' => 'VehicleTypeCategories', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/admin/vehicle-type-categories/for-type/{type}', ['controller' => 'VehicleTypeCategories', 'action' => 'forType'])
+            ->setPass(['type']);
+
         // Powiadomienia (per user)
         $builder->get('/powiadomienia',                 ['controller' => 'Notifications', 'action' => 'index']);
         $builder->get('/powiadomienia/recent',          ['controller' => 'Notifications', 'action' => 'recent']);

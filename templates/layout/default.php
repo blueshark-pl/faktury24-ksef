@@ -1622,6 +1622,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Kategorie typów pojazdu (mapowanie tolls) -->
+                            <li class="slide <?= $navActive('VehicleTypeCategories') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-price-tag-3-line side-menu__icon"></i><span class="side-menu__label">' . __('Kategorie tolls') . '</span>',
+                                    ['plugin' => false, 'controller' => 'VehicleTypeCategories', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

@@ -397,6 +397,25 @@ M:N: jedna FK kosztowa → wiele zleceń, jedno zlecenie → wiele FK kosztowych
 | `cost_invoice_id` | int | FK |
 | `speed_order_id` | int | FK |
 
+### Pełne kolumny `vehicle_type_categories`
+Migracja: `20260623150000_CreateVehicleTypeCategories.php`
+Mapowanie: **typ zestawu → kategoria w konkretnym systemie tolls** (np. „Standard w PL A2 AWSA = kat. 4").
+Planer tras używa tej mapy zamiast zgadywać po ilości osi/DMC.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | FK firma |
+| `vehicle_type_code` | string(20) | `standard|mega|fridge|tandem|solo|bus|oversize` (zgodne z `vehicles.combination_type`) |
+| `country_code` | char(2) | ISO 3166-1 alpha-2 (`PL`, `DE`, `AT`, `CZ`, `IT`, `FR`, `CH`, `NL`…) |
+| `system_name` | string(60) | np. `A2 AWSA`, `Toll Collect`, `MYTO CZ`, `e-TOLL`, `ASFA`, `GO-Box` |
+| `category_label` | string(100) | Etykieta do wyświetlenia (np. „kat. 4", „Achsklasse 5+") |
+| `notes` | text | opcjonalne komentarze |
+| `is_active` | bool | domyślnie `true` |
+| UNIQUE | | (`company_id`, `vehicle_type_code`, `country_code`, `system_name`) |
+
+CRUD: `/admin/vehicle-type-categories`. AJAX endpoint dla planera: `/admin/vehicle-type-categories/for-type/{type}`.
+
 ### Pola Kanban na `invoices`
 Migracja: `20260528100000_AddKanbanFieldsToInvoices.php`
 
@@ -485,6 +504,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-09 | Feat: kategorie tolls per typ zestawu `/admin/vehicle-type-categories` — CRUD mapowań (Standard/Mega/… × kraj × system) + AJAX endpoint `for-type/{type}` + integracja w planerze tras (nadpisuje auto-klasyfikację) | `VehicleTypeCategoriesController.php`, `VehicleTypeCategoriesTable.php`, `VehicleTypeCategory.php`, `templates/VehicleTypeCategories/*`, migracja `CreateVehicleTypeCategories`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-05-28 | Feat: Kanban rozliczeń `/rozliczenia/kanban` — 6 kolumn (W terminie, Wysłane, Za 7 dni, Przeterminowane, Spór, Opłacone), drag-drop, kebab menu na karcie, notatki + activity log, snooze, severity gradient, mini-stats (DSO, Inkaso, At-risk), saved views (localStorage), bulk actions, compact mode, assign do usera, AI: następna akcja | `ReconciliationsController.php`, `templates/Reconciliations/kanban.php`, `templates/element/Reconciliations/kanban_card.php`, migracje, `InvoiceNotes*`, sidebar |
 | 2026-05-27 | Feat: serwis `Mt940TransactionCodes` (pełna mapa mBank z PDF + legacy SWIFT) + popovery z opisem kodów (`A61`, `D50`, `N150` itp.) w liście transakcji | `src/Service/Mt940TransactionCodes.php`, `templates/BankTransactions/transactions.php` |
 | 2026-05-27 | Feat: AI parser tytułu przelewu — `/wyciagi/ai-parse-title/{id}` → OpenAI wyciąga numery faktur (system + legacy), modal pokazuje listę z copy/search; fix wyszukiwania faktur (pokazuj WSZYSTKIE gdy user wpisuje query) | `BankTransactionsController.php`, `templates/BankTransactions/transactions.php`, `config/routes.php` |

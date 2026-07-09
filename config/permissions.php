@@ -175,6 +175,13 @@ return [
             'controller' => 'Drivers',
             'action'     => ['index', 'add', 'edit', 'delete'],
         ],
+        // Kategorie typów pojazdu (mapowanie typ→kategoria tolls)
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'VehicleTypeCategories',
+            'action'     => ['index', 'add', 'edit', 'delete', 'forType'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],

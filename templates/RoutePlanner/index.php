@@ -3306,6 +3306,38 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
 
     // Klasyfikacja pojazdu per kraj (orientacyjne — HERE może mieć inną logikę)
+    // Cache kategorii per typ zestawu (pobierane z /admin/vehicle-type-categories/for-type/{type}).
+    // Wypełniane leniwie przez ensureTypeCategoriesLoaded(type).
+    var typeCategoriesByType = {};   // { standard: [{country_code, system_name, category_label, notes}, ...], mega: [...] }
+    var typeCategoriesLoading = {};  // { standard: Promise<...>, ... }
+
+    function ensureTypeCategoriesLoaded(type) {
+        if (!type) return Promise.resolve([]);
+        if (typeCategoriesByType[type]) return Promise.resolve(typeCategoriesByType[type]);
+        if (typeCategoriesLoading[type]) return typeCategoriesLoading[type];
+        var url = '<?= $this->Url->build(['controller' => 'VehicleTypeCategories', 'action' => 'forType']) ?>/' + encodeURIComponent(type);
+        typeCategoriesLoading[type] = fetch(url, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : { categories: [] }; })
+            .then(function (data) {
+                var cats = (data && data.categories) ? data.categories : [];
+                typeCategoriesByType[type] = cats;
+                return cats;
+            })
+            .catch(function () {
+                typeCategoriesByType[type] = [];
+                return [];
+            });
+        return typeCategoriesLoading[type];
+    }
+
+    // Zwraca [{system_name, category_label, notes}, ...] dla danego typu + kraju.
+    // Wymaga wcześniejszego ensureTypeCategoriesLoaded(type).
+    function typeCategoriesForCountry(type, countryCode) {
+        var cats = typeCategoriesByType[type] || [];
+        var upper = String(countryCode || '').toUpperCase();
+        return cats.filter(function (c) { return String(c.country_code || '').toUpperCase() === upper; });
+    }
+
     function vehicleTollClasses(v) {
         if (!v) return null;
         var axles = v.axle_count || 0;
@@ -3505,16 +3537,48 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             ['fr', 'Francja',    classes.fr],
             ['it', 'Włochy',     classes.it],
         ];
-        document.getElementById('tolls-classes').innerHTML = countryMap.map(function (cc) {
-            var lines = Array.isArray(cc[2]) ? cc[2] : [cc[2]];
-            var linesHtml = lines.map(function (l) {
-                return '<div class="small mt-1">' + escapeHtml(l) + '</div>';
+
+        var renderCountries = function () {
+            document.getElementById('tolls-classes').innerHTML = countryMap.map(function (cc) {
+                var lines = Array.isArray(cc[2]) ? cc[2] : [cc[2]];
+                var linesHtml = lines.map(function (l) {
+                    return '<div class="small mt-1">' + escapeHtml(l) + '</div>';
+                }).join('');
+
+                // Override z bazy — jeśli firma zdefiniowała kategorie dla tego typu+kraju,
+                // pokaż je jako autorytatywne (planer je używa zamiast auto-zgadywania).
+                var overrideHtml = '';
+                if (vehicle.combination_type) {
+                    var overrides = typeCategoriesForCountry(vehicle.combination_type, cc[0]);
+                    if (overrides.length) {
+                        overrideHtml = '<div class="mt-2 pt-2 border-top">'
+                                     + '<div class="small text-success fw-bold">'
+                                     + '<i class="ri-check-double-line me-1"></i>Zdefiniowane przez firmę</div>'
+                                     + overrides.map(function (ov) {
+                                         var line = '<strong>' + escapeHtml(ov.system_name) + '</strong> — '
+                                                  + escapeHtml(ov.category_label);
+                                         if (ov.notes) line += ' <span class="text-muted">(' + escapeHtml(ov.notes) + ')</span>';
+                                         return '<div class="small text-success-emphasis">' + line + '</div>';
+                                     }).join('')
+                                     + '</div>';
+                    }
+                }
+
+                return '<div class="border rounded p-2 d-flex flex-column" style="min-width:200px;background:white">'
+                     + '<div><span class="fi fi-' + cc[0] + '"></span> <strong>' + escapeHtml(cc[1]) + '</strong></div>'
+                     + linesHtml
+                     + overrideHtml
+                     + '</div>';
             }).join('');
-            return '<div class="border rounded p-2 d-flex flex-column" style="min-width:200px;background:white">'
-                 + '<div><span class="fi fi-' + cc[0] + '"></span> <strong>' + escapeHtml(cc[1]) + '</strong></div>'
-                 + linesHtml
-                 + '</div>';
-        }).join('');
+        };
+
+        // Renderuj od razu (auto-klasyfikacja), potem doładuj overrides gdy przyjdą z serwera.
+        renderCountries();
+        if (vehicle.combination_type) {
+            ensureTypeCategoriesLoaded(vehicle.combination_type).then(function () {
+                renderCountries();
+            });
+        }
     }
 
     // Toggle przycisku „Klasy pojazdu"
