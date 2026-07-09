@@ -354,6 +354,15 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/kierowcy/usun/{id}',     ['controller' => 'Drivers', 'action' => 'delete'])
             ->setPass(['id']);
 
+        // Zestawy pojazd+naczepa+kierowca (klikalne w planerze)
+        $builder->get('/zestawy',                 ['controller' => 'VehicleCombinations', 'action' => 'index']);
+        $builder->connect('/zestawy/dodaj',       ['controller' => 'VehicleCombinations', 'action' => 'add']);
+        $builder->connect('/zestawy/edytuj/{id}', ['controller' => 'VehicleCombinations', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/zestawy/usun/{id}',      ['controller' => 'VehicleCombinations', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/zestawy/lista.json',      ['controller' => 'VehicleCombinations', 'action' => 'listJson']);
+
         // Kategorie typów pojazdu (mapowanie typ zestawu → kategoria tolls)
         $builder->get('/admin/vehicle-type-categories',            ['controller' => 'VehicleTypeCategories', 'action' => 'index']);
         $builder->connect('/admin/vehicle-type-categories/add',    ['controller' => 'VehicleTypeCategories', 'action' => 'add']);

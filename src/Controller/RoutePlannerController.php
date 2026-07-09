@@ -48,6 +48,7 @@ class RoutePlannerController extends AppController
         $vehicles = [];
         $trailers = [];
         $drivers = [];
+        $combinations = [];
         if ($companyId !== '') {
             $vehicles = $this->fetchTable('Vehicles')->find()
                 ->where(['company_id' => $companyId, 'is_active' => true])
@@ -65,6 +66,12 @@ class RoutePlannerController extends AppController
                 ->where(['company_id' => $companyId, 'is_active' => true])
                 ->orderByDesc('is_default')
                 ->orderByAsc('full_name')
+                ->all()
+                ->toArray();
+            $combinations = $this->fetchTable('VehicleCombinations')->find()
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByDesc('is_default')
+                ->orderByAsc('name')
                 ->all()
                 ->toArray();
         }
@@ -107,7 +114,7 @@ class RoutePlannerController extends AppController
         }
 
         $hereApiKey = (string)\Cake\Core\Configure::read('Here.apiKey');
-        $this->set(compact('vehicles', 'trailers', 'drivers', 'hereApiKey', 'recentSearches', 'templates'));
+        $this->set(compact('vehicles', 'trailers', 'drivers', 'combinations', 'hereApiKey', 'recentSearches', 'templates'));
     }
 
     public function saveTemplate(): Response

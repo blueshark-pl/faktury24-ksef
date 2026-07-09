@@ -182,6 +182,13 @@ return [
             'controller' => 'VehicleTypeCategories',
             'action'     => ['index', 'add', 'edit', 'delete', 'forType'],
         ],
+        // Zestawy: ciągnik + naczepa + kierowca
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'VehicleCombinations',
+            'action'     => ['index', 'add', 'edit', 'delete', 'listJson'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],

@@ -397,6 +397,24 @@ M:N: jedna FK kosztowa → wiele zleceń, jedno zlecenie → wiele FK kosztowych
 | `cost_invoice_id` | int | FK |
 | `speed_order_id` | int | FK |
 
+### Pełne kolumny `vehicle_combinations`
+Migracja: `20260623160000_CreateVehicleCombinations.php`
+Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | FK firma |
+| `name` | string(150) | Nazwa robocza (np. „Volvo FH + Krone Cool + Kowalski") |
+| `vehicle_id` | char(36) | FK do `vehicles.id` (ciągnik/solo, nullable) |
+| `trailer_id` | char(36) | FK do `trailers.id` (naczepa/przyczepa, nullable) |
+| `driver_id` | char(36) | FK do `drivers.id` (kierowca, nullable) |
+| `notes` | text | opcjonalne |
+| `is_active` | bool | domyślnie `true` |
+| `is_default` | bool | Domyślny zestaw firmy — autoselect w planerze. Zapis nowego default automatycznie zeruje default u innych |
+
+CRUD: `/zestawy`. AJAX endpoint dla planera: `/zestawy/lista.json`.
+
 ### Pełne kolumny `vehicle_type_categories`
 Migracja: `20260623150000_CreateVehicleTypeCategories.php`
 Mapowanie: **typ zestawu → kategoria w konkretnym systemie tolls** (np. „Standard w PL A2 AWSA = kat. 4").
@@ -504,6 +522,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-09 | Feat: zestawy pojazd+naczepa+kierowca `/zestawy` — nazwane kombinacje, CRUD, auto-fill w planerze tras (jeden click ustawia ciągnik/naczepę/kierowcę), domyślny zestaw firmy | `VehicleCombinationsController.php`, `VehicleCombinationsTable.php`, `VehicleCombination.php`, `templates/VehicleCombinations/*`, migracja `CreateVehicleCombinations`, `RoutePlannerController.php`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: kategorie tolls per typ zestawu `/admin/vehicle-type-categories` — CRUD mapowań (Standard/Mega/… × kraj × system) + AJAX endpoint `for-type/{type}` + integracja w planerze tras (nadpisuje auto-klasyfikację) | `VehicleTypeCategoriesController.php`, `VehicleTypeCategoriesTable.php`, `VehicleTypeCategory.php`, `templates/VehicleTypeCategories/*`, migracja `CreateVehicleTypeCategories`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-05-28 | Feat: Kanban rozliczeń `/rozliczenia/kanban` — 6 kolumn (W terminie, Wysłane, Za 7 dni, Przeterminowane, Spór, Opłacone), drag-drop, kebab menu na karcie, notatki + activity log, snooze, severity gradient, mini-stats (DSO, Inkaso, At-risk), saved views (localStorage), bulk actions, compact mode, assign do usera, AI: następna akcja | `ReconciliationsController.php`, `templates/Reconciliations/kanban.php`, `templates/element/Reconciliations/kanban_card.php`, migracje, `InvoiceNotes*`, sidebar |
 | 2026-05-27 | Feat: serwis `Mt940TransactionCodes` (pełna mapa mBank z PDF + legacy SWIFT) + popovery z opisem kodów (`A61`, `D50`, `N150` itp.) w liście transakcji | `src/Service/Mt940TransactionCodes.php`, `templates/BankTransactions/transactions.php` |

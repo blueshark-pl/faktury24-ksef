@@ -1631,6 +1631,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Zestawy: ciągnik + naczepa + kierowca -->
+                            <li class="slide <?= $navActive('VehicleCombinations') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-links-line side-menu__icon"></i><span class="side-menu__label">' . __('Zestawy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'VehicleCombinations', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

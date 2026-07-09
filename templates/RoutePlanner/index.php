@@ -573,6 +573,31 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         <div class="card glass-card mt-3">
             <div class="card-header py-2"><strong><i class="ri-settings-3-line me-1 text-primary"></i><?= __('Opcje') ?></strong></div>
             <div class="card-body">
+                <?php if (!empty($combinations)): ?>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">
+                        <i class="ri-links-line text-warning me-1"></i><?= __('Zestaw') ?>
+                        <?= $this->Html->link(
+                            '<i class="ri-external-link-line"></i>',
+                            ['controller' => 'VehicleCombinations', 'action' => 'index'],
+                            ['escape' => false, 'class' => 'ms-1 text-muted small', 'title' => __('Zarządzaj zestawami'), 'target' => '_blank']
+                        ) ?>
+                    </label>
+                    <select class="form-select form-select-sm" id="combination-id">
+                        <option value=""><?= __('— wybierz zestaw lub składaj ręcznie —') ?></option>
+                        <?php foreach ($combinations as $c): ?>
+                            <option value="<?= h($c->id) ?>"
+                                    data-vehicle-id="<?= h($c->vehicle_id ?? '') ?>"
+                                    data-trailer-id="<?= h($c->trailer_id ?? '') ?>"
+                                    data-driver-id="<?= h($c->driver_id ?? '') ?>"
+                                    <?= $c->is_default ? 'selected' : '' ?>>
+                                <?= h($c->name) ?><?= $c->is_default ? ' ★' : '' ?>
+                            </option>
+                        <?php endforeach ?>
+                    </select>
+                    <small class="text-muted"><?= __('Auto-uzupełnia ciągnik, naczepę i kierowcę.') ?></small>
+                </div>
+                <?php endif ?>
                 <div class="mb-2">
                     <label class="form-label small mb-1"><i class="ri-truck-line text-primary me-1"></i><?= __('Ciągnik / pojazd') ?></label>
                     <select class="form-select form-select-sm" id="vehicle-id">
@@ -1454,6 +1479,30 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     }
                 }
             });
+        }
+
+        // Auto-fill ciągnik/naczepa/kierowca gdy user wybierze zestaw
+        var comboSel = document.getElementById('combination-id');
+        if (comboSel) {
+            var setSelectValue = function (id, val) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.value = val || '';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            var applyCombination = function () {
+                var opt = comboSel.options[comboSel.selectedIndex];
+                if (!opt || !opt.value) return; // pusta opcja → nie ruszamy nic
+                var vId = opt.getAttribute('data-vehicle-id') || '';
+                var tId = opt.getAttribute('data-trailer-id') || '';
+                var dId = opt.getAttribute('data-driver-id') || '';
+                setSelectValue('vehicle-id', vId);
+                setSelectValue('trailer-id', tId);
+                setSelectValue('driver-id', dId);
+            };
+            comboSel.addEventListener('change', applyCombination);
+            // Wykonaj przy załadowaniu strony jeśli zestaw domyślny został preselectowany
+            if (comboSel.value) applyCombination();
         }
     });
     var deleteRecentUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'deleteRecent', '__ID__']) ?>';
