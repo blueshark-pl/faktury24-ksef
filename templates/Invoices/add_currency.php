@@ -1777,8 +1777,11 @@ $(function () {
     $('#snapshot-intl-toggle').prop('checked', hasIntl);
     $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
     // Auto-prefill vat_prefix z kodu kraju (jeśli UE i brak prefiksu)
+    // Uwzglednia wyjatki: AT→ATU (Austria ma sztywne 'U' po AT), GR→EL (Grecja)
     if (country !== 'PL' && !data.vat_prefix) {
-      $('[name="invoice_contractor[vat_prefix]"]').val(country);
+      var vatPrefixMap = { 'AT': 'ATU', 'GR': 'EL' };
+      var vatPrefix = vatPrefixMap[country] || country;
+      $('[name="invoice_contractor[vat_prefix]"]').val(vatPrefix);
     }
   }
   // ====== AUTO VAT / ODWROTNE OBCIĄŻENIE DLA KONTRAHENTÓW SPOZA PL ======
@@ -1860,8 +1863,11 @@ $(function () {
     $('#snapshot-intl-toggle').prop('checked', showIntl);
     $('#snapshot-intl-fields').toggleClass('d-none', !showIntl);
     // Auto-prefill vat_prefix jeśli pole puste
+    // Uwzglednia wyjatki: AT→ATU (Austria), GR→EL (Grecja)
     if (showIntl && !$('[name="invoice_contractor[vat_prefix]"]').val()) {
-      $('[name="invoice_contractor[vat_prefix]"]').val(country);
+      var vatPrefixMap = { 'AT': 'ATU', 'GR': 'EL' };
+      var vatPrefix = vatPrefixMap[country] || country;
+      $('[name="invoice_contractor[vat_prefix]"]').val(vatPrefix);
     }
     if (country === 'PL') {
       $('[name="invoice_contractor[vat_prefix]"]').val('');

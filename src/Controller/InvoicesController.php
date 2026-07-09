@@ -7426,6 +7426,20 @@ HTML;
     }
 
     /**
+     * Zwraca prefiks VAT UE dla kodu kraju ISO.
+     * Wiekszosc krajow UE ma prefiks = kod ISO. Wyjatki:
+     *   - Austria (AT) → ATU (fixed 'U' po AT, potem 8 cyfr)
+     *   - Grecja  (GR) → EL  (historyczna kwestia — Grecja uzywa EL)
+     */
+    private function vatPrefixForCountry(string $countryCode): string
+    {
+        $cc = strtoupper(trim($countryCode));
+        if ($cc === 'AT') return 'ATU';
+        if ($cc === 'GR') return 'EL';
+        return $cc;
+    }
+
+    /**
      * Sprawdza czy NIP jest poprawny wg wzorca XSD FA(3):
      * [1-9]((\d[1-9])|([1-9]\d))\d{7} — dokładnie 10 cyfr, pierwsza != 0,
      * druga i trzecia cyfra nie mogą być jednocześnie 0.
@@ -7449,7 +7463,12 @@ HTML;
         $raw = trim($raw);
         if ($raw === '') return ['type' => 'none'];
 
-        // Zaczyna się od 2 liter — zagraniczny VAT-UE (np. CZ05800862, DE123456789)
+        // Austria: ATU + 8 cyfr — prefiks 3-znakowy (przed generycznym 2-znakowym)
+        if (preg_match('/^ATU/i', $raw)) {
+            return ['type' => 'VatUE', 'prefix' => 'ATU', 'value' => $raw];
+        }
+
+        // Zaczyna się od 2 liter — zagraniczny VAT-UE (np. CZ05800862, DE123456789, EL123456789)
         if (preg_match('/^([A-Z]{2})/i', $raw, $m)) {
             $prefix = strtoupper($m[1]);
             if ($prefix === 'PL') {
@@ -7641,7 +7660,11 @@ HTML;
         $xml[] = '    <DaneIdentyfikacyjne>';
         if ($buyerVatEu !== '') {
             // VAT UE: KodUE + NrVatUE
-            $xml[] = '      <KodUE>' . $this->esc($buyerVatPrefix !== '' ? $buyerVatPrefix : ($countryCode !== 'PL' ? $countryCode : '')) . '</KodUE>';
+            // Gdy prefix nie wpisano recznie — mapuj z kodu kraju (AT→ATU, GR→EL, inne = ISO).
+            $kodUE = $buyerVatPrefix !== ''
+                ? $buyerVatPrefix
+                : ($countryCode !== 'PL' ? $this->vatPrefixForCountry($countryCode) : '');
+            $xml[] = '      <KodUE>' . $this->esc($kodUE) . '</KodUE>';
             $xml[] = '      <NrVatUE>' . $this->esc($buyerVatEu) . '</NrVatUE>';
         } elseif ($buyerTaxIdOther !== '') {
             // Inny identyfikator: opcjonalny KodKraju + NrID
