@@ -193,6 +193,24 @@ $isCreditNote = ($invoice->type ?? '') === 'credit_note';
 $isNoVat   = in_array(($invoice->type ?? ''), ['novat', 'credit_note'], true);
 $isForeign = ($cur !== 'PLN');
 
+// Korekta — do porownania stanu przed/po (analogicznie do KSeF FA(3) StanPrzed).
+// $isCorrection, $original, $originalItems przekazane z kontrolera.
+$isCorrection = !empty($isCorrection);
+$origItemsArr = [];
+if ($isCorrection && !empty($originalItems)) {
+    foreach ($originalItems as $__oi) { $origItemsArr[] = $__oi; }
+}
+$origTotals = ['netto' => 0.0, 'tax' => 0.0, 'brutto' => 0.0];
+if ($isCorrection && !empty($origItemsArr)) {
+    foreach ($origItemsArr as $__oi) {
+        $__on = (float)($__oi->netto ?? 0);
+        $__ob = (float)($__oi->brutto ?? 0);
+        $origTotals['netto']  += $__on;
+        $origTotals['brutto'] += $__ob;
+        $origTotals['tax']    += ($__ob - $__on);
+    }
+}
+
 /* ─── odwrotne obciążenie — dodatkowe dane ─── */
 $rcBuyerVat = $buyer->vat_eu ?? $buyer->vat_prefix ?? null;
 if ($rcBuyerVat === null && !empty($buyer->nip) && !empty($buyer->vat_prefix ?? null)) {
@@ -549,6 +567,15 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
         <div class="inv-type"><?= h($typeName) ?></div>
         <div class="inv-number">Nr: <?= h($invoice->fullnumber ?: ('ID-'.$invoice->id)) ?></div>
         <div class="inv-meta"><?= h($t['original']) ?><?php if ($isForeign): ?> &nbsp;·&nbsp; <span style="background:#dbeafe;color:#1e40af;padding:1px 7px;border-radius:3px;font-weight:700"><?= h($cur) ?></span><?php endif; ?></div>
+        <?php if ($isCorrection && !empty($original)): ?>
+        <div class="inv-meta" style="margin-top:4px">
+            <?= $lang === 'en' ? 'To invoice' : 'Do faktury' ?>:
+            <strong><?= h($original->fullnumber ?: ('ID-'.$original->id)) ?></strong>
+            <?php if (!empty($original->date)): ?>
+                <?= $lang === 'en' ? 'of' : 'z dnia' ?> <?= $fdate($original->date) ?>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <?php if (($invoice->workflow_status ?? '') === 'draft'): ?>
         <div><span class="badge-draft"><?= h($t['draft']) ?></span></div>
         <?php endif; ?>
@@ -637,6 +664,82 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
     </tfoot>
 </table>
 <?php elseif (!$isMargin): ?>
+<?php
+    // Zwykla renderowanie wiersza — wspoldzielone przez fakture i korekte
+    // ($rowIdx = null gdy korekta, wtedy uzywamy $overrideRowIdx)
+    $renderItemRow = function($it, int $displayRowIdx, string $stateLabel = '') use ($num2, $translatePhrase, $addDescsByRow, $lang, $isNoVat, $t) {
+        $qty    = (float)($it->quantity ?? $it->count ?? 1);
+        $unit   = $it->unit ?? ($lang === 'en' ? 'pcs' : 'szt.');
+        $net    = (float)$it->netto;
+        $brut   = (float)$it->brutto;
+        $vatAmt = $brut - $net;
+        $netUnit= $qty ? $net / $qty : $net;
+        $rateName = $it->vat->name ?? (isset($it->vat->rate) ? $it->vat->rate.'%' : '0%');
+        $rowDescs = $addDescsByRow[$displayRowIdx] ?? [];
+        $bgStyle = '';
+        if ($stateLabel === 'before') $bgStyle = ' style="background:#fef3c7;font-style:italic;color:#6b7280"'; // przed - jasny amber
+        elseif ($stateLabel === 'after') $bgStyle = ' style="background:#dcfce7;font-weight:600"'; // po - jasny green
+        elseif ($stateLabel === 'diff')  $bgStyle = ' style="background:#dbeafe;font-weight:700;border-top:2px solid #1e40af"';
+        $label = '';
+        if ($stateLabel === 'before') $label = ($lang === 'en' ? 'Before' : 'Przed');
+        elseif ($stateLabel === 'after')  $label = ($lang === 'en' ? 'After'  : 'Po');
+        elseif ($stateLabel === 'diff')   $label = ($lang === 'en' ? 'Difference' : 'Różnica');
+
+        echo '<tr'.$bgStyle.'>';
+        echo '<td>'.($stateLabel && $stateLabel !== 'before' ? '' : (int)$displayRowIdx).'</td>';
+        echo '<td class="left">';
+        if ($label !== '') {
+            echo '<span style="display:inline-block;min-width:60px;font-weight:600">'.h($label).':</span> ';
+        }
+        echo '<strong>'.h($translatePhrase($it->name ?? '')).'</strong>';
+        if (!empty($it->product_desc)) {
+            echo '<br><span style="color:#6b7280;font-size:7.8pt">'.h($translatePhrase($it->product_desc)).'</span>';
+        }
+        if (!empty($rowDescs) && $stateLabel !== 'before') {
+            echo '<table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:6.5pt;font-family:\'DejaVu Sans\',sans-serif;border-collapse:collapse"><tbody>';
+            foreach ($rowDescs as $d) {
+                $k = trim((string)($d->klucz ?? ''));
+                $v = trim((string)($d->wartosc ?? ''));
+                if ($k === '' && $v === '') continue;
+                echo '<tr><td style="font-family:\'DejaVu Sans\',sans-serif;font-size:6.5pt;color:#6b7280;white-space:nowrap;width:80px;padding:1px 5px;text-align:left;">'.h($translatePhrase($k)).':</td><td style="font-family:\'DejaVu Sans\',sans-serif;font-size:6.5pt;font-weight:bold;padding:1px 4px;text-align:left;">'.h($translatePhrase($v)).'</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+        echo '</td>';
+        // Dla wiersza roznicy pokazuj +/- zeby czytelniej bylo
+        $signed = function($val) use ($num2) {
+            $v = (float)$val;
+            if (abs($v) < 0.0001) return '0,00';
+            return ($v > 0 ? '+' : '') . $num2($v);
+        };
+        if ($stateLabel === 'diff') {
+            echo '<td>'.$signed($qty).'</td>';
+            echo '<td>'.h($unit).'</td>';
+            echo '<td>'.$signed($netUnit).'</td>';
+            if (!$isNoVat) {
+                echo '<td>'.h($rateName).'</td>';
+                echo '<td>'.$signed($net).'</td>';
+                echo '<td>'.$signed($vatAmt).'</td>';
+                echo '<td>'.$signed($brut).'</td>';
+            } else {
+                echo '<td>'.$signed($net).'</td>';
+            }
+        } else {
+            echo '<td>'.$num2($qty).'</td>';
+            echo '<td>'.h($unit).'</td>';
+            echo '<td>'.$num2($netUnit).'</td>';
+            if (!$isNoVat) {
+                echo '<td>'.h($rateName).'</td>';
+                echo '<td>'.$num2($net).'</td>';
+                echo '<td>'.$num2($vatAmt).'</td>';
+                echo '<td'.($stateLabel === 'after' ? ' style="font-weight:700"' : '').'>'.$num2($brut).'</td>';
+            } else {
+                echo '<td'.($stateLabel === 'after' ? ' style="font-weight:700"' : '').'>'.$num2($net).'</td>';
+            }
+        }
+        echo '</tr>';
+    };
+?>
 <table class="items-table">
     <thead>
         <?php $f = "font-family:'DejaVu Sans',sans-serif"; ?>
@@ -657,53 +760,92 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
         </tr>
     </thead>
     <tbody>
-    <?php $rowIdx = 0; foreach ($invoice->invoice_contents as $it): $rowIdx++;
-        $qty    = (float)($it->quantity ?? $it->count ?? 1);
-        $unit   = $it->unit ?? ($lang === 'en' ? 'pcs' : 'szt.');
-        $net    = (float)$it->netto;
-        $brut   = (float)$it->brutto;
-        $vatAmt = $brut - $net;
-        $netUnit= $qty ? $net / $qty : $net;
-        $rateName = $it->vat->name ?? (isset($it->vat->rate) ? $it->vat->rate.'%' : '0%');
-        $rowDescs = $addDescsByRow[$rowIdx] ?? [];
+    <?php if ($isCorrection): ?>
+    <?php
+        // Korekta: paruj wiersze po indeksie (jak KSeF buildLinesXml).
+        // Dla kazdego indeksu pokazuj wiersz "przed" (z faktury pierwotnej) + "po" (z korekty) + "roznica".
+        $corrItems = (array)($invoice->invoice_contents ?? []);
+        $maxRows = max(count($origItemsArr), count($corrItems));
+        for ($i = 0; $i < $maxRows; $i++):
+            $displayIdx = $i + 1;
+            $orig = $origItemsArr[$i] ?? null;
+            $curr = $corrItems[$i] ?? null;
+
+            if ($orig) {
+                $renderItemRow($orig, $displayIdx, 'before');
+            }
+            if ($curr) {
+                $renderItemRow($curr, $displayIdx, 'after');
+            } elseif ($orig) {
+                // pozycja usunieta w korekcie — pokaz jako zero
+                $ghost = clone $orig;
+                $ghost->quantity = 0; $ghost->netto = 0; $ghost->brutto = 0;
+                $renderItemRow($ghost, $displayIdx, 'after');
+            }
+
+            // Roznica per wiersz — tylko jesli faktycznie sie roznia
+            if ($orig && $curr) {
+                $on = (float)($orig->netto ?? 0);
+                $ob = (float)($orig->brutto ?? 0);
+                $cn = (float)($curr->netto ?? 0);
+                $cb = (float)($curr->brutto ?? 0);
+                if (abs($on - $cn) >= 0.005 || abs($ob - $cb) >= 0.005) {
+                    // Zbuduj sztuczny wiersz z roznicami
+                    $diff = clone $curr;
+                    $diff->quantity = (float)($curr->quantity ?? 0) - (float)($orig->quantity ?? 0);
+                    $diff->netto = $cn - $on;
+                    $diff->brutto = $cb - $ob;
+                    $renderItemRow($diff, $displayIdx, 'diff');
+                }
+            }
+        endfor;
     ?>
-    <tr>
-        <td><?= $rowIdx ?></td>
-        <td class="left">
-            <strong><?= h($translatePhrase($it->name ?? '')) ?></strong>
-            <?php if (!empty($it->product_desc)): ?>
-            <br><span style="color:#6b7280;font-size:7.8pt"><?= h($translatePhrase($it->product_desc)) ?></span>
-            <?php endif; ?>
-            <?php if (!empty($rowDescs)): ?>
-            <table style="width:100%;border-left:3px solid #3b82f6;margin:3px 0 2px 2px;background:#eff6ff;font-size:6.5pt;font-family:'DejaVu Sans',sans-serif;border-collapse:collapse"><tbody>
-                <?php foreach ($rowDescs as $d):
-                    $k = trim((string)($d->klucz ?? ''));
-                    $v = trim((string)($d->wartosc ?? ''));
-                    if ($k===''&&$v==='') continue;
-                ?>
-                <tr>
-                    <td style="font-family:'DejaVu Sans',sans-serif;font-size:6.5pt;color:#6b7280;white-space:nowrap;width:80px;padding:1px 5px;text-align:left;"><?= h($translatePhrase($k)) ?>:</td>
-                    <td style="font-family:'DejaVu Sans',sans-serif;font-size:6.5pt;font-weight:bold;padding:1px 4px;text-align:left;"><?= h($translatePhrase($v)) ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody></table>
-            <?php endif; ?>
-        </td>
-        <td><?= $num2($qty) ?></td>
-        <td><?= h($unit) ?></td>
-        <td><?= $num2($netUnit) ?></td>
-        <?php if (!$isNoVat): ?>
-        <td><?= h($rateName) ?></td>
-        <td><?= $num2($net) ?></td>
-        <td><?= $num2($vatAmt) ?></td>
-        <td style="font-weight:700"><?= $num2($brut) ?></td>
-        <?php else: ?>
-        <td style="font-weight:700"><?= $num2($net) ?></td>
-        <?php endif; ?>
-    </tr>
-    <?php endforeach; ?>
+    <?php else: ?>
+    <?php $rowIdx = 0; foreach ($invoice->invoice_contents as $it): $rowIdx++;
+        $renderItemRow($it, $rowIdx, '');
+    endforeach; ?>
+    <?php endif; ?>
     </tbody>
     <tfoot>
+        <?php if ($isCorrection): ?>
+        <tr style="background:#fef3c7;color:#78350f">
+            <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-size:9pt;font-weight:600;font-style:italic">
+                <?= $lang === 'en' ? 'Sum BEFORE correction' : 'Suma PRZED korektą' ?>:
+            </td>
+            <?php if (!$isNoVat): ?>
+            <td style="text-align:right"><?= $num2($origTotals['netto']) ?></td>
+            <td style="text-align:right"><?= $num2($origTotals['tax']) ?></td>
+            <?php endif; ?>
+            <td style="text-align:right;font-size:9pt;white-space:nowrap;font-style:italic"><?= $money($origTotals['brutto'], $cur) ?></td>
+        </tr>
+        <tr style="background:#dcfce7;color:#14532d">
+            <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-size:9pt;font-weight:600">
+                <?= $lang === 'en' ? 'Sum AFTER correction' : 'Suma PO korekcie' ?>:
+            </td>
+            <?php if (!$isNoVat): ?>
+            <td style="text-align:right"><?= $num2($invoice->netto ?? 0) ?></td>
+            <td style="text-align:right"><?= $num2($invoice->tax ?? 0) ?></td>
+            <?php endif; ?>
+            <td style="text-align:right;font-size:9pt;white-space:nowrap"><?= $money($invoice->total ?? 0, $cur) ?></td>
+        </tr>
+        <?php
+            $dNet = (float)($invoice->netto ?? 0) - $origTotals['netto'];
+            $dTax = (float)($invoice->tax   ?? 0) - $origTotals['tax'];
+            $dTot = (float)($invoice->total ?? 0) - $origTotals['brutto'];
+            $signStr = function($v) use ($num2) { return ($v > 0 ? '+' : ($v < 0 ? '' : '')) . $num2($v); };
+            $signMoney = function($v, $c) use ($money) { $s = ($v > 0 ? '+' : ''); return $s . $money($v, $c); };
+        ?>
+        <tr>
+            <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-size:10pt">
+                <?= $lang === 'en' ? 'DIFFERENCE (to pay/refund)' : 'RÓŻNICA (do zapłaty/zwrotu)' ?>:
+            </td>
+            <?php if (!$isNoVat): ?>
+            <td style="text-align:right"><?= $signStr($dNet) ?></td>
+            <td style="text-align:right"><?= $signStr($dTax) ?></td>
+            <?php endif; ?>
+            <td style="text-align:right;font-size:9.5pt;white-space:nowrap"><?= $signMoney($dTot, $cur) ?></td>
+        </tr>
+        <?php else: ?>
         <tr>
             <td colspan="<?= $isNoVat ? '5' : '6' ?>" style="text-align:right;font-size:10pt">
                 <?= h($t['total_due']) ?>:
@@ -714,6 +856,7 @@ table, th, td, tr, thead, tbody, tfoot, span, div, p, strong, b { font-family: '
             <?php endif; ?>
             <td style="text-align:right;font-size:9.5pt;white-space:nowrap"><?= $money($invoice->total ?? 0, $cur) ?></td>
         </tr>
+        <?php endif; ?>
     </tfoot>
 </table>
 <?php else: /* MARŻA */ ?>

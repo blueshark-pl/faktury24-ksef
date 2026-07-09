@@ -5725,6 +5725,24 @@ HTML;
                 ->toArray();
         }
 
+        // Korekta — pobierz fakturę pierwotną (parent) + jej pozycje.
+        // Bez tego custom PDF pokazuje tylko stan "po korekcie", bez porownania —
+        // wersja KSeF ma stan przed/po; custom musi rowniez.
+        $isCorrection = ($invoice->type ?? '') === 'correction';
+        $original = null;
+        $originalItems = [];
+        if ($isCorrection && !empty($invoice->parent_id)) {
+            $original = $this->Invoices->find()
+                ->contain([
+                    'InvoiceContents' => ['Vats'],
+                ])
+                ->where(['Invoices.id' => $invoice->parent_id])
+                ->first();
+            if ($original && !empty($original->invoice_contents)) {
+                $originalItems = $original->invoice_contents;
+            }
+        }
+
         // Kurs waluty — z encji lub próba NBP
         $cur = strtoupper((string)($invoice->currency ?? 'PLN'));
         $fxRate  = (float)($invoice->currency_exchange ?? $invoice->fx_rate ?? 0);
@@ -5770,7 +5788,7 @@ HTML;
         $safeNumber = preg_replace('/[^A-Za-z0-9_\-]/', '_', (string)($invoice->fullnumber ?: $invoice->id));
         $filename   = 'faktura_custom_' . $safeNumber . ($lang === 'en' ? '_EN' : '') . '.pdf';
 
-        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf'));
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf', 'isCorrection', 'original', 'originalItems'));
 
         if ($renderPdf) {
             $this->viewBuilder()

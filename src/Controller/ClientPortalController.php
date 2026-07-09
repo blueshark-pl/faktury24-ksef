@@ -550,6 +550,20 @@ class ClientPortalController extends AppController
                 ->toArray();
         }
 
+        // Korekta — pobierz fakture pierwotna dla porownania stanu przed/po (jak w InvoicesController::printCustom)
+        $isCorrection = ($invoice->type ?? '') === 'correction';
+        $original = null;
+        $originalItems = [];
+        if ($isCorrection && !empty($invoice->parent_id)) {
+            $original = $this->fetchTable('Invoices')->find()
+                ->contain(['InvoiceContents' => ['Vats']])
+                ->where(['Invoices.id' => $invoice->parent_id])
+                ->first();
+            if ($original && !empty($original->invoice_contents)) {
+                $originalItems = $original->invoice_contents;
+            }
+        }
+
         // Kurs waluty
         $cur     = strtoupper((string)($invoice->currency ?? 'PLN'));
         $fxRate  = (float)($invoice->currency_exchange ?? $invoice->fx_rate ?? 0);
@@ -578,7 +592,7 @@ class ClientPortalController extends AppController
         $safeNumber = preg_replace('/[^A-Za-z0-9_\-]/', '_', (string)($invoice->fullnumber ?: $invoice->id));
         $filename   = 'faktura_custom_' . $safeNumber . ($lang === 'en' ? '_EN' : '') . '.pdf';
 
-        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf'));
+        $this->set(compact('invoice', 'cur', 'fxRate', 'fxDate', 'fxTable', 'lang', 'ann', 'hasReverseCharge', 'renderPdf', 'isCorrection', 'original', 'originalItems'));
 
         $this->viewBuilder()
             ->setClassName('CakePdf.Pdf')
