@@ -121,9 +121,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                             </td>
                             <td class="text-end text-nowrap small">
                                 <?php if ($v->length_cm || $v->width_cm || $v->height_cm): ?>
-                                    <?= $v->length_cm ? number_format($v->length_cm / 100, 1, ',', '') . 'm' : '–' ?>
-                                    · <?= $v->width_cm ? number_format($v->width_cm / 100, 1, ',', '') . 'm' : '–' ?>
-                                    · <?= $v->height_cm ? number_format($v->height_cm / 100, 1, ',', '') . 'm' : '–' ?>
+                                    <?= $v->length_cm ? number_format($v->length_cm / 100, 2, ',', '') . 'm' : '–' ?>
+                                    · <?= $v->width_cm ? number_format($v->width_cm / 100, 2, ',', '') . 'm' : '–' ?>
+                                    · <?= $v->height_cm ? number_format($v->height_cm / 100, 2, ',', '') . 'm' : '–' ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif; ?>

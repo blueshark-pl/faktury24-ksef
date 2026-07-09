@@ -3274,10 +3274,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         else if (weight > 3500) fr = '3 (≥3,5t)';
         else fr = '2 (osob./van)';
 
-        // Niemcy (Maut): kategoria osi: Achsklasse 2, 3, 4, 5+. Plus EURO class i Gewichtsklasse.
+        // Niemcy (Maut): kategoria osi: Achsklasse 2, 3, 4, 5, 6+. Plus EURO class i Gewichtsklasse.
+        // UWAGA: HERE zwraca stawkę per faktyczna liczba osi — 5 to 5, 6+ to 6+.
+        // Nie mieszamy 5 z 6+ w display, bo cennik BAG per Achsklasse może się różnić.
         var de;
-        if (axles >= 5) de = '5+ osi (' + axles + ')';
-        else if (axles >= 4) de = '4 osi';
+        if (axles >= 6)      de = '6+ osi (' + axles + ')';
+        else if (axles === 5) de = '5 osi';
+        else if (axles === 4) de = '4 osi';
         else if (axles === 3) de = '3 osi';
         else if (axles === 2) de = '2 osi';
         else de = 'brak danych osi';
@@ -3319,12 +3322,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (euroLabel) etoll += ' · ' + euroLabel;
         pl.push(etoll);
 
-        // Czechy (MYTO CZ) — kategoria osi + EURO
+        // Czechy (MYTO CZ) — kategoria osi + EURO. Rozdzielamy 5 od 6+ (cennik może się różnić).
         var cz;
-        if (axles >= 5) cz = '4 (5+ osi)';
-        else if (axles >= 4) cz = '3 (4 osi)';
-        else if (axles >= 3) cz = '2 (3 osi)';
-        else if (axles >= 2) cz = '1 (2 osi)';
+        if (axles >= 6)     cz = '4+ (6+ osi, ' + axles + ')';
+        else if (axles === 5) cz = '4 (5 osi)';
+        else if (axles === 4) cz = '3 (4 osi)';
+        else if (axles === 3) cz = '2 (3 osi)';
+        else if (axles === 2) cz = '1 (2 osi)';
         else cz = 'brak';
         if (euroLabel) cz += ' · ' + euroLabel;
 
@@ -3413,9 +3417,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (vehicle.axle_count) paramParts.push('<strong>' + vehicle.axle_count + ' osi</strong>');
         if (vehicle.gross_weight_kg) paramParts.push((vehicle.gross_weight_kg / 1000).toFixed(1) + 't');
         if (vehicle.axle_load_kg) paramParts.push((vehicle.axle_load_kg / 1000).toFixed(1) + 't/oś');
-        if (vehicle.height_cm) paramParts.push('h=' + (vehicle.height_cm / 100).toFixed(1) + 'm');
-        if (vehicle.length_cm) paramParts.push('L=' + (vehicle.length_cm / 100).toFixed(1) + 'm');
-        if (vehicle.width_cm)  paramParts.push('w=' + (vehicle.width_cm / 100).toFixed(1) + 'm');
+        if (vehicle.height_cm) paramParts.push('h=' + (vehicle.height_cm / 100).toFixed(2) + 'm');
+        if (vehicle.length_cm) paramParts.push('L=' + (vehicle.length_cm / 100).toFixed(2) + 'm');
+        if (vehicle.width_cm)  paramParts.push('w=' + (vehicle.width_cm / 100).toFixed(2) + 'm');
         if (vehicle.emission_class) {
             // Normalizacja zgodna z HereRoutingService::normalizeEmission()
             var ec = String(vehicle.emission_class).toLowerCase().replace(/[\s_\-]+/g, '');

@@ -836,12 +836,32 @@ class HereRoutingService
             }
         }
         $dedupVig = [];
+        // Ranking okresów ważności (im mniejszy tym krócej trwa — dla jednorazowego
+        // przejazdu tranzytem preferujemy najkrótszy okres, żeby nie płacić za tydzień/rok).
+        $periodRank = static function (string $p): int {
+            $p = strtoupper(trim($p));
+            return match (true) {
+                $p === 'P1D' || $p === '1D' => 1,
+                $p === 'P2D' || $p === '2D' => 2,
+                $p === 'P3D' || $p === '3D' => 3,
+                str_contains($p, 'W')       => 5,   // np. P1W
+                $p === 'P1M' || $p === '1M' => 30,
+                $p === 'P1Y' || $p === '1Y' => 365,
+                default                     => 99,  // nieznany — na koniec
+            };
+        };
+
         foreach ($vigGroups as $group) {
-            // Sortuj po cenie ASC — najtańsza pierwsza
-            usort($group, fn($a, $b) => ($a['price'] ?? 0) <=> ($b['price'] ?? 0));
-            $cheapest = $group[0];
+            // Preferuj najkrótszy pass_validity (P1D dla jednorazowego przejazdu),
+            // przy remisie: niższa cena. HERE dla NL Eurovignette zwraca P1D + P7D + P1M + P1Y.
+            usort($group, function ($a, $b) use ($periodRank) {
+                $rank = $periodRank((string)($a['pass_validity'] ?? '')) <=> $periodRank((string)($b['pass_validity'] ?? ''));
+                if ($rank !== 0) return $rank;
+                return ($a['price'] ?? 0) <=> ($b['price'] ?? 0);
+            });
+            $picked = $group[0];
             if (count($group) > 1) {
-                $cheapest['alternative_options'] = array_map(function ($alt) {
+                $picked['alternative_options'] = array_map(function ($alt) {
                     return [
                         'price'        => $alt['price'] ?? 0,
                         'currency'     => $alt['currency'] ?? '',
@@ -850,7 +870,7 @@ class HereRoutingService
                     ];
                 }, array_slice($group, 1));
             }
-            $dedupVig[] = $cheapest;
+            $dedupVig[] = $picked;
         }
 
         // Przelicz totals od nowa — bazując tylko na zachowanych wpisach

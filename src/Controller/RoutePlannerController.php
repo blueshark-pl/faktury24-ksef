@@ -282,33 +282,62 @@ class RoutePlannerController extends AppController
             // Hogis-style: jeśli wybrana naczepa → sumujemy parametry z ciągnikiem
             // (HERE musi dostać total weight + total axles dla poprawnej klasyfikacji toll)
             $trailerId = (string)$this->request->getData('trailer_id', '');
+            $combinationWarnings = [];
             if ($trailerId !== '' && $vehicleData) {
                 $trailer = $this->fetchTable('Trailers')->find()->where(['id' => $trailerId])->first();
                 if ($trailer) {
                     $t = $trailer->toArray();
+
+                    // Zachowaj oryginalne wartości ciągnika dla widoczności
+                    $vehiclesOwn = [
+                        'axle_count'      => (int)($vehicleData['axle_count'] ?? 0),
+                        'gross_weight_kg' => (int)($vehicleData['gross_weight_kg'] ?? 0),
+                        'length_cm'       => (int)($vehicleData['length_cm'] ?? 0),
+                        'width_cm'        => (int)($vehicleData['width_cm'] ?? 0),
+                        'height_cm'       => (int)($vehicleData['height_cm'] ?? 0),
+                    ];
+                    $trailerOwn = [
+                        'axle_count'      => (int)($t['axle_count'] ?? 0),
+                        'gross_weight_kg' => (int)($t['gross_weight_kg'] ?? 0),
+                        'length_cm'       => (int)($t['length_cm'] ?? 0),
+                        'width_cm'        => (int)($t['width_cm'] ?? 0),
+                        'height_cm'       => (int)($t['height_cm'] ?? 0),
+                    ];
+
+                    // Walidacja: brak axle_count w naczepie = zły wynik klasyfikacji
+                    if ($trailerOwn['axle_count'] <= 0) {
+                        $combinationWarnings[] = 'Naczepa "' . ($t['name'] ?? '?') . '" nie ma wpisanego axle_count — klasyfikacja HERE będzie liczyć tylko z ciągnika (' . $vehiclesOwn['axle_count'] . ' osi). Uzupełnij w edycji naczepy.';
+                    }
+                    if ($trailerOwn['gross_weight_kg'] <= 0) {
+                        $combinationWarnings[] = 'Naczepa "' . ($t['name'] ?? '?') . '" nie ma wpisanego gross_weight_kg — DMC zestawu będzie tylko z ciągnika (' . $vehiclesOwn['gross_weight_kg'] . ' kg).';
+                    }
+
                     // Sumy dla HERE Routing
-                    $vehicleData['gross_weight_kg'] = ((int)($vehicleData['gross_weight_kg'] ?? 0))
-                        + ((int)($t['gross_weight_kg'] ?? 0));
-                    $vehicleData['axle_count'] = ((int)($vehicleData['axle_count'] ?? 0))
-                        + ((int)($t['axle_count'] ?? 0));
+                    $vehicleData['gross_weight_kg'] = $vehiclesOwn['gross_weight_kg'] + $trailerOwn['gross_weight_kg'];
+                    $vehicleData['axle_count']      = $vehiclesOwn['axle_count'] + $trailerOwn['axle_count'];
                     // Length zestawu = ciągnik + naczepa (ale max EU 16.50 m dla truck+semi)
-                    if (!empty($t['length_cm'])) {
-                        $combined = ((int)($vehicleData['length_cm'] ?? 0)) + (int)$t['length_cm'];
+                    if ($trailerOwn['length_cm'] > 0) {
+                        $combined = $vehiclesOwn['length_cm'] + $trailerOwn['length_cm'];
                         $vehicleData['length_cm'] = min($combined, 1875); // cap na EU max tandem
                     }
                     // Width/height z naczepy gdy > ciągnika
                     foreach (['width_cm', 'height_cm'] as $dim) {
-                        if (!empty($t[$dim]) && (int)$t[$dim] > (int)($vehicleData[$dim] ?? 0)) {
-                            $vehicleData[$dim] = (int)$t[$dim];
+                        if ($trailerOwn[$dim] > $vehiclesOwn[$dim]) {
+                            $vehicleData[$dim] = $trailerOwn[$dim];
                         }
                     }
                     // ADR-certified flag z naczepy
                     if (!empty($t['adr_certified'])) {
                         $vehicleData['hazardous_goods'] = true;
                     }
-                    // Zachowaj nazwę naczepy dla informacji w response
-                    $vehicleData['_trailer_name'] = $t['name'];
-                    $vehicleData['_trailer_id'] = $t['id'];
+                    // Zachowaj metadane dla UI
+                    $vehicleData['_trailer_name']   = $t['name'];
+                    $vehicleData['_trailer_id']     = $t['id'];
+                    $vehicleData['_combined_from'] = [
+                        'vehicle' => $vehiclesOwn,
+                        'trailer' => $trailerOwn,
+                    ];
+                    $vehicleData['_combination_warnings'] = $combinationWarnings;
                 }
             }
 
