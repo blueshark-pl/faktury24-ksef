@@ -9375,6 +9375,24 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
 
         $xml[] = '    </Platnosc>';
 
+        // DIAGNOSTYKA płatności (tymczasowe) — pozwala ustalić dlaczego wizualizacja pokazuje „Brak zapłaty".
+        try {
+            $__markerNow = false;
+            foreach ($xml as $__l2) {
+                if (str_contains($__l2, '<Zaplacono>') || str_contains($__l2, '<ZnacznikZaplatyCzesciowej>')) { $__markerNow = true; break; }
+            }
+            \Cake\Log\Log::warning('[PAYDBG] inv=' . (string)($inv->id ?? '?')
+                . ' num=' . (string)($inv->fullnumber ?? '')
+                . ' type=' . (string)($inv->type ?? '')
+                . ' paymentstate=' . (string)($inv->paymentstate ?? '')
+                . ' alreadypaid=' . (string)($inv->alreadypaid ?? '')
+                . ' total=' . (string)($inv->total ?? '')
+                . ' payments=' . count((array)($inv->invoice_payments ?? []))
+                . ' advReceived=' . (string)($inv->advance_received_date ?? '')
+                . ' paidAt=' . (string)($inv->paid_at ?? '')
+                . ' marker=' . ($__markerNow ? 'YES' : 'NO'));
+        } catch (\Throwable) { /* diag never fatal */ }
+
         return $xml;
     }
 private function mapPaymentMethod(?string $method): ?string
