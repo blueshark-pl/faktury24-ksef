@@ -9656,7 +9656,13 @@ private function mapPaymentMethod(?string $method): string
         $type   = $this->request->getQuery('type');
 
         $SupportTickets = $this->fetchTable('SupportTickets');
-        $query = $SupportTickets->find()->orderDesc('SupportTickets.created');
+        $query = $SupportTickets->find()
+            ->contain([
+                'Users' => function ($q) {
+                    return $q->select(['id', 'first_name', 'last_name', 'email']);
+                },
+            ])
+            ->orderDesc('SupportTickets.created');
 
         if ($q !== '') {
             $like = '%' . $q . '%';
@@ -9689,7 +9695,12 @@ private function mapPaymentMethod(?string $method): string
 
         $ticket = $SupportTickets->find()
             ->where(['SupportTickets.id' => $id])
-            ->contain(['SupportTicketReplies'])
+            ->contain([
+                'SupportTicketReplies',
+                'Users' => function ($q) {
+                    return $q->select(['id', 'first_name', 'last_name', 'email']);
+                },
+            ])
             ->first();
 
         if (!$ticket) {

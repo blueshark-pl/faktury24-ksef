@@ -145,9 +145,11 @@ class SupportTicketsController extends AppController
     {
         $identity = $this->request->getAttribute('identity');
         $userId   = (string)($identity?->getIdentifier() ?? '');
+        $isAdmin  = (bool)($identity?->get('is_admin') ?? false)
+            || strtolower((string)($identity?->get('role') ?? '')) === 'admin';
 
         $ticket = $this->fetchTable('SupportTickets')->get($id);
-        if ((string)$ticket->user_id !== $userId) {
+        if (!$isAdmin && (string)$ticket->user_id !== $userId) {
             throw new ForbiddenException();
         }
         if (empty($ticket->attachment)) {

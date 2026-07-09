@@ -39,6 +39,10 @@ class SupportTicketsTable extends Table
             'foreignKey' => 'support_ticket_id',
             'sort'       => ['SupportTicketReplies.created' => 'ASC'],
         ]);
+        $this->belongsTo('Users', [
+            'foreignKey' => 'user_id',
+            'joinType'   => 'LEFT',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

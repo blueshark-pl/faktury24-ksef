@@ -104,7 +104,22 @@ $type   = $this->request->getQuery('type');
               <?php endif ?>
             </td>
             <td><?= $statusBadge((string)$ticket->status) ?></td>
-            <td class="text-muted small text-truncate" style="max-width:0"><?= h($ticket->company_id ?: '—') ?></td>
+            <td class="small text-truncate" style="max-width:0">
+              <?php
+                $userName = '';
+                if (!empty($ticket->user)) {
+                    $userName = trim(($ticket->user->first_name ?? '') . ' ' . ($ticket->user->last_name ?? ''));
+                    if ($userName === '') {
+                        $userName = (string)($ticket->user->email ?? '');
+                    }
+                }
+              ?>
+              <?php if ($userName !== ''): ?>
+                <div class="text-truncate"><i class="ri-user-line text-muted me-1"></i><?= h($userName) ?></div>
+              <?php else: ?>
+                <span class="text-muted">—</span>
+              <?php endif ?>
+            </td>
             <td class="text-center">
               <?php
                 $repliesCount = is_countable($ticket->support_ticket_replies ?? []) ? count($ticket->support_ticket_replies ?? []) : 0;

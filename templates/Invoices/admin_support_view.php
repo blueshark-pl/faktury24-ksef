@@ -160,8 +160,23 @@ $statusBadge = match((string)$ticket->status) {
         <dl class="row mb-0 fs-13">
           <dt class="col-5 text-muted">ID</dt>
           <dd class="col-7">#<?= $ticket->id ?></dd>
-          <dt class="col-5 text-muted">User ID</dt>
-          <dd class="col-7 text-truncate" style="max-width:0"><small><?= h($ticket->user_id) ?></small></dd>
+          <dt class="col-5 text-muted">Użytkownik</dt>
+          <dd class="col-7">
+            <?php
+              $userName = '';
+              if (!empty($ticket->user)) {
+                  $userName = trim(($ticket->user->first_name ?? '') . ' ' . ($ticket->user->last_name ?? ''));
+              }
+            ?>
+            <?php if ($userName !== ''): ?>
+              <div><?= h($userName) ?></div>
+            <?php endif ?>
+            <?php if (!empty($ticket->user->email)): ?>
+              <small class="text-muted"><?= h($ticket->user->email) ?></small>
+            <?php elseif ($userName === ''): ?>
+              <small class="text-muted"><?= h($ticket->user_id) ?></small>
+            <?php endif ?>
+          </dd>
           <dt class="col-5 text-muted">Firma ID</dt>
           <dd class="col-7 text-truncate" style="max-width:0"><small><?= h($ticket->company_id ?: '—') ?></small></dd>
           <dt class="col-5 text-muted">Kategoria</dt>
