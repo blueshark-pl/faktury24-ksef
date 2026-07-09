@@ -6385,6 +6385,10 @@ HTML;
         $currency = strtoupper((string)$this->request->getQuery('currency', 'PLN'));
         $issue    = (string)$this->request->getQuery('date', '');
         $sold     = (string)$this->request->getQuery('sold_date', '');
+        // `exact=1` — user manualnie wybral konkretna date kursu; nie cofaj o dzien
+        // (bez tego flaga zamienia 01.07 → 30.06 co jest regula dla VAT z auto-daty,
+        // ale przy manualnym wyborze user chce kurs Z tej konkretnej daty).
+        $exactDate = filter_var($this->request->getQuery('exact'), FILTER_VALIDATE_BOOL);
 
         // Choose base date: prefer sold_date if provided; else issue date; else today
         $baseDate = null;
@@ -6405,7 +6409,7 @@ HTML;
         }
 
         try {
-            $res = $this->computeNbpAvgRate($currency, $baseDate);
+            $res = $this->computeNbpAvgRate($currency, $baseDate, $exactDate);
             if (!empty($res['success'])) {
                 return $this->response->withType('application/json')
                     ->withStringBody(json_encode($res));
@@ -6426,11 +6430,15 @@ HTML;
      * Compute average NBP rate (Tabela A/B) for currency code for the last working day prior to baseDate.
      * Returns array: { success, currency, rate, effectiveDate, table, from, to }
      */
-    private function computeNbpAvgRate(string $currency, \DateTimeInterface $baseDate): array
+    private function computeNbpAvgRate(string $currency, \DateTimeInterface $baseDate, bool $exactDate = false): array
     {
         $code = strtoupper($currency);
-        // Use the day before the provided date
-        $end = (new \DateTimeImmutable($baseDate->format('Y-m-d')))->modify('-1 day');
+        // Domyslnie: kurs z dnia roboczego POPRZEDZAJACEGO baseDate (regula VAT dla auto-daty).
+        // exactDate=true: user recznie wybral konkretna date → zwracamy kurs Z tej daty
+        // (NBP i tak cofa sie do najblizszego dnia roboczego wstecz jesli w tym dniu brak notowania).
+        $end = $exactDate
+            ? new \DateTimeImmutable($baseDate->format('Y-m-d'))
+            : (new \DateTimeImmutable($baseDate->format('Y-m-d')))->modify('-1 day');
         $start = $end->modify('-14 days');
         $fmt = fn($d) => $d->format('Y-m-d');
 

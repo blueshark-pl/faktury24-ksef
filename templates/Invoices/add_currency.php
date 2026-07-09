@@ -3035,11 +3035,11 @@ $('#gus-fetch-btn').on('click', function(){
         $fxRateDateHint.text('');
         return;
       }
-      // Pobierz kurs NBP dla nowej daty
+      // Pobierz kurs NBP dla nowej daty — exact=1 zeby backend nie cofal o dzien
       (async function(){
         if (cur === 'PLN') return;
         try {
-          var params = new URLSearchParams({ currency: cur, date: newDate });
+          var params = new URLSearchParams({ currency: cur, date: newDate, exact: '1' });
           var res = await fetch(nbpRateUrl + '?' + params.toString(), { headers: { 'Accept':'application/json' }});
           var json = await res.json();
           if (json && json.success && json.rate){
