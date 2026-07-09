@@ -9279,9 +9279,11 @@ private function buildSingleLineXml(object $it, int $rowNo, bool $isBeforeCorrec
                 break;
             }
         }
+        // UWAGA: bez warunku total>0 — faktura końcowa rozliczająca 100% zaliczek ma kwotę
+        // pozostałą = 0, a mimo to jest opłacona (paymentstate='paid') i ma pokazać „Zapłacono".
         $uiPaid = ((string)($inv->paymentstate ?? '') === 'paid')
             || (in_array((string)($inv->type ?? ''), ['advance', 'final'], true) && !empty($inv->advance_received_date));
-        if (!$hasPaymentMarker && $uiPaid && $invoiceTotal > 0.0) {
+        if (!$hasPaymentMarker && $uiPaid) {
             $fmtDate = static function ($d) {
                 if (empty($d)) { return null; }
                 return method_exists($d, 'format') ? $d->format('Y-m-d') : substr((string)$d, 0, 10);
