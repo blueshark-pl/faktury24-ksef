@@ -676,12 +676,32 @@ class RoutePlannerController extends AppController
         $fromLike = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $fromCity) . '%';
         $toLike   = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $toCity) . '%';
 
-        // POZIOM 1: oba miasta LIKE
+        // WAZNE: mapping Speed → nasze fields jest niekonsystentny
+        // (SpeedOrdersController::sync linia 760 przypisuje GLO_MIE_NAZWA1 do
+        // place_from_name — czesto wpisany jest tam skrot kraju lub kod
+        // pocztowy, a rzeczywiste miasto jest w load_city / unload_city).
+        // Szukamy wiec w OBIU polach z OR, i dodajemy tez buyer_city
+        // (dla przypadkow gdzie dostawa idzie do siedziby klienta).
+        $matchFromCity = function ($exp, $like) {
+            return $exp->or([
+                $exp->like('SpeedOrders.load_city', $like),
+                $exp->like('SpeedOrders.place_from_name', $like),
+            ]);
+        };
+        $matchToCity = function ($exp, $like) {
+            return $exp->or([
+                $exp->like('SpeedOrders.unload_city', $like),
+                $exp->like('SpeedOrders.place_to_name', $like),
+                $exp->like('SpeedOrders.buyer_city', $like),
+            ]);
+        };
+
+        // POZIOM 1: oba miasta LIKE (w OIU polach: load_city+place_from_name/unload_city+place_to_name)
         if ($fromCity !== '' && $toCity !== '') {
-            $q = $baseQuery()->where(function ($exp) use ($fromLike, $toLike) {
+            $q = $baseQuery()->where(function ($exp) use ($fromLike, $toLike, $matchFromCity, $matchToCity) {
                 return $exp->and([
-                    $exp->like('SpeedOrders.place_from_name', $fromLike),
-                    $exp->like('SpeedOrders.place_to_name',   $toLike),
+                    $matchFromCity($exp, $fromLike),
+                    $matchToCity($exp, $toLike),
                 ]);
             })->limit($limit);
             $rows = $q->all()->toArray();
@@ -692,16 +712,21 @@ class RoutePlannerController extends AppController
         }
 
         // POZIOM 2: oba kraje + jedno miasto
+        // WAZNE: unload_country jest NULL w rekordach z Speed (API nie daje).
+        // Dla toCountry sprawdzamy tez buyer_country jako alternatywe.
         if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
-            $q = $baseQuery()->where(function ($exp) use ($fromCountry, $toCountry, $fromLike, $toLike, $fromCity, $toCity) {
+            $q = $baseQuery()->where(function ($exp) use ($fromCountry, $toCountry, $fromLike, $toLike, $fromCity, $toCity, $matchFromCity, $matchToCity) {
                 $conds = [
                     $exp->like('SpeedOrders.load_country', $fromCountry),
-                    $exp->like('SpeedOrders.unload_country', $toCountry),
+                    $exp->or([
+                        $exp->like('SpeedOrders.unload_country', $toCountry),
+                        $exp->like('SpeedOrders.buyer_country', $toCountry),
+                    ]),
                 ];
                 if ($fromCity !== '' && $toCity !== '') {
                     $conds[] = $exp->or([
-                        $exp->like('SpeedOrders.place_from_name', $fromLike),
-                        $exp->like('SpeedOrders.place_to_name',   $toLike),
+                        $matchFromCity($exp, $fromLike),
+                        $matchToCity($exp, $toLike),
                     ]);
                 }
                 return $exp->and($conds);
@@ -714,11 +739,17 @@ class RoutePlannerController extends AppController
         }
 
         // POZIOM 3: oba kraje (dla dowolnego miasta)
+        // unload_country moze byc NULL — sprawdz tez buyer_country
         if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
-            $q = $baseQuery()->where([
-                'SpeedOrders.load_country'   => $fromCountry,
-                'SpeedOrders.unload_country' => $toCountry,
-            ])->limit($limit);
+            $q = $baseQuery()->where(function ($exp) use ($fromCountry, $toCountry) {
+                return $exp->and([
+                    $exp->like('SpeedOrders.load_country', $fromCountry),
+                    $exp->or([
+                        $exp->like('SpeedOrders.unload_country', $toCountry),
+                        $exp->like('SpeedOrders.buyer_country', $toCountry),
+                    ]),
+                ]);
+            })->limit($limit);
             $rows = $q->all()->toArray();
             if (!empty($rows)) {
                 $orders = $rows;
@@ -767,6 +798,11 @@ class RoutePlannerController extends AppController
                 }
             }
 
+            // Wybor najlepszego pola miasta — preferujemy load_city/unload_city (te sa
+            // wypelnione poprawnie), fallback na place_from_name/place_to_name
+            $bestFromCity = (string)($o->load_city ?? '') ?: (string)($o->place_from_name ?? '');
+            $bestToCity   = (string)($o->unload_city ?? '') ?: (string)($o->place_to_name ?? '') ?: (string)($o->buyer_city ?? '');
+            $bestToCountry = (string)($o->unload_country ?? '') ?: (string)($o->buyer_country ?? '');
             $out[] = [
                 'speed_order_id' => (int)$o->id,
                 'symbol'         => (string)$o->symbol,
@@ -774,10 +810,10 @@ class RoutePlannerController extends AppController
                 'title'          => trim(((string)($o->title1 ?? '')) . ' ' . ((string)($o->title2 ?? ''))),
                 'buyer_name'     => (string)($o->buyer_name ?? ''),
                 'buyer_nip'      => (string)($o->buyer_nip ?? ''),
-                'from_city'      => (string)($o->place_from_name ?? ''),
-                'to_city'        => (string)($o->place_to_name ?? ''),
+                'from_city'      => $bestFromCity,
+                'to_city'        => $bestToCity,
                 'from_country'   => (string)($o->load_country ?? ''),
-                'to_country'     => (string)($o->unload_country ?? ''),
+                'to_country'     => $bestToCountry,
                 'currency'       => (string)($o->currency ?? ''),
                 'route_description' => (string)($o->route_description ?? ''),
                 'invoice'        => $primaryInv ? [

@@ -4328,16 +4328,29 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     }
 
     function extractCity(address) {
-        // Prosta heurystyka: pierwszy segment po zip lub pierwsze slowo jako miasto
+        // Wyodrebnia nazwe miasta z adresu, ignorujac kody pocztowe kazdego formatu EU.
         if (!address) return '';
-        // Prefer format: "12345 Miasto, Ulica"  albo  "Miasto"  albo  "Ulica, Miasto, Kraj"
         var s = String(address).trim();
-        // Odetnij kod pocztowy z przodu jesli jest
-        s = s.replace(/^\d{2}[-\s]?\d{3}\s+/, ''); // PL: 30-552 Krakow
-        s = s.replace(/^\d{5}\s+/, '');            // DE/inne: 12345 Berlin
+
+        // Odetnij kody pocztowe z PRZODU dla roznych formatow EU:
+        s = s.replace(/^\d{2}[-\s]?\d{3}\s+/, '');   // PL: 30-552 Krakow, 30 552 Krakow
+        s = s.replace(/^\d{4}\s?[A-Z]{2}\s+/i, '');  // NL: 6545AH Nijmegen, 6545 AH Nijmegen
+        s = s.replace(/^\d{5}\s+/, '');              // DE/AT/US: 12345 Berlin
+        s = s.replace(/^\d{4}\s+/, '');              // BE/DK: 1000 Bruxelles
+        s = s.replace(/^\d{3}\s?\d{2}\s+/, '');      // CZ/SK: 110 00 Praha
+        s = s.replace(/^\d{5}-\d{4}\s+/, '');        // US: 12345-6789 City
+        s = s.replace(/^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}\s+/i, ''); // UK: SW1A 1AA London
+
         // Wez pierwszy segment przed przecinkiem
         var parts = s.split(',');
-        return parts[0].trim();
+        var firstSeg = parts[0].trim();
+
+        // Jesli pierwszy segment to nadal kod pocztowy (heurystyka: same cyfry/litery bez spacji)
+        // — sprobuj wziac kolejny segment
+        if (/^[\d]{2,7}([-\s]?[A-Z0-9]{1,4})?$/i.test(firstSeg) && parts.length > 1) {
+            return parts[1].trim();
+        }
+        return firstSeg;
     }
 
     // Toggle: enable/disable NIP field based on mode
