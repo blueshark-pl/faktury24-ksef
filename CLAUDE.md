@@ -549,17 +549,28 @@ Automat statusów:
 
 `POST /planer-tras/historia-stawek` — cascade query po własnej historii `speed_orders` + faktur.
 
+**Dwa tryby** (`mode`):
+- `client` (default gdy podano `contractor_nip`) — historia tylko dla jednego klienta
+- `market` (gdy `contractor_nip` puste) — historia z całego rynku (wszyscy klienci firmy),
+  **limit podniesiony do 50** rekordów, dodatkowo agregacja `by_buyer[]` (TOP 10 klientów
+  z ilością zleceń, sumą PLN, średnią PLN)
+
 **Kaskada trafień** (zwraca `match_level`):
-1. **POZIOM 1** — klient (nip) + oba miasta `LIKE` (idealne dopasowanie)
-2. **POZIOM 2** — klient + oba kraje + jedno miasto pasuje
-3. **POZIOM 3** — klient + oba kraje (dla dowolnego miasta)
+1. **POZIOM 1** — oba miasta `LIKE` (+ klient w trybie client)
+2. **POZIOM 2** — oba kraje + jedno miasto pasuje
+3. **POZIOM 3** — oba kraje (dla dowolnego miasta)
 
 Zwraca:
-- `orders[]` — do 10 zleceń historycznych z pól `place_from_name`, `place_to_name`, `date_doc`, `symbol`, `title`
+- `mode` — `client`/`market`
+- `orders[]` — do 10 (client) / 50 (market) zleceń z `place_from_name`, `place_to_name`, `date_doc`, `symbol`, `title`, **`buyer_name`, `buyer_nip`**
 - `orders[].invoice` — powiązana faktura (nr, data, kwota, waluta, `total_pln` po przelicz.)
-- `stats` — count, min/max/avg/median w PLN (przelicz. po `currency_exchange` gdy walutowa)
+- `stats` — count, min/max/avg/median w PLN (przelicz. po `currency_exchange`)
+- `by_buyer[]` — TOP klienci (tylko w trybie market): `buyer_name`, `buyer_nip`, `count`, `sum_pln`, `avg_pln`
 
 Filtr czasowy: ostatnie 12 miesięcy. Sortowanie: najnowsze na wierzchu.
+
+**UI toggle** `Ten klient | Rynek` w panelu historii — market mode pokazuje dodatkową
+kolumnę „Klient" w tabeli + sekcję „TOP klienci na tej trasie" ponad listą.
 
 UI panel „**Historia stawek dla klienta na tej trasie**" pod tabelą tolls
 w [templates/RoutePlanner/index.php](templates/RoutePlanner/index.php). Wywoływany

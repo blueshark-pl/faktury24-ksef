@@ -992,8 +992,17 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <div class="card-header py-2 d-flex align-items-center flex-wrap gap-2">
                         <strong><i class="ri-history-line me-1 text-info"></i><?= __('Historia stawek dla klienta na tej trasie') ?></strong>
                         <span id="pricing-history-summary" class="text-muted small ms-2"></span>
-                        <div class="ms-auto d-flex gap-2 align-items-center">
-                            <label class="form-label small mb-0 me-1"><?= __('Klient (NIP)') ?>:</label>
+                        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Tryb historii">
+                                <input type="radio" class="btn-check" name="pricing-history-mode" id="mode-client" value="client" checked>
+                                <label class="btn btn-outline-info" for="mode-client" title="<?= __('Historia tylko dla konkretnego klienta (NIP)') ?>">
+                                    <i class="ri-user-line me-1"></i><?= __('Ten klient') ?>
+                                </label>
+                                <input type="radio" class="btn-check" name="pricing-history-mode" id="mode-market" value="market">
+                                <label class="btn btn-outline-info" for="mode-market" title="<?= __('Historia z całego rynku niezależnie od klienta') ?>">
+                                    <i class="ri-global-line me-1"></i><?= __('Rynek') ?>
+                                </label>
+                            </div>
                             <input type="text" id="pricing-history-nip" class="form-control form-control-sm"
                                    style="width:150px" placeholder="np. 5271234567" />
                             <button type="button" class="btn btn-sm btn-info text-white" id="btn-pricing-history-fetch">
@@ -1011,6 +1020,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                             <div id="pricing-history-stats" class="mb-3"></div>
                             <!-- Alert dumpingu -->
                             <div id="pricing-history-dumping-alert" style="display:none"></div>
+                            <!-- TOP klienci (tylko w trybie market) -->
+                            <div id="pricing-history-buyers" class="mb-3" style="display:none"></div>
                             <!-- Lista zleceń historycznych -->
                             <div class="table-responsive">
                                 <table class="table table-sm table-hover mb-0 align-middle">
@@ -1018,6 +1029,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                         <tr>
                                             <th><?= __('Data zlec.') ?></th>
                                             <th><?= __('Nr zlec.') ?></th>
+                                            <th id="pricing-history-th-buyer" style="display:none"><?= __('Klient') ?></th>
                                             <th><?= __('Trasa') ?></th>
                                             <th><?= __('Faktura') ?></th>
                                             <th class="text-end"><?= __('Kwota (PLN)') ?></th>
@@ -4086,16 +4098,29 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         return parts[0].trim();
     }
 
+    // Toggle: enable/disable NIP field based on mode
+    document.querySelectorAll('input[name="pricing-history-mode"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            var isClient = document.getElementById('mode-client').checked;
+            var nipInput = document.getElementById('pricing-history-nip');
+            nipInput.disabled = !isClient;
+            nipInput.placeholder = isClient ? 'np. 5271234567' : '<?= __('cały rynek') ?>';
+            if (!isClient) nipInput.value = '';
+        });
+    });
+
     document.getElementById('btn-pricing-history-fetch').addEventListener('click', function () {
         var btn = this;
+        var mode = document.querySelector('input[name="pricing-history-mode"]:checked').value;
         var nip = (document.getElementById('pricing-history-nip').value || '').replace(/\D+/g, '');
-        if (nip.length < 5) {
-            showPricingHistoryError('<?= __('Podaj NIP klienta (min. 5 cyfr).') ?>');
+
+        if (mode === 'client' && nip.length < 5) {
+            showPricingHistoryError('<?= __('Podaj NIP klienta (min. 5 cyfr) lub przełącz tryb na Rynek.') ?>');
             return;
         }
 
         var fd = new FormData();
-        fd.append('contractor_nip', nip);
+        if (mode === 'client') fd.append('contractor_nip', nip);
         fd.append('from_city',    btn.dataset.fromCity    || '');
         fd.append('to_city',      btn.dataset.toCity      || '');
         fd.append('from_country', btn.dataset.fromCountry || '');
@@ -4186,6 +4211,35 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             dumpAlert.style.display = 'none';
         }
 
+        // Pokaz/ukryj kolumne "Klient" w zaleznosci od trybu
+        var isMarket = res.mode === 'market';
+        document.getElementById('pricing-history-th-buyer').style.display = isMarket ? '' : 'none';
+
+        // TOP klienci (tylko w trybie market)
+        var buyersBox = document.getElementById('pricing-history-buyers');
+        if (isMarket && res.by_buyer && res.by_buyer.length > 0) {
+            buyersBox.innerHTML = '<div class="card border-info">' +
+                '<div class="card-header py-2 bg-info-subtle"><strong><i class="ri-user-star-line me-1"></i><?= __('TOP klienci na tej trasie') ?></strong></div>' +
+                '<div class="card-body p-2">' +
+                '<div class="table-responsive"><table class="table table-sm mb-0 align-middle" style="font-size:.82rem">' +
+                '<thead class="table-light"><tr><th><?= __('Klient') ?></th><th class="text-end"><?= __('Zleceń') ?></th><th class="text-end"><?= __('Suma (PLN)') ?></th><th class="text-end"><?= __('Śr. (PLN)') ?></th></tr></thead>' +
+                '<tbody>' +
+                res.by_buyer.map(function (b) {
+                    return '<tr>' +
+                        '<td>' + escapeHtml(b.buyer_name || b.buyer_nip || '—') +
+                        (b.buyer_nip ? ' <small class="text-muted">' + escapeHtml(b.buyer_nip) + '</small>' : '') +
+                        '</td>' +
+                        '<td class="text-end"><strong>' + b.count + '</strong></td>' +
+                        '<td class="text-end">' + fmtNum(b.sum_pln, 2) + '</td>' +
+                        '<td class="text-end">' + fmtNum(b.avg_pln, 2) + '</td>' +
+                    '</tr>';
+                }).join('') +
+                '</tbody></table></div></div></div>';
+            buyersBox.style.display = '';
+        } else {
+            buyersBox.style.display = 'none';
+        }
+
         // Lista zlecen
         var tbody = document.getElementById('pricing-history-tbody');
         tbody.innerHTML = res.orders.map(function (o) {
@@ -4201,9 +4255,15 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     }
                 }
             }
+            var buyerCell = isMarket
+                ? '<td class="small">' + escapeHtml(o.buyer_name || o.buyer_nip || '—') +
+                  (o.buyer_nip ? '<div class="text-muted" style="font-size:.7rem">NIP ' + escapeHtml(o.buyer_nip) + '</div>' : '') +
+                  '</td>'
+                : '';
             return '<tr>' +
                 '<td class="small">' + escapeHtml(o.date_doc) + '</td>' +
                 '<td class="small"><code>' + escapeHtml(o.symbol) + '</code></td>' +
+                buyerCell +
                 '<td class="small">' +
                     '<div>' + escapeHtml(o.from_city) + ' → ' + escapeHtml(o.to_city) + '</div>' +
                     (o.route_description ? '<div class="text-muted" style="font-size:.72rem">' + escapeHtml(o.route_description) + '</div>' : '') +

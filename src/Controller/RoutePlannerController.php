@@ -615,44 +615,51 @@ class RoutePlannerController extends AppController
             } catch (\Throwable) {}
         }
 
-        if ($contractorNip === '') {
-            return $this->jsonError(__('Brak kontrahenta lub NIP.'), 400);
-        }
         if ($fromCity === '' && $toCity === '' && $fromCountry === '' && $toCountry === '') {
             return $this->jsonError(__('Podaj miasta lub kraje trasy.'), 400);
         }
 
+        // Tryb: 'client' (per NIP) lub 'market' (wszyscy klienci na tej trasie)
+        // Domyslnie: client gdy podano NIP, market gdy nie
+        $mode = $contractorNip !== '' ? 'client' : 'market';
+
         $SO = $this->fetchTable('SpeedOrders');
 
-        // Wspolna baza query: klient + limit czasowy 12 miesiecy (najnowsze na wierzchu)
-        $baseQuery = function () use ($SO, $companyId, $contractorNip) {
+        // Wspolna baza query: firma + limit czasowy 12 miesiecy (najnowsze na wierzchu)
+        // Klient dodawany opcjonalnie
+        $baseQuery = function () use ($SO, $companyId, $contractorNip, $mode) {
             $q = $SO->find()
                 ->where([
                     'SpeedOrders.company_id' => $companyId,
-                    'OR' => [
-                        'SpeedOrders.buyer_nip' => $contractorNip,
-                        'SpeedOrders.buyer_nip' => 'PL' . $contractorNip,
-                    ],
                     'SpeedOrders.date_doc >=' => (new \DateTimeImmutable('-12 months'))->format('Y-m-d'),
                 ])
                 ->orderByDesc('SpeedOrders.date_doc');
+            if ($mode === 'client' && $contractorNip !== '') {
+                $q->andWhere(['OR' => [
+                    'SpeedOrders.buyer_nip' => $contractorNip,
+                    'SpeedOrders.buyer_nip' => 'PL' . $contractorNip,
+                ]]);
+            }
             return $q;
         };
 
         $matchLevel = 0;
         $orders = [];
 
+        // W trybie market limity wieksze — zbieramy szerszy prekroj rynku
+        $limit = $mode === 'market' ? 50 : 10;
+
         $fromLike = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $fromCity) . '%';
         $toLike   = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $toCity) . '%';
 
-        // POZIOM 1: klient + oba miasta LIKE
+        // POZIOM 1: oba miasta LIKE
         if ($fromCity !== '' && $toCity !== '') {
             $q = $baseQuery()->where(function ($exp) use ($fromLike, $toLike) {
                 return $exp->and([
                     $exp->like('SpeedOrders.place_from_name', $fromLike),
                     $exp->like('SpeedOrders.place_to_name',   $toLike),
                 ]);
-            })->limit(10);
+            })->limit($limit);
             $rows = $q->all()->toArray();
             if (!empty($rows)) {
                 $orders = $rows;
@@ -660,14 +667,13 @@ class RoutePlannerController extends AppController
             }
         }
 
-        // POZIOM 2: klient + oba kraje + jedno miasto
+        // POZIOM 2: oba kraje + jedno miasto
         if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
             $q = $baseQuery()->where(function ($exp) use ($fromCountry, $toCountry, $fromLike, $toLike, $fromCity, $toCity) {
                 $conds = [
                     $exp->like('SpeedOrders.load_country', $fromCountry),
                     $exp->like('SpeedOrders.unload_country', $toCountry),
                 ];
-                // "jedno miasto" — dowolne z from/to musi pasowac
                 if ($fromCity !== '' && $toCity !== '') {
                     $conds[] = $exp->or([
                         $exp->like('SpeedOrders.place_from_name', $fromLike),
@@ -675,7 +681,7 @@ class RoutePlannerController extends AppController
                     ]);
                 }
                 return $exp->and($conds);
-            })->limit(10);
+            })->limit($limit);
             $rows = $q->all()->toArray();
             if (!empty($rows)) {
                 $orders = $rows;
@@ -683,12 +689,12 @@ class RoutePlannerController extends AppController
             }
         }
 
-        // POZIOM 3: klient + oba kraje (dla dowolnego miasta)
+        // POZIOM 3: oba kraje (dla dowolnego miasta)
         if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
             $q = $baseQuery()->where([
                 'SpeedOrders.load_country'   => $fromCountry,
                 'SpeedOrders.unload_country' => $toCountry,
-            ])->limit(10);
+            ])->limit($limit);
             $rows = $q->all()->toArray();
             if (!empty($rows)) {
                 $orders = $rows;
@@ -742,6 +748,8 @@ class RoutePlannerController extends AppController
                 'symbol'         => (string)$o->symbol,
                 'date_doc'       => $o->date_doc instanceof \DateTimeInterface ? $o->date_doc->format('Y-m-d') : (string)$o->date_doc,
                 'title'          => trim(((string)($o->title1 ?? '')) . ' ' . ((string)($o->title2 ?? ''))),
+                'buyer_name'     => (string)($o->buyer_name ?? ''),
+                'buyer_nip'      => (string)($o->buyer_nip ?? ''),
                 'from_city'      => (string)($o->place_from_name ?? ''),
                 'to_city'        => (string)($o->place_to_name ?? ''),
                 'from_country'   => (string)($o->load_country ?? ''),
@@ -776,20 +784,62 @@ class RoutePlannerController extends AppController
             ];
         }
 
+        // W trybie 'market' policz agregacje per klient — pokazujemy TOP klientów
+        // ktorzy najczesciej jezdzili ta trasa (do UI)
+        $byBuyer = [];
+        if ($mode === 'market' && !empty($out)) {
+            foreach ($out as $row) {
+                $key = $row['buyer_nip'] ?: '(brak_nip)';
+                if (!isset($byBuyer[$key])) {
+                    $byBuyer[$key] = [
+                        'buyer_name' => $row['buyer_name'],
+                        'buyer_nip'  => $row['buyer_nip'],
+                        'count'      => 0,
+                        'sum_pln'    => 0.0,
+                    ];
+                }
+                $byBuyer[$key]['count']++;
+                if (!empty($row['invoice']['total_pln'])) {
+                    $byBuyer[$key]['sum_pln'] += (float)$row['invoice']['total_pln'];
+                }
+            }
+            // Sortuj po count desc
+            usort($byBuyer, fn ($a, $b) => $b['count'] <=> $a['count']);
+            $byBuyer = array_slice(array_values($byBuyer), 0, 10);
+            foreach ($byBuyer as &$b) {
+                $b['sum_pln'] = round($b['sum_pln'], 2);
+                $b['avg_pln'] = $b['count'] > 0 ? round($b['sum_pln'] / $b['count'], 2) : 0;
+            }
+            unset($b);
+        }
+
+        // Labelka dopasowania — inna w market vs client
+        $matchLabels = $mode === 'client'
+            ? [
+                1 => __('Idealne dopasowanie (miasta + klient)'),
+                2 => __('Dobre dopasowanie (kraje + jedno miasto)'),
+                3 => __('Luźne dopasowanie (same kraje)'),
+                0 => __('Brak podobnych zleceń'),
+            ]
+            : [
+                1 => __('Idealne dopasowanie (te miasta na całym rynku)'),
+                2 => __('Dobre dopasowanie (kraje + jedno miasto)'),
+                3 => __('Luźne dopasowanie (same kraje)'),
+                0 => __('Brak podobnych zleceń'),
+            ];
+
         return $this->response
             ->withType('application/json')
             ->withStringBody(json_encode([
                 'ok'          => true,
+                'mode'        => $mode,
                 'match_level' => $matchLevel, // 0=brak, 1=idealne, 2=srednie, 3=luzne
-                'match_label' => match ($matchLevel) {
-                    1 => __('Idealne dopasowanie (miasta + klient)'),
-                    2 => __('Dobre dopasowanie (kraje + jedno miasto)'),
-                    3 => __('Luźne dopasowanie (same kraje)'),
-                    default => __('Brak podobnych zleceń'),
-                },
+                'match_label' => $matchLabels[$matchLevel] ?? $matchLabels[0],
                 'orders'      => $out,
                 'stats'       => $stats,
+                'by_buyer'    => $byBuyer, // top klienci (tylko w market mode)
                 'query'       => [
+                    'mode' => $mode,
                     'contractor_nip' => $contractorNip,
                     'from' => $fromCity . ($fromCountry ? " ({$fromCountry})" : ''),
                     'to'   => $toCity   . ($toCountry   ? " ({$toCountry})"   : ''),
