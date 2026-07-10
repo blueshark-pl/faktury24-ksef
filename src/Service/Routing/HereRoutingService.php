@@ -591,7 +591,30 @@ class HereRoutingService
                 ];
             }
 
-            return ['routes' => $routesOut];
+            // Zwroc rowniez parametry ktore poszly do HERE — do sekcji "Co poszlo do HERE"
+            // w UI (klient chce widziec dokladnie waga/osie/wymiary ktore wyslalismy).
+            $sentToHere = [
+                'transportMode'  => $params['transportMode'] ?? null,
+                'currency'       => $params['currency'] ?? null,
+                'alternatives'   => $params['alternatives'] ?? null,
+                'departureTime'  => $params['departureTime'] ?? null,
+                'avoid'          => $params['avoid[features]'] ?? null,
+                'excludeCountries' => $params['exclude[countries]'] ?? null,
+                'vehicle' => [
+                    'grossWeight'         => $params['vehicle[grossWeight]'] ?? null,
+                    'weightPerAxle'       => $params['vehicle[weightPerAxle]'] ?? null,
+                    'height'              => $params['vehicle[height]'] ?? null,
+                    'width'               => $params['vehicle[width]'] ?? null,
+                    'length'              => $params['vehicle[length]'] ?? null,
+                    'axleCount'           => $params['vehicle[axleCount]'] ?? null,
+                    'tunnelCategory'      => $params['vehicle[tunnelCategory]'] ?? null,
+                    'emissionType'        => $params['vehicle[emissionType]'] ?? null,
+                    'shippedHazardousGoods' => $params['vehicle[shippedHazardousGoods]'] ?? null,
+                ],
+                'via_count' => count($vias),
+            ];
+
+            return ['routes' => $routesOut, 'sent_to_here' => $sentToHere];
         } catch (\Throwable $e) {
             Log::error('HERE routing error: ' . $e->getMessage());
             throw $e;

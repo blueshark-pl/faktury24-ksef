@@ -28,6 +28,27 @@ $presets = [
 ?>
 <?= $this->Form->create($entity, ['type' => 'post']) ?>
 
+<?php
+// Ostrzezenie krytyczne dla klasyfikacji tolls w planerze — brakujace pola
+// zaniza opłaty i moze powodowac blednie zaklasyfikowany zestaw w HERE.
+$missing = [];
+if (empty($entity->axle_count))      $missing[] = __('liczba osi');
+if (empty($entity->gross_weight_kg)) $missing[] = __('DMC');
+if (!empty($missing) && !empty($entity->id)):
+?>
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
+    <i class="ri-alert-line fs-4"></i>
+    <div class="flex-grow-1">
+        <strong><?= __('Uwaga: brakuje kluczowych parametrów!') ?></strong><br>
+        <small>
+            <?= __('Brak pola: :fields. To powoduje że planer /trasy przy wyborze tej naczepy WYSYŁA DO HERE zaniżoną liczbę osi i DMC — opłaty (tolls) będą policzone za mało. Uzupełnij poniżej.', [
+                ':fields' => '<strong>' . implode(', ', $missing) . '</strong>',
+            ]) ?>
+        </small>
+    </div>
+</div>
+<?php endif ?>
+
 <div class="row g-3">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">

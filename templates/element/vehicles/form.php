@@ -153,6 +153,29 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
                             <?= __('Używane w planerze /trasy do kalkulacji ceny frachtu (stawka × km + opłaty).') ?>
                         </div>
                     </div>
+                    <div class="col-md-8 mt-2 pt-2 border-top">
+                        <label class="form-label small mb-1">
+                            <i class="ri-gas-station-line text-danger me-1"></i>
+                            <?= __('Średnie spalanie (l/100km)') ?>
+                        </label>
+                        <input name="fuel_consumption_l_per_100km" type="number" step="0.1" min="0" max="100"
+                               class="form-control"
+                               value="<?= h($entity->fuel_consumption_l_per_100km ?? '') ?>" placeholder="30">
+                        <div class="form-text" style="font-size:.7rem">
+                            <?= __('Auto-fill w planerze przy wyborze pojazdu. Typowo: ciągnik 25-35, van 8-12, solo 15-20.') ?>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mt-2 pt-2 border-top">
+                        <label class="form-label small mb-1"><?= __('Rodzaj paliwa') ?></label>
+                        <select name="fuel_type" class="form-select">
+                            <?php $ft = (string)($entity->fuel_type ?? 'diesel'); ?>
+                            <option value="diesel"  <?= $ft === 'diesel' ? 'selected' : '' ?>><?= __('Diesel') ?></option>
+                            <option value="petrol"  <?= $ft === 'petrol' ? 'selected' : '' ?>><?= __('Benzyna') ?></option>
+                            <option value="lng"     <?= $ft === 'lng'    ? 'selected' : '' ?>>LNG</option>
+                            <option value="electric"<?= $ft === 'electric'? 'selected' : '' ?>><?= __('Elektryczny') ?></option>
+                            <option value="hybrid"  <?= $ft === 'hybrid' ? 'selected' : '' ?>>Hybrid</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>

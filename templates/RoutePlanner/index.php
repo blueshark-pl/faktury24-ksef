@@ -622,14 +622,22 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <label class="form-label small mb-1"><i class="ri-roadster-line text-info me-1"></i><?= __('Naczepa') ?></label>
                     <select class="form-select form-select-sm" id="trailer-id">
                         <option value=""><?= __('— brak naczepy —') ?></option>
-                        <?php foreach ($trailers as $t): ?>
+                        <?php foreach ($trailers as $t):
+                            $incomplete = empty($t->axle_count) || empty($t->gross_weight_kg);
+                        ?>
                             <option value="<?= h($t->id) ?>" <?= $t->is_default ? 'selected' : '' ?>>
-                                <?= h($t->name) ?>
+                                <?= $incomplete ? '⚠️ ' : '' ?><?= h($t->name) ?>
                                 <?php if ($t->plate): ?> (<?= h($t->plate) ?>)<?php endif; ?>
                                 <?php if ($t->gross_weight_kg): ?> — <?= number_format($t->gross_weight_kg / 1000, 1, ',', '') ?>t<?php endif; ?>
+                                <?php if ($incomplete): ?> — <?= __('braki!') ?><?php endif ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="trailer-warning" class="alert alert-warning py-1 px-2 mt-1 mb-0 small" style="display:none">
+                        <i class="ri-alert-line me-1"></i>
+                        <span id="trailer-warning-text"></span>
+                        <a href="#" id="trailer-warning-edit-link" class="ms-1 text-decoration-underline"><?= __('Edytuj naczepę') ?></a>
+                    </div>
                 </div>
                 <?php endif; ?>
                 <?php if (!empty($drivers)): ?>
@@ -743,6 +751,15 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <div class="col-12">
                         <label class="form-label small mb-1"><?= __('Stawka kierowcy (PLN/h)') ?></label>
                         <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="driver-rate" value="50">
+                    </div>
+                    <div class="col-12 pt-2 border-top">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="include-amortization">
+                            <label class="form-check-label small" for="include-amortization">
+                                <?= __('Doliczaj amortyzację naczepy') ?>
+                                <span class="text-muted" style="font-size:.72rem" id="amortization-hint"> — <?= __('brak danych') ?></span>
+                            </label>
+                        </div>
                     </div>
                     <div class="col-12">
                         <label class="form-label small mb-1">
@@ -898,6 +915,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         <button type="button" class="btn btn-sm btn-outline-info" id="btn-toll-categories" title="<?= __('Pokaż klasyfikację pojazdu per kraj') ?>" style="display:none">
                             <i class="ri-information-line me-1"></i><?= __('Klasy pojazdu') ?>
                         </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-here-params" title="<?= __('Zobacz parametry wysłane do HERE API') ?>">
+                            <i class="ri-code-line me-1"></i><?= __('Co poszło do HERE') ?>
+                        </button>
                         <div class="ms-auto d-flex gap-2">
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-toll-markers" title="<?= __('Pokaż bramki na mapie') ?>">
                                 <i class="ri-map-pin-line me-1"></i><?= __('Bramki na mapie') ?>
@@ -908,6 +928,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                             <button type="button" class="btn btn-sm btn-outline-danger" id="btn-tolls-pdf" title="<?= __('Eksport PDF') ?>">
                                 <i class="ri-file-pdf-2-line me-1"></i>PDF
                             </button>
+                        </div>
+                    </div>
+                    <!-- Sekcja "Co poszlo do HERE" (collapse) -->
+                    <div id="here-params-section" class="px-3 pt-3" style="display:none">
+                        <div class="alert alert-secondary py-2 mb-2 small">
+                            <div class="d-flex align-items-center mb-2">
+                                <strong><i class="ri-code-s-slash-line me-1"></i><?= __('Parametry wysłane do HERE Routing v8') ?></strong>
+                                <span class="ms-2 text-muted small">(<?= __('debug — kliknij ponownie żeby ukryć') ?>)</span>
+                            </div>
+                            <div id="here-params-content" class="small font-monospace" style="font-size:.78rem"></div>
                         </div>
                     </div>
                     <!-- Klasyfikacja pojazdu per kraj (collapse) -->
@@ -1572,6 +1602,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             'name' => (string)$v->name,
             'plate' => (string)$v->plate,
             'rate_per_km'      => $v->rate_per_km !== null ? (float)$v->rate_per_km : null,
+            'fuel_consumption_l_per_100km' => $v->fuel_consumption_l_per_100km !== null ? (float)$v->fuel_consumption_l_per_100km : null,
+            'fuel_type'        => (string)($v->fuel_type ?? 'diesel'),
             'gross_weight_kg'  => $v->gross_weight_kg,
             'axle_load_kg'     => $v->axle_load_kg     ?? null,
             'height_cm'        => $v->height_cm        ?? null,
@@ -1642,6 +1674,51 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     }
                 }
             });
+        }
+
+        // Auto-fill spalania gdy user wybierze pojazd (poprawka A+E — do tej pory
+        // spalanie bylo hardcoded 30 l/100km, niezaleznie od pojazdu)
+        var vehSel = document.getElementById('vehicle-id');
+        if (vehSel) {
+            vehSel.addEventListener('change', function () {
+                var v = getSelectedVehicle();
+                if (v && v.fuel_consumption_l_per_100km) {
+                    var input = document.getElementById('fuel-consumption');
+                    if (input) {
+                        input.value = v.fuel_consumption_l_per_100km;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+            });
+        }
+
+        // Warning na naczepie z brakami (D) — po wyborze pokaz alert z linkiem do edycji
+        var trailerSel = document.getElementById('trailer-id');
+        var trailerWarn = document.getElementById('trailer-warning');
+        if (trailerSel && trailerWarn) {
+            trailerSel.addEventListener('change', function () {
+                var t = getSelectedTrailer();
+                if (!t) {
+                    trailerWarn.style.display = 'none';
+                    return;
+                }
+                var missing = [];
+                if (!t.axle_count)      missing.push('<?= __('liczba osi') ?>');
+                if (!t.gross_weight_kg) missing.push('<?= __('DMC') ?>');
+                if (missing.length === 0) {
+                    trailerWarn.style.display = 'none';
+                    return;
+                }
+                var msg = '<?= __('Brak: ') ?>' + missing.join(', ') +
+                    ' — <?= __('HERE dostanie zaniżone parametry → tolls będą za małe.') ?>';
+                document.getElementById('trailer-warning-text').innerHTML = msg;
+                var editLink = document.getElementById('trailer-warning-edit-link');
+                editLink.href = '/naczepy/edytuj/' + encodeURIComponent(t.id);
+                editLink.target = '_blank';
+                trailerWarn.style.display = '';
+            });
+            // Trigger przy start jesli defaultowa naczepa juz wybrana
+            if (trailerSel.value) trailerSel.dispatchEvent(new Event('change'));
         }
 
         // Auto-fill ciągnik/naczepa/kierowca gdy user wybierze zestaw
@@ -3810,6 +3887,67 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         });
     })();
 
+    // Toggle "Co poszlo do HERE" — pokazuje pelen JSON parametrow wyslanych do routing API
+    (function bindHereParamsToggle() {
+        var btn = document.getElementById('btn-here-params');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var sec = document.getElementById('here-params-section');
+            var visible = sec.style.display !== 'none';
+            sec.style.display = visible ? 'none' : '';
+            btn.classList.toggle('btn-secondary', !visible);
+            btn.classList.toggle('btn-outline-secondary', visible);
+            btn.classList.toggle('text-white', !visible);
+            if (!visible) renderHereParams();
+        });
+    })();
+
+    function renderHereParams() {
+        var box = document.getElementById('here-params-content');
+        if (!lastResponse || !lastResponse.sent_to_here) {
+            box.innerHTML = '<div class="text-muted"><?= __('Brak danych — wyznacz najpierw trasę.') ?></div>';
+            return;
+        }
+        var s = lastResponse.sent_to_here;
+        var rows = [];
+        rows.push(['transportMode',      s.transportMode || '—']);
+        rows.push(['currency',           s.currency || '—']);
+        rows.push(['alternatives',       s.alternatives != null ? s.alternatives : '—']);
+        rows.push(['departureTime',      s.departureTime || '—']);
+        rows.push(['avoid[features]',    s.avoid || '—']);
+        rows.push(['exclude[countries]', s.excludeCountries || '—']);
+        rows.push(['via count',          s.via_count]);
+        rows.push(['---', '---']);
+        var v = s.vehicle || {};
+        rows.push(['vehicle[grossWeight]',           v.grossWeight != null ? v.grossWeight + ' kg' : '—']);
+        rows.push(['vehicle[axleCount]',             v.axleCount != null ? v.axleCount + ' osi' : '—']);
+        rows.push(['vehicle[weightPerAxle]',         v.weightPerAxle != null ? v.weightPerAxle + ' kg' : '—']);
+        rows.push(['vehicle[length]',                v.length != null ? v.length + ' cm' : '—']);
+        rows.push(['vehicle[width]',                 v.width != null ? v.width + ' cm' : '—']);
+        rows.push(['vehicle[height]',                v.height != null ? v.height + ' cm' : '—']);
+        rows.push(['vehicle[emissionType]',          v.emissionType || '—']);
+        rows.push(['vehicle[tunnelCategory]',        v.tunnelCategory || '—']);
+        rows.push(['vehicle[shippedHazardousGoods]', v.shippedHazardousGoods || '—']);
+
+        var html = '<table class="table table-sm table-borderless mb-0" style="font-size:.78rem"><tbody>';
+        rows.forEach(function (r) {
+            if (r[0] === '---') {
+                html += '<tr><td colspan="2"><hr class="my-1"></td></tr>';
+                return;
+            }
+            var isNull = r[1] === '—' || r[1] == null;
+            html += '<tr>' +
+                '<td class="text-muted" style="width:40%">' + escapeHtml(r[0]) + '</td>' +
+                '<td' + (isNull ? ' class="text-danger"' : '') + '><code>' + escapeHtml(String(r[1])) + '</code></td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        html += '<div class="mt-2 small text-muted"><i class="ri-information-line me-1"></i>' +
+            '<?= __('Puste (—) oznacza że parametr NIE zostal wyslany do HERE — HERE bedzie zakladal wartosc domyslna (osobowka lub bez restrykcji).') ?>' +
+            '</div>';
+        box.innerHTML = html;
+    }
+
     function renderTollsBreakdown(route) {
         currentTollsData = null;
         var card = document.getElementById('tolls-card');
@@ -4674,6 +4812,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         var driverCost = (r.duration_min / 60) * rate;
         var liters = (r.distance_km / 100) * cons;
         var co2Kg = liters * 2.68;
+        // Amortyzacja z naczepy (opcjonalna) — z pola trailers.amortization_per_day_pln
+        var amortization = getAmortizationCost(r);
         animateCounter(document.getElementById('stat-fuel'),   fuelCost, 2);
         animateCounter(document.getElementById('stat-driver'), driverCost, 2);
         animateCounter(document.getElementById('stat-co2'),    co2Kg, 1);
@@ -4682,12 +4822,48 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // Freight card
         renderFreightCard(r, extra);
 
-        // #4 Kalkulator zysku
-        renderProfitPill(r, extra, fuelCost, driverCost);
+        // #4 Kalkulator zysku (uwzglednia amortyzacje jesli wlaczona)
+        renderProfitPill(r, extra, fuelCost, driverCost, amortization);
     }
 
+    // Oblicz koszt amortyzacji (opcjonalny) dla trasy = dni × amortization_per_day_pln
+    function getAmortizationCost(r) {
+        var chk = document.getElementById('include-amortization');
+        if (!chk || !chk.checked || !r || !r.duration_min) return 0;
+        var t = getSelectedTrailer();
+        if (!t || !t.amortization_per_day_pln) return 0;
+        // Ile dni trasa? Kazde rozpoczete 24h to 1 dzien.
+        var days = Math.max(1, Math.ceil(r.duration_min / (60 * 24)));
+        return days * t.amortization_per_day_pln;
+    }
+
+    // Auto-update hint dla checkboxa amortyzacji gdy user zmieni naczepe
+    function updateAmortizationHint() {
+        var hint = document.getElementById('amortization-hint');
+        if (!hint) return;
+        var t = getSelectedTrailer();
+        if (t && t.amortization_per_day_pln) {
+            hint.textContent = ' — ' + fmtNum(t.amortization_per_day_pln, 2) + ' PLN/dzień z naczepy';
+            hint.classList.remove('text-danger');
+        } else {
+            hint.textContent = ' — <?= __('brak danych (uzupełnij naczepę)') ?>';
+            hint.classList.add('text-danger');
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        var ts = document.getElementById('trailer-id');
+        if (ts) ts.addEventListener('change', updateAmortizationHint);
+        var ac = document.getElementById('include-amortization');
+        if (ac) ac.addEventListener('change', function () {
+            if (lastResponse && lastResponse.routes && lastResponse.routes[activeAltIdx]) {
+                renderStatsBar(lastResponse.routes[activeAltIdx]);
+            }
+        });
+        setTimeout(updateAmortizationHint, 200);
+    });
+
     // #4 — Kalkulator zysku (pill aktualizuje się od razu przy zmianie ceny)
-    function renderProfitPill(r, extra, fuelCost, driverCost) {
+    function renderProfitPill(r, extra, fuelCost, driverCost, amortization) {
         var pill = document.getElementById('profit-pill');
         var revInput = document.getElementById('freight-revenue');
         var revenue = parseFloat(revInput.value || 0);
@@ -4704,7 +4880,7 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 tollsPln = r.tolls_total * extra.eur_pln_rate;
             }
         }
-        var totalCost = (fuelCost || 0) + (driverCost || 0) + tollsPln;
+        var totalCost = (fuelCost || 0) + (driverCost || 0) + tollsPln + (amortization || 0);
         var profit = revenue - totalCost;
         var margin = revenue > 0 ? (profit / revenue) * 100 : 0;
         var perKm = revenue / r.distance_km;
