@@ -494,6 +494,18 @@ class HereRoutingService
                 $tollsBreakdown = [];   // L1: szczegółowe opłaty
                 $vignettes = [];         // L2: winiety
                 $tollLocations = [];     // L3: lokalizacje bramek na mapie
+                // WAZNE (HERE docs): "The id could be repeated across sections,
+                // and in case it's repeated, it shouldn't be used more than once
+                // to count the total fare on the client side."
+                // https://docs.here.com/routing/docs/routing-v8-tolls-multileg
+                //
+                // Sledzimy widziane fare_id — dla powtarzajacych sie:
+                //   1) NIE dodajemy do totalu (unikamy przeplaty)
+                //   2) NIE tworzymy osobnego wpisu w breakdown
+                //   3) Zwiekszamy licznik section_count dla istniejacego wpisu
+                //      (zeby user widzial ze fare dotyczy N sekcji)
+                $seenFareIds = [];
+                $fareIdToBreakdownIdx = [];
 
                 foreach (($route['sections'] ?? []) as $sect) {
                     $summary = $sect['summary'] ?? [];
@@ -583,13 +595,32 @@ class HereRoutingService
                                 // Brak konwersji do żądanej waluty — loguj, ale wpis w breakdown zostaje
                                 Log::warning("Toll fare currency mismatch: orig={$cur}, conv={$convCur}, target={$currency}");
                             }
-                            if ($aggPrice !== null) {
+
+                            // DEDUP: HERE moze zwrocic ten sam fare_id na wielu sekcjach
+                            // (transponder tolls, np. DE Toll Collect). Wtedy fare_id
+                            // powtarza sie i NIE wolno sumowac ponownie do totalu.
+                            $isDuplicateFare = ($fareId !== '' && isset($seenFareIds[$fareId]));
+
+                            if ($aggPrice !== null && !$isDuplicateFare) {
                                 $tollsByCountry[$cc] = ($tollsByCountry[$cc] ?? 0.0) + $aggPrice;
                                 $tollsTotal = ($tollsTotal ?? 0.0) + $aggPrice;
                             }
                             // tollsCurrency = ZAWSZE żądana waluta (nie nadpisuj per fare)
 
-                            // L1: szczegółowy wpis (per fare) — zachowujemy wszystkie zwrócone pola
+                            if ($isDuplicateFare) {
+                                // Zwieksz section_count dla istniejacego wpisu — user
+                                // zobaczy "3 sekcje" zamiast 3 osobnych linii.
+                                $existingIdx = $fareIdToBreakdownIdx[$fareId] ?? null;
+                                if ($existingIdx !== null && isset($tollsBreakdown[$existingIdx])) {
+                                    $tollsBreakdown[$existingIdx]['section_count'] =
+                                        ($tollsBreakdown[$existingIdx]['section_count'] ?? 1) + 1;
+                                }
+                                // Nie tworz nowego wpisu w breakdown, nie dodawaj do totalu
+                                continue;
+                            }
+
+                            // L1: szczegółowy wpis (per fare) — pierwszy raz widzimy ten fare_id
+                            $newIdx = count($tollsBreakdown);
                             $tollsBreakdown[] = [
                                 'country'           => $cc,
                                 'system'            => $tollSystem,
@@ -608,7 +639,12 @@ class HereRoutingService
                                 'pricing_method'    => $pricingMethod,
                                 'charged_distance_km' => $chargedDistanceM > 0 ? round($chargedDistanceM / 1000, 1) : null,
                                 'discount'          => $discountInfo,
+                                'section_count'     => 1, // powiekszany dla duplikatow fare_id
                             ];
+                            if ($fareId !== '') {
+                                $seenFareIds[$fareId] = true;
+                                $fareIdToBreakdownIdx[$fareId] = $newIdx;
+                            }
 
                             // L2: winieta — zbieramy dedup'owane (country + system + validity)
                             if ($isVignette) {

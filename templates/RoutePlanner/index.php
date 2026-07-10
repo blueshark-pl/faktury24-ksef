@@ -4143,6 +4143,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         route.tolls_breakdown.forEach(function (f) {
             var nameCell = escapeHtml(f.name || (f.is_vignette ? '<?= __('Winieta') ?>' : '—'));
             if (f.is_vignette) nameCell = '<i class="ri-sticker-line text-warning me-1"></i>' + nameCell;
+            // section_count > 1: HERE zwrocil ten sam fare_id na wielu sekcjach
+            // (typowo transponder tolls jak DE Toll Collect). Placimy tylko RAZ,
+            // ale HERE odzwierciedla naliczanie per sekcja.
+            if (f.section_count && f.section_count > 1) {
+                nameCell += ' <span class="badge bg-secondary-subtle text-secondary border ms-1" title="<?= __('Ta sama opłata (fare_id) na :n sekcjach trasy — HERE zwraca dla każdej, ale płacimy raz (transponder)') ?>">' +
+                    '<i class="ri-repeat-line me-1"></i>×' + f.section_count + '</span>';
+            }
 
             // Cena w docelowej walucie (target). Priorytet:
             // 1) converted_price gdy converted_curr === target
