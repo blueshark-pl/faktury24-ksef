@@ -596,7 +596,12 @@ class RoutePlannerController extends AppController
             : (array)$this->request->getQueryParams();
 
         $contractorId = trim((string)($data['contractor_id'] ?? ''));
-        $contractorNip = preg_replace('/\D+/', '', (string)($data['contractor_nip'] ?? ''));
+        // WAZNE: NIE strippujemy do samych cyfr (bo NL822534538B01 zamienialoby sie
+        // na 82253453801 co nie pasuje do bazy).
+        // Wyluskujemy tylko "core digits" — odcinamy prefix kraju (2 litery) i suffix
+        // po pierwszej literze w srodku (np. B01 dla NL).
+        $contractorNipRaw = trim((string)($data['contractor_nip'] ?? ''));
+        $contractorNip = self::extractCoreNipDigits($contractorNipRaw);
         $fromCity = trim((string)($data['from_city'] ?? ''));
         $toCity   = trim((string)($data['to_city']   ?? ''));
         $fromCountry = strtoupper(substr(trim((string)($data['from_country'] ?? '')), 0, 2));
@@ -633,7 +638,7 @@ class RoutePlannerController extends AppController
                 ->where(['id' => $companyId])
                 ->first();
             if ($company && !empty($company->nip)) {
-                $companyNipDigits = preg_replace('/\D+/', '', (string)$company->nip);
+                $companyNipDigits = self::extractCoreNipDigits((string)$company->nip);
             }
         } catch (\Throwable) {}
 
@@ -643,17 +648,20 @@ class RoutePlannerController extends AppController
 
         $SO = $this->fetchTable('SpeedOrders');
 
-        // Wspolna baza query: firma (przez NIP, nie ID) + limit czasowy 12 miesiecy
+        // Wspolna baza query: firma (przez NIP core digits, LIKE zeby lapal PL/NL/DE prefixy)
+        // + limit czasowy 12 miesiecy
         $baseQuery = function () use ($SO, $companyNipDigits, $contractorNip, $mode) {
             $q = $SO->find()
                 ->where([
-                    'SpeedOrders.company_nip IN' => [$companyNipDigits, 'PL' . $companyNipDigits],
+                    'SpeedOrders.company_nip LIKE' => '%' . $companyNipDigits . '%',
                     'SpeedOrders.date_doc >=' => (new \DateTimeImmutable('-12 months'))->format('Y-m-d'),
                 ])
                 ->orderByDesc('SpeedOrders.date_doc');
             if ($mode === 'client' && $contractorNip !== '') {
+                // LIKE zamiast IN — bo buyer_nip w Speed moze byc NL822534538B01,
+                // PL5271234567, samo 5271234567, itd. Core digits sa 8-10 cyfr.
                 $q->andWhere([
-                    'SpeedOrders.buyer_nip IN' => [$contractorNip, 'PL' . $contractorNip],
+                    'SpeedOrders.buyer_nip LIKE' => '%' . $contractorNip . '%',
                 ]);
             }
             return $q;
@@ -1583,5 +1591,37 @@ class RoutePlannerController extends AppController
             ->withType('application/json')
             ->withStatus($status)
             ->withStringBody(json_encode(['error' => true, 'message' => $msg], JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Wyluska "core digits" z NIP-u — same cyfry bez prefixu kraju i suffixu.
+     *
+     * Obsluguje formaty EU:
+     *   PL5271234567    → 5271234567   (10 cyfr)
+     *   PL 527 123 4567 → 5271234567
+     *   5271234567      → 5271234567
+     *   NL822534538B01  → 822534538    (9 cyfr, odcina B01 suffix)
+     *   DE123456789     → 123456789    (9 cyfr)
+     *   CZ12345678      → 12345678     (8 cyfr)
+     *   ATU12345678     → 12345678     (odcina ATU prefix, 8 cyfr)
+     *
+     * Zwraca same cyfry (min 8 dla EU) lub pusty string.
+     */
+    public static function extractCoreNipDigits(string $raw): string
+    {
+        $s = trim($raw);
+        if ($s === '') return '';
+
+        // 1. Odetnij prefix kraju: 2-3 litery na poczatku (PL, NL, DE, CZ, AT, ATU dla Austrii...)
+        $s = preg_replace('/^[A-Za-z]{2,3}/', '', $s);
+
+        // 2. Odetnij suffix po pierwszej literze w srodku (dla NL: B01)
+        $s = preg_replace('/[A-Za-z].*$/', '', $s);
+
+        // 3. Zostaw same cyfry
+        $digits = preg_replace('/\D+/', '', $s);
+
+        // Min 8 cyfr dla EU NIP (CZ ma 8, wiekszosc 9-10)
+        return strlen($digits) >= 8 ? $digits : '';
     }
 }

@@ -1042,7 +1042,8 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                                 </label>
                             </div>
                             <input type="text" id="pricing-history-nip" class="form-control form-control-sm"
-                                   style="width:150px" placeholder="np. 5271234567" />
+                                   style="width:180px" placeholder="np. NL822534538B01"
+                                   title="<?= __('Akceptujemy: PL5271234567, NL822534538B01, DE123456789, ATU12345678, same cyfry') ?>" />
                             <button type="button" class="btn btn-sm btn-info text-white" id="btn-pricing-history-fetch">
                                 <i class="ri-search-line me-1"></i><?= __('Sprawdź historię') ?>
                             </button>
@@ -4353,15 +4354,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
     document.getElementById('btn-pricing-history-fetch').addEventListener('click', function () {
         var btn = this;
         var mode = document.querySelector('input[name="pricing-history-mode"]:checked').value;
-        var nip = (document.getElementById('pricing-history-nip').value || '').replace(/\D+/g, '');
+        // NIE strippujemy do samych cyfr — backend to zrobi. Wysylamy oryginal
+        // (np. NL822534538B01 lub ATU12345678) zeby backend mogl poprawnie
+        // wyluskac core digits pomijajac prefix/suffix.
+        var nipRaw = (document.getElementById('pricing-history-nip').value || '').trim();
+        var nipDigits = nipRaw.replace(/\D+/g, ''); // do walidacji dlugosci
 
-        if (mode === 'client' && nip.length < 5) {
-            showPricingHistoryError('<?= __('Podaj NIP klienta (min. 5 cyfr) lub przełącz tryb na Rynek.') ?>');
+        if (mode === 'client' && nipDigits.length < 5) {
+            showPricingHistoryError('<?= __('Podaj NIP klienta (min. 5 cyfr) lub przełącz tryb na Rynek. Akceptujemy formaty: PL5271234567, NL822534538B01, DE123456789, ATU12345678, same cyfry.') ?>');
             return;
         }
 
         var fd = new FormData();
-        if (mode === 'client') fd.append('contractor_nip', nip);
+        if (mode === 'client') fd.append('contractor_nip', nipRaw);
         fd.append('from_city',    btn.dataset.fromCity    || '');
         fd.append('to_city',      btn.dataset.toCity      || '');
         fd.append('from_country', btn.dataset.fromCountry || '');
