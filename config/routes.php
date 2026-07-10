@@ -385,6 +385,34 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/ryzyko/akceptuj/{id}',         ['controller' => 'ComplianceEvents', 'action' => 'dismiss'])
             ->setPass(['id']);
 
+        // Fala 4A: Trip events (timeline zlecen)
+        $builder->get('/trip-events/zlecenie/{orderId}',  ['controller' => 'TripEvents', 'action' => 'forOrder'])
+            ->setPatterns(['orderId' => '\d+'])
+            ->setPass(['orderId']);
+        $builder->post('/trip-events/dodaj',              ['controller' => 'TripEvents', 'action' => 'addEvent']);
+        $builder->post('/trip-events/usun/{id}',          ['controller' => 'TripEvents', 'action' => 'delete'])
+            ->setPass(['id']);
+        // Publiczne (bez auth) — mobile view kierowcy
+        $builder->get('/kierowca/{token}',                ['controller' => 'TripEvents', 'action' => 'driverView'])
+            ->setPatterns(['token' => '[a-f0-9]{48}'])
+            ->setPass(['token']);
+        $builder->post('/kierowca/{token}/event',         ['controller' => 'TripEvents', 'action' => 'driverPost'])
+            ->setPatterns(['token' => '[a-f0-9]{48}'])
+            ->setPass(['token']);
+
+        // Fala 4B: Return loads (ladunki powrotne)
+        $builder->get('/powroty/{planId}',                ['controller' => 'ReturnLoads', 'action' => 'forPlan'])
+            ->setPatterns(['planId' => '[a-f0-9\-]{36}'])
+            ->setPass(['planId']);
+        $builder->post('/powroty/{planId}/szukaj',        ['controller' => 'ReturnLoads', 'action' => 'suggest'])
+            ->setPatterns(['planId' => '[a-f0-9\-]{36}'])
+            ->setPass(['planId']);
+        $builder->post('/powroty/odrzuc/{id}',            ['controller' => 'ReturnLoads', 'action' => 'dismiss'])
+            ->setPass(['id']);
+
+        // Fala 4C: Analytics dashboard
+        $builder->get('/analytics',                       ['controller' => 'Analytics', 'action' => 'index']);
+
         // Pojazdy floty
         $builder->get('/pojazdy',                ['controller' => 'Vehicles', 'action' => 'index']);
         $builder->connect('/pojazdy/dodaj',      ['controller' => 'Vehicles', 'action' => 'add']);

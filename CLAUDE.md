@@ -675,6 +675,103 @@ Read-only dashboard: `/ryzyko` z filtrem severity + `POST /ryzyko/akceptuj/{id}`
 **Helper:** `ComplianceEventsTable::record($companyId, $eventType, $description, $severity='warning', $context=[], $links=[])`
 — best-effort try/catch. Wywoływać z innych modułów zamiast handling w kontrolerze.
 
+### Pełne kolumny — moduły planera operacyjnego (Fala 4)
+
+**Cel:** live tracking + analityka + automatyzacje. Domyka pipeline operacyjny.
+
+Migracje: `20260710130000..20260710130100` (2 tabele) + Cron command + integracje w RouteOffers.
+
+#### `trip_events`
+Timeline zdarzeń w trakcie zlecenia — dyspozytor + kierowca z telefonu przez token.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `speed_order_id` | int | FK do `speed_orders` (wymagane) |
+| `route_plan_id` / `driver_id` | | powiązania |
+| `event_type` | string(30) | `departure`/`arrival`/`loading_started`/`loading_completed`/`unloading_started`/`unloading_completed`/`border_crossed`/`delay_reported`/`pod_uploaded`/`cmr_signed`/`incident`/`note` |
+| `happened_at` | datetime | kiedy się wydarzyło |
+| `location_lat` / `location_lng` / `location_address` / `location_country` | | geolokalizacja |
+| `delay_minutes` / `delay_reason` | | dla delay_reported |
+| `notes` | text | |
+| `photo_path` | string(500) | zdjęcie POD/CMR z telefonu |
+| `source` | string(20) | `operator`/`driver_mobile`/`gps_track`/`api_webhook`/`system` |
+| `reported_by_user_id` / `reported_by_name` | | kto zgłosił (name gdy kierowca via token) |
+
+CRUD operatora: `/trip-events/zlecenie/{orderId}` (timeline + QR link dla kierowcy).
+
+**Publiczne (bez auth, token deterministyczny sha256(salt+company+order_id) — 48 chars):**
+- `GET /kierowca/{token}` — mobile view kierowcy: nagłówek zlecenia, timeline, przyciski
+  „Załadowano" / „Rozładowano" / „Granica" / „Opóźnienie" / „POD z telefonu (aparat)" / „Incydent"
+- `POST /kierowca/{token}/event` — kierowca dodaje event z geolokalizacją (jeśli pozwoli w przeglądarce) + upload photo
+
+Publiczny link dostępny w modalu **„Link dla kierowcy"** w widoku operatora (QR z api.qrserver.com).
+
+#### `return_load_candidates`
+Kandydaci na ładunek powrotny dla planu trasy. Zapobiega pustym powrotom.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `route_plan_id` | char(36) | FK |
+| `candidate_type` | string(20) | `internal`/`market`/`manual` |
+| `speed_order_id` | int | dla internal |
+| `external_ref` / `external_source` | | dla market (Trans/Timocom — future) |
+| `from_city` / `from_country` / `from_lat` / `from_lng` | | pickup |
+| `to_city` / `to_country` / `to_lat` / `to_lng` | | delivery |
+| `pickup_from` / `pickup_to` | datetime | okno załadunku |
+| `price` / `currency` | | |
+| `distance_from_route_km` | decimal | deadhead km od końca trasy |
+| `time_gap_hours` | decimal | odstęp godzin |
+| `match_score` | decimal | 0-100 |
+| `status` | string(20) | `suggested`/`dismissed`/`combined` |
+
+CRUD: `/powroty/{planId}` (lista) + `POST /powroty/{planId}/szukaj` (matching engine).
+
+**Matching engine** (`ReturnLoadsController::suggest`):
+- Wyciąga endpoint z `route_plans.waypoints_json` (ostatni waypoint)
+- Szuka otwartych `speed_orders` (invoice_id IS NULL) w oknie 24h przed / 5 dni po `planned_end_at`
+- Match po nazwie miasta (LIKE) lub tym samym kraju
+- Wylicza `match_score` przez `ReturnLoadCandidatesTable::calcMatchScore()`
+  (deadhead km + time gap + czy ma cenę)
+
+**Helper haversine** w `ReturnLoadCandidatesTable::haversineKm(lat1, lng1, lat2, lng2)` do przyszłych obliczeń dokładnego dystansu.
+
+#### Analytics dashboard `/analytics`
+Read-only agregator z 4 źródeł: `speed_orders`, `invoices`, `operational_events`.
+
+**KPI kafelki:** liczba zleceń, faktur, suma faktur PLN, średnia cena, nieopłacone PLN.
+**Wykresy/listy:**
+- Top 10 tras (bar chart z progress-bar)
+- Top 10 klientów (po ilości zleceń)
+- Trend miesięczny — suma faktur w PLN (uwzględnia `currency_exchange` dla walutowych)
+- Aktywność operacyjna (top 20 wpisów z `operational_events`)
+
+Filtr: 30/90/180/365 dni (default 90).
+
+#### Compliance auto-check w `RouteOffers::create` (Fala 4D)
+Przy tworzeniu oferty automatyczny check dla planu:
+1. **`vehicle_maintenance`** — dla `vehicle_id`+`trailer_id` sprawdza czy jest ważne `technical_inspection` + `oc` na `planned_start_at`. Brak → `compliance_events` typu `expired_inspection`, severity `error`
+2. **`driver_time_logs.hasBudgetInWeek()`** — dla `driver_id` sprawdza czy ma budżet czasu w tygodniu (jeśli plan `duration_min > remaining_min`). Brak → `driver_hours_exceeded`, severity `warning`
+
+Warnings zwrócone w JSON response `create()` → modal „Wyślij ofertę" pokazuje żółty alert box z listą ostrzeżeń + link do `/ryzyko`.
+
+**Wpisy w `compliance_events` można potem zaakceptować z uzasadnieniem** (Fala 3 — `dismissal_reason` do audytu ITD).
+
+#### Cron `bin/cake alerts` (Fala 4E)
+Wysyła codzienne emaile 30 dni przed wygaśnięciem `vehicle_maintenance.valid_until`.
+
+Opcje: `--dry` (preview), `--days=14` (inny próg), `--company=<uuid>` (jedna firma).
+
+**Idempotent** przez `alert_sent_at` — nie wysyłamy 2x w ciągu 14 dni.
+
+Email template: `templates/email/html/vehicle_expiring.php` (gradient header, tabela dokumentów, CTA „Otwórz listę serwisów").
+
+Crontab prod (przykład):
+```
+0 8 * * * cd /home/jjgroup1srv/domains/booklio.pl/public_html && php bin/cake.php alerts
+```
+
 ### Pełne kolumny `vehicle_combinations`
 Migracja: `20260623160000_CreateVehicleCombinations.php`
 Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
@@ -800,6 +897,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-10 | Feat: planer operacyjny — FALA 4 (live tracking + analytics + automatyzacje) — 2 nowe tabele: `trip_events` (timeline zdarzeń z mobile view kierowcy /kierowca/{token} + POD upload z aparatu telefonu + geolokalizacja), `return_load_candidates` (matching engine dla ładunków powrotnych z score 0-100 + cascade query po własnych speed_orders). Analytics dashboard `/analytics` (KPI + top tras/klientów + trend miesięczny). Compliance auto-check przy Wyślij ofertę (vehicle_maintenance + driver_time_logs → compliance_events). Cron `bin/cake alerts` z emailem 30 dni przed wygasnięciem badań (idempotent przez alert_sent_at) | 2 migracje + Tables/Entities `TripEvent`, `ReturnLoadCandidate`; kontrolery `TripEventsController` (public token+mobile view), `ReturnLoadsController`, `AnalyticsController`; `AlertsCommand`; templates `TripEvents/{for_order,driver_view,driver_error}.php`, `ReturnLoads/for_plan.php`, `Analytics/index.php`, `email/html/vehicle_expiring.php`; integracja compliance-check w `RouteOffersController::create` + JS w `RoutePlanner/index.php`; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 3 (zasoby + compliance) — 4 nowe tabele: `vehicle_maintenance` (badania/ADR/OC z auto-alertem), `driver_time_logs` (UE 561/2006 z helperami weeklyStatus), `driver_availability` (7-dniowe wzorce z preferencjami ADR/noc/weekend), `compliance_events` (append-only log ryzyk z „akceptuję ryzyko" i uzasadnieniem do audytu ITD). CRUD `/serwisy`, `/czas-pracy`, `/dostepnosc-kierowcow`, `/ryzyko`. AJAX dla planera: `/serwisy/wygasajace.json`, `/czas-pracy/status/{driverId}.json`. Helper `ComplianceEventsTable::record()` do zbierania ostrzeżeń z innych modułów | 4 migracje + Tables/Entities `VehicleMaintenance`, `DriverTimeLog`, `DriverAvailability`, `ComplianceEvent`; kontrolery `VehicleMaintenanceController`, `DriverTimeLogsController`, `DriverAvailabilityController`, `ComplianceEventsController`; templates dla wszystkich; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 2 (workflow ofertowy) — AJAX `pricingHistory` z cascade query historii stawek klienta (poziom 1-3) + UI panel „Historia stawek" pod tabelą tolls w planerze z alertem dumpingu; tabela `route_offers` (draft→sent→viewed→accepted/rejected) + CRUD `/oferty` + publiczny wgląd klienta `/oferty/wglad/{token}` bez logowania + email HTML; przycisk „Wyślij ofertę" w hero planera → modal z prefillem waypoints + integracja z `route_plans` (Fala 1) | migracja `CreateRouteOffers`, `RouteOffersTable`+Entity, `RouteOffersController`; nowe metody `RoutePlannerController::pricingHistory`; `templates/RouteOffers/{index,view,access_by_token}.php`; `templates/email/html/route_offer.php`; `templates/RoutePlanner/index.php` (panel historii + modal Wyślij ofertę + JS); `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 1 (fundament) — 5 nowych tabel: `route_plans`, `route_plan_legs`, `driver_schedules`, `vehicle_schedules`, `operational_events` (append-only event bus). CRUD dla grafików: `/grafik-kierowcow` + `/grafik-pojazdow` + AJAX endpointy „kto wolny w oknie X-Y" gotowe dla planera tras. Helper `OperationalEventsTable::log()` do dopisywania w każdym module | 5 migracji + Tables/Entities `RoutePlan(Legs)`, `DriverSchedule`, `VehicleSchedule`, `OperationalEvent`; `DriverSchedulesController`, `VehicleSchedulesController`; `templates/DriverSchedules/*`, `templates/VehicleSchedules/*`; `routes.php`, `permissions.php`, `layout/default.php` |

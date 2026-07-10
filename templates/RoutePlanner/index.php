@@ -5027,6 +5027,19 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         return;
                     }
 
+                    // Fala 4D: pokaz compliance warnings jesli sa
+                    if (res.compliance_warnings && res.compliance_warnings.length > 0) {
+                        var complianceHtml = '<div class="alert alert-warning py-2 mb-2"><strong><i class="ri-shield-check-line me-1"></i><?= __('Uwagi compliance') ?>:</strong><ul class="mb-0 mt-1 small">';
+                        res.compliance_warnings.forEach(function (w) {
+                            var icon = w.severity === 'error' ? '🚫' : '⚠️';
+                            complianceHtml += '<li>' + icon + ' ' + w.message + '</li>';
+                        });
+                        complianceHtml += '</ul><div class="small mt-1 text-muted"><?= __('Wpisy zapisane w /ryzyko — musisz zaakceptować przed wysyłką na produkcje.') ?></div></div>';
+                        alertBox.innerHTML = complianceHtml;
+                        alertBox.className = '';
+                        alertBox.style.display = '';
+                    }
+
                     var sendNow = document.getElementById('offer-send-now').checked;
                     if (sendNow) {
                         // Wyslij (POST do send)

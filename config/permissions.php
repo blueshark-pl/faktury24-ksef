@@ -245,6 +245,34 @@ return [
             'controller' => 'ComplianceEvents',
             'action'     => ['index', 'dismiss'],
         ],
+        // Fala 4A: Trip events (operator)
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'TripEvents',
+            'action'     => ['forOrder', 'addEvent', 'delete'],
+        ],
+        // Fala 4A: Trip events (publiczne — kierowca po tokenie)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'TripEvents',
+            'action'     => ['driverView', 'driverPost'],
+        ],
+        // Fala 4B: Return loads
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'ReturnLoads',
+            'action'     => ['forPlan', 'suggest', 'dismiss'],
+        ],
+        // Fala 4C: Analytics
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'Analytics',
+            'action'     => ['index'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],

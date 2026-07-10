@@ -159,6 +159,9 @@ class RouteOffersController extends AppController
 
         $this->_logEvent('route_offer', $offer->id, 'created', ['route_plan_id' => $planId]);
 
+        // Fala 4D: compliance auto-check — sprawdzamy braki i tworzymy compliance_events
+        $complianceWarnings = $this->_runComplianceCheck($planId, $data);
+
         return $this->response
             ->withType('application/json')
             ->withStringBody(json_encode([
@@ -166,7 +169,92 @@ class RouteOffersController extends AppController
                 'offer_id' => $offer->id,
                 'access_url' => $this->request->getUri()->getScheme() . '://' . $this->request->getUri()->getHost() . '/oferty/wglad/' . $offer->access_token,
                 'redirect' => \Cake\Routing\Router::url(['action' => 'view', $offer->id]),
+                'compliance_warnings' => $complianceWarnings,
             ], JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Compliance check dla planu — sprawdza:
+     *  1. Czy przypisany pojazd/naczepa ma wazne badanie techniczne + OC
+     *  2. Czy przypisany kierowca ma budzet czasu jazdy w tygodniu
+     *  3. Czy kierowca ma ADR gdy planowany transport oznaczony jako ADR (future)
+     *
+     * Zapisuje ostrzezenia do compliance_events (Fala 3).
+     * Zwraca array warning descriptions do wyswietlenia w modalu.
+     */
+    private function _runComplianceCheck(string $planId, array $planData): array
+    {
+        $warnings = [];
+        $companyId = $this->companyId();
+
+        $RP = $this->fetchTable('RoutePlans');
+        $plan = $RP->get($planId);
+        $CE = $this->fetchTable('ComplianceEvents');
+
+        $checkDate = $plan->planned_start_at ?: new \DateTimeImmutable('+1 day');
+        if (!$checkDate instanceof \DateTimeInterface) {
+            $checkDate = new \DateTimeImmutable((string)$checkDate);
+        }
+
+        // 1. Pojazd — badanie + OC
+        if (!empty($plan->vehicle_id)) {
+            try {
+                $VM = $this->fetchTable('VehicleMaintenance');
+                $missing = $VM->findMissingForDate(
+                    $companyId, 'vehicle', $plan->vehicle_id, $checkDate,
+                    ['technical_inspection', 'oc']
+                );
+                foreach ($missing as $type) {
+                    $label = $type === 'technical_inspection' ? 'badania technicznego' : 'OC';
+                    $desc = "Pojazd nie ma ważnego {$label} na dzień " . $checkDate->format('Y-m-d');
+                    $CE->record($companyId, 'expired_inspection', $desc, 'error',
+                        ['plan_id' => $planId, 'check_date' => $checkDate->format('Y-m-d'), 'missing_type' => $type],
+                        ['route_plan_id' => $planId, 'vehicle_id' => $plan->vehicle_id]
+                    );
+                    $warnings[] = ['severity' => 'error', 'message' => $desc];
+                }
+            } catch (\Throwable) {}
+        }
+
+        // 2. Naczepa — badanie + OC/AC
+        if (!empty($plan->trailer_id)) {
+            try {
+                $VM = $this->fetchTable('VehicleMaintenance');
+                $missing = $VM->findMissingForDate(
+                    $companyId, 'trailer', $plan->trailer_id, $checkDate,
+                    ['technical_inspection']
+                );
+                foreach ($missing as $type) {
+                    $desc = "Naczepa nie ma ważnego badania technicznego na dzień " . $checkDate->format('Y-m-d');
+                    $CE->record($companyId, 'expired_inspection', $desc, 'error',
+                        ['plan_id' => $planId, 'check_date' => $checkDate->format('Y-m-d')],
+                        ['route_plan_id' => $planId, 'trailer_id' => $plan->trailer_id]
+                    );
+                    $warnings[] = ['severity' => 'error', 'message' => $desc];
+                }
+            } catch (\Throwable) {}
+        }
+
+        // 3. Kierowca — czas pracy w tygodniu
+        if (!empty($plan->driver_id) && !empty($plan->duration_min)) {
+            try {
+                $DTL = $this->fetchTable('DriverTimeLogs');
+                $weekIso = $checkDate->format('o-\WW');
+                if (!$DTL->hasBudgetInWeek($plan->driver_id, $weekIso, (int)$plan->duration_min)) {
+                    $status = $DTL->weeklyStatus($plan->driver_id, $weekIso);
+                    $usedH = round($status['used_min'] / 60);
+                    $planH = round($plan->duration_min / 60);
+                    $desc = "Kierowca ma już {$usedH}h jazdy w tygodniu {$weekIso}. Zaplanowana trasa {$planH}h przekroczy limit 56h.";
+                    $CE->record($companyId, 'driver_hours_exceeded', $desc, 'warning',
+                        ['plan_id' => $planId, 'week_iso' => $weekIso, 'used_min' => $status['used_min'], 'planned_min' => $plan->duration_min],
+                        ['route_plan_id' => $planId, 'driver_id' => $plan->driver_id]
+                    );
+                    $warnings[] = ['severity' => 'warning', 'message' => $desc];
+                }
+            } catch (\Throwable) {}
+        }
+
+        return $warnings;
     }
 
     /**

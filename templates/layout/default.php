@@ -1703,6 +1703,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Fala 4C: Analytics dashboard -->
+                            <li class="slide <?= $navActive('Analytics') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-bar-chart-2-line side-menu__icon"></i><span class="side-menu__label">' . __('Analytics') . '</span>',
+                                    ['plugin' => false, 'controller' => 'Analytics', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">
