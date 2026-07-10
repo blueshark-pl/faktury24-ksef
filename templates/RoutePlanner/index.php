@@ -3964,13 +3964,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         // Explanation: SUMA z ciagnik+naczepa lub MAX lub tylko ciagnik
         var srcExplain = {
+            type:         '<?= __('tractor gdy zestaw, straightTruck gdy solo') ?>',
+            trailerCount: '<?= __('1 gdy naczepa, 0 gdy solo') ?>',
+            trailerAxleCount: '<?= __('osobno osie naczepy (HERE tego wymaga)') ?>',
             grossWeight:  '<?= __('SUMA (ciągnik + naczepa)') ?>',
-            axleCount:    '<?= __('SUMA (ciągnik + naczepa)') ?>',
+            axleCount:    '<?= __('SUMA total (ciągnik + naczepa)') ?>',
             weightPerAxle:'<?= __('tylko ciągnik (axle_load_kg)') ?>',
             length:       '<?= __('SUMA (max 18,75 m)') ?>',
             width:        '<?= __('MAX (ciągnik lub naczepa)') ?>',
             height:       '<?= __('MAX (ciągnik lub naczepa)') ?>',
-            emissionType: '<?= __('z pojazdu') ?>',
+            emissionType: '<?= __('z pojazdu (lowercase!)') ?>',
             tunnelCategory:'<?= __('z pojazdu') ?>',
             shippedHazardousGoods: '<?= __('ADR z pojazdu/naczepy') ?>',
         };
@@ -3979,6 +3982,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             var display = value != null ? (value + (unit || '')) : '—';
             return [key, display, srcHint];
         }
+        rows.push(mkRow('vehicle[type]',          v.type,          '',     srcExplain.type));
+        rows.push(mkRow('vehicle[trailerCount]',  v.trailerCount,  '',     srcExplain.trailerCount));
+        rows.push(mkRow('vehicle[trailerAxleCount]', v.trailerAxleCount, ' osi', srcExplain.trailerAxleCount));
         rows.push(mkRow('vehicle[grossWeight]',   v.grossWeight,   ' kg',  srcExplain.grossWeight));
         rows.push(mkRow('vehicle[axleCount]',     v.axleCount,     ' osi', srcExplain.axleCount));
         rows.push(mkRow('vehicle[weightPerAxle]', v.weightPerAxle, ' kg',  srcExplain.weightPerAxle));

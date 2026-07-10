@@ -125,7 +125,26 @@ class HereRoutingService
             ];
             foreach ($map as $hereKey => $vKey) {
                 if ($vKey && !empty($vehicle[$vKey])) {
-                    $params["vehicle[$hereKey]"] = (string)$vehicle[$vKey];
+                    $val = (string)$vehicle[$vKey];
+                    if ($hereKey === 'emissionType') {
+                        $val = self::normalizeEmission($val);
+                        if ($val === '') continue;
+                    }
+                    if ($hereKey === 'tunnelCategory') {
+                        $val = strtoupper(substr(trim($val), 0, 1));
+                        if (!in_array($val, ['B', 'C', 'D', 'E'], true)) continue;
+                    }
+                    $params["vehicle[$hereKey]"] = $val;
+                }
+            }
+            // vehicle[type] i trailerCount — HERE wymaga rozroznienia zestawu od solo
+            $hasTrailer = !empty($vehicle['_trailer_id']) || !empty($vehicle['_combined_from']['trailer']);
+            $params['vehicle[type]'] = $hasTrailer ? 'tractor' : 'straightTruck';
+            $params['vehicle[trailerCount]'] = $hasTrailer ? '1' : '0';
+            if ($hasTrailer) {
+                $trailerAxles = (int)($vehicle['_combined_from']['trailer']['axle_count'] ?? 0);
+                if ($trailerAxles > 0 && $trailerAxles <= 12) {
+                    $params['vehicle[trailerAxleCount]'] = (string)$trailerAxles;
                 }
             }
             if (!empty($vehicle['hazardous_goods'])) {
@@ -369,8 +388,34 @@ class HereRoutingService
                     $val = strtoupper(substr(trim($val), 0, 1));
                     if (!in_array($val, ['B', 'C', 'D', 'E'], true)) continue;
                 }
+                // HERE constraints wg dokumentacji:
+                // length: 100..3500 cm, width: 0..500 cm, height: 0..500 cm
+                // grossWeight: 0..1000000 kg, axleCount: 0..24
+                if ($hereKey === 'length' && ((int)$val < 100 || (int)$val > 3500)) continue;
+                if ($hereKey === 'width'  && ((int)$val > 500)) continue;
+                if ($hereKey === 'height' && ((int)$val > 500)) continue;
+                if ($hereKey === 'axleCount' && ((int)$val > 24)) continue;
                 $params["vehicle[$hereKey]"] = $val;
             }
+
+            // vehicle[type] i vehicle[trailerCount] — wymagane przez HERE do rozroznienia
+            // ciagnika+naczepy od solo trucka. Bez tego HERE traktuje pojazd jak solo.
+            // - tractor: ciagnik siodlowy z naczepa (semi-trailer)
+            // - straightTruck: pojedyncza ciezarowka z rigid chassis (solo)
+            $hasTrailer = !empty($vehicle['_trailer_id']) || !empty($vehicle['_combined_from']['trailer']);
+            $params['vehicle[type]'] = $hasTrailer ? 'tractor' : 'straightTruck';
+
+            if ($hasTrailer) {
+                $params['vehicle[trailerCount]'] = '1';
+                // trailerAxleCount — osobno osie naczepy (nie sumowane, HERE potrzebuje rozbicia)
+                $trailerAxles = (int)($vehicle['_combined_from']['trailer']['axle_count'] ?? 0);
+                if ($trailerAxles > 0 && $trailerAxles <= 12) {
+                    $params['vehicle[trailerAxleCount]'] = (string)$trailerAxles;
+                }
+            } else {
+                $params['vehicle[trailerCount]'] = '0';
+            }
+
             if (!empty($vehicle['hazardous_goods'])) {
                 $params['vehicle[shippedHazardousGoods]'] = 'explosive,gas,flammable,combustible,organic,poison,radioactive,corrosive,poisonousInhalation,harmfulToWater,other';
             }
@@ -378,6 +423,7 @@ class HereRoutingService
             $vehParams = array_intersect_key($params, array_flip([
                 'vehicle[grossWeight]', 'vehicle[weightPerAxle]', 'vehicle[height]',
                 'vehicle[width]', 'vehicle[length]', 'vehicle[axleCount]',
+                'vehicle[type]', 'vehicle[trailerCount]', 'vehicle[trailerAxleCount]',
                 'vehicle[tunnelCategory]', 'vehicle[emissionType]', 'vehicle[shippedHazardousGoods]',
             ]));
             Log::debug('HERE vehicle params: ' . json_encode($vehParams, JSON_UNESCAPED_UNICODE));
@@ -601,6 +647,9 @@ class HereRoutingService
                 'avoid'          => $params['avoid[features]'] ?? null,
                 'excludeCountries' => $params['exclude[countries]'] ?? null,
                 'vehicle' => [
+                    'type'                => $params['vehicle[type]'] ?? null,
+                    'trailerCount'        => $params['vehicle[trailerCount]'] ?? null,
+                    'trailerAxleCount'    => $params['vehicle[trailerAxleCount]'] ?? null,
                     'grossWeight'         => $params['vehicle[grossWeight]'] ?? null,
                     'weightPerAxle'       => $params['vehicle[weightPerAxle]'] ?? null,
                     'height'              => $params['vehicle[height]'] ?? null,
@@ -818,16 +867,19 @@ class HereRoutingService
     }
 
     /**
-     * Normalizuje wartość emission_class do formatu HERE.
+     * Normalizuje wartość emission_class do formatu HERE Routing v8.
      *
-     * HERE oczekuje: 'euro1' .. 'euro6' lub 'euroEev' (bez spacji/podkreśleń).
+     * Zgodnie z HERE docs: https://developer.here.com/documentation/routing-api/8.69.0/dev_guide/topics/reference/parameters-truck.html
+     *   vehicle[emissionType]: euro1|euro2|euro3|euro4|euro5|euro6|euroeev
+     *
+     * WSZYSTKIE wartosci są ALL LOWERCASE (byl bug: zwracalismy 'euroEev' zamiast 'euroeev').
      * Akceptujemy popularne formaty wpisywane przez użytkowników i przeliczamy.
      */
     public static function normalizeEmission(string $raw): string
     {
         // np. 'EURO 6', 'euro_6', 'Euro-6', 'eu6', '6' → 'euro6'
         $s = strtolower(preg_replace('/[\s_\-]+/', '', $raw));
-        if (str_contains($s, 'eev')) return 'euroEev';
+        if (str_contains($s, 'eev')) return 'euroeev'; // fix: HERE wymaga lowercase
         // 'euro6' / 'eu6' / 'e6' / '6'
         if (preg_match('/(?:euro?|eu|e)?([1-6])$/i', $s, $m)) {
             return 'euro' . $m[1];
