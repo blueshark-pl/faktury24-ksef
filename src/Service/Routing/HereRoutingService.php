@@ -66,12 +66,37 @@ class HereRoutingService
                 'lat'     => (float)$item['position']['lat'],
                 'lng'     => (float)$item['position']['lng'],
                 'label'   => (string)($item['title'] ?? $address),
-                'country' => (string)($item['address']['countryCode'] ?? ''),
+                // HERE Geocoding v7 zwraca ISO 3166-1 alpha-3 (POL, DEU, NLD).
+                // Konwertujemy do alpha-2 (PL, DE, NL) uzywanego w reszcie systemu.
+                'country' => self::alpha3ToAlpha2((string)($item['address']['countryCode'] ?? '')),
             ];
         } catch (\Throwable $e) {
             Log::error('HERE geocode error: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Konwersja ISO 3166-1 alpha-3 → alpha-2. HERE Geocoding zwraca alpha-3
+     * (POL, DEU, NLD, CZE), ale reszta naszego systemu (speed_orders,
+     * companies, etc) uzywa alpha-2 (PL, DE, NL, CZ).
+     */
+    public static function alpha3ToAlpha2(string $code): string
+    {
+        $code = strtoupper(trim($code));
+        if ($code === '') return '';
+        if (strlen($code) === 2) return $code; // juz alpha-2
+        static $map = [
+            'POL' => 'PL', 'DEU' => 'DE', 'NLD' => 'NL', 'CZE' => 'CZ', 'SVK' => 'SK',
+            'AUT' => 'AT', 'FRA' => 'FR', 'ITA' => 'IT', 'BEL' => 'BE', 'HUN' => 'HU',
+            'ROU' => 'RO', 'BGR' => 'BG', 'HRV' => 'HR', 'SVN' => 'SI', 'ESP' => 'ES',
+            'PRT' => 'PT', 'GRC' => 'GR', 'DNK' => 'DK', 'SWE' => 'SE', 'NOR' => 'NO',
+            'FIN' => 'FI', 'GBR' => 'GB', 'IRL' => 'IE', 'LTU' => 'LT', 'LVA' => 'LV',
+            'EST' => 'EE', 'LUX' => 'LU', 'CHE' => 'CH', 'UKR' => 'UA', 'BLR' => 'BY',
+            'RUS' => 'RU', 'TUR' => 'TR', 'MKD' => 'MK', 'BIH' => 'BA', 'SRB' => 'RS',
+            'MLT' => 'MT', 'CYP' => 'CY', 'ISL' => 'IS', 'LIE' => 'LI', 'USA' => 'US',
+        ];
+        return $map[$code] ?? substr($code, 0, 2);
     }
 
     /**
@@ -234,7 +259,7 @@ class HereRoutingService
                 'lat'     => (float)$pos['lat'],
                 'lng'     => (float)$pos['lng'],
                 'label'   => (string)($item['address']['label'] ?? ($item['title'] ?? '')),
-                'country' => (string)($item['address']['countryCode'] ?? ''),
+                'country' => self::alpha3ToAlpha2((string)($item['address']['countryCode'] ?? '')),
             ];
         } catch (\Throwable $e) {
             Log::error('HERE reverseGeocode error: ' . $e->getMessage());
@@ -278,7 +303,7 @@ class HereRoutingService
                     'label'   => (string)($item['address']['label'] ?? ($item['title'] ?? '')),
                     'lat'     => $pos ? (float)$pos['lat'] : null,
                     'lng'     => $pos ? (float)$pos['lng'] : null,
-                    'country' => (string)($item['address']['countryCode'] ?? ''),
+                    'country' => self::alpha3ToAlpha2((string)($item['address']['countryCode'] ?? '')),
                     'type'    => (string)($item['resultType'] ?? ''),
                 ];
             }

@@ -4308,10 +4308,18 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         // Wyciagnij pierwszy i ostatni waypoint jako from/to
         var first = points[0];
         var last  = points[points.length - 1];
-        var fromCity    = extractCity(first.address || first.label || '');
-        var toCity      = extractCity(last.address  || last.label  || '');
-        var fromCountry = (first.country || '').toUpperCase().substring(0, 2);
-        var toCountry   = (last.country  || '').toUpperCase().substring(0, 2);
+        var fromAddr = first.address || first.label || '';
+        var toAddr   = last.address  || last.label  || '';
+        var fromCity    = extractCity(fromAddr);
+        var toCity      = extractCity(toAddr);
+        // country z backendu jest juz alpha-2 (POL→PL po naszej konwersji).
+        // Fallback: wylizka z tail address, np. "Nijmegen, Netherlands" → NL.
+        var fromCountry = normalizeCountry(first.country) || extractCountryFromAddr(fromAddr);
+        var toCountry   = normalizeCountry(last.country)  || extractCountryFromAddr(toAddr);
+
+        // Debug (do console) — user moze sprawdzic co szukamy
+        console.log('[HistoriaStawek] from:', {city: fromCity, country: fromCountry, addr: fromAddr});
+        console.log('[HistoriaStawek] to:',   {city: toCity,   country: toCountry,   addr: toAddr});
 
         // Zapisz do dataset przycisku zeby fetch mogl je uzyc
         var btn = document.getElementById('btn-pricing-history-fetch');
@@ -4324,7 +4332,51 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         document.getElementById('pricing-history-body').style.display = 'none';
         document.getElementById('pricing-history-empty').style.display = 'none';
         document.getElementById('pricing-history-error').style.display = 'none';
-        document.getElementById('pricing-history-summary').textContent = fromCity + ' → ' + toCity;
+        document.getElementById('pricing-history-summary').textContent =
+            fromCity + (fromCountry ? ' (' + fromCountry + ')' : '') + ' → ' +
+            toCity   + (toCountry   ? ' (' + toCountry   + ')' : '');
+    }
+
+    // Konwertuj kod kraju — akceptuje alpha-2 (PL, DE), alpha-3 (POL, DEU),
+    // nazwe (Poland, Germany), zwraca alpha-2.
+    function normalizeCountry(raw) {
+        var s = (raw || '').toString().toUpperCase().trim();
+        if (!s) return '';
+        if (s.length === 2 && /^[A-Z]{2}$/.test(s)) return s;
+        var map3to2 = {
+            'POL':'PL','DEU':'DE','NLD':'NL','CZE':'CZ','SVK':'SK','AUT':'AT',
+            'FRA':'FR','ITA':'IT','BEL':'BE','HUN':'HU','ROU':'RO','BGR':'BG',
+            'HRV':'HR','SVN':'SI','ESP':'ES','PRT':'PT','GRC':'GR','DNK':'DK',
+            'SWE':'SE','NOR':'NO','FIN':'FI','GBR':'GB','IRL':'IE','LTU':'LT',
+            'LVA':'LV','EST':'EE','LUX':'LU','CHE':'CH','UKR':'UA','BLR':'BY',
+            'RUS':'RU','TUR':'TR','MLT':'MT','CYP':'CY','ISL':'IS','USA':'US',
+        };
+        if (map3to2[s]) return map3to2[s];
+        var mapName = {
+            'POLAND':'PL','POLSKA':'PL','GERMANY':'DE','DEUTSCHLAND':'DE','NIEMCY':'DE',
+            'NETHERLANDS':'NL','NIDERLANDY':'NL','HOLLAND':'NL','CZECH REPUBLIC':'CZ',
+            'CZECHIA':'CZ','CZECHY':'CZ','SLOVAKIA':'SK','SLOWACJA':'SK','AUSTRIA':'AT',
+            'FRANCE':'FR','FRANCJA':'FR','ITALY':'IT','WLOCHY':'IT','BELGIUM':'BE',
+            'BELGIA':'BE','HUNGARY':'HU','WEGRY':'HU','SPAIN':'ES','HISZPANIA':'ES',
+            'UNITED KINGDOM':'GB','UK':'GB','GREAT BRITAIN':'GB',
+        };
+        return mapName[s] || '';
+    }
+
+    // Ostatnia deska ratunku — wyluska nazwe kraju z tailu adresu.
+    // np. "6545AH Nijmegen, Netherlands" → NL
+    // np. "59075 Hamm, Germany" → DE
+    function extractCountryFromAddr(address) {
+        if (!address) return '';
+        var parts = String(address).split(',');
+        if (parts.length < 2) return '';
+        // Ostatnie 1-2 segmenty moga zawierac nazwe kraju
+        for (var i = parts.length - 1; i >= Math.max(0, parts.length - 2); i--) {
+            var seg = parts[i].trim();
+            var cc = normalizeCountry(seg);
+            if (cc) return cc;
+        }
+        return '';
     }
 
     function extractCity(address) {

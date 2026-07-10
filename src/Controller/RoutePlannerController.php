@@ -260,11 +260,22 @@ class RoutePlannerController extends AppController
             foreach ($points as $i => $p) {
                 $p = (array)$p;
                 if (!empty($p['lat']) && !empty($p['lng'])) {
+                    // Nawet gdy user ma lat/lng, mozemy nie miec kraju (nie geocodowal).
+                    // Robimy reverseGeocode zeby dostac country (potrzebne dla
+                    // historii stawek Poziom 2/3).
+                    $country = (string)($p['country'] ?? '');
+                    if ($country === '') {
+                        try {
+                            $rev = $here->reverseGeocode((float)$p['lat'], (float)$p['lng']);
+                            $country = (string)($rev['country'] ?? '');
+                        } catch (\Throwable) {}
+                    }
                     $resolved[] = [
-                        'lat'   => (float)$p['lat'],
-                        'lng'   => (float)$p['lng'],
-                        'label' => (string)($p['label'] ?? $p['address'] ?? ''),
-                        'date'  => $pointDates[$i] ?? '',
+                        'lat'     => (float)$p['lat'],
+                        'lng'     => (float)$p['lng'],
+                        'label'   => (string)($p['label'] ?? $p['address'] ?? ''),
+                        'country' => $country,
+                        'date'    => $pointDates[$i] ?? '',
                     ];
                     continue;
                 }
