@@ -326,12 +326,12 @@ class RoutePlannerController extends AppController
                     if ($trailerOwn['axle_count'] <= 0) {
                         $combinationWarnings[] = 'Naczepa "' . ($t['name'] ?? '?') . '" nie ma wpisanego axle_count — klasyfikacja HERE będzie liczyć tylko z ciągnika (' . $vehiclesOwn['axle_count'] . ' osi). Uzupełnij w edycji naczepy.';
                     }
-                    if ($trailerOwn['gross_weight_kg'] <= 0) {
-                        $combinationWarnings[] = 'Naczepa "' . ($t['name'] ?? '?') . '" nie ma wpisanego gross_weight_kg — DMC zestawu będzie tylko z ciągnika (' . $vehiclesOwn['gross_weight_kg'] . ' kg).';
-                    }
 
-                    // Sumy dla HERE Routing
-                    $vehicleData['gross_weight_kg'] = $vehiclesOwn['gross_weight_kg'] + $trailerOwn['gross_weight_kg'];
+                    // WAZNE: KONWENCJA — pole vehicles.gross_weight_kg zawiera juz
+                    // DMC calego zestawu (nie samego ciagnika). Klient wprowadza tam
+                    // laczna mase zestawu z ladunkiem (np. 40000 kg dla standard),
+                    // wiec nie sumujemy z naczepa. HERE dostaje DMC zestawu bezposrednio.
+                    $vehicleData['gross_weight_kg'] = $vehiclesOwn['gross_weight_kg'];
                     $vehicleData['axle_count']      = $vehiclesOwn['axle_count'] + $trailerOwn['axle_count'];
                     // Length zestawu = ciągnik + naczepa (ale max EU 16.50 m dla truck+semi)
                     if ($trailerOwn['length_cm'] > 0) {

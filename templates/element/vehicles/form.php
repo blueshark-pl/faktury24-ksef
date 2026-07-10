@@ -129,14 +129,20 @@ if (!empty($missing) && !empty($entity->id)):
             <div class="card-body">
                 <div class="row g-2">
                     <div class="col-md-6">
-                        <label class="form-label small mb-1"><?= __('DMC (kg)') ?></label>
+                        <label class="form-label small mb-1"><?= __('DMC zestawu (kg)') ?></label>
                         <input name="gross_weight_kg" type="number" min="0" class="form-control"
                                value="<?= h($entity->gross_weight_kg ?? '') ?>" placeholder="40000">
+                        <div class="form-text" style="font-size:.7rem">
+                            <?= __('Wpisz DMC CAŁEGO zestawu (ciągnik + naczepa z ładunkiem). Standard: 40000, mega/chłodnia: 40000.') ?>
+                        </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small mb-1"><?= __('Liczba osi') ?></label>
+                        <label class="form-label small mb-1"><?= __('Liczba osi ciągnika') ?></label>
                         <input name="axle_count" type="number" min="0" max="20" class="form-control"
-                               value="<?= h($entity->axle_count ?? '') ?>" placeholder="5">
+                               value="<?= h($entity->axle_count ?? '') ?>" placeholder="2">
+                        <div class="form-text" style="font-size:.7rem">
+                            <?= __('Tylko osie ciągnika (typowo 2 dla 4×2, 3 dla 6×2). Osie naczepy dodadzą się osobno.') ?>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small mb-1"><?= __('Max nacisk na oś (kg)') ?></label>
