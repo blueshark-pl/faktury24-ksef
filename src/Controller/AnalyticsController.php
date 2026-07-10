@@ -30,16 +30,28 @@ class AnalyticsController extends AppController
         $Invoices = $this->fetchTable('Invoices');
         $OE = $this->fetchTable('OperationalEvents');
 
+        // WAZNE (regula CLAUDE.md #4a): speed_orders NIE ma company_id, ma company_nip.
+        // Pobieramy NIP firmy z Companies i uzywamy company_nip IN [nip, 'PL'.nip] w zapytaniach.
+        $companyNipDigits = null;
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->select(['nip'])->where(['id' => $companyId])->first();
+            if ($company && !empty($company->nip)) {
+                $companyNipDigits = preg_replace('/\D+/', '', (string)$company->nip);
+            }
+        } catch (\Throwable) {}
+        $companyNipList = $companyNipDigits ? [$companyNipDigits, 'PL' . $companyNipDigits] : [];
+
         // === Top 10 tras ===
         $topRoutes = [];
-        try {
+        if (!empty($companyNipList)) try {
             $rows = $SO->find()
                 ->select([
                     'route' => 'CONCAT(COALESCE(place_from_name, "?"), " → ", COALESCE(place_to_name, "?"))',
                     'cnt'   => 'COUNT(*)',
                 ])
                 ->where([
-                    'company_id' => $companyId,
+                    'company_nip IN' => $companyNipList,
                     'date_doc >=' => $from,
                     'place_from_name IS NOT' => null,
                     'place_to_name IS NOT' => null,
@@ -56,7 +68,7 @@ class AnalyticsController extends AppController
 
         // === Top klienci (po ilosci zlecen + suma faktur) ===
         $topClients = [];
-        try {
+        if (!empty($companyNipList)) try {
             $rows = $SO->find()
                 ->select([
                     'buyer_name' => 'buyer_name',
@@ -64,7 +76,7 @@ class AnalyticsController extends AppController
                     'cnt' => 'COUNT(*)',
                 ])
                 ->where([
-                    'company_id' => $companyId,
+                    'company_nip IN' => $companyNipList,
                     'date_doc >=' => $from,
                     'buyer_nip IS NOT' => null,
                 ])
@@ -84,13 +96,13 @@ class AnalyticsController extends AppController
 
         // === Trend miesieczny — ilosc zlecen ===
         $monthlyTrend = [];
-        try {
+        if (!empty($companyNipList)) try {
             $rows = $SO->find()
                 ->select([
                     'month' => 'DATE_FORMAT(date_doc, "%Y-%m")',
                     'cnt' => 'COUNT(*)',
                 ])
-                ->where(['company_id' => $companyId, 'date_doc >=' => $from])
+                ->where(['company_nip IN' => $companyNipList, 'date_doc >=' => $from])
                 ->group(['month'])
                 ->orderByAsc('month')
                 ->disableHydration()
@@ -163,9 +175,9 @@ class AnalyticsController extends AppController
             'unpaid_pln' => 0.0,
         ];
         try {
-            $kpi['orders_total'] = $SO->find()
-                ->where(['company_id' => $companyId, 'date_doc >=' => $from])
-                ->count();
+            $kpi['orders_total'] = !empty($companyNipList)
+                ? $SO->find()->where(['company_nip IN' => $companyNipList, 'date_doc >=' => $from])->count()
+                : 0;
             $kpi['invoices_total'] = $Invoices->find()
                 ->where(['company_id' => $companyId, 'date >=' => $from, 'workflow_status' => 'issued'])
                 ->count();

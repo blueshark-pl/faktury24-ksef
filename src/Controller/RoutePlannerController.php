@@ -623,22 +623,38 @@ class RoutePlannerController extends AppController
         // Domyslnie: client gdy podano NIP, market gdy nie
         $mode = $contractorNip !== '' ? 'client' : 'market';
 
+        // WAZNE (regula CLAUDE.md #4a): speed_orders NIE ma kolumny company_id,
+        // ma company_nip. Musimy dostac NIP firmy z tabeli Companies.
+        $companyNipDigits = null;
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()
+                ->select(['nip'])
+                ->where(['id' => $companyId])
+                ->first();
+            if ($company && !empty($company->nip)) {
+                $companyNipDigits = preg_replace('/\D+/', '', (string)$company->nip);
+            }
+        } catch (\Throwable) {}
+
+        if (empty($companyNipDigits)) {
+            return $this->jsonError(__('Brak NIP-u firmy — nie mogę odfiltrować zleceń Speed.'), 400);
+        }
+
         $SO = $this->fetchTable('SpeedOrders');
 
-        // Wspolna baza query: firma + limit czasowy 12 miesiecy (najnowsze na wierzchu)
-        // Klient dodawany opcjonalnie
-        $baseQuery = function () use ($SO, $companyId, $contractorNip, $mode) {
+        // Wspolna baza query: firma (przez NIP, nie ID) + limit czasowy 12 miesiecy
+        $baseQuery = function () use ($SO, $companyNipDigits, $contractorNip, $mode) {
             $q = $SO->find()
                 ->where([
-                    'SpeedOrders.company_id' => $companyId,
+                    'SpeedOrders.company_nip IN' => [$companyNipDigits, 'PL' . $companyNipDigits],
                     'SpeedOrders.date_doc >=' => (new \DateTimeImmutable('-12 months'))->format('Y-m-d'),
                 ])
                 ->orderByDesc('SpeedOrders.date_doc');
             if ($mode === 'client' && $contractorNip !== '') {
-                $q->andWhere(['OR' => [
-                    'SpeedOrders.buyer_nip' => $contractorNip,
-                    'SpeedOrders.buyer_nip' => 'PL' . $contractorNip,
-                ]]);
+                $q->andWhere([
+                    'SpeedOrders.buyer_nip IN' => [$contractorNip, 'PL' . $contractorNip],
+                ]);
             }
             return $q;
         };

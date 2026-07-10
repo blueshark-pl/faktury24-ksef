@@ -68,11 +68,27 @@ class ReturnLoadsController extends AppController
         $windowEnd   = (clone $endTime instanceof \DateTimeImmutable ? $endTime : new \DateTimeImmutable((string)$endTime))->modify('+5 days');
         $maxDeadheadKm = (float)($this->request->getData('max_deadhead_km', 150));
 
+        // WAZNE (regula CLAUDE.md #4a): speed_orders nie ma company_id, ma company_nip.
+        // Musimy pobrac NIP firmy z Companies.
+        $companyNipDigits = null;
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->select(['nip'])->where(['id' => $companyId])->first();
+            if ($company && !empty($company->nip)) {
+                $companyNipDigits = preg_replace('/\D+/', '', (string)$company->nip);
+            }
+        } catch (\Throwable) {}
+        if (empty($companyNipDigits)) {
+            $this->Flash->error(__('Brak NIP-u firmy — nie mogę wyszukać zleceń.'));
+            return $this->redirect(['action' => 'forPlan', $planId]);
+        }
+        $companyNipList = [$companyNipDigits, 'PL' . $companyNipDigits];
+
         // Szukaj otwartych speed_orders — filtruj sensownie: musi miec datę zaladunku w oknie
         $SO = $this->fetchTable('SpeedOrders');
         $orders = $SO->find()
             ->where([
-                'SpeedOrders.company_id' => $companyId,
+                'SpeedOrders.company_nip IN' => $companyNipList,
                 'SpeedOrders.invoice_id IS' => null, // jeszcze niezafakturowane
                 'SpeedOrders.date_load >=' => $windowStart->format('Y-m-d'),
                 'SpeedOrders.date_load <=' => $windowEnd->format('Y-m-d'),

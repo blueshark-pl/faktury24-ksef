@@ -40,16 +40,38 @@ class TripEventsController extends AppController
     }
 
     /**
+     * WAZNE (CLAUDE.md #4a): speed_orders nie ma company_id, ma company_nip.
+     * Ta metoda zwraca liste NIP-ow firmy (z 'PL' i bez) do filtrowania.
+     */
+    private function companyNipList(): array
+    {
+        $companyId = $this->companyId();
+        if ($companyId === '') return [];
+        try {
+            $company = $this->fetchTable('Companies')->find()
+                ->select(['nip'])->where(['id' => $companyId])->first();
+            if ($company && !empty($company->nip)) {
+                $nip = preg_replace('/\D+/', '', (string)$company->nip);
+                if ($nip !== '') return [$nip, 'PL' . $nip];
+            }
+        } catch (\Throwable) {}
+        return [];
+    }
+
+    /**
      * Timeline zlecenia dla operatora.
      */
     public function forOrder(int $orderId): void
     {
         $this->request->allowMethod(['get']);
-        $companyId = $this->companyId();
+        $companyNipList = $this->companyNipList();
+        if (empty($companyNipList)) {
+            throw new \Cake\Http\Exception\ForbiddenException('Brak NIP-u firmy.');
+        }
 
         $SO = $this->fetchTable('SpeedOrders');
         $order = $SO->find()
-            ->where(['SpeedOrders.id' => $orderId, 'SpeedOrders.company_id' => $companyId])
+            ->where(['SpeedOrders.id' => $orderId, 'SpeedOrders.company_nip IN' => $companyNipList])
             ->firstOrFail();
 
         $TE = $this->fetchTable('TripEvents');
@@ -75,8 +97,12 @@ class TripEventsController extends AppController
             return $this->redirect($this->referer());
         }
 
+        $companyNipList = $this->companyNipList();
+        if (empty($companyNipList)) {
+            throw new \Cake\Http\Exception\ForbiddenException('Brak NIP-u firmy.');
+        }
         $SO = $this->fetchTable('SpeedOrders');
-        $order = $SO->find()->where(['id' => $orderId, 'company_id' => $companyId])->firstOrFail();
+        $order = $SO->find()->where(['id' => $orderId, 'company_nip IN' => $companyNipList])->firstOrFail();
 
         $TE = $this->fetchTable('TripEvents');
         $entity = $TE->newEntity([
