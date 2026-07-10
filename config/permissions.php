@@ -203,12 +203,26 @@ return [
             'controller' => 'VehicleSchedules',
             'action'     => ['index', 'add', 'edit', 'delete', 'availableVehiclesJson', 'availableTrailersJson'],
         ],
+        // Fala 2B: oferty cenowe (RouteOffers)
+        // accessByToken/accept/reject sa PUBLICZNE (bez auth) — allowUnauthenticated w kontrolerze
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'RouteOffers',
+            'action'     => ['index', 'view', 'create', 'send', 'delete'],
+        ],
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'RouteOffers',
+            'action'     => ['accessByToken', 'accept', 'reject'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
             'plugin'     => false,
             'controller' => 'RoutePlanner',
-            'action'     => ['index', 'calculate', 'forOrder', 'autosuggest', 'revgeocode', 'deleteRecent', 'saveTemplate', 'aiParseAddress', 'aiCargoWizard', 'aiPricing', 'aiDriverBrief', 'aiRouteOptimizer', 'aiEmailReply', 'weather', 'truckPois', 'tollBooths', 'track', 'trackView', 'cabotageStatus', 'cabotageSave', 'cabotageDelete', 'aiDelayPrediction', 'optimizeMultileg', 'tollOverrideSave', 'tollOverrideDelete', 'tollOverrideList'],
+            'action'     => ['index', 'calculate', 'forOrder', 'autosuggest', 'revgeocode', 'deleteRecent', 'saveTemplate', 'aiParseAddress', 'aiCargoWizard', 'aiPricing', 'aiDriverBrief', 'aiRouteOptimizer', 'aiEmailReply', 'weather', 'truckPois', 'tollBooths', 'track', 'trackView', 'cabotageStatus', 'cabotageSave', 'cabotageDelete', 'aiDelayPrediction', 'optimizeMultileg', 'tollOverrideSave', 'tollOverrideDelete', 'tollOverrideList', 'pricingHistory'],
         ],
         [
             'role' => '*',

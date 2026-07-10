@@ -555,6 +555,248 @@ class RoutePlannerController extends AppController
         }
     }
 
+    /**
+     * Historia stawek — zapytanie cascade: znajdz podobne zlecenia z historii
+     * ze wskazaniem faktycznie wystawionych kwot faktur.
+     *
+     * POST /planer-tras/historia-stawek
+     * Body: {
+     *   contractor_id?: uuid (jesli wybrany klient — priorytet #1)
+     *   contractor_nip?: string (alternatywa gdy nie mamy id — HB RTS via speed_orders.buyer_nip)
+     *   from_city: string, to_city: string,
+     *   from_country?: char(2), to_country?: char(2)
+     * }
+     *
+     * Cascade:
+     *   POZIOM 1: klient (nip) + oba miasta LIKE
+     *   POZIOM 2: klient (nip) + oba kraje + jedno miasto
+     *   POZIOM 3: klient (nip) + oba kraje (dla dowolnego miasta)
+     *
+     * Zwraca:
+     *   {
+     *     ok: true,
+     *     match_level: 1|2|3,
+     *     orders: [{ symbol, date_doc, from, to, currency, invoice: {fullnumber, total, date, currency}, ... }],
+     *     stats: { count, min, max, avg, median, currency }
+     *   }
+     */
+    public function pricingHistory(): Response
+    {
+        $this->disableAutoRender();
+        $this->request->allowMethod(['get', 'post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+        if ($companyId === '') {
+            return $this->jsonError(__('Brak company_id.'), 401);
+        }
+
+        // Pobierz parametry (dziala i z POST body i z query string)
+        $data = $this->request->is('post')
+            ? (array)$this->request->getData()
+            : (array)$this->request->getQueryParams();
+
+        $contractorId = trim((string)($data['contractor_id'] ?? ''));
+        $contractorNip = preg_replace('/\D+/', '', (string)($data['contractor_nip'] ?? ''));
+        $fromCity = trim((string)($data['from_city'] ?? ''));
+        $toCity   = trim((string)($data['to_city']   ?? ''));
+        $fromCountry = strtoupper(substr(trim((string)($data['from_country'] ?? '')), 0, 2));
+        $toCountry   = strtoupper(substr(trim((string)($data['to_country']   ?? '')), 0, 2));
+
+        // Jesli nie mamy NIP a mamy contractor_id — dolacz NIP z tabeli contractors
+        if ($contractorNip === '' && $contractorId !== '') {
+            try {
+                $ctr = $this->fetchTable('Contractors')->find()
+                    ->select(['nip'])
+                    ->where(['id' => $contractorId, 'company_id' => $companyId])
+                    ->first();
+                if ($ctr && !empty($ctr->nip)) {
+                    $contractorNip = preg_replace('/\D+/', '', (string)$ctr->nip);
+                }
+            } catch (\Throwable) {}
+        }
+
+        if ($contractorNip === '') {
+            return $this->jsonError(__('Brak kontrahenta lub NIP.'), 400);
+        }
+        if ($fromCity === '' && $toCity === '' && $fromCountry === '' && $toCountry === '') {
+            return $this->jsonError(__('Podaj miasta lub kraje trasy.'), 400);
+        }
+
+        $SO = $this->fetchTable('SpeedOrders');
+
+        // Wspolna baza query: klient + limit czasowy 12 miesiecy (najnowsze na wierzchu)
+        $baseQuery = function () use ($SO, $companyId, $contractorNip) {
+            $q = $SO->find()
+                ->where([
+                    'SpeedOrders.company_id' => $companyId,
+                    'OR' => [
+                        'SpeedOrders.buyer_nip' => $contractorNip,
+                        'SpeedOrders.buyer_nip' => 'PL' . $contractorNip,
+                    ],
+                    'SpeedOrders.date_doc >=' => (new \DateTimeImmutable('-12 months'))->format('Y-m-d'),
+                ])
+                ->orderByDesc('SpeedOrders.date_doc');
+            return $q;
+        };
+
+        $matchLevel = 0;
+        $orders = [];
+
+        $fromLike = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $fromCity) . '%';
+        $toLike   = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $toCity) . '%';
+
+        // POZIOM 1: klient + oba miasta LIKE
+        if ($fromCity !== '' && $toCity !== '') {
+            $q = $baseQuery()->where(function ($exp) use ($fromLike, $toLike) {
+                return $exp->and([
+                    $exp->like('SpeedOrders.place_from_name', $fromLike),
+                    $exp->like('SpeedOrders.place_to_name',   $toLike),
+                ]);
+            })->limit(10);
+            $rows = $q->all()->toArray();
+            if (!empty($rows)) {
+                $orders = $rows;
+                $matchLevel = 1;
+            }
+        }
+
+        // POZIOM 2: klient + oba kraje + jedno miasto
+        if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
+            $q = $baseQuery()->where(function ($exp) use ($fromCountry, $toCountry, $fromLike, $toLike, $fromCity, $toCity) {
+                $conds = [
+                    $exp->like('SpeedOrders.load_country', $fromCountry),
+                    $exp->like('SpeedOrders.unload_country', $toCountry),
+                ];
+                // "jedno miasto" — dowolne z from/to musi pasowac
+                if ($fromCity !== '' && $toCity !== '') {
+                    $conds[] = $exp->or([
+                        $exp->like('SpeedOrders.place_from_name', $fromLike),
+                        $exp->like('SpeedOrders.place_to_name',   $toLike),
+                    ]);
+                }
+                return $exp->and($conds);
+            })->limit(10);
+            $rows = $q->all()->toArray();
+            if (!empty($rows)) {
+                $orders = $rows;
+                $matchLevel = 2;
+            }
+        }
+
+        // POZIOM 3: klient + oba kraje (dla dowolnego miasta)
+        if (empty($orders) && $fromCountry !== '' && $toCountry !== '') {
+            $q = $baseQuery()->where([
+                'SpeedOrders.load_country'   => $fromCountry,
+                'SpeedOrders.unload_country' => $toCountry,
+            ])->limit(10);
+            $rows = $q->all()->toArray();
+            if (!empty($rows)) {
+                $orders = $rows;
+                $matchLevel = 3;
+            }
+        }
+
+        // Do kazdego zlecenia dopnij powiazane faktury z pivota speed_order_invoices
+        $orderIds = array_map(fn($o) => $o->id, $orders);
+        $invoicesMap = [];
+        if (!empty($orderIds)) {
+            try {
+                $Pivot = $this->fetchTable('SpeedOrderInvoices');
+                $rows = $Pivot->find()
+                    ->contain(['Invoices' => function ($q) {
+                        return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'currency_exchange']);
+                    }])
+                    ->where(['SpeedOrderInvoices.speed_order_id IN' => $orderIds])
+                    ->all();
+                foreach ($rows as $r) {
+                    if ($r->invoice) {
+                        $invoicesMap[$r->speed_order_id][] = $r->invoice;
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        // Zbuduj strukture odpowiedzi + statystyki na kwotach faktur (przelicz na PLN gdy walutowa)
+        $out = [];
+        $amountsPln = [];
+        foreach ($orders as $o) {
+            $invs = $invoicesMap[(int)$o->id] ?? [];
+            $primaryInv = $invs[0] ?? null;
+            $invAmount = null;
+            $invAmountPln = null;
+            if ($primaryInv) {
+                $invAmount = (float)$primaryInv->total;
+                $exch = (float)($primaryInv->currency_exchange ?? 0);
+                if ($exch > 0 && strtoupper((string)$primaryInv->currency) !== 'PLN') {
+                    $invAmountPln = $invAmount * $exch;
+                } else {
+                    $invAmountPln = $invAmount;
+                }
+                if ($invAmountPln > 0) {
+                    $amountsPln[] = $invAmountPln;
+                }
+            }
+
+            $out[] = [
+                'speed_order_id' => (int)$o->id,
+                'symbol'         => (string)$o->symbol,
+                'date_doc'       => $o->date_doc instanceof \DateTimeInterface ? $o->date_doc->format('Y-m-d') : (string)$o->date_doc,
+                'title'          => trim(((string)($o->title1 ?? '')) . ' ' . ((string)($o->title2 ?? ''))),
+                'from_city'      => (string)($o->place_from_name ?? ''),
+                'to_city'        => (string)($o->place_to_name ?? ''),
+                'from_country'   => (string)($o->load_country ?? ''),
+                'to_country'     => (string)($o->unload_country ?? ''),
+                'currency'       => (string)($o->currency ?? ''),
+                'route_description' => (string)($o->route_description ?? ''),
+                'invoice'        => $primaryInv ? [
+                    'id'         => (string)$primaryInv->id,
+                    'fullnumber' => (string)$primaryInv->fullnumber,
+                    'date'       => $primaryInv->date instanceof \DateTimeInterface ? $primaryInv->date->format('Y-m-d') : (string)$primaryInv->date,
+                    'total'      => (float)$primaryInv->total,
+                    'currency'   => (string)$primaryInv->currency,
+                    'total_pln'  => $invAmountPln,
+                ] : null,
+            ];
+        }
+
+        // Statystyki
+        $stats = null;
+        if (!empty($amountsPln)) {
+            sort($amountsPln);
+            $n = count($amountsPln);
+            $median = $n % 2 === 1
+                ? $amountsPln[intdiv($n, 2)]
+                : ($amountsPln[intdiv($n, 2) - 1] + $amountsPln[intdiv($n, 2)]) / 2;
+            $stats = [
+                'count'    => $n,
+                'min_pln'  => round($amountsPln[0], 2),
+                'max_pln'  => round($amountsPln[$n - 1], 2),
+                'avg_pln'  => round(array_sum($amountsPln) / $n, 2),
+                'median_pln' => round($median, 2),
+            ];
+        }
+
+        return $this->response
+            ->withType('application/json')
+            ->withStringBody(json_encode([
+                'ok'          => true,
+                'match_level' => $matchLevel, // 0=brak, 1=idealne, 2=srednie, 3=luzne
+                'match_label' => match ($matchLevel) {
+                    1 => __('Idealne dopasowanie (miasta + klient)'),
+                    2 => __('Dobre dopasowanie (kraje + jedno miasto)'),
+                    3 => __('Luźne dopasowanie (same kraje)'),
+                    default => __('Brak podobnych zleceń'),
+                },
+                'orders'      => $out,
+                'stats'       => $stats,
+                'query'       => [
+                    'contractor_nip' => $contractorNip,
+                    'from' => $fromCity . ($fromCountry ? " ({$fromCountry})" : ''),
+                    'to'   => $toCity   . ($toCountry   ? " ({$toCountry})"   : ''),
+                ],
+            ], JSON_UNESCAPED_UNICODE));
+    }
+
     public function tollBooths(): Response
     {
         $this->disableAutoRender();

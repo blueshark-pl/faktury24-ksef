@@ -9,6 +9,7 @@
 $this->assign('title', __('Planer tras'));
 $calcUrl = $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'calculate']);
 $autoUrl = $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'autosuggest']);
+$pricingHistoryUrl = $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'pricingHistory']);
 $csrf = (string)$this->request->getAttribute('csrfToken');
 ?>
 
@@ -461,6 +462,11 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             <button type="button" class="btn btn-sm btn-hero" id="btn-save-template" disabled
                     title="<?= __('Zapisz jako szablon') ?>">
                 <i class="ri-bookmark-line me-1"></i><?= __('Zapisz szablon') ?>
+            </button>
+            <button type="button" class="btn btn-sm btn-success" id="btn-send-offer" disabled
+                    title="<?= __('Utwórz ofertę i wyślij do klienta') ?>"
+                    data-bs-toggle="modal" data-bs-target="#sendOfferModal">
+                <i class="ri-mail-send-line me-1"></i><?= __('Wyślij ofertę') ?>
             </button>
         </div>
     </div>
@@ -978,10 +984,155 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                 </div>
             </div>
         </div>
+
+        <!-- L3: Historia stawek dla klienta na tej trasie (Fala 2A) -->
+        <div class="row g-3 mt-0">
+            <div class="col-lg-12">
+                <div class="card glass-card" id="pricing-history-card" style="display:none">
+                    <div class="card-header py-2 d-flex align-items-center flex-wrap gap-2">
+                        <strong><i class="ri-history-line me-1 text-info"></i><?= __('Historia stawek dla klienta na tej trasie') ?></strong>
+                        <span id="pricing-history-summary" class="text-muted small ms-2"></span>
+                        <div class="ms-auto d-flex gap-2 align-items-center">
+                            <label class="form-label small mb-0 me-1"><?= __('Klient (NIP)') ?>:</label>
+                            <input type="text" id="pricing-history-nip" class="form-control form-control-sm"
+                                   style="width:150px" placeholder="np. 5271234567" />
+                            <button type="button" class="btn btn-sm btn-info text-white" id="btn-pricing-history-fetch">
+                                <i class="ri-search-line me-1"></i><?= __('Sprawdź historię') ?>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="pricing-history-loading" class="text-center py-3" style="display:none">
+                            <div class="spinner-border spinner-border-sm text-info"></div>
+                            <div class="mt-2 small text-muted"><?= __('Szukam podobnych zleceń…') ?></div>
+                        </div>
+                        <div id="pricing-history-body" style="display:none">
+                            <!-- Statystyki -->
+                            <div id="pricing-history-stats" class="mb-3"></div>
+                            <!-- Alert dumpingu -->
+                            <div id="pricing-history-dumping-alert" style="display:none"></div>
+                            <!-- Lista zleceń historycznych -->
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0 align-middle">
+                                    <thead class="table-light" style="font-size:.78rem">
+                                        <tr>
+                                            <th><?= __('Data zlec.') ?></th>
+                                            <th><?= __('Nr zlec.') ?></th>
+                                            <th><?= __('Trasa') ?></th>
+                                            <th><?= __('Faktura') ?></th>
+                                            <th class="text-end"><?= __('Kwota (PLN)') ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pricing-history-tbody" style="font-size:.82rem"></tbody>
+                                </table>
+                            </div>
+                            <div class="mt-2 small text-muted">
+                                <i class="ri-information-line me-1"></i>
+                                <span id="pricing-history-match-info"></span>
+                            </div>
+                        </div>
+                        <div id="pricing-history-empty" class="text-muted small py-3" style="display:none">
+                            <i class="ri-inbox-line me-1"></i>
+                            <?= __('Brak podobnych zleceń tego klienta w ostatnich 12 miesiącach.') ?>
+                        </div>
+                        <div id="pricing-history-error" class="alert alert-warning small py-2 mb-0" style="display:none"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- ═══════════════════════════════ AI MODALS ═══════════════════════════════ -->
+
+<!-- Modal: Wyślij ofertę do klienta (Fala 2B) -->
+<div class="modal fade" id="sendOfferModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 14px; overflow: hidden">
+            <div class="modal-header" style="background: linear-gradient(135deg, #16a34a, #22c55e); color: white;">
+                <h5 class="modal-title"><i class="ri-mail-send-line me-2"></i><?= __('Utwórz i wyślij ofertę do klienta') ?></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="send-offer-form">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label"><?= __('Nazwa planu / oferty (widoczna dla operatora)') ?></label>
+                            <input type="text" id="offer-name" class="form-control" placeholder="<?= __('np. HB RTS Warszawa-Berlin lipiec') ?>" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label"><?= __('Ważna do') ?></label>
+                            <input type="date" id="offer-valid-until" class="form-control">
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label"><?= __('Odbiorca (nazwa firmy)') ?></label>
+                            <input type="text" id="offer-sent-to-name" class="form-control" placeholder="<?= __('HB RTS Sp. z o.o.') ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label"><?= __('NIP klienta') ?> <small class="text-muted"><?= __('(opcjonalny)') ?></small></label>
+                            <input type="text" id="offer-contractor-nip" class="form-control" placeholder="5271234567">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label"><?= __('Email odbiorcy') ?></label>
+                            <input type="email" id="offer-sent-to-email" class="form-control" placeholder="kontakt@hbrts.pl" required>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label"><?= __('Cena netto') ?></label>
+                            <input type="number" id="offer-price" class="form-control" min="0" step="0.01" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label"><?= __('Waluta') ?></label>
+                            <select id="offer-currency" class="form-select">
+                                <option value="PLN">PLN</option>
+                                <option value="EUR">EUR</option>
+                                <option value="USD">USD</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">VAT %</label>
+                            <input type="number" id="offer-vat-rate" class="form-control" value="23" min="0" step="1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label"><?= __('Termin płatności (dni)') ?></label>
+                            <input type="number" id="offer-payment-days" class="form-control" value="30" min="1">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label"><?= __('Temat wiadomości') ?></label>
+                            <input type="text" id="offer-subject" class="form-control" value="<?= __('Oferta transportowa') ?>">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label"><?= __('Treść wiadomości (opcjonalne — do wiadomości email)') ?></label>
+                            <textarea id="offer-message" class="form-control" rows="4" placeholder="<?= __('np. Przesyłam ofertę zgodnie z ustaleniami telefonicznymi z 15.07…') ?>"></textarea>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="offer-send-now" checked>
+                                <label class="form-check-label" for="offer-send-now">
+                                    <?= __('Wyślij od razu (jeśli odznaczone — zapisze jako szkic)') ?>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <div id="send-offer-alert" class="mt-3" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+                <button type="button" class="btn btn-success" id="btn-send-offer-submit">
+                    <i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- AI Address Parser modal -->
 <div class="modal fade" id="aiParserModal" tabindex="-1">
@@ -2301,10 +2452,13 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         renderPostedWorkers(data.routes[0], data.points || []);
         renderCabotage(data.points || []);
         fetchAndRenderWeather(data.routes[0], data.points || []);
+        preparePricingHistoryPanel(data.points || []);
 
         // Aktywuj akcje
         document.getElementById('btn-print').disabled = false;
         document.getElementById('btn-share').disabled = false;
+        var sendOfferBtn = document.getElementById('btn-send-offer');
+        if (sendOfferBtn) sendOfferBtn.disabled = false;
         document.getElementById('btn-truck-pois').disabled = false;
         document.getElementById('btn-customer-offer').disabled = false;
         document.getElementById('btn-track-link').disabled = false;
@@ -3882,6 +4036,184 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
         if (tollMarkersVisible) renderTollMarkers(true);
     }
 
+    // ═════════════════════════════════════════════════════════════════
+    // Historia stawek klienta (Fala 2A)
+    // Cascade query przez RoutePlannerController::pricingHistory:
+    //   POZIOM 1: klient + oba miasta LIKE
+    //   POZIOM 2: klient + oba kraje + jedno miasto
+    //   POZIOM 3: klient + oba kraje (dla dowolnego miasta)
+    // ═════════════════════════════════════════════════════════════════
+    var pricingHistoryUrl = <?= json_encode($pricingHistoryUrl) ?>;
+    var lastCurrentRoutePrice = null; // do porownania dla dumping alertu
+
+    function preparePricingHistoryPanel(points) {
+        var card = document.getElementById('pricing-history-card');
+        if (!points || points.length < 2) { card.style.display = 'none'; return; }
+        card.style.display = '';
+
+        // Wyciagnij pierwszy i ostatni waypoint jako from/to
+        var first = points[0];
+        var last  = points[points.length - 1];
+        var fromCity    = extractCity(first.address || first.label || '');
+        var toCity      = extractCity(last.address  || last.label  || '');
+        var fromCountry = (first.country || '').toUpperCase().substring(0, 2);
+        var toCountry   = (last.country  || '').toUpperCase().substring(0, 2);
+
+        // Zapisz do dataset przycisku zeby fetch mogl je uzyc
+        var btn = document.getElementById('btn-pricing-history-fetch');
+        btn.dataset.fromCity    = fromCity;
+        btn.dataset.toCity      = toCity;
+        btn.dataset.fromCountry = fromCountry;
+        btn.dataset.toCountry   = toCountry;
+
+        // Wyczysc poprzedni wynik
+        document.getElementById('pricing-history-body').style.display = 'none';
+        document.getElementById('pricing-history-empty').style.display = 'none';
+        document.getElementById('pricing-history-error').style.display = 'none';
+        document.getElementById('pricing-history-summary').textContent = fromCity + ' → ' + toCity;
+    }
+
+    function extractCity(address) {
+        // Prosta heurystyka: pierwszy segment po zip lub pierwsze slowo jako miasto
+        if (!address) return '';
+        // Prefer format: "12345 Miasto, Ulica"  albo  "Miasto"  albo  "Ulica, Miasto, Kraj"
+        var s = String(address).trim();
+        // Odetnij kod pocztowy z przodu jesli jest
+        s = s.replace(/^\d{2}[-\s]?\d{3}\s+/, ''); // PL: 30-552 Krakow
+        s = s.replace(/^\d{5}\s+/, '');            // DE/inne: 12345 Berlin
+        // Wez pierwszy segment przed przecinkiem
+        var parts = s.split(',');
+        return parts[0].trim();
+    }
+
+    document.getElementById('btn-pricing-history-fetch').addEventListener('click', function () {
+        var btn = this;
+        var nip = (document.getElementById('pricing-history-nip').value || '').replace(/\D+/g, '');
+        if (nip.length < 5) {
+            showPricingHistoryError('<?= __('Podaj NIP klienta (min. 5 cyfr).') ?>');
+            return;
+        }
+
+        var fd = new FormData();
+        fd.append('contractor_nip', nip);
+        fd.append('from_city',    btn.dataset.fromCity    || '');
+        fd.append('to_city',      btn.dataset.toCity      || '');
+        fd.append('from_country', btn.dataset.fromCountry || '');
+        fd.append('to_country',   btn.dataset.toCountry   || '');
+
+        document.getElementById('pricing-history-loading').style.display = 'block';
+        document.getElementById('pricing-history-body').style.display = 'none';
+        document.getElementById('pricing-history-empty').style.display = 'none';
+        document.getElementById('pricing-history-error').style.display = 'none';
+
+        fetch(pricingHistoryUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+            body: fd
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                document.getElementById('pricing-history-loading').style.display = 'none';
+                if (!res.ok) {
+                    showPricingHistoryError(res.message || '<?= __('Nie udało się pobrać historii.') ?>');
+                    return;
+                }
+                renderPricingHistoryResult(res);
+            })
+            .catch(function (e) {
+                document.getElementById('pricing-history-loading').style.display = 'none';
+                showPricingHistoryError((e && e.message) || '<?= __('Błąd sieci.') ?>');
+            });
+    });
+
+    function showPricingHistoryError(msg) {
+        var el = document.getElementById('pricing-history-error');
+        el.textContent = msg;
+        el.style.display = '';
+    }
+
+    function renderPricingHistoryResult(res) {
+        if (!res.orders || !res.orders.length) {
+            document.getElementById('pricing-history-empty').style.display = '';
+            return;
+        }
+        document.getElementById('pricing-history-body').style.display = '';
+
+        var matchInfo = document.getElementById('pricing-history-match-info');
+        var matchColor = res.match_level === 1 ? 'text-success' : (res.match_level === 2 ? 'text-info' : 'text-warning');
+        matchInfo.className = 'small ' + matchColor;
+        matchInfo.innerHTML = '<strong>' + escapeHtml(res.match_label) + '</strong>' +
+            (res.query ? ' · <?= __('Trasa') ?>: ' + escapeHtml(res.query.from || '') + ' → ' + escapeHtml(res.query.to || '') : '');
+
+        // Statystyki
+        var stats = res.stats;
+        var statsBox = document.getElementById('pricing-history-stats');
+        if (stats && stats.count > 0) {
+            statsBox.innerHTML =
+                '<div class="row g-2">' +
+                '  <div class="col-md-3"><div class="card border-0 bg-light py-2 px-3"><div class="small text-muted"><?= __('Ilość zleceń') ?></div><div class="fs-5 fw-bold">' + stats.count + '</div></div></div>' +
+                '  <div class="col-md-3"><div class="card border-0 bg-light py-2 px-3"><div class="small text-muted"><?= __('Średnia (PLN)') ?></div><div class="fs-5 fw-bold text-primary">' + fmtNum(stats.avg_pln, 2) + '</div></div></div>' +
+                '  <div class="col-md-3"><div class="card border-0 bg-light py-2 px-3"><div class="small text-muted"><?= __('Mediana (PLN)') ?></div><div class="fs-5 fw-bold text-primary">' + fmtNum(stats.median_pln, 2) + '</div></div></div>' +
+                '  <div class="col-md-3"><div class="card border-0 bg-light py-2 px-3"><div class="small text-muted"><?= __('Zakres') ?></div><div class="fs-6 fw-medium">' + fmtNum(stats.min_pln, 0) + ' – ' + fmtNum(stats.max_pln, 0) + '</div></div></div>' +
+                '</div>';
+        } else {
+            statsBox.innerHTML = '';
+        }
+
+        // Alert dumping — porownanie z aktualna cena (jesli mamy)
+        var dumpAlert = document.getElementById('pricing-history-dumping-alert');
+        if (stats && stats.median_pln > 0 && lastCurrentRoutePrice > 0) {
+            var ratio = lastCurrentRoutePrice / stats.median_pln;
+            if (ratio < 0.90) {
+                var percent = Math.round((1 - ratio) * 100);
+                dumpAlert.className = 'alert alert-danger py-2 mb-3';
+                dumpAlert.innerHTML = '<i class="ri-alert-line me-1"></i>' +
+                    '<strong><?= __('UWAGA') ?>:</strong> ' +
+                    '<?= __('Twoja aktualna cena') ?> (' + fmtNum(lastCurrentRoutePrice, 2) + ' PLN) ' +
+                    '<?= __('jest') ?> <strong>' + percent + '% ' + '<?= __('niższa od mediany historycznej') ?></strong> ' +
+                    '(' + fmtNum(stats.median_pln, 2) + ' PLN). ' +
+                    '<?= __('To dumping — przemyśl zanim wyślesz ofertę.') ?>';
+                dumpAlert.style.display = '';
+            } else if (ratio >= 0.90 && ratio <= 1.10) {
+                dumpAlert.className = 'alert alert-success py-2 mb-3';
+                dumpAlert.innerHTML = '<i class="ri-check-double-line me-1"></i>' +
+                    '<?= __('Twoja cena jest zgodna z medianą historyczną — dobry punkt startowy.') ?>';
+                dumpAlert.style.display = '';
+            } else {
+                dumpAlert.style.display = 'none';
+            }
+        } else {
+            dumpAlert.style.display = 'none';
+        }
+
+        // Lista zlecen
+        var tbody = document.getElementById('pricing-history-tbody');
+        tbody.innerHTML = res.orders.map(function (o) {
+            var invHtml = '<span class="text-muted">—</span>';
+            var amountHtml = '<span class="text-muted">—</span>';
+            if (o.invoice) {
+                invHtml = '<span class="badge bg-primary-subtle text-primary">' + escapeHtml(o.invoice.fullnumber || '') + '</span>' +
+                    '<div class="small text-muted mt-1">' + escapeHtml(o.invoice.date || '') + '</div>';
+                if (o.invoice.total_pln) {
+                    amountHtml = '<strong>' + fmtNum(o.invoice.total_pln, 2) + '</strong>';
+                    if ((o.invoice.currency || '').toUpperCase() !== 'PLN') {
+                        amountHtml += '<div class="small text-muted">' + fmtNum(o.invoice.total, 2) + ' ' + escapeHtml(o.invoice.currency) + '</div>';
+                    }
+                }
+            }
+            return '<tr>' +
+                '<td class="small">' + escapeHtml(o.date_doc) + '</td>' +
+                '<td class="small"><code>' + escapeHtml(o.symbol) + '</code></td>' +
+                '<td class="small">' +
+                    '<div>' + escapeHtml(o.from_city) + ' → ' + escapeHtml(o.to_city) + '</div>' +
+                    (o.route_description ? '<div class="text-muted" style="font-size:.72rem">' + escapeHtml(o.route_description) + '</div>' : '') +
+                '</td>' +
+                '<td>' + invHtml + '</td>' +
+                '<td class="text-end">' + amountHtml + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
     // ── Toll fee overrides — learning loop (ignore / corrected / flagged) ──
     var tollOverrideSaveUrl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'tollOverrideSave']) ?>';
     var tollOverrideDeleteUrlTpl = '<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'tollOverrideDelete', '__ID__']) ?>';
@@ -4571,6 +4903,177 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
     // ─── Action buttons in hero ─────────────────────────────────────
     document.getElementById('btn-print').addEventListener('click', function () { window.print(); });
+
+    // ═══════════════════════════════════════════════════════════════
+    // "Wyslij oferte" — Fala 2B
+    // Tworzy route_plan (na fly) + route_offer + opcjonalnie wysyla email
+    // ═══════════════════════════════════════════════════════════════
+    var routeOfferCreateUrl = '<?= $this->Url->build(['controller' => 'RouteOffers', 'action' => 'create']) ?>';
+    var routeOfferSendUrlTpl = '<?= $this->Url->build(['controller' => 'RouteOffers', 'action' => 'send', '__ID__']) ?>';
+
+    (function bindSendOfferModal() {
+        var modal = document.getElementById('sendOfferModal');
+        if (!modal) return;
+
+        // Prefill przy otwarciu — z ostatniej kalkulacji
+        modal.addEventListener('show.bs.modal', function () {
+            if (!lastResponse || !lastResponse.routes || !lastResponse.routes[0]) return;
+            var route = lastResponse.routes[0];
+            var pts = lastResponse.points || [];
+
+            // Prefill nazwy planu na bazie waypointow
+            var fromCity = extractCity((pts[0] && (pts[0].address || pts[0].label)) || '');
+            var toCity   = extractCity((pts[pts.length-1] && (pts[pts.length-1].address || pts[pts.length-1].label)) || '');
+            var nameInput = document.getElementById('offer-name');
+            if (!nameInput.value && (fromCity || toCity)) {
+                nameInput.value = fromCity + ' → ' + toCity;
+            }
+
+            // Prefill temat maila
+            var subjInput = document.getElementById('offer-subject');
+            if (subjInput.value === '<?= __('Oferta transportowa') ?>' && (fromCity || toCity)) {
+                subjInput.value = '<?= __('Oferta transportowa') ?> ' + fromCity + ' → ' + toCity;
+            }
+
+            // Prefill NIP z panelu historii jesli tam wpisany
+            var nipFromHistory = document.getElementById('pricing-history-nip').value;
+            if (nipFromHistory && !document.getElementById('offer-contractor-nip').value) {
+                document.getElementById('offer-contractor-nip').value = nipFromHistory;
+            }
+
+            // Prefill valid_until = +14 dni
+            var vu = document.getElementById('offer-valid-until');
+            if (!vu.value) {
+                var d = new Date();
+                d.setDate(d.getDate() + 14);
+                vu.value = d.toISOString().substring(0, 10);
+            }
+        });
+
+        // Submit
+        document.getElementById('btn-send-offer-submit').addEventListener('click', function () {
+            var alertBox = document.getElementById('send-offer-alert');
+            alertBox.style.display = 'none';
+
+            var name  = document.getElementById('offer-name').value.trim();
+            var email = document.getElementById('offer-sent-to-email').value.trim();
+            var price = parseFloat(document.getElementById('offer-price').value);
+
+            if (!name || !email || !(price > 0)) {
+                alertBox.className = 'alert alert-warning';
+                alertBox.textContent = '<?= __('Wypełnij nazwę, email i cenę.') ?>';
+                alertBox.style.display = '';
+                return;
+            }
+
+            if (!lastResponse || !lastResponse.routes || !lastResponse.routes[0]) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.textContent = '<?= __('Brak wyliczonej trasy.') ?>';
+                alertBox.style.display = '';
+                return;
+            }
+
+            var route = lastResponse.routes[0];
+            var pts = lastResponse.points || [];
+            var planData = {
+                name: name,
+                waypoints_json: pts,
+                calc_cost_json: {
+                    distance_km: route.distance_km,
+                    duration_min: route.duration_min,
+                    tolls_total: route.tolls_total,
+                    tolls_currency: route.tolls_currency,
+                    fuel_cost: route.fuel_cost,
+                },
+                distance_km: route.distance_km,
+                duration_min: route.duration_min,
+                co2_kg: route.co2_kg || null,
+            };
+
+            var body = new FormData();
+            body.append('plan_data[name]', planData.name);
+            body.append('plan_data[waypoints_json]', JSON.stringify(planData.waypoints_json));
+            body.append('plan_data[calc_cost_json]', JSON.stringify(planData.calc_cost_json));
+            if (planData.distance_km != null) body.append('plan_data[distance_km]', planData.distance_km);
+            if (planData.duration_min != null) body.append('plan_data[duration_min]', planData.duration_min);
+            if (planData.co2_kg != null) body.append('plan_data[co2_kg]', planData.co2_kg);
+            body.append('sent_to_email', email);
+            body.append('sent_to_name',  document.getElementById('offer-sent-to-name').value);
+            body.append('subject',       document.getElementById('offer-subject').value);
+            body.append('message_body',  document.getElementById('offer-message').value);
+            body.append('price',         price);
+            body.append('currency',      document.getElementById('offer-currency').value);
+            body.append('vat_rate',      document.getElementById('offer-vat-rate').value);
+            body.append('payment_days',  document.getElementById('offer-payment-days').value);
+            body.append('valid_until',   document.getElementById('offer-valid-until').value);
+
+            var btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span><?= __('Tworzę…') ?>';
+
+            fetch(routeOfferCreateUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+                body: body
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.ok) {
+                        alertBox.className = 'alert alert-danger';
+                        alertBox.textContent = res.error || '<?= __('Błąd utworzenia oferty.') ?>';
+                        alertBox.style.display = '';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>';
+                        return;
+                    }
+
+                    var sendNow = document.getElementById('offer-send-now').checked;
+                    if (sendNow) {
+                        // Wyslij (POST do send)
+                        var sendUrl = routeOfferSendUrlTpl.replace('__ID__', encodeURIComponent(res.offer_id));
+                        var sendFd = new FormData();
+                        // Cake CSRF wymaga tokenu
+                        fetch(sendUrl, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-Token': csrf, 'Accept': 'text/html' },
+                            body: sendFd,
+                            redirect: 'manual'
+                        })
+                        .then(function () {
+                            alertBox.className = 'alert alert-success';
+                            alertBox.innerHTML = '<i class="ri-check-double-line me-1"></i><?= __('Oferta utworzona i wysłana!') ?> ' +
+                                '<a href="' + res.redirect + '" class="alert-link"><?= __('Otwórz ofertę') ?> →</a> · ' +
+                                '<a href="' + res.access_url + '" target="_blank" class="alert-link"><?= __('Link dla klienta') ?> →</a>';
+                            alertBox.style.display = '';
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>';
+                        })
+                        .catch(function () {
+                            alertBox.className = 'alert alert-warning';
+                            alertBox.innerHTML = '<?= __('Oferta utworzona ale nie udało się wysłać automatycznie.') ?> ' +
+                                '<a href="' + res.redirect + '" class="alert-link"><?= __('Otwórz i wyślij ręcznie') ?> →</a>';
+                            alertBox.style.display = '';
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>';
+                        });
+                    } else {
+                        alertBox.className = 'alert alert-success';
+                        alertBox.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Oferta utworzona (szkic).') ?> ' +
+                            '<a href="' + res.redirect + '" class="alert-link"><?= __('Otwórz') ?> →</a>';
+                        alertBox.style.display = '';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>';
+                    }
+                })
+                .catch(function (e) {
+                    alertBox.className = 'alert alert-danger';
+                    alertBox.textContent = '<?= __('Błąd sieci:') ?> ' + ((e && e.message) || e);
+                    alertBox.style.display = '';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="ri-check-line me-1"></i><?= __('Utwórz ofertę') ?>';
+                });
+        });
+    })();
 
     // ─── GPX/KML export ──────────────────────────────────────────────
     function getRoutePoints() {

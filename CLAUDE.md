@@ -509,6 +509,76 @@ Metoda best-effort — try/catch wewnątrz, żeby log nie mógł popsuć główn
 **Zasada:** każdy CRUD w module operacyjnym → dopisz do `operational_events`, nawet
 jeśli dashboardu jeszcze nie ma — zbieramy dane pod przyszłe agregacje.
 
+### Pełne kolumny — moduły planera operacyjnego (Fala 2)
+
+**Cel:** workflow ofertowy — od planu przez ofertę cenową do akceptacji klienta.
++ AJAX historii stawek widoczny w planerze.
+
+Migracja: `20260710110000`.
+
+#### `route_offers`
+Oferty cenowe wysyłane klientowi (bez logowania — dostęp przez token).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | |
+| `route_plan_id` | char(36) | FK do `route_plans` — każda oferta ma plan |
+| `contractor_id` | char(36) | FK (nullable) |
+| `sent_to_email` / `sent_to_name` | | |
+| `subject` / `message_body` | | temat + treść wiadomości |
+| `price` | decimal(12,2) | kwota netto |
+| `currency` / `vat_rate` / `payment_days` | | |
+| `access_token` | string(64) | unique — URL do akceptacji bez logowania |
+| `valid_until` | date | |
+| `status` | string(20) | `draft`/`sent`/`viewed`/`accepted`/`rejected`/`expired` |
+| `sent_at` / `viewed_at` / `decided_at` | datetime | timeline |
+| `decision_reason` | text | powód odrzucenia |
+| `generated_speed_order_id` / `generated_invoice_id` / `pdf_path` | | dokumenty po akceptacji |
+
+CRUD: `/oferty` (index/view/delete). Wysyłka: `POST /oferty/wyslij/{id}`.
+Publiczny wgląd klienta: `GET /oferty/wglad/{token}` (bez auth) + akceptacja/odrzucenie.
+
+Automat statusów:
+- `send()` → `sent_at`, status `sent`, email HTML
+- `accessByToken()` → jeśli status `sent` → auto zmiana na `viewed` + timestamp
+- `accept()` → status `accepted` + `route_plan.status='accepted'` + `route_plan.accepted_price`
+- `reject()` → status `rejected` + `route_plan.status='rejected'`
+
+#### AJAX historii stawek — `RoutePlannerController::pricingHistory`
+
+`POST /planer-tras/historia-stawek` — cascade query po własnej historii `speed_orders` + faktur.
+
+**Kaskada trafień** (zwraca `match_level`):
+1. **POZIOM 1** — klient (nip) + oba miasta `LIKE` (idealne dopasowanie)
+2. **POZIOM 2** — klient + oba kraje + jedno miasto pasuje
+3. **POZIOM 3** — klient + oba kraje (dla dowolnego miasta)
+
+Zwraca:
+- `orders[]` — do 10 zleceń historycznych z pól `place_from_name`, `place_to_name`, `date_doc`, `symbol`, `title`
+- `orders[].invoice` — powiązana faktura (nr, data, kwota, waluta, `total_pln` po przelicz.)
+- `stats` — count, min/max/avg/median w PLN (przelicz. po `currency_exchange` gdy walutowa)
+
+Filtr czasowy: ostatnie 12 miesięcy. Sortowanie: najnowsze na wierzchu.
+
+UI panel „**Historia stawek dla klienta na tej trasie**" pod tabelą tolls
+w [templates/RoutePlanner/index.php](templates/RoutePlanner/index.php). Wywoływany
+z `preparePricingHistoryPanel(points)` po kalkulacji trasy.
+
+**Alert dumpingu:** gdy aktualna cena < 90% mediany historycznej — czerwony banner
+„To dumping — przemyśl". Gdy 90-110% → zielony „Zgodne z medianą".
+
+#### Przycisk „Wyślij ofertę" w planerze
+Zielony button `#btn-send-offer` w hero. Modal `#sendOfferModal` z formularzem: nazwa,
+odbiorca (email + firma + NIP), cena/waluta/VAT/termin, temat/wiadomość, ważność.
+Prefill z ostatniej kalkulacji + z panelu historii (NIP).
+
+Submit → `POST /oferty/utworz` z `plan_data` (waypoints + calc_cost + distance/duration)
+→ tworzy `route_plan` na fly + `route_offer` → opcjonalnie automat `POST /oferty/wyslij`
+z emailem HTML (template `templates/email/html/route_offer.php`).
+
+Klient dostaje link `/oferty/wglad/{token}` → widok z akceptuj/odrzuć bez logowania.
+
 ### Pełne kolumny `vehicle_combinations`
 Migracja: `20260623160000_CreateVehicleCombinations.php`
 Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
@@ -634,6 +704,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-10 | Feat: planer operacyjny — FALA 2 (workflow ofertowy) — AJAX `pricingHistory` z cascade query historii stawek klienta (poziom 1-3) + UI panel „Historia stawek" pod tabelą tolls w planerze z alertem dumpingu; tabela `route_offers` (draft→sent→viewed→accepted/rejected) + CRUD `/oferty` + publiczny wgląd klienta `/oferty/wglad/{token}` bez logowania + email HTML; przycisk „Wyślij ofertę" w hero planera → modal z prefillem waypoints + integracja z `route_plans` (Fala 1) | migracja `CreateRouteOffers`, `RouteOffersTable`+Entity, `RouteOffersController`; nowe metody `RoutePlannerController::pricingHistory`; `templates/RouteOffers/{index,view,access_by_token}.php`; `templates/email/html/route_offer.php`; `templates/RoutePlanner/index.php` (panel historii + modal Wyślij ofertę + JS); `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 1 (fundament) — 5 nowych tabel: `route_plans`, `route_plan_legs`, `driver_schedules`, `vehicle_schedules`, `operational_events` (append-only event bus). CRUD dla grafików: `/grafik-kierowcow` + `/grafik-pojazdow` + AJAX endpointy „kto wolny w oknie X-Y" gotowe dla planera tras. Helper `OperationalEventsTable::log()` do dopisywania w każdym module | 5 migracji + Tables/Entities `RoutePlan(Legs)`, `DriverSchedule`, `VehicleSchedule`, `OperationalEvent`; `DriverSchedulesController`, `VehicleSchedulesController`; `templates/DriverSchedules/*`, `templates/VehicleSchedules/*`; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: zestawy pojazd+naczepa+kierowca `/zestawy` — nazwane kombinacje, CRUD, auto-fill w planerze tras (jeden click ustawia ciągnik/naczepę/kierowcę), domyślny zestaw firmy | `VehicleCombinationsController.php`, `VehicleCombinationsTable.php`, `VehicleCombination.php`, `templates/VehicleCombinations/*`, migracja `CreateVehicleCombinations`, `RoutePlannerController.php`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: kategorie tolls per typ zestawu `/admin/vehicle-type-categories` — CRUD mapowań (Standard/Mega/… × kraj × system) + AJAX endpoint `for-type/{type}` + integracja w planerze tras (nadpisuje auto-klasyfikację) | `VehicleTypeCategoriesController.php`, `VehicleTypeCategoriesTable.php`, `VehicleTypeCategory.php`, `templates/VehicleTypeCategories/*`, migracja `CreateVehicleTypeCategories`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |

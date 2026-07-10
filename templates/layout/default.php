@@ -1658,6 +1658,15 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Oferty cenowe (Fala 2B) -->
+                            <li class="slide <?= $navActive('RouteOffers') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-mail-send-line side-menu__icon"></i><span class="side-menu__label">' . __('Oferty cenowe') . '</span>',
+                                    ['plugin' => false, 'controller' => 'RouteOffers', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

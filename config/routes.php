@@ -330,6 +330,32 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/trasy/zlecenie/{orderId}',   ['controller' => 'RoutePlanner', 'action' => 'forOrder'])
             ->setPass(['orderId']);
 
+        // Fala 2A: historia stawek klienta (cascade query po speed_orders + invoices)
+        $builder->connect('/planer-tras/historia-stawek', ['controller' => 'RoutePlanner', 'action' => 'pricingHistory']);
+
+        // Fala 2B: oferty cenowe wysylane z planera tras
+        $builder->get('/oferty',                    ['controller' => 'RouteOffers', 'action' => 'index']);
+        $builder->post('/oferty/utworz',            ['controller' => 'RouteOffers', 'action' => 'create']);
+        $builder->get('/oferty/{id}',               ['controller' => 'RouteOffers', 'action' => 'view'])
+            ->setPatterns(['id' => '[a-f0-9\-]{36}'])
+            ->setPass(['id']);
+        $builder->post('/oferty/wyslij/{id}',       ['controller' => 'RouteOffers', 'action' => 'send'])
+            ->setPatterns(['id' => '[a-f0-9\-]{36}'])
+            ->setPass(['id']);
+        $builder->post('/oferty/usun/{id}',         ['controller' => 'RouteOffers', 'action' => 'delete'])
+            ->setPatterns(['id' => '[a-f0-9\-]{36}'])
+            ->setPass(['id']);
+        // Publiczne — dostep klienta po tokenie (bez logowania, kontrola w kontrolerze)
+        $builder->get('/oferty/wglad/{token}',            ['controller' => 'RouteOffers', 'action' => 'accessByToken'])
+            ->setPatterns(['token' => '[a-f0-9]{48}'])
+            ->setPass(['token']);
+        $builder->post('/oferty/wglad/{token}/akceptuj',  ['controller' => 'RouteOffers', 'action' => 'accept'])
+            ->setPatterns(['token' => '[a-f0-9]{48}'])
+            ->setPass(['token']);
+        $builder->post('/oferty/wglad/{token}/odrzuc',    ['controller' => 'RouteOffers', 'action' => 'reject'])
+            ->setPatterns(['token' => '[a-f0-9]{48}'])
+            ->setPass(['token']);
+
         // Pojazdy floty
         $builder->get('/pojazdy',                ['controller' => 'Vehicles', 'action' => 'index']);
         $builder->connect('/pojazdy/dodaj',      ['controller' => 'Vehicles', 'action' => 'add']);
