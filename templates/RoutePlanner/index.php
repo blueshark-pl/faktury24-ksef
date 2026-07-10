@@ -608,14 +608,22 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                     <label class="form-label small mb-1"><i class="ri-truck-line text-primary me-1"></i><?= __('Ciągnik / pojazd') ?></label>
                     <select class="form-select form-select-sm" id="vehicle-id">
                         <option value=""><?= __('— bez profilu (osobowy) —') ?></option>
-                        <?php foreach ($vehicles as $v): ?>
+                        <?php foreach ($vehicles as $v):
+                            $vIncomplete = empty($v->axle_count) || empty($v->gross_weight_kg) || empty($v->length_cm) || empty($v->width_cm) || empty($v->height_cm);
+                        ?>
                             <option value="<?= h($v->id) ?>" <?= $v->is_default ? 'selected' : '' ?>>
-                                <?= h($v->name) ?>
+                                <?= $vIncomplete ? '⚠️ ' : '' ?><?= h($v->name) ?>
                                 <?php if ($v->plate): ?> (<?= h($v->plate) ?>)<?php endif; ?>
                                 <?php if ($v->gross_weight_kg): ?> — <?= number_format($v->gross_weight_kg / 1000, 1, ',', '') ?>t<?php endif; ?>
+                                <?php if ($vIncomplete): ?> — <?= __('braki!') ?><?php endif ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="vehicle-warning" class="alert alert-warning py-1 px-2 mt-1 mb-0 small" style="display:none">
+                        <i class="ri-alert-line me-1"></i>
+                        <span id="vehicle-warning-text"></span>
+                        <a href="#" id="vehicle-warning-edit-link" class="ms-1 text-decoration-underline"><?= __('Edytuj pojazd') ?></a>
+                    </div>
                 </div>
                 <?php if (!empty($trailers)): ?>
                 <div class="mb-2">
@@ -1678,7 +1686,9 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
         // Auto-fill spalania gdy user wybierze pojazd (poprawka A+E — do tej pory
         // spalanie bylo hardcoded 30 l/100km, niezaleznie od pojazdu)
+        // + warning gdy pojazd ma braki w bazie
         var vehSel = document.getElementById('vehicle-id');
+        var vehWarn = document.getElementById('vehicle-warning');
         if (vehSel) {
             vehSel.addEventListener('change', function () {
                 var v = getSelectedVehicle();
@@ -1689,7 +1699,30 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                     }
                 }
+                // Warning na pojazd z brakami
+                if (vehWarn) {
+                    if (!v) { vehWarn.style.display = 'none'; return; }
+                    var missing = [];
+                    if (!v.axle_count)      missing.push('<?= __('osi') ?>');
+                    if (!v.gross_weight_kg) missing.push('DMC');
+                    if (!v.axle_load_kg)    missing.push('<?= __('nacisk osi') ?>');
+                    if (!v.length_cm)       missing.push('<?= __('długość') ?>');
+                    if (!v.width_cm)        missing.push('<?= __('szer.') ?>');
+                    if (!v.height_cm)       missing.push('<?= __('wys.') ?>');
+                    if (missing.length === 0) {
+                        vehWarn.style.display = 'none';
+                        return;
+                    }
+                    var msg = '<?= __('Pojazd nie ma') ?>: ' + missing.join(', ') +
+                        ' — <?= __('HERE dostanie niekompletne parametry, klasyfikacja pojazdu będzie zaniżona → tolls za małe.') ?>';
+                    document.getElementById('vehicle-warning-text').innerHTML = msg;
+                    var editLink = document.getElementById('vehicle-warning-edit-link');
+                    editLink.href = '/pojazdy/edytuj/' + encodeURIComponent(v.id);
+                    editLink.target = '_blank';
+                    vehWarn.style.display = '';
+                }
             });
+            if (vehSel.value) vehSel.dispatchEvent(new Event('change'));
         }
 
         // Warning na naczepie z brakami (D) — po wyborze pokaz alert z linkiem do edycji
@@ -3909,41 +3942,105 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
             return;
         }
         var s = lastResponse.sent_to_here;
+        // Info skad dane: pobierz z wybranego pojazdu/naczepy w UI zeby wskazac
+        // ktore pola sa puste w bazie
+        var veh = getSelectedVehicle();
+        var trl = getSelectedTrailer();
+        var vehId = veh ? veh.id : null;
+        var trlId = trl ? trl.id : null;
+        var vehLink = vehId ? '/pojazdy/edytuj/' + encodeURIComponent(vehId) : null;
+        var trlLink = trlId ? '/naczepy/edytuj/' + encodeURIComponent(trlId) : null;
+
         var rows = [];
-        rows.push(['transportMode',      s.transportMode || '—']);
-        rows.push(['currency',           s.currency || '—']);
-        rows.push(['alternatives',       s.alternatives != null ? s.alternatives : '—']);
-        rows.push(['departureTime',      s.departureTime || '—']);
-        rows.push(['avoid[features]',    s.avoid || '—']);
-        rows.push(['exclude[countries]', s.excludeCountries || '—']);
-        rows.push(['via count',          s.via_count]);
-        rows.push(['---', '---']);
+        rows.push(['transportMode',      s.transportMode || '—', null]);
+        rows.push(['currency',           s.currency || '—', null]);
+        rows.push(['alternatives',       s.alternatives != null ? s.alternatives : '—', null]);
+        rows.push(['departureTime',      s.departureTime || '—', null]);
+        rows.push(['avoid[features]',    s.avoid || '—', null]);
+        rows.push(['exclude[countries]', s.excludeCountries || '—', null]);
+        rows.push(['via count',          s.via_count, null]);
+        rows.push(['---', '---', null]);
         var v = s.vehicle || {};
-        rows.push(['vehicle[grossWeight]',           v.grossWeight != null ? v.grossWeight + ' kg' : '—']);
-        rows.push(['vehicle[axleCount]',             v.axleCount != null ? v.axleCount + ' osi' : '—']);
-        rows.push(['vehicle[weightPerAxle]',         v.weightPerAxle != null ? v.weightPerAxle + ' kg' : '—']);
-        rows.push(['vehicle[length]',                v.length != null ? v.length + ' cm' : '—']);
-        rows.push(['vehicle[width]',                 v.width != null ? v.width + ' cm' : '—']);
-        rows.push(['vehicle[height]',                v.height != null ? v.height + ' cm' : '—']);
-        rows.push(['vehicle[emissionType]',          v.emissionType || '—']);
-        rows.push(['vehicle[tunnelCategory]',        v.tunnelCategory || '—']);
-        rows.push(['vehicle[shippedHazardousGoods]', v.shippedHazardousGoods || '—']);
+
+        // Explanation: SUMA z ciagnik+naczepa lub MAX lub tylko ciagnik
+        var srcExplain = {
+            grossWeight:  '<?= __('SUMA (ciągnik + naczepa)') ?>',
+            axleCount:    '<?= __('SUMA (ciągnik + naczepa)') ?>',
+            weightPerAxle:'<?= __('tylko ciągnik (axle_load_kg)') ?>',
+            length:       '<?= __('SUMA (max 18,75 m)') ?>',
+            width:        '<?= __('MAX (ciągnik lub naczepa)') ?>',
+            height:       '<?= __('MAX (ciągnik lub naczepa)') ?>',
+            emissionType: '<?= __('z pojazdu') ?>',
+            tunnelCategory:'<?= __('z pojazdu') ?>',
+            shippedHazardousGoods: '<?= __('ADR z pojazdu/naczepy') ?>',
+        };
+
+        function mkRow(key, value, unit, srcHint) {
+            var display = value != null ? (value + (unit || '')) : '—';
+            return [key, display, srcHint];
+        }
+        rows.push(mkRow('vehicle[grossWeight]',   v.grossWeight,   ' kg',  srcExplain.grossWeight));
+        rows.push(mkRow('vehicle[axleCount]',     v.axleCount,     ' osi', srcExplain.axleCount));
+        rows.push(mkRow('vehicle[weightPerAxle]', v.weightPerAxle, ' kg',  srcExplain.weightPerAxle));
+        rows.push(mkRow('vehicle[length]',        v.length,        ' cm',  srcExplain.length));
+        rows.push(mkRow('vehicle[width]',         v.width,         ' cm',  srcExplain.width));
+        rows.push(mkRow('vehicle[height]',        v.height,        ' cm',  srcExplain.height));
+        rows.push(mkRow('vehicle[emissionType]',  v.emissionType,  '',     srcExplain.emissionType));
+        rows.push(mkRow('vehicle[tunnelCategory]',v.tunnelCategory,'',     srcExplain.tunnelCategory));
+        rows.push(mkRow('vehicle[shippedHazardousGoods]', v.shippedHazardousGoods, '', srcExplain.shippedHazardousGoods));
 
         var html = '<table class="table table-sm table-borderless mb-0" style="font-size:.78rem"><tbody>';
         rows.forEach(function (r) {
             if (r[0] === '---') {
-                html += '<tr><td colspan="2"><hr class="my-1"></td></tr>';
+                html += '<tr><td colspan="3"><hr class="my-1"></td></tr>';
                 return;
             }
-            var isNull = r[1] === '—' || r[1] == null;
+            var isEmpty = r[1] === '—';
             html += '<tr>' +
-                '<td class="text-muted" style="width:40%">' + escapeHtml(r[0]) + '</td>' +
-                '<td' + (isNull ? ' class="text-danger"' : '') + '><code>' + escapeHtml(String(r[1])) + '</code></td>' +
+                '<td class="text-muted" style="width:35%">' + escapeHtml(r[0]) + '</td>' +
+                '<td' + (isEmpty ? ' class="text-danger fw-bold"' : '') + ' style="width:20%"><code>' + escapeHtml(String(r[1])) + '</code></td>' +
+                '<td class="small text-muted">' +
+                    (r[2] ? escapeHtml(r[2]) : '') +
+                    (isEmpty && r[2] && vehLink ? ' · <a href="' + vehLink + '" target="_blank" class="text-danger"><?= __('uzupełnij w pojeździe') ?></a>' : '') +
+                    (isEmpty && r[2] && trlLink ? ' / <a href="' + trlLink + '" target="_blank" class="text-danger"><?= __('lub naczepie') ?></a>' : '') +
+                '</td>' +
                 '</tr>';
         });
         html += '</tbody></table>';
+
+        // Combined_from — pokaz co dokladnie zsumowalo
+        if (lastResponse.combination && lastResponse.combination.combined_from) {
+            var cf = lastResponse.combination.combined_from;
+            html += '<div class="mt-2 small border-top pt-2">';
+            html += '<strong><i class="ri-git-merge-line me-1"></i><?= __('Skąd wartości (zestaw)') ?>:</strong>';
+            html += '<div class="row g-2 mt-1">';
+            html += '<div class="col-md-6"><div class="p-2 rounded bg-light">';
+            html += '<strong>🚛 <?= __('Ciągnik') ?>:</strong>';
+            if (cf.vehicle) {
+                html += '<div>osi: <code>' + (cf.vehicle.axle_count || 0) + '</code></div>';
+                html += '<div>DMC: <code>' + ((cf.vehicle.gross_weight_kg || 0) / 1000).toFixed(1) + 't</code></div>';
+                html += '<div>L: <code>' + ((cf.vehicle.length_cm || 0) / 100).toFixed(2) + 'm</code>, ' +
+                    'w: <code>' + ((cf.vehicle.width_cm || 0) / 100).toFixed(2) + 'm</code>, ' +
+                    'h: <code>' + ((cf.vehicle.height_cm || 0) / 100).toFixed(2) + 'm</code></div>';
+            }
+            html += '</div></div>';
+            html += '<div class="col-md-6"><div class="p-2 rounded bg-light">';
+            html += '<strong>🚚 <?= __('Naczepa') ?>:</strong>';
+            if (cf.trailer) {
+                html += '<div>osi: <code>' + (cf.trailer.axle_count || 0) + '</code></div>';
+                html += '<div>DMC: <code>' + ((cf.trailer.gross_weight_kg || 0) / 1000).toFixed(1) + 't</code></div>';
+                html += '<div>L: <code>' + ((cf.trailer.length_cm || 0) / 100).toFixed(2) + 'm</code>, ' +
+                    'w: <code>' + ((cf.trailer.width_cm || 0) / 100).toFixed(2) + 'm</code>, ' +
+                    'h: <code>' + ((cf.trailer.height_cm || 0) / 100).toFixed(2) + 'm</code></div>';
+            } else {
+                html += '<div class="text-muted"><?= __('Brak naczepy') ?></div>';
+            }
+            html += '</div></div>';
+            html += '</div></div>';
+        }
+
         html += '<div class="mt-2 small text-muted"><i class="ri-information-line me-1"></i>' +
-            '<?= __('Puste (—) oznacza że parametr NIE zostal wyslany do HERE — HERE bedzie zakladal wartosc domyslna (osobowka lub bez restrykcji).') ?>' +
+            '<?= __('Puste (—) na czerwono oznacza że parametr NIE zostal wyslany do HERE. Klasyfikacja pojazdu bedzie zanizona, opłaty (tolls) mniejsze niz powinny.') ?>' +
             '</div>';
         box.innerHTML = html;
     }

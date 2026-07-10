@@ -33,6 +33,34 @@ $tunnelOptions = ['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D', 'E' => 'E'];
 ?>
 <?= $this->Form->create($entity, ['type' => 'post']) ?>
 
+<?php
+// Ostrzezenie dla planera /trasy — brakujace pola powoduja ze do HERE ida
+// niekompletne parametry i klasyfikacja pojazdu jest zaniżona (mniej osi = tansze tolls).
+$missing = [];
+if (empty($entity->axle_count))      $missing[] = __('liczba osi');
+if (empty($entity->gross_weight_kg)) $missing[] = __('DMC (masa całkowita)');
+if (empty($entity->axle_load_kg))    $missing[] = __('nacisk na oś');
+if (empty($entity->height_cm))       $missing[] = __('wysokość');
+if (empty($entity->width_cm))        $missing[] = __('szerokość');
+if (empty($entity->length_cm))       $missing[] = __('długość');
+if (!empty($missing) && !empty($entity->id)):
+?>
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+    <i class="ri-alert-line fs-4 mt-1"></i>
+    <div class="flex-grow-1">
+        <strong><?= __('Uwaga — brakuje kluczowych parametrów pojazdu!') ?></strong>
+        <div class="small mt-1">
+            <?= __('Puste pola: :fields', [':fields' => '<strong>' . implode(', ', $missing) . '</strong>']) ?>
+        </div>
+        <div class="small mt-1">
+            <?= __('Planer :link wysyła te parametry do HERE Routing API dla klasyfikacji pojazdu. Puste pola powodują że HERE traktuje pojazd jak osobowe lub najprostszą ciężarówkę → opłaty (tolls) są zaniżone. Uzupełnij wszystkie pola poniżej dla poprawnej kalkulacji.', [
+                ':link' => '<a href="/trasy" target="_blank">/trasy</a>',
+            ]) ?>
+        </div>
+    </div>
+</div>
+<?php endif ?>
+
 <div class="row g-3">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
