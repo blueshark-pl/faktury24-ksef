@@ -579,6 +579,102 @@ z emailem HTML (template `templates/email/html/route_offer.php`).
 
 Klient dostaje link `/oferty/wglad/{token}` → widok z akceptuj/odrzuć bez logowania.
 
+### Pełne kolumny — moduły planera operacyjnego (Fala 3)
+
+**Cel:** compliance i zarządzanie zasobami. Chronimy przed:
+- jazdą bez ważnego badania technicznego / ubezpieczenia
+- przekroczeniem czasu pracy kierowcy (UE 561/2006)
+- planowaniem zasobu który jest niedostępny wg wzorca (weekend, ADR, noc)
+- ryzykiem kabotażu / ADR / sankcji bez logu do audytu ITD
+
+Migracje: `20260710120000..20260710120300` (4 tabele).
+
+#### `vehicle_maintenance`
+Historia serwisów, badań, ubezpieczeń per pojazd/naczepa. Kluczowa dla alertów.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | |
+| `vehicle_id` **XOR** `trailer_id` | char(36) | tylko jedno |
+| `maintenance_type` | string(30) | `technical_inspection`/`service`/`tacho_calibration`/`adr_cert`/`insurance`/`oc`/`ac`/`extinguisher`/`first_aid`/`other` |
+| `performed_at` | date | wykonano |
+| `valid_until` | date | do kiedy ważne (kluczowe dla alertów) |
+| `reminder_days` | int | ile dni przed alert (domyślnie 30) |
+| `cost` / `currency` / `supplier` | decimal/string | koszt + dostawca |
+| `document_path` | string(500) | skan PDF/JPG |
+| `cost_invoice_id` | int | FK do `cost_invoices` |
+| `alert_sent_at` | datetime | idempotent — nie wysyłamy 2× |
+| `is_active` | bool | false = zastąpiony nowszym |
+
+CRUD: `/serwisy`. AJAX: `/serwisy/wygasajace.json?days=30`.
+**Helpers ORM:**
+- `findExpiringSoon(companyId, days)` — dla dashboardu i cron alertów
+- `findMissingForDate(companyId, assetType, assetId, date, requiredTypes)` — sprawdź czy pojazd ma wszystko na X dzień (dla planera)
+
+#### `driver_time_logs`
+Dzienne wpisy czasu pracy kierowcy wg UE 561/2006 (min: 9h jazdy, 45h/tydz, 90h/2tyg).
+Auto-fill `week_iso` (format `2026-W29`) z `log_date` w `beforeSave`.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `driver_id` | char(36) | |
+| `log_date` | date | (unique per driver+date) |
+| `week_iso` | string(8) | auto-fill z log_date |
+| `driving_min` / `rest_min` / `other_work_min` / `availability_min` | int | minuty |
+| `daily_rest_ok` / `weekly_rest_ok` | bool | flagi compliance |
+| `extended_driving_used` | bool | użycie extension do 10h (max 2×/tydz) |
+| `reduced_daily_rest_used` | bool | redukcja do 9h (max 3×/tydz) |
+| `source` | string(20) | `tachograph`/`manual`/`estimated`/`import_ddd`/`import_csv` |
+| `source_file_id` | string(100) | dla audytu importu |
+
+CRUD: `/czas-pracy`. AJAX: `/czas-pracy/status/{driverId}.json?week_iso=2026-W29`.
+
+**Stałe UE 561/2006 w Tabeli:**
+`MAX_DRIVING_DAILY=540 (9h)`, `MAX_DRIVING_WEEKLY=3360 (56h)`, `MAX_DRIVING_BIWEEKLY=5400 (90h)`,
+`MIN_DAILY_REST=660 (11h)`, `MIN_WEEKLY_REST=2700 (45h)`.
+
+**Helpers:**
+- `sumDrivingInWeek(driverId, weekIso)` → int (minuty)
+- `hasBudgetInWeek(driverId, weekIso, additionalMinutes)` → bool
+- `weeklyStatus(driverId, weekIso)` → array (used_min, remaining_min, biweekly_used, is_at_risk, is_over_limit)
+
+#### `driver_availability`
+Wzorce dostępności per kierowca × dzień tygodnia (7 rekordów per kierowca).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `driver_id` | char(36) | |
+| `day_of_week` | int | 1=poniedziałek..7=niedziela (unique per driver) |
+| `shift_start` / `shift_end` | time | null start = nie pracuje w ten dzień |
+| `max_hours_this_day` | int | miękki limit dziennie |
+| `accepts_international` / `accepts_adr` / `accepts_night` / `accepts_weekend` | bool | preferencje |
+
+CRUD: `/dostepnosc-kierowcow` (index) + `/dostepnosc-kierowcow/{driverId}` (edycja 7 dni jednym formularzem, transakcyjny delete+insert).
+
+#### `compliance_events`
+Append-only log ostrzeżeń compliance (kabotaż/ADR/sankcje/przekroczenia).
+**Uwaga:** różne od `operational_events` — tu specyficznie ryzyko prawne do audytu ITD.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `route_plan_id` / `route_offer_id` / `speed_order_id` / `driver_id` / `vehicle_id` / `trailer_id` | | do czego się odnosi (nullable) |
+| `event_type` | string(40) | `cabotage_limit`/`cabotage_hard_limit`/`adr_missing`/`driver_hours_exceeded`/`weekly_rest_missing`/`oversize_no_permit`/`sanction_country`/`expired_inspection`/`expired_insurance`/… |
+| `severity` | string(10) | `info`/`warning`/`error` |
+| `description` | text | ludzki tekst |
+| `context_json` | text | metadane |
+| `is_dismissed` | bool | operator zaakceptował ryzyko |
+| `dismissed_by_user_id` / `dismissed_at` / `dismissal_reason` | | dla audytu |
+| `detected_at` | datetime | |
+
+Read-only dashboard: `/ryzyko` z filtrem severity + `POST /ryzyko/akceptuj/{id}` z uzasadnieniem.
+
+**Helper:** `ComplianceEventsTable::record($companyId, $eventType, $description, $severity='warning', $context=[], $links=[])`
+— best-effort try/catch. Wywoływać z innych modułów zamiast handling w kontrolerze.
+
 ### Pełne kolumny `vehicle_combinations`
 Migracja: `20260623160000_CreateVehicleCombinations.php`
 Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
@@ -704,6 +800,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-10 | Feat: planer operacyjny — FALA 3 (zasoby + compliance) — 4 nowe tabele: `vehicle_maintenance` (badania/ADR/OC z auto-alertem), `driver_time_logs` (UE 561/2006 z helperami weeklyStatus), `driver_availability` (7-dniowe wzorce z preferencjami ADR/noc/weekend), `compliance_events` (append-only log ryzyk z „akceptuję ryzyko" i uzasadnieniem do audytu ITD). CRUD `/serwisy`, `/czas-pracy`, `/dostepnosc-kierowcow`, `/ryzyko`. AJAX dla planera: `/serwisy/wygasajace.json`, `/czas-pracy/status/{driverId}.json`. Helper `ComplianceEventsTable::record()` do zbierania ostrzeżeń z innych modułów | 4 migracje + Tables/Entities `VehicleMaintenance`, `DriverTimeLog`, `DriverAvailability`, `ComplianceEvent`; kontrolery `VehicleMaintenanceController`, `DriverTimeLogsController`, `DriverAvailabilityController`, `ComplianceEventsController`; templates dla wszystkich; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 2 (workflow ofertowy) — AJAX `pricingHistory` z cascade query historii stawek klienta (poziom 1-3) + UI panel „Historia stawek" pod tabelą tolls w planerze z alertem dumpingu; tabela `route_offers` (draft→sent→viewed→accepted/rejected) + CRUD `/oferty` + publiczny wgląd klienta `/oferty/wglad/{token}` bez logowania + email HTML; przycisk „Wyślij ofertę" w hero planera → modal z prefillem waypoints + integracja z `route_plans` (Fala 1) | migracja `CreateRouteOffers`, `RouteOffersTable`+Entity, `RouteOffersController`; nowe metody `RoutePlannerController::pricingHistory`; `templates/RouteOffers/{index,view,access_by_token}.php`; `templates/email/html/route_offer.php`; `templates/RoutePlanner/index.php` (panel historii + modal Wyślij ofertę + JS); `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 1 (fundament) — 5 nowych tabel: `route_plans`, `route_plan_legs`, `driver_schedules`, `vehicle_schedules`, `operational_events` (append-only event bus). CRUD dla grafików: `/grafik-kierowcow` + `/grafik-pojazdow` + AJAX endpointy „kto wolny w oknie X-Y" gotowe dla planera tras. Helper `OperationalEventsTable::log()` do dopisywania w każdym module | 5 migracji + Tables/Entities `RoutePlan(Legs)`, `DriverSchedule`, `VehicleSchedule`, `OperationalEvent`; `DriverSchedulesController`, `VehicleSchedulesController`; `templates/DriverSchedules/*`, `templates/VehicleSchedules/*`; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: zestawy pojazd+naczepa+kierowca `/zestawy` — nazwane kombinacje, CRUD, auto-fill w planerze tras (jeden click ustawia ciągnik/naczepę/kierowcę), domyślny zestaw firmy | `VehicleCombinationsController.php`, `VehicleCombinationsTable.php`, `VehicleCombination.php`, `templates/VehicleCombinations/*`, migracja `CreateVehicleCombinations`, `RoutePlannerController.php`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |

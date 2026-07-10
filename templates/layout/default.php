@@ -1667,6 +1667,42 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Fala 3: Serwisy pojazdow -->
+                            <li class="slide <?= $navActive('VehicleMaintenance') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-tools-line side-menu__icon"></i><span class="side-menu__label">' . __('Serwisy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'VehicleMaintenance', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Fala 3: Czas pracy -->
+                            <li class="slide <?= $navActive('DriverTimeLogs') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-timer-line side-menu__icon"></i><span class="side-menu__label">' . __('Czas pracy') . '</span>',
+                                    ['plugin' => false, 'controller' => 'DriverTimeLogs', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Fala 3: Dostepnosc kierowcow -->
+                            <li class="slide <?= $navActive('DriverAvailability') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-calendar-todo-line side-menu__icon"></i><span class="side-menu__label">' . __('Dostępność') . '</span>',
+                                    ['plugin' => false, 'controller' => 'DriverAvailability', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Fala 3: Ryzyko compliance -->
+                            <li class="slide <?= $navActive('ComplianceEvents') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-shield-check-line side-menu__icon"></i><span class="side-menu__label">' . __('Ryzyko') . '</span>',
+                                    ['plugin' => false, 'controller' => 'ComplianceEvents', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

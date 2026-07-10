@@ -356,6 +356,35 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
             ->setPatterns(['token' => '[a-f0-9]{48}'])
             ->setPass(['token']);
 
+        // Fala 3: Serwisy pojazdow i naczep (badania, ADR, ubezpieczenia)
+        $builder->get('/serwisy',                       ['controller' => 'VehicleMaintenance', 'action' => 'index']);
+        $builder->connect('/serwisy/dodaj',             ['controller' => 'VehicleMaintenance', 'action' => 'add']);
+        $builder->connect('/serwisy/edytuj/{id}',       ['controller' => 'VehicleMaintenance', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/serwisy/usun/{id}',            ['controller' => 'VehicleMaintenance', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/serwisy/wygasajace.json',       ['controller' => 'VehicleMaintenance', 'action' => 'expiringJson']);
+
+        // Fala 3: Czas pracy kierowcow (tachograf/manual)
+        $builder->get('/czas-pracy',                    ['controller' => 'DriverTimeLogs', 'action' => 'index']);
+        $builder->connect('/czas-pracy/dodaj',          ['controller' => 'DriverTimeLogs', 'action' => 'add']);
+        $builder->connect('/czas-pracy/edytuj/{id}',    ['controller' => 'DriverTimeLogs', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/czas-pracy/usun/{id}',         ['controller' => 'DriverTimeLogs', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/czas-pracy/status/{driverId}.json', ['controller' => 'DriverTimeLogs', 'action' => 'weeklyStatusJson'])
+            ->setPass(['driverId']);
+
+        // Fala 3: Wzorce dostepnosci kierowcow
+        $builder->get('/dostepnosc-kierowcow',                  ['controller' => 'DriverAvailability', 'action' => 'index']);
+        $builder->connect('/dostepnosc-kierowcow/{driverId}',   ['controller' => 'DriverAvailability', 'action' => 'edit'])
+            ->setPass(['driverId']);
+
+        // Fala 3: Dashboard ryzyk compliance
+        $builder->get('/ryzyko',                        ['controller' => 'ComplianceEvents', 'action' => 'index']);
+        $builder->post('/ryzyko/akceptuj/{id}',         ['controller' => 'ComplianceEvents', 'action' => 'dismiss'])
+            ->setPass(['id']);
+
         // Pojazdy floty
         $builder->get('/pojazdy',                ['controller' => 'Vehicles', 'action' => 'index']);
         $builder->connect('/pojazdy/dodaj',      ['controller' => 'Vehicles', 'action' => 'add']);

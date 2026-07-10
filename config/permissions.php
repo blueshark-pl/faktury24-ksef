@@ -217,6 +217,34 @@ return [
             'controller' => 'RouteOffers',
             'action'     => ['accessByToken', 'accept', 'reject'],
         ],
+        // Fala 3: Serwisy pojazdow i naczep
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'VehicleMaintenance',
+            'action'     => ['index', 'add', 'edit', 'delete', 'expiringJson'],
+        ],
+        // Fala 3: Czas pracy kierowcow
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'DriverTimeLogs',
+            'action'     => ['index', 'add', 'edit', 'delete', 'weeklyStatusJson'],
+        ],
+        // Fala 3: Wzorce dostepnosci
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'DriverAvailability',
+            'action'     => ['index', 'edit'],
+        ],
+        // Fala 3: Dashboard ryzyk
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'ComplianceEvents',
+            'action'     => ['index', 'dismiss'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
