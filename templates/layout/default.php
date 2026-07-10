@@ -1640,6 +1640,24 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <!-- Grafik kierowcow -->
+                            <li class="slide <?= $navActive('DriverSchedules') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-calendar-check-line side-menu__icon"></i><span class="side-menu__label">' . __('Grafik kierowców') . '</span>',
+                                    ['plugin' => false, 'controller' => 'DriverSchedules', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
+                            <!-- Grafik pojazdow i naczep -->
+                            <li class="slide <?= $navActive('VehicleSchedules') ?>">
+                                <?= $this->Html->link(
+                                    '<i class="ri-calendar-schedule-line side-menu__icon"></i><span class="side-menu__label">' . __('Grafik pojazdów') . '</span>',
+                                    ['plugin' => false, 'controller' => 'VehicleSchedules', 'action' => 'index'],
+                                    ['escape' => false, 'class' => 'side-menu__item']
+                                ) ?>
+                            </li>
+
                             <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">

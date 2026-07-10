@@ -189,6 +189,20 @@ return [
             'controller' => 'VehicleCombinations',
             'action'     => ['index', 'add', 'edit', 'delete', 'listJson'],
         ],
+        // Grafik kierowcow (Fala 1 planera operacyjnego)
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'DriverSchedules',
+            'action'     => ['index', 'add', 'edit', 'delete', 'availableJson', 'forDriverJson'],
+        ],
+        // Grafik pojazdow i naczep
+        [
+            'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],
+            'plugin'     => false,
+            'controller' => 'VehicleSchedules',
+            'action'     => ['index', 'add', 'edit', 'delete', 'availableVehiclesJson', 'availableTrailersJson'],
+        ],
         // Planer tras (HERE Routing v8)
         [
             'role'       => ['user', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'asystent_spedytora'],

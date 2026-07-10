@@ -354,6 +354,27 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/kierowcy/usun/{id}',     ['controller' => 'Drivers', 'action' => 'delete'])
             ->setPass(['id']);
 
+        // Grafik kierowcow (Fala 1 planera operacyjnego)
+        $builder->get('/grafik-kierowcow',                    ['controller' => 'DriverSchedules', 'action' => 'index']);
+        $builder->connect('/grafik-kierowcow/dodaj',          ['controller' => 'DriverSchedules', 'action' => 'add']);
+        $builder->connect('/grafik-kierowcow/edytuj/{id}',    ['controller' => 'DriverSchedules', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/grafik-kierowcow/usun/{id}',         ['controller' => 'DriverSchedules', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/grafik-kierowcow/wolni.json',         ['controller' => 'DriverSchedules', 'action' => 'availableJson']);
+        $builder->get('/grafik-kierowcow/dla-kierowcy/{driverId}.json', ['controller' => 'DriverSchedules', 'action' => 'forDriverJson'])
+            ->setPass(['driverId']);
+
+        // Grafik pojazdow i naczep
+        $builder->get('/grafik-pojazdow',                     ['controller' => 'VehicleSchedules', 'action' => 'index']);
+        $builder->connect('/grafik-pojazdow/dodaj',           ['controller' => 'VehicleSchedules', 'action' => 'add']);
+        $builder->connect('/grafik-pojazdow/edytuj/{id}',     ['controller' => 'VehicleSchedules', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/grafik-pojazdow/usun/{id}',          ['controller' => 'VehicleSchedules', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/grafik-pojazdow/wolne.json',          ['controller' => 'VehicleSchedules', 'action' => 'availableVehiclesJson']);
+        $builder->get('/grafik-naczep/wolne.json',            ['controller' => 'VehicleSchedules', 'action' => 'availableTrailersJson']);
+
         // Zestawy pojazd+naczepa+kierowca (klikalne w planerze)
         $builder->get('/zestawy',                 ['controller' => 'VehicleCombinations', 'action' => 'index']);
         $builder->connect('/zestawy/dodaj',       ['controller' => 'VehicleCombinations', 'action' => 'add']);

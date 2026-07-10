@@ -397,6 +397,118 @@ M:N: jedna FK kosztowa → wiele zleceń, jedno zlecenie → wiele FK kosztowych
 | `cost_invoice_id` | int | FK |
 | `speed_order_id` | int | FK |
 
+### Pełne kolumny — moduły planera operacyjnego (Fala 1)
+
+**Cel:** rozszerzenie planera tras z narzędzia jednorazowego na operacyjny pipeline
+zlecenia (plan → oferta → zlecenie → przypisanie zasobów → brief → wykonanie → faktura).
+
+Migracje: `20260710100000..20260710100400` (5 tabel).
+
+#### `route_plans`
+Nazwane plany trasy z wersjonowaniem i statusem. Rozszerzenie `route_searches` (historia)
+— tutaj zapisujemy plan z pełnym P&L który potem konwertujemy w ofertę i zlecenie.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | multi-tenant |
+| `author_user_id` | char(36) | kto planował |
+| `contractor_id` | char(36) | FK do `contractors` (nullable — plan spekulacyjny) |
+| `name` | string(200) | nazwa robocza |
+| `status` | string(20) | `draft`/`offered`/`accepted`/`rejected`/`converted`/`archived` |
+| `waypoints_json` | text | pełne waypoints trasy w JSON |
+| `pickup_json` | text | podjazd (leg pusty przed startem) |
+| `return_load_json` | text | sugerowany ładunek powrotny |
+| `distance_km` / `duration_min` / `co2_kg` | decimal/int | z HERE |
+| `calc_cost_json` | text | snapshot P&L (paliwo/myto/kierowca/amortyzacja) |
+| `suggested_price` / `accepted_price` | decimal(12,2) | cena z historii / zaakceptowana |
+| `currency` | char(3) | domyślnie PLN |
+| `speed_order_id` | int | FK do `speed_orders` gdy plan → zlecenie |
+| `parent_plan_id` | char(36) | wersjonowanie |
+| `valid_until` | date | ważność oferty |
+| `vehicle_combination_id`/`vehicle_id`/`trailer_id`/`driver_id` | | wybrany zestaw |
+| `planned_start_at`/`planned_end_at` | datetime | okno realizacji |
+
+CRUD: (nie ma osobnego UI w Fali 1 — używane głównie z RoutePlannerController "Zapisz plan")
+
+#### `route_plan_legs`
+Legi trasy z rolami (`pickup`/`loaded`/`positioning`/`return_load`/`home`).
+`is_billed=true` → wliczone do przychodu.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `route_plan_id` | char(36) | FK |
+| `leg_index` | int | kolejność (unique per plan) |
+| `leg_type` | string(20) | jak wyżej |
+| `from_json`/`to_json` | text | punkty |
+| `distance_km` / `duration_min` | decimal/int | |
+| `is_billed` | bool | domyślnie true |
+| `country_code` | char(2) | dla kabotażu |
+| `toll_cost` / `fuel_cost` / `currency` | decimal/char | |
+| `planned_start_at`/`planned_end_at` | datetime | |
+
+#### `driver_schedules`
+Grafik kierowców — bloki dostępności/niedostępności. Kluczowa dla availability lookup.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | |
+| `driver_id` | char(36) | FK do `drivers` |
+| `starts_at`/`ends_at` | datetime | |
+| `entry_type` | string(20) | `assignment`/`time_off`/`sickness`/`training`/`blocked` |
+| `speed_order_id` | int | FK gdy assignment do konkretnego zlecenia |
+| `route_plan_id` | char(36) | FK gdy jeszcze etap planowania |
+| `vehicle_id`/`trailer_id` | char(36) | blokada zestawu razem z kierowcą |
+| `created_by_user_id` | char(36) | kto zaplanował |
+
+CRUD: `/grafik-kierowcow`. AJAX:
+- `/grafik-kierowcow/wolni.json?start=ISO&end=ISO&override_time_off=1` — lista wolnych kierowców w oknie
+- `/grafik-kierowcow/dla-kierowcy/{id}.json?from=&to=` — grafik konkretnego kierowcy
+
+**Helper w `DriverSchedulesTable::findAvailableInWindow($companyId, $start, $end, $allowOverrideTimeOff)`.**
+
+#### `vehicle_schedules`
+Analogicznie dla pojazdów/naczep. Wypełnione DOKŁADNIE jedno z (`vehicle_id`, `trailer_id`).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | |
+| `vehicle_id` **XOR** `trailer_id` | char(36) | tylko jedno wypełnione |
+| `starts_at`/`ends_at` | datetime | |
+| `entry_type` | string(20) | `assignment`/`maintenance`/`inspection`/`unavailable` |
+| `speed_order_id` / `route_plan_id` | | |
+
+CRUD: `/grafik-pojazdow`. AJAX:
+- `/grafik-pojazdow/wolne.json?start=&end=`
+- `/grafik-naczep/wolne.json?start=&end=`
+
+**Helper: `VehicleSchedulesTable::findAvailableVehiclesInWindow()` + `findAvailableTrailersInWindow()`.**
+
+#### `operational_events` (event bus)
+Centralny append-only log wszystkich zdarzeń na planach/ofertach/zleceniach/grafikach.
+Materiał do analytics dashboard, audytu, historii operacyjnej. **Nie modyfikujemy nigdy.**
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | char(36) | PK |
+| `company_id` | char(36) | |
+| `entity_type` | string(40) | `route_plan`/`route_offer`/`speed_order`/`driver_schedule`/`vehicle_schedule`/`driver_brief`/`trip_event`/`invoice` |
+| `entity_id` | string(40) | ID rekordu (string — wspiera int i uuid) |
+| `event_name` | string(40) | `created`/`updated`/`status_changed`/`sent`/`viewed`/`accepted`/`rejected`/`deleted`/`assigned`/… |
+| `user_id` / `impersonated_by_user_id` | char(36) | kto (null = system/cron) |
+| `payload_json` | text | metadane (before/after, kontekst) |
+| `ip_address` / `user_agent` | | |
+| `created` | datetime | brak `modified` — append-only |
+
+**Convenience helper:** `OperationalEventsTable::log($companyId, $entityType, $entityId, $eventName, $userId, $payload, $context)`.
+Metoda best-effort — try/catch wewnątrz, żeby log nie mógł popsuć głównego flow.
+
+**Zasada:** każdy CRUD w module operacyjnym → dopisz do `operational_events`, nawet
+jeśli dashboardu jeszcze nie ma — zbieramy dane pod przyszłe agregacje.
+
 ### Pełne kolumny `vehicle_combinations`
 Migracja: `20260623160000_CreateVehicleCombinations.php`
 Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
@@ -522,6 +634,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-07-10 | Feat: planer operacyjny — FALA 1 (fundament) — 5 nowych tabel: `route_plans`, `route_plan_legs`, `driver_schedules`, `vehicle_schedules`, `operational_events` (append-only event bus). CRUD dla grafików: `/grafik-kierowcow` + `/grafik-pojazdow` + AJAX endpointy „kto wolny w oknie X-Y" gotowe dla planera tras. Helper `OperationalEventsTable::log()` do dopisywania w każdym module | 5 migracji + Tables/Entities `RoutePlan(Legs)`, `DriverSchedule`, `VehicleSchedule`, `OperationalEvent`; `DriverSchedulesController`, `VehicleSchedulesController`; `templates/DriverSchedules/*`, `templates/VehicleSchedules/*`; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: zestawy pojazd+naczepa+kierowca `/zestawy` — nazwane kombinacje, CRUD, auto-fill w planerze tras (jeden click ustawia ciągnik/naczepę/kierowcę), domyślny zestaw firmy | `VehicleCombinationsController.php`, `VehicleCombinationsTable.php`, `VehicleCombination.php`, `templates/VehicleCombinations/*`, migracja `CreateVehicleCombinations`, `RoutePlannerController.php`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-09 | Feat: kategorie tolls per typ zestawu `/admin/vehicle-type-categories` — CRUD mapowań (Standard/Mega/… × kraj × system) + AJAX endpoint `for-type/{type}` + integracja w planerze tras (nadpisuje auto-klasyfikację) | `VehicleTypeCategoriesController.php`, `VehicleTypeCategoriesTable.php`, `VehicleTypeCategory.php`, `templates/VehicleTypeCategories/*`, migracja `CreateVehicleTypeCategories`, `templates/RoutePlanner/index.php`, `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-05-28 | Feat: Kanban rozliczeń `/rozliczenia/kanban` — 6 kolumn (W terminie, Wysłane, Za 7 dni, Przeterminowane, Spór, Opłacone), drag-drop, kebab menu na karcie, notatki + activity log, snooze, severity gradient, mini-stats (DSO, Inkaso, At-risk), saved views (localStorage), bulk actions, compact mode, assign do usera, AI: następna akcja | `ReconciliationsController.php`, `templates/Reconciliations/kanban.php`, `templates/element/Reconciliations/kanban_card.php`, migracje, `InvoiceNotes*`, sidebar |
