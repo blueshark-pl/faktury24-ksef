@@ -2280,10 +2280,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                     'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                     // FA(3) — pola pozycji
                     'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
-                    'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
+                    'vat_amount'       => $noVat ? null : $tax, // = brutto - netto (tryb brutto) / round(netto*stawka) (tryb netto) — spójne z brutto i P_15
                     'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
                     'pkwiu'            => (string)($row['pkwiu'] ?? ''),
-                    'gross_unit_price' => round($netUnitPrice * (1 + ($rate / 100)), 2),
+                    'gross_unit_price' => $priceIsGross ? round($price, 2) : round($netUnitPrice * (1 + ($rate / 100)), 2),
                 ];
                 
                 // Grupowanie VAT
@@ -3836,10 +3836,10 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
                         'procedure_marking' => (string)($row['procedure_marking'] ?? ''),
                         // FA(3)
                         'uu_id'            => (string)($row['uu_id'] ?? \Cake\Utility\Text::uuid()),
-                        'vat_amount'       => $noVat ? null : round($netto * ($rate / 100), 2),
+                        'vat_amount'       => $noVat ? null : $tax, // = brutto - netto (tryb brutto) / round(netto*stawka) (tryb netto) — spójne z brutto i P_15
                         'line_date'        => !empty($row['line_date']) ? $row['line_date'] : null,
                         'pkwiu'            => (string)($row['pkwiu'] ?? ''),
-                        'gross_unit_price' => round($netUnitPrice * (1 + ($rate / 100)), 2),
+                        'gross_unit_price' => $priceIsGross ? round($price, 2) : round($netUnitPrice * (1 + ($rate / 100)), 2),
                     ];
                 }
             }
