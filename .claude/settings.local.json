@@ -25,7 +25,8 @@
       "Bash(grep -B2 \"templates\\\\\\\\\\\\\\\\AdminUsers\\\\\\\\\\\\\\\\index.php:198\" logs/error.log)",
       "WebFetch(domain:www.here.com)",
       "WebFetch(domain:api.cepik.gov.pl)",
-      "Bash(git -C \"g:/2025/partnersc/faktury24 — kopia\" push)"
+      "Bash(git -C \"g:/2025/partnersc/faktury24 — kopia\" push)",
+      "WebFetch(domain:matrix.router.hereapi.com)"
     ]
   }
 }

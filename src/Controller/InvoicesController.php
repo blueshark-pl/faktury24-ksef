@@ -7474,7 +7474,8 @@ HTML;
     }
 
     /**
-     * Zwraca prefiks VAT UE dla kodu kraju ISO.
+     * Zwraca prefiks VAT UE dla kodu kraju ISO (uzywany w UI/pomocnicze).
+     * UWAGA: To NIE jest KodUE do XML KSeF — dla XML uzywaj kodUEForCountry().
      * Wiekszosc krajow UE ma prefiks = kod ISO. Wyjatki:
      *   - Austria (AT) → ATU (fixed 'U' po AT, potem 8 cyfr)
      *   - Grecja  (GR) → EL  (historyczna kwestia — Grecja uzywa EL)
@@ -7485,6 +7486,48 @@ HTML;
         if ($cc === 'AT') return 'ATU';
         if ($cc === 'GR') return 'EL';
         return $cc;
+    }
+
+    /**
+     * Zwraca 2-znakowy KodUE wg XSD FA(3) TKodyKrajowUE (enum).
+     * Grecja: kod ISO GR → EL (specyfika VAT UE, patrz faktura.xsd).
+     * Zwraca pusty string jesli kraj nie jest w liscie enum.
+     */
+    private function kodUEForCountry(string $countryCode): string
+    {
+        $cc = strtoupper(trim($countryCode));
+        if ($cc === '') return '';
+        if ($cc === 'GR') return 'EL';
+        static $euCodes = [
+            'AT','BE','BG','CY','CZ','DK','EE','FI','FR','DE',
+            'EL','HR','HU','IE','IT','LV','LT','LU','MT','NL',
+            'PL','PT','RO','SK','SI','ES','SE','XI',
+        ];
+        return in_array($cc, $euCodes, true) ? $cc : '';
+    }
+
+    /**
+     * Usuwa literowy kod kraju z poczatku NrVatUE.
+     * Broszura FA(3): "NrVatUE — Numer identyfikacyjny VAT (bez literowego
+     * kodu kraju, ktory wskazano w polu KodUE)".
+     * Przyklady:
+     *   ATU12345678 + KodUE=AT → U12345678
+     *   NL822534538B01 + KodUE=NL → 822534538B01
+     *   DE123456789 + KodUE=DE → 123456789
+     *   GR123456789 + KodUE=EL → 123456789 (Grecja: alias GR→EL)
+     */
+    private function stripCountryPrefixFromVatUE(string $vatEu, string $kodUE): string
+    {
+        $vatEu = trim($vatEu);
+        if ($vatEu === '' || $kodUE === '') return $vatEu;
+        $upper = strtoupper($vatEu);
+        if (strncmp($upper, $kodUE, strlen($kodUE)) === 0) {
+            return substr($vatEu, strlen($kodUE));
+        }
+        if ($kodUE === 'EL' && strncmp($upper, 'GR', 2) === 0) {
+            return substr($vatEu, 2);
+        }
+        return $vatEu;
     }
 
     /**
@@ -7707,13 +7750,24 @@ HTML;
         }
         $xml[] = '    <DaneIdentyfikacyjne>';
         if ($buyerVatEu !== '') {
-            // VAT UE: KodUE + NrVatUE
-            // Gdy prefix nie wpisano recznie — mapuj z kodu kraju (AT→ATU, GR→EL, inne = ISO).
-            $kodUE = $buyerVatPrefix !== ''
-                ? $buyerVatPrefix
-                : ($countryCode !== 'PL' ? $this->vatPrefixForCountry($countryCode) : '');
+            // VAT UE: KodUE + NrVatUE zgodnie z XSD FA(3) TKodyKrajowUE.
+            // KodUE = 2-znakowy kod z enum (AT, EL, DE, NL...) — nie 3-znak "ATU".
+            // NrVatUE = numer VAT bez literowego kodu kraju (broszura FA(3)):
+            //   AT: ATU12345678 → KodUE=AT, NrVatUE=U12345678
+            //   NL: NL822534538B01 → KodUE=NL, NrVatUE=822534538B01
+            //   EL: EL123456789 → KodUE=EL, NrVatUE=123456789
+            $kodUE = $this->kodUEForCountry($countryCode);
+            if ($kodUE === '' && $buyerVatPrefix !== '') {
+                // Fallback: 2 pierwsze znaki prefixu VAT (ATU→AT, EL→EL, DE→DE)
+                $kodUE = $this->kodUEForCountry(substr($buyerVatPrefix, 0, 2));
+            }
+            if ($kodUE === '' && preg_match('/^([A-Z]{2})/i', $buyerVatEu, $m)) {
+                // Fallback: 2 pierwsze znaki numeru VAT
+                $kodUE = $this->kodUEForCountry(strtoupper($m[1]));
+            }
+            $nrVatUE = $this->stripCountryPrefixFromVatUE($buyerVatEu, $kodUE);
             $xml[] = '      <KodUE>' . $this->esc($kodUE) . '</KodUE>';
-            $xml[] = '      <NrVatUE>' . $this->esc($buyerVatEu) . '</NrVatUE>';
+            $xml[] = '      <NrVatUE>' . $this->esc($nrVatUE) . '</NrVatUE>';
         } elseif ($buyerTaxIdOther !== '') {
             // Inny identyfikator: opcjonalny KodKraju + NrID
             if ($buyerTaxIdOtherCountry !== '') {
