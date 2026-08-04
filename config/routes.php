@@ -84,6 +84,10 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/zlecenia/{orderId}/delete-attachment/{attachmentId}', ['controller' => 'SpeedOrders', 'action' => 'deleteAttachment'])
             ->setPass(['orderId', 'attachmentId']);
+        // Batch import CSV
+        $builder->connect('/zlecenia/import-csv',           ['controller' => 'SpeedOrders', 'action' => 'batchImport']);
+        $builder->get('/zlecenia/import-csv/szablon.csv',   ['controller' => 'SpeedOrders', 'action' => 'batchImportTemplate']);
+
         // Reczne tworzenie zlecen (source='manual')
         $builder->connect('/zlecenia/dodaj',       ['controller' => 'SpeedOrders', 'action' => 'add']);
         $builder->connect('/zlecenia/edytuj/{id}', ['controller' => 'SpeedOrders', 'action' => 'edit'])

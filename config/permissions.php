@@ -466,6 +466,7 @@ return [
                 'templatesListJson', 'templateSaveJson', 'templateDeleteJson',
                 'templateUseJson', 'templateFavoriteJson',
                 'approve', 'reject',
+                'batchImport', 'batchImportTemplate',
             ],
         ],
 

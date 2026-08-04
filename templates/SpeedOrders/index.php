@@ -129,6 +129,9 @@ foreach ($orders as $order) {
         <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-outline-primary">
             <i class="ri-add-line me-1"></i> <?= __('Nowe zlecenie') ?>
         </a>
+        <a href="<?= $this->Url->build(['action' => 'batchImport']) ?>" class="btn btn-sm btn-outline-info">
+            <i class="ri-upload-cloud-2-line me-1"></i> <?= __('Import CSV') ?>
+        </a>
         <button class="btn btn-primary btn-sm" id="btn-sync-orders">
             <i class="ri-refresh-line me-1"></i> <?= __('Synchronizuj ze Speed') ?>
         </button>

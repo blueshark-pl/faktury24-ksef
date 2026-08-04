@@ -1292,6 +1292,182 @@ class SpeedOrdersController extends AppController
     }
 
     // =========================================================================
+    // BATCH IMPORT z CSV
+    // =========================================================================
+
+    /**
+     * Formularz importu CSV + POST przetwarzania.
+     * Kolumny CSV (wymagane): buyer_name, buyer_nip, load_country, load_city,
+     *                          unload_country, unload_city, netto, currency
+     * Opcjonalne: buyer_email, buyer_street, buyer_postal_code, buyer_city,
+     *             load_postal_code, unload_name, date_deadline, date_delivery,
+     *             title1, title2, cargo_type, driver, vehicle_reg,
+     *             payment_terms, notes, contract, cargo_weight_kg, cargo_pallets,
+     *             adr_class, incoterms
+     */
+    public function batchImport(): void
+    {
+        $this->request->allowMethod(['get', 'post']);
+        $companyNip  = $this->currentCompanyNip();
+        $companyName = $this->currentCompanyName();
+
+        $preview = null;
+        $errors = [];
+        $importedCount = 0;
+        $errorRows = [];
+
+        if ($this->request->is('post')) {
+            $upload = $this->request->getUploadedFile('csv');
+            $isConfirm = (bool)$this->request->getData('confirm');
+            $csvText = (string)$this->request->getData('csv_text');
+
+            $rows = [];
+            if ($upload && $upload->getError() === UPLOAD_ERR_OK) {
+                if ($upload->getSize() > 5 * 1024 * 1024) {
+                    $errors[] = 'Plik za duzy (max 5 MB)';
+                } else {
+                    $content = (string)$upload->getStream()->getContents();
+                    $rows = $this->parseCsv($content);
+                }
+            } elseif ($isConfirm && $csvText !== '') {
+                $rows = $this->parseCsv($csvText);
+            }
+
+            if (empty($errors) && empty($rows)) {
+                $errors[] = 'CSV jest pusty lub niepoprawny';
+            }
+
+            if (!empty($rows)) {
+                // Walidacja + preview lub zapis
+                $SpeedOrders = $this->fetchTable('SpeedOrders');
+                foreach ($rows as $idx => $r) {
+                    // Wymagane pola
+                    $missing = [];
+                    foreach (['buyer_name', 'load_city', 'unload_city', 'netto'] as $req) {
+                        if (empty(trim((string)($r[$req] ?? '')))) $missing[] = $req;
+                    }
+                    if (!empty($missing)) {
+                        $errorRows[] = ['row' => $idx + 2, 'error' => 'Brak: ' . implode(', ', $missing), 'data' => $r];
+                        continue;
+                    }
+                    if (!$isConfirm) continue; // preview - nie zapisujemy
+
+                    // Zapis
+                    try {
+                        $data = $this->prepareManualOrderData($r, $companyNip, $companyName);
+                        $order = $SpeedOrders->newEntity($data);
+                        if ($SpeedOrders->save($order)) {
+                            $importedCount++;
+                        } else {
+                            $errorRows[] = ['row' => $idx + 2, 'error' => 'Walidacja: ' . json_encode($order->getErrors()), 'data' => $r];
+                        }
+                    } catch (\Throwable $e) {
+                        $errorRows[] = ['row' => $idx + 2, 'error' => $e->getMessage(), 'data' => $r];
+                    }
+                }
+
+                if ($isConfirm) {
+                    $msg = $importedCount . ' zleceń zaimportowanych';
+                    if (!empty($errorRows)) $msg .= ', ' . count($errorRows) . ' bledow';
+                    $this->Flash->success($msg);
+                    if ($importedCount > 0) {
+                        $this->redirect(['action' => 'index', '?' => ['source' => 'manual', 'sort' => 'date_doc', 'direction' => 'desc']]);
+                        return;
+                    }
+                } else {
+                    // Preview - pokaz co bedzie zapisane + carry CSV do submit z confirm=1
+                    $preview = $rows;
+                    $this->set('csvText', $content ?? $csvText);
+                }
+            }
+        }
+
+        $this->set(compact('preview', 'errors', 'errorRows', 'importedCount'));
+    }
+
+    /**
+     * Parser CSV: obsluguje separatory , ; \t; encoding UTF-8 / Win-1250;
+     * pierwsza linia = header, kolejne = dane. Zwraca array assoc rows.
+     */
+    private function parseCsv(string $content): array
+    {
+        $content = str_replace("\r\n", "\n", $content);
+        $content = ltrim($content, "\xEF\xBB\xBF"); // strip BOM
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1250');
+        }
+        $lines = explode("\n", $content);
+        if (count($lines) < 2) return [];
+
+        // Detect separator
+        $firstLine = $lines[0];
+        $sep = ',';
+        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) $sep = ';';
+        elseif (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) $sep = "\t";
+
+        $header = str_getcsv($firstLine, $sep);
+        $header = array_map(function ($h) { return trim(strtolower(trim($h)), '"'); }, $header);
+
+        $rows = [];
+        for ($i = 1; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') continue;
+            $cells = str_getcsv($line, $sep);
+            if (count($cells) < count($header)) {
+                $cells = array_pad($cells, count($header), '');
+            }
+            $row = [];
+            foreach ($header as $j => $col) {
+                $row[$col] = isset($cells[$j]) ? trim((string)$cells[$j]) : '';
+            }
+            $rows[] = $row;
+        }
+        return $rows;
+    }
+
+    /**
+     * Pobierz template CSV dla batch importu.
+     */
+    public function batchImportTemplate(): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+
+        $header = [
+            'buyer_nip', 'buyer_name', 'buyer_email', 'buyer_street', 'buyer_postal_code',
+            'buyer_city', 'buyer_country',
+            'load_country', 'load_postal_code', 'load_city',
+            'unload_country', 'unload_city', 'unload_name',
+            'date_deadline', 'date_delivery',
+            'title1', 'title2', 'cargo_type', 'transport_type',
+            'driver', 'vehicle_reg', 'carrier',
+            'contract', 'currency', 'netto', 'payment_terms', 'notes',
+            'cargo_weight_kg', 'cargo_pallets', 'adr_class', 'incoterms',
+        ];
+        $example = [
+            '1234567890', 'HB RTS Sp. z o.o.', 'kontakt@hbrts.pl', 'Wielicka 22', '30-552',
+            'Krakow', 'PL',
+            'DE', '20095', 'Hamburg',
+            'NL', 'Nijmegen', '',
+            '2026-08-10 08:00', '2026-08-11 16:00',
+            'REF-12345', 'Palety EUR x 33', 'FTL', 'plandeka',
+            'Jan Kowalski', 'GD1234A', '',
+            'OWN 1', 'EUR', '1200.00', 'Przelew 30 dni', 'Delikatny towar',
+            '18000', '33', '', 'DAP',
+        ];
+
+        $csv  = implode(';', $header) . "\n";
+        $csv .= implode(';', array_map(function ($v) {
+            return str_contains($v, ';') ? '"' . str_replace('"', '""', $v) . '"' : $v;
+        }, $example)) . "\n";
+
+        $this->response = $this->response
+            ->withType('text/csv')
+            ->withHeader('Content-Disposition', 'attachment; filename="szablon-import-zlecen.csv"')
+            ->withStringBody($csv);
+    }
+
+    // =========================================================================
     // RECZNE TWORZENIE ZLECEN (source='manual')
     // =========================================================================
 

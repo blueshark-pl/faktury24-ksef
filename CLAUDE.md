@@ -800,6 +800,39 @@ Crontab prod (przykład):
 0 8 * * * cd /home/jjgroup1srv/domains/booklio.pl/public_html && php bin/cake.php alerts
 ```
 
+### Pełne kolumny `contractor_credit_limits`
+Migracja: `20260804140000_CreateContractorCreditLimits.php`
+Limity kredytowe per kontrahent — do warnowania przy nowym zleceniu.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | |
+| `contractor_id` | uuid | FK do contractors (nullable) |
+| `contractor_nip` | string(30) | klucz matchujący z `speed_orders.buyer_nip` (LIKE) |
+| `credit_limit_pln` | decimal(12,2) | Maksymalna kwota nieopłaconych faktur w PLN |
+| `warning_threshold_pct` | int(3) | Próg % powyżej którego yellow warning (default 80%) |
+| `is_blocked` | bool | Twarda blokada — status w widoku „blocked" |
+| `block_reason` | string(500) | Powód blokady |
+| `notes` | text | |
+| UNIQUE | | (`company_id`, `contractor_nip`) |
+
+CRUD: `/limity-kredytowe`. AJAX: `/zlecenia/kredyt-klienta?nip=xxx`.
+
+### Pola approval w `speed_orders`
+Migracja: `20260804150000_AddApprovalToSpeedOrders.php`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `approval_status` | string(20) | `not_required` / `pending` / `approved` / `rejected` (indeks) |
+| `approved_by_user_id` | uuid | FK do users |
+| `approved_at` | datetime | |
+| `approval_note` | string(500) | Komentarz managera przy accept/reject |
+
+Auto-trigger: przy zapisie zlecenia brutto > `Configure.Orders.approvalThresholdPln` (default 10 000 PLN) → status = `pending`.
+
+Akcje: `POST /zlecenia/{id}/zaakceptuj|odrzuc` (tylko manager/admin, note wymagane przy reject).
+
 ### Pełne kolumny `speed_order_notes`
 Migracja: `20260804120000_CreateSpeedOrderNotes.php`
 Notatki wewnętrzne per zlecenie (analog `invoice_notes`).
@@ -989,6 +1022,9 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-08-04 | Feat: `/zlecenia/import-csv` **Batch import CSV** — masowy import zleceń z pliku CSV: parser obsługuje separatory `,;\t` (auto-detect), kodowanie UTF-8/Win-1250 (auto-convert), BOM strip; szablon CSV do pobrania z przykładowym rekordem (`/zlecenia/import-csv/szablon.csv`); flow: upload → preview (10 wierszy + tabela błędów walidacji) → confirm & bulk insert; reuse `prepareManualOrderData` dla każdego rekordu (auto-numer M-, calc VAT/brutto, approval-check, normalizacja krajów); button „Import CSV" w liście zleceń | migracja n/d, kontroler `batchImport` + `batchImportTemplate` + private `parseCsv`, `templates/SpeedOrders/batch_import.php` (upload + preview), `templates/SpeedOrders/index.php` (button) |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Approval workflow FALA 8** — akceptacja managera dla dużych zleceń: migracja `AddApprovalToSpeedOrders` (4 kolumny: `approval_status` enum not_required/pending/approved/rejected, `approved_by_user_id`, `approved_at`, `approval_note`); próg globalny w `Configure.Orders.approvalThresholdPln` (default 10 000 PLN); auto-detect w `prepareManualOrderData` — jeśli brutto (PLN, po kursie) > próg → status `pending`; akcje `approve`/`reject` z guard tylko dla ról manager/admin + wymagany note przy odrzuceniu + auto-log w `SpeedOrderNotes`; widget w formularzu (JS live hint), sekcja approval-card w widoku (color-coded + buttony Akceptuj/Odrzuć dla managera), badge iconka w liście zleceń przy symbolu | migracja, kontroler (`approve`, `reject` + `prepareManualOrderData`), Entity SpeedOrder, `add.php` (hint + JS), `view.php` (approval-card), `index.php` (badge), routes, permissions |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Kredyt klienta FALA 8** — limity kredytowe + real-time saldo: migracja `CreateContractorCreditLimits` (uuid PK: `company_id`, `contractor_id` nullable, `contractor_nip`, `credit_limit_pln`, `warning_threshold_pct` default 80, `is_blocked` + `block_reason`, UNIQUE (company_id, contractor_nip)); endpoint `GET /zlecenia/kredyt-klienta?nip=xxx` zwraca limit + saldo nieopłaconych faktur (query Invoices.remaining matching InvoiceContractors.nip → przeliczenie na PLN wg exchange_rate) + przeterminowanie + status (ok/warning/exceeded/blocked/has_overdue); widget alert color-coded w formularzu; CRUD `/limity-kredytowe` (index + add + edit + delete) dostępny dla manager/user (bez młodszego) | migracja, Table+Entity `ContractorCreditLimits`, nowy `ContractorCreditLimitsController` (index/add/edit/delete), `SpeedOrdersController::creditCheckJson`, templates dla CRUD, widget w `SpeedOrders/add.php` z fetchCredit triggerem, routes, permissions |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Templates FALA 7** — reużywalne szablony zleceń dla powtarzalnych klientów/tras: nowa tabela `speed_order_templates` (id uuid, company_id, name, description, is_favorite, payload_json, usage_count, last_used_at) + CRUD AJAX (list, save, delete, use, favorite). W formularzu button „Szablony zleceń" + modal z listą (fav pierwszy, potem sortowane po usage_count/modified) z 3 przyciskami per row (Ulubione/Usuń/Załaduj) + drugi button „Zapisz jako szablon" (ikonka zakładki) → modal z nazwą/opisem (auto-suggest nazwy z klienta+trasy). Payload zapisuje 30+ pól (buyer/load/unload/cargo/finance/incoterms). Click „Załaduj" → prefill + increment usage_count + zamknij modal | 5 nowych route + permissions, migracja `CreateSpeedOrderTemplates`, Table+Entity, kontroler (5 metod: templatesListJson, templateSaveJson, templateDeleteJson, templateUseJson, templateFavoriteJson), `add.php` (2 modale + 200 lines JS) |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Notatki + fix NBP FALA 5-6** — (1) nowa tabela `speed_order_notes` (uuid, note_type=note/system/reminder/phone_call/email) + Table+Entity + helper `logSystem()`, kontroler `noteAdd`/`noteDelete` z guard company_id + author/admin, sekcja notatek w `view.php` z formularzem dodania (typ dropdown + textarea) i listą (ikonka+kolor per typ, autor, timestamp, button usuń); (2) **fix kursu NBP** — pole exchange_rate w Finansach teraz auto-fetchuje ostatni kurs z NBP dla wybranej waluty przez `GET /nbp/rates?code=X&from&to` (zakres 7 dni wstecz od date_doc, bierze ostatni mid), title pola pokazuje datę+tabelę NBP, cache w JS żeby uniknąć duplicate fetch; (3) **pola spedycyjne** — migracja `AddCargoFieldsToSpeedOrders` z 14 nowymi kolumnami (cargo_weight_kg/volume_m3/ldm/pallets/pallet_type, adr_class/adr_un/temperature_min/max, incoterms/incoterms_place, cmr_number, insurance_value/currency) + Entity docblock + rozszerzony accordion „Więcej opcji" z 3 podsekcjami + AI parser JSON schema + JS mapping obejmuje nowe pola | 2 migracje, 2 nowe Tables+Entities, kontroler (noteAdd/noteDelete), `view.php` (sekcja notatek), `add.php` (accordion + JS NBP fetch), Entity SpeedOrder |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Analytics FALA 5** — mini-profil klienta w formularzu po wpisaniu NIP: nowy endpoint `GET /zlecenia/profil-klienta?nip=xxx` zwraca 12-miesięczne statystyki (liczba zleceń, avg netto, suma, ostatnie zlecenie, TOP trasa, DSO z faktur przez `Invoices` matching `InvoiceContractors.nip`, ostatnie 3 zlecenia). Collapsible card pod polami Nabywca z 5 KPI + toggle „szczegóły" → TOP trasa + badgy zleceń z linkami | `SpeedOrdersController::buyerProfileJson`, `templates/SpeedOrders/add.php` (widget + JS `fetchBuyerProfile`), routes.php, permissions.php |
