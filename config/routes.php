@@ -117,6 +117,15 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/profil-klienta',       ['controller' => 'SpeedOrders', 'action' => 'buyerProfileJson']);
         $builder->get('/zlecenia/kredyt-klienta',       ['controller' => 'SpeedOrders', 'action' => 'creditCheckJson']);
 
+        // Katalog palet (globalne + custom per firma)
+        $builder->get('/palety',                        ['controller' => 'PalletTypes', 'action' => 'index']);
+        $builder->connect('/palety/dodaj',              ['controller' => 'PalletTypes', 'action' => 'add']);
+        $builder->connect('/palety/edytuj/{id}',        ['controller' => 'PalletTypes', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/palety/usun/{id}',             ['controller' => 'PalletTypes', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/palety/lista.json',             ['controller' => 'PalletTypes', 'action' => 'listJson']);
+
         // Limity kredytowe klientow (CRUD)
         $builder->get('/limity-kredytowe',              ['controller' => 'ContractorCreditLimits', 'action' => 'index']);
         $builder->connect('/limity-kredytowe/dodaj',    ['controller' => 'ContractorCreditLimits', 'action' => 'add']);

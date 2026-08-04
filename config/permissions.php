@@ -451,6 +451,11 @@ return [
         ],
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'PalletTypes',
+            'action' => ['index', 'add', 'edit', 'delete', 'listJson'],
+        ],
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'SpeedOrders',
             'action' => [
                 'index', 'dashboard', 'exportCsv', 'exportXlsx', 'view', 'viewModal',
