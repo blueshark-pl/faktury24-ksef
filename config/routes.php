@@ -104,6 +104,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/plany-tras',           ['controller' => 'SpeedOrders', 'action' => 'routePlansJson']);
         $builder->get('/zlecenia/pdf/{id}',             ['controller' => 'SpeedOrders', 'action' => 'pdfConfirmation'])
             ->setPass(['id']);
+        $builder->get('/zlecenia/profil-klienta',       ['controller' => 'SpeedOrders', 'action' => 'buyerProfileJson']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

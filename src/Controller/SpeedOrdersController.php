@@ -1461,6 +1461,129 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: mini-profil kontrahenta - statystyki wspolpracy.
+     * GET /zlecenia/profil-klienta?nip=xxx
+     * Zwraca: liczba zlecen ostatnie 12 mies, avg netto, top trasa,
+     * ostatnie 3 zlecenia, srednia zwloki platnosci (DSO z faktur).
+     */
+    public function buyerProfileJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $nipRaw = trim((string)$this->request->getQuery('nip', ''));
+        $nip = preg_replace('/\D+/', '', $nipRaw);
+        if (strlen($nip) < 5) {
+            $this->jsonResp(['ok' => true, 'found' => false]);
+            return;
+        }
+
+        $companyNip = $this->currentCompanyNip();
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+
+        $cutoff = (new \DateTime('-12 months'))->format('Y-m-d');
+
+        // Podstawowe agregacje
+        $stats = $SpeedOrders->find()
+            ->select([
+                'cnt'      => 'COUNT(*)',
+                'avg_net'  => 'AVG(SpeedOrders.netto)',
+                'sum_net'  => 'SUM(SpeedOrders.netto)',
+                'max_date' => 'MAX(SpeedOrders.date_doc)',
+            ])
+            ->where([
+                'SpeedOrders.company_nip' => $companyNip,
+                'SpeedOrders.buyer_nip LIKE' => '%' . $nip,
+                'SpeedOrders.date_doc >=' => $cutoff,
+            ])
+            ->disableHydration()
+            ->first();
+
+        if (!$stats || (int)($stats['cnt'] ?? 0) === 0) {
+            $this->jsonResp(['ok' => true, 'found' => false]);
+            return;
+        }
+
+        // Top trasa (najczestsza)
+        $topRoute = $SpeedOrders->find()
+            ->select([
+                'load_city'   => 'SpeedOrders.load_city',
+                'unload_city' => 'SpeedOrders.unload_city',
+                'cnt'         => 'COUNT(*)',
+            ])
+            ->where([
+                'SpeedOrders.company_nip' => $companyNip,
+                'SpeedOrders.buyer_nip LIKE' => '%' . $nip,
+                'SpeedOrders.date_doc >=' => $cutoff,
+                'SpeedOrders.load_city IS NOT' => null,
+                'SpeedOrders.unload_city IS NOT' => null,
+            ])
+            ->group(['SpeedOrders.load_city', 'SpeedOrders.unload_city'])
+            ->orderByDesc('cnt')
+            ->limit(1)
+            ->disableHydration()
+            ->first();
+
+        // Ostatnie 3 zlecenia
+        $recent = $SpeedOrders->find()
+            ->select(['id', 'symbol', 'date_doc', 'load_city', 'unload_city', 'netto', 'currency'])
+            ->where([
+                'SpeedOrders.company_nip' => $companyNip,
+                'SpeedOrders.buyer_nip LIKE' => '%' . $nip,
+            ])
+            ->orderByDesc('date_doc')
+            ->orderByDesc('id')
+            ->limit(3)
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        // DSO z faktur: srednia (paymentdate - issueddate) dla oplaconych
+        // (zwloka moze byc ujemna gdy oplacone przed terminem)
+        $dso = null;
+        try {
+            $Invoices = $this->fetchTable('Invoices');
+            $dsoRow = $Invoices->find()
+                ->select(['avg_days' => 'AVG(DATEDIFF(Invoices.paymentdate, Invoices.issueddate))'])
+                ->matching('InvoiceContractors', function ($q) use ($nip) {
+                    return $q->where(['InvoiceContractors.nip LIKE' => '%' . $nip]);
+                })
+                ->where([
+                    'Invoices.paymentstate' => 'paid',
+                    'Invoices.paymentdate IS NOT' => null,
+                    'Invoices.issueddate IS NOT' => null,
+                ])
+                ->disableHydration()
+                ->first();
+            if ($dsoRow && $dsoRow['avg_days'] !== null) {
+                $dso = round((float)$dsoRow['avg_days'], 1);
+            }
+        } catch (\Throwable) {}
+
+        $this->jsonResp([
+            'ok'    => true,
+            'found' => true,
+            'stats' => [
+                'orders_12m'     => (int)$stats['cnt'],
+                'avg_net'        => round((float)$stats['avg_net'], 2),
+                'sum_net'        => round((float)$stats['sum_net'], 2),
+                'last_order'     => $stats['max_date'],
+                'top_route'      => $topRoute ? ($topRoute['load_city'] . ' -> ' . $topRoute['unload_city']) : null,
+                'top_route_cnt'  => $topRoute ? (int)$topRoute['cnt'] : 0,
+                'dso_days'       => $dso,
+            ],
+            'recent' => array_map(function ($r) {
+                return [
+                    'id'          => $r['id'],
+                    'symbol'      => $r['symbol'],
+                    'date_doc'    => $r['date_doc'] instanceof \DateTimeInterface ? $r['date_doc']->format('Y-m-d') : $r['date_doc'],
+                    'route'       => trim(($r['load_city'] ?? '') . ' -> ' . ($r['unload_city'] ?? '')),
+                    'amount'      => round((float)$r['netto'], 2),
+                    'currency'    => $r['currency'],
+                ];
+            }, $recent),
+        ]);
+    }
+
+    /**
      * AJAX: ostatnie zlecenie dla danego NIP klienta.
      * Uzywane w formularzu /zlecenia/dodaj do 'prefill z ostatniego zlecenia'.
      * Zwraca dane trasy + finansow + kontraktu (bez dat i numeru).

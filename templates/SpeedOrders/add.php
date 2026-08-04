@@ -295,6 +295,31 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             </div>
             <div id="buyer-results" class="list-group mb-2 d-none" style="max-height:200px;overflow-y:auto"></div>
 
+            <!-- Mini-profil klienta (historia wspolpracy) -->
+            <div id="so-profile-wrap" class="mb-2 d-none">
+                <div class="card border-0" style="background:#f8fafc;border-left:3px solid #6366f1 !important">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-semibold small text-uppercase text-muted">
+                                <i class="ri-user-star-line me-1 text-primary"></i><?= __('Profil klienta (12 mies)') ?>
+                            </span>
+                            <span class="so-hint" id="so-profile-last"></span>
+                        </div>
+                        <div class="row g-2 small">
+                            <div class="col-md-2"><span class="so-hint">Zlecenia:</span> <strong id="so-profile-cnt">-</strong></div>
+                            <div class="col-md-3"><span class="so-hint">Śr. netto:</span> <strong id="so-profile-avg">-</strong></div>
+                            <div class="col-md-3"><span class="so-hint">Suma:</span> <strong id="so-profile-sum">-</strong></div>
+                            <div class="col-md-2"><span class="so-hint">DSO:</span> <strong id="so-profile-dso">-</strong></div>
+                            <div class="col-md-2 text-end"><a href="#" id="so-profile-toggle" class="small text-decoration-none"><?= __('szczegóły') ?></a></div>
+                        </div>
+                        <div id="so-profile-detail" class="mt-2 pt-2 border-top d-none">
+                            <div class="so-hint mb-1" id="so-profile-route"></div>
+                            <div id="so-profile-recent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Prefill z ostatniego zlecenia klienta -->
             <div id="so-lastclient-box" class="so-lastclient-suggestion mb-2 d-none">
                 <div class="d-flex justify-content-between align-items-center">
@@ -935,7 +960,54 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         $results.classList.add('d-none');
         $search.value = '';
         checkLastForBuyer(nip);
+        fetchBuyerProfile(nip);
     });
+
+    // ===== MINI-PROFIL KLIENTA (historia wspolpracy) =====
+    var $pfWrap    = document.getElementById('so-profile-wrap');
+    var $pfCnt     = document.getElementById('so-profile-cnt');
+    var $pfAvg     = document.getElementById('so-profile-avg');
+    var $pfSum     = document.getElementById('so-profile-sum');
+    var $pfDso     = document.getElementById('so-profile-dso');
+    var $pfLast    = document.getElementById('so-profile-last');
+    var $pfRoute   = document.getElementById('so-profile-route');
+    var $pfRecent  = document.getElementById('so-profile-recent');
+    var $pfDetail  = document.getElementById('so-profile-detail');
+    var $pfToggle  = document.getElementById('so-profile-toggle');
+
+    $pfToggle.addEventListener('click', function(e){
+        e.preventDefault();
+        $pfDetail.classList.toggle('d-none');
+    });
+
+    function fetchBuyerProfile(nip) {
+        var digits = (nip || '').replace(/\D+/g, '');
+        if (digits.length < 5) { $pfWrap.classList.add('d-none'); return; }
+        fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'buyerProfileJson']) ?>?nip=' + encodeURIComponent(digits),
+              { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok || !j.found) { $pfWrap.classList.add('d-none'); return; }
+            var s = j.stats;
+            $pfCnt.textContent = s.orders_12m;
+            $pfAvg.textContent = s.avg_net.toLocaleString('pl-PL', {minimumFractionDigits: 0}) + ' zł';
+            $pfSum.textContent = s.sum_net.toLocaleString('pl-PL', {minimumFractionDigits: 0}) + ' zł';
+            $pfDso.textContent = s.dso_days !== null ? s.dso_days + ' dni' : '-';
+            $pfLast.textContent = s.last_order ? 'Ostatnio: ' + s.last_order : '';
+            $pfRoute.innerHTML = s.top_route
+                ? '<strong>TOP trasa:</strong> ' + s.top_route + ' (' + s.top_route_cnt + 'x)'
+                : '';
+            var recent = (j.recent || []).map(function(o){
+                return '<a href="/zlecenia/view/' + o.id + '" target="_blank" class="badge bg-white border text-dark me-1 mb-1 text-decoration-none">' +
+                       '<code>' + o.symbol + '</code> · ' + o.date_doc + ' · ' + o.route + ' · <strong>' +
+                       o.amount.toLocaleString('pl-PL') + ' ' + o.currency + '</strong></a>';
+            }).join(' ');
+            $pfRecent.innerHTML = recent
+                ? '<div class="so-hint mb-1">Ostatnie zlecenia:</div>' + recent
+                : '';
+            $pfWrap.classList.remove('d-none');
+        }).catch(function(){ $pfWrap.classList.add('d-none'); });
+    }
 
     // ===== Prefill z ostatniego zlecenia klienta =====
     var $lcBox = document.getElementById('so-lastclient-box');
@@ -965,9 +1037,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     }
 
     var $nipInput = document.getElementById('buyer-nip');
-    $nipInput.addEventListener('blur', function(){ checkLastForBuyer($nipInput.value); });
+    $nipInput.addEventListener('blur', function(){ checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); });
     // Sprawdz od razu jesli NIP juz jest wypelniony (np. duplikat)
-    if ($nipInput.value.trim()) checkLastForBuyer($nipInput.value);
+    if ($nipInput.value.trim()) { checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); }
 
     $lcUse.addEventListener('click', function(){
         if (!lastOrderData) return;
@@ -1869,7 +1941,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 onCur(); // update kurs jesli waluta zmieniona
                 schedulePricingCheck();
                 scheduleHereRoute();
-                if (d.buyer_nip) checkLastForBuyer(d.buyer_nip);
+                if (d.buyer_nip) { checkLastForBuyer(d.buyer_nip); fetchBuyerProfile(d.buyer_nip); }
 
                 // Zamknij modal po 3 sek
                 setTimeout(function(){
