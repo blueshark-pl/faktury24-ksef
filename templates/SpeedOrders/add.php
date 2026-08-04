@@ -876,17 +876,49 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     $cur.addEventListener('change', calc);
     calc();
 
-    // ===== Currency change: exchange_rate readonly for PLN =====
+    // ===== Currency change: exchange_rate = kurs NBP z dnia dokumentu =====
     var $rateFx = document.getElementById('fin-rate');
+    var lastFetchedRateKey = ''; // 'EUR|2026-08-04' cache
+
+    function fetchNbpRate(code, dateStr) {
+        // Wolamy z zakresem ostatnich 7 dni (obejmuje weekend/swieta) -> bierzemy ostatni
+        var toDate   = new Date(dateStr + 'T00:00:00');
+        var fromDate = new Date(toDate.getTime() - 7 * 86400000);
+        var from = fromDate.toISOString().slice(0, 10);
+        var to   = dateStr;
+        var key  = code + '|' + to;
+        if (key === lastFetchedRateKey) return; // avoid duplicate fetch
+
+        $rateFx.classList.add('bg-light');
+        fetch('/nbp/rates?code=' + encodeURIComponent(code) + '&from=' + from + '&to=' + to,
+              { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            $rateFx.classList.remove('bg-light');
+            if (!j.success || !j.rates || j.rates.length === 0) return;
+            var last = j.rates[j.rates.length - 1];
+            $rateFx.value = parseFloat(last.mid).toFixed(6);
+            $rateFx.title = 'Kurs NBP ' + code + ' z ' + last.effectiveDate + ' (tabela ' + (j.table || '') + ')';
+            lastFetchedRateKey = key;
+        })
+        .catch(function(){ $rateFx.classList.remove('bg-light'); });
+    }
+
     function onCur() {
         if ($cur.value === 'PLN') {
             $rateFx.value = '1.000000';
             $rateFx.setAttribute('readonly', 'readonly');
+            $rateFx.title = 'PLN = kurs 1.0';
         } else {
             $rateFx.removeAttribute('readonly');
+            var dateStr = ($form.elements.date_doc.value || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+            fetchNbpRate($cur.value, dateStr);
         }
     }
     $cur.addEventListener('change', onCur);
+    $form.elements.date_doc.addEventListener('change', function(){
+        if ($cur.value !== 'PLN') onCur();
+    });
     onCur();
 
     // ===== Skróty klawiszowe =====

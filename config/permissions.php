@@ -457,6 +457,7 @@ return [
                 'routeCalcJson', 'aiParseOrderJson',
                 'conflictCheckJson', 'freeResourcesJson', 'routePlansJson',
                 'pdfConfirmation', 'buyerProfileJson',
+                'noteAdd', 'noteDelete',
             ],
         ],
 

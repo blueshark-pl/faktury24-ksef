@@ -416,7 +416,20 @@ class SpeedOrdersController extends AppController
             $attachmentLabels = [];
         }
 
-        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'logAvatarMap', 'attachments', 'attachmentLabels'));
+        // Notatki wewnetrzne
+        $notes = [];
+        try {
+            $notes = $this->fetchTable('SpeedOrderNotes')->find()
+                ->contain(['Users' => function ($q) {
+                    return $q->select(['id', 'first_name', 'last_name', 'username']);
+                }])
+                ->where(['SpeedOrderNotes.speed_order_id' => $id])
+                ->orderByDesc('SpeedOrderNotes.created')
+                ->all()
+                ->toList();
+        } catch (\Throwable) {}
+
+        $this->set(compact('order', 'rawData', 'costInvoices', 'statusLogs', 'logAvatarMap', 'attachments', 'attachmentLabels', 'notes'));
     }
 
     // -------------------------------------------------------------------------
@@ -2219,6 +2232,79 @@ SYS;
         } catch (\Throwable) {}
 
         $this->jsonResp(['ok' => true, 'items' => $rows]);
+    }
+
+    /**
+     * POST /zlecenia/{id}/notatka - dodaj notatke do zlecenia.
+     */
+    public function noteAdd(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->getIdentifier();
+
+        $body = trim((string)$this->request->getData('body', ''));
+        $type = trim((string)$this->request->getData('note_type', 'note'));
+
+        if ($body === '') {
+            $this->Flash->error(__('Treść notatki nie może być pusta.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        try {
+            $SON = $this->fetchTable('SpeedOrderNotes');
+            $note = $SON->newEntity([
+                'company_id'     => $companyId,
+                'speed_order_id' => $id,
+                'user_id'        => $userId,
+                'note_type'      => in_array($type, ['note','reminder','phone_call','email'], true) ? $type : 'note',
+                'body'           => $body,
+            ]);
+            if ($SON->save($note)) {
+                $this->Flash->success(__('Notatka dodana.'));
+            } else {
+                $this->Flash->error(__('Nie udało się zapisać notatki.'));
+            }
+        } catch (\Throwable $e) {
+            $this->Flash->error(__('Błąd: {0}', $e->getMessage()));
+        }
+        $this->redirect(['action' => 'view', $id]);
+    }
+
+    /**
+     * POST /zlecenia/notatka/{noteId}/usun - usun notatke (autor + admin).
+     */
+    public function noteDelete(string $noteId): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->getIdentifier();
+        $isAdmin   = (bool)($identity?->get('is_admin') ?? false)
+            || (string)($identity?->get('role') ?? '') === 'admin';
+
+        try {
+            $SON = $this->fetchTable('SpeedOrderNotes');
+            $note = $SON->get($noteId);
+            if ((string)$note->company_id !== (string)$companyId) {
+                throw new NotFoundException();
+            }
+            // Autor albo admin
+            if (!$isAdmin && (string)$note->user_id !== (string)$userId) {
+                $this->Flash->error(__('Nie masz uprawnień do usunięcia tej notatki.'));
+                $this->redirect(['action' => 'view', $note->speed_order_id]);
+                return;
+            }
+            $orderId = (int)$note->speed_order_id;
+            $SON->delete($note);
+            $this->Flash->success(__('Notatka usunięta.'));
+            $this->redirect(['action' => 'view', $orderId]);
+        } catch (\Throwable $e) {
+            $this->Flash->error(__('Błąd: {0}', $e->getMessage()));
+            $this->redirect(['action' => 'index']);
+        }
     }
 
     /**

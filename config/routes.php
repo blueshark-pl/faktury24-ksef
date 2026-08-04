@@ -105,6 +105,10 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/pdf/{id}',             ['controller' => 'SpeedOrders', 'action' => 'pdfConfirmation'])
             ->setPass(['id']);
         $builder->get('/zlecenia/profil-klienta',       ['controller' => 'SpeedOrders', 'action' => 'buyerProfileJson']);
+        $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/notatka/{noteId}/usun', ['controller' => 'SpeedOrders', 'action' => 'noteDelete'])
+            ->setPass(['noteId']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

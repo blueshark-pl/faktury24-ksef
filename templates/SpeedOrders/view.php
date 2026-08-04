@@ -1230,6 +1230,92 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- NOTATKI WEWNETRZNE                                                        -->
+<div class="card border-0 shadow-sm mb-3" id="notes-card">
+    <div class="card-header py-2 bg-white d-flex align-items-center gap-2 border-bottom">
+        <i class="ri-chat-3-line text-primary"></i>
+        <span class="fw-semibold">Notatki wewnętrzne</span>
+        <span class="badge bg-primary-subtle text-primary ms-1"><?= count($notes ?? []) ?></span>
+    </div>
+    <div class="card-body">
+        <?= $this->Form->create(null, ['url' => ['action' => 'noteAdd', $order->id], 'type' => 'post', 'class' => 'mb-3']) ?>
+            <div class="row g-2">
+                <div class="col-md-2">
+                    <?= $this->Form->select('note_type', [
+                        'note'       => 'Notatka',
+                        'reminder'   => 'Przypomnienie',
+                        'phone_call' => 'Rozmowa tel.',
+                        'email'      => 'Email',
+                    ], ['class' => 'form-select form-select-sm', 'value' => 'note']) ?>
+                </div>
+                <div class="col-md-8">
+                    <?= $this->Form->textarea('body', ['class' => 'form-control form-control-sm', 'rows' => 1, 'placeholder' => 'Nowa notatka...', 'required' => true]) ?>
+                </div>
+                <div class="col-md-2 text-end">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <i class="ri-add-line me-1"></i>Dodaj
+                    </button>
+                </div>
+            </div>
+        <?= $this->Form->end() ?>
+
+        <?php if (empty($notes)): ?>
+            <div class="text-muted small text-center py-3">Brak notatek. Dodaj pierwszą powyżej.</div>
+        <?php else: ?>
+            <div class="list-group list-group-flush">
+                <?php foreach ($notes as $note): ?>
+                    <?php
+                    $typeIcon = [
+                        'note' => 'ri-sticky-note-line',
+                        'system' => 'ri-settings-line',
+                        'reminder' => 'ri-alarm-line',
+                        'phone_call' => 'ri-phone-line',
+                        'email' => 'ri-mail-line',
+                    ][$note->note_type] ?? 'ri-chat-3-line';
+                    $typeColor = [
+                        'note' => 'primary',
+                        'system' => 'secondary',
+                        'reminder' => 'warning',
+                        'phone_call' => 'success',
+                        'email' => 'info',
+                    ][$note->note_type] ?? 'primary';
+                    $authorName = $note->user
+                        ? trim(($note->user->first_name ?? '') . ' ' . ($note->user->last_name ?? '')) ?: ($note->user->username ?? '?')
+                        : 'system';
+                    ?>
+                    <div class="list-group-item px-0 py-2 border-bottom">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="small">
+                                    <i class="<?= h($typeIcon) ?> text-<?= h($typeColor) ?> me-1"></i>
+                                    <strong><?= h($authorName) ?></strong>
+                                    <span class="text-muted ms-2" style="font-size:.72rem">
+                                        <?= h($note->created->format('Y-m-d H:i')) ?>
+                                    </span>
+                                    <span class="badge bg-<?= h($typeColor) ?>-subtle text-<?= h($typeColor) ?> ms-1" style="font-size:.65rem"><?= h($note->note_type) ?></span>
+                                </div>
+                                <div class="mt-1 small" style="white-space: pre-wrap"><?= h($note->body) ?></div>
+                            </div>
+                            <div>
+                                <?= $this->Form->postLink(
+                                    '<i class="ri-delete-bin-line"></i>',
+                                    ['action' => 'noteDelete', $note->id],
+                                    [
+                                        'escape' => false,
+                                        'class' => 'btn btn-sm btn-link text-danger p-0',
+                                        'title' => 'Usuń',
+                                        'confirm' => 'Usunąć notatkę?',
+                                    ]
+                                ) ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- ZAŁĄCZNIKI CMR                                                          -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <div class="card border-0 shadow-sm mb-3" id="cmr-card">
