@@ -11,6 +11,9 @@ use Cake\ORM\Entity;
  * @property int         $line_index
  * @property string|null $product_code
  * @property string|null $product_name
+ * @property string|null $pallet_type_id
+ * @property string|null $pallet_code
+ * @property \App\Model\Entity\PalletType|null $pallet_type
  * @property bool        $is_dry
  * @property bool        $is_wrapped
  * @property bool        $is_strapped

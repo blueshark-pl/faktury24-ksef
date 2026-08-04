@@ -1254,6 +1254,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                         <th style="width:40px">#</th>
                         <th style="width:70px">Kod</th>
                         <th>Nazwa</th>
+                        <th style="width:120px">Paleta</th>
                         <th class="text-center" title="Dry">Dry</th>
                         <th class="text-center" title="Wrapping">Wrap</th>
                         <th class="text-center" title="Strapping">Strap</th>
@@ -1271,6 +1272,13 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                             <td class="text-muted"><?= (int)$ci->line_index ?></td>
                             <td><code><?= h($ci->product_code ?? '-') ?></code></td>
                             <td><?= h($ci->product_name ?? '-') ?></td>
+                            <td class="small">
+                                <?php if ($ci->pallet_type): ?>
+                                    <span class="badge bg-warning-subtle text-warning" title="<?= h($ci->pallet_type->name) ?>"><?= h($ci->pallet_type->code) ?></span>
+                                <?php elseif ($ci->pallet_code): ?>
+                                    <span class="badge bg-secondary-subtle text-secondary" title="Poza katalogiem"><?= h($ci->pallet_code) ?></span>
+                                <?php endif; ?>
+                            </td>
                             <td class="text-center"><?= $ci->is_dry ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
                             <td class="text-center"><?= $ci->is_wrapped ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
                             <td class="text-center"><?= $ci->is_strapped ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
@@ -1287,7 +1295,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 </tbody>
                 <tfoot class="table-light fw-bold">
                     <tr>
-                        <th colspan="8" class="text-end">Suma:</th>
+                        <th colspan="9" class="text-end">Suma:</th>
                         <th class="text-center"><?= $ci_totalAdv > 0 ? number_format($ci_totalAdv, 0, ',', ' ') : '-' ?></th>
                         <th class="text-center <?= ($ci_totalReal > 0 && $ci_totalReal != $ci_totalAdv) ? 'text-danger' : '' ?>">
                             <?= $ci_totalReal > 0 ? number_format($ci_totalReal, 0, ',', ' ') : '-' ?>

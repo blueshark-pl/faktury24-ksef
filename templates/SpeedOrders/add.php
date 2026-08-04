@@ -844,6 +844,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         <tr>
                             <th style="width:60px">Kod</th>
                             <th>Nazwa / produkt</th>
+                            <th style="width:130px">Paleta</th>
                             <th class="text-center" style="width:50px" title="Dry">Dry</th>
                             <th class="text-center" style="width:50px" title="Wrapping">Wrap</th>
                             <th class="text-center" style="width:50px" title="Strapping">Strap</th>
@@ -867,6 +868,17 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                             <tr class="so-cargo-row" data-idx="<?= $cIdx ?>">
                                 <td><input type="text" name="speed_order_cargo_items[<?= $cIdx ?>][product_code]" class="form-control form-control-sm" value="<?= h($ci->product_code ?? '') ?>" maxlength="60"></td>
                                 <td><input type="text" name="speed_order_cargo_items[<?= $cIdx ?>][product_name]" class="form-control form-control-sm" value="<?= h($ci->product_name ?? '') ?>" maxlength="255"></td>
+                                <td>
+                                    <select name="speed_order_cargo_items[<?= $cIdx ?>][pallet_type_id]" class="form-select form-select-sm">
+                                        <option value=""></option>
+                                        <?php foreach ($palletTypes as $pt): ?>
+                                            <option value="<?= h($pt['id']) ?>" data-code="<?= h($pt['code']) ?>" <?= ($ci->pallet_type_id ?? '') === $pt['id'] ? 'selected' : '' ?>>
+                                                <?= h($pt['code']) ?><?= $pt['manufacturer'] ? ' (' . h($pt['manufacturer']) . ')' : '' ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <input type="hidden" name="speed_order_cargo_items[<?= $cIdx ?>][pallet_code]" value="<?= h($ci->pallet_code ?? '') ?>">
+                                </td>
                                 <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_dry]" value="1" class="form-check-input" <?= !empty($ci->is_dry) ? 'checked' : '' ?>></td>
                                 <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_wrapped]" value="1" class="form-check-input" <?= !empty($ci->is_wrapped) ? 'checked' : '' ?>></td>
                                 <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_strapped]" value="1" class="form-check-input" <?= !empty($ci->is_strapped) ? 'checked' : '' ?>></td>
@@ -891,7 +903,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                     </tbody>
                     <tfoot id="so-cargo-summary" class="table-light" <?= empty($existingCargo) ? 'style="display:none"' : '' ?>>
                         <tr>
-                            <th colspan="7" class="text-end">Suma:</th>
+                            <th colspan="8" class="text-end">Suma:</th>
                             <th class="text-center" id="so-cargo-sum-adv">-</th>
                             <th class="text-center" id="so-cargo-sum-real">-</th>
                             <th class="text-end" id="so-cargo-sum-weight">-</th>
@@ -3083,6 +3095,22 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         }
                         setF('[name$="[product_code]"]', ci.product_code || '');
                         setF('[name$="[product_name]"]', ci.product_name || '');
+                        // Paleta: auto-match dropdown po pallet_code + zapisz fallback do hidden
+                        if (ci.pallet_code) {
+                            var codeUp = String(ci.pallet_code).toUpperCase();
+                            var sel = row.querySelector('select[name$="[pallet_type_id]"]');
+                            if (sel) {
+                                var matched = false;
+                                Array.from(sel.options).forEach(function(opt){
+                                    if (opt.dataset.code && opt.dataset.code.toUpperCase() === codeUp) {
+                                        sel.value = opt.value;
+                                        matched = true;
+                                    }
+                                });
+                            }
+                            var hid = row.querySelector('[name$="[pallet_code]"]');
+                            if (hid) hid.value = ci.pallet_code;
+                        }
                         setChk('[name$="[is_dry]"]', ci.is_dry);
                         setChk('[name$="[is_wrapped]"]', ci.is_wrapped);
                         setChk('[name$="[is_strapped]"]', ci.is_strapped);
@@ -3200,10 +3228,19 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var $sumWeight  = document.getElementById('so-cargo-sum-weight');
     var cargoIdx    = $cargoList.querySelectorAll('.so-cargo-row').length;
 
+    // Build palety options HTML (raz - cache)
+    var PALLET_OPTIONS = <?= json_encode(array_map(fn($p) => ['id' => $p['id'], 'code' => $p['code'], 'mfr' => $p['manufacturer'] ?? ''], $palletTypes ?? [])) ?>;
+    var palletOptsHtml = '<option value=""></option>';
+    PALLET_OPTIONS.forEach(function(p){
+        palletOptsHtml += '<option value="' + p.id + '" data-code="' + p.code + '">' + p.code + (p.mfr ? ' (' + p.mfr + ')' : '') + '</option>';
+    });
+
     function cargoRowHtml(idx) {
         return '<tr class="so-cargo-row" data-idx="' + idx + '">' +
             '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_code]" class="form-control form-control-sm" maxlength="60" placeholder="17"></td>' +
             '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_name]" class="form-control form-control-sm" maxlength="255" placeholder="COMBO 285 BD 5R"></td>' +
+            '<td><select name="speed_order_cargo_items[' + idx + '][pallet_type_id]" class="form-select form-select-sm">' + palletOptsHtml + '</select>' +
+                '<input type="hidden" name="speed_order_cargo_items[' + idx + '][pallet_code]" value=""></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_dry]" value="1" class="form-check-input"></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_wrapped]" value="1" class="form-check-input"></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_strapped]" value="1" class="form-check-input"></td>' +

@@ -360,7 +360,7 @@ class SpeedOrdersController extends AppController
                         ->orderByAsc('AllInvoices.date');
                 },
                 'SpeedOrderStops',
-                'SpeedOrderCargoItems',
+                'SpeedOrderCargoItems' => ['PalletTypes'],
             ])
             ->firstOrFail();
         $rawData = null;
@@ -451,7 +451,7 @@ class SpeedOrdersController extends AppController
                         ->orderByAsc('AllInvoices.date');
                 },
                 'SpeedOrderStops',
-                'SpeedOrderCargoItems',
+                'SpeedOrderCargoItems' => ['PalletTypes'],
             ])
             ->firstOrFail();
         $rawData = null;
@@ -1943,6 +1943,7 @@ class SpeedOrdersController extends AppController
         $this->set('vehicles',      $this->loadVehiclesForSelect());
         $this->set('recentInMonth', $this->loadRecentManualInMonth($companyNip));
         $this->set('hereApiKey',    (string)\Cake\Core\Configure::read('Here.apiKey'));
+        $this->set('palletTypes',   $this->loadPalletTypesForSelect());
         $this->render('add');
     }
 
@@ -2883,6 +2884,7 @@ poprawny JSON o dokladnie tej strukturze:
     {
       "product_code": "kod / ID / SKU produktu (np. '17' lub 'COMBO-285-BD-5R') lub pusty",
       "product_name": "nazwa/opis produktu (np. 'COMBO 285 BD 5R')",
+      "pallet_code": "kod TYPU palety (jesli rozpoznajesz z Item Name) np. EUR, H1, L1, CR3, COMBO-285-BD-5R lub pusty",
       "is_dry": false,
       "is_wrapped": false,
       "is_strapped": false,
@@ -2948,6 +2950,23 @@ CARGO ITEMS w multi-stop:
   i Stop 3 - to zwykle ten sam ladunek podnoszony i dostarczany) - dodaj TYLKO RAZ.
 - Format "PRODUCT (CODE)" w Item Name: wyciagnij CODE do product_code, resztę do product_name.
 - product_code = "03", product_name = "H1 BLUE 800X1200"
+
+ROZPOZNAWANIE TYPU PALETY (pallet_code):
+- Popularne kody palet ktore mozesz rozpoznac w Item Name / tekscie:
+  * Standard EU: EUR (EPAL 1), EPAL-2, EPAL-3, EPAL-6, DISP (jednorazowa)
+  * TOSCA: H1 (800x1200 hygienic), L1 (800x1200 logistics), L2 (1000x1200),
+    CR3 (Combi Retail 3, 1000x1200), CR4 (Combi Retail 4, 800x1200),
+    COMBO-285-BD-5R, COMBO-285-BDDD-3R, COMBO-285-LID
+  * CHEP: CHEP-B12 (EUR CHEP), CHEP-A12 (przemyslowa CHEP)
+  * IFCO: IFCO-6410, IFCO-6416 (RPC)
+- Jak rozpoznawac:
+  * "H1 BLUE 800X1200" -> pallet_code="H1" (TOSCA hygienic)
+  * "CR3 BLUE 1000X1200" -> pallet_code="CR3" (TOSCA combi retail 3)
+  * "L1 BLUE 800X1200" -> pallet_code="L1" (TOSCA logistics)
+  * "COMBO 285 BD 5R" -> pallet_code="COMBO-285-BD-5R"
+  * "EPAL 1200x800" lub "paleta EUR" -> pallet_code="EUR"
+  * "paleta jednorazowa 1200x800" -> pallet_code="DISP"
+- Pusty pallet_code jesli nie rozpoznajesz (better empty than wrong).
 
 BARDZO WAZNE - CHECKBOXY OPAKOWANIA (is_dry, is_wrapped, is_strapped, is_sort_only):
 - DOMYSLNIE ZAWSZE false dla WSZYSTKICH tych checkboxow.
@@ -3704,6 +3723,22 @@ SYS;
         // Cargo items: filtruj puste (bez product_code i product_name), normalizuj booleany,
         // ponumeruj line_index od 1
         if (isset($data['speed_order_cargo_items']) && is_array($data['speed_order_cargo_items'])) {
+            // Load katalog palet raz (cache local) - do auto-lookup po pallet_code
+            $palletsByCode = [];
+            try {
+                $identity  = $this->request->getAttribute('identity');
+                $companyId = $identity?->get('company_id');
+                if ($companyId) {
+                    $rows = $this->fetchTable('PalletTypes')->findForCompany($companyId)
+                        ->select(['id', 'code'])
+                        ->disableHydration()
+                        ->all();
+                    foreach ($rows as $r) {
+                        $palletsByCode[strtoupper($r['code'])] = $r['id'];
+                    }
+                }
+            } catch (\Throwable) {}
+
             $clean = [];
             $idx = 1;
             foreach ($data['speed_order_cargo_items'] as $item) {
@@ -3714,6 +3749,13 @@ SYS;
                 // Normalizuj booleany checkboxow
                 foreach (['is_dry', 'is_wrapped', 'is_strapped', 'is_sort_only'] as $b) {
                     $item[$b] = !empty($item[$b]);
+                }
+                // Auto-lookup pallet_type_id po pallet_code (jesli AI dostarczyl code ale nie id)
+                $palletCode = strtoupper(trim((string)($item['pallet_code'] ?? '')));
+                if ($palletCode !== '' && empty($item['pallet_type_id'])) {
+                    if (isset($palletsByCode[$palletCode])) {
+                        $item['pallet_type_id'] = $palletsByCode[$palletCode];
+                    }
                 }
                 $item['line_index'] = $idx++;
                 $clean[] = $item;
@@ -3812,6 +3854,23 @@ SYS;
                 ])
                 ->orderByDesc('manual_seq')
                 ->limit(5)
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) { return []; }
+    }
+
+    /**
+     * Lista palet z katalogu (globalne + custom firmy) - dla dropdown w cargo items.
+     */
+    private function loadPalletTypesForSelect(): array
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) return [];
+        try {
+            return $this->fetchTable('PalletTypes')->findForCompany($companyId)
+                ->select(['id', 'code', 'name', 'manufacturer', 'length_mm', 'width_mm', 'height_mm'])
                 ->disableHydration()
                 ->all()
                 ->toList();

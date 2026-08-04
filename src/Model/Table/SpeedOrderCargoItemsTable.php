@@ -15,6 +15,7 @@ class SpeedOrderCargoItemsTable extends Table
         $this->setPrimaryKey('id');
         $this->addBehavior('Timestamp');
         $this->belongsTo('SpeedOrders', ['foreignKey' => 'speed_order_id']);
+        $this->belongsTo('PalletTypes', ['foreignKey' => 'pallet_type_id', 'joinType' => 'LEFT']);
     }
 
     public function validationDefault(Validator $validator): Validator
