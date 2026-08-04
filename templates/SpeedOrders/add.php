@@ -632,6 +632,14 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <label class="form-label small text-muted"><?= __('Warunki płatności') ?></label>
                     <input type="text" name="payment_terms" class="form-control" value="<?= h($order->payment_terms ?? 'Przelew 30 dni') ?>" maxlength="100">
                 </div>
+                <div class="col-12" id="so-approval-hint" style="display:none">
+                    <div class="alert alert-warning py-2 px-3 mb-0 small">
+                        <i class="ri-shield-user-line me-1"></i>
+                        <?php $threshold = (int)(\Cake\Core\Configure::read('Orders.approvalThresholdPln') ?? 10000); ?>
+                        <strong><?= __('Wymaga akceptacji managera') ?></strong> —
+                        <?= __('brutto przekracza próg {0} PLN. Po zapisie status będzie "Oczekuje akceptacji" aż manager zatwierdzi.', number_format($threshold, 0, ',', ' ')) ?>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -921,6 +929,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     var $cur   = document.getElementById('fin-currency');
     var $bpv   = document.getElementById('so-brutto-preview');
 
+    var APPROVAL_THRESHOLD_PLN = <?= (int)(\Cake\Core\Configure::read('Orders.approvalThresholdPln') ?? 10000) ?>;
+    var $approvalHint = document.getElementById('so-approval-hint');
+
     function calc() {
         var n = parseFloat($netto.value) || 0;
         var r = $rate.value;
@@ -932,6 +943,13 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         $vat.value  = v.toFixed(2);
         $brut.value = b.toFixed(2);
         $bpv.textContent = b.toFixed(2) + ' ' + $cur.value;
+
+        // Approval hint: pokazuj gdy brutto (PLN) > threshold
+        if ($approvalHint) {
+            var rate = parseFloat($rateFx.value) || 1;
+            var bruttoPln = $cur.value === 'PLN' ? b : b * rate;
+            $approvalHint.style.display = (APPROVAL_THRESHOLD_PLN > 0 && bruttoPln > APPROVAL_THRESHOLD_PLN) ? '' : 'none';
+        }
     }
     $netto.addEventListener('input', calc);
     $rate.addEventListener('change', calc);

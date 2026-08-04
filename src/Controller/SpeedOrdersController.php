@@ -2582,6 +2582,97 @@ SYS;
     }
 
     /**
+     * POST /zlecenia/{id}/zaakceptuj - manager akceptuje zlecenie.
+     * Wymagane dla zlecen ktorych brutto przekracza Configure.Orders.approvalThresholdPln
+     */
+    public function approve(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $userId   = $identity?->getIdentifier();
+        $role     = (string)($identity?->get('role') ?? '');
+        $isMgr    = in_array($role, ['spedycja_manager', 'sales_manager'], true)
+            || (bool)($identity?->get('is_admin') ?? false);
+
+        if (!$isMgr) {
+            $this->Flash->error(__('Tylko manager może akceptować zlecenia.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->get($id);
+        if ($order->approval_status !== 'pending') {
+            $this->Flash->warning(__('To zlecenie nie wymaga akceptacji (status: {0}).', $order->approval_status));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        $order->approval_status = 'approved';
+        $order->approved_by_user_id = $userId;
+        $order->approved_at = new \DateTime();
+        $order->approval_note = trim((string)$this->request->getData('note', ''));
+        $SpeedOrders->save($order);
+
+        // Log w notatkach systemowych
+        try {
+            $this->fetchTable('SpeedOrderNotes')->logSystem(
+                (string)$identity?->get('company_id'), $id,
+                'Zlecenie zaakceptowane przez managera' . ($order->approval_note ? ': ' . $order->approval_note : ''),
+                ['action' => 'approved', 'user_id' => $userId]
+            );
+        } catch (\Throwable) {}
+
+        $this->Flash->success(__('Zlecenie zaakceptowane.'));
+        $this->redirect(['action' => 'view', $id]);
+    }
+
+    /**
+     * POST /zlecenia/{id}/odrzuc - manager odrzuca zlecenie.
+     */
+    public function reject(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $userId   = $identity?->getIdentifier();
+        $role     = (string)($identity?->get('role') ?? '');
+        $isMgr    = in_array($role, ['spedycja_manager', 'sales_manager'], true)
+            || (bool)($identity?->get('is_admin') ?? false);
+
+        if (!$isMgr) {
+            $this->Flash->error(__('Tylko manager może odrzucić zlecenie.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        $note = trim((string)$this->request->getData('note', ''));
+        if ($note === '') {
+            $this->Flash->error(__('Powód odrzucenia jest wymagany.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->get($id);
+        $order->approval_status = 'rejected';
+        $order->approved_by_user_id = $userId;
+        $order->approved_at = new \DateTime();
+        $order->approval_note = $note;
+        $SpeedOrders->save($order);
+
+        try {
+            $this->fetchTable('SpeedOrderNotes')->logSystem(
+                (string)$identity?->get('company_id'), $id,
+                'Zlecenie odrzucone przez managera: ' . $note,
+                ['action' => 'rejected', 'user_id' => $userId]
+            );
+        } catch (\Throwable) {}
+
+        $this->Flash->success(__('Zlecenie odrzucone.'));
+        $this->redirect(['action' => 'view', $id]);
+    }
+
+    /**
      * PDF potwierdzenia zlecenia dla klienta / wewnetrznego wydruku.
      * GET /zlecenia/pdf/{id}?download=1
      */
@@ -2749,6 +2840,21 @@ SYS;
             if (isset($data[$ccKey])) {
                 $data[$ccKey] = strtoupper(trim((string)$data[$ccKey])) ?: null;
             }
+        }
+
+        // Approval workflow: jesli brutto (w PLN) > prog -> pending, inaczej not_required
+        $threshold = (float)(\Cake\Core\Configure::read('Orders.approvalThresholdPln') ?? 10000);
+        $bruttoPln = (float)$data['brutto'];
+        if ($currency !== 'PLN') {
+            $bruttoPln *= (float)($data['exchange_rate'] ?? 1);
+        }
+        if ($threshold > 0 && $bruttoPln > $threshold) {
+            // Ustaw pending TYLKO gdy jeszcze nie zaakceptowane (edit moze utrzymac approved)
+            if (empty($data['approval_status']) || $data['approval_status'] === 'not_required') {
+                $data['approval_status'] = 'pending';
+            }
+        } else {
+            $data['approval_status'] = 'not_required';
         }
 
         // Nick wystawiajacego z sesji

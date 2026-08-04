@@ -465,6 +465,7 @@ return [
                 'noteAdd', 'noteDelete',
                 'templatesListJson', 'templateSaveJson', 'templateDeleteJson',
                 'templateUseJson', 'templateFavoriteJson',
+                'approve', 'reject',
             ],
         ],
 

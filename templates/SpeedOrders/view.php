@@ -1230,6 +1230,85 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- APPROVAL WORKFLOW -->
+<?php
+$approvalStatus = $order->approval_status ?? 'not_required';
+if ($approvalStatus !== 'not_required'):
+    $identity = $this->getRequest()->getAttribute('identity');
+    $userRole = (string)($identity?->get('role') ?? '');
+    $isMgr = in_array($userRole, ['spedycja_manager', 'sales_manager'], true)
+        || (bool)($identity?->get('is_admin') ?? false);
+    $statusMap = [
+        'pending'  => ['level' => 'warning', 'icon' => 'ri-time-line',  'label' => 'Oczekuje akceptacji managera'],
+        'approved' => ['level' => 'success', 'icon' => 'ri-shield-check-line', 'label' => 'Zaakceptowane'],
+        'rejected' => ['level' => 'danger',  'icon' => 'ri-close-circle-line', 'label' => 'Odrzucone'],
+    ];
+    $st = $statusMap[$approvalStatus] ?? $statusMap['pending'];
+?>
+<div class="card border-0 shadow-sm mb-3" id="approval-card">
+    <div class="card-body">
+        <div class="alert alert-<?= h($st['level']) ?> mb-<?= $isMgr && $approvalStatus === 'pending' ? '3' : '0' ?>">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <i class="<?= h($st['icon']) ?> me-1"></i>
+                    <strong><?= h($st['label']) ?></strong>
+                    <?php if ($order->approved_at): ?>
+                        <div class="small mt-1 text-muted">
+                            <?= h($order->approved_at->format('Y-m-d H:i')) ?>
+                            <?php if ($order->approval_note): ?>
+                                &middot; <?= h($order->approval_note) ?>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php if ($isMgr && $approvalStatus === 'pending'): ?>
+            <div class="row g-2">
+                <div class="col-md-8">
+                    <input type="text" id="approval-note" class="form-control form-control-sm" placeholder="Komentarz (wymagany dla odrzucenia)">
+                </div>
+                <div class="col-md-4 text-end">
+                    <?= $this->Form->postLink(
+                        '<i class="ri-check-line me-1"></i>Akceptuj',
+                        ['action' => 'approve', $order->id],
+                        [
+                            'escape' => false,
+                            'class' => 'btn btn-sm btn-success',
+                            'confirm' => 'Zaakceptować zlecenie?',
+                            'data' => ['note' => ''],
+                            'onclick' => "this.form.querySelector('input[name=note]').value = document.getElementById('approval-note').value; return confirm('Zaakceptować zlecenie?');",
+                            'block' => 'note_hidden',
+                        ]
+                    ) ?>
+                    <?= $this->Form->postLink(
+                        '<i class="ri-close-line me-1"></i>Odrzuć',
+                        ['action' => 'reject', $order->id],
+                        [
+                            'escape' => false,
+                            'class' => 'btn btn-sm btn-danger',
+                            'onclick' => "var n = document.getElementById('approval-note').value.trim(); if (!n) { alert('Podaj powód odrzucenia'); return false; } this.form.querySelector('input[name=note]').value = n; return confirm('Odrzucić zlecenie?');",
+                        ]
+                    ) ?>
+                </div>
+            </div>
+            <script>
+            (function(){
+                // Wstrzykiwanie ukrytego pola note do wszystkich formow postLink dla approve/reject
+                document.querySelectorAll('form[action*="zaakceptuj"], form[action*="odrzuc"]').forEach(function(f){
+                    if (!f.querySelector('input[name=note]')) {
+                        var i = document.createElement('input');
+                        i.type = 'hidden'; i.name = 'note'; i.value = '';
+                        f.appendChild(i);
+                    }
+                });
+            })();
+            </script>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- NOTATKI WEWNETRZNE                                                        -->
 <div class="card border-0 shadow-sm mb-3" id="notes-card">
     <div class="card-header py-2 bg-white d-flex align-items-center gap-2 border-bottom">

@@ -118,6 +118,10 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/zlecenia/notatka/{noteId}/usun', ['controller' => 'SpeedOrders', 'action' => 'noteDelete'])
             ->setPass(['noteId']);
+        $builder->post('/zlecenia/{id}/zaakceptuj',     ['controller' => 'SpeedOrders', 'action' => 'approve'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/{id}/odrzuc',         ['controller' => 'SpeedOrders', 'action' => 'reject'])
+            ->setPass(['id']);
         $builder->get('/zlecenia/szablony',                    ['controller' => 'SpeedOrders', 'action' => 'templatesListJson']);
         $builder->post('/zlecenia/szablony/zapisz',            ['controller' => 'SpeedOrders', 'action' => 'templateSaveJson']);
         $builder->post('/zlecenia/szablony/{id}/usun',         ['controller' => 'SpeedOrders', 'action' => 'templateDeleteJson'])

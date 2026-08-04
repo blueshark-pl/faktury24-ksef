@@ -600,6 +600,14 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
                         <span class="badge bg-secondary-subtle text-secondary me-1" title="<?= __('Zlecenie ze Speed ERP') ?>" style="font-size:.6rem">S</span>
                     <?php endif; ?>
                     <?= h($order->symbol) ?>
+                    <?php $as = $order->approval_status ?? 'not_required'; ?>
+                    <?php if ($as === 'pending'): ?>
+                        <span class="badge bg-warning-subtle text-warning ms-1" title="<?= __('Oczekuje akceptacji managera') ?>" style="font-size:.55rem"><i class="ri-time-line"></i></span>
+                    <?php elseif ($as === 'approved'): ?>
+                        <span class="badge bg-success-subtle text-success ms-1" title="<?= __('Zaakceptowane') ?>" style="font-size:.55rem"><i class="ri-shield-check-line"></i></span>
+                    <?php elseif ($as === 'rejected'): ?>
+                        <span class="badge bg-danger-subtle text-danger ms-1" title="<?= __('Odrzucone') ?>" style="font-size:.55rem"><i class="ri-close-circle-line"></i></span>
+                    <?php endif; ?>
                 </a>
                 <?php if ($dateDoc): ?>
                     <span class="text-muted" style="font-size:.72rem"><?= h($dateDoc) ?></span>

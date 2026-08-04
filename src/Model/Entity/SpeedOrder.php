@@ -78,6 +78,10 @@ use Cake\ORM\Entity;
  * @property float|null  $insurance_value
  * @property string|null $insurance_currency
  * @property int         $nordlogis_status
+ * @property string      $approval_status
+ * @property string|null $approved_by_user_id
+ * @property \Cake\I18n\DateTime|null $approved_at
+ * @property string|null $approval_note
  * @property string|null $invoice_id     [DEPRECATED] Legacy alias na pierwszą fakturę — używaj $order->invoices (M:N pivot speed_order_invoices)
  * @property \App\Model\Entity\Invoice[] $invoices  Wszystkie faktury sprzedażowe (M:N)
  * @property \Cake\I18n\DateTime|null $invoiced_at
