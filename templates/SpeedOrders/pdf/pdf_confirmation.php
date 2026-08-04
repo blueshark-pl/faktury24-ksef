@@ -89,6 +89,47 @@ $fmt = function ($v) { return $v ? h($v) : '-'; };
         <?php if ($order->transport_type): ?><tr><td class="label">Rodzaj transportu:</td><td class="val"><?= $fmt($order->transport_type) ?></td></tr><?php endif; ?>
     </table>
 
+    <?php if (!empty($order->speed_order_cargo_items)): ?>
+        <h2>Pozycje ładunku (cargo manifest)</h2>
+        <table style="width:100%; border-collapse: collapse; font-size: 9pt; margin-top: 4pt;">
+            <thead>
+                <tr style="background:#f3f4f6">
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:left;">Kod</th>
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:left;">Nazwa</th>
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;">Stack</th>
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;">Adv qty</th>
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;">Real qty</th>
+                    <th style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:right;">Waga</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php $pdfTotalAdv=0; $pdfTotalReal=0; $pdfTotalW=0.0; ?>
+                <?php foreach ($order->speed_order_cargo_items as $ci):
+                    $pdfTotalAdv  += (int)($ci->qty_advised ?? 0);
+                    $pdfTotalReal += (int)($ci->qty_real ?? 0);
+                    $pdfTotalW    += (float)($ci->weight_kg ?? 0);
+                ?>
+                    <tr>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt;"><?= h($ci->product_code ?? '-') ?></td>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt;"><?= h($ci->product_name ?? '-') ?></td>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;"><?= h($ci->stack_height ?? '-') ?></td>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;"><?= h($ci->qty_advised ?? '-') ?></td>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;"><?= h($ci->qty_real ?? '-') ?></td>
+                        <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:right;"><?= $ci->weight_kg !== null ? number_format((float)$ci->weight_kg, 2, ',', ' ') . ' kg' : '-' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr style="background:#f9fafb; font-weight:bold;">
+                    <td colspan="3" style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:right;">Suma:</td>
+                    <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;"><?= $pdfTotalAdv > 0 ? number_format($pdfTotalAdv, 0, ',', ' ') : '-' ?></td>
+                    <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:center;"><?= $pdfTotalReal > 0 ? number_format($pdfTotalReal, 0, ',', ' ') : '-' ?></td>
+                    <td style="border:1px solid #d1d5db; padding: 3pt 4pt; text-align:right;"><?= $pdfTotalW > 0 ? number_format($pdfTotalW, 2, ',', ' ') . ' kg' : '-' ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    <?php endif; ?>
+
     <h2>Transport</h2>
     <table class="grid">
         <?php if ($order->driver): ?><tr><td class="label">Kierowca:</td><td class="val"><?= $fmt($order->driver) ?></td></tr><?php endif; ?>

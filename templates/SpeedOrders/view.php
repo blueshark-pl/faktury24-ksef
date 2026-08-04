@@ -1230,6 +1230,85 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- CARGO ITEMS - pozycje ladunku -->
+<?php if (!empty($order->speed_order_cargo_items)): ?>
+<div class="card border-0 shadow-sm mb-3" id="cargo-card">
+    <div class="card-header py-2 bg-white d-flex align-items-center gap-2 border-bottom">
+        <i class="ri-inbox-archive-line text-warning"></i>
+        <span class="fw-semibold">Pozycje ładunku</span>
+        <span class="badge bg-warning-subtle text-warning ms-1"><?= count($order->speed_order_cargo_items) ?></span>
+    </div>
+    <div class="card-body">
+        <?php
+        $ci_totalAdv = 0; $ci_totalReal = 0; $ci_totalW = 0.0;
+        foreach ($order->speed_order_cargo_items as $ci) {
+            $ci_totalAdv  += (int)($ci->qty_advised ?? 0);
+            $ci_totalReal += (int)($ci->qty_real ?? 0);
+            $ci_totalW    += (float)($ci->weight_kg ?? 0);
+        }
+        ?>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th style="width:70px">Kod</th>
+                        <th>Nazwa</th>
+                        <th class="text-center" title="Dry">Dry</th>
+                        <th class="text-center" title="Wrapping">Wrap</th>
+                        <th class="text-center" title="Strapping">Strap</th>
+                        <th class="text-center" title="Sort Only">Sort</th>
+                        <th class="text-center">Stack</th>
+                        <th class="text-center">Adv</th>
+                        <th class="text-center">Real</th>
+                        <th class="text-end">Waga</th>
+                        <th>j.m.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($order->speed_order_cargo_items as $ci): ?>
+                        <tr>
+                            <td class="text-muted"><?= (int)$ci->line_index ?></td>
+                            <td><code><?= h($ci->product_code ?? '-') ?></code></td>
+                            <td><?= h($ci->product_name ?? '-') ?></td>
+                            <td class="text-center"><?= $ci->is_dry ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
+                            <td class="text-center"><?= $ci->is_wrapped ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
+                            <td class="text-center"><?= $ci->is_strapped ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
+                            <td class="text-center"><?= $ci->is_sort_only ? '<i class="ri-check-line text-success"></i>' : '' ?></td>
+                            <td class="text-center"><?= h($ci->stack_height ?? '-') ?></td>
+                            <td class="text-center"><?= h($ci->qty_advised ?? '-') ?></td>
+                            <td class="text-center <?= ($ci->qty_real !== null && $ci->qty_advised !== null && $ci->qty_real != $ci->qty_advised) ? 'fw-bold text-danger' : '' ?>">
+                                <?= h($ci->qty_real ?? '-') ?>
+                            </td>
+                            <td class="text-end"><?= $ci->weight_kg !== null ? number_format((float)$ci->weight_kg, 2, ',', ' ') : '-' ?></td>
+                            <td class="text-muted"><?= h($ci->unit ?? 'szt') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <th colspan="8" class="text-end">Suma:</th>
+                        <th class="text-center"><?= $ci_totalAdv > 0 ? number_format($ci_totalAdv, 0, ',', ' ') : '-' ?></th>
+                        <th class="text-center <?= ($ci_totalReal > 0 && $ci_totalReal != $ci_totalAdv) ? 'text-danger' : '' ?>">
+                            <?= $ci_totalReal > 0 ? number_format($ci_totalReal, 0, ',', ' ') : '-' ?>
+                        </th>
+                        <th class="text-end"><?= $ci_totalW > 0 ? number_format($ci_totalW, 2, ',', ' ') . ' kg' : '-' ?></th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <?php if ($ci_totalReal > 0 && $ci_totalReal != $ci_totalAdv): ?>
+            <div class="alert alert-warning py-2 px-3 small mt-2 mb-0">
+                <i class="ri-alert-line me-1"></i>
+                <strong>Uwaga:</strong> Rzeczywista ilość (<?= $ci_totalReal ?>) różni się od deklarowanej (<?= $ci_totalAdv ?>).
+                Różnica: <?= ($ci_totalReal - $ci_totalAdv > 0 ? '+' : '') . ($ci_totalReal - $ci_totalAdv) ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- MULTI-STOP - dodatkowe stopy w trasie -->
 <?php if (!empty($order->speed_order_stops)): ?>
 <div class="card border-0 shadow-sm mb-3" id="stops-card">

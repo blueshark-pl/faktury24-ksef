@@ -56,6 +56,15 @@ class SpeedOrdersTable extends Table
             'cascadeCallbacks' => true,
             'saveStrategy' => 'replace',
         ]);
+
+        // Pozycje ladunku (cargo line items) - manifest per zlecenie
+        $this->hasMany('SpeedOrderCargoItems', [
+            'foreignKey' => 'speed_order_id',
+            'order'      => ['SpeedOrderCargoItems.line_index' => 'ASC'],
+            'dependent'  => true,
+            'cascadeCallbacks' => true,
+            'saveStrategy' => 'replace',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

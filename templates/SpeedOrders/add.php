@@ -804,6 +804,88 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     <div class="alert py-2 px-3 mb-0 small" id="so-conflict-alert"></div>
 </div>
 
+<!-- SEKCJA 4b: Cargo items (pozycje ladunku) -->
+<div class="col-12">
+    <div class="card border-0 shadow-sm so-section-card" style="border-left:3px solid #8b5cf6 !important">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-inbox-archive-line me-1 text-warning"></i> <?= __('Pozycje ładunku (cargo manifest)') ?>
+                    <span class="so-hint ms-1">opcjonalnie</span>
+                </h6>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="so-cargo-add">
+                    <i class="ri-add-line me-1"></i><?= __('Dodaj pozycję') ?>
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="so-cargo-list">
+                    <thead class="table-light small">
+                        <tr>
+                            <th style="width:60px">Kod</th>
+                            <th>Nazwa / produkt</th>
+                            <th class="text-center" style="width:50px" title="Dry">Dry</th>
+                            <th class="text-center" style="width:50px" title="Wrapping">Wrap</th>
+                            <th class="text-center" style="width:50px" title="Strapping">Strap</th>
+                            <th class="text-center" style="width:60px" title="Sort Only">Sort</th>
+                            <th class="text-center" style="width:70px">Stack</th>
+                            <th class="text-center" style="width:80px">Adv qty</th>
+                            <th class="text-center" style="width:80px">Real qty</th>
+                            <th class="text-end" style="width:90px">Waga kg</th>
+                            <th style="width:60px">j.m.</th>
+                            <th style="width:40px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $existingCargo = [];
+                        if ($isEdit && !empty($order->speed_order_cargo_items)) {
+                            $existingCargo = $order->speed_order_cargo_items;
+                        }
+                        ?>
+                        <?php foreach ($existingCargo as $cIdx => $ci): ?>
+                            <tr class="so-cargo-row" data-idx="<?= $cIdx ?>">
+                                <td><input type="text" name="speed_order_cargo_items[<?= $cIdx ?>][product_code]" class="form-control form-control-sm" value="<?= h($ci->product_code ?? '') ?>" maxlength="60"></td>
+                                <td><input type="text" name="speed_order_cargo_items[<?= $cIdx ?>][product_name]" class="form-control form-control-sm" value="<?= h($ci->product_name ?? '') ?>" maxlength="255"></td>
+                                <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_dry]" value="1" class="form-check-input" <?= !empty($ci->is_dry) ? 'checked' : '' ?>></td>
+                                <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_wrapped]" value="1" class="form-check-input" <?= !empty($ci->is_wrapped) ? 'checked' : '' ?>></td>
+                                <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_strapped]" value="1" class="form-check-input" <?= !empty($ci->is_strapped) ? 'checked' : '' ?>></td>
+                                <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_sort_only]" value="1" class="form-check-input" <?= !empty($ci->is_sort_only) ? 'checked' : '' ?>></td>
+                                <td><input type="number" min="0" step="1" name="speed_order_cargo_items[<?= $cIdx ?>][stack_height]" class="form-control form-control-sm text-center" value="<?= h($ci->stack_height ?? '') ?>"></td>
+                                <td><input type="number" min="0" step="1" name="speed_order_cargo_items[<?= $cIdx ?>][qty_advised]" class="form-control form-control-sm text-center" value="<?= h($ci->qty_advised ?? '') ?>"></td>
+                                <td><input type="number" min="0" step="1" name="speed_order_cargo_items[<?= $cIdx ?>][qty_real]" class="form-control form-control-sm text-center" value="<?= h($ci->qty_real ?? '') ?>"></td>
+                                <td><input type="number" min="0" step="0.001" name="speed_order_cargo_items[<?= $cIdx ?>][weight_kg]" class="form-control form-control-sm text-end" value="<?= h($ci->weight_kg ?? '') ?>"></td>
+                                <td>
+                                    <select name="speed_order_cargo_items[<?= $cIdx ?>][unit]" class="form-select form-select-sm">
+                                        <?php foreach (['szt','kg','m3','palety','kartony','opak.'] as $u): ?>
+                                            <option value="<?= h($u) ?>" <?= ($ci->unit ?? 'szt') === $u ? 'selected' : '' ?>><?= h($u) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="hidden" name="speed_order_cargo_items[<?= $cIdx ?>][id]" value="<?= h($ci->id ?? '') ?>">
+                                    <button type="button" class="btn btn-sm btn-outline-danger so-cargo-remove"><i class="ri-delete-bin-line"></i></button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                    <tfoot id="so-cargo-summary" class="table-light" <?= empty($existingCargo) ? 'style="display:none"' : '' ?>>
+                        <tr>
+                            <th colspan="7" class="text-end">Suma:</th>
+                            <th class="text-center" id="so-cargo-sum-adv">-</th>
+                            <th class="text-center" id="so-cargo-sum-real">-</th>
+                            <th class="text-end" id="so-cargo-sum-weight">-</th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div id="so-cargo-empty" class="text-muted small text-center py-2" <?= !empty($existingCargo) ? 'style="display:none"' : '' ?>>
+                <?= __('Brak pozycji ładunku. Dodaj pierwszą pozycję manifestu (kod, nazwa, ilości, waga).') ?>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SEKCJA 5: Transport -->
 <div class="col-12" id="sec-transport">
     <div class="card border-0 shadow-sm so-section-card">
@@ -2839,6 +2921,39 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         filled.push('pallets_exchange: ' + $ex.checked);
                     }
                 }
+
+                // Special: cargo_items[] - tablica pozycji ladunku
+                if (Array.isArray(d.cargo_items) && d.cargo_items.length > 0) {
+                    // Wyczysc obecne wiersze tylko jesli sa puste, inaczej append
+                    var existingRows = $cargoList.querySelectorAll('.so-cargo-row').length;
+                    d.cargo_items.forEach(function(ci){
+                        var idx = cargoIdx++;
+                        $cargoList.insertAdjacentHTML('beforeend', cargoRowHtml(idx));
+                        var row = $cargoList.querySelector('.so-cargo-row[data-idx="' + idx + '"]');
+                        if (!row) return;
+                        function setF(sel, val) {
+                            var el = row.querySelector(sel);
+                            if (el && val !== null && val !== undefined) el.value = val;
+                        }
+                        function setChk(sel, val) {
+                            var el = row.querySelector(sel);
+                            if (el) el.checked = !!val;
+                        }
+                        setF('[name$="[product_code]"]', ci.product_code || '');
+                        setF('[name$="[product_name]"]', ci.product_name || '');
+                        setChk('[name$="[is_dry]"]', ci.is_dry);
+                        setChk('[name$="[is_wrapped]"]', ci.is_wrapped);
+                        setChk('[name$="[is_strapped]"]', ci.is_strapped);
+                        setChk('[name$="[is_sort_only]"]', ci.is_sort_only);
+                        setF('[name$="[stack_height]"]', ci.stack_height);
+                        setF('[name$="[qty_advised]"]', ci.qty_advised);
+                        setF('[name$="[qty_real]"]', ci.qty_real);
+                        setF('[name$="[weight_kg]"]', ci.weight_kg);
+                        setF('[name$="[unit]"]', ci.unit || 'szt');
+                    });
+                    recalcCargoSummary();
+                    filled.push('cargo_items: ' + d.cargo_items.length + ' pozycji');
+                }
                 $aiSummary.innerHTML = '<strong>Wypelnione pola:</strong><br>' + filled.join('<br>');
                 calc(); // przelicz VAT/brutto z nowego netto
                 onCur(); // update kurs jesli waluta zmieniona
@@ -2919,6 +3034,90 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
             renumberStops();
         }
     });
+
+    // =====================================================================
+    // CARGO ITEMS - pozycje ladunku
+    // =====================================================================
+    var $cargoList  = document.querySelector('#so-cargo-list tbody');
+    var $cargoAdd   = document.getElementById('so-cargo-add');
+    var $cargoEmpty = document.getElementById('so-cargo-empty');
+    var $cargoSummary = document.getElementById('so-cargo-summary');
+    var $sumAdv     = document.getElementById('so-cargo-sum-adv');
+    var $sumReal    = document.getElementById('so-cargo-sum-real');
+    var $sumWeight  = document.getElementById('so-cargo-sum-weight');
+    var cargoIdx    = $cargoList.querySelectorAll('.so-cargo-row').length;
+
+    function cargoRowHtml(idx) {
+        return '<tr class="so-cargo-row" data-idx="' + idx + '">' +
+            '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_code]" class="form-control form-control-sm" maxlength="60" placeholder="17"></td>' +
+            '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_name]" class="form-control form-control-sm" maxlength="255" placeholder="COMBO 285 BD 5R"></td>' +
+            '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_dry]" value="1" class="form-check-input"></td>' +
+            '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_wrapped]" value="1" class="form-check-input"></td>' +
+            '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_strapped]" value="1" class="form-check-input"></td>' +
+            '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_sort_only]" value="1" class="form-check-input"></td>' +
+            '<td><input type="number" min="0" step="1" name="speed_order_cargo_items[' + idx + '][stack_height]" class="form-control form-control-sm text-center"></td>' +
+            '<td><input type="number" min="0" step="1" name="speed_order_cargo_items[' + idx + '][qty_advised]" class="form-control form-control-sm text-center so-cargo-qty-adv"></td>' +
+            '<td><input type="number" min="0" step="1" name="speed_order_cargo_items[' + idx + '][qty_real]" class="form-control form-control-sm text-center so-cargo-qty-real"></td>' +
+            '<td><input type="number" min="0" step="0.001" name="speed_order_cargo_items[' + idx + '][weight_kg]" class="form-control form-control-sm text-end so-cargo-weight"></td>' +
+            '<td><select name="speed_order_cargo_items[' + idx + '][unit]" class="form-select form-select-sm">' +
+                '<option value="szt" selected>szt</option><option>kg</option><option>m3</option><option>palety</option><option>kartony</option><option>opak.</option>' +
+            '</select></td>' +
+            '<td><button type="button" class="btn btn-sm btn-outline-danger so-cargo-remove"><i class="ri-delete-bin-line"></i></button></td>' +
+            '</tr>';
+    }
+
+    function recalcCargoSummary() {
+        var rows = $cargoList.querySelectorAll('.so-cargo-row');
+        var totalAdv = 0, totalReal = 0, totalW = 0, hasData = false;
+        rows.forEach(function(row){
+            var adv  = parseFloat(row.querySelector('[name$="[qty_advised]"]')?.value || 0) || 0;
+            var real = parseFloat(row.querySelector('[name$="[qty_real]"]')?.value || 0) || 0;
+            var w    = parseFloat(row.querySelector('[name$="[weight_kg]"]')?.value || 0) || 0;
+            totalAdv += adv; totalReal += real; totalW += w;
+            if (adv || real || w) hasData = true;
+        });
+        $sumAdv.textContent = hasData && totalAdv > 0 ? totalAdv.toLocaleString('pl-PL') : '-';
+        $sumReal.textContent = hasData && totalReal > 0 ? totalReal.toLocaleString('pl-PL') : '-';
+        $sumWeight.textContent = hasData && totalW > 0 ? totalW.toLocaleString('pl-PL', {maximumFractionDigits: 2}) + ' kg' : '-';
+        $cargoSummary.style.display = rows.length > 0 ? '' : 'none';
+        $cargoEmpty.style.display = rows.length > 0 ? 'none' : '';
+
+        // Auto-fill cargo_weight_kg z sumy jesli puste albo user chce (opcjonalnie - komentuj z uwagi)
+        var $cargoWeight = $form.elements.cargo_weight_kg;
+        if ($cargoWeight && !$cargoWeight.dataset.userTouched && totalW > 0) {
+            $cargoWeight.value = Math.round(totalW);
+        }
+    }
+
+    $cargoAdd.addEventListener('click', function(){
+        $cargoList.insertAdjacentHTML('beforeend', cargoRowHtml(cargoIdx++));
+        recalcCargoSummary();
+    });
+
+    $cargoList.addEventListener('click', function(e){
+        var rm = e.target.closest('.so-cargo-remove');
+        if (rm) {
+            rm.closest('.so-cargo-row').remove();
+            recalcCargoSummary();
+        }
+    });
+
+    // Live sum on input
+    $cargoList.addEventListener('input', function(e){
+        if (e.target && e.target.matches('input[type=number]')) {
+            recalcCargoSummary();
+        }
+    });
+
+    // Mark cargo_weight_kg as user-touched to prevent auto-overwrite
+    if ($form.elements.cargo_weight_kg) {
+        $form.elements.cargo_weight_kg.addEventListener('input', function(){
+            this.dataset.userTouched = '1';
+        });
+    }
+
+    // Initial calc
+    recalcCargoSummary();
 
     // =====================================================================
     // TEMPLATES ZLECEN (szablony)

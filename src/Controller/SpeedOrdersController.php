@@ -360,6 +360,7 @@ class SpeedOrdersController extends AppController
                         ->orderByAsc('AllInvoices.date');
                 },
                 'SpeedOrderStops',
+                'SpeedOrderCargoItems',
             ])
             ->firstOrFail();
         $rawData = null;
@@ -450,6 +451,7 @@ class SpeedOrdersController extends AppController
                         ->orderByAsc('AllInvoices.date');
                 },
                 'SpeedOrderStops',
+                'SpeedOrderCargoItems',
             ])
             ->firstOrFail();
         $rawData = null;
@@ -1852,7 +1854,7 @@ class SpeedOrdersController extends AppController
 
         if ($this->request->is('post')) {
             $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
-            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops']]);
+            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops', 'SpeedOrderCargoItems']]);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
 
@@ -1954,7 +1956,7 @@ class SpeedOrdersController extends AppController
         $SpeedOrders = $this->fetchTable('SpeedOrders');
         $order = $SpeedOrders->find()
             ->where(['id' => $id])
-            ->contain(['SpeedOrderStops'])
+            ->contain(['SpeedOrderStops', 'SpeedOrderCargoItems'])
             ->first();
         if (!$order) {
             throw new NotFoundException(__('Zlecenie nie istnieje.'));
@@ -1970,7 +1972,7 @@ class SpeedOrdersController extends AppController
             $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
             // Zablokuj zmiane symbolu i manual_seq przy edycji (numer sie nie zmienia).
             unset($data['symbol'], $data['manual_seq'], $data['rok'], $data['mc'], $data['source']);
-            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops']]);
+            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops', 'SpeedOrderCargoItems']]);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało zaktualizowane.', $order->symbol));
                 $this->redirect(['action' => 'view', $order->id]);
@@ -2877,6 +2879,22 @@ poprawny JSON o dokladnie tej strukturze:
   "unload_contact_email": "email lub pusty",
   "driver_instructions": "instrukcje dla kierowcy (kod bramy, EPI, gdzie parkowac) lub pusty",
 
+  "cargo_items": [
+    {
+      "product_code": "kod / ID / SKU produktu (np. '17' lub 'COMBO-285-BD-5R') lub pusty",
+      "product_name": "nazwa/opis produktu (np. 'COMBO 285 BD 5R')",
+      "is_dry": true/false (Dry checkbox),
+      "is_wrapped": true/false (Wrapping / foliowany),
+      "is_strapped": true/false (Strapping / tasmowany),
+      "is_sort_only": true/false (Sort Only),
+      "stack_height": liczba lub null (ile palet na sobie),
+      "qty_advised": liczba lub null (Advised / deklarowana),
+      "qty_real": liczba lub null (Real / rzeczywista - zwykle brak w zleceniu),
+      "weight_kg": liczba lub null (waga tej pozycji),
+      "unit": "szt/kg/m3/palety/kartony lub pusty"
+    }
+  ],
+
   "confidence": 0-100 (jak pewien jestes co do wyciagnietych danych),
   "note": "krotki komentarz dla operatora - co udalo sie wyciagnac a co nie"
 }
@@ -3400,7 +3418,10 @@ SYS;
     public function pdfConfirmation(int $id): void
     {
         $this->request->allowMethod(['get']);
-        $order = $this->fetchTable('SpeedOrders')->find()->where(['id' => $id])->first();
+        $order = $this->fetchTable('SpeedOrders')->find()
+            ->where(['id' => $id])
+            ->contain(['SpeedOrderCargoItems', 'SpeedOrderStops'])
+            ->first();
         if (!$order) {
             throw new NotFoundException(__('Zlecenie nie istnieje.'));
         }
@@ -3581,6 +3602,26 @@ SYS;
             if (isset($data[$ccKey])) {
                 $data[$ccKey] = strtoupper(trim((string)$data[$ccKey])) ?: null;
             }
+        }
+
+        // Cargo items: filtruj puste (bez product_code i product_name), normalizuj booleany,
+        // ponumeruj line_index od 1
+        if (isset($data['speed_order_cargo_items']) && is_array($data['speed_order_cargo_items'])) {
+            $clean = [];
+            $idx = 1;
+            foreach ($data['speed_order_cargo_items'] as $item) {
+                if (!is_array($item)) continue;
+                $code = trim((string)($item['product_code'] ?? ''));
+                $name = trim((string)($item['product_name'] ?? ''));
+                if ($code === '' && $name === '') continue;
+                // Normalizuj booleany checkboxow
+                foreach (['is_dry', 'is_wrapped', 'is_strapped', 'is_sort_only'] as $b) {
+                    $item[$b] = !empty($item[$b]);
+                }
+                $item['line_index'] = $idx++;
+                $clean[] = $item;
+            }
+            $data['speed_order_cargo_items'] = $clean;
         }
 
         // Multi-stop: normalizacja - filtruj puste stopy + puste datetime -> null,
