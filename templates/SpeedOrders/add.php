@@ -354,6 +354,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             </div>
             <div id="buyer-results" class="list-group mb-2 d-none" style="max-height:200px;overflow-y:auto"></div>
 
+            <!-- Kredyt klienta -->
+            <div id="so-credit-wrap" class="mb-2 d-none"></div>
+
             <!-- Mini-profil klienta (historia wspolpracy) -->
             <div id="so-profile-wrap" class="mb-2 d-none">
                 <div class="card border-0" style="background:#f8fafc;border-left:3px solid #6366f1 !important">
@@ -1138,7 +1141,56 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         $search.value = '';
         checkLastForBuyer(nip);
         fetchBuyerProfile(nip);
+        fetchCredit(nip);
     });
+
+    // ===== KREDYT KLIENTA (limit + saldo nieoplaconych faktur) =====
+    var $creditWrap = document.getElementById('so-credit-wrap');
+    function fetchCredit(nip) {
+        var digits = (nip || '').replace(/\D+/g, '');
+        if (digits.length < 5) { $creditWrap.classList.add('d-none'); return; }
+        fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'creditCheckJson']) ?>?nip=' + encodeURIComponent(digits),
+              { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok || !j.found) { $creditWrap.classList.add('d-none'); return; }
+            // Nic ciekawego jesli brak limitu i brak zaleglosci
+            if (!j.has_limit && j.unpaid_count === 0) { $creditWrap.classList.add('d-none'); return; }
+
+            var fmt = function(v){ return (Math.round(v * 100) / 100).toLocaleString('pl-PL', {minimumFractionDigits: 2}); };
+            var html = '';
+            var statusMap = {
+                'ok':          {level: 'success', icon: 'ri-shield-check-line', label: 'Kredyt OK'},
+                'warning':     {level: 'warning', icon: 'ri-alert-line',        label: 'Uwaga - kredyt zblizony do limitu'},
+                'exceeded':    {level: 'danger',  icon: 'ri-error-warning-line',label: 'Przekroczony limit kredytowy'},
+                'blocked':     {level: 'danger',  icon: 'ri-lock-line',         label: 'Klient zablokowany'},
+                'has_overdue': {level: 'warning', icon: 'ri-time-line',         label: 'Nieoplacone faktury (bez limitu)'},
+            };
+            var s = statusMap[j.status] || statusMap['ok'];
+            html = '<div class="alert alert-' + s.level + ' py-2 px-3 mb-0 small">' +
+                '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+                '<div><i class="' + s.icon + ' me-1"></i><strong>' + s.label + '</strong>';
+            if (j.has_limit) {
+                html += ' &middot; ' + fmt(j.unpaid_pln) + ' / ' + fmt(j.credit_limit) + ' PLN';
+                if (j.used_pct !== null) html += ' (' + j.used_pct + '%)';
+            } else {
+                html += ' &middot; nieoplacone: ' + fmt(j.unpaid_pln) + ' PLN';
+            }
+            if (j.unpaid_count > 0) html += ' &middot; ' + j.unpaid_count + ' faktur';
+            if (j.overdue_count > 0) html += ' <span class="badge bg-danger">' + j.overdue_count + ' przeterminowanych</span>';
+            html += '</div>';
+            if (j.has_limit && j.available_pln !== null) {
+                html += '<div class="text-muted small">dostepne: <strong>' + fmt(j.available_pln) + ' PLN</strong></div>';
+            }
+            html += '</div>';
+            if (j.block_reason) {
+                html += '<div class="small mt-1 text-muted">Powod blokady: ' + j.block_reason + '</div>';
+            }
+            html += '</div>';
+            $creditWrap.innerHTML = html;
+            $creditWrap.classList.remove('d-none');
+        }).catch(function(){ $creditWrap.classList.add('d-none'); });
+    }
 
     // ===== MINI-PROFIL KLIENTA (historia wspolpracy) =====
     var $pfWrap    = document.getElementById('so-profile-wrap');
@@ -1214,9 +1266,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     }
 
     var $nipInput = document.getElementById('buyer-nip');
-    $nipInput.addEventListener('blur', function(){ checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); });
+    $nipInput.addEventListener('blur', function(){ checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); fetchCredit($nipInput.value); });
     // Sprawdz od razu jesli NIP juz jest wypelniony (np. duplikat)
-    if ($nipInput.value.trim()) { checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); }
+    if ($nipInput.value.trim()) { checkLastForBuyer($nipInput.value); fetchBuyerProfile($nipInput.value); fetchCredit($nipInput.value); }
 
     $lcUse.addEventListener('click', function(){
         if (!lastOrderData) return;
@@ -2130,7 +2182,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 onCur(); // update kurs jesli waluta zmieniona
                 schedulePricingCheck();
                 scheduleHereRoute();
-                if (d.buyer_nip) { checkLastForBuyer(d.buyer_nip); fetchBuyerProfile(d.buyer_nip); }
+                if (d.buyer_nip) { checkLastForBuyer(d.buyer_nip); fetchBuyerProfile(d.buyer_nip); fetchCredit(d.buyer_nip); }
 
                 // Zamknij modal po 3 sek
                 setTimeout(function(){

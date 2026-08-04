@@ -105,6 +105,15 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/pdf/{id}',             ['controller' => 'SpeedOrders', 'action' => 'pdfConfirmation'])
             ->setPass(['id']);
         $builder->get('/zlecenia/profil-klienta',       ['controller' => 'SpeedOrders', 'action' => 'buyerProfileJson']);
+        $builder->get('/zlecenia/kredyt-klienta',       ['controller' => 'SpeedOrders', 'action' => 'creditCheckJson']);
+
+        // Limity kredytowe klientow (CRUD)
+        $builder->get('/limity-kredytowe',              ['controller' => 'ContractorCreditLimits', 'action' => 'index']);
+        $builder->connect('/limity-kredytowe/dodaj',    ['controller' => 'ContractorCreditLimits', 'action' => 'add']);
+        $builder->connect('/limity-kredytowe/edytuj/{id}', ['controller' => 'ContractorCreditLimits', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/limity-kredytowe/usun/{id}',   ['controller' => 'ContractorCreditLimits', 'action' => 'delete'])
+            ->setPass(['id']);
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
             ->setPass(['id']);
         $builder->post('/zlecenia/notatka/{noteId}/usun', ['controller' => 'SpeedOrders', 'action' => 'noteDelete'])

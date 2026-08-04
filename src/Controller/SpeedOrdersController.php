@@ -1474,6 +1474,117 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: sprawdz limit kredytowy klienta po NIP.
+     * GET /zlecenia/kredyt-klienta?nip=xxx
+     * Zwraca:
+     *  - limit z contractor_credit_limits (jesli ustawiony)
+     *  - saldo nieoplaconych faktur (Invoices.paymentstate != 'paid') przeliczone na PLN
+     *  - status: ok / warning / exceeded / blocked
+     */
+    public function creditCheckJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $nipRaw = trim((string)$this->request->getQuery('nip', ''));
+        $nip = preg_replace('/\D+/', '', $nipRaw);
+        if (strlen($nip) < 5) {
+            $this->jsonResp(['ok' => true, 'found' => false]);
+            return;
+        }
+
+        // Sprobuj znalezc limit (matching po NIP - lub ostatnie 10 cyfr dla PL)
+        $limit = null;
+        try {
+            $limit = $this->fetchTable('ContractorCreditLimits')->find()
+                ->where(['company_id' => $companyId, 'contractor_nip LIKE' => '%' . $nip])
+                ->orderByDesc('modified')
+                ->first();
+        } catch (\Throwable) {}
+
+        // Oblicz saldo nieoplaconych faktur (matching InvoiceContractors.nip LIKE %nip)
+        $unpaidPln = 0.0;
+        $unpaidCount = 0;
+        $overdueCount = 0;
+        try {
+            $Invoices = $this->fetchTable('Invoices');
+            $rows = $Invoices->find()
+                ->select([
+                    'Invoices.remaining',
+                    'Invoices.currency',
+                    'Invoices.exchange_rate',
+                    'Invoices.paymentdate',
+                    'Invoices.paymentstate',
+                ])
+                ->matching('InvoiceContractors', function ($q) use ($nip) {
+                    return $q->where(['InvoiceContractors.nip LIKE' => '%' . $nip]);
+                })
+                ->where([
+                    'Invoices.paymentstate IN' => ['unpaid', 'partial'],
+                    'Invoices.company_id' => $companyId,
+                ])
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) {
+                $rem = (float)($r['remaining'] ?? 0);
+                if ($rem <= 0) continue;
+                $cur = strtoupper((string)($r['currency'] ?? 'PLN'));
+                $rate = (float)($r['exchange_rate'] ?? 1);
+                $pln = $cur === 'PLN' ? $rem : $rem * $rate;
+                $unpaidPln += $pln;
+                $unpaidCount++;
+                $pd = $r['paymentdate'] ?? null;
+                if ($pd instanceof \DateTimeInterface && $pd < new \DateTime('today')) {
+                    $overdueCount++;
+                }
+            }
+        } catch (\Throwable) {}
+
+        $unpaidPln = round($unpaidPln, 2);
+
+        // Status
+        $status = 'ok';
+        $pct = null;
+        if ($limit) {
+            $lim = (float)$limit->credit_limit_pln;
+            if ($lim > 0) {
+                $pct = round(($unpaidPln / $lim) * 100, 1);
+                if ($limit->is_blocked) {
+                    $status = 'blocked';
+                } elseif ($pct >= 100) {
+                    $status = 'exceeded';
+                } elseif ($pct >= (int)$limit->warning_threshold_pct) {
+                    $status = 'warning';
+                }
+            }
+        } elseif ($overdueCount > 0) {
+            // Bez limitu - sam fakt zaleglych faktur to info
+            $status = 'has_overdue';
+        }
+
+        $this->jsonResp([
+            'ok'    => true,
+            'found' => true,
+            'has_limit'      => (bool)$limit,
+            'credit_limit'   => $limit ? (float)$limit->credit_limit_pln : null,
+            'warning_pct'    => $limit ? (int)$limit->warning_threshold_pct : null,
+            'is_blocked'     => $limit ? (bool)$limit->is_blocked : false,
+            'block_reason'   => $limit?->block_reason,
+            'unpaid_pln'     => $unpaidPln,
+            'unpaid_count'   => $unpaidCount,
+            'overdue_count'  => $overdueCount,
+            'used_pct'       => $pct,
+            'available_pln'  => $limit ? round(max(0, (float)$limit->credit_limit_pln - $unpaidPln), 2) : null,
+            'status'         => $status,
+        ]);
+    }
+
+    /**
      * AJAX: mini-profil kontrahenta - statystyki wspolpracy.
      * GET /zlecenia/profil-klienta?nip=xxx
      * Zwraca: liczba zlecen ostatnie 12 mies, avg netto, top trasa,

@@ -445,6 +445,11 @@ return [
             ],
         ],
         [
+            'role' => ['spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'ContractorCreditLimits',
+            'action' => ['index', 'add', 'edit', 'delete'],
+        ],
+        [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'SpeedOrders',
             'action' => [
@@ -456,7 +461,7 @@ return [
                 'driversJson', 'vehiclesJson', 'lastForBuyerJson', 'citiesJson',
                 'routeCalcJson', 'aiParseOrderJson',
                 'conflictCheckJson', 'freeResourcesJson', 'routePlansJson',
-                'pdfConfirmation', 'buyerProfileJson',
+                'pdfConfirmation', 'buyerProfileJson', 'creditCheckJson',
                 'noteAdd', 'noteDelete',
                 'templatesListJson', 'templateSaveJson', 'templateDeleteJson',
                 'templateUseJson', 'templateFavoriteJson',
