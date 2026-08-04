@@ -1346,20 +1346,25 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     }
 
     function fetchConflicts() {
-        var driver  = ($form.elements.driver.value || '').trim();
-        var vehicle = ($form.elements.vehicle_reg.value || '').trim();
-        var start   = $form.elements.date_deadline.value;
-        var end     = $form.elements.date_delivery.value;
+        var driver   = ($form.elements.driver.value || '').trim();
+        var vehicle  = ($form.elements.vehicle_reg.value || '').trim();
+        var start    = $form.elements.date_deadline.value;
+        var end      = $form.elements.date_delivery.value;
+        var buyerNip = ($form.elements.buyer_nip.value || '').trim();
+        var loadCity = ($form.elements.load_city.value || '').trim();
 
-        if ((!driver && !vehicle) || !start || !end) {
-            $conflictWrap.style.display = 'none';
-            return;
+        // Fire jesli mamy okno + (driver | vehicle | (buyer+load dla duplikatu))
+        if (!start || !end) { $conflictWrap.style.display = 'none'; return; }
+        if (!driver && !vehicle && !(buyerNip && loadCity)) {
+            $conflictWrap.style.display = 'none'; return;
         }
 
         var fd = new FormData();
         fd.append('_csrfToken', CSRF);
-        if (driver)  fd.append('driver_name', driver);
-        if (vehicle) fd.append('vehicle_plate', vehicle);
+        if (driver)   fd.append('driver_name', driver);
+        if (vehicle)  fd.append('vehicle_plate', vehicle);
+        if (buyerNip) fd.append('buyer_nip', buyerNip);
+        if (loadCity) fd.append('load_city', loadCity);
         fd.append('start', start);
         fd.append('end', end);
 
@@ -1372,30 +1377,65 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         .then(function(r){ return r.json(); })
         .then(function(j){
             if (!j.ok) { $conflictWrap.style.display = 'none'; return; }
-            if (!j.has_conflicts) {
-                $conflictWrap.style.display = 'block';
-                $conflictAlert.className = 'alert alert-success py-2 px-3 mb-0 small';
-                $conflictAlert.innerHTML = '<i class="ri-check-line me-1"></i>' +
-                    '<strong>Brak kolizji w grafiku</strong> — kierowca/pojazd jest wolny w tym oknie.';
+
+            var parts = [];
+
+            // 1. Kolizje grafika
+            if (j.has_conflicts) {
+                var h = '<div class="fw-semibold"><i class="ri-alert-line me-1"></i>Wykryto kolizje grafika (' + j.conflicts.length + '):</div><ul class="mb-0 mt-1 ps-3">';
+                j.conflicts.forEach(function(c){
+                    var label = c.kind === 'driver' ? 'Kierowca' : 'Pojazd';
+                    var lnk = c.linked ? ' → <span class="text-muted">' + c.linked + '</span>' : '';
+                    h += '<li>' + label + ' <strong>' + c.entity + '</strong> — ' + c.entry_type +
+                         ' (' + c.starts_at + ' → ' + c.ends_at + ')' + lnk + '</li>';
+                });
+                h += '</ul>';
+                parts.push({ level: 'warning', html: h });
+            } else if (driver || vehicle) {
+                parts.push({ level: 'success', html: '<i class="ri-check-line me-1"></i><strong>Grafik wolny</strong> — kierowca/pojazd dostepny w tym oknie.' });
+            }
+
+            // 2. Compliance issues
+            if (j.has_compliance) {
+                var h = '<div class="fw-semibold"><i class="ri-shield-cross-line me-1"></i>Compliance (' + j.compliance_issues.length + '):</div><ul class="mb-0 mt-1 ps-3">';
+                j.compliance_issues.forEach(function(c){
+                    h += '<li>' + c.msg + '</li>';
+                });
+                h += '</ul>';
+                parts.push({ level: 'danger', html: h });
+            }
+
+            // 3. Duplikat hint
+            if (j.duplicate_hint) {
+                var d = j.duplicate_hint;
+                var h = '<i class="ri-file-copy-line me-1"></i><strong>Mozliwy duplikat:</strong> ' +
+                        '<a href="/zlecenia/view/' + d.id + '" target="_blank">' + d.symbol + '</a>' +
+                        ' (' + (d.date_doc || '') + ') dla <strong>' + (d.buyer_name || '') + '</strong>' +
+                        ' — trasa: ' + (d.route || '');
+                parts.push({ level: 'info', html: h });
+            }
+
+            if (parts.length === 0) {
+                $conflictWrap.style.display = 'none';
                 return;
             }
-            var html = '<div class="fw-semibold"><i class="ri-alert-line me-1"></i>Wykryto kolizje grafika (' + j.conflicts.length + '):</div><ul class="mb-0 mt-1 ps-3">';
-            j.conflicts.forEach(function(c){
-                var label = c.kind === 'driver' ? 'Kierowca' : 'Pojazd';
-                var lnk = c.linked ? ' → <span class="text-muted">' + c.linked + '</span>' : '';
-                html += '<li>' + label + ' <strong>' + c.entity + '</strong> — ' + c.entry_type +
-                        ' (' + c.starts_at + ' → ' + c.ends_at + ')' + lnk + '</li>';
-            });
-            html += '</ul>';
+
+            // Render wszystkich czesci - najwyzszy severity wygrywa dla ramki
+            var highestLevel = 'success';
+            var order = ['success','info','warning','danger'];
+            parts.forEach(function(p){ if (order.indexOf(p.level) > order.indexOf(highestLevel)) highestLevel = p.level; });
+            var html = parts.map(function(p){
+                return '<div class="mb-1">' + p.html + '</div>';
+            }).join('');
             $conflictWrap.style.display = 'block';
-            $conflictAlert.className = 'alert alert-warning py-2 px-3 mb-0 small';
+            $conflictAlert.className = 'alert alert-' + highestLevel + ' py-2 px-3 mb-0 small';
             $conflictAlert.innerHTML = html;
         })
         .catch(function(){ $conflictWrap.style.display = 'none'; });
     }
 
-    // Trigger po zmianie kierowcy/pojazdu/dat
-    ['driver','vehicle_reg','date_deadline','date_delivery'].forEach(function(f){
+    // Trigger po zmianie: kierowcy/pojazdu/dat + buyer_nip/load_city (dla duplikatu)
+    ['driver','vehicle_reg','date_deadline','date_delivery','buyer_nip','load_city'].forEach(function(f){
         if ($form.elements[f]) {
             $form.elements[f].addEventListener('change', scheduleConflictCheck);
         }

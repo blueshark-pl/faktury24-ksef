@@ -1590,10 +1590,105 @@ class SpeedOrdersController extends AppController
             } catch (\Throwable) {}
         }
 
+        // Compliance: badania techniczne + OC pojazdu na date zaladunku
+        $complianceIssues = [];
+        if ($vehiclePlate !== '') {
+            try {
+                $vehicle = $this->fetchTable('Vehicles')->find()
+                    ->select(['id', 'name', 'plate'])
+                    ->where(['company_id' => $companyId, 'plate LIKE' => '%' . $vehiclePlate . '%'])
+                    ->first();
+                if ($vehicle) {
+                    $missing = $this->fetchTable('VehicleMaintenance')
+                        ->findMissingForDate($companyId, 'vehicle', (string)$vehicle->id, $start, ['technical_inspection', 'oc']);
+                    if (!empty($missing)) {
+                        $complianceIssues[] = [
+                            'kind'    => 'vehicle_docs',
+                            'entity'  => $vehicle->plate . ' (' . $vehicle->name . ')',
+                            'missing' => $missing,
+                            'msg'     => 'Pojazd nie ma ważnych dokumentów na dzień załadunku: ' . implode(', ', $missing),
+                        ];
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        // Compliance: czas pracy kierowcy w tygodniu ISO
+        if ($driverName !== '') {
+            try {
+                $driver = $this->fetchTable('Drivers')->find()
+                    ->select(['id', 'full_name'])
+                    ->where(['company_id' => $companyId, 'full_name LIKE' => '%' . $driverName . '%'])
+                    ->first();
+                if ($driver) {
+                    $weekIso  = $start->format('o') . '-W' . $start->format('W');
+                    $duration = (int)(($end->getTimestamp() - $start->getTimestamp()) / 60);
+                    $DTL = $this->fetchTable('DriverTimeLogs');
+                    $status = $DTL->weeklyStatus((string)$driver->id, $weekIso);
+                    if (!$DTL->hasBudgetInWeek((string)$driver->id, $weekIso, $duration)) {
+                        $complianceIssues[] = [
+                            'kind'   => 'driver_hours',
+                            'entity' => $driver->full_name,
+                            'msg'    => 'Kierowca przekracza budżet czasu pracy UE 561/2006 w tygodniu ' . $weekIso .
+                                        ' (wykorzystane: ' . round(($status['used_min'] ?? 0) / 60, 1) . 'h, ' .
+                                        'planowane: ' . round($duration / 60, 1) . 'h, ' .
+                                        'pozostało: ' . round(($status['remaining_min'] ?? 0) / 60, 1) . 'h)',
+                        ];
+                    } elseif (!empty($status['is_at_risk'])) {
+                        $complianceIssues[] = [
+                            'kind'   => 'driver_hours_risk',
+                            'entity' => $driver->full_name,
+                            'msg'    => 'Kierowca zbliża się do limitu tygodniowego (' .
+                                        round(($status['used_min'] ?? 0) / 60, 1) . 'h / 56h)',
+                        ];
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        // Duplikat: sprawdz czy klient (buyer_nip) ma juz zlecenie w oknie +-1 dzien
+        //          z tego samego miasta zaladunku
+        $duplicateHint = null;
+        $buyerNip = trim((string)$this->request->getData('buyer_nip', ''));
+        $loadCity = trim((string)$this->request->getData('load_city', ''));
+        if ($buyerNip !== '' && $loadCity !== '') {
+            try {
+                $dayFrom = $start->modify('-1 day')->format('Y-m-d');
+                $dayTo   = $start->modify('+1 day')->format('Y-m-d');
+                $companyNip = $this->currentCompanyNip();
+                $dup = $this->fetchTable('SpeedOrders')->find()
+                    ->select(['id', 'symbol', 'date_doc', 'buyer_name', 'load_city', 'unload_city', 'source'])
+                    ->where([
+                        'company_nip'    => $companyNip,
+                        'buyer_nip LIKE' => '%' . preg_replace('/\D+/', '', $buyerNip) . '%',
+                        'load_city LIKE' => '%' . $loadCity . '%',
+                        'date_deadline >=' => $dayFrom,
+                        'date_deadline <=' => $dayTo . ' 23:59:59',
+                    ])
+                    ->orderByDesc('date_doc')
+                    ->limit(1)
+                    ->first();
+                if ($dup) {
+                    $duplicateHint = [
+                        'id'          => $dup->id,
+                        'symbol'      => $dup->symbol,
+                        'date_doc'    => $dup->date_doc?->format('Y-m-d'),
+                        'buyer_name'  => $dup->buyer_name,
+                        'route'       => trim(($dup->load_city ?? '') . ' → ' . ($dup->unload_city ?? '')),
+                        'source'      => $dup->source,
+                        'msg'         => 'Znaleziono podobne zlecenie: ' . $dup->symbol . ' (' . $dup->date_doc?->format('Y-m-d') . ')',
+                    ];
+                }
+            } catch (\Throwable) {}
+        }
+
         $this->jsonResp([
-            'ok'        => true,
-            'conflicts' => $conflicts,
-            'has_conflicts' => !empty($conflicts),
+            'ok'                 => true,
+            'conflicts'          => $conflicts,
+            'has_conflicts'      => !empty($conflicts),
+            'compliance_issues'  => $complianceIssues,
+            'has_compliance'     => !empty($complianceIssues),
+            'duplicate_hint'     => $duplicateHint,
         ]);
     }
 
