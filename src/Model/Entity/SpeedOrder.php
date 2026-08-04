@@ -62,6 +62,23 @@ use Cake\ORM\Entity;
  * @property float       $brutto
  * @property float|null  $exchange_rate
  * @property string|null $payment_terms
+ * @property int|null    $payment_days
+ * @property \Cake\I18n\Date|null $payment_due_date
+ * @property \Cake\I18n\Time|null $load_time_from
+ * @property \Cake\I18n\Time|null $load_time_to
+ * @property \Cake\I18n\Time|null $unload_time_from
+ * @property \Cake\I18n\Time|null $unload_time_to
+ * @property string|null $required_vehicle_type
+ * @property bool        $pallets_exchange
+ * @property int|null    $pallets_exchange_count
+ * @property int|null    $docs_return_days
+ * @property string|null $load_contact_name
+ * @property string|null $load_contact_phone
+ * @property string|null $load_contact_email
+ * @property string|null $unload_contact_name
+ * @property string|null $unload_contact_phone
+ * @property string|null $unload_contact_email
+ * @property string|null $driver_instructions
  * @property string|null $our_ref
  * @property string|null $exchange_table
  * @property string|null $nick_created

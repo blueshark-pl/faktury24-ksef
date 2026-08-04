@@ -2852,6 +2852,23 @@ poprawny JSON o dokladnie tej strukturze:
   "incoterms_place": "miejsce dla INCOTERMS lub pusty",
   "cmr_number": "nr CMR lub pusty",
 
+  "payment_days": liczba lub null (np. 30/45/60 z 'przelew 30 dni'),
+  "required_vehicle_type": "plandeka/mega/chlodnia/cysterna/wywrotka/kontener/bus/platforma/oversize lub pusty",
+  "pallets_exchange": true/false (czy wspomina o paletach wymiennych EUR/EPAL),
+  "pallets_exchange_count": liczba lub null (ile palet do wymiany),
+  "docs_return_days": liczba lub null (termin zwrotu CMR/WZ w dniach),
+  "load_time_from": "HH:MM okno zaladunku od (bez daty) lub pusty",
+  "load_time_to": "HH:MM okno zaladunku do lub pusty",
+  "unload_time_from": "HH:MM okno rozladunku od lub pusty",
+  "unload_time_to": "HH:MM okno rozladunku do lub pusty",
+  "load_contact_name": "imie osoby na zaladunku lub pusty",
+  "load_contact_phone": "telefon osoby na zaladunku lub pusty",
+  "load_contact_email": "email osoby na zaladunku lub pusty",
+  "unload_contact_name": "imie osoby na rozladunku lub pusty",
+  "unload_contact_phone": "telefon lub pusty",
+  "unload_contact_email": "email lub pusty",
+  "driver_instructions": "instrukcje dla kierowcy (kod bramy, EPI, gdzie parkowac) lub pusty",
+
   "confidence": 0-100 (jak pewien jestes co do wyciagnietych danych),
   "note": "krotki komentarz dla operatora - co udalo sie wyciagnac a co nie"
 }
@@ -3524,6 +3541,26 @@ SYS;
         $data['currency'] = $currency;
         if ($currency === 'PLN') {
             $data['exchange_rate'] = 1.0;
+        }
+
+        // Auto-wyliczenie payment_due_date z date_doc + payment_days
+        // + auto-generacja payment_terms string ('Przelew 30 dni') gdy pusty
+        $paymentDays = (int)($data['payment_days'] ?? 0);
+        if ($paymentDays > 0 && !empty($data['date_doc'])) {
+            try {
+                $issueDate = new \DateTime((string)$data['date_doc']);
+                $issueDate->modify('+' . $paymentDays . ' days');
+                $data['payment_due_date'] = $issueDate->format('Y-m-d');
+            } catch (\Throwable) {}
+        }
+        if ($paymentDays > 0 && empty($data['payment_terms'])) {
+            $data['payment_terms'] = 'Przelew ' . $paymentDays . ' dni';
+        }
+
+        // Normalizacja bool palet wymiennych
+        $data['pallets_exchange'] = !empty($data['pallets_exchange']) ? true : false;
+        if (!$data['pallets_exchange']) {
+            $data['pallets_exchange_count'] = null;
         }
 
         // Normalizacja krajow (2-znakowy uppercase, fallback PL)

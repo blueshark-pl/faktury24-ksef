@@ -491,6 +491,26 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <input type="datetime-local" name="actual_load_at" class="form-control" value="<?= h($order->actual_load_at ? $order->actual_load_at->format('Y-m-d\TH:i') : '') ?>">
                 </div>
                 <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('Okno od (godz.)') ?></label>
+                    <input type="time" name="load_time_from" class="form-control form-control-sm" value="<?= h($order->load_time_from ? (string)$order->load_time_from : '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('Okno do (godz.)') ?></label>
+                    <input type="time" name="load_time_to" class="form-control form-control-sm" value="<?= h($order->load_time_to ? (string)$order->load_time_to : '') ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Kontakt na miejscu (imię)') ?></label>
+                    <input type="text" name="load_contact_name" class="form-control form-control-sm" value="<?= h($order->load_contact_name ?? '') ?>" maxlength="120">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Telefon') ?></label>
+                    <input type="tel" name="load_contact_phone" class="form-control form-control-sm" value="<?= h($order->load_contact_phone ?? '') ?>" maxlength="40" placeholder="+48 123 456 789">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Email') ?></label>
+                    <input type="email" name="load_contact_email" class="form-control form-control-sm" value="<?= h($order->load_contact_email ?? '') ?>" maxlength="180">
+                </div>
+                <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('GPS lat') ?></label>
                     <input type="number" step="0.0000001" name="load_lat" class="form-control form-control-sm" value="<?= h($order->load_lat ?? '') ?>" placeholder="np. 52.229676">
                 </div>
@@ -537,6 +557,26 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Czas rzeczywisty') ?></label>
                     <input type="datetime-local" name="actual_unload_at" class="form-control" value="<?= h($order->actual_unload_at ? $order->actual_unload_at->format('Y-m-d\TH:i') : '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('Okno od (godz.)') ?></label>
+                    <input type="time" name="unload_time_from" class="form-control form-control-sm" value="<?= h($order->unload_time_from ? (string)$order->unload_time_from : '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('Okno do (godz.)') ?></label>
+                    <input type="time" name="unload_time_to" class="form-control form-control-sm" value="<?= h($order->unload_time_to ? (string)$order->unload_time_to : '') ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Kontakt na miejscu (imię)') ?></label>
+                    <input type="text" name="unload_contact_name" class="form-control form-control-sm" value="<?= h($order->unload_contact_name ?? '') ?>" maxlength="120">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Telefon') ?></label>
+                    <input type="tel" name="unload_contact_phone" class="form-control form-control-sm" value="<?= h($order->unload_contact_phone ?? '') ?>" maxlength="40">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Email') ?></label>
+                    <input type="email" name="unload_contact_email" class="form-control form-control-sm" value="<?= h($order->unload_contact_email ?? '') ?>" maxlength="180">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('GPS lat') ?></label>
@@ -654,12 +694,53 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <input type="text" name="cargo_type" class="form-control" value="<?= h($order->cargo_type ?? '') ?>" maxlength="120" placeholder="FTL, LTL, ADR">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('Rodzaj transportu') ?></label>
-                    <input type="text" name="transport_type" class="form-control" value="<?= h($order->transport_type ?? '') ?>" maxlength="100" placeholder="plandeka, chłodnia">
+                    <label class="form-label small text-muted"><?= __('Wymagany typ pojazdu') ?></label>
+                    <select name="required_vehicle_type" class="form-select">
+                        <option value=""></option>
+                        <?php foreach ([
+                            'plandeka' => 'Plandeka',
+                            'mega' => 'Mega',
+                            'chlodnia' => 'Chłodnia',
+                            'cysterna' => 'Cysterna',
+                            'wywrotka' => 'Wywrotka',
+                            'kontener' => 'Kontener',
+                            'bus' => 'Bus / dostawcze',
+                            'platforma' => 'Platforma / niskopodwoziowe',
+                            'oversize' => 'Ponadgabaryt',
+                        ] as $val => $lbl): ?>
+                            <option value="<?= h($val) ?>" <?= ($order->required_vehicle_type ?? '') === $val ? 'selected' : '' ?>><?= h($lbl) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted"><?= __('Rodzaj transportu (dodatkowy)') ?></label>
+                    <input type="text" name="transport_type" class="form-control" value="<?= h($order->transport_type ?? '') ?>" maxlength="100" placeholder="np. z windą, ADR">
+                </div>
+                <!-- Palety wymienne -->
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" name="pallets_exchange" value="1" class="form-check-input" id="so-pallets-ex" <?= !empty($order->pallets_exchange) ? 'checked' : '' ?>>
+                        <label for="so-pallets-ex" class="form-check-label small"><?= __('Palety wymienne (EUR/EPAL)') ?></label>
+                    </div>
+                </div>
+                <div class="col-md-2" id="so-pallets-ex-count-wrap" style="<?= !empty($order->pallets_exchange) ? '' : 'display:none' ?>">
+                    <label class="form-label small text-muted"><?= __('Ilość do wymiany') ?></label>
+                    <input type="number" min="0" step="1" name="pallets_exchange_count" class="form-control form-control-sm" value="<?= h($order->pallets_exchange_count ?? '') ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted"><?= __('Zwrot CMR (dni)') ?></label>
+                    <input type="number" min="0" max="90" step="1" name="docs_return_days" class="form-control form-control-sm" value="<?= h($order->docs_return_days ?? '') ?>" placeholder="7">
                 </div>
                 <div class="col-md-12">
-                    <label class="form-label small text-muted"><?= __('Uwagi') ?></label>
+                    <label class="form-label small text-muted"><?= __('Uwagi ogólne (widoczne w email do klienta)') ?></label>
                     <textarea name="notes" class="form-control" rows="2" maxlength="2000"><?= h($order->notes ?? '') ?></textarea>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label small text-muted">
+                        <i class="ri-user-star-line me-1 text-warning"></i>
+                        <?= __('Instrukcje dla kierowcy (kod bramy, wjazd, EPI...) — NIE widoczne w email klienta') ?>
+                    </label>
+                    <textarea name="driver_instructions" class="form-control" rows="2" maxlength="2000" placeholder="Wjazd od tyłu, kod bramy: 1234, EPI: kamizelka + kask, godziny 07:00-15:00"><?= h($order->driver_instructions ?? '') ?></textarea>
                 </div>
             </div>
         </div>
@@ -752,9 +833,17 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <label class="form-label small text-muted"><?= __('Brutto') ?></label>
                     <input type="text" id="fin-brutto" class="form-control fw-bold fs-6" value="<?= h($order->brutto ?? '0.00') ?>" readonly>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label small text-muted"><?= __('Warunki płatności') ?></label>
-                    <input type="text" name="payment_terms" class="form-control" value="<?= h($order->payment_terms ?? 'Przelew 30 dni') ?>" maxlength="100">
+                <div class="col-md-2">
+                    <label class="form-label small text-muted"><?= __('Termin (dni)') ?></label>
+                    <input type="number" min="0" max="180" step="1" name="payment_days" id="so-payment-days" class="form-control" value="<?= h($order->payment_days ?? 30) ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted"><?= __('Do zapłaty') ?></label>
+                    <input type="text" id="so-payment-due" class="form-control text-muted" value="<?= h($order->payment_due_date ? $order->payment_due_date->format('Y-m-d') : '') ?>" readonly title="Auto: date_doc + payment_days">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted"><?= __('Warunki (opis)') ?></label>
+                    <input type="text" name="payment_terms" class="form-control" value="<?= h($order->payment_terms ?? '') ?>" maxlength="100" placeholder="np. Przelew, kompensata">
                 </div>
                 <div class="col-12" id="so-approval-hint" style="display:none">
                     <div class="alert alert-warning py-2 px-3 mb-0 small">
@@ -1099,6 +1188,65 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     $rate.addEventListener('change', calc);
     $cur.addEventListener('change', calc);
     calc();
+
+    // ===== Payment due date - auto-fill z date_doc + payment_days =====
+    var $paymentDays = document.getElementById('so-payment-days');
+    var $paymentDue  = document.getElementById('so-payment-due');
+    function recalcPaymentDue() {
+        if (!$paymentDays || !$paymentDue) return;
+        var days = parseInt($paymentDays.value, 10) || 0;
+        var docDate = $form.elements.date_doc.value;
+        if (!docDate || days <= 0) { $paymentDue.value = ''; return; }
+        try {
+            var d = new Date(docDate + 'T00:00:00');
+            d.setDate(d.getDate() + days);
+            $paymentDue.value = d.toISOString().slice(0, 10);
+        } catch(e){}
+    }
+    if ($paymentDays) $paymentDays.addEventListener('input', recalcPaymentDue);
+    $form.elements.date_doc.addEventListener('change', recalcPaymentDue);
+    recalcPaymentDue();
+
+    // ===== Palety wymienne toggle =====
+    var $palletsEx = document.getElementById('so-pallets-ex');
+    var $palletsExCount = document.getElementById('so-pallets-ex-count-wrap');
+    if ($palletsEx && $palletsExCount) {
+        $palletsEx.addEventListener('change', function(){
+            $palletsExCount.style.display = $palletsEx.checked ? '' : 'none';
+        });
+    }
+
+    // ===== Walidacja wagi cargo vs DMC pojazdu =====
+    // Aktualnie: przy zmianie cargo_weight_kg lub required_vehicle_type
+    // pokazuj hint (nie blokujemy zapisu - tylko warning)
+    var $cargoWeight = $form.elements.cargo_weight_kg;
+    var $reqVType    = $form.elements.required_vehicle_type;
+    if ($cargoWeight && $reqVType) {
+        // Typowe limity DMC per typ (heurystyka)
+        var vehLimits = {
+            'plandeka': 24000, 'mega': 24000, 'chlodnia': 20000,
+            'cysterna': 24000, 'wywrotka': 24000, 'kontener': 24000,
+            'bus': 3500, 'platforma': 40000, 'oversize': 50000,
+        };
+        function checkWeightLimit() {
+            var w = parseInt($cargoWeight.value, 10) || 0;
+            var t = $reqVType.value;
+            var limit = vehLimits[t] || 0;
+            var existing = document.getElementById('so-weight-warn');
+            if (existing) existing.remove();
+            if (limit > 0 && w > 0 && w > limit) {
+                var msg = document.createElement('div');
+                msg.id = 'so-weight-warn';
+                msg.className = 'small text-danger mt-1';
+                msg.innerHTML = '<i class="ri-error-warning-line me-1"></i>Waga ' + w.toLocaleString('pl-PL') +
+                                ' kg przekracza limit typowy dla ' + t + ' (~' + limit.toLocaleString('pl-PL') + ' kg)';
+                $cargoWeight.parentNode.appendChild(msg);
+            }
+        }
+        $cargoWeight.addEventListener('input', checkWeightLimit);
+        $reqVType.addEventListener('change', checkWeightLimit);
+        checkWeightLimit();
+    }
 
     // ===== Currency change: exchange_rate = kurs NBP z dnia dokumentu =====
     var lastFetchedRateKey = ''; // 'EUR|2026-08-04' cache
@@ -2532,6 +2680,21 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     'incoterms': 'incoterms',
                     'incoterms_place': 'incoterms_place',
                     'cmr_number': 'cmr_number',
+                    'payment_days': 'payment_days',
+                    'required_vehicle_type': 'required_vehicle_type',
+                    'pallets_exchange_count': 'pallets_exchange_count',
+                    'docs_return_days': 'docs_return_days',
+                    'load_time_from': 'load_time_from',
+                    'load_time_to': 'load_time_to',
+                    'unload_time_from': 'unload_time_from',
+                    'unload_time_to': 'unload_time_to',
+                    'load_contact_name': 'load_contact_name',
+                    'load_contact_phone': 'load_contact_phone',
+                    'load_contact_email': 'load_contact_email',
+                    'unload_contact_name': 'unload_contact_name',
+                    'unload_contact_phone': 'unload_contact_phone',
+                    'unload_contact_email': 'unload_contact_email',
+                    'driver_instructions': 'driver_instructions',
                 };
                 var filled = [];
                 Object.keys(mapping).forEach(function(k){
@@ -2543,6 +2706,15 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                         filled.push(k + ': ' + v);
                     }
                 });
+                // Special: pallets_exchange boolean checkbox
+                if (typeof d.pallets_exchange === 'boolean' || d.pallets_exchange === 1 || d.pallets_exchange === 'true') {
+                    var $ex = document.getElementById('so-pallets-ex');
+                    if ($ex) {
+                        $ex.checked = !!d.pallets_exchange;
+                        $ex.dispatchEvent(new Event('change'));
+                        filled.push('pallets_exchange: ' + $ex.checked);
+                    }
+                }
                 $aiSummary.innerHTML = '<strong>Wypelnione pola:</strong><br>' + filled.join('<br>');
                 calc(); // przelicz VAT/brutto z nowego netto
                 onCur(); // update kurs jesli waluta zmieniona
@@ -2642,14 +2814,17 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         'contract', 'buyer_nip', 'buyer_name', 'buyer_email', 'buyer_street',
         'buyer_postal_code', 'buyer_city', 'buyer_country',
         'load_country', 'load_postal_code', 'load_city',
+        'load_time_from', 'load_time_to', 'load_contact_name', 'load_contact_phone', 'load_contact_email',
         'unload_country', 'unload_city', 'unload_name',
-        'title2', 'cargo_type', 'transport_type',
+        'unload_time_from', 'unload_time_to', 'unload_contact_name', 'unload_contact_phone', 'unload_contact_email',
+        'title2', 'cargo_type', 'transport_type', 'required_vehicle_type',
         'cargo_weight_kg', 'cargo_volume_m3', 'cargo_ldm', 'cargo_pallets', 'cargo_pallet_type',
+        'pallets_exchange', 'pallets_exchange_count', 'docs_return_days',
         'adr_class', 'adr_un', 'temperature_min', 'temperature_max',
         'incoterms', 'incoterms_place',
         'driver', 'vehicle_reg', 'carrier',
-        'currency', 'netto', 'payment_terms',
-        'notes',
+        'currency', 'netto', 'payment_terms', 'payment_days',
+        'notes', 'driver_instructions',
     ];
 
     function collectTemplatePayload() {
