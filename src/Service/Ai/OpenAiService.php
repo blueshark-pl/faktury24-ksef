@@ -68,11 +68,16 @@ class OpenAiService
             }
             $data = $resp->getJson();
             $content = $data['choices'][0]['message']['content'] ?? null;
+            $finishReason = $data['choices'][0]['finish_reason'] ?? null;
             if (!$content) {
                 throw new RuntimeException('Brak odpowiedzi z OpenAI.');
             }
-            $parsed = json_decode($content, true);
-            if (!is_array($parsed)) {
+            $parsed = self::tryParseJson($content);
+            if ($parsed === null) {
+                Log::warning('OpenAI invalid JSON (finish_reason=' . $finishReason . '): ' . substr($content, 0, 500));
+                if ($finishReason === 'length') {
+                    throw new RuntimeException('OpenAI zwrocil odpowiedz ucieconą (przekroczono max_tokens). Skroc dane wejsciowe.');
+                }
                 throw new RuntimeException('OpenAI zwróciło nieprawidłowy JSON.');
             }
             return $parsed;
@@ -129,11 +134,17 @@ class OpenAiService
             }
             $data = $resp->getJson();
             $content = $data['choices'][0]['message']['content'] ?? null;
+            $finishReason = $data['choices'][0]['finish_reason'] ?? null;
             if (!$content) {
                 throw new RuntimeException('Brak odpowiedzi z OpenAI Vision.');
             }
-            $parsed = json_decode($content, true);
-            if (!is_array($parsed)) {
+            $parsed = self::tryParseJson($content);
+            if ($parsed === null) {
+                // Log dla debug: pokaz co OpenAI zwrocil (pierwsze 500 chars) + finish reason
+                Log::warning('OpenAI Vision invalid JSON (finish_reason=' . $finishReason . '): ' . substr($content, 0, 500));
+                if ($finishReason === 'length') {
+                    throw new RuntimeException('OpenAI Vision zwrocil odpowiedz ucieconą (przekroczono max_tokens). Sprobuj krotszy dokument.');
+                }
                 throw new RuntimeException('OpenAI Vision zwróciło nieprawidłowy JSON.');
             }
             return $parsed;
@@ -141,6 +152,27 @@ class OpenAiService
             Log::error('OpenAI Vision error: ' . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Best-effort parser JSON: try direct, then strip markdown ``` wrappers,
+     * then extract first { ... } block.
+     */
+    private static function tryParseJson(string $content): ?array
+    {
+        $tries = [
+            $content,
+            preg_replace('/^```(?:json)?\s*|\s*```$/m', '', trim($content)), // strip ``` ... ```
+        ];
+        // Extract first {...} balanced block
+        if (preg_match('/\{[\s\S]*\}/', $content, $m)) {
+            $tries[] = $m[0];
+        }
+        foreach ($tries as $try) {
+            $parsed = json_decode($try, true);
+            if (is_array($parsed)) return $parsed;
+        }
+        return null;
     }
 
     /**

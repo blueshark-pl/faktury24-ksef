@@ -2952,21 +2952,26 @@ SYS;
         try {
             $ai = new \App\Service\Ai\OpenAiService();
             $hasVision = ($image !== '' || !empty($pages));
+            // Zwiekszone limity - schema ma stops[] + cargo_items[] + wszystkie TSL pola.
+            // Duze zlecenia LTL generuja 2000-4000 tokens response.
             if ($hasVision) {
-                // Multi-image: pierwszy z $image albo pages[0], reszta jako extraImages.
-                // Max tokens wyzsze dla PDF (moze byc wiele stron do przeanalizowania).
                 $primary  = $image !== '' ? $image : $pages[0];
                 $extra    = $image !== '' ? $pages : array_slice($pages, 1);
-                $maxToks  = 1200 + (min(count($extra), 5) * 400);
+                $maxToks  = 3000 + (min(count($extra), 5) * 500);
                 $prompt   = $text !== '' ? $text : 'Wyciagnij dane zlecenia z zalaczonego dokumentu (PDF/screenshot). Jesli sa 2+ strony - polacz informacje z wszystkich stron.';
                 $result = $ai->chatVisionJson($system, $prompt, $primary, $maxToks, $extra);
             } else {
-                $result = $ai->chatJson($system, $text, 1200);
+                $result = $ai->chatJson($system, $text, 3000);
             }
             $this->jsonResp(['ok' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             \Cake\Log\Log::warning('aiParseOrder: ' . $e->getMessage());
-            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+            // Zwroc user-friendly message + tip
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'nieprawidlowy JSON') || str_contains($msg, 'nieprawidłowy JSON')) {
+                $msg .= ' — prawdopodobnie response ucięty. Spróbuj krótszy tekst albo mniej stron PDF.';
+            }
+            $this->jsonResp(['ok' => false, 'error' => $msg]);
         }
     }
 
