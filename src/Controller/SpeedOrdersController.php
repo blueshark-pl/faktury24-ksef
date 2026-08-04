@@ -2827,10 +2827,13 @@ poprawny JSON o dokladnie tej strukturze:
   "load_country": "kod ISO alpha-2 zaladunku",
   "load_city": "miasto zaladunku",
   "load_postal_code": "kod pocztowy zaladunku lub pusty",
+  "load_address": "ulica + numer miejsca zaladunku (np. 'Wielicka 22') lub pusty",
   "date_deadline": "YYYY-MM-DDTHH:MM planowana data zaladunku lub pusty",
 
   "unload_country": "kod ISO alpha-2 rozladunku",
   "unload_city": "miasto rozladunku",
+  "unload_postal_code": "kod pocztowy rozladunku lub pusty",
+  "unload_address": "ulica + numer miejsca rozladunku lub pusty",
   "unload_name": "nazwa magazynu/miejsca rozladunku lub pusty",
   "date_delivery": "YYYY-MM-DDTHH:MM planowana data rozladunku lub pusty",
 

@@ -521,6 +521,10 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                     </label>
                     <input type="text" name="load_city" class="form-control" value="<?= h($order->load_city ?? '') ?>" maxlength="100">
                 </div>
+                <div class="col-md-12">
+                    <label class="form-label small text-muted"><?= __('Adres (ulica + numer)') ?> *</label>
+                    <input type="text" name="load_address" class="form-control" value="<?= h($order->load_address ?? '') ?>" maxlength="255" placeholder="np. Wielicka 22 lub Magazyn IKEA, brama 5">
+                </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
                     <input type="datetime-local" name="date_deadline" class="form-control" value="<?= h($order->date_deadline ? $order->date_deadline->format('Y-m-d\TH:i') : '') ?>">
@@ -578,7 +582,11 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-8">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted"><?= __('Kod pocztowy') ?></label>
+                    <input type="text" name="unload_postal_code" class="form-control" value="<?= h($order->unload_postal_code ?? '') ?>" maxlength="20">
+                </div>
+                <div class="col-md-4">
                     <label class="form-label small text-muted">
                         <?= __('Miasto') ?>
                         <?php if (!empty($order->unload_lat) && !empty($order->unload_lng)): ?>
@@ -588,6 +596,10 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         <?php endif; ?>
                     </label>
                     <input type="text" name="unload_city" class="form-control" value="<?= h($order->unload_city ?? '') ?>" maxlength="100">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label small text-muted"><?= __('Adres (ulica + numer)') ?> *</label>
+                    <input type="text" name="unload_address" class="form-control" value="<?= h($order->unload_address ?? '') ?>" maxlength="255" placeholder="np. Magazyn XYZ, Przemysłowa 15, brama 3">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
@@ -1736,7 +1748,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         lat: 'load_lat', lng: 'load_lng',
     });
     attachCityAutocomplete('unload_city', {
-        country: 'unload_country', postal: null,
+        country: 'unload_country', postal: 'unload_postal_code',
         lat: 'unload_lat', lng: 'unload_lng',
     });
     attachCityAutocomplete('buyer_city', {
@@ -2764,9 +2776,12 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                     'load_country': 'load_country',
                     'load_city': 'load_city',
                     'load_postal_code': 'load_postal_code',
+                    'load_address': 'load_address',
                     'date_deadline': 'date_deadline',
                     'unload_country': 'unload_country',
                     'unload_city': 'unload_city',
+                    'unload_postal_code': 'unload_postal_code',
+                    'unload_address': 'unload_address',
                     'unload_name': 'unload_name',
                     'date_delivery': 'date_delivery',
                     'title1': 'title1',
@@ -2922,9 +2937,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var TPL_FIELDS = [
         'contract', 'buyer_nip', 'buyer_name', 'buyer_email', 'buyer_street',
         'buyer_postal_code', 'buyer_city', 'buyer_country',
-        'load_country', 'load_postal_code', 'load_city',
+        'load_country', 'load_postal_code', 'load_city', 'load_address',
         'load_time_from', 'load_time_to', 'load_contact_name', 'load_contact_phone', 'load_contact_email',
-        'unload_country', 'unload_city', 'unload_name',
+        'unload_country', 'unload_postal_code', 'unload_city', 'unload_address', 'unload_name',
         'unload_time_from', 'unload_time_to', 'unload_contact_name', 'unload_contact_phone', 'unload_contact_email',
         'title2', 'cargo_type', 'transport_type', 'required_vehicle_type',
         'cargo_weight_kg', 'cargo_volume_m3', 'cargo_ldm', 'cargo_pallets', 'cargo_pallet_type',
