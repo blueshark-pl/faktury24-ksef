@@ -192,8 +192,14 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('NIP') ?></label>
+                    <label class="form-label small text-muted d-flex justify-content-between align-items-center">
+                        <span><?= __('NIP') ?></span>
+                        <button type="button" id="so-btn-gus" class="btn btn-sm btn-link p-0 text-decoration-none" style="font-size:.72rem" title="<?= __('Pobierz dane z GUS po NIP (PL, 10 cyfr)') ?>">
+                            <i class="ri-download-2-line"></i> GUS
+                        </button>
+                    </label>
                     <input type="text" name="buyer_nip" id="buyer-nip" class="form-control" value="<?= h($order->buyer_nip ?? '') ?>" maxlength="30">
+                    <div id="so-gus-msg" class="so-hint mt-1"></div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Nazwa') ?> *</label>
@@ -409,6 +415,56 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <input type="text" name="payment_terms" class="form-control" value="<?= h($order->payment_terms ?? 'Przelew 30 dni') ?>" maxlength="100">
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- WIDGET: Historia stawek + alert dumpingu -->
+<div class="col-12" id="so-pricing-wrap" style="display:none">
+    <div class="card border-0 shadow-sm so-section-card" id="so-pricing-card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-line-chart-line me-1 text-warning"></i> <?= __('Historia stawek dla tej trasy') ?>
+                    <span class="badge bg-secondary-subtle text-secondary ms-1" id="so-pricing-mode">-</span>
+                </h6>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="so-pricing-tab-client"><?= __('Ten klient') ?></button>
+                    <button type="button" class="btn btn-outline-secondary" id="so-pricing-tab-market"><?= __('Rynek') ?></button>
+                </div>
+            </div>
+
+            <div id="so-pricing-alert" class="alert py-2 px-3 mb-2 d-none small"></div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="p-2 rounded" style="background:#f8fafc">
+                        <div class="so-hint"><?= __('Ilość zleceń') ?></div>
+                        <div class="fs-5 fw-semibold" id="so-pricing-count">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-2 rounded" style="background:#f8fafc">
+                        <div class="so-hint"><?= __('Mediana (PLN)') ?></div>
+                        <div class="fs-5 fw-semibold text-primary" id="so-pricing-median">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-2 rounded" style="background:#f8fafc">
+                        <div class="so-hint"><?= __('Średnia (PLN)') ?></div>
+                        <div class="fs-5 fw-semibold" id="so-pricing-avg">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-2 rounded" style="background:#f8fafc">
+                        <div class="so-hint"><?= __('Min - Max (PLN)') ?></div>
+                        <div class="fs-6 fw-semibold" id="so-pricing-minmax">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="so-pricing-orders" class="mt-2 small"></div>
+            <div id="so-pricing-buyers" class="mt-2 small d-none"></div>
         </div>
     </div>
 </div>
@@ -708,5 +764,228 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         $lcBox.classList.add('d-none');
     });
     $lcClose.addEventListener('click', function(){ $lcBox.classList.add('d-none'); });
+
+    // =====================================================================
+    // GUS LOOKUP po NIP (PL, 10 cyfr) -> prefill danych firmy
+    // =====================================================================
+    var $gusBtn = document.getElementById('so-btn-gus');
+    var $gusMsg = document.getElementById('so-gus-msg');
+
+    function doGusLookup(nip) {
+        var digits = (nip || '').replace(/\D+/g, '');
+        if (digits.length !== 10) {
+            $gusMsg.innerHTML = '<span class="text-danger">NIP musi mieć dokładnie 10 cyfr (PL)</span>';
+            return;
+        }
+        $gusMsg.innerHTML = '<span class="text-muted"><i class="ri-loader-4-line spin"></i> Pobieram z GUS…</span>';
+        var fd = new FormData();
+        fd.append('nip', digits);
+        // CSRF token z sesji (Cake generuje cookie automatycznie)
+        fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.success) {
+                $gusMsg.innerHTML = '<span class="text-danger">' + (j.message || 'Błąd pobierania z GUS') + '</span>';
+                return;
+            }
+            var c = j.contractor;
+            if (c.name)   $form.elements.buyer_name.value = c.name;
+            if (c.street) $form.elements.buyer_street.value = c.street;
+            if (c.zip)    $form.elements.buyer_postal_code.value = c.zip;
+            if (c.city)   $form.elements.buyer_city.value = c.city;
+            if ($form.elements.buyer_country) $form.elements.buyer_country.value = 'PL';
+            var vatBadge = j.vat && j.vat.statusVat === 'Czynny'
+                ? '<span class="badge bg-success-subtle text-success ms-1">VAT czynny</span>'
+                : (j.vat && j.vat.statusVat
+                    ? '<span class="badge bg-warning-subtle text-warning ms-1">VAT ' + j.vat.statusVat + '</span>'
+                    : '');
+            $gusMsg.innerHTML = '<span class="text-success"><i class="ri-check-line"></i> Pobrano z GUS</span> ' + vatBadge;
+            checkLastForBuyer(digits);
+            schedulePricingCheck();
+        })
+        .catch(function(){
+            $gusMsg.innerHTML = '<span class="text-danger">Błąd pobierania z GUS</span>';
+        });
+    }
+    $gusBtn.addEventListener('click', function(){ doGusLookup($nipInput.value); });
+
+    // =====================================================================
+    // LIVE PRICING HISTORY + ALERT DUMPINGU
+    // =====================================================================
+    var $pWrap    = document.getElementById('so-pricing-wrap');
+    var $pMode    = document.getElementById('so-pricing-mode');
+    var $pAlert   = document.getElementById('so-pricing-alert');
+    var $pCount   = document.getElementById('so-pricing-count');
+    var $pMedian  = document.getElementById('so-pricing-median');
+    var $pAvg     = document.getElementById('so-pricing-avg');
+    var $pMinmax  = document.getElementById('so-pricing-minmax');
+    var $pOrders  = document.getElementById('so-pricing-orders');
+    var $pBuyers  = document.getElementById('so-pricing-buyers');
+    var $tabClient = document.getElementById('so-pricing-tab-client');
+    var $tabMarket = document.getElementById('so-pricing-tab-market');
+
+    var pricingMode = 'client';
+    var pricingTimer = null;
+
+    function schedulePricingCheck() {
+        clearTimeout(pricingTimer);
+        pricingTimer = setTimeout(fetchPricing, 400);
+    }
+
+    function fetchPricing() {
+        var fromCity    = $form.elements.load_city.value.trim();
+        var toCity      = $form.elements.unload_city.value.trim();
+        var fromCountry = $form.elements.load_country.value.trim();
+        var toCountry   = $form.elements.unload_country.value.trim();
+        var buyerNip    = $form.elements.buyer_nip.value.trim();
+        if (!fromCity && !toCity && !fromCountry && !toCountry) {
+            $pWrap.style.display = 'none';
+            return;
+        }
+        var payload = new FormData();
+        if (pricingMode === 'client' && buyerNip) payload.append('contractor_nip', buyerNip);
+        if (fromCity)    payload.append('from_city', fromCity);
+        if (toCity)      payload.append('to_city', toCity);
+        if (fromCountry) payload.append('from_country', fromCountry);
+        if (toCountry)   payload.append('to_country', toCountry);
+
+        fetch('<?= $this->Url->build(['controller' => 'RoutePlanner', 'action' => 'pricingHistory']) ?>', {
+            method: 'POST',
+            body: payload,
+            credentials: 'same-origin',
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok) { $pWrap.style.display = 'none'; return; }
+            renderPricing(j);
+        })
+        .catch(function(){ $pWrap.style.display = 'none'; });
+    }
+
+    function fmtPln(n) {
+        return (Math.round(Number(n || 0) * 100) / 100).toLocaleString('pl-PL', {minimumFractionDigits: 2});
+    }
+
+    function renderPricing(j) {
+        var stats  = j.stats || {};
+        var orders = j.orders || [];
+        var buyers = j.by_buyer || [];
+        var count  = stats.count || 0;
+        if (count === 0) {
+            $pWrap.style.display = 'block';
+            $pMode.textContent = j.mode === 'market' ? 'rynek' : 'ten klient';
+            $pAlert.className = 'alert alert-secondary py-2 px-3 mb-2 small';
+            $pAlert.innerHTML = '<i class="ri-information-line me-1"></i>' + (j.match_label || 'Brak danych historycznych');
+            $pAlert.classList.remove('d-none');
+            $pCount.textContent = '0';
+            $pMedian.textContent = '-';
+            $pAvg.textContent = '-';
+            $pMinmax.textContent = '-';
+            $pOrders.innerHTML = '';
+            $pBuyers.classList.add('d-none');
+            return;
+        }
+        $pWrap.style.display = 'block';
+        $pMode.textContent = j.mode === 'market' ? 'rynek' : 'ten klient';
+        $pCount.textContent = count;
+        $pMedian.textContent = fmtPln(stats.median);
+        $pAvg.textContent    = fmtPln(stats.avg);
+        $pMinmax.textContent = fmtPln(stats.min) + ' - ' + fmtPln(stats.max);
+
+        // Alert dumpingu - porownaj aktualna cene (PLN) z mediana
+        var netto   = parseFloat($form.elements.netto.value) || 0;
+        var currency = $form.elements.currency.value;
+        var rate    = parseFloat($form.elements.exchange_rate.value) || 1;
+        var pln     = currency === 'PLN' ? netto : netto * rate;
+        var median  = Number(stats.median || 0);
+
+        if (pln > 0 && median > 0) {
+            var ratio = pln / median;
+            if (ratio < 0.90) {
+                $pAlert.className = 'alert alert-danger py-2 px-3 mb-2 small';
+                $pAlert.innerHTML = '<i class="ri-alert-line me-1"></i><strong>DUMPING</strong> — ' +
+                    Math.round(ratio * 100) + '% mediany (' + fmtPln(median) + ' PLN). DUMPINGHINT_';
+            } else if (ratio > 1.10) {
+                $pAlert.className = 'alert alert-success py-2 px-3 mb-2 small';
+                $pAlert.innerHTML = '<i class="ri-trophy-line me-1"></i>' + Math.round(ratio * 100) +
+                    '% mediany (' + fmtPln(median) + ' PLN) — powyżej rynku, świetnie!';
+            } else {
+                $pAlert.className = 'alert alert-primary py-2 px-3 mb-2 small';
+                $pAlert.innerHTML = '<i class="ri-check-line me-1"></i>Cena zgodna z rynkiem (' +
+                    Math.round(ratio * 100) + '% mediany).';
+            }
+            $pAlert.classList.remove('d-none');
+        } else {
+            $pAlert.classList.add('d-none');
+        }
+
+        // Lista ostatnich zlecen (top 5)
+        var oh = '<div class="fw-semibold text-muted small mb-1">Ostatnie zlecenia:</div><ul class="list-unstyled small mb-0">';
+        orders.slice(0, 5).forEach(function(o){
+            var price = o.invoice && o.invoice.total_pln
+                ? fmtPln(o.invoice.total_pln) + ' PLN'
+                : (o.invoice ? (fmtPln(o.invoice.amount) + ' ' + (o.invoice.currency || '')) : '-');
+            var buyer = j.mode === 'market' && o.buyer_name ? '<span class="text-muted">' + o.buyer_name + '</span> — ' : '';
+            oh += '<li>' + buyer + '<code>' + (o.symbol || '') + '</code> ' + (o.date_doc || '') +
+                ' — <strong>' + price + '</strong></li>';
+        });
+        oh += '</ul>';
+        $pOrders.innerHTML = oh;
+
+        // TOP klienci (tylko market mode)
+        if (j.mode === 'market' && buyers.length > 0) {
+            var bh = '<div class="fw-semibold text-muted small mb-1">TOP klienci na tej trasie:</div><div class="d-flex flex-wrap gap-2">';
+            buyers.slice(0, 5).forEach(function(b){
+                bh += '<span class="badge bg-light text-dark border">' +
+                    '<strong>' + (b.buyer_name || '(brak)') + '</strong> — ' + b.count + 'x, avg ' +
+                    fmtPln(b.avg_pln) + ' PLN</span>';
+            });
+            bh += '</div>';
+            $pBuyers.innerHTML = bh;
+            $pBuyers.classList.remove('d-none');
+        } else {
+            $pBuyers.classList.add('d-none');
+        }
+    }
+
+    // Trigger na zmianie kluczowych pol
+    ['load_city','unload_city','load_country','unload_country','buyer_nip'].forEach(function(f){
+        if ($form.elements[f]) {
+            $form.elements[f].addEventListener('change', schedulePricingCheck);
+            $form.elements[f].addEventListener('blur', schedulePricingCheck);
+        }
+    });
+    // Netto/kurs/waluta zmiana -> re-render alertu dumpingu (bez nowego fetcha)
+    ['netto','exchange_rate','currency'].forEach(function(f){
+        if ($form.elements[f]) $form.elements[f].addEventListener('change', schedulePricingCheck);
+    });
+
+    // Tabs client/market
+    $tabClient.addEventListener('click', function(){
+        pricingMode = 'client';
+        $tabClient.classList.add('active');
+        $tabMarket.classList.remove('active');
+        fetchPricing();
+    });
+    $tabMarket.addEventListener('click', function(){
+        pricingMode = 'market';
+        $tabMarket.classList.add('active');
+        $tabClient.classList.remove('active');
+        fetchPricing();
+    });
+
+    // Initial check jesli trasy juz sa (edycja lub duplikat)
+    if ($form.elements.load_city.value || $form.elements.unload_city.value) {
+        setTimeout(fetchPricing, 500);
+    }
+
 })();
 </script>
+<style>
+.spin { animation: so-spin 1s linear infinite; display: inline-block; }
+@keyframes so-spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+</style>
