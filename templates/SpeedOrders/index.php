@@ -123,11 +123,14 @@ foreach ($orders as $order) {
             <i class="ri-dashboard-line me-1"></i> Control Tower
         </a>
         <a href="<?= $this->Url->build(['action' => 'exportCsv', '?' => ['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo]]) ?>"
-           class="btn btn-sm btn-outline-success" title="Eksportuj widoczne zlecenia do CSV">
+           class="btn btn-sm btn-outline-success" title="<?= __('Eksportuj widoczne zlecenia do CSV') ?>">
             <i class="ri-download-2-line me-1"></i> CSV
         </a>
+        <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-outline-primary">
+            <i class="ri-add-line me-1"></i> <?= __('Nowe zlecenie') ?>
+        </a>
         <button class="btn btn-primary btn-sm" id="btn-sync-orders">
-            <i class="ri-refresh-line me-1"></i> Synchronizuj ze Speed
+            <i class="ri-refresh-line me-1"></i> <?= __('Synchronizuj ze Speed') ?>
         </button>
     </div>
 </div>
@@ -343,6 +346,18 @@ $quickFilters = [
           <?php endforeach; ?>
         </select>
       </div>
+
+      <div class="col-auto">
+        <label class="form-label small text-muted mb-1">
+          <i class="ri-database-2-line me-1"></i><?= __('Źródło') ?>
+        </label>
+        <select name="source" class="form-select form-select-sm" style="width:130px">
+          <option value=""><?= __('Wszystkie') ?></option>
+          <option value="speed"  <?= ($source ?? '') === 'speed'  ? 'selected' : '' ?>>Speed</option>
+          <option value="manual" <?= ($source ?? '') === 'manual' ? 'selected' : '' ?>><?= __('Ręczne') ?></option>
+        </select>
+      </div>
+
       <div class="col-auto ms-auto d-flex gap-2 align-items-end">
         <?php if ($hasFilters): ?>
         <a href="<?= $this->Url->build(['action' => 'index', '?' => ['limit' => $limit]]) ?>"
@@ -403,6 +418,7 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
         'status'        => $this->request->getQuery('status'),
         'currency'      => $this->request->getQuery('currency'),
         'contract'      => $this->request->getQuery('contract'),
+        'source'        => $this->request->getQuery('source'),
         'amount_min'    => $this->request->getQuery('amount_min'),
         'amount_max'    => $this->request->getQuery('amount_max'),
         'delivery_from' => $this->request->getQuery('delivery_from'),
@@ -577,7 +593,14 @@ $sortLink = function (string $field, string $label, string $extraClass = '') use
             <!-- Symbol + data dok. + nr zleceń kontrahenta -->
             <td class="text-nowrap">
                 <a href="<?= $this->Url->build(['action' => 'view', $order->id]) ?>"
-                   class="fw-semibold text-decoration-none d-block"><?= h($order->symbol) ?></a>
+                   class="fw-semibold text-decoration-none d-block">
+                    <?php if (($order->source ?? 'speed') === 'manual'): ?>
+                        <span class="badge bg-info-subtle text-info me-1" title="<?= __('Zlecenie utworzone ręcznie') ?>" style="font-size:.6rem">M</span>
+                    <?php else: ?>
+                        <span class="badge bg-secondary-subtle text-secondary me-1" title="<?= __('Zlecenie ze Speed ERP') ?>" style="font-size:.6rem">S</span>
+                    <?php endif; ?>
+                    <?= h($order->symbol) ?>
+                </a>
                 <?php if ($dateDoc): ?>
                     <span class="text-muted" style="font-size:.72rem"><?= h($dateDoc) ?></span>
                 <?php endif; ?>

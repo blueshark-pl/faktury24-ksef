@@ -451,6 +451,9 @@ return [
                 'index', 'dashboard', 'exportCsv', 'view', 'viewModal',
                 'sync', 'updateStatus', 'createBatchInvoices',
                 'uploadAttachment', 'deleteAttachment',
+                // Reczne zlecenia (source='manual')
+                'add', 'edit', 'delete',
+                'driversJson', 'vehiclesJson',
             ],
         ],
 

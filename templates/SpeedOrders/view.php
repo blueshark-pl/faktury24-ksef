@@ -302,6 +302,24 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
            class="btn btn-sm btn-outline-secondary" title="Dashboard">
             <i class="ri-dashboard-line"></i>
         </a>
+        <?php if (($order->source ?? 'speed') === 'manual'): ?>
+            <a href="<?= $this->Url->build(['action' => 'edit', $order->id]) ?>"
+               class="btn btn-sm btn-outline-info" title="<?= __('Edytuj zlecenie ręczne') ?>">
+                <i class="ri-pencil-line me-1"></i><?= __('Edytuj') ?>
+            </a>
+            <?php if (empty($order->invoice_id)): ?>
+                <?= $this->Form->postLink(
+                    '<i class="ri-delete-bin-line"></i>',
+                    ['action' => 'delete', $order->id],
+                    [
+                        'escape'   => false,
+                        'class'    => 'btn btn-sm btn-outline-danger',
+                        'title'    => __('Usuń zlecenie'),
+                        'confirm'  => __('Na pewno usunąć zlecenie {0}?', $order->symbol),
+                    ]
+                ) ?>
+            <?php endif; ?>
+        <?php endif; ?>
     </div>
 </div>
 

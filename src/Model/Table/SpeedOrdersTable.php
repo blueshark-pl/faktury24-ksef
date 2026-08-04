@@ -51,10 +51,38 @@ class SpeedOrdersTable extends Table
 
     public function validationDefault(Validator $validator): Validator
     {
+        // speed_id wymagany tylko dla source='speed'; dla manual jest NULL.
         $validator
             ->integer('speed_id')
-            ->requirePresence('speed_id', 'create')
-            ->notEmptyString('speed_id');
+            ->allowEmptyString('speed_id')
+            ->add('speed_id', 'requiredForSpeed', [
+                'rule' => function ($value, $context) {
+                    $source = $context['data']['source'] ?? 'speed';
+                    if ($source === 'speed' && ($value === null || $value === '')) {
+                        return 'speed_id jest wymagany dla source=speed';
+                    }
+                    return true;
+                },
+            ]);
+
+        $validator
+            ->scalar('source')
+            ->requirePresence('source', 'create')
+            ->inList('source', ['speed', 'manual'], 'source musi byc "speed" lub "manual"');
+
+        // Dla manual walidacja podstawowych p�l biznesowych.
+        $validator
+            ->scalar('symbol')
+            ->allowEmptyString('symbol')
+            ->add('symbol', 'requiredForManual', [
+                'rule' => function ($value, $context) {
+                    $source = $context['data']['source'] ?? 'speed';
+                    if ($source === 'manual' && ($value === null || $value === '')) {
+                        return 'symbol jest wymagany dla source=manual';
+                    }
+                    return true;
+                },
+            ]);
 
         return $validator;
     }

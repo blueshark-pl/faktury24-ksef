@@ -186,9 +186,26 @@ Import plików MT940 + automatyczne dopasowanie do faktur.
 **Próg auto-potwierdzenia:** confidence ≥ 90 → od razu `matched` + tworzy `invoice_payment`
 
 ### Zlecenia Speed (`SpeedOrdersController`)
-Synchronizacja z zewnętrznym systemem Speed ERP (zlecenia transportowe).
+Synchronizacja z zewnętrznym systemem Speed ERP (zlecenia transportowe) **+ ręczne tworzenie zleceń**.
 Powiązane z fakturami przez `invoice_id`.
 Obsługuje załączniki CMR (upload + GLightbox).
+
+**Źródło zlecenia** — kolumna `source`:
+- `speed` — zlecenie zsynchronizowane z Speed ERP (read-only, sync by je nadpisał)
+- `manual` — zlecenie utworzone ręcznie przez operatora w `/zlecenia/dodaj`
+
+**Ręczne zlecenia** (`source='manual'`):
+- CRUD: `GET/POST /zlecenia/dodaj`, `GET/POST /zlecenia/edytuj/{id}`, `POST /zlecenia/usun/{id}`
+- AJAX autocomplete: `/zlecenia/drivers.json`, `/zlecenia/vehicles.json` (do datalist w formularzu)
+- Numer generowany automatycznie w formacie **`M-NNNN/MM/YYYY`** — auto-increment per (company_nip, rok, mc)
+- `speed_id` = NULL, `manual_seq` = kolejny numer
+- Edycja zablokowana dla `source='speed'` (BadRequestException)
+- Usunięcie zablokowane gdy jest podpięta faktura (`invoice_id` lub M:N w `AllInvoices`)
+- Sync ze Speed zawsze ustawia `source='speed'` explicit
+- W liście: badge **M** (fioletowy) przy symbolu manualnych + filtr **Źródło: Wszystkie/Speed/Ręczne**
+- W widoku szczegółów manualnego: przyciski **Edytuj** i **Usuń** (guard invoice_id IS NULL)
+- Auto-calc VAT/brutto z netto + stawki (23/8/5/0/np/zw/oo) — server-side w `prepareManualOrderData()`
+- Autocomplete kontrahentów via istniejący `POST /contractors/search`
 
 ### Kontrahenci (`ContractorsController`)
 Lookup GUS po NIP, import z Speed ERP, zarządzanie danymi.
@@ -783,6 +800,19 @@ Crontab prod (przykład):
 0 8 * * * cd /home/jjgroup1srv/domains/booklio.pl/public_html && php bin/cake.php alerts
 ```
 
+### Pełne kolumny — rozszerzenia `speed_orders` (Fala manualnych zleceń)
+Migracja: `20260804100000_AddSourceToSpeedOrders.php`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `speed_id` | int unsigned, **nullable** | Było NOT NULL. Teraz NULL dla `source='manual'`. Unique index zostaje (MySQL dopuszcza wiele NULL w unique) |
+| `source` | string(10), default `'speed'` | `speed` \| `manual` |
+| `manual_seq` | int unsigned, nullable | Numer kolejny per (`company_nip`, `rok`, `mc`) dla manualnych. UNIQUE index: (`company_nip`, `source`, `rok`, `mc`, `manual_seq`) |
+
+Backfill: wszystkie istniejące rekordy → `source='speed'`.
+
+**Konwencja symbolu manualnych:** `M-NNNN/MM/YYYY` (np. `M-0001/08/2026`). Numer resetuje się co miesiąc per firma. Prefix `M-` odróżnia od Speed (Speed używa `0099/04/2026`).
+
 ### Pełne kolumny `vehicle_combinations`
 Migracja: `20260623160000_CreateVehicleCombinations.php`
 Nazwane zestawy: **ciągnik + naczepa + kierowca**. Planer tras pozwala wybrać cały zestaw jednym kliknięciem zamiast dobierać każdy element osobno.
@@ -908,6 +938,8 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-08-04 | Feat: ręczne tworzenie zleceń transportowych `/zlecenia/dodaj` — analogicznie do sync ze Speed, ale przez formularz. Nowa kolumna `source` (speed/manual) + `manual_seq` + `speed_id` nullable. Auto-numer `M-NNNN/MM/YYYY`. Formularz z 6 sekcjami (numer/nabywca/załadunek/rozładunek/ładunek/transport/finanse), autocomplete kontrahentów (existing `/contractors/search`), datalist kierowców + pojazdów, auto-calc VAT/brutto. UI listy: badge M/S + filtr Źródło. Widok szczegółów manualnego: Edytuj/Usuń (blokada gdy podpięta faktura) | migracja `AddSourceToSpeedOrders`; `SpeedOrdersController` (add/edit/delete/driversJson/vehiclesJson/nextManualSymbol/prepareManualOrderData); `SpeedOrdersTable` (walidacja source/speed_id); `SpeedOrder` Entity (docblock); `templates/SpeedOrders/add.php`; `templates/SpeedOrders/index.php` (badge + filtr + przycisk); `templates/SpeedOrders/view.php` (Edytuj/Usuń); `routes.php`; `permissions.php` |
+| 2026-08-04 | Fix: KSeF FA(3) walidacja XSD dla faktur AT — KodUE musi być 2-znakowy (AT, nie ATU), NrVatUE bez literowego kodu kraju (Austria: `U12345678`). Nowe helpery `kodUEForCountry()` + `stripCountryPrefixFromVatUE()` | `InvoicesController.php` |
 | 2026-07-10 | Fix: planer tras — koszty per pojazd + widoczność parametrów HERE. Dodano pole `vehicles.fuel_consumption_l_per_100km` + `fuel_type` (poprzednio spalanie hardcoded 30 l/100km w JS niezależne od pojazdu). Auto-fill w planerze przy wyborze pojazdu (jak dla stawki kierowcy). Nowy przycisk „Co poszło do HERE" pokazuje wszystkie parametry vehicle[grossWeight/axleCount/weightPerAxle/height/width/length/emissionType/tunnelCategory/shippedHazardousGoods] wysłane do routing API. Warning alert w edycji naczepy gdy brak `axle_count`/`gross_weight_kg` (zaniża tolls). W dropdownie naczep w planerze prefix „⚠️" + txt „braki!" dla niepełnych. Checkbox „Doliczaj amortyzację" w kalkulatorze — bierze `trailers.amortization_per_day_pln` × dni trasy | `AddFuelConsumptionToVehicles` migracja; `Service/Routing/HereRoutingService.php` (dodane `sent_to_here` w response); `templates/element/vehicles/form.php`, `templates/element/trailers/form.php`, `templates/RoutePlanner/index.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 4 (live tracking + analytics + automatyzacje) — 2 nowe tabele: `trip_events` (timeline zdarzeń z mobile view kierowcy /kierowca/{token} + POD upload z aparatu telefonu + geolokalizacja), `return_load_candidates` (matching engine dla ładunków powrotnych z score 0-100 + cascade query po własnych speed_orders). Analytics dashboard `/analytics` (KPI + top tras/klientów + trend miesięczny). Compliance auto-check przy Wyślij ofertę (vehicle_maintenance + driver_time_logs → compliance_events). Cron `bin/cake alerts` z emailem 30 dni przed wygasnięciem badań (idempotent przez alert_sent_at) | 2 migracje + Tables/Entities `TripEvent`, `ReturnLoadCandidate`; kontrolery `TripEventsController` (public token+mobile view), `ReturnLoadsController`, `AnalyticsController`; `AlertsCommand`; templates `TripEvents/{for_order,driver_view,driver_error}.php`, `ReturnLoads/for_plan.php`, `Analytics/index.php`, `email/html/vehicle_expiring.php`; integracja compliance-check w `RouteOffersController::create` + JS w `RoutePlanner/index.php`; `routes.php`, `permissions.php`, `layout/default.php` |
 | 2026-07-10 | Feat: planer operacyjny — FALA 3 (zasoby + compliance) — 4 nowe tabele: `vehicle_maintenance` (badania/ADR/OC z auto-alertem), `driver_time_logs` (UE 561/2006 z helperami weeklyStatus), `driver_availability` (7-dniowe wzorce z preferencjami ADR/noc/weekend), `compliance_events` (append-only log ryzyk z „akceptuję ryzyko" i uzasadnieniem do audytu ITD). CRUD `/serwisy`, `/czas-pracy`, `/dostepnosc-kierowcow`, `/ryzyko`. AJAX dla planera: `/serwisy/wygasajace.json`, `/czas-pracy/status/{driverId}.json`. Helper `ComplianceEventsTable::record()` do zbierania ostrzeżeń z innych modułów | 4 migracje + Tables/Entities `VehicleMaintenance`, `DriverTimeLog`, `DriverAvailability`, `ComplianceEvent`; kontrolery `VehicleMaintenanceController`, `DriverTimeLogsController`, `DriverAvailabilityController`, `ComplianceEventsController`; templates dla wszystkich; `routes.php`, `permissions.php`, `layout/default.php` |

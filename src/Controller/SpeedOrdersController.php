@@ -5,6 +5,9 @@ namespace App\Controller;
 
 use Cake\Core\Configure;
 use Cake\Http\Client;
+use Cake\Http\Exception\BadRequestException;
+use Cake\Http\Exception\NotFoundException;
+use Cake\I18n\Date;
 
 /**
  * Zlecenia z systemu Speed ERP.
@@ -27,6 +30,7 @@ class SpeedOrdersController extends AppController
         $status       = $this->request->getQuery('status', '');
         $currency     = strtoupper(trim((string)$this->request->getQuery('currency', '')));
         $contract     = trim((string)$this->request->getQuery('contract', ''));
+        $source       = trim((string)$this->request->getQuery('source', ''));
         $amountMin    = $this->request->getQuery('amount_min', '');
         $amountMax    = $this->request->getQuery('amount_max', '');
         $deliveryFrom = $this->request->getQuery('delivery_from', '');
@@ -106,6 +110,10 @@ class SpeedOrdersController extends AppController
 
         if ($contract !== '') {
             $query->where(['SpeedOrders.contract' => $contract]);
+        }
+
+        if ($source !== '' && in_array($source, ['speed', 'manual'], true)) {
+            $query->where(['SpeedOrders.source' => $source]);
         }
 
         if ($amountMin !== '') {
@@ -197,7 +205,7 @@ class SpeedOrdersController extends AppController
             ->extract('contract')
             ->toArray();
 
-        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'hasPolPodMap', 'invoicesMap', 'sortKey', 'sortDir'));
+        $this->set(compact('orders', 'total', 'page', 'pages', 'limit', 'search', 'status', 'currency', 'contract', 'contractsList', 'source', 'amountMin', 'amountMax', 'deliveryFrom', 'deliveryTo', 'cmrMap', 'hasPolPodMap', 'invoicesMap', 'sortKey', 'sortDir'));
     }
 
     // -------------------------------------------------------------------------
@@ -739,6 +747,7 @@ class SpeedOrdersController extends AppController
 
                 $data = [
                     'speed_id'          => $speedId,
+                    'source'            => 'speed',
                     'company_nip'       => trim((string)($r['GLO_FIR_NIP'] ?? '')),
                     'company_name'      => trim((string)($r['GLO_FIR_NAZWA1'] ?? '')),
                     'symbol'            => trim((string)($r['GLO_SYMBOL'] ?? '')),
@@ -1265,5 +1274,349 @@ class SpeedOrdersController extends AppController
         $this->response = $this->response
             ->withType('application/json')
             ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
+
+    // =========================================================================
+    // RECZNE TWORZENIE ZLECEN (source='manual')
+    // =========================================================================
+
+    /**
+     * Formularz nowego zlecenia recznego.
+     * GET: pokazuje formularz z automatycznym numerem M-NNNN/MM/YYYY.
+     * POST: zapisuje zlecenie.
+     */
+    public function add(): void
+    {
+        $this->request->allowMethod(['get', 'post']);
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->newEmptyEntity();
+
+        $companyNip  = $this->currentCompanyNip();
+        $companyName = $this->currentCompanyName();
+
+        if ($this->request->is('post')) {
+            $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
+            $order = $SpeedOrders->patchEntity($order, $data);
+            if ($SpeedOrders->save($order)) {
+                $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
+                $this->redirect(['action' => 'view', $order->id]);
+                return;
+            }
+            $this->Flash->error(__('Nie udało się zapisać zlecenia. Sprawdź błędy w formularzu.'));
+        } else {
+            // Prefill nowego rekordu
+            [$symbol, $seq, $rok, $mc] = $this->nextManualSymbol($companyNip, new Date());
+            $order = $SpeedOrders->newEntity([
+                'source'       => 'manual',
+                'symbol'       => $symbol,
+                'manual_seq'   => $seq,
+                'rok'          => $rok,
+                'mc'           => $mc,
+                'ozn'          => 'M',
+                'company_nip'  => $companyNip,
+                'company_name' => $companyName,
+                'date_doc'     => (new Date())->format('Y-m-d'),
+                'currency'     => 'PLN',
+                'status'       => 1,
+                'nordlogis_status' => 1,
+            ]);
+        }
+
+        $this->set(compact('order'));
+        $this->set('isEdit', false);
+        $this->set('drivers',  $this->loadDriversForSelect());
+        $this->set('vehicles', $this->loadVehiclesForSelect());
+        $this->render('add');
+    }
+
+    /**
+     * Edycja zlecenia manualnego. Zlecenia Speed sa readonly (sync by je nadpisal).
+     */
+    public function edit(int $id): void
+    {
+        $this->request->allowMethod(['get', 'post']);
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->find()->where(['id' => $id])->first();
+        if (!$order) {
+            throw new NotFoundException(__('Zlecenie nie istnieje.'));
+        }
+        if ($order->source !== 'manual') {
+            throw new BadRequestException(__('Zlecenia synchronizowane ze Speed nie mogą być edytowane tutaj.'));
+        }
+
+        $companyNip  = $this->currentCompanyNip();
+        $companyName = $this->currentCompanyName();
+
+        if ($this->request->is('post')) {
+            $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
+            // Zablokuj zmiane symbolu i manual_seq przy edycji (numer sie nie zmienia).
+            unset($data['symbol'], $data['manual_seq'], $data['rok'], $data['mc'], $data['source']);
+            $order = $SpeedOrders->patchEntity($order, $data);
+            if ($SpeedOrders->save($order)) {
+                $this->Flash->success(__('Zlecenie {0} zostało zaktualizowane.', $order->symbol));
+                $this->redirect(['action' => 'view', $order->id]);
+                return;
+            }
+            $this->Flash->error(__('Nie udało się zapisać zmian.'));
+        }
+
+        $this->set(compact('order'));
+        $this->set('isEdit', true);
+        $this->set('drivers',  $this->loadDriversForSelect());
+        $this->set('vehicles', $this->loadVehiclesForSelect());
+        $this->render('add');
+    }
+
+    /**
+     * Usuwanie zlecenia manualnego. Zlecenia Speed nie moga byc usuwane
+     * (integralnosc z historia sync + fakturami). Zlecenia z podpieta
+     * faktura tez nie (blokada dla bezpieczenstwa ksiegowego).
+     */
+    public function delete(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $order = $SpeedOrders->get($id, ['contain' => ['AllInvoices']]);
+
+        if ($order->source !== 'manual') {
+            $this->Flash->error(__('Zleceń ze Speed nie można usuwać.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+        if (!empty($order->invoice_id) || !empty($order->invoices)) {
+            $this->Flash->error(__('Nie można usunąć zlecenia z podpiętą fakturą.'));
+            $this->redirect(['action' => 'view', $id]);
+            return;
+        }
+
+        if ($SpeedOrders->delete($order)) {
+            $this->Flash->success(__('Zlecenie {0} zostało usunięte.', $order->symbol));
+        } else {
+            $this->Flash->error(__('Nie udało się usunąć zlecenia.'));
+        }
+        $this->redirect(['action' => 'index']);
+    }
+
+    /**
+     * AJAX: lista kierowcow do autocomplete/datalist.
+     */
+    public function driversJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $rows = [];
+        try {
+            $Drivers = $this->fetchTable('Drivers');
+            $rows = $Drivers->find()
+                ->select(['id', 'full_name', 'phone'])
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('full_name')
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) {}
+
+        $this->jsonResp(['ok' => true, 'items' => $rows]);
+    }
+
+    /**
+     * AJAX: lista pojazdow do autocomplete/datalist.
+     */
+    public function vehiclesJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $rows = [];
+        try {
+            $Vehicles = $this->fetchTable('Vehicles');
+            $rows = $Vehicles->find()
+                ->select(['id', 'name', 'plate', 'type'])
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('name')
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) {}
+
+        $this->jsonResp(['ok' => true, 'items' => $rows]);
+    }
+
+    // =========================================================================
+    // HELPERY — RECZNE ZLECENIA
+    // =========================================================================
+
+    /**
+     * Zwraca NIP zalogowanej firmy (do wypelnienia company_nip w zleceniu).
+     * speed_orders.company_nip trzyma NIP bez prefixu (10 cyfr dla PL).
+     */
+    private function currentCompanyNip(): ?string
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) return null;
+        try {
+            $company = $this->fetchTable('Companies')->find()
+                ->select(['nip'])
+                ->where(['id' => $companyId])
+                ->first();
+            if ($company && !empty($company->nip)) {
+                return preg_replace('/\D+/', '', (string)$company->nip);
+            }
+        } catch (\Throwable) {}
+        return null;
+    }
+
+    private function currentCompanyName(): ?string
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) return null;
+        try {
+            $company = $this->fetchTable('Companies')->find()
+                ->select(['name'])
+                ->where(['id' => $companyId])
+                ->first();
+            return $company?->name;
+        } catch (\Throwable) {}
+        return null;
+    }
+
+    /**
+     * Generuje kolejny symbol dla zlecenia recznego.
+     * Format: M-NNNN/MM/YYYY (np. M-0001/08/2026).
+     * Numer resetuje sie co miesiac per firma.
+     *
+     * @return array [symbol, manual_seq, rok, mc]
+     */
+    private function nextManualSymbol(?string $companyNip, Date $docDate): array
+    {
+        $rok = $docDate->format('Y');
+        $mc  = $docDate->format('m');
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $maxRow = $SpeedOrders->find()
+            ->select(['max_seq' => 'MAX(manual_seq)'])
+            ->where([
+                'source'      => 'manual',
+                'company_nip' => $companyNip,
+                'rok'         => $rok,
+                'mc'          => $mc,
+            ])
+            ->disableHydration()
+            ->first();
+
+        $next = ((int)($maxRow['max_seq'] ?? 0)) + 1;
+        $symbol = sprintf('M-%04d/%s/%s', $next, $mc, $rok);
+        return [$symbol, $next, $rok, $mc];
+    }
+
+    /**
+     * Sanityzuje i uzupelnia dane zlecenia manualnego przed zapisem.
+     * Wywolywana z add() i edit().
+     */
+    private function prepareManualOrderData(array $data, ?string $companyNip, ?string $companyName): array
+    {
+        // Wymus source=manual i wypelnij pola meta.
+        $data['source']       = 'manual';
+        $data['speed_id']     = null;
+        $data['company_nip']  = $companyNip;
+        $data['company_name'] = $companyName;
+
+        // Automatyczny numer jesli nie podano (fallback dla POST bez symbolu).
+        if (empty($data['symbol'])) {
+            $docDate = !empty($data['date_doc']) ? new Date($data['date_doc']) : new Date();
+            [$symbol, $seq, $rok, $mc] = $this->nextManualSymbol($companyNip, $docDate);
+            $data['symbol']     = $symbol;
+            $data['manual_seq'] = $seq;
+            $data['rok']        = $rok;
+            $data['mc']         = $mc;
+        }
+
+        // Wylicz VAT/brutto z netto+rate (server-side jako bezpieczna weryfikacja
+        // — JS liczy to samo, ale zapisu ufamy tylko po serwerowej weryfikacji).
+        $netto = (float)($data['netto'] ?? 0);
+        $vatRate = isset($data['vat_rate']) ? trim((string)$data['vat_rate']) : '23';
+
+        if (is_numeric($vatRate)) {
+            $rate = (float)$vatRate;
+            $data['vat']    = round($netto * $rate / 100, 2);
+            $data['brutto'] = round($netto + (float)$data['vat'], 2);
+        } else {
+            // np/zw/oo (nie-numeryczne stawki) — VAT=0, brutto=netto
+            $data['vat']    = 0.0;
+            $data['brutto'] = round($netto, 2);
+        }
+        unset($data['vat_rate']); // nie ma takiej kolumny w DB
+
+        // Kurs walutowy: dla PLN wymuszamy 1.0
+        $currency = strtoupper(trim((string)($data['currency'] ?? 'PLN')));
+        $data['currency'] = $currency;
+        if ($currency === 'PLN') {
+            $data['exchange_rate'] = 1.0;
+        }
+
+        // Normalizacja krajow (2-znakowy uppercase, fallback PL)
+        foreach (['buyer_country', 'load_country', 'unload_country'] as $ccKey) {
+            if (isset($data[$ccKey])) {
+                $data[$ccKey] = strtoupper(trim((string)$data[$ccKey])) ?: null;
+            }
+        }
+
+        // Nick wystawiajacego z sesji
+        $identity = $this->request->getAttribute('identity');
+        if ($identity) {
+            $username = (string)($identity->get('username') ?? $identity->get('email') ?? $identity->getIdentifier());
+            if (empty($data['nick_created'])) {
+                $data['nick_created'] = $username;
+            }
+            $data['nick_modified'] = $username;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Lista kierowcow do render-time (dla datalist w formularzu).
+     */
+    private function loadDriversForSelect(): array
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) return [];
+        try {
+            return $this->fetchTable('Drivers')->find()
+                ->select(['id', 'full_name', 'phone'])
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('full_name')
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) { return []; }
+    }
+
+    /**
+     * Lista pojazdow do render-time (dla datalist w formularzu).
+     */
+    private function loadVehiclesForSelect(): array
+    {
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) return [];
+        try {
+            return $this->fetchTable('Vehicles')->find()
+                ->select(['id', 'name', 'plate', 'type'])
+                ->where(['company_id' => $companyId, 'is_active' => true])
+                ->orderByAsc('name')
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) { return []; }
     }
 }

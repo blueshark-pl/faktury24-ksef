@@ -84,6 +84,14 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/zlecenia/{orderId}/delete-attachment/{attachmentId}', ['controller' => 'SpeedOrders', 'action' => 'deleteAttachment'])
             ->setPass(['orderId', 'attachmentId']);
+        // Reczne tworzenie zlecen (source='manual')
+        $builder->connect('/zlecenia/dodaj',       ['controller' => 'SpeedOrders', 'action' => 'add']);
+        $builder->connect('/zlecenia/edytuj/{id}', ['controller' => 'SpeedOrders', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/usun/{id}',      ['controller' => 'SpeedOrders', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/zlecenia/drivers.json',    ['controller' => 'SpeedOrders', 'action' => 'driversJson']);
+        $builder->get('/zlecenia/vehicles.json',   ['controller' => 'SpeedOrders', 'action' => 'vehiclesJson']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

@@ -9,7 +9,9 @@ use Cake\ORM\Entity;
  * Rekord zlecenia zaimportowanego z systemu Speed ERP.
  *
  * @property int         $id
- * @property int         $speed_id
+ * @property int|null    $speed_id   NULL dla source='manual'
+ * @property string      $source     'speed' | 'manual'
+ * @property int|null    $manual_seq Numer kolejny per (company_nip, rok, mc) dla manual
  * @property string|null $company_nip
  * @property string|null $company_name
  * @property string|null $symbol
