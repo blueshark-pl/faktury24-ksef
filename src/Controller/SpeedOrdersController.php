@@ -1294,6 +1294,109 @@ class SpeedOrdersController extends AppController
     }
 
     // =========================================================================
+    // KANBAN operacyjny (5 kolumn per nordlogis_status)
+    // =========================================================================
+
+    /**
+     * GET /zlecenia/kanban - operacyjny Kanban 5 kolumn.
+     * Kolumny per nordlogis_status:
+     *  1=Przyjete 2=Zaplanowane 3=Zaladowane 4=Zrealizowane 5=Zafakturowane
+     */
+    public function kanban(): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $companyNip = $this->currentCompanyNip();
+        if (!$companyNip) {
+            $this->Flash->error(__('Brak NIP firmy'));
+            $this->redirect(['action' => 'index']);
+            return;
+        }
+
+        $contract = trim((string)$this->request->getQuery('contract', ''));
+        $source   = trim((string)$this->request->getQuery('source', ''));
+        $search   = trim((string)$this->request->getQuery('q', ''));
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        $query = $SpeedOrders->find()
+            ->where(['SpeedOrders.company_nip' => $companyNip])
+            ->orderByDesc('SpeedOrders.date_delivery')
+            ->limit(500);
+
+        if ($contract !== '') $query->where(['SpeedOrders.contract' => $contract]);
+        if ($source !== '' && in_array($source, ['speed', 'manual'], true)) {
+            $query->where(['SpeedOrders.source' => $source]);
+        }
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(['OR' => [
+                'SpeedOrders.symbol LIKE'     => $like,
+                'SpeedOrders.buyer_name LIKE' => $like,
+                'SpeedOrders.title1 LIKE'     => $like,
+            ]]);
+        }
+
+        $orders = $query->all();
+
+        // Grupuj po nordlogis_status
+        $columns = [
+            1 => ['label' => 'Przyjęte',     'color' => 'primary',   'items' => []],
+            2 => ['label' => 'Zaplanowane',  'color' => 'info',      'items' => []],
+            3 => ['label' => 'Załadowane',   'color' => 'warning',   'items' => []],
+            4 => ['label' => 'Zrealizowane', 'color' => 'success',   'items' => []],
+            5 => ['label' => 'Zafakturowane','color' => 'secondary', 'items' => []],
+        ];
+        foreach ($orders as $o) {
+            $s = (int)($o->nordlogis_status ?? 1);
+            if (!isset($columns[$s])) $s = 1;
+            $columns[$s]['items'][] = $o;
+        }
+
+        $contractsList = [];
+        try {
+            $rows = $SpeedOrders->find()
+                ->select(['contract'])
+                ->where(['SpeedOrders.company_nip' => $companyNip, 'SpeedOrders.contract IS NOT' => null])
+                ->group('contract')
+                ->orderByAsc('contract')
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) if (!empty($r['contract'])) $contractsList[] = $r['contract'];
+        } catch (\Throwable) {}
+
+        $this->set(compact('columns', 'contract', 'source', 'search', 'contractsList'));
+    }
+
+    /**
+     * POST /zlecenia/kanban/przenies/{id} - drag-drop zmiana nordlogis_status.
+     * Body: to (int 1..5)
+     */
+    public function kanbanMove(int $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $to = (int)$this->request->getData('to');
+        if ($to < 1 || $to > 5) {
+            $this->jsonResp(['ok' => false, 'error' => 'Bledny status']);
+            return;
+        }
+
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+        try {
+            $order = $SpeedOrders->get($id);
+            $companyNip = $this->currentCompanyNip();
+            if ($order->company_nip !== $companyNip) {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie masz uprawnien']);
+                return;
+            }
+            $order->nordlogis_status = $to;
+            $SpeedOrders->save($order);
+            $this->jsonResp(['ok' => true, 'nordlogis_status' => $to]);
+        } catch (\Throwable $e) {
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // =========================================================================
     // BATCH IMPORT z CSV
     // =========================================================================
 
