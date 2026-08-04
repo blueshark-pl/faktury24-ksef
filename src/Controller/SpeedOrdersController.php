@@ -1397,6 +1397,164 @@ class SpeedOrdersController extends AppController
     }
 
     // =========================================================================
+    // EXPORT XML SpreadsheetML (Excel 2003+)
+    // =========================================================================
+
+    /**
+     * GET /zlecenia/eksport-xlsx?[q,status,contract,source,delivery_from,delivery_to]
+     * Zwraca plik .xls (SpreadsheetML XML 2003) - Excel otwiera bezposrednio bez
+     * konwersji, LibreOffice tez wspiera. Bez zewnetrznej biblioteki (PhpSpreadsheet).
+     *
+     * Wybor pol: pelny snapshot zlecenia dla analizy w Excelu.
+     */
+    public function exportXlsx(): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+
+        $companyNip = $this->currentCompanyNip();
+        if (!$companyNip) {
+            $this->response = $this->response->withStatus(400)->withStringBody('Brak NIP');
+            return;
+        }
+
+        // Filtry - te same co index()
+        $search   = trim((string)$this->request->getQuery('q', ''));
+        $status   = (string)$this->request->getQuery('status', '');
+        $contract = trim((string)$this->request->getQuery('contract', ''));
+        $source   = trim((string)$this->request->getQuery('source', ''));
+        $delFrom  = (string)$this->request->getQuery('delivery_from', '');
+        $delTo    = (string)$this->request->getQuery('delivery_to', '');
+        $currency = strtoupper((string)$this->request->getQuery('currency', ''));
+
+        $q = $this->fetchTable('SpeedOrders')->find()
+            ->where(['company_nip' => $companyNip])
+            ->orderByDesc('date_delivery');
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $q->where(['OR' => [
+                'SpeedOrders.symbol LIKE'     => $like,
+                'SpeedOrders.buyer_name LIKE' => $like,
+                'SpeedOrders.buyer_nip LIKE'  => $like,
+                'SpeedOrders.title1 LIKE'     => $like,
+            ]]);
+        }
+        if ($status !== '' && ctype_digit($status)) $q->where(['nordlogis_status' => (int)$status]);
+        if ($contract !== '') $q->where(['contract' => $contract]);
+        if ($source !== '' && in_array($source, ['speed','manual'], true)) $q->where(['source' => $source]);
+        if ($delFrom !== '') $q->where(['date_delivery >=' => $delFrom]);
+        if ($delTo   !== '') $q->where(['date_delivery <=' => $delTo . ' 23:59:59']);
+        if ($currency !== '') $q->where(['currency' => $currency]);
+
+        $orders = $q->limit(5000)->all();
+
+        // Header - pelny snapshot
+        $headers = [
+            'Symbol', 'Data dok.', 'Kontrakt', 'Zrodlo',
+            'NIP', 'Klient', 'Ulica', 'Kod', 'Miasto', 'Kraj', 'Email',
+            'Zaladunek: kraj', 'Zaladunek: kod', 'Zaladunek: miasto', 'Zaladunek: data',
+            'Rozladunek: kraj', 'Rozladunek: miasto', 'Rozladunek: data',
+            'Nr ref. klienta', 'Opis ladunku', 'Cargo type', 'Transport type',
+            'Waga (kg)', 'Palety', 'ADR', 'INCOTERMS',
+            'Kierowca', 'Pojazd', 'Przewoznik',
+            'Waluta', 'Netto', 'VAT', 'Brutto', 'Kurs', 'Warunki platnosci',
+            'Status Nordlogis', 'Status Speed', 'Approval',
+            'POL', 'POD', 'FK', 'FS', 'Kompletne',
+            'Nick wystawil', 'Utworzono',
+        ];
+
+        $statusLabels = [1 => 'Przyjete', 2 => 'Zaplanowane', 3 => 'Zaladowane', 4 => 'Zrealizowane', 5 => 'Zafakturowane'];
+
+        // Rows
+        $rows = [];
+        foreach ($orders as $o) {
+            $rows[] = [
+                $o->symbol,
+                $o->date_doc?->format('Y-m-d'),
+                $o->contract,
+                $o->source,
+                $o->buyer_nip, $o->buyer_name, $o->buyer_street, $o->buyer_postal_code,
+                $o->buyer_city, $o->buyer_country, $o->buyer_email,
+                $o->load_country, $o->load_postal_code, $o->load_city,
+                $o->date_deadline?->format('Y-m-d H:i'),
+                $o->unload_country, $o->unload_city, $o->date_delivery?->format('Y-m-d H:i'),
+                $o->title1, $o->title2, $o->cargo_type, $o->transport_type,
+                $o->cargo_weight_kg, $o->cargo_pallets, $o->adr_class, $o->incoterms,
+                $o->driver, $o->vehicle_reg, $o->carrier,
+                $o->currency, (float)$o->netto, (float)$o->vat, (float)$o->brutto,
+                (float)$o->exchange_rate, $o->payment_terms,
+                $statusLabels[(int)$o->nordlogis_status] ?? $o->nordlogis_status,
+                $o->status, $o->approval_status,
+                $o->pol_at?->format('Y-m-d H:i'), $o->pod_at?->format('Y-m-d H:i'),
+                $o->fk_at?->format('Y-m-d H:i'), $o->fs_at?->format('Y-m-d H:i'),
+                (bool)$o->is_complete ? 'TAK' : 'NIE',
+                $o->nick_created,
+                $o->created?->format('Y-m-d H:i'),
+            ];
+        }
+
+        $xml = $this->buildSpreadsheetXml('Zlecenia', $headers, $rows);
+        $filename = 'zlecenia-' . date('Y-m-d-His') . '.xls';
+
+        $this->response = $this->response
+            ->withType('application/vnd.ms-excel')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->withStringBody($xml);
+    }
+
+    /**
+     * Builder SpreadsheetML XML (Excel 2003+ / LibreOffice).
+     */
+    private function buildSpreadsheetXml(string $sheetName, array $headers, array $rows): string
+    {
+        $esc = fn($v) => htmlspecialchars((string)$v, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $cell = function ($value) use ($esc) {
+            if ($value === null || $value === '') {
+                return '<Cell/>';
+            }
+            if (is_bool($value)) {
+                return '<Cell><Data ss:Type="Boolean">' . ($value ? '1' : '0') . '</Data></Cell>';
+            }
+            if (is_int($value) || is_float($value)) {
+                return '<Cell><Data ss:Type="Number">' . $value . '</Data></Cell>';
+            }
+            return '<Cell><Data ss:Type="String">' . $esc((string)$value) . '</Data></Cell>';
+        };
+
+        $out  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $out .= '<?mso-application progid="Excel.Sheet"?>' . "\n";
+        $out .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
+        $out .= ' xmlns:o="urn:schemas-microsoft-com:office:office"' . "\n";
+        $out .= ' xmlns:x="urn:schemas-microsoft-com:office:excel"' . "\n";
+        $out .= ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
+        $out .= ' xmlns:html="http://www.w3.org/TR/REC-html40">' . "\n";
+
+        // Style: nagłówek pogrubiony
+        $out .= '<Styles>';
+        $out .= '<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0d6efd" ss:Pattern="Solid"/></Style>';
+        $out .= '</Styles>';
+
+        $out .= '<Worksheet ss:Name="' . $esc($sheetName) . '"><Table>';
+
+        // Header row
+        $out .= '<Row ss:StyleID="hdr">';
+        foreach ($headers as $h) {
+            $out .= '<Cell ss:StyleID="hdr"><Data ss:Type="String">' . $esc($h) . '</Data></Cell>';
+        }
+        $out .= '</Row>';
+
+        foreach ($rows as $row) {
+            $out .= '<Row>';
+            foreach ($row as $v) $out .= $cell($v);
+            $out .= '</Row>';
+        }
+
+        $out .= '</Table></Worksheet></Workbook>';
+        return $out;
+    }
+
+    // =========================================================================
     // BATCH IMPORT z CSV
     // =========================================================================
 

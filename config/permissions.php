@@ -453,7 +453,7 @@ return [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'SpeedOrders',
             'action' => [
-                'index', 'dashboard', 'exportCsv', 'view', 'viewModal',
+                'index', 'dashboard', 'exportCsv', 'exportXlsx', 'view', 'viewModal',
                 'kanban', 'kanbanMove',
                 'sync', 'updateStatus', 'createBatchInvoices',
                 'uploadAttachment', 'deleteAttachment',

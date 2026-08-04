@@ -78,6 +78,7 @@ return function (RouteBuilder $routes): void {
         $builder->post('/zlecenia/kanban/przenies/{id}', ['controller' => 'SpeedOrders', 'action' => 'kanbanMove'])
             ->setPass(['id']);
         $builder->get('/zlecenia/export-csv', 'SpeedOrders::exportCsv');
+        $builder->get('/zlecenia/eksport-xlsx', 'SpeedOrders::exportXlsx');
         $builder->get('/zlecenia/view/{id}', 'SpeedOrders::view');
         $builder->get('/zlecenia/view-modal/{id}', 'SpeedOrders::viewModal');
         $builder->post('/zlecenia/sync', 'SpeedOrders::sync');
