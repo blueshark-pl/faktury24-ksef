@@ -83,6 +83,62 @@ class OpenAiService
     }
 
     /**
+     * Vision: wykonuje zapytanie z opcjonalnym obrazem (base64 data URL lub public URL).
+     * Zwraca structured JSON tak jak chatJson().
+     *
+     * @param string      $system   System prompt
+     * @param string      $user     Text prompt (opcjonalnie kontekst do obrazu)
+     * @param string|null $imageUrl Data URL 'data:image/png;base64,XXXX' lub public URL
+     * @param int         $maxTokens
+     */
+    public function chatVisionJson(string $system, string $user, ?string $imageUrl = null, int $maxTokens = 1500): array
+    {
+        $userContent = [];
+        if ($user !== '') {
+            $userContent[] = ['type' => 'text', 'text' => $user];
+        }
+        if ($imageUrl) {
+            $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]];
+        }
+        $body = [
+            'model' => $this->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user',   'content' => $userContent],
+            ],
+            'response_format' => ['type' => 'json_object'],
+            'max_tokens' => $maxTokens,
+            'temperature' => 0.2,
+        ];
+        try {
+            $resp = $this->client->post(self::CHAT_URL, json_encode($body), [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type'  => 'application/json',
+                ],
+            ]);
+            if (!$resp->isOk()) {
+                $err = $resp->getStringBody();
+                Log::warning('OpenAI Vision HTTP ' . $resp->getStatusCode() . ': ' . $err);
+                throw new RuntimeException('OpenAI Vision API zwróciło błąd ' . $resp->getStatusCode());
+            }
+            $data = $resp->getJson();
+            $content = $data['choices'][0]['message']['content'] ?? null;
+            if (!$content) {
+                throw new RuntimeException('Brak odpowiedzi z OpenAI Vision.');
+            }
+            $parsed = json_decode($content, true);
+            if (!is_array($parsed)) {
+                throw new RuntimeException('OpenAI Vision zwróciło nieprawidłowy JSON.');
+            }
+            return $parsed;
+        } catch (\Throwable $e) {
+            Log::error('OpenAI Vision error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
      * Wykonuje zapytanie z plain-text output (do generacji dokumentów).
      */
     public function chatText(string $system, string $user, int $maxTokens = 2000): string

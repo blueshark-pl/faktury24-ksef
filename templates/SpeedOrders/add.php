@@ -103,13 +103,63 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             </div>
         <?php endif; ?>
     </div>
-    <div class="d-flex gap-2 align-items-start">
+    <div class="d-flex gap-2 align-items-start flex-column">
+        <?php if (!$isEdit): ?>
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#so-ai-modal">
+            <i class="ri-sparkling-2-line me-1"></i> <?= __('AI: wklej email lub screenshot') ?>
+        </button>
+        <?php endif; ?>
         <div class="so-hint text-end pt-1">
             <div><kbd>Ctrl</kbd>+<kbd>S</kbd> <?= __('zapisz') ?></div>
             <?php if (!$isEdit): ?>
                 <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <?= __('zapisz + dodaj kolejne') ?></div>
             <?php endif; ?>
             <div><kbd>Esc</kbd> <?= __('anuluj') ?></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: AI parser email/screenshot -->
+<div class="modal fade" id="so-ai-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ri-sparkling-2-line me-1 text-primary"></i>
+                    <?= __('AI parser: wklej email/SMS lub screenshot zapytania') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted"><?= __('Treść wiadomości (email/SMS/WhatsApp)') ?></label>
+                    <textarea id="so-ai-text" class="form-control" rows="6" placeholder="<?= __('Wklej tutaj tekst wiadomości od klienta...') ?>"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted"><?= __('LUB screenshot (JPG/PNG, max 5 MB)') ?></label>
+                    <input type="file" id="so-ai-image" accept="image/png,image/jpeg,image/webp" class="form-control">
+                    <div class="so-hint mt-1"><?= __('Możesz też wkleić obraz (Ctrl+V) po kliknięciu w textarea powyżej.') ?></div>
+                    <div id="so-ai-preview" class="mt-2"></div>
+                </div>
+                <div id="so-ai-status" class="alert alert-info py-2 px-3 mb-0 d-none small"></div>
+                <div id="so-ai-result" class="mt-2 d-none">
+                    <div class="alert alert-success py-2 px-3 mb-2 small">
+                        <i class="ri-check-line me-1"></i>
+                        <?= __('AI wyciągnęło dane. Confidence:') ?>
+                        <strong id="so-ai-conf">-</strong>%
+                    </div>
+                    <div class="so-hint" id="so-ai-note"></div>
+                    <div id="so-ai-summary" class="small mt-2"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <?= __('Anuluj') ?>
+                </button>
+                <button type="button" class="btn btn-primary" id="so-ai-btn-parse">
+                    <i class="ri-magic-line me-1"></i><?= __('Przeanalizuj i wypełnij') ?>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1244,6 +1294,158 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             $form.elements[f].addEventListener('change', scheduleHereRoute);
         }
     });
+
+    // =====================================================================
+    // AI PARSER emaila / screenshot -> auto-fill formularza
+    // =====================================================================
+    var $aiText    = document.getElementById('so-ai-text');
+    var $aiImage   = document.getElementById('so-ai-image');
+    var $aiPreview = document.getElementById('so-ai-preview');
+    var $aiStatus  = document.getElementById('so-ai-status');
+    var $aiResult  = document.getElementById('so-ai-result');
+    var $aiConf    = document.getElementById('so-ai-conf');
+    var $aiNote    = document.getElementById('so-ai-note');
+    var $aiSummary = document.getElementById('so-ai-summary');
+    var $aiBtn     = document.getElementById('so-ai-btn-parse');
+    var aiImageB64 = null;
+
+    // Podglad screenshot
+    if ($aiImage) {
+        $aiImage.addEventListener('change', function(e){
+            var f = e.target.files[0];
+            if (!f) { aiImageB64 = null; $aiPreview.innerHTML = ''; return; }
+            if (f.size > 5 * 1024 * 1024) {
+                $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
+                $aiStatus.textContent = 'Plik za duzy (max 5 MB)';
+                $aiStatus.classList.remove('d-none');
+                return;
+            }
+            var reader = new FileReader();
+            reader.onload = function(ev){
+                aiImageB64 = ev.target.result;
+                $aiPreview.innerHTML = '<img src="' + aiImageB64 + '" style="max-width:200px;max-height:120px;border:1px solid #d1d5db;border-radius:.3rem">';
+            };
+            reader.readAsDataURL(f);
+        });
+    }
+
+    // Ctrl+V wklejanie obrazu do textarea
+    if ($aiText) {
+        $aiText.addEventListener('paste', function(e){
+            var items = (e.clipboardData || {}).items || [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image') === 0) {
+                    var f = items[i].getAsFile();
+                    if (f) {
+                        var reader = new FileReader();
+                        reader.onload = function(ev){
+                            aiImageB64 = ev.target.result;
+                            $aiPreview.innerHTML = '<img src="' + aiImageB64 + '" style="max-width:200px;max-height:120px;border:1px solid #d1d5db;border-radius:.3rem"><div class="so-hint mt-1">Obraz wklejony ze schowka</div>';
+                        };
+                        reader.readAsDataURL(f);
+                        e.preventDefault();
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    if ($aiBtn) {
+        $aiBtn.addEventListener('click', function(){
+            var text = ($aiText.value || '').trim();
+            if (!text && !aiImageB64) {
+                $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
+                $aiStatus.textContent = 'Wklej email lub dodaj screenshot';
+                $aiStatus.classList.remove('d-none');
+                return;
+            }
+            $aiBtn.disabled = true;
+            $aiStatus.className = 'alert alert-info py-2 px-3 mb-0 small';
+            $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Analiza AI... (10-20 sek)';
+            $aiStatus.classList.remove('d-none');
+            $aiResult.classList.add('d-none');
+
+            var fd = new FormData();
+            fd.append('_csrfToken', CSRF);
+            if (text) fd.append('text', text);
+            if (aiImageB64) fd.append('image_base64', aiImageB64);
+
+            fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'aiParseOrderJson']) ?>', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                $aiBtn.disabled = false;
+                if (!j.ok) {
+                    $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
+                    $aiStatus.textContent = 'Blad AI: ' + (j.error || 'nieznany');
+                    return;
+                }
+                $aiStatus.classList.add('d-none');
+                var d = j.data || {};
+                var conf = d.confidence || 0;
+                $aiConf.textContent = conf;
+                $aiNote.textContent = d.note || '';
+                $aiResult.classList.remove('d-none');
+
+                // Prefill formularza
+                var mapping = {
+                    'buyer_nip': 'buyer_nip',
+                    'buyer_name': 'buyer_name',
+                    'buyer_email': 'buyer_email',
+                    'buyer_city': 'buyer_city',
+                    'buyer_country': 'buyer_country',
+                    'load_country': 'load_country',
+                    'load_city': 'load_city',
+                    'load_postal_code': 'load_postal_code',
+                    'date_deadline': 'date_deadline',
+                    'unload_country': 'unload_country',
+                    'unload_city': 'unload_city',
+                    'unload_name': 'unload_name',
+                    'date_delivery': 'date_delivery',
+                    'title1': 'title1',
+                    'title2': 'title2',
+                    'cargo_type': 'cargo_type',
+                    'transport_type': 'transport_type',
+                    'notes': 'notes',
+                    'netto': 'netto',
+                    'currency': 'currency',
+                    'payment_terms': 'payment_terms',
+                };
+                var filled = [];
+                Object.keys(mapping).forEach(function(k){
+                    var v = d[k];
+                    if (v === null || v === undefined || v === '') return;
+                    var el = $form.elements[mapping[k]];
+                    if (el) {
+                        el.value = v;
+                        filled.push(k + ': ' + v);
+                    }
+                });
+                $aiSummary.innerHTML = '<strong>Wypelnione pola:</strong><br>' + filled.join('<br>');
+                calc(); // przelicz VAT/brutto z nowego netto
+                onCur(); // update kurs jesli waluta zmieniona
+                schedulePricingCheck();
+                scheduleHereRoute();
+                if (d.buyer_nip) checkLastForBuyer(d.buyer_nip);
+
+                // Zamknij modal po 3 sek
+                setTimeout(function(){
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('so-ai-modal'));
+                    if (modal) modal.hide();
+                }, 3000);
+            })
+            .catch(function(e){
+                $aiBtn.disabled = false;
+                $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
+                $aiStatus.textContent = 'Blad polaczenia: ' + e.message;
+            });
+        });
+    }
 
 })();
 </script>

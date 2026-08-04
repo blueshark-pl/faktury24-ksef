@@ -1490,6 +1490,89 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: AI parser emaila lub screenshotu -> structured order data.
+     * POST /zlecenia/ai-parse-order body:
+     *   - text: (opcjonalnie) tresc emaila / SMS / wiadomosci
+     *   - image_base64: (opcjonalnie) data URL 'data:image/png;base64,XXXX'
+     * Przynajmniej jedno musi byc obecne.
+     *
+     * Zwraca structured JSON z polami odpowiadajacymi speed_orders + confidence.
+     */
+    public function aiParseOrderJson(): void
+    {
+        $this->request->allowMethod(['post']);
+        $text  = trim((string)$this->request->getData('text', ''));
+        $image = trim((string)$this->request->getData('image_base64', ''));
+
+        if ($text === '' && $image === '') {
+            $this->jsonResp(['ok' => false, 'error' => 'Wklej email/tekst LUB dodaj screenshot']);
+            return;
+        }
+
+        $system = <<<'SYS'
+Jestes asystentem AI dla firmy spedycyjnej. Analizujesz email / SMS / screenshot zapytania
+o zlecenie transportowe (PL/EN/DE/UK) i wyciagasz strukturalne dane. Zwracasz WYLACZNIE
+poprawny JSON o dokladnie tej strukturze:
+
+{
+  "buyer_nip": "10-cyfrowy PL NIP lub zagraniczny VAT UE (np. 'ATU12345678', 'DE123456789', 'NL822534538B01') lub pusty",
+  "buyer_name": "nazwa klienta zlecajacego (spedycja/nadawca faktury) lub pusty",
+  "buyer_email": "email kontaktowy lub pusty",
+  "buyer_city": "miasto siedziby klienta lub pusty",
+  "buyer_country": "kod ISO alpha-2 kraju klienta ('PL','DE',...) lub pusty",
+
+  "load_country": "kod ISO alpha-2 zaladunku",
+  "load_city": "miasto zaladunku",
+  "load_postal_code": "kod pocztowy zaladunku lub pusty",
+  "date_deadline": "YYYY-MM-DDTHH:MM planowana data zaladunku lub pusty",
+
+  "unload_country": "kod ISO alpha-2 rozladunku",
+  "unload_city": "miasto rozladunku",
+  "unload_name": "nazwa magazynu/miejsca rozladunku lub pusty",
+  "date_delivery": "YYYY-MM-DDTHH:MM planowana data rozladunku lub pusty",
+
+  "title1": "nr referencyjny/zlecenia klienta (np. 'HB-2607068603' lub 'PO 269928501') lub pusty",
+  "title2": "krotki opis ladunku (np. 'towar paletowy', 'zamrozone') lub pusty",
+  "cargo_type": "FTL/LTL/ADR/CHILL/FROZEN lub pusty",
+  "transport_type": "plandeka/chlodnia/wywrotka/cysterna lub pusty",
+  "notes": "dodatkowe uwagi (temperatura, palety, wagi) lub pusty",
+
+  "netto": liczba lub null,
+  "currency": "PLN/EUR/USD/GBP/CHF/CZK/... lub pusty",
+  "payment_terms": "np. 'Przelew 30 dni' lub pusty",
+
+  "confidence": 0-100 (jak pewien jestes co do wyciagnietych danych),
+  "note": "krotki komentarz dla operatora - co udalo sie wyciagnac a co nie"
+}
+
+Zasady:
+- Data w formacie YYYY-MM-DDTHH:MM (bez sekund, bez strefy). Jesli brak godziny, uzyj 08:00 dla zaladunku, 16:00 dla rozladunku.
+- Kraj: ZAWSZE 2-znakowy kod ISO (PL, DE, NL, CZ, SK, AT, FR, IT, ES, HU, RO, LT, LV, EE, GB, IE, CH, NO, SE, DK, FI, BE, LU, PT).
+- NIP zagraniczny: zostaw z prefixem (np. 'DE123456789', 'ATU12345678').
+- Cena: netto (bez VAT). Jesli klient podal brutto, przelicz netto = brutto/1.23 (PL) lub brutto (bez VAT UE).
+- Wpisz "" (pusty string) zamiast null dla pol tekstowych; null tylko dla netto gdy brak.
+- Confidence: 90-100 = pelne dane; 60-89 = brakuje kilku pol; 0-59 = fragment.
+
+Format sciscle. Nie dodawaj tekstu poza JSON.
+SYS;
+
+        try {
+            $ai = new \App\Service\Ai\OpenAiService();
+            if ($image !== '') {
+                // Vision: przekazujemy image + opcjonalny text jako kontekst
+                $result = $ai->chatVisionJson($system, $text ?: 'Wyciagnij dane zlecenia z tego screenshotu.', $image, 1200);
+            } else {
+                // Zwykly text
+                $result = $ai->chatJson($system, $text, 1200);
+            }
+            $this->jsonResp(['ok' => true, 'data' => $result]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('aiParseOrder: ' . $e->getMessage());
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * AJAX: lekki live kalkulator trasy HERE dla formularza zlecenia.
      * POST /zlecenia/route-calc.json body: from_city, from_country, to_city, to_country,
      *                                       [currency=EUR], [rate_per_km=1.20]
