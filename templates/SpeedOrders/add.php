@@ -2922,6 +2922,72 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                     }
                 }
 
+                // Special: stops[] - multi-stop trasy (LTL, TOSCA, itp)
+                // Pierwszy pickup -> primary load_*, ostatni delivery -> primary unload_*,
+                // reszta -> speed_order_stops[] table (JS multi-stop)
+                if (Array.isArray(d.stops) && d.stops.length > 0) {
+                    var stops = d.stops.filter(function(s){ return s && (s.city || s.address || s.postal_code); });
+                    if (stops.length > 0) {
+                        var pickups = stops.filter(function(s){ return s.stop_type === 'pickup' || s.stop_type === 'loading'; });
+                        var deliveries = stops.filter(function(s){ return s.stop_type === 'delivery' || s.stop_type === 'unloading'; });
+                        var firstPickup   = pickups[0] || stops[0];
+                        var lastDelivery  = deliveries[deliveries.length - 1] || stops[stops.length - 1];
+
+                        // Primary load
+                        if (firstPickup) {
+                            if (firstPickup.country_code)    $form.elements.load_country.value = firstPickup.country_code;
+                            if (firstPickup.postal_code)     $form.elements.load_postal_code.value = firstPickup.postal_code;
+                            if (firstPickup.city)            $form.elements.load_city.value = firstPickup.city;
+                            if (firstPickup.address)         $form.elements.load_address.value = firstPickup.address;
+                            if (firstPickup.planned_at)      $form.elements.date_deadline.value = firstPickup.planned_at;
+                            if (firstPickup.time_from)       $form.elements.load_time_from.value = firstPickup.time_from;
+                            if (firstPickup.time_to)         $form.elements.load_time_to.value = firstPickup.time_to;
+                            if (firstPickup.contact_name)    $form.elements.load_contact_name.value = firstPickup.contact_name;
+                            if (firstPickup.contact_phone)   $form.elements.load_contact_phone.value = firstPickup.contact_phone;
+                        }
+                        // Primary unload
+                        if (lastDelivery) {
+                            if (lastDelivery.country_code)   $form.elements.unload_country.value = lastDelivery.country_code;
+                            if (lastDelivery.postal_code)    $form.elements.unload_postal_code.value = lastDelivery.postal_code;
+                            if (lastDelivery.city)           $form.elements.unload_city.value = lastDelivery.city;
+                            if (lastDelivery.address)        $form.elements.unload_address.value = lastDelivery.address;
+                            if (lastDelivery.place_name)     $form.elements.unload_name.value = lastDelivery.place_name;
+                            if (lastDelivery.planned_at)     $form.elements.date_delivery.value = lastDelivery.planned_at;
+                            if (lastDelivery.time_from)      $form.elements.unload_time_from.value = lastDelivery.time_from;
+                            if (lastDelivery.time_to)        $form.elements.unload_time_to.value = lastDelivery.time_to;
+                            if (lastDelivery.contact_name)   $form.elements.unload_contact_name.value = lastDelivery.contact_name;
+                            if (lastDelivery.contact_phone)  $form.elements.unload_contact_phone.value = lastDelivery.contact_phone;
+                        }
+                        // Middle stops -> speed_order_stops[]
+                        var middle = stops.filter(function(s){
+                            return s !== firstPickup && s !== lastDelivery;
+                        });
+                        middle.forEach(function(stop){
+                            var idx = stopIdx++;
+                            $stopsList.insertAdjacentHTML('beforeend', stopRowHtml(idx));
+                            var row = $stopsList.querySelector('.so-stop-row[data-idx="' + idx + '"]');
+                            if (!row) return;
+                            function setF(sel, val) {
+                                var el = row.querySelector(sel);
+                                if (el && val !== null && val !== undefined && val !== '') el.value = val;
+                            }
+                            var stopType = stop.stop_type;
+                            if (stopType === 'loading') stopType = 'pickup';
+                            if (stopType === 'unloading') stopType = 'delivery';
+                            setF('select[name$="[stop_type]"]', stopType || 'delivery');
+                            setF('[name$="[country_code]"]', stop.country_code);
+                            setF('[name$="[postal_code]"]', stop.postal_code);
+                            setF('[name$="[city]"]', stop.city);
+                            setF('[name$="[place_name]"]', stop.place_name || stop.address);
+                            setF('[name$="[planned_at]"]', stop.planned_at);
+                            setF('[name$="[cargo_notes]"]', stop.cargo_notes);
+                        });
+                        // Odswiez licznik + trigger autocomplete attach dla nowych wierszy
+                        renumberStops();
+                        filled.push('stops: ' + stops.length + ' punktow (' + (middle.length ? middle.length + ' posrednich' : 'A→B') + ')');
+                    }
+                }
+
                 // Special: cargo_items[] - tablica pozycji ladunku
                 if (Array.isArray(d.cargo_items) && d.cargo_items.length > 0) {
                     // Wyczysc obecne wiersze tylko jesli sa puste, inaczej append

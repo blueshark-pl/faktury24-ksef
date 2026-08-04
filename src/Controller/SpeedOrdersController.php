@@ -2895,6 +2895,23 @@ poprawny JSON o dokladnie tej strukturze:
     }
   ],
 
+  "stops": [
+    {
+      "stop_type": "pickup / delivery / transit (Loading = pickup, Unloading = delivery)",
+      "country_code": "kod ISO alpha-2 kraju",
+      "postal_code": "kod pocztowy",
+      "city": "miasto",
+      "address": "ulica + numer (Street Address)",
+      "place_name": "nazwa firmy/magazynu z Location (np. GEBRUEDER BAGUSAT lub TEREN PROLOGIS) lub pusty",
+      "planned_at": "YYYY-MM-DDTHH:MM data przyjazdu (Arrival) lub pusty",
+      "time_from": "HH:MM Opening hours od lub pusty",
+      "time_to": "HH:MM Opening hours do lub pusty",
+      "contact_name": "kontakt na miejscu lub pusty",
+      "contact_phone": "telefon lub pusty",
+      "cargo_notes": "kod, ilosc, waga total lub Location Instructions lub pusty (np. '3990 kg total, 2 items')"
+    }
+  ],
+
   "confidence": 0-100 (jak pewien jestes co do wyciagnietych danych),
   "note": "krotki komentarz dla operatora - co udalo sie wyciagnac a co nie"
 }
@@ -2906,6 +2923,28 @@ Zasady:
 - Cena: netto (bez VAT). Jesli klient podal brutto, przelicz netto = brutto/1.23 (PL) lub brutto (bez VAT UE).
 - Wpisz "" (pusty string) zamiast null dla pol tekstowych; null tylko dla netto gdy brak.
 - Confidence: 90-100 = pelne dane; 60-89 = brakuje kilku pol; 0-59 = fragment.
+
+MULTI-STOP (wazne dla LTL / TOSCA / DB Schenker / Trans zlecen z wieloma stopami):
+- Jesli dokument ma tabele "Shipment Detail Information" z Stop 1/2/3... - to jest multi-stop.
+- Zawsze wyciagnij WSZYSTKIE stopy jako tablice `stops[]`.
+- PIERWSZY stop typu Loading/pickup wypelnia rowniez PRIMARY load_* (load_country, load_city,
+  load_postal_code, load_address, load_time_from/to, date_deadline, load_contact_*).
+- OSTATNI stop typu Unloading/delivery wypelnia PRIMARY unload_* (unload_country, unload_city,
+  unload_postal_code, unload_address, unload_time_from/to, date_delivery, unload_contact_*).
+- WSZYSTKIE POZOSTALE stopy zostaja w tablicy `stops[]` (juz w niej sa - jako powtorki tak/nie
+  jest OK, frontend rozpozna).
+- Activity: Loading -> stop_type=pickup, Unloading -> stop_type=delivery.
+- Total Weight ze Stop -> cargo_notes (np. "3990 kg total").
+- Address wieloliniowy (np. "JEDNOSCI 4\nWSCHOWA") -> address = pierwsza linia (ulica),
+  city = kolejna linia.
+
+CARGO ITEMS w multi-stop:
+- Jesli sa Item Name + Advised Quantity pod kazdym Stop - wyciagnij WSZYSTKIE items do
+  jednej plaskiej tablicy `cargo_items[]` (na razie bez per-stop mapping).
+- Dedupacja: item ktory pojawia sie w kilku stopach (np. "H1 BLUE 800X1200 (03)" na Stop 1
+  i Stop 3 - to zwykle ten sam ladunek podnoszony i dostarczany) - dodaj TYLKO RAZ.
+- Format "PRODUCT (CODE)" w Item Name: wyciagnij CODE do product_code, resztę do product_name.
+- product_code = "03", product_name = "H1 BLUE 800X1200"
 
 Format sciscle. Nie dodawaj tekstu poza JSON.
 SYS;
