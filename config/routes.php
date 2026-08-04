@@ -104,6 +104,7 @@ return function (RouteBuilder $routes): void {
         $builder->post('/zlecenia/route-calc',          ['controller' => 'SpeedOrders', 'action' => 'routeCalcJson']);
         $builder->post('/zlecenia/ai-parse',            ['controller' => 'SpeedOrders', 'action' => 'aiParseOrderJson']);
         $builder->post('/zlecenia/conflict-check',      ['controller' => 'SpeedOrders', 'action' => 'conflictCheckJson']);
+        $builder->get('/zlecenia/kabotaz',              ['controller' => 'SpeedOrders', 'action' => 'cabotageCheckJson']);
         $builder->get('/zlecenia/wolne-zasoby',         ['controller' => 'SpeedOrders', 'action' => 'freeResourcesJson']);
         $builder->get('/zlecenia/plany-tras',           ['controller' => 'SpeedOrders', 'action' => 'routePlansJson']);
         $builder->get('/zlecenia/pdf/{id}',             ['controller' => 'SpeedOrders', 'action' => 'pdfConfirmation'])

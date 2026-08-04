@@ -800,6 +800,23 @@ Crontab prod (przykład):
 0 8 * * * cd /home/jjgroup1srv/domains/booklio.pl/public_html && php bin/cake.php alerts
 ```
 
+### Pełne kolumny `speed_order_stops`
+Migracja: `20260804160000_CreateSpeedOrderStops.php`
+Punkty pośrednie trasy (multi-stop A→B→C→D). Load/Unload primary są dalej w `speed_orders.load_*`/`unload_*` — tu tylko dodatkowe stopy.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `speed_order_id` | int unsigned | FK do `speed_orders` (CASCADE via hasMany) |
+| `stop_index` | int | Kolejność 1..N (0 zarezerwowany dla primary load) |
+| `stop_type` | string(20) | `pickup` / `delivery` / `transit` |
+| `country_code` / `postal_code` / `city` / `address` / `place_name` | | Lokalizacja |
+| `planned_at` / `actual_at` / `completed_at` | datetime | Czas (completed = zaznaczone przez kierowcę) |
+| `contact_name` / `contact_phone` | | Kontakt na miejscu |
+| `cargo_notes` | text | Palety, waga, uwagi |
+
+Association: `SpeedOrders hasMany SpeedOrderStops` + `cascadeCallbacks + saveStrategy=replace`.
+
 ### Pełne kolumny `contractor_credit_limits`
 Migracja: `20260804140000_CreateContractorCreditLimits.php`
 Limity kredytowe per kontrahent — do warnowania przy nowym zleceniu.
@@ -1022,6 +1039,9 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Kabotaż tracker FALA 9** (UE 1072/2009) — endpoint `GET /zlecenia/kabotaz?vehicle_plate=X&load_country=Y&unload_country=Z&date=D`: analizuje historię `speed_orders` dla pojazdu w oknie 14 dni, klasyfikuje operacje jako *międzynarodowy wjazd* (load≠unload, unload=X), *kabotaż* (load=unload=X) lub *wyjazd* (load=X, unload≠X); zwraca status `allowed`/`warning`/`limit_exceeded`/`no_entry`/`window_expired` + ostatni wjazd + count + okno 7 dni. Widget w formularzu (dodany do sekcji conflict/compliance): auto-trigger po zmianie pojazd+kraje+data | `SpeedOrdersController::cabotageCheckJson`, `templates/SpeedOrders/add.php` (JS fetchCabotage), routes, permissions |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Live mapka HERE FALA 9** — widget kalkulatora trasy rozszerzony o interaktywną mapę HERE Maps JS SDK v3.1.1: 2-kolumnowy layout (KPI po lewej, mapa 320px po prawej); rozszerzony `routeCalcJson` zwraca teraz `polyline` (flexible polyline z HERE Routing v8) + `lat`/`lng` dla from/to; JS decode via `H.geo.LineString.fromFlexiblePolyline`, rysowanie niebieskiego `H.map.Polyline` + 2 markery + auto fit-to-bounds; deferred init (retry 50×200ms) czeka na script load; warunkowe ładowanie 5 script tagów SDK tylko gdy `Configure.Here.apiKey` ustawiony (fallback placeholder gdy brak API key) | `SpeedOrdersController` (routeCalcJson + add/edit przekazują `$hereApiKey`), `templates/SpeedOrders/add.php` (SDK tags + widget + JS map init + drawRouteOnMap) |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Multi-stop trasy FALA 9** — nowa tabela `speed_order_stops` (uuid PK, `speed_order_id` FK, `stop_index` 1..N, `stop_type` pickup/delivery/transit, adres, `planned_at`/`actual_at`/`completed_at`, kontakt, cargo_notes); `SpeedOrders hasMany SpeedOrderStops` z `cascadeCallbacks` + `saveStrategy=replace` (do usuwania stopów); UI sekcja „Dodatkowe stopy w trasie" z border-left orange akcent + dynamiczne wiersze (button „+ Dodaj stop") + JS renumeracji stop_index + wiersze usuwane bez leakage; `patchEntity` z `['associated' => ['SpeedOrderStops']]`; `prepareManualOrderData` filtruje puste stopy + puste datetime→null + normalizuje country_code; widok szczegółów: sekcja tabelaryczna z badge typu + adres + kontakt + planowany/rzeczywisty czas | migracja `CreateSpeedOrderStops`, Table+Entity, `SpeedOrdersTable` (hasMany), `add.php` (sekcja + JS), `view.php` (tabela stopów) |
 | 2026-08-04 | Feat: `/zlecenia/import-csv` **Batch import CSV** — masowy import zleceń z pliku CSV: parser obsługuje separatory `,;\t` (auto-detect), kodowanie UTF-8/Win-1250 (auto-convert), BOM strip; szablon CSV do pobrania z przykładowym rekordem (`/zlecenia/import-csv/szablon.csv`); flow: upload → preview (10 wierszy + tabela błędów walidacji) → confirm & bulk insert; reuse `prepareManualOrderData` dla każdego rekordu (auto-numer M-, calc VAT/brutto, approval-check, normalizacja krajów); button „Import CSV" w liście zleceń | migracja n/d, kontroler `batchImport` + `batchImportTemplate` + private `parseCsv`, `templates/SpeedOrders/batch_import.php` (upload + preview), `templates/SpeedOrders/index.php` (button) |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Approval workflow FALA 8** — akceptacja managera dla dużych zleceń: migracja `AddApprovalToSpeedOrders` (4 kolumny: `approval_status` enum not_required/pending/approved/rejected, `approved_by_user_id`, `approved_at`, `approval_note`); próg globalny w `Configure.Orders.approvalThresholdPln` (default 10 000 PLN); auto-detect w `prepareManualOrderData` — jeśli brutto (PLN, po kursie) > próg → status `pending`; akcje `approve`/`reject` z guard tylko dla ról manager/admin + wymagany note przy odrzuceniu + auto-log w `SpeedOrderNotes`; widget w formularzu (JS live hint), sekcja approval-card w widoku (color-coded + buttony Akceptuj/Odrzuć dla managera), badge iconka w liście zleceń przy symbolu | migracja, kontroler (`approve`, `reject` + `prepareManualOrderData`), Entity SpeedOrder, `add.php` (hint + JS), `view.php` (approval-card), `index.php` (badge), routes, permissions |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Kredyt klienta FALA 8** — limity kredytowe + real-time saldo: migracja `CreateContractorCreditLimits` (uuid PK: `company_id`, `contractor_id` nullable, `contractor_nip`, `credit_limit_pln`, `warning_threshold_pct` default 80, `is_blocked` + `block_reason`, UNIQUE (company_id, contractor_nip)); endpoint `GET /zlecenia/kredyt-klienta?nip=xxx` zwraca limit + saldo nieopłaconych faktur (query Invoices.remaining matching InvoiceContractors.nip → przeliczenie na PLN wg exchange_rate) + przeterminowanie + status (ok/warning/exceeded/blocked/has_overdue); widget alert color-coded w formularzu; CRUD `/limity-kredytowe` (index + add + edit + delete) dostępny dla manager/user (bez młodszego) | migracja, Table+Entity `ContractorCreditLimits`, nowy `ContractorCreditLimitsController` (index/add/edit/delete), `SpeedOrdersController::creditCheckJson`, templates dla CRUD, widget w `SpeedOrders/add.php` z fetchCredit triggerem, routes, permissions |

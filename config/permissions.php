@@ -461,6 +461,7 @@ return [
                 'driversJson', 'vehiclesJson', 'lastForBuyerJson', 'citiesJson',
                 'routeCalcJson', 'aiParseOrderJson',
                 'conflictCheckJson', 'freeResourcesJson', 'routePlansJson',
+                'cabotageCheckJson',
                 'pdfConfirmation', 'buyerProfileJson', 'creditCheckJson',
                 'noteAdd', 'noteDelete',
                 'templatesListJson', 'templateSaveJson', 'templateDeleteJson',

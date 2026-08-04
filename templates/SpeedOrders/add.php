@@ -2144,6 +2144,84 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     });
 
     // =====================================================================
+    // KABOTAZ CHECK (UE 1072/2009)
+    // =====================================================================
+    var cabotageTimer = null;
+    function scheduleCabotageCheck() {
+        clearTimeout(cabotageTimer);
+        cabotageTimer = setTimeout(fetchCabotage, 700);
+    }
+    function fetchCabotage() {
+        var plate    = ($form.elements.vehicle_reg.value || '').trim();
+        var loadCty  = ($form.elements.load_country.value || '').trim();
+        var unlCty   = ($form.elements.unload_country.value || '').trim();
+        var date     = ($form.elements.date_deadline.value || '').slice(0, 10);
+        if (!plate || !loadCty || loadCty !== unlCty) { return; }
+
+        var url = '<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'cabotageCheckJson']) ?>' +
+            '?vehicle_plate=' + encodeURIComponent(plate) +
+            '&load_country=' + encodeURIComponent(loadCty) +
+            '&unload_country=' + encodeURIComponent(unlCty) +
+            (date ? '&date=' + encodeURIComponent(date) : '');
+        fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok || !j.applies) return;
+            // Dodaj do conflictAlert jako oddzielny wpis
+            var levelMap = {
+                'allowed':        'success',
+                'warning':        'warning',
+                'limit_exceeded': 'danger',
+                'no_entry':       'danger',
+                'window_expired': 'warning',
+            };
+            var iconMap = {
+                'allowed':        'ri-shield-check-line',
+                'warning':        'ri-alert-line',
+                'limit_exceeded': 'ri-close-shield-line',
+                'no_entry':       'ri-forbid-line',
+                'window_expired': 'ri-time-line',
+            };
+            var lvl = levelMap[j.status] || 'secondary';
+            var ico = iconMap[j.status] || 'ri-truck-line';
+            var body = '<i class="' + ico + ' me-1"></i>' +
+                '<strong>Kabotaż (UE 1072/2009):</strong> ' + j.msg;
+            if (j.entry) {
+                body += '<div class="small text-muted">Wjazd międzynarodowy: <code>' + j.entry.symbol + '</code> (' + j.entry.date + ')' +
+                        (j.window_end ? ' · okno do <strong>' + j.window_end + '</strong>' : '') + '</div>';
+            }
+            if (j.cabotage_orders && j.cabotage_orders.length > 0) {
+                body += '<div class="small">Wykonane: ' +
+                    j.cabotage_orders.map(function(o){ return '<code>' + o.symbol + '</code>'; }).join(', ') + '</div>';
+            }
+            $conflictWrap.style.display = 'block';
+            // Utrzymaj poprzedni content + dopisz kabotaż
+            var prev = $conflictAlert.innerHTML;
+            var newBlock = '<div class="mt-2 pt-2 border-top">' + body + '</div>';
+            // Jesli poprzedni content byl inny alert, dokonaj podwyzszenia klasy
+            if (!prev.includes('Kabotaż')) {
+                $conflictAlert.innerHTML = prev + newBlock;
+            } else {
+                // Zamien tylko sekcje kabotazu
+                $conflictAlert.innerHTML = prev.replace(/<div class="mt-2 pt-2 border-top">[\s\S]*?<\/div>\s*$/, newBlock);
+            }
+            // Podnies severity ramki jesli kabotaz danger
+            if (lvl === 'danger' && !$conflictAlert.className.includes('alert-danger')) {
+                $conflictAlert.className = 'alert alert-danger py-2 px-3 mb-0 small';
+            } else if (lvl === 'warning' && !$conflictAlert.className.match(/alert-(danger|warning)/)) {
+                $conflictAlert.className = 'alert alert-warning py-2 px-3 mb-0 small';
+            }
+        }).catch(function(){});
+    }
+
+    // Trigger po zmianie: pojazd + kraje
+    ['vehicle_reg','load_country','unload_country','date_deadline'].forEach(function(f){
+        if ($form.elements[f]) {
+            $form.elements[f].addEventListener('change', scheduleCabotageCheck);
+        }
+    });
+
+    // =====================================================================
     // WOLNE ZASOBY w oknie czasowym
     // =====================================================================
     var $freeBtn      = document.getElementById('so-free-btn');

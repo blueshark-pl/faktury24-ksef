@@ -2014,6 +2014,151 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: kabotaz check dla pojazdu (UE 1072/2009).
+     * GET /zlecenia/kabotaz?vehicle_plate=X&load_country=PL&unload_country=DE&date=YYYY-MM-DD
+     *
+     * Regula: max 3 operacje kabotazu w oknie 7 dni od miedzynarodowego wjazdu
+     * do panstwa, do momentu wyjazdu z niego.
+     *
+     * Analizujemy istniejace speed_orders dla vehicle_reg z ostatnich 14 dni:
+     *  - Miedzynarodowy wjazd = load_country != unload_country i unload_country == check_country
+     *  - Kabotaz              = load_country == unload_country == check_country
+     *  - Wyjazd z kraju       = load_country == check_country i unload_country != check_country
+     */
+    public function cabotageCheckJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $plate       = trim((string)$this->request->getQuery('vehicle_plate', ''));
+        $loadCountry = strtoupper(trim((string)$this->request->getQuery('load_country', '')));
+        $unloadCountry = strtoupper(trim((string)$this->request->getQuery('unload_country', '')));
+        $dateStr     = (string)$this->request->getQuery('date', '');
+
+        // Kabotaz mozliwy tylko gdy load == unload (transport wewnatrz kraju)
+        if ($plate === '' || $loadCountry === '' || $loadCountry !== $unloadCountry) {
+            $this->jsonResp(['ok' => true, 'applies' => false]);
+            return;
+        }
+
+        try {
+            $checkDate = $dateStr !== '' ? new \DateTime($dateStr) : new \DateTime();
+        } catch (\Throwable) {
+            $checkDate = new \DateTime();
+        }
+        $windowStart = (clone $checkDate)->modify('-14 days');
+
+        $companyNip = $this->currentCompanyNip();
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+
+        // Historia zlecen tego pojazdu w oknie 14 dni
+        $orders = $SpeedOrders->find()
+            ->select(['id', 'symbol', 'date_deadline', 'date_delivery', 'load_country', 'unload_country'])
+            ->where([
+                'company_nip' => $companyNip,
+                'vehicle_reg LIKE' => '%' . $plate . '%',
+                'date_delivery >=' => $windowStart->format('Y-m-d 00:00:00'),
+                'date_delivery <=' => (clone $checkDate)->modify('+1 day')->format('Y-m-d 23:59:59'),
+            ])
+            ->orderByAsc('date_delivery')
+            ->disableHydration()
+            ->all()
+            ->toList();
+
+        // Znajdz ostatni miedzynarodowy wjazd do kraju (najnowszy przed date)
+        $lastEntry = null;
+        $lastExit = null;
+        foreach ($orders as $o) {
+            $lc = strtoupper((string)($o['load_country'] ?? ''));
+            $uc = strtoupper((string)($o['unload_country'] ?? ''));
+            $when = $o['date_delivery'];
+            if (!$when) continue;
+            $whenDt = $when instanceof \DateTimeInterface ? $when : new \DateTime((string)$when);
+            if ($whenDt > $checkDate) continue; // future - ignore
+
+            if ($lc !== $loadCountry && $uc === $loadCountry) {
+                $lastEntry = ['symbol' => $o['symbol'], 'date' => $whenDt->format('Y-m-d')];
+            } elseif ($lc === $loadCountry && $uc !== $loadCountry) {
+                $lastExit = ['symbol' => $o['symbol'], 'date' => $whenDt->format('Y-m-d')];
+            }
+        }
+
+        // Jesli byl wyjazd po ostatnim wjezdzie -> pojazd opuscil kraj, kabotaz wygasl
+        if ($lastEntry && $lastExit && $lastExit['date'] > $lastEntry['date']) {
+            $lastEntry = null;
+        }
+
+        // Brak wjazdu -> nie ma podstawy do kabotazu
+        if (!$lastEntry) {
+            $this->jsonResp([
+                'ok' => true,
+                'applies' => true,
+                'status' => 'no_entry',
+                'msg' => 'Brak międzynarodowego wjazdu do kraju ' . $loadCountry . ' w ostatnich 14 dniach - kabotaż niedozwolony (UE 1072/2009).',
+            ]);
+            return;
+        }
+
+        // Okno 7 dni od wjazdu
+        $entryDate = new \DateTime($lastEntry['date']);
+        $limitDate = (clone $entryDate)->modify('+7 days');
+        if ($checkDate > $limitDate) {
+            $this->jsonResp([
+                'ok' => true,
+                'applies' => true,
+                'status' => 'window_expired',
+                'entry' => $lastEntry,
+                'window_end' => $limitDate->format('Y-m-d'),
+                'msg' => 'Okno kabotażu wygasło (7 dni po wjeździe ' . $lastEntry['date'] . ' upłynęło).',
+            ]);
+            return;
+        }
+
+        // Policz kabotaze w oknie
+        $cabotageCount = 0;
+        $cabotageOrders = [];
+        foreach ($orders as $o) {
+            $lc = strtoupper((string)($o['load_country'] ?? ''));
+            $uc = strtoupper((string)($o['unload_country'] ?? ''));
+            $when = $o['date_delivery'];
+            if (!$when) continue;
+            $whenDt = $when instanceof \DateTimeInterface ? $when : new \DateTime((string)$when);
+            if ($whenDt <= $entryDate || $whenDt > $checkDate) continue;
+            if ($lc === $loadCountry && $uc === $loadCountry) {
+                $cabotageCount++;
+                $cabotageOrders[] = ['symbol' => $o['symbol'], 'date' => $whenDt->format('Y-m-d')];
+            }
+        }
+
+        $status = 'allowed';
+        $msg = 'Kabotaż dozwolony (' . $cabotageCount . '/3 wykonane, do ' . $limitDate->format('Y-m-d') . ').';
+        if ($cabotageCount >= 3) {
+            $status = 'limit_exceeded';
+            $msg = 'Limit 3 kabotaży w kraju ' . $loadCountry . ' WYCZERPANY. Wymagany wyjazd + nowy wjazd międzynarodowy.';
+        } elseif ($cabotageCount >= 2) {
+            $status = 'warning';
+            $msg = 'Ostrzeżenie: ' . $cabotageCount . '/3 kabotaży wykonanych. Ostatnia dozwolona operacja.';
+        }
+
+        $this->jsonResp([
+            'ok' => true,
+            'applies' => true,
+            'status' => $status,
+            'entry' => $lastEntry,
+            'window_end' => $limitDate->format('Y-m-d'),
+            'count' => $cabotageCount,
+            'max' => 3,
+            'cabotage_orders' => $cabotageOrders,
+            'msg' => $msg,
+        ]);
+    }
+
+    /**
      * AJAX: sprawdz konflikty grafika dla podanego kierowcy/pojazdu i okna czasowego.
      * POST /zlecenia/conflict-check body: driver_name, vehicle_plate, start, end
      * Zwraca liste kolizji + status wolny/zajety.
