@@ -99,6 +99,8 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/cities',               ['controller' => 'SpeedOrders', 'action' => 'citiesJson']);
         $builder->post('/zlecenia/route-calc',          ['controller' => 'SpeedOrders', 'action' => 'routeCalcJson']);
         $builder->post('/zlecenia/ai-parse',            ['controller' => 'SpeedOrders', 'action' => 'aiParseOrderJson']);
+        $builder->post('/zlecenia/conflict-check',      ['controller' => 'SpeedOrders', 'action' => 'conflictCheckJson']);
+        $builder->get('/zlecenia/wolne-zasoby',         ['controller' => 'SpeedOrders', 'action' => 'freeResourcesJson']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

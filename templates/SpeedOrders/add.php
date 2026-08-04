@@ -119,6 +119,34 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     </div>
 </div>
 
+<!-- MODAL: Wolne zasoby w oknie -->
+<div class="modal fade" id="so-free-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ri-calendar-check-line me-1 text-primary"></i>
+                    <?= __('Wolne zasoby w oknie czasowym') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="so-free-status" class="alert alert-info py-2 px-3 small"></div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="fw-semibold small text-uppercase text-muted"><?= __('Wolni kierowcy') ?></h6>
+                        <div id="so-free-drivers" class="list-group"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-semibold small text-uppercase text-muted"><?= __('Wolne pojazdy') ?></h6>
+                        <div id="so-free-vehicles" class="list-group"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL: AI parser email/screenshot -->
 <div class="modal fade" id="so-ai-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -387,13 +415,23 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     </div>
 </div>
 
+<!-- WIDGET: Warnings kolizji grafika -->
+<div class="col-12" id="so-conflict-wrap" style="display:none">
+    <div class="alert py-2 px-3 mb-0 small" id="so-conflict-alert"></div>
+</div>
+
 <!-- SEKCJA 5: Transport -->
 <div class="col-12">
     <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
-                <i class="ri-truck-fill me-1"></i> <?= __('Transport') ?>
-            </h6>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-truck-fill me-1"></i> <?= __('Transport') ?>
+                </h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="so-free-btn" title="<?= __('Znajdź wolnych w oknie z dat załadunku/rozładunku') ?>">
+                    <i class="ri-calendar-check-line me-1"></i><?= __('Znajdź wolne zasoby') ?>
+                </button>
+            </div>
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label small text-muted"><?= __('Kierowca') ?></label>
@@ -1292,6 +1330,155 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     ['load_city','unload_city','load_country','unload_country','currency'].forEach(function(f){
         if ($form.elements[f]) {
             $form.elements[f].addEventListener('change', scheduleHereRoute);
+        }
+    });
+
+    // =====================================================================
+    // WARNINGS: kolizja grafika kierowcy/pojazdu
+    // =====================================================================
+    var $conflictWrap  = document.getElementById('so-conflict-wrap');
+    var $conflictAlert = document.getElementById('so-conflict-alert');
+    var conflictTimer  = null;
+
+    function scheduleConflictCheck() {
+        clearTimeout(conflictTimer);
+        conflictTimer = setTimeout(fetchConflicts, 600);
+    }
+
+    function fetchConflicts() {
+        var driver  = ($form.elements.driver.value || '').trim();
+        var vehicle = ($form.elements.vehicle_reg.value || '').trim();
+        var start   = $form.elements.date_deadline.value;
+        var end     = $form.elements.date_delivery.value;
+
+        if ((!driver && !vehicle) || !start || !end) {
+            $conflictWrap.style.display = 'none';
+            return;
+        }
+
+        var fd = new FormData();
+        fd.append('_csrfToken', CSRF);
+        if (driver)  fd.append('driver_name', driver);
+        if (vehicle) fd.append('vehicle_plate', vehicle);
+        fd.append('start', start);
+        fd.append('end', end);
+
+        fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'conflictCheckJson']) ?>', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok) { $conflictWrap.style.display = 'none'; return; }
+            if (!j.has_conflicts) {
+                $conflictWrap.style.display = 'block';
+                $conflictAlert.className = 'alert alert-success py-2 px-3 mb-0 small';
+                $conflictAlert.innerHTML = '<i class="ri-check-line me-1"></i>' +
+                    '<strong>Brak kolizji w grafiku</strong> — kierowca/pojazd jest wolny w tym oknie.';
+                return;
+            }
+            var html = '<div class="fw-semibold"><i class="ri-alert-line me-1"></i>Wykryto kolizje grafika (' + j.conflicts.length + '):</div><ul class="mb-0 mt-1 ps-3">';
+            j.conflicts.forEach(function(c){
+                var label = c.kind === 'driver' ? 'Kierowca' : 'Pojazd';
+                var lnk = c.linked ? ' → <span class="text-muted">' + c.linked + '</span>' : '';
+                html += '<li>' + label + ' <strong>' + c.entity + '</strong> — ' + c.entry_type +
+                        ' (' + c.starts_at + ' → ' + c.ends_at + ')' + lnk + '</li>';
+            });
+            html += '</ul>';
+            $conflictWrap.style.display = 'block';
+            $conflictAlert.className = 'alert alert-warning py-2 px-3 mb-0 small';
+            $conflictAlert.innerHTML = html;
+        })
+        .catch(function(){ $conflictWrap.style.display = 'none'; });
+    }
+
+    // Trigger po zmianie kierowcy/pojazdu/dat
+    ['driver','vehicle_reg','date_deadline','date_delivery'].forEach(function(f){
+        if ($form.elements[f]) {
+            $form.elements[f].addEventListener('change', scheduleConflictCheck);
+        }
+    });
+
+    // =====================================================================
+    // WOLNE ZASOBY w oknie czasowym
+    // =====================================================================
+    var $freeBtn      = document.getElementById('so-free-btn');
+    var $freeStatus   = document.getElementById('so-free-status');
+    var $freeDrivers  = document.getElementById('so-free-drivers');
+    var $freeVehicles = document.getElementById('so-free-vehicles');
+
+    $freeBtn.addEventListener('click', function(){
+        var start = $form.elements.date_deadline.value;
+        var end   = $form.elements.date_delivery.value;
+        if (!start || !end) {
+            alert('Ustaw najpierw daty załadunku i rozładunku');
+            return;
+        }
+        var modal = new bootstrap.Modal(document.getElementById('so-free-modal'));
+        modal.show();
+        $freeStatus.className = 'alert alert-info py-2 px-3 small';
+        $freeStatus.textContent = 'Ładowanie...';
+        $freeDrivers.innerHTML = '';
+        $freeVehicles.innerHTML = '';
+
+        fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'freeResourcesJson']) ?>' +
+              '?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end),
+              { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.ok) {
+                $freeStatus.className = 'alert alert-danger py-2 px-3 small';
+                $freeStatus.textContent = j.error || 'Blad';
+                return;
+            }
+            $freeStatus.className = 'alert alert-success py-2 px-3 small';
+            $freeStatus.innerHTML = 'Okno: <strong>' + start + '</strong> → <strong>' + end + '</strong>. Znaleziono ' +
+                j.drivers.length + ' kierowców i ' + j.vehicles.length + ' pojazdów.';
+            if (j.drivers.length === 0) {
+                $freeDrivers.innerHTML = '<div class="text-muted small p-2">Brak wolnych kierowców</div>';
+            } else {
+                j.drivers.forEach(function(d){
+                    var adr = d.adr_certified ? '<span class="badge bg-warning-subtle text-warning ms-1">ADR</span>' : '';
+                    $freeDrivers.insertAdjacentHTML('beforeend',
+                        '<button type="button" class="list-group-item list-group-item-action py-2 so-free-pick-driver" data-name="' +
+                        d.full_name.replace(/"/g, '&quot;') + '">' +
+                        '<strong>' + d.full_name + '</strong>' + adr +
+                        (d.phone ? ' <span class="text-muted small">' + d.phone + '</span>' : '') +
+                        '</button>');
+                });
+            }
+            if (j.vehicles.length === 0) {
+                $freeVehicles.innerHTML = '<div class="text-muted small p-2">Brak wolnych pojazdów</div>';
+            } else {
+                j.vehicles.forEach(function(v){
+                    $freeVehicles.insertAdjacentHTML('beforeend',
+                        '<button type="button" class="list-group-item list-group-item-action py-2 so-free-pick-vehicle" data-plate="' +
+                        (v.plate || '').replace(/"/g, '&quot;') + '">' +
+                        '<strong>' + (v.plate || '?') + '</strong> — ' + v.name +
+                        (v.type ? ' <span class="badge bg-secondary-subtle text-secondary ms-1">' + v.type + '</span>' : '') +
+                        '</button>');
+                });
+            }
+        });
+    });
+
+    document.addEventListener('click', function(e){
+        var dBtn = e.target.closest('.so-free-pick-driver');
+        if (dBtn) {
+            $form.elements.driver.value = dBtn.dataset.name;
+            scheduleConflictCheck();
+            var m = bootstrap.Modal.getInstance(document.getElementById('so-free-modal'));
+            if (m) m.hide();
+            return;
+        }
+        var vBtn = e.target.closest('.so-free-pick-vehicle');
+        if (vBtn) {
+            $form.elements.vehicle_reg.value = vBtn.dataset.plate;
+            scheduleConflictCheck();
+            var m = bootstrap.Modal.getInstance(document.getElementById('so-free-modal'));
+            if (m) m.hide();
         }
     });
 

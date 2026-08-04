@@ -1490,6 +1490,178 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: sprawdz konflikty grafika dla podanego kierowcy/pojazdu i okna czasowego.
+     * POST /zlecenia/conflict-check body: driver_name, vehicle_plate, start, end
+     * Zwraca liste kolizji + status wolny/zajety.
+     */
+    public function conflictCheckJson(): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $driverName   = trim((string)$this->request->getData('driver_name', ''));
+        $vehiclePlate = trim((string)$this->request->getData('vehicle_plate', ''));
+        $startStr     = trim((string)$this->request->getData('start', ''));
+        $endStr       = trim((string)$this->request->getData('end', ''));
+
+        if ($startStr === '' || $endStr === '') {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak okna czasowego']);
+            return;
+        }
+
+        try {
+            $start = new \DateTimeImmutable($startStr);
+            $end   = new \DateTimeImmutable($endStr);
+        } catch (\Throwable) {
+            $this->jsonResp(['ok' => false, 'error' => 'Niepoprawny format daty']);
+            return;
+        }
+
+        $conflicts = [];
+
+        // Kierowca: znajdz po full_name (LIKE) i sprawdz overlap w driver_schedules
+        if ($driverName !== '') {
+            try {
+                $driver = $this->fetchTable('Drivers')->find()
+                    ->select(['id', 'full_name'])
+                    ->where(['company_id' => $companyId, 'full_name LIKE' => '%' . $driverName . '%'])
+                    ->first();
+                if ($driver) {
+                    $rows = $this->fetchTable('DriverSchedules')->find()
+                        ->select(['id', 'entry_type', 'starts_at', 'ends_at', 'speed_order_id', 'route_plan_id'])
+                        ->where([
+                            'company_id' => $companyId,
+                            'driver_id'  => $driver->id,
+                            'starts_at <'  => $end->format('Y-m-d H:i:s'),
+                            'ends_at >'    => $start->format('Y-m-d H:i:s'),
+                        ])
+                        ->limit(10)
+                        ->disableHydration()
+                        ->all();
+                    foreach ($rows as $r) {
+                        $conflicts[] = [
+                            'kind'       => 'driver',
+                            'entity'     => $driver->full_name,
+                            'entry_type' => $r['entry_type'],
+                            'starts_at'  => $r['starts_at'],
+                            'ends_at'    => $r['ends_at'],
+                            'linked'     => $r['speed_order_id'] ? 'zlecenie #' . $r['speed_order_id'] : ($r['route_plan_id'] ? 'plan trasy' : null),
+                        ];
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        // Pojazd: znajdz po plate (LIKE) i sprawdz overlap w vehicle_schedules
+        if ($vehiclePlate !== '') {
+            try {
+                $vehicle = $this->fetchTable('Vehicles')->find()
+                    ->select(['id', 'name', 'plate'])
+                    ->where(['company_id' => $companyId, 'plate LIKE' => '%' . $vehiclePlate . '%'])
+                    ->first();
+                if ($vehicle) {
+                    $rows = $this->fetchTable('VehicleSchedules')->find()
+                        ->select(['id', 'entry_type', 'starts_at', 'ends_at', 'speed_order_id', 'route_plan_id'])
+                        ->where([
+                            'company_id' => $companyId,
+                            'vehicle_id' => $vehicle->id,
+                            'starts_at <'  => $end->format('Y-m-d H:i:s'),
+                            'ends_at >'    => $start->format('Y-m-d H:i:s'),
+                        ])
+                        ->limit(10)
+                        ->disableHydration()
+                        ->all();
+                    foreach ($rows as $r) {
+                        $conflicts[] = [
+                            'kind'       => 'vehicle',
+                            'entity'     => $vehicle->plate . ' (' . $vehicle->name . ')',
+                            'entry_type' => $r['entry_type'],
+                            'starts_at'  => $r['starts_at'],
+                            'ends_at'    => $r['ends_at'],
+                            'linked'     => $r['speed_order_id'] ? 'zlecenie #' . $r['speed_order_id'] : ($r['route_plan_id'] ? 'plan trasy' : null),
+                        ];
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        $this->jsonResp([
+            'ok'        => true,
+            'conflicts' => $conflicts,
+            'has_conflicts' => !empty($conflicts),
+        ]);
+    }
+
+    /**
+     * AJAX: znajdz WOLNE zasoby (kierowcow + pojazdy) w podanym oknie czasowym.
+     * GET /zlecenia/wolne-zasoby?start=X&end=Y
+     */
+    public function freeResourcesJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $startStr = (string)$this->request->getQuery('start', '');
+        $endStr   = (string)$this->request->getQuery('end', '');
+        if ($startStr === '' || $endStr === '') {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak okna czasowego']);
+            return;
+        }
+
+        try {
+            $start = new \DateTimeImmutable($startStr);
+            $end   = new \DateTimeImmutable($endStr);
+        } catch (\Throwable) {
+            $this->jsonResp(['ok' => false, 'error' => 'Niepoprawny format daty']);
+            return;
+        }
+
+        $drivers = [];
+        $vehicles = [];
+        try {
+            $DS = $this->fetchTable('DriverSchedules');
+            $rows = $DS->findAvailableInWindow($companyId, $start, $end, false)->all();
+            foreach ($rows as $d) {
+                $drivers[] = [
+                    'id'            => (string)$d->id,
+                    'full_name'     => (string)$d->full_name,
+                    'phone'         => (string)($d->phone ?? ''),
+                    'adr_certified' => (bool)($d->adr_certified ?? false),
+                ];
+            }
+        } catch (\Throwable) {}
+
+        try {
+            $VS = $this->fetchTable('VehicleSchedules');
+            $rows = $VS->findAvailableVehiclesInWindow($companyId, $start, $end)->all();
+            foreach ($rows as $v) {
+                $vehicles[] = [
+                    'id'    => (string)$v->id,
+                    'name'  => (string)$v->name,
+                    'plate' => (string)($v->plate ?? ''),
+                    'type'  => (string)($v->type ?? ''),
+                ];
+            }
+        } catch (\Throwable) {}
+
+        $this->jsonResp([
+            'ok'       => true,
+            'drivers'  => $drivers,
+            'vehicles' => $vehicles,
+        ]);
+    }
+
+    /**
      * AJAX: AI parser emaila lub screenshotu -> structured order data.
      * POST /zlecenia/ai-parse-order body:
      *   - text: (opcjonalnie) tresc emaila / SMS / wiadomosci

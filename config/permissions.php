@@ -455,6 +455,7 @@ return [
                 'add', 'edit', 'delete',
                 'driversJson', 'vehiclesJson', 'lastForBuyerJson', 'citiesJson',
                 'routeCalcJson', 'aiParseOrderJson',
+                'conflictCheckJson', 'freeResourcesJson',
             ],
         ],
 
