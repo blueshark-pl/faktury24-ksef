@@ -297,14 +297,17 @@ class HereRoutingService
             $out = [];
             foreach (($data['items'] ?? []) as $item) {
                 $pos = $item['position'] ?? null;
+                $addr = $item['address'] ?? [];
                 $out[] = [
-                    'id'      => (string)($item['id'] ?? ''),
-                    'title'   => (string)($item['title'] ?? ''),
-                    'label'   => (string)($item['address']['label'] ?? ($item['title'] ?? '')),
-                    'lat'     => $pos ? (float)$pos['lat'] : null,
-                    'lng'     => $pos ? (float)$pos['lng'] : null,
-                    'country' => self::alpha3ToAlpha2((string)($item['address']['countryCode'] ?? '')),
-                    'type'    => (string)($item['resultType'] ?? ''),
+                    'id'          => (string)($item['id'] ?? ''),
+                    'title'       => (string)($item['title'] ?? ''),
+                    'label'       => (string)($addr['label'] ?? ($item['title'] ?? '')),
+                    'lat'         => $pos ? (float)$pos['lat'] : null,
+                    'lng'         => $pos ? (float)$pos['lng'] : null,
+                    'country'     => self::alpha3ToAlpha2((string)($addr['countryCode'] ?? '')),
+                    'city'        => (string)($addr['city'] ?? $addr['district'] ?? ''),
+                    'postal_code' => (string)($addr['postalCode'] ?? ''),
+                    'type'        => (string)($item['resultType'] ?? ''),
                 ];
             }
             return $out;

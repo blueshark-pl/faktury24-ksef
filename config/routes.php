@@ -93,6 +93,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/zlecenia/drivers.json',    ['controller' => 'SpeedOrders', 'action' => 'driversJson']);
         $builder->get('/zlecenia/vehicles.json',   ['controller' => 'SpeedOrders', 'action' => 'vehiclesJson']);
         $builder->get('/zlecenia/ostatnie-dla-klienta.json', ['controller' => 'SpeedOrders', 'action' => 'lastForBuyerJson']);
+        $builder->get('/zlecenia/cities.json', ['controller' => 'SpeedOrders', 'action' => 'citiesJson']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

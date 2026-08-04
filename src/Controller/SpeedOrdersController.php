@@ -1488,6 +1488,35 @@ class SpeedOrdersController extends AppController
     }
 
     /**
+     * AJAX: autocomplete miast/adresow z HERE Autosuggest.
+     * GET /zlecenia/cities.json?q=Ham&country=DE
+     * Zwraca max 8 propozycji z city, postal_code, country.
+     */
+    public function citiesJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $q = trim((string)$this->request->getQuery('q', ''));
+        if (mb_strlen($q) < 2) {
+            $this->jsonResp(['ok' => true, 'items' => []]);
+            return;
+        }
+        try {
+            $svc = new \App\Service\Routing\HereRoutingService();
+            $items = $svc->autosuggest($q);
+            // Filter: tylko city/locality/postalCode (bez pojedynczych adresow ulicznych)
+            $items = array_values(array_filter($items, function ($it) {
+                $t = $it['type'] ?? '';
+                return in_array($t, ['locality', 'city', 'administrativeArea', 'postalCodePoint', 'district'], true)
+                    || !empty($it['city']);
+            }));
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('HERE autosuggest error: ' . $e->getMessage());
+            $items = [];
+        }
+        $this->jsonResp(['ok' => true, 'items' => $items]);
+    }
+
+    /**
      * AJAX: lista kierowcow do autocomplete/datalist.
      */
     public function driversJson(): void

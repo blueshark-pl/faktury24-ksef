@@ -44,6 +44,9 @@ if ($isEdit && (float)$order->netto > 0) {
 
 // Klucz autosave — per URL zeby nie mieszac add vs edit
 $autosaveKey = 'so_form_' . ($isEdit ? 'edit_' . $order->id : 'add');
+
+// CSRF token do AJAX POST (bez tego CakePHP zwraca 403)
+$csrfToken = (string)$this->request->getAttribute('csrfToken');
 ?>
 
 <style>
@@ -533,6 +536,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     var AUTOSAVE_KEY = <?= json_encode($autosaveKey) ?>;
     var AUTOSAVE_MS = 30000;
     var IS_EDIT = <?= $isEdit ? 'true' : 'false' ?>;
+    var CSRF = <?= json_encode($csrfToken) ?>;
 
     // ===== VAT auto-calc + brutto preview w sticky bar =====
     var $netto = document.getElementById('fin-netto');
@@ -766,6 +770,88 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     $lcClose.addEventListener('click', function(){ $lcBox.classList.add('d-none'); });
 
     // =====================================================================
+    // HERE AUTOCOMPLETE MIAST (load_city, unload_city, buyer_city)
+    // =====================================================================
+    function attachCityAutocomplete(inputName, countryFieldName, postalFieldName) {
+        var $inp = $form.elements[inputName];
+        if (!$inp) return;
+        // Wrapper dropdownu
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'position:absolute;z-index:1050;background:#fff;border:1px solid #d1d5db;border-radius:.3rem;box-shadow:0 4px 12px rgba(0,0,0,.1);max-height:240px;overflow-y:auto;min-width:260px;display:none';
+        document.body.appendChild(wrap);
+        var timer = null;
+
+        function positionDropdown() {
+            var r = $inp.getBoundingClientRect();
+            wrap.style.left = (r.left + window.scrollX) + 'px';
+            wrap.style.top  = (r.bottom + window.scrollY + 2) + 'px';
+            wrap.style.width = r.width + 'px';
+        }
+
+        function render(items) {
+            if (!items || !items.length) { wrap.style.display = 'none'; return; }
+            var html = '';
+            items.slice(0, 8).forEach(function(it, idx){
+                var city = it.city || it.title || '';
+                var zip  = it.postal_code || '';
+                var cc   = it.country || '';
+                html += '<div class="so-city-opt py-1 px-2" data-idx="' + idx + '" ' +
+                        'style="cursor:pointer;border-bottom:1px solid #f3f4f6">' +
+                        '<div><strong>' + city + '</strong> ' +
+                        (cc ? '<span class="badge bg-secondary-subtle text-secondary" style="font-size:.65rem">' + cc + '</span>' : '') +
+                        '</div>' +
+                        '<div class="so-hint">' + (it.label || '') + (zip ? ' · ' + zip : '') + '</div>' +
+                        '</div>';
+            });
+            wrap.innerHTML = html;
+            wrap.dataset.items = JSON.stringify(items);
+            positionDropdown();
+            wrap.style.display = 'block';
+        }
+
+        $inp.addEventListener('input', function(){
+            clearTimeout(timer);
+            var q = $inp.value.trim();
+            if (q.length < 2) { wrap.style.display = 'none'; return; }
+            timer = setTimeout(function(){
+                fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'citiesJson']) ?>?q=' + encodeURIComponent(q))
+                    .then(function(r){ return r.json(); })
+                    .then(function(j){ if (j.ok) render(j.items || []); })
+                    .catch(function(){});
+            }, 250);
+        });
+
+        $inp.addEventListener('blur', function(){
+            // Delay zeby click w dropdown zdazyl zadzialac
+            setTimeout(function(){ wrap.style.display = 'none'; }, 150);
+        });
+
+        wrap.addEventListener('mousedown', function(e){
+            var opt = e.target.closest('.so-city-opt');
+            if (!opt) return;
+            var items = JSON.parse(wrap.dataset.items || '[]');
+            var it = items[parseInt(opt.dataset.idx, 10)];
+            if (!it) return;
+            $inp.value = it.city || it.title || $inp.value;
+            if (countryFieldName && $form.elements[countryFieldName] && it.country) {
+                $form.elements[countryFieldName].value = it.country;
+            }
+            if (postalFieldName && $form.elements[postalFieldName] && it.postal_code) {
+                $form.elements[postalFieldName].value = it.postal_code;
+            }
+            wrap.style.display = 'none';
+            // Trigger change zeby zadzialal pricingHistory / autosave
+            $inp.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        window.addEventListener('resize', positionDropdown);
+        window.addEventListener('scroll', positionDropdown, true);
+    }
+    attachCityAutocomplete('load_city',    'load_country',   'load_postal_code');
+    attachCityAutocomplete('unload_city',  'unload_country', null);
+    attachCityAutocomplete('buyer_city',   'buyer_country',  'buyer_postal_code');
+
+    // =====================================================================
     // GUS LOOKUP po NIP (PL, 10 cyfr) -> prefill danych firmy
     // =====================================================================
     var $gusBtn = document.getElementById('so-btn-gus');
@@ -780,11 +866,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         $gusMsg.innerHTML = '<span class="text-muted"><i class="ri-loader-4-line spin"></i> Pobieram z GUS…</span>';
         var fd = new FormData();
         fd.append('nip', digits);
-        // CSRF token z sesji (Cake generuje cookie automatycznie)
+        fd.append('_csrfToken', CSRF);
         fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
             method: 'POST',
             body: fd,
             credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
         })
         .then(function(r){ return r.json(); })
         .then(function(j){
@@ -847,6 +934,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             return;
         }
         var payload = new FormData();
+        payload.append('_csrfToken', CSRF);
         if (pricingMode === 'client' && buyerNip) payload.append('contractor_nip', buyerNip);
         if (fromCity)    payload.append('from_city', fromCity);
         if (toCity)      payload.append('to_city', toCity);
@@ -857,6 +945,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             method: 'POST',
             body: payload,
             credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
         })
         .then(function(r){ return r.json(); })
         .then(function(j){
