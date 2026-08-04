@@ -27,7 +27,8 @@
       "WebFetch(domain:api.cepik.gov.pl)",
       "Bash(git -C \"g:/2025/partnersc/faktury24 — kopia\" push)",
       "WebFetch(domain:matrix.router.hereapi.com)",
-      "Bash(grep -n '$lcClose.addEventListener\\\\|}\\)\\(\\);' 'g:/2025/partnersc/faktury24 — kopia/templates/SpeedOrders/add.php')"
+      "Bash(grep -n '$lcClose.addEventListener\\\\|}\\)\\(\\);' 'g:/2025/partnersc/faktury24 — kopia/templates/SpeedOrders/add.php')",
+      "Bash(php -l \"g:/2025/partnersc/faktury24 — kopia/templates/SpeedOrders/add.php\")"
     ]
   }
 }

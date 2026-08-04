@@ -1527,7 +1527,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     });
 
     // Multi-stop: attach autocomplete do wszystkich istniejacych wierszy + do nowo dodawanych
-    function attachStopRowAutocomplete(row) {
+    // Uwaga: dostep przez DOM bezposrednio - $stopsAdd/$stopsList sa
+    // definiowane pozniej w sekcji MULTI-STOP JS.
+    window.__soAttachStopRowAutocomplete = function attachStopRowAutocomplete(row) {
         var $city    = row.querySelector('input[name$="[city]"]');
         var $country = row.querySelector('input[name$="[country_code]"], select[name$="[country_code]"]');
         var $postal  = row.querySelector('input[name$="[postal_code]"]');
@@ -1537,22 +1539,23 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         attachCityAutocomplete($city, {
             country: $country, postal: $postal, lat: $lat, lng: $lng,
         });
-    }
+    };
     // Attach istniejacych stopow (edit mode)
-    document.querySelectorAll('#so-stops-list .so-stop-row').forEach(attachStopRowAutocomplete);
-    // Attach nowo dodanych - obserwator + hook w handlerze $stopsAdd
-    (function(){
-        var origAdd = $stopsAdd.onclick;
-        // Nie polegamy na onclick bo listener uzywa addEventListener - dodajmy dodatkowy
-        $stopsAdd.addEventListener('click', function(){
-            // Po chwili (po insertAdjacentHTML) attach do ostatniego wiersza
-            setTimeout(function(){
-                var rows = $stopsList.querySelectorAll('.so-stop-row');
-                var last = rows[rows.length - 1];
-                if (last) attachStopRowAutocomplete(last);
-            }, 10);
-        });
-    })();
+    document.querySelectorAll('#so-stops-list .so-stop-row').forEach(window.__soAttachStopRowAutocomplete);
+    // Attach nowo dodanych - hook przez MutationObserver na so-stops-list.
+    // Rozwiazuje race condition: nie polegamy na $stopsAdd (jeszcze niezdef.).
+    var $stopsListEl = document.getElementById('so-stops-list');
+    if ($stopsListEl && window.MutationObserver) {
+        new MutationObserver(function(mutations){
+            mutations.forEach(function(m){
+                m.addedNodes.forEach(function(node){
+                    if (node.nodeType === 1 && node.classList && node.classList.contains('so-stop-row')) {
+                        window.__soAttachStopRowAutocomplete(node);
+                    }
+                });
+            });
+        }).observe($stopsListEl, { childList: true });
+    }
 
     // =====================================================================
     // GUS LOOKUP po NIP (PL, 10 cyfr) -> prefill danych firmy
