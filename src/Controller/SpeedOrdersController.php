@@ -2086,6 +2086,36 @@ SYS;
     }
 
     /**
+     * PDF potwierdzenia zlecenia dla klienta / wewnetrznego wydruku.
+     * GET /zlecenia/pdf/{id}?download=1
+     */
+    public function pdfConfirmation(int $id): void
+    {
+        $this->request->allowMethod(['get']);
+        $order = $this->fetchTable('SpeedOrders')->find()->where(['id' => $id])->first();
+        if (!$order) {
+            throw new NotFoundException(__('Zlecenie nie istnieje.'));
+        }
+
+        $download = (bool)$this->request->getQuery('download', 1);
+        $this->viewBuilder()
+            ->setClassName('CakePdf.Pdf')
+            ->setTemplate('pdf_confirmation')
+            ->setLayout(false)
+            ->setOptions([
+                'pdfConfig' => [
+                    'filename'    => 'Zlecenie-' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string)$order->symbol) . '.pdf',
+                    'download'    => $download,
+                    'orientation' => 'portrait',
+                    'paper'       => 'A4',
+                    'engine'      => 'CakePdf.DomPdf',
+                ],
+            ]);
+
+        $this->set(compact('order'));
+    }
+
+    /**
      * Wysyla email z potwierdzeniem zlecenia do klienta (buyer_email).
      * Uzywa template templates/email/html/speed_order_confirmation.php.
      */

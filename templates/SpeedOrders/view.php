@@ -306,6 +306,10 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
            class="btn btn-sm btn-outline-primary" title="<?= __('Utwórz nowe zlecenie z prefillem z tego') ?>">
             <i class="ri-file-copy-line me-1"></i><?= __('Duplikuj') ?>
         </a>
+        <a href="<?= $this->Url->build(['action' => 'pdfConfirmation', $order->id]) ?>"
+           class="btn btn-sm btn-outline-danger" title="<?= __('Pobierz PDF potwierdzenia zlecenia') ?>" target="_blank">
+            <i class="ri-file-pdf-2-line me-1"></i>PDF
+        </a>
         <?php if (($order->source ?? 'speed') === 'manual'): ?>
             <a href="<?= $this->Url->build(['action' => 'edit', $order->id]) ?>"
                class="btn btn-sm btn-outline-info" title="<?= __('Edytuj zlecenie ręczne') ?>">

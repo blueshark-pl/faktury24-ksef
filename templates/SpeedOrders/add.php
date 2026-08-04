@@ -1106,7 +1106,41 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 : (j.vat && j.vat.statusVat
                     ? '<span class="badge bg-warning-subtle text-warning ms-1">VAT ' + j.vat.statusVat + '</span>'
                     : '');
-            $gusMsg.innerHTML = '<span class="text-success"><i class="ri-check-line"></i> Pobrano z GUS</span> ' + vatBadge;
+            $gusMsg.innerHTML = '<span class="text-success"><i class="ri-check-line"></i> Pobrano z GUS</span> ' + vatBadge +
+                ' <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="so-save-contractor" style="font-size:.72rem">' +
+                '<i class="ri-add-line"></i> Zapisz jako kontrahenta</button>';
+            document.getElementById('so-save-contractor').addEventListener('click', function(){
+                var btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="ri-loader-4-line spin"></i> zapisuje...';
+                var cfd = new FormData();
+                cfd.append('_csrfToken', CSRF);
+                cfd.append('nip',         c.nip || '');
+                cfd.append('name',        c.name || '');
+                cfd.append('street',      c.street || '');
+                cfd.append('postal_code', c.zip || '');
+                cfd.append('city',        c.city || '');
+                cfd.append('country',     'PL');
+                fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'add']) ?>', {
+                    method: 'POST',
+                    body: cfd,
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRF-Token': CSRF, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                })
+                .then(function(r){ return r.json(); })
+                .then(function(cj){
+                    if (cj.success !== false) {
+                        btn.innerHTML = '<i class="ri-check-line text-success"></i> zapisano w bazie';
+                    } else {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="ri-error-warning-line text-danger"></i> ' + (cj.message || 'blad');
+                    }
+                })
+                .catch(function(){
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="ri-error-warning-line text-danger"></i> blad';
+                });
+            });
             checkLastForBuyer(digits);
             schedulePricingCheck();
         })

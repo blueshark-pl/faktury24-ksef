@@ -456,6 +456,7 @@ return [
                 'driversJson', 'vehiclesJson', 'lastForBuyerJson', 'citiesJson',
                 'routeCalcJson', 'aiParseOrderJson',
                 'conflictCheckJson', 'freeResourcesJson', 'routePlansJson',
+                'pdfConfirmation',
             ],
         ],
 
