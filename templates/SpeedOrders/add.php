@@ -316,6 +316,33 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 <input type="hidden" name="save_and_attach"  id="save_and_attach"  value="">
 <input type="hidden" name="save_and_invoice" id="save_and_invoice" value="">
 
+<!-- TSL FLOW QUICK NAV (klient -> trasa -> ladunek -> transport -> cena) -->
+<div class="col-12 mb-2">
+    <div class="d-flex gap-1 flex-wrap so-flow-nav p-2 rounded" style="background:#f8fafc;border:1px solid #e5e7eb">
+        <a href="#sec-buyer"    class="btn btn-sm btn-outline-primary flex-grow-1" style="min-width:110px">
+            <span class="badge bg-primary text-white me-1">1</span> <?= __('Klient') ?>
+        </a>
+        <a href="#sec-route"    class="btn btn-sm btn-outline-success flex-grow-1" style="min-width:110px">
+            <span class="badge bg-success text-white me-1">2</span> <?= __('Trasa + daty') ?>
+        </a>
+        <a href="#sec-cargo"    class="btn btn-sm btn-outline-warning flex-grow-1" style="min-width:110px">
+            <span class="badge bg-warning text-dark me-1">3</span> <?= __('Ładunek') ?>
+        </a>
+        <a href="#sec-transport" class="btn btn-sm btn-outline-info flex-grow-1" style="min-width:110px">
+            <span class="badge bg-info text-dark me-1">4</span> <?= __('Transport') ?>
+        </a>
+        <a href="#sec-finance"  class="btn btn-sm btn-outline-primary flex-grow-1" style="min-width:110px">
+            <span class="badge bg-primary text-white me-1">5</span> <?= __('Cena') ?>
+        </a>
+    </div>
+</div>
+<style>
+.so-flow-nav a { font-weight: 500; font-size: .82rem; text-decoration: none; }
+.so-flow-nav a:hover { background: rgba(13,110,253,.08); }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+.so-step-badge { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; font-size: .72rem; font-weight: 700; margin-right: 6px; }
+</style>
+
 <!-- SEKCJA 1: Numer / meta -->
 <div class="col-12">
     <div class="card border-0 shadow-sm so-section-card">
@@ -348,11 +375,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 </div>
 
 <!-- SEKCJA 2: Nabywca -->
-<div class="col-12">
+<div class="col-12" id="sec-buyer">
     <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <span class="so-step-badge bg-primary text-white">1</span>
                     <i class="ri-user-line me-1 text-primary"></i> <?= __('Zleceniodawca (nabywca)') ?>
                 </h6>
                 <div class="input-group input-group-sm" style="max-width:340px">
@@ -451,10 +479,11 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 </div>
 
 <!-- SEKCJA 3: Zaladunek + Rozladunek -->
-<div class="col-md-6">
+<div class="col-md-6" id="sec-route">
     <div class="card border-0 shadow-sm so-section-card h-100" style="border-left:3px solid #10b981 !important">
         <div class="card-body">
             <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
+                <span class="so-step-badge bg-success text-white">2</span>
                 <i class="ri-truck-line me-1 text-success"></i> <?= __('Załadunek') ?>
             </h6>
             <div class="row g-3">
@@ -678,11 +707,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 </div>
 
 <!-- SEKCJA 4: Ladunek -->
-<div class="col-12">
+<div class="col-12" id="sec-cargo">
     <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
             <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
-                <i class="ri-archive-line me-1"></i> <?= __('Ładunek') ?>
+                <span class="so-step-badge bg-warning text-dark">3</span>
+                <i class="ri-archive-line me-1 text-warning"></i> <?= __('Ładunek') ?>
             </h6>
             <div class="row g-3">
                 <div class="col-md-6">
@@ -753,12 +783,13 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 </div>
 
 <!-- SEKCJA 5: Transport -->
-<div class="col-12">
+<div class="col-12" id="sec-transport">
     <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
-                    <i class="ri-truck-fill me-1"></i> <?= __('Transport') ?>
+                    <span class="so-step-badge bg-info text-dark">4</span>
+                    <i class="ri-truck-fill me-1 text-info"></i> <?= __('Transport') ?>
                 </h6>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="so-free-btn" title="<?= __('Znajdź wolnych w oknie z dat załadunku/rozładunku') ?>">
                     <i class="ri-calendar-check-line me-1"></i><?= __('Znajdź wolne zasoby') ?>
@@ -794,10 +825,11 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 </div>
 
 <!-- SEKCJA 6: Finanse -->
-<div class="col-12">
+<div class="col-12" id="sec-finance">
     <div class="card border-0 shadow-sm so-section-card" style="border-left:3px solid #0d6efd !important">
         <div class="card-body">
             <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
+                <span class="so-step-badge bg-primary text-white">5</span>
                 <i class="ri-money-euro-circle-line me-1 text-primary"></i> <?= __('Finanse') ?>
             </h6>
             <div class="row g-3 align-items-end">
