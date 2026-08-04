@@ -2967,8 +2967,13 @@ SYS;
             if ($hasVision) {
                 $primary  = $image !== '' ? $image : $pages[0];
                 $extra    = $image !== '' ? $pages : array_slice($pages, 1);
-                $maxToks  = 3000 + (min(count($extra), 5) * 500);
-                $prompt   = $text !== '' ? $text : 'Wyciagnij dane zlecenia z zalaczonego dokumentu (PDF/screenshot). Jesli sa 2+ strony - polacz informacje z wszystkich stron.';
+                // Limit 10 stron (frontend + backend). max_tokens skala per strona.
+                $extra    = array_slice($extra, 0, 9);
+                $maxToks  = 3000 + (min(count($extra), 9) * 500);
+                $prompt   = $text !== '' ? $text
+                    : (count($pages) > 1
+                        ? 'Wyciagnij dane zlecenia z zalaczonych ' . count($pages) . ' stron/plikow. Polacz informacje z wszystkich stron w JEDNO spojne zlecenie (klient + trasa + multi-stop + cargo items).'
+                        : 'Wyciagnij dane zlecenia z zalaczonego dokumentu.');
                 $result = $ai->chatVisionJson($system, $prompt, $primary, $maxToks, $extra);
             } else {
                 $result = $ai->chatJson($system, $text, 3000);

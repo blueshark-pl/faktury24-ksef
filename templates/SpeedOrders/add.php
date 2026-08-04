@@ -277,12 +277,19 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <textarea id="so-ai-text" class="form-control" rows="6" placeholder="<?= __('Wklej tutaj tekst wiadomości od klienta...') ?>"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small text-muted"><?= __('LUB screenshot / PDF (JPG/PNG/PDF, max 10 MB)') ?></label>
-                    <input type="file" id="so-ai-image" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" class="form-control">
-                    <div class="so-hint mt-1">
-                        <?= __('Możesz też wkleić obraz (Ctrl+V) po kliknięciu w textarea powyżej. PDF: renderujemy do 3 pierwszych stron.') ?>
+                    <label class="form-label small text-muted">
+                        <?= __('LUB screenshoty / PDF-y (można wgrać kilka jednocześnie, max 15 MB/plik, do 10 stron łącznie)') ?>
+                    </label>
+                    <div class="d-flex gap-2 align-items-center">
+                        <input type="file" id="so-ai-image" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" class="form-control" multiple>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="so-ai-clear" title="Wyczyść wszystkie">
+                            <i class="ri-close-line"></i>
+                        </button>
                     </div>
-                    <div id="so-ai-preview" class="mt-2"></div>
+                    <div class="so-hint mt-1">
+                        <?= __('Możesz też wkleić obraz (Ctrl+V) w textarea powyżej. Wybór wielu plików: Ctrl/Shift + klik. PDF-y automatycznie renderujemy do 3 pierwszych stron każdy.') ?>
+                    </div>
+                    <div id="so-ai-preview" class="mt-2 d-flex flex-wrap gap-2"></div>
                 </div>
                 <div id="so-ai-status" class="alert alert-info py-2 px-3 mb-0 d-none small"></div>
                 <div id="so-ai-result" class="mt-2 d-none">
@@ -2696,8 +2703,12 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var $aiNote    = document.getElementById('so-ai-note');
     var $aiSummary = document.getElementById('so-ai-summary');
     var $aiBtn     = document.getElementById('so-ai-btn-parse');
-    var aiImageB64 = null;       // pojedynczy screenshot (JPG/PNG)
-    var aiPdfPages = [];         // strony PDF jako dataURL (max 3)
+    var $aiClear   = document.getElementById('so-ai-clear');
+    var aiImageB64 = null;       // legacy - nadal wypelniamy dla back-compat
+    var aiPdfPages = [];         // WSZYSTKIE strony (PDF + obrazy) jako dataURL
+    var aiFileList = [];         // Metadata plikow: {name, type, pageCount}
+    var MAX_PAGES  = 10;         // Twardy limit stron (max_tokens budget)
+    var MAX_FILE_MB = 15;
 
     // Render pojedynczej strony PDF na canvas -> dataURL PNG
     function renderPdfPage(pdf, pageNum, maxW) {
@@ -2715,67 +2726,111 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         });
     }
 
-    async function processPdfFile(f) {
-        if (!window.pdfjsLib) {
-            $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
-            $aiStatus.textContent = 'Biblioteka pdf.js jeszcze się ładuje - poczekaj chwilę i spróbuj ponownie.';
-            $aiStatus.classList.remove('d-none');
-            return;
-        }
-        $aiStatus.className = 'alert alert-info py-2 px-3 mb-0 small';
-        $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Renderuje strony PDF...';
-        $aiStatus.classList.remove('d-none');
-        try {
-            var buf = await f.arrayBuffer();
-            var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-            var maxPages = Math.min(pdf.numPages, 3);
-            aiPdfPages = [];
-            aiImageB64 = null;
-            var html = '<div class="d-flex flex-wrap gap-2">';
-            for (var i = 1; i <= maxPages; i++) {
-                var dataUrl = await renderPdfPage(pdf, i, 1600);
-                aiPdfPages.push(dataUrl);
-                html += '<div style="text-align:center"><img src="' + dataUrl + '" style="max-width:150px;max-height:200px;border:1px solid #d1d5db;border-radius:.3rem">' +
-                        '<div class="so-hint">Strona ' + i + '/' + pdf.numPages + '</div></div>';
-            }
-            html += '</div>';
-            if (pdf.numPages > 3) {
-                html += '<div class="so-hint mt-1"><i class="ri-information-line me-1"></i>PDF ma ' + pdf.numPages + ' stron - użyjemy pierwszych 3 do analizy AI.</div>';
-            }
-            $aiPreview.innerHTML = html;
-            $aiStatus.className = 'alert alert-success py-2 px-3 mb-0 small';
-            $aiStatus.textContent = 'Wyrenderowano ' + maxPages + ' stron. Kliknij "Przeanalizuj".';
-        } catch (e) {
-            $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
-            $aiStatus.textContent = 'Blad renderu PDF: ' + e.message;
-            aiPdfPages = [];
-        }
+    function updatePreview() {
+        var html = '';
+        aiPdfPages.forEach(function(dataUrl, i){
+            var meta = aiFileList[i] || {};
+            html += '<div style="text-align:center;position:relative;">' +
+                    '<img src="' + dataUrl + '" style="max-width:140px;max-height:180px;border:1px solid #d1d5db;border-radius:.3rem;background:#fff">' +
+                    '<button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 so-ai-page-rm" data-idx="' + i + '" style="width:22px;height:22px;padding:0;line-height:1;transform:translate(30%,-30%);border-radius:50%">×</button>' +
+                    '<div class="so-hint text-truncate" style="max-width:140px" title="' + (meta.name || '?') + '">' + (meta.name || '?') + '</div>' +
+                    '<div class="so-hint">' + (meta.info || 'obraz') + '</div>' +
+                    '</div>';
+        });
+        $aiPreview.innerHTML = html;
+        aiImageB64 = aiPdfPages[0] || null; // back-compat
     }
 
-    // Podglad screenshot / PDF
+    async function processPdfFile(f) {
+        if (!window.pdfjsLib) {
+            throw new Error('Biblioteka pdf.js jeszcze się ładuje');
+        }
+        var buf = await f.arrayBuffer();
+        var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        var toRender = Math.min(pdf.numPages, 3);
+        var pages = [];
+        for (var i = 1; i <= toRender; i++) {
+            if (aiPdfPages.length + pages.length >= MAX_PAGES) break;
+            var dataUrl = await renderPdfPage(pdf, i, 1600);
+            pages.push(dataUrl);
+        }
+        return { pages: pages, totalPages: pdf.numPages };
+    }
+
+    function readImageFile(f) {
+        return new Promise(function(resolve, reject){
+            var reader = new FileReader();
+            reader.onload = function(ev){ resolve(ev.target.result); };
+            reader.onerror = reject;
+            reader.readAsDataURL(f);
+        });
+    }
+
+    async function handleFiles(fileList) {
+        if (!fileList || !fileList.length) return;
+        $aiStatus.className = 'alert alert-info py-2 px-3 mb-0 small';
+        $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Przetwarzanie ' + fileList.length + ' plik(ów)...';
+        $aiStatus.classList.remove('d-none');
+
+        for (var f of fileList) {
+            if (aiPdfPages.length >= MAX_PAGES) {
+                $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
+                $aiStatus.textContent = 'Osiągnięto limit ' + MAX_PAGES + ' stron - pominięto pozostałe pliki.';
+                break;
+            }
+            if (f.size > MAX_FILE_MB * 1024 * 1024) {
+                $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
+                $aiStatus.textContent = 'Pominięto ' + f.name + ' (za duży, max ' + MAX_FILE_MB + ' MB)';
+                continue;
+            }
+            try {
+                if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+                    var r = await processPdfFile(f);
+                    r.pages.forEach(function(url, i){
+                        aiPdfPages.push(url);
+                        aiFileList.push({ name: f.name, type: 'pdf', info: 'PDF str.' + (i+1) + '/' + r.totalPages });
+                    });
+                } else {
+                    var url = await readImageFile(f);
+                    aiPdfPages.push(url);
+                    aiFileList.push({ name: f.name, type: 'image', info: 'obraz' });
+                }
+            } catch (e) {
+                console.error('Blad przetworzenia ' + f.name + ':', e);
+            }
+        }
+        updatePreview();
+        var pdfCount = aiFileList.filter(function(m){ return m.type === 'pdf'; }).length;
+        var imgCount = aiFileList.filter(function(m){ return m.type === 'image'; }).length;
+        $aiStatus.className = 'alert alert-success py-2 px-3 mb-0 small';
+        $aiStatus.textContent = 'Gotowe: ' + aiPdfPages.length + ' stron (' + pdfCount + ' PDF, ' + imgCount + ' zrzutów). Kliknij "Przeanalizuj".';
+    }
+
     if ($aiImage) {
         $aiImage.addEventListener('change', function(e){
-            var f = e.target.files[0];
-            if (!f) { aiImageB64 = null; aiPdfPages = []; $aiPreview.innerHTML = ''; return; }
-            if (f.size > 10 * 1024 * 1024) {
-                $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
-                $aiStatus.textContent = 'Plik za duzy (max 10 MB)';
-                $aiStatus.classList.remove('d-none');
-                return;
-            }
-            // PDF -> pdf.js render do dataURL PNG
-            if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
-                processPdfFile(f);
-                return;
-            }
-            // Zwykly obraz - jak dotad
+            handleFiles(e.target.files);
+            $aiImage.value = ''; // reset input zeby ten sam plik dwa razy dziala
+        });
+    }
+
+    // Click w minuse na thumbnail -> usun strone
+    $aiPreview.addEventListener('click', function(e){
+        var btn = e.target.closest('.so-ai-page-rm');
+        if (!btn) return;
+        var i = parseInt(btn.dataset.idx, 10);
+        aiPdfPages.splice(i, 1);
+        aiFileList.splice(i, 1);
+        updatePreview();
+    });
+
+    // Clear all
+    if ($aiClear) {
+        $aiClear.addEventListener('click', function(){
             aiPdfPages = [];
-            var reader = new FileReader();
-            reader.onload = function(ev){
-                aiImageB64 = ev.target.result;
-                $aiPreview.innerHTML = '<img src="' + aiImageB64 + '" style="max-width:200px;max-height:120px;border:1px solid #d1d5db;border-radius:.3rem">';
-            };
-            reader.readAsDataURL(f);
+            aiFileList = [];
+            aiImageB64 = null;
+            $aiPreview.innerHTML = '';
+            $aiStatus.classList.add('d-none');
         });
     }
 
@@ -2821,8 +2876,8 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
             var fd = new FormData();
             fd.append('_csrfToken', CSRF);
             if (text) fd.append('text', text);
-            if (aiImageB64) fd.append('image_base64', aiImageB64);
-            // PDF: wyslij strony jako image_pages[]
+            // Wszystkie strony (PDF+obrazy) idą jako image_pages[]
+            // (backend uzywa pierwszej jako primary + reszty jako extraImages)
             aiPdfPages.forEach(function(pageDataUrl){
                 fd.append('image_pages[]', pageDataUrl);
             });
