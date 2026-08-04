@@ -2883,10 +2883,10 @@ poprawny JSON o dokladnie tej strukturze:
     {
       "product_code": "kod / ID / SKU produktu (np. '17' lub 'COMBO-285-BD-5R') lub pusty",
       "product_name": "nazwa/opis produktu (np. 'COMBO 285 BD 5R')",
-      "is_dry": true/false (Dry checkbox),
-      "is_wrapped": true/false (Wrapping / foliowany),
-      "is_strapped": true/false (Strapping / tasmowany),
-      "is_sort_only": true/false (Sort Only),
+      "is_dry": false,
+      "is_wrapped": false,
+      "is_strapped": false,
+      "is_sort_only": false,
       "stack_height": liczba lub null (ile palet na sobie),
       "qty_advised": liczba lub null (Advised / deklarowana),
       "qty_real": liczba lub null (Real / rzeczywista - zwykle brak w zleceniu),
@@ -2946,6 +2946,16 @@ CARGO ITEMS w multi-stop:
 - Format "PRODUCT (CODE)" w Item Name: wyciagnij CODE do product_code, resztę do product_name.
 - product_code = "03", product_name = "H1 BLUE 800X1200"
 
+BARDZO WAZNE - CHECKBOXY OPAKOWANIA (is_dry, is_wrapped, is_strapped, is_sort_only):
+- DOMYSLNIE ZAWSZE false dla WSZYSTKICH tych checkboxow.
+- Ustaw true TYLKO gdy w dokumencie jest JAWNY checkbox ZAZNACZONY (☑ / X / v),
+  albo jawne slowo w kolumnie/wierszu tej pozycji (np. "Dry: yes", "wrapped=true").
+- BRAK wzmianki = false. NIE zgaduj z ogolnego kontekstu (np. "palety" NIE oznacza dry).
+- Jesli dokument NIE MA tych kolumn - wszystkie zostaja false. Zwykla tabela z Item Name +
+  Stack Height + Advised Quantity BEZ osobnych kolumn Dry/Wrapping = wszystkie false.
+- TOSCA Collection Note MA kolumny Dry/Wrapping/Strapping/Sort Only - patrz na checkboxy per row.
+- LTL / Shipment Detail Information tylko z Stack Height + Qty - wszystkie flagi false.
+
 Format sciscle. Nie dodawaj tekstu poza JSON.
 SYS;
 
@@ -2963,6 +2973,29 @@ SYS;
             } else {
                 $result = $ai->chatJson($system, $text, 3000);
             }
+
+            // Sanity check: jesli GPT ustawil is_* na true dla WSZYSTKICH items
+            // (halucynacja / domyslka zamiast rzeczywistego rozpoznania) - sprowadz do false.
+            // Legit case: kazdy item ma je zaznaczone tylko gdy dokument ma explicit
+            // kolumny/oznaczenia. Zwykle nie wszystkie sa true jednoczesnie.
+            if (!empty($result['cargo_items']) && is_array($result['cargo_items'])) {
+                $flags = ['is_dry', 'is_wrapped', 'is_strapped', 'is_sort_only'];
+                $count = count($result['cargo_items']);
+                foreach ($flags as $flag) {
+                    $trueCount = 0;
+                    foreach ($result['cargo_items'] as $item) {
+                        if (!empty($item[$flag])) $trueCount++;
+                    }
+                    // Jesli 100% items ma flag=true (i sa co najmniej 2 items) - podejrzane, sprowadz do false.
+                    if ($count >= 2 && $trueCount === $count) {
+                        foreach ($result['cargo_items'] as &$item) {
+                            $item[$flag] = false;
+                        }
+                        unset($item);
+                    }
+                }
+            }
+
             $this->jsonResp(['ok' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             \Cake\Log\Log::warning('aiParseOrder: ' . $e->getMessage());
