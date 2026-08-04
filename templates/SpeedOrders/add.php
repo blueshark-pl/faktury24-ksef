@@ -1,12 +1,16 @@
 <?php
 /**
  * Formularz recznego tworzenia / edycji zlecenia transportowego.
+ * FALA 1 UX: sticky action bar, autosave localStorage, skroty klawiszowe,
+ * accordion dla mniej uzywanych pol, prefill z ostatniego zlecenia klienta,
+ * hint "ostatnie w miesiacu", obsluga ?dup={id}.
  *
  * @var \App\View\AppView            $this
  * @var \App\Model\Entity\SpeedOrder $order
  * @var bool                         $isEdit
  * @var array                        $drivers
  * @var array                        $vehicles
+ * @var array                        $recentInMonth  [{id, symbol, date_doc, buyer_name}]
  */
 $this->assign('title', $isEdit
     ? __('Edycja zlecenia {0}', h($order->symbol))
@@ -15,6 +19,8 @@ $this->assign('title', $isEdit
 $formUrl = $isEdit
     ? $this->Url->build(['action' => 'edit', $order->id])
     : $this->Url->build(['action' => 'add']);
+
+$dupId = (int)$this->request->getQuery('dup');
 
 $currencies = ['PLN', 'EUR', 'USD', 'GBP', 'CHF', 'CZK', 'NOK', 'SEK', 'DKK', 'HUF'];
 $vatRates = [
@@ -35,25 +41,81 @@ if ($isEdit && (float)$order->netto > 0) {
     if (in_array((string)$rate, ['0','5','8','23'], true)) $currentVatRate = (string)$rate;
     elseif ((float)$order->vat == 0.0 && (float)$order->netto == (float)$order->brutto) $currentVatRate = 'np';
 }
+
+// Klucz autosave — per URL zeby nie mieszac add vs edit
+$autosaveKey = 'so_form_' . ($isEdit ? 'edit_' . $order->id : 'add');
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<style>
+.so-form-wrap { padding-bottom: 90px; }
+.so-sticky-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1030;
+    background: #fff; border-top: 1px solid #e5e7eb;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.06);
+    padding: .75rem 1.5rem;
+}
+.so-sticky-bar .container-fluid { max-width: 1400px; margin: 0 auto; }
+.so-section-card { transition: box-shadow .15s ease; }
+.so-section-card:focus-within { box-shadow: 0 0 0 3px rgba(13,110,253,.08); }
+.so-section-title { letter-spacing: .5px; }
+.so-hint { font-size: .72rem; color: #6c757d; }
+.so-badge-recent { background:#eef2ff;color:#4338ca;padding:.15rem .5rem;border-radius:.35rem;font-size:.7rem;text-decoration:none;margin-right:.35rem;display:inline-block; }
+.so-badge-recent:hover { background:#dbeafe; color:#3730a3; }
+.so-autosave-indicator { position: fixed; top: 70px; right: 20px; z-index: 1020; opacity: 0; transition: opacity .3s ease; }
+.so-autosave-indicator.show { opacity: 1; }
+kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.05rem .35rem;font-size:.7rem;color:#374151; }
+.so-lastclient-suggestion { background: linear-gradient(90deg,#ecfdf5 0%,#f0fdfa 100%); border-left: 3px solid #10b981; padding: .6rem .9rem; border-radius: .35rem; }
+</style>
+
+<div class="so-form-wrap">
+
+<!-- Header + hint -->
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
         <h4 class="mb-0 fw-semibold">
             <?= $isEdit ? __('Edytuj zlecenie') : __('Nowe zlecenie transportowe') ?>
             <span class="badge bg-primary-subtle text-primary ms-2"><?= h($order->symbol ?? '') ?></span>
+            <?php if ($dupId): ?>
+                <span class="badge bg-warning-subtle text-warning ms-1">
+                    <i class="ri-file-copy-line me-1"></i><?= __('Duplikat') ?>
+                </span>
+            <?php endif; ?>
         </h4>
         <div class="text-muted small mt-1">
             <?= $isEdit
                 ? __('Numer i data dokumentu są niezmienne. Edytujesz pozostałe dane.')
                 : __('Ustaw dane zlecenia. Numer zostanie nadany automatycznie w formacie M-NNNN/MM/RRRR.') ?>
         </div>
+
+        <?php if (!$isEdit && !empty($recentInMonth)): ?>
+            <div class="mt-2">
+                <span class="so-hint me-2"><?= __('Ostatnie w tym miesiącu:') ?></span>
+                <?php foreach ($recentInMonth as $r): ?>
+                    <a class="so-badge-recent"
+                       href="<?= $this->Url->build(['action' => 'view', $r['id']]) ?>"
+                       title="<?= h($r['buyer_name'] ?? '') ?>">
+                        <?= h($r['symbol']) ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </div>
-    <div>
-        <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-outline-secondary btn-sm">
-            <i class="ri-close-line me-1"></i> <?= __('Anuluj') ?>
-        </a>
+    <div class="d-flex gap-2 align-items-start">
+        <div class="so-hint text-end pt-1">
+            <div><kbd>Ctrl</kbd>+<kbd>S</kbd> <?= __('zapisz') ?></div>
+            <?php if (!$isEdit): ?>
+                <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <?= __('zapisz + dodaj kolejne') ?></div>
+            <?php endif; ?>
+            <div><kbd>Esc</kbd> <?= __('anuluj') ?></div>
+        </div>
     </div>
+</div>
+
+<!-- Autosave indicator -->
+<div id="so-autosave" class="so-autosave-indicator">
+    <span class="badge bg-success-subtle text-success shadow-sm">
+        <i class="ri-check-line me-1"></i><span id="so-autosave-txt"><?= __('Zapisano lokalnie') ?></span>
+    </span>
 </div>
 
 <?= $this->Form->create(null, [
@@ -61,23 +123,26 @@ if ($isEdit && (float)$order->netto > 0) {
     'type'  => 'post',
     'id'    => 'form-manual-order',
     'class' => 'row g-3',
+    'novalidate' => 'novalidate',
 ]) ?>
 
-<!-- Sekcja 1: Numer + meta -->
+<input type="hidden" name="save_and_new" id="save_and_new" value="">
+
+<!-- SEKCJA 1: Numer / meta -->
 <div class="col-12">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('Numer zlecenia') ?></label>
-                    <input type="text" name="symbol" class="form-control" value="<?= h($order->symbol ?? '') ?>" readonly>
+                    <label class="form-label small text-muted so-section-title text-uppercase"><?= __('Numer zlecenia') ?></label>
+                    <input type="text" name="symbol" class="form-control fw-semibold" value="<?= h($order->symbol ?? '') ?>" readonly>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('Data dokumentu') ?></label>
+                    <label class="form-label small text-muted so-section-title text-uppercase"><?= __('Data dokumentu') ?></label>
                     <input type="date" name="date_doc" class="form-control" value="<?= h($order->date_doc ? $order->date_doc->format('Y-m-d') : date('Y-m-d')) ?>" <?= $isEdit ? 'readonly' : '' ?>>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('Kontrakt') ?></label>
+                    <label class="form-label small text-muted so-section-title text-uppercase"><?= __('Kontrakt') ?></label>
                     <input type="text" name="contract" list="contract-list" class="form-control" value="<?= h($order->contract ?? '') ?>" placeholder="OWN 1">
                     <datalist id="contract-list">
                         <?php foreach ($contracts as $c): ?>
@@ -86,33 +151,49 @@ if ($isEdit && (float)$order->netto > 0) {
                     </datalist>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small text-muted"><?= __('Nasz nr referencyjny') ?></label>
-                    <input type="text" name="our_ref" class="form-control" value="<?= h($order->our_ref ?? '') ?>" maxlength="100" placeholder="REF/2026/001">
+                    <label class="form-label small text-muted so-section-title text-uppercase"><?= __('Nr referencyjny klienta') ?></label>
+                    <input type="text" name="title1" class="form-control" value="<?= h($order->title1 ?? '') ?>" maxlength="255" placeholder="ES-975377">
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Sekcja 2: Nabywca -->
+<!-- SEKCJA 2: Nabywca -->
 <div class="col-12">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="mb-0 fw-semibold text-uppercase text-muted small">
-                    <i class="ri-user-line me-1"></i> <?= __('Zleceniodawca (nabywca)') ?>
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-user-line me-1 text-primary"></i> <?= __('Zleceniodawca (nabywca)') ?>
                 </h6>
                 <div class="input-group input-group-sm" style="max-width:340px">
                     <span class="input-group-text bg-white"><i class="ri-search-line"></i></span>
                     <input type="text" id="buyer-search" class="form-control" placeholder="<?= __('Szukaj kontrahenta (nazwa / NIP)') ?>">
                 </div>
             </div>
-            <div id="buyer-results" class="list-group mb-2 d-none" style="max-height:180px;overflow-y:auto"></div>
+            <div id="buyer-results" class="list-group mb-2 d-none" style="max-height:200px;overflow-y:auto"></div>
+
+            <!-- Prefill z ostatniego zlecenia klienta -->
+            <div id="so-lastclient-box" class="so-lastclient-suggestion mb-2 d-none">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong><i class="ri-history-line me-1"></i><?= __('Znaleźliśmy ostatnie zlecenie dla tego klienta') ?></strong>
+                        <div class="so-hint mt-1" id="so-lastclient-info"></div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-success" id="so-lastclient-use">
+                            <i class="ri-magic-line me-1"></i><?= __('Użyj jako szablon') ?>
+                        </button>
+                        <button type="button" class="btn-close" id="so-lastclient-close" aria-label="close"></button>
+                    </div>
+                </div>
+            </div>
 
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label small text-muted"><?= __('NIP') ?></label>
-                    <input type="text" name="buyer_nip" class="form-control" value="<?= h($order->buyer_nip ?? '') ?>" maxlength="30">
+                    <input type="text" name="buyer_nip" id="buyer-nip" class="form-control" value="<?= h($order->buyer_nip ?? '') ?>" maxlength="30">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Nazwa') ?> *</label>
@@ -147,11 +228,11 @@ if ($isEdit && (float)$order->netto > 0) {
     </div>
 </div>
 
-<!-- Sekcja 3: Zaladunek + Rozladunek -->
+<!-- SEKCJA 3: Zaladunek + Rozladunek -->
 <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
+    <div class="card border-0 shadow-sm so-section-card h-100" style="border-left:3px solid #10b981 !important">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small">
+            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
                 <i class="ri-truck-line me-1 text-success"></i> <?= __('Załadunek') ?>
             </h6>
             <div class="row g-3">
@@ -173,11 +254,11 @@ if ($isEdit && (float)$order->netto > 0) {
                     <input type="text" name="load_city" class="form-control" value="<?= h($order->load_city ?? '') ?>" maxlength="100">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small text-muted"><?= __('ZaładunekPLANNED_') ?></label>
+                    <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
                     <input type="datetime-local" name="date_deadline" class="form-control" value="<?= h($order->date_deadline ? $order->date_deadline->format('Y-m-d\TH:i') : '') ?>">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small text-muted"><?= __('ZaładunekACTUAL_') ?></label>
+                    <label class="form-label small text-muted"><?= __('Czas rzeczywisty') ?></label>
                     <input type="datetime-local" name="actual_load_at" class="form-control" value="<?= h($order->actual_load_at ? $order->actual_load_at->format('Y-m-d\TH:i') : '') ?>">
                 </div>
             </div>
@@ -186,9 +267,9 @@ if ($isEdit && (float)$order->netto > 0) {
 </div>
 
 <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
+    <div class="card border-0 shadow-sm so-section-card h-100" style="border-left:3px solid #ef4444 !important">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small">
+            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
                 <i class="ri-inbox-line me-1 text-danger"></i> <?= __('Rozładunek') ?>
             </h6>
             <div class="row g-3">
@@ -205,16 +286,12 @@ if ($isEdit && (float)$order->netto > 0) {
                     <label class="form-label small text-muted"><?= __('Miasto') ?></label>
                     <input type="text" name="unload_city" class="form-control" value="<?= h($order->unload_city ?? '') ?>" maxlength="100">
                 </div>
-                <div class="col-md-12">
-                    <label class="form-label small text-muted"><?= __('RozładunekNAME_') ?></label>
-                    <input type="text" name="unload_name" class="form-control" value="<?= h($order->unload_name ?? '') ?>" maxlength="200" placeholder="Magazyn XYZ Sp. z o.o.">
-                </div>
                 <div class="col-md-6">
-                    <label class="form-label small text-muted"><?= __('RozładunekPLANNED_') ?></label>
+                    <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
                     <input type="datetime-local" name="date_delivery" class="form-control" value="<?= h($order->date_delivery ? $order->date_delivery->format('Y-m-d\TH:i') : '') ?>">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small text-muted"><?= __('RozładunekACTUAL_') ?></label>
+                    <label class="form-label small text-muted"><?= __('Czas rzeczywisty') ?></label>
                     <input type="datetime-local" name="actual_unload_at" class="form-control" value="<?= h($order->actual_unload_at ? $order->actual_unload_at->format('Y-m-d\TH:i') : '') ?>">
                 </div>
             </div>
@@ -222,31 +299,27 @@ if ($isEdit && (float)$order->netto > 0) {
     </div>
 </div>
 
-<!-- Sekcja 4: Ladunek -->
+<!-- SEKCJA 4: Ladunek -->
 <div class="col-12">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small">
+            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
                 <i class="ri-archive-line me-1"></i> <?= __('Ładunek') ?>
             </h6>
             <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label small text-muted"><?= __('Nr referencyjny klienta (title1)') ?></label>
-                    <input type="text" name="title1" class="form-control" value="<?= h($order->title1 ?? '') ?>" maxlength="255" placeholder="ES-975377">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small text-muted"><?= __('Opis ładunku (title2)') ?></label>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('Opis ładunku') ?></label>
                     <input type="text" name="title2" class="form-control" value="<?= h($order->title2 ?? '') ?>" maxlength="255" placeholder="Towar paletowy">
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label small text-muted"><?= __('ŁadunekTYPE_') ?></label>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted"><?= __('Typ frachtu') ?></label>
                     <input type="text" name="cargo_type" class="form-control" value="<?= h($order->cargo_type ?? '') ?>" maxlength="120" placeholder="FTL, LTL, ADR">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label small text-muted"><?= __('Rodzaj transportu') ?></label>
-                    <input type="text" name="transport_type" class="form-control" value="<?= h($order->transport_type ?? '') ?>" maxlength="100" placeholder="Rodzaj transportuPH_">
+                    <input type="text" name="transport_type" class="form-control" value="<?= h($order->transport_type ?? '') ?>" maxlength="100" placeholder="plandeka, chłodnia">
                 </div>
-                <div class="col-md-8">
+                <div class="col-md-12">
                     <label class="form-label small text-muted"><?= __('Uwagi') ?></label>
                     <textarea name="notes" class="form-control" rows="2" maxlength="2000"><?= h($order->notes ?? '') ?></textarea>
                 </div>
@@ -255,11 +328,11 @@ if ($isEdit && (float)$order->netto > 0) {
     </div>
 </div>
 
-<!-- Sekcja 5: Transport -->
+<!-- SEKCJA 5: Transport -->
 <div class="col-12">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm so-section-card">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small">
+            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
                 <i class="ri-truck-fill me-1"></i> <?= __('Transport') ?>
             </h6>
             <div class="row g-3">
@@ -291,12 +364,12 @@ if ($isEdit && (float)$order->netto > 0) {
     </div>
 </div>
 
-<!-- Sekcja 6: Finanse -->
+<!-- SEKCJA 6: Finanse -->
 <div class="col-12">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm so-section-card" style="border-left:3px solid #0d6efd !important">
         <div class="card-body">
-            <h6 class="mb-3 fw-semibold text-uppercase text-muted small">
-                <i class="ri-money-euro-circle-line me-1"></i> <?= __('Finanse') ?>
+            <h6 class="mb-3 fw-semibold text-uppercase text-muted small so-section-title">
+                <i class="ri-money-euro-circle-line me-1 text-primary"></i> <?= __('Finanse') ?>
             </h6>
             <div class="row g-3 align-items-end">
                 <div class="col-md-2">
@@ -313,7 +386,7 @@ if ($isEdit && (float)$order->netto > 0) {
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted"><?= __('Netto') ?> *</label>
-                    <input type="number" step="0.01" min="0" name="netto" id="fin-netto" class="form-control" value="<?= h($order->netto ?? '0.00') ?>" required>
+                    <input type="number" step="0.01" min="0" name="netto" id="fin-netto" class="form-control fw-semibold" value="<?= h($order->netto ?? '0.00') ?>" required>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted"><?= __('Stawka VAT') ?></label>
@@ -325,11 +398,11 @@ if ($isEdit && (float)$order->netto > 0) {
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted"><?= __('VAT') ?></label>
-                    <input type="text" id="fin-vat" class="form-control" value="<?= h($order->vat ?? '0.00') ?>" readonly>
+                    <input type="text" id="fin-vat" class="form-control text-muted" value="<?= h($order->vat ?? '0.00') ?>" readonly>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted"><?= __('Brutto') ?></label>
-                    <input type="text" id="fin-brutto" class="form-control fw-semibold" value="<?= h($order->brutto ?? '0.00') ?>" readonly>
+                    <input type="text" id="fin-brutto" class="form-control fw-bold fs-6" value="<?= h($order->brutto ?? '0.00') ?>" readonly>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Warunki płatności') ?></label>
@@ -340,26 +413,78 @@ if ($isEdit && (float)$order->netto > 0) {
     </div>
 </div>
 
-<div class="col-12 text-end">
-    <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-outline-secondary">
-        <?= __('Anuluj') ?>
-    </a>
-    <button type="submit" class="btn btn-primary">
-        <i class="ri-save-line me-1"></i>
-        <?= $isEdit ? __('Zapisz zmiany') : __('Utwórz zlecenie') ?>
-    </button>
+<!-- SEKCJA 7: Wiecej opcji (accordion) -->
+<div class="col-12">
+    <div class="accordion accordion-flush border rounded shadow-sm" id="so-more">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2 small fw-semibold text-uppercase text-muted" type="button" data-bs-toggle="collapse" data-bs-target="#so-more-body">
+                    <i class="ri-settings-3-line me-2"></i><?= __('Więcej opcji') ?>
+                </button>
+            </h2>
+            <div id="so-more-body" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted"><?= __('Nasz nr referencyjny') ?></label>
+                            <input type="text" name="our_ref" class="form-control" value="<?= h($order->our_ref ?? '') ?>" maxlength="100" placeholder="REF/2026/001">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small text-muted"><?= __('Nazwa miejsca rozładunku (opcjonalnie)') ?></label>
+                            <input type="text" name="unload_name" class="form-control" value="<?= h($order->unload_name ?? '') ?>" maxlength="200" placeholder="Magazyn XYZ Sp. z o.o.">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <?= $this->Form->end() ?>
+</div><!-- /so-form-wrap -->
+
+<!-- STICKY ACTION BAR -->
+<div class="so-sticky-bar">
+    <div class="container-fluid d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="text-muted small">
+            <span id="so-brutto-preview" class="fw-semibold text-dark">-</span>
+            <span class="mx-2 opacity-25">|</span>
+            <span class="d-none d-md-inline"><?= __('Auto-zapis co 30 s do przeglądarki') ?></span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-outline-secondary" id="so-btn-cancel">
+                <i class="ri-close-line me-1"></i><?= __('Anuluj') ?>
+            </a>
+            <?php if (!$isEdit): ?>
+                <button type="button" class="btn btn-outline-primary" id="so-btn-save-new">
+                    <i class="ri-add-line me-1"></i><?= __('Zapisz i dodaj kolejne') ?>
+                </button>
+            <?php endif; ?>
+            <button type="button" class="btn btn-primary fw-semibold" id="so-btn-save">
+                <i class="ri-save-line me-1"></i>
+                <?= $isEdit ? __('Zapisz zmiany') : __('Utwórz zlecenie') ?>
+            </button>
+        </div>
+    </div>
+</div>
 
 <script>
 (function(){
     'use strict';
 
+    var $form = document.getElementById('form-manual-order');
+    var $saveNewInput = document.getElementById('save_and_new');
+    var AUTOSAVE_KEY = <?= json_encode($autosaveKey) ?>;
+    var AUTOSAVE_MS = 30000;
+    var IS_EDIT = <?= $isEdit ? 'true' : 'false' ?>;
+
+    // ===== VAT auto-calc + brutto preview w sticky bar =====
     var $netto = document.getElementById('fin-netto');
     var $rate  = document.getElementById('fin-vat-rate');
     var $vat   = document.getElementById('fin-vat');
     var $brut  = document.getElementById('fin-brutto');
+    var $cur   = document.getElementById('fin-currency');
+    var $bpv   = document.getElementById('so-brutto-preview');
 
     function calc() {
         var n = parseFloat($netto.value) || 0;
@@ -371,11 +496,14 @@ if ($isEdit && (float)$order->netto > 0) {
         }
         $vat.value  = v.toFixed(2);
         $brut.value = b.toFixed(2);
+        $bpv.textContent = b.toFixed(2) + ' ' + $cur.value;
     }
     $netto.addEventListener('input', calc);
     $rate.addEventListener('change', calc);
+    $cur.addEventListener('change', calc);
+    calc();
 
-    var $cur = document.getElementById('fin-currency');
+    // ===== Currency change: exchange_rate readonly for PLN =====
     var $rateFx = document.getElementById('fin-rate');
     function onCur() {
         if ($cur.value === 'PLN') {
@@ -388,6 +516,93 @@ if ($isEdit && (float)$order->netto > 0) {
     $cur.addEventListener('change', onCur);
     onCur();
 
+    // ===== Skróty klawiszowe =====
+    document.addEventListener('keydown', function(e){
+        var ctrl = e.ctrlKey || e.metaKey;
+        if (ctrl && e.key === 's') {
+            e.preventDefault();
+            document.getElementById('so-btn-save').click();
+        } else if (ctrl && e.key === 'Enter' && !IS_EDIT) {
+            e.preventDefault();
+            var b = document.getElementById('so-btn-save-new');
+            if (b) b.click();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            document.getElementById('so-btn-cancel').click();
+        }
+    });
+
+    // ===== Sticky bar buttons -> submit =====
+    document.getElementById('so-btn-save').addEventListener('click', function(){
+        $saveNewInput.value = '';
+        $form.submit();
+    });
+    var $btnSaveNew = document.getElementById('so-btn-save-new');
+    if ($btnSaveNew) {
+        $btnSaveNew.addEventListener('click', function(){
+            $saveNewInput.value = '1';
+            $form.submit();
+        });
+    }
+    document.getElementById('so-btn-cancel').addEventListener('click', function(e){
+        if (!confirm('Wpisane dane zostaną utracone. Czy na pewno wyjść?')) {
+            e.preventDefault();
+        }
+    });
+
+    // Wyczysc autosave po udanym submit (nie zapisujemy juz starych danych)
+    $form.addEventListener('submit', function(){
+        try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){}
+    });
+
+    // ===== Autosave co 30 s =====
+    var $indicator = document.getElementById('so-autosave');
+    var $indicatorTxt = document.getElementById('so-autosave-txt');
+    var isDirty = false;
+    $form.addEventListener('input', function(){ isDirty = true; });
+    $form.addEventListener('change', function(){ isDirty = true; });
+
+    function autosave() {
+        if (!isDirty) return;
+        var payload = {};
+        var fd = new FormData($form);
+        fd.forEach(function(v, k){ payload[k] = v; });
+        try {
+            localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ts: Date.now(), data: payload }));
+            $indicatorTxt.textContent = 'Zapisano lokalnie (' + new Date().toLocaleTimeString() + ')';
+            $indicator.classList.add('show');
+            setTimeout(function(){ $indicator.classList.remove('show'); }, 2000);
+            isDirty = false;
+        } catch(e){}
+    }
+    setInterval(autosave, AUTOSAVE_MS);
+
+    // ===== Odzysk po zamknieciu przegladarki =====
+    (function tryRecover(){
+        if (IS_EDIT) return; // edit ma prawdziwe dane z DB
+        try {
+            var raw = localStorage.getItem(AUTOSAVE_KEY);
+            if (!raw) return;
+            var obj = JSON.parse(raw);
+            if (!obj || !obj.data) return;
+            var age = Math.round((Date.now() - obj.ts) / 60000);
+            if (age > 60 * 24) { // > 24h stale
+                localStorage.removeItem(AUTOSAVE_KEY);
+                return;
+            }
+            if (!confirm('Znaleziono zapisane dane formularza. Przywrócić? (' + age + ' min temu)?')) {
+                localStorage.removeItem(AUTOSAVE_KEY);
+                return;
+            }
+            Object.keys(obj.data).forEach(function(k){
+                var el = $form.elements[k];
+                if (el && el.type !== 'file' && el.name !== 'symbol') el.value = obj.data[k];
+            });
+            calc();
+        } catch(e){}
+    })();
+
+    // ===== Autocomplete kontrahenta =====
     var $search = document.getElementById('buyer-search');
     var $results = document.getElementById('buyer-results');
     var timer = null;
@@ -432,7 +647,8 @@ if ($isEdit && (float)$order->netto > 0) {
     $results.addEventListener('click', function(e){
         var btn = e.target.closest('button[data-nip]');
         if (!btn) return;
-        document.querySelector('input[name="buyer_nip"]').value  = btn.dataset.nip || '';
+        var nip = btn.dataset.nip || '';
+        document.querySelector('input[name="buyer_nip"]').value  = nip;
         document.querySelector('input[name="buyer_name"]').value = decodeURIComponent(btn.dataset.name || '');
         document.querySelector('input[name="buyer_street"]').value = decodeURIComponent(btn.dataset.street || '');
         document.querySelector('input[name="buyer_postal_code"]').value = decodeURIComponent(btn.dataset.zip || '');
@@ -442,6 +658,55 @@ if ($isEdit && (float)$order->netto > 0) {
         document.querySelector('input[name="buyer_email"]').value = btn.dataset.email || '';
         $results.classList.add('d-none');
         $search.value = '';
+        checkLastForBuyer(nip);
     });
+
+    // ===== Prefill z ostatniego zlecenia klienta =====
+    var $lcBox = document.getElementById('so-lastclient-box');
+    var $lcInfo = document.getElementById('so-lastclient-info');
+    var $lcUse = document.getElementById('so-lastclient-use');
+    var $lcClose = document.getElementById('so-lastclient-close');
+    var lastOrderData = null;
+    var lastNipChecked = '';
+
+    function checkLastForBuyer(nip) {
+        if (IS_EDIT) return; // w edycji nie proponujemy prefilla
+        var digits = (nip || '').replace(/\D+/g, '');
+        if (digits.length < 5 || digits === lastNipChecked) return;
+        lastNipChecked = digits;
+        fetch('<?= $this->Url->build(['action' => 'lastForBuyerJson']) ?>?nip=' + encodeURIComponent(digits))
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if (!j.ok || !j.found) { $lcBox.classList.add('d-none'); return; }
+                lastOrderData = j.order;
+                var info = j.order.symbol + ' (' + (j.order.date_doc || '') + ') — ' +
+                    (j.order.load_city || '') + ' -> ' + (j.order.unload_city || '') +
+                    ' — ' + (j.order.netto || 0).toFixed(2) + ' ' + (j.order.currency || '');
+                $lcInfo.textContent = info;
+                $lcBox.classList.remove('d-none');
+            })
+            .catch(function(){});
+    }
+
+    var $nipInput = document.getElementById('buyer-nip');
+    $nipInput.addEventListener('blur', function(){ checkLastForBuyer($nipInput.value); });
+    // Sprawdz od razu jesli NIP juz jest wypelniony (np. duplikat)
+    if ($nipInput.value.trim()) checkLastForBuyer($nipInput.value);
+
+    $lcUse.addEventListener('click', function(){
+        if (!lastOrderData) return;
+        var fields = ['contract','load_country','load_postal_code','load_city',
+                      'unload_country','unload_city','unload_name','title2','cargo_type',
+                      'transport_type','currency','payment_terms'];
+        fields.forEach(function(f){
+            var el = $form.elements[f];
+            if (el && lastOrderData[f] !== null && lastOrderData[f] !== '') el.value = lastOrderData[f];
+        });
+        if ($form.elements.netto && lastOrderData.netto) $form.elements.netto.value = lastOrderData.netto;
+        calc();
+        onCur();
+        $lcBox.classList.add('d-none');
+    });
+    $lcClose.addEventListener('click', function(){ $lcBox.classList.add('d-none'); });
 })();
 </script>

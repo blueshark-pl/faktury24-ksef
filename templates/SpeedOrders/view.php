@@ -302,6 +302,10 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
            class="btn btn-sm btn-outline-secondary" title="Dashboard">
             <i class="ri-dashboard-line"></i>
         </a>
+        <a href="<?= $this->Url->build(['action' => 'add', '?' => ['dup' => $order->id]]) ?>"
+           class="btn btn-sm btn-outline-primary" title="<?= __('Utwórz nowe zlecenie z prefillem z tego') ?>">
+            <i class="ri-file-copy-line me-1"></i><?= __('Duplikuj') ?>
+        </a>
         <?php if (($order->source ?? 'speed') === 'manual'): ?>
             <a href="<?= $this->Url->build(['action' => 'edit', $order->id]) ?>"
                class="btn btn-sm btn-outline-info" title="<?= __('Edytuj zlecenie ręczne') ?>">

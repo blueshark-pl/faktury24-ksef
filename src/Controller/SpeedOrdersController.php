@@ -1300,6 +1300,11 @@ class SpeedOrdersController extends AppController
             $order = $SpeedOrders->patchEntity($order, $data);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
+                // Batch mode: "Zapisz i dodaj kolejne" -> wracaj na formularz
+                if ($this->request->getData('save_and_new')) {
+                    $this->redirect(['action' => 'add']);
+                    return;
+                }
                 $this->redirect(['action' => 'view', $order->id]);
                 return;
             }
@@ -1307,7 +1312,7 @@ class SpeedOrdersController extends AppController
         } else {
             // Prefill nowego rekordu
             [$symbol, $seq, $rok, $mc] = $this->nextManualSymbol($companyNip, new Date());
-            $order = $SpeedOrders->newEntity([
+            $defaults = [
                 'source'       => 'manual',
                 'symbol'       => $symbol,
                 'manual_seq'   => $seq,
@@ -1320,13 +1325,40 @@ class SpeedOrdersController extends AppController
                 'currency'     => 'PLN',
                 'status'       => 1,
                 'nordlogis_status' => 1,
-            ]);
+            ];
+
+            // Duplikat: ?dup={id} -> prefill z istniejacego zlecenia (bez numeru i dat)
+            $dupId = (int)$this->request->getQuery('dup');
+            if ($dupId > 0) {
+                $src = $SpeedOrders->find()->where(['id' => $dupId])->first();
+                if ($src) {
+                    $copyFields = [
+                        'contract', 'our_ref',
+                        'buyer_nip', 'buyer_name', 'buyer_street', 'buyer_postal_code',
+                        'buyer_city', 'buyer_country', 'buyer_email',
+                        'load_country', 'load_postal_code', 'load_city',
+                        'unload_country', 'unload_city', 'unload_name',
+                        'title1', 'title2', 'cargo_type', 'transport_type', 'notes',
+                        'driver', 'vehicle_reg', 'carrier',
+                        'currency', 'netto', 'vat', 'brutto', 'exchange_rate', 'payment_terms',
+                    ];
+                    foreach ($copyFields as $f) {
+                        if (!empty($src->{$f}) || $src->{$f} === 0 || $src->{$f} === '0') {
+                            $defaults[$f] = $src->{$f};
+                        }
+                    }
+                    $this->Flash->info(__('Załadowano dane ze zlecenia {0}. Zmień co potrzebne i zapisz.', $src->symbol));
+                }
+            }
+
+            $order = $SpeedOrders->newEntity($defaults);
         }
 
         $this->set(compact('order'));
         $this->set('isEdit', false);
-        $this->set('drivers',  $this->loadDriversForSelect());
-        $this->set('vehicles', $this->loadVehiclesForSelect());
+        $this->set('drivers',       $this->loadDriversForSelect());
+        $this->set('vehicles',      $this->loadVehiclesForSelect());
+        $this->set('recentInMonth', $this->loadRecentManualInMonth($companyNip));
         $this->render('add');
     }
 
@@ -1398,6 +1430,61 @@ class SpeedOrdersController extends AppController
             $this->Flash->error(__('Nie udało się usunąć zlecenia.'));
         }
         $this->redirect(['action' => 'index']);
+    }
+
+    /**
+     * AJAX: ostatnie zlecenie dla danego NIP klienta.
+     * Uzywane w formularzu /zlecenia/dodaj do 'prefill z ostatniego zlecenia'.
+     * Zwraca dane trasy + finansow + kontraktu (bez dat i numeru).
+     */
+    public function lastForBuyerJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $nip = preg_replace('/\D+/', '', (string)$this->request->getQuery('nip', ''));
+        if (strlen($nip) < 5) {
+            $this->jsonResp(['ok' => true, 'found' => false]);
+            return;
+        }
+
+        $companyNip = $this->currentCompanyNip();
+        $SpeedOrders = $this->fetchTable('SpeedOrders');
+
+        $order = $SpeedOrders->find()
+            ->where([
+                'company_nip'   => $companyNip,
+                'buyer_nip LIKE' => '%' . $nip,
+            ])
+            ->orderByDesc('date_doc')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$order) {
+            $this->jsonResp(['ok' => true, 'found' => false]);
+            return;
+        }
+
+        $this->jsonResp([
+            'ok'    => true,
+            'found' => true,
+            'order' => [
+                'symbol'         => $order->symbol,
+                'date_doc'       => $order->date_doc?->format('Y-m-d'),
+                'source'         => $order->source,
+                'contract'       => $order->contract,
+                'load_country'   => $order->load_country,
+                'load_postal_code' => $order->load_postal_code,
+                'load_city'      => $order->load_city,
+                'unload_country' => $order->unload_country,
+                'unload_city'    => $order->unload_city,
+                'unload_name'    => $order->unload_name,
+                'title2'         => $order->title2,
+                'cargo_type'     => $order->cargo_type,
+                'transport_type' => $order->transport_type,
+                'currency'       => $order->currency,
+                'netto'          => (float)$order->netto,
+                'payment_terms'  => $order->payment_terms,
+            ],
+        ]);
     }
 
     /**
@@ -1595,6 +1682,30 @@ class SpeedOrdersController extends AppController
                 ->select(['id', 'full_name', 'phone'])
                 ->where(['company_id' => $companyId, 'is_active' => true])
                 ->orderByAsc('full_name')
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) { return []; }
+    }
+
+    /**
+     * Ostatnie zlecenia manualne biezacego miesiaca — do hint'a w formularzu
+     * ("Ostatnie 5 zlecen w sierpniu: M-0001, M-0002...").
+     */
+    private function loadRecentManualInMonth(?string $companyNip): array
+    {
+        if (!$companyNip) return [];
+        try {
+            return $this->fetchTable('SpeedOrders')->find()
+                ->select(['id', 'symbol', 'date_doc', 'buyer_name'])
+                ->where([
+                    'source'      => 'manual',
+                    'company_nip' => $companyNip,
+                    'rok'         => date('Y'),
+                    'mc'          => date('m'),
+                ])
+                ->orderByDesc('manual_seq')
+                ->limit(5)
                 ->disableHydration()
                 ->all()
                 ->toList();

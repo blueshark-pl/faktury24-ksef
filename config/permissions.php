@@ -453,7 +453,7 @@ return [
                 'uploadAttachment', 'deleteAttachment',
                 // Reczne zlecenia (source='manual')
                 'add', 'edit', 'delete',
-                'driversJson', 'vehiclesJson',
+                'driversJson', 'vehiclesJson', 'lastForBuyerJson',
             ],
         ],
 
