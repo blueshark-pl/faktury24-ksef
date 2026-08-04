@@ -800,6 +800,57 @@ Crontab prod (przykład):
 0 8 * * * cd /home/jjgroup1srv/domains/booklio.pl/public_html && php bin/cake.php alerts
 ```
 
+### Pełne kolumny `speed_order_notes`
+Migracja: `20260804120000_CreateSpeedOrderNotes.php`
+Notatki wewnętrzne per zlecenie (analog `invoice_notes`).
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | |
+| `speed_order_id` | int unsigned | FK do `speed_orders` |
+| `user_id` | uuid | autor (NULL = system) |
+| `note_type` | string(20) | `note` / `system` / `reminder` / `phone_call` / `email` |
+| `body` | text | treść |
+| `payload_json` | text | metadata akcji |
+
+Helper: `SpeedOrderNotesTable::logSystem($companyId, $orderId, $body, $payload)` — best-effort try/catch.
+
+### Pełne kolumny `speed_order_templates`
+Migracja: `20260804130000_CreateSpeedOrderTemplates.php`
+Szablony zleceń dla powtarzalnych klientów/tras. Jednym clickiem prefill formularza.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | |
+| `name` | string(150) | „HB RTS standard NL→DE" |
+| `description` | string(500) | |
+| `is_favorite` | bool | najczęściej używane na górze |
+| `payload_json` | text | JSON z 30+ pól (buyer/load/unload/cargo/finance/incoterms) |
+| `usage_count` | int unsigned | dla sortowania po popularity |
+| `last_used_at` | datetime | |
+
+CRUD: 5 AJAX endpointów `templatesListJson`/`templateSaveJson`/`templateDeleteJson`/`templateUseJson`/`templateFavoriteJson`.
+
+### Rozszerzenia `speed_orders` — pola spedycyjne (Fala 6)
+Migracja: `20260804110000_AddCargoFieldsToSpeedOrders.php`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `cargo_weight_kg` | int unsigned | Waga ładunku (kg) |
+| `cargo_volume_m3` | decimal(8,2) | Objętość m³ |
+| `cargo_ldm` | decimal(5,2) | Loading meters |
+| `cargo_pallets` | int unsigned | Ilość palet |
+| `cargo_pallet_type` | string(20) | EUR/PLA/BOX/DISP/INNE |
+| `adr_class` | string(10) | 1..9 (indeks) |
+| `adr_un` | string(10) | UN1230 |
+| `temperature_min` / `temperature_max` | decimal(4,1) | °C dla chłodni |
+| `incoterms` | string(10) | EXW/FCA/DAP/DDP/... |
+| `incoterms_place` | string(100) | Miejsce dla INCOTERMS |
+| `cmr_number` | string(50) | Nr listu przewozowego CMR (indeks) |
+| `insurance_value` / `insurance_currency` | decimal + string | Ubezpieczenie ładunku |
+
 ### Pełne kolumny — rozszerzenia `speed_orders` (Fala manualnych zleceń)
 Migracja: `20260804100000_AddSourceToSpeedOrders.php`
 
@@ -938,6 +989,9 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Templates FALA 7** — reużywalne szablony zleceń dla powtarzalnych klientów/tras: nowa tabela `speed_order_templates` (id uuid, company_id, name, description, is_favorite, payload_json, usage_count, last_used_at) + CRUD AJAX (list, save, delete, use, favorite). W formularzu button „Szablony zleceń" + modal z listą (fav pierwszy, potem sortowane po usage_count/modified) z 3 przyciskami per row (Ulubione/Usuń/Załaduj) + drugi button „Zapisz jako szablon" (ikonka zakładki) → modal z nazwą/opisem (auto-suggest nazwy z klienta+trasy). Payload zapisuje 30+ pól (buyer/load/unload/cargo/finance/incoterms). Click „Załaduj" → prefill + increment usage_count + zamknij modal | 5 nowych route + permissions, migracja `CreateSpeedOrderTemplates`, Table+Entity, kontroler (5 metod: templatesListJson, templateSaveJson, templateDeleteJson, templateUseJson, templateFavoriteJson), `add.php` (2 modale + 200 lines JS) |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Notatki + fix NBP FALA 5-6** — (1) nowa tabela `speed_order_notes` (uuid, note_type=note/system/reminder/phone_call/email) + Table+Entity + helper `logSystem()`, kontroler `noteAdd`/`noteDelete` z guard company_id + author/admin, sekcja notatek w `view.php` z formularzem dodania (typ dropdown + textarea) i listą (ikonka+kolor per typ, autor, timestamp, button usuń); (2) **fix kursu NBP** — pole exchange_rate w Finansach teraz auto-fetchuje ostatni kurs z NBP dla wybranej waluty przez `GET /nbp/rates?code=X&from&to` (zakres 7 dni wstecz od date_doc, bierze ostatni mid), title pola pokazuje datę+tabelę NBP, cache w JS żeby uniknąć duplicate fetch; (3) **pola spedycyjne** — migracja `AddCargoFieldsToSpeedOrders` z 14 nowymi kolumnami (cargo_weight_kg/volume_m3/ldm/pallets/pallet_type, adr_class/adr_un/temperature_min/max, incoterms/incoterms_place, cmr_number, insurance_value/currency) + Entity docblock + rozszerzony accordion „Więcej opcji" z 3 podsekcjami + AI parser JSON schema + JS mapping obejmuje nowe pola | 2 migracje, 2 nowe Tables+Entities, kontroler (noteAdd/noteDelete), `view.php` (sekcja notatek), `add.php` (accordion + JS NBP fetch), Entity SpeedOrder |
+| 2026-08-04 | Feat: `/zlecenia/dodaj` **Analytics FALA 5** — mini-profil klienta w formularzu po wpisaniu NIP: nowy endpoint `GET /zlecenia/profil-klienta?nip=xxx` zwraca 12-miesięczne statystyki (liczba zleceń, avg netto, suma, ostatnie zlecenie, TOP trasa, DSO z faktur przez `Invoices` matching `InvoiceContractors.nip`, ostatnie 3 zlecenia). Collapsible card pod polami Nabywca z 5 KPI + toggle „szczegóły" → TOP trasa + badgy zleceń z linkami | `SpeedOrdersController::buyerProfileJson`, `templates/SpeedOrders/add.php` (widget + JS `fetchBuyerProfile`), routes.php, permissions.php |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Integracje FALA 4** (3 commity) — (1) **Załaduj z planera tras** button + modal z tabelą route_plans (nazwa/status/trasa/km/cena/klient) → click „Załaduj" prefilluje load/unload/daty/netto/kontrahenta (endpoint `/zlecenia/plany-tras`); (2) **Wysyłka email do klienta** — checkbox w sticky bar, po zapisie wysyła HTML email z template `speed_order_confirmation.php` (gradient header + KPI trasy/ładunku/finansów); (3) **Zapisz + wystaw fakturę** — dropdown w sticky bar, redirect do `/invoices/add?type=vat\|currency&from_order_id={id}` (reuse istniejący prefill); (4) **Zapisz + dodaj CMR** — redirect do view z `?focus=attachments` + smooth scroll do sekcji + highlight ring; (5) **Auto-utwórz kontrahenta z GUS** — po sukcesie GUS lookup button „Zapisz jako kontrahenta" → AJAX POST do istniejącego `/contractors/add` → zapisuje w bazie; (6) **PDF potwierdzenia zlecenia** — nowa akcja `pdfConfirmation` przez CakePdf/DomPdf, button „PDF" w widoku szczegółów, template `pdf/pdf_confirmation.php` (DejaVu Sans, A4, dwie kolumny nabywca/wykonawca, gradient sections) | `SpeedOrdersController` (routePlansJson, pdfConfirmation, sendOrderEmail + save_and_invoice/save_and_attach w add), `templates/SpeedOrders/add.php` (modal planów, dropdown split button, checkbox email, JS handlers), `templates/SpeedOrders/view.php` (PDF button, focus=attachments scroll), `templates/SpeedOrders/pdf/pdf_confirmation.php` (nowy), `templates/email/html/speed_order_confirmation.php` (nowy), `routes.php`, `permissions.php` |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Warnings FALA 3** (2 commity) — reuse infrastruktury Fala 1-3 planera operacyjnego dla walidacji operatora: (1) **Kolizja grafika kierowcy/pojazdu** — po zmianie driver/vehicle+daty AJAX do `/zlecenia/conflict-check` (query po `driver_schedules`/`vehicle_schedules` overlap) → alert z listą kolizji + entry_type + linked zlecenie; (2) **Compliance auto-check** — `VehicleMaintenanceTable::findMissingForDate()` sprawdza czy pojazd ma ważne `technical_inspection`+`oc` na dzień załadunku, `DriverTimeLogsTable::hasBudgetInWeek()` sprawdza budżet UE 561/2006; (3) **Duplikat zlecenia** — query po (buyer_nip + load_city) w oknie ±1 dzień → hint z linkiem do istniejącego; (4) **Znajdź wolne zasoby w oknie** — button w sekcji Transport → modal z listą wolnych kierowców (badge ADR) + pojazdów w oknie z dat załadunku/rozładunku (reuse `findAvailableInWindow`); (5) Widget renderuje 3 sekcje razem: kolizja (warning), compliance (danger), duplikat (info) z najwyższym severity dla ramki | `SpeedOrdersController` (conflictCheckJson, freeResourcesJson), `templates/SpeedOrders/add.php` (widget warning + modal wolnych + JS), `routes.php`, `permissions.php` |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **Smart Auto-fill FALA 2** — kompletny pakiet 7 features: (1) **Auto-fill GUS** po NIP button obok pola + badge status VAT z Białej Listy MF, (2) **HERE autocomplete miast** dla load_city/unload_city/buyer_city — dropdown z propozycjami city+postal_code+country z HERE Autosuggest (endpoint `/zlecenia/cities`), (3) **Live kalkulator trasy HERE** — widget z km/duration/tolls/sugestia ceny (km × stawka + tolls), button „Ustaw jako netto" (endpoint `/zlecenia/route-calc`), (4) **Live pricingHistory + alert dumpingu** — mediana z historii tras + czerwony alert < 90% mediany / zielony > 110% (reuse `/planer-tras/historia-stawek`), (5) **Toggle client/market mode** w pricingHistory, (6) **AI parser email/screenshot** — modal z textarea + drop zone + Ctrl+V paste image + `chatVisionJson()` OpenAI z gpt-4o-mini Vision → strukturalny JSON → auto-fill wszystkich pól formularza (endpoint `/zlecenia/ai-parse`), (7) **Fix 403 CSRF** — dodano `_csrfToken` + header `X-CSRF-Token` do wszystkich AJAX POST. **Fix routing 404**: `setExtensions(['json'])` stripuje `.json` z URL przed matchowaniem — trasy definiowane bez `.json` w path. **Fix 500**: `jsonResp()` teraz wyłącza autoRender | `SpeedOrdersController` (citiesJson, routeCalcJson, aiParseOrderJson + fix jsonResp), `HereRoutingService::autosuggest` (rozszerzone o city+postal_code), `OpenAiService::chatVisionJson` (nowa), `templates/SpeedOrders/add.php` (widgety GUS/HERE/pricing/AI + modal), `routes.php`, `permissions.php` |

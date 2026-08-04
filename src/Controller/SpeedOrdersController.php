@@ -2235,6 +2235,169 @@ SYS;
     }
 
     /**
+     * AJAX: lista szablonow zlecen dla firmy.
+     * GET /zlecenia/szablony
+     */
+    public function templatesListJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $rows = [];
+        try {
+            $rows = $this->fetchTable('SpeedOrderTemplates')->find()
+                ->where(['company_id' => $companyId])
+                ->orderByDesc('is_favorite')
+                ->orderByDesc('usage_count')
+                ->orderByDesc('modified')
+                ->limit(100)
+                ->disableHydration()
+                ->all()
+                ->toList();
+        } catch (\Throwable) {}
+
+        $out = array_map(function ($t) {
+            return [
+                'id'           => $t['id'],
+                'name'         => $t['name'],
+                'description'  => $t['description'],
+                'is_favorite'  => (bool)$t['is_favorite'],
+                'usage_count'  => (int)$t['usage_count'],
+                'last_used_at' => $t['last_used_at'] instanceof \DateTimeInterface
+                    ? $t['last_used_at']->format('Y-m-d H:i')
+                    : $t['last_used_at'],
+                'payload'      => json_decode($t['payload_json'] ?? '{}', true),
+            ];
+        }, $rows);
+
+        $this->jsonResp(['ok' => true, 'templates' => $out]);
+    }
+
+    /**
+     * AJAX: zapisz nowy szablon z aktualnych danych formularza.
+     * POST /zlecenia/szablony/zapisz body: name, description, payload_json
+     */
+    public function templateSaveJson(): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $name = trim((string)$this->request->getData('name', ''));
+        $description = trim((string)$this->request->getData('description', ''));
+        $payload = (string)$this->request->getData('payload_json', '{}');
+
+        if ($name === '') {
+            $this->jsonResp(['ok' => false, 'error' => 'Nazwa wymagana']);
+            return;
+        }
+        // Sanity check JSON
+        if (json_decode($payload, true) === null && $payload !== 'null' && $payload !== '{}') {
+            $this->jsonResp(['ok' => false, 'error' => 'Niepoprawny payload_json']);
+            return;
+        }
+
+        try {
+            $SOT = $this->fetchTable('SpeedOrderTemplates');
+            $tpl = $SOT->newEntity([
+                'company_id'   => $companyId,
+                'name'         => $name,
+                'description'  => $description ?: null,
+                'payload_json' => $payload,
+                'is_favorite'  => false,
+                'usage_count'  => 0,
+            ]);
+            if ($SOT->save($tpl)) {
+                $this->jsonResp(['ok' => true, 'id' => $tpl->id]);
+            } else {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie zapisano', 'errors' => $tpl->getErrors()]);
+            }
+        } catch (\Throwable $e) {
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * AJAX: usun szablon.
+     * POST /zlecenia/szablony/{id}/usun
+     */
+    public function templateDeleteJson(string $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        try {
+            $SOT = $this->fetchTable('SpeedOrderTemplates');
+            $tpl = $SOT->get($id);
+            if ((string)$tpl->company_id !== (string)$companyId) {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie masz uprawnień']);
+                return;
+            }
+            $SOT->delete($tpl);
+            $this->jsonResp(['ok' => true]);
+        } catch (\Throwable $e) {
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * AJAX: toggle favorite + increment usage_count na apply.
+     * POST /zlecenia/szablony/{id}/uzyj lub /zlecenia/szablony/{id}/favorite
+     */
+    public function templateUseJson(string $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        try {
+            $SOT = $this->fetchTable('SpeedOrderTemplates');
+            $tpl = $SOT->get($id);
+            if ((string)$tpl->company_id !== (string)$companyId) {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie masz uprawnień']);
+                return;
+            }
+            $tpl->usage_count = (int)$tpl->usage_count + 1;
+            $tpl->last_used_at = new \DateTime();
+            $SOT->save($tpl);
+            $this->jsonResp(['ok' => true, 'usage_count' => $tpl->usage_count]);
+        } catch (\Throwable $e) {
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function templateFavoriteJson(string $id): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        try {
+            $SOT = $this->fetchTable('SpeedOrderTemplates');
+            $tpl = $SOT->get($id);
+            if ((string)$tpl->company_id !== (string)$companyId) {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie masz uprawnień']);
+                return;
+            }
+            $tpl->is_favorite = !((bool)$tpl->is_favorite);
+            $SOT->save($tpl);
+            $this->jsonResp(['ok' => true, 'is_favorite' => (bool)$tpl->is_favorite]);
+        } catch (\Throwable $e) {
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * POST /zlecenia/{id}/notatka - dodaj notatke do zlecenia.
      */
     public function noteAdd(int $id): void

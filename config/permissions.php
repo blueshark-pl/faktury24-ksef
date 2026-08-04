@@ -458,6 +458,8 @@ return [
                 'conflictCheckJson', 'freeResourcesJson', 'routePlansJson',
                 'pdfConfirmation', 'buyerProfileJson',
                 'noteAdd', 'noteDelete',
+                'templatesListJson', 'templateSaveJson', 'templateDeleteJson',
+                'templateUseJson', 'templateFavoriteJson',
             ],
         ],
 

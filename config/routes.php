@@ -109,6 +109,14 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/zlecenia/notatka/{noteId}/usun', ['controller' => 'SpeedOrders', 'action' => 'noteDelete'])
             ->setPass(['noteId']);
+        $builder->get('/zlecenia/szablony',                    ['controller' => 'SpeedOrders', 'action' => 'templatesListJson']);
+        $builder->post('/zlecenia/szablony/zapisz',            ['controller' => 'SpeedOrders', 'action' => 'templateSaveJson']);
+        $builder->post('/zlecenia/szablony/{id}/usun',         ['controller' => 'SpeedOrders', 'action' => 'templateDeleteJson'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/szablony/{id}/uzyj',         ['controller' => 'SpeedOrders', 'action' => 'templateUseJson'])
+            ->setPass(['id']);
+        $builder->post('/zlecenia/szablony/{id}/favorite',     ['controller' => 'SpeedOrders', 'action' => 'templateFavoriteJson'])
+            ->setPass(['id']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

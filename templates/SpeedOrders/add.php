@@ -111,6 +111,14 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#so-plan-modal">
             <i class="ri-route-line me-1"></i> <?= __('Załaduj z planera tras') ?>
         </button>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#so-tpl-modal">
+                <i class="ri-bookmark-line me-1"></i> <?= __('Szablony zleceń') ?>
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="so-tpl-save-btn" title="<?= __('Zapisz aktualne dane jako szablon') ?>">
+                <i class="ri-bookmark-3-line"></i>
+            </button>
+        </div>
         <?php endif; ?>
         <div class="so-hint text-end pt-1">
             <div><kbd>Ctrl</kbd>+<kbd>S</kbd> <?= __('zapisz') ?></div>
@@ -118,6 +126,57 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <?= __('zapisz + dodaj kolejne') ?></div>
             <?php endif; ?>
             <div><kbd>Esc</kbd> <?= __('anuluj') ?></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Szablony zlecen -->
+<div class="modal fade" id="so-tpl-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ri-bookmark-line me-1 text-primary"></i>
+                    <?= __('Szablony zleceń') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="so-tpl-status" class="alert alert-info py-2 px-3 small"><?= __('Ładowanie...') ?></div>
+                <div id="so-tpl-list" class="list-group"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Zapisz jako szablon -->
+<div class="modal fade" id="so-tpl-save-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ri-bookmark-3-line me-1 text-primary"></i>
+                    <?= __('Zapisz jako szablon') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small"><?= __('Nazwa szablonu') ?> *</label>
+                    <input type="text" id="so-tpl-name" class="form-control" placeholder="HB RTS standard NL->DE" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small"><?= __('Opis (opcjonalnie)') ?></label>
+                    <textarea id="so-tpl-desc" class="form-control" rows="2"></textarea>
+                </div>
+                <div id="so-tpl-save-status" class="small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
+                <button type="button" class="btn btn-primary" id="so-tpl-save-confirm">
+                    <i class="ri-save-line me-1"></i>Zapisz szablon
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -2086,6 +2145,218 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             });
         });
     }
+
+    // =====================================================================
+    // TEMPLATES ZLECEN (szablony)
+    // =====================================================================
+    var $tplModal    = document.getElementById('so-tpl-modal');
+    var $tplStatus   = document.getElementById('so-tpl-status');
+    var $tplList     = document.getElementById('so-tpl-list');
+    var $tplSaveBtn  = document.getElementById('so-tpl-save-btn');
+    var $tplSaveModal = document.getElementById('so-tpl-save-modal');
+    var $tplName     = document.getElementById('so-tpl-name');
+    var $tplDesc     = document.getElementById('so-tpl-desc');
+    var $tplSaveConfirm = document.getElementById('so-tpl-save-confirm');
+    var $tplSaveStatus = document.getElementById('so-tpl-save-status');
+
+    // Pola do zapisu w templacie (skopiuj z aktualnego formularza)
+    var TPL_FIELDS = [
+        'contract', 'buyer_nip', 'buyer_name', 'buyer_email', 'buyer_street',
+        'buyer_postal_code', 'buyer_city', 'buyer_country',
+        'load_country', 'load_postal_code', 'load_city',
+        'unload_country', 'unload_city', 'unload_name',
+        'title2', 'cargo_type', 'transport_type',
+        'cargo_weight_kg', 'cargo_volume_m3', 'cargo_ldm', 'cargo_pallets', 'cargo_pallet_type',
+        'adr_class', 'adr_un', 'temperature_min', 'temperature_max',
+        'incoterms', 'incoterms_place',
+        'driver', 'vehicle_reg', 'carrier',
+        'currency', 'netto', 'payment_terms',
+        'notes',
+    ];
+
+    function collectTemplatePayload() {
+        var out = {};
+        TPL_FIELDS.forEach(function(f){
+            var el = $form.elements[f];
+            if (el && el.value) out[f] = el.value;
+        });
+        return out;
+    }
+
+    function applyTemplate(payload) {
+        Object.keys(payload).forEach(function(k){
+            var el = $form.elements[k];
+            if (el && payload[k]) el.value = payload[k];
+        });
+        calc(); onCur();
+        schedulePricingCheck(); scheduleHereRoute(); scheduleConflictCheck();
+        if (payload.buyer_nip) { checkLastForBuyer(payload.buyer_nip); fetchBuyerProfile(payload.buyer_nip); }
+    }
+
+    if ($tplModal) {
+        $tplModal.addEventListener('shown.bs.modal', function(){
+            $tplStatus.className = 'alert alert-info py-2 px-3 small';
+            $tplStatus.textContent = 'Ładowanie...';
+            $tplList.innerHTML = '';
+            fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'templatesListJson']) ?>',
+                  { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if (!j.ok) {
+                    $tplStatus.className = 'alert alert-danger py-2 px-3 small';
+                    $tplStatus.textContent = j.error || 'Blad';
+                    return;
+                }
+                if (!j.templates || j.templates.length === 0) {
+                    $tplStatus.className = 'alert alert-warning py-2 px-3 small';
+                    $tplStatus.textContent = 'Brak zapisanych szablonów. Wypełnij formularz i kliknij ikonę zakładki obok "Szablony zleceń" żeby zapisać nowy.';
+                    return;
+                }
+                $tplStatus.className = 'alert alert-success py-2 px-3 small';
+                $tplStatus.textContent = 'Znaleziono ' + j.templates.length + ' szablonów. Kliknij "Załaduj" aby prefillować.';
+                var html = '';
+                j.templates.forEach(function(t){
+                    var fav = t.is_favorite ? 'ri-bookmark-fill text-warning' : 'ri-bookmark-line text-muted';
+                    var routeHint = '';
+                    if (t.payload && t.payload.load_city) {
+                        routeHint = '<span class="text-muted">' + t.payload.load_city +
+                                    (t.payload.unload_city ? ' → ' + t.payload.unload_city : '') + '</span>';
+                    }
+                    var buyerHint = t.payload && t.payload.buyer_name
+                        ? '<span class="badge bg-light text-dark border ms-1">' + t.payload.buyer_name + '</span>' : '';
+                    html += '<div class="list-group-item d-flex justify-content-between align-items-start" data-tpl-id="' + t.id + '">' +
+                        '<div class="flex-grow-1 me-2">' +
+                            '<div><strong>' + t.name + '</strong> ' + buyerHint + '</div>' +
+                            '<div class="small">' + routeHint +
+                                (t.description ? '<br><em class="text-muted">' + t.description + '</em>' : '') +
+                                '<span class="text-muted ms-2">użyty ' + t.usage_count + 'x' +
+                                (t.last_used_at ? ' · ost. ' + t.last_used_at : '') + '</span></div>' +
+                        '</div>' +
+                        '<div class="btn-group btn-group-sm">' +
+                            '<button type="button" class="btn btn-sm btn-outline-warning so-tpl-fav" data-id="' + t.id + '" title="Ulubione"><i class="' + fav + '"></i></button>' +
+                            '<button type="button" class="btn btn-sm btn-outline-danger so-tpl-del" data-id="' + t.id + '" title="Usuń"><i class="ri-delete-bin-line"></i></button>' +
+                            '<button type="button" class="btn btn-sm btn-primary so-tpl-apply" data-id="' + t.id + '"><i class="ri-download-2-line me-1"></i>Załaduj</button>' +
+                        '</div>' +
+                        '</div>';
+                });
+                $tplList.innerHTML = html;
+
+                // Cache payloadow do applyTemplate
+                $tplList.dataset.payloads = JSON.stringify(j.templates.reduce(function(acc, t){
+                    acc[t.id] = t.payload; return acc;
+                }, {}));
+            });
+        });
+    }
+
+    $tplList.addEventListener('click', function(e){
+        var applyBtn = e.target.closest('.so-tpl-apply');
+        if (applyBtn) {
+            var id = applyBtn.dataset.id;
+            var payloads = JSON.parse($tplList.dataset.payloads || '{}');
+            applyTemplate(payloads[id] || {});
+            // increment usage_count
+            var fd = new FormData(); fd.append('_csrfToken', CSRF);
+            fetch('/zlecenia/szablony/' + id + '/uzyj', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' }
+            });
+            var m = bootstrap.Modal.getInstance($tplModal);
+            if (m) m.hide();
+            return;
+        }
+        var favBtn = e.target.closest('.so-tpl-fav');
+        if (favBtn) {
+            var id = favBtn.dataset.id;
+            var fd = new FormData(); fd.append('_csrfToken', CSRF);
+            fetch('/zlecenia/szablony/' + id + '/favorite', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' }
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if (j.ok) {
+                    var icon = favBtn.querySelector('i');
+                    icon.className = j.is_favorite ? 'ri-bookmark-fill text-warning' : 'ri-bookmark-line text-muted';
+                }
+            });
+            return;
+        }
+        var delBtn = e.target.closest('.so-tpl-del');
+        if (delBtn) {
+            if (!confirm('Usunąć szablon?')) return;
+            var id = delBtn.dataset.id;
+            var fd = new FormData(); fd.append('_csrfToken', CSRF);
+            fetch('/zlecenia/szablony/' + id + '/usun', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' }
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if (j.ok) {
+                    var row = delBtn.closest('.list-group-item');
+                    if (row) row.remove();
+                }
+            });
+        }
+    });
+
+    // Save current form as template
+    $tplSaveBtn.addEventListener('click', function(){
+        var payload = collectTemplatePayload();
+        if (Object.keys(payload).length === 0) {
+            alert('Formularz jest pusty - wypełnij dane przed zapisem jako szablon');
+            return;
+        }
+        // Prefill name z klienta+trasy jesli sa
+        var suggestedName = '';
+        if (payload.buyer_name) suggestedName = payload.buyer_name;
+        if (payload.load_city && payload.unload_city) {
+            suggestedName += (suggestedName ? ' · ' : '') + payload.load_city + '-' + payload.unload_city;
+        }
+        $tplName.value = suggestedName;
+        $tplDesc.value = '';
+        $tplSaveStatus.innerHTML = '';
+        var m = new bootstrap.Modal($tplSaveModal);
+        m.show();
+    });
+
+    $tplSaveConfirm.addEventListener('click', function(){
+        var name = $tplName.value.trim();
+        if (!name) {
+            $tplSaveStatus.innerHTML = '<span class="text-danger">Podaj nazwę</span>';
+            return;
+        }
+        var payload = collectTemplatePayload();
+        var fd = new FormData();
+        fd.append('_csrfToken', CSRF);
+        fd.append('name', name);
+        fd.append('description', $tplDesc.value.trim());
+        fd.append('payload_json', JSON.stringify(payload));
+        $tplSaveConfirm.disabled = true;
+        $tplSaveStatus.innerHTML = '<i class="ri-loader-4-line spin"></i> zapisuje...';
+        fetch('/zlecenia/szablony/zapisz', {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            $tplSaveConfirm.disabled = false;
+            if (j.ok) {
+                $tplSaveStatus.innerHTML = '<span class="text-success"><i class="ri-check-line"></i> Zapisano!</span>';
+                setTimeout(function(){
+                    var m = bootstrap.Modal.getInstance($tplSaveModal);
+                    if (m) m.hide();
+                }, 1500);
+            } else {
+                $tplSaveStatus.innerHTML = '<span class="text-danger">Błąd: ' + (j.error || 'nieznany') + '</span>';
+            }
+        })
+        .catch(function(e){
+            $tplSaveConfirm.disabled = false;
+            $tplSaveStatus.innerHTML = '<span class="text-danger">Błąd: ' + e.message + '</span>';
+        });
+    });
 
 })();
 </script>
