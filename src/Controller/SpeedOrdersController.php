@@ -3870,7 +3870,8 @@ SYS;
         if (!$companyId) return [];
         try {
             return $this->fetchTable('PalletTypes')->findForCompany($companyId)
-                ->select(['id', 'code', 'name', 'manufacturer', 'length_mm', 'width_mm', 'height_mm'])
+                ->select(['id', 'code', 'name', 'manufacturer', 'length_mm', 'width_mm', 'height_mm',
+                          'weight_empty_kg', 'load_capacity_kg', 'material', 'color', 'image_path'])
                 ->disableHydration()
                 ->all()
                 ->toList();

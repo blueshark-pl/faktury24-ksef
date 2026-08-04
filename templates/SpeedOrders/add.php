@@ -878,6 +878,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                                         <?php endforeach; ?>
                                     </select>
                                     <input type="hidden" name="speed_order_cargo_items[<?= $cIdx ?>][pallet_code]" value="<?= h($ci->pallet_code ?? '') ?>">
+                                    <div class="so-cargo-pallet-info"></div>
                                 </td>
                                 <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_dry]" value="1" class="form-check-input" <?= !empty($ci->is_dry) ? 'checked' : '' ?>></td>
                                 <td class="text-center"><input type="checkbox" name="speed_order_cargo_items[<?= $cIdx ?>][is_wrapped]" value="1" class="form-check-input" <?= !empty($ci->is_wrapped) ? 'checked' : '' ?>></td>
@@ -3228,19 +3229,66 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var $sumWeight  = document.getElementById('so-cargo-sum-weight');
     var cargoIdx    = $cargoList.querySelectorAll('.so-cargo-row').length;
 
-    // Build palety options HTML (raz - cache)
-    var PALLET_OPTIONS = <?= json_encode(array_map(fn($p) => ['id' => $p['id'], 'code' => $p['code'], 'mfr' => $p['manufacturer'] ?? ''], $palletTypes ?? [])) ?>;
+    // Build palety options HTML + cache pelnych metadanych (dla info panel po zmianie dropdown)
+    var PALLET_OPTIONS = <?= json_encode(array_map(function ($p) {
+        return [
+            'id'          => $p['id'],
+            'code'        => $p['code'],
+            'name'        => $p['name'] ?? '',
+            'mfr'         => $p['manufacturer'] ?? '',
+            'length_mm'   => $p['length_mm'] ?? null,
+            'width_mm'    => $p['width_mm'] ?? null,
+            'height_mm'   => $p['height_mm'] ?? null,
+            'weight_empty_kg' => $p['weight_empty_kg'] ?? null,
+            'load_capacity_kg' => $p['load_capacity_kg'] ?? null,
+            'material'    => $p['material'] ?? '',
+            'color'       => $p['color'] ?? '',
+            'image_path'  => $p['image_path'] ?? '',
+        ];
+    }, $palletTypes ?? [])) ?>;
+    var PALLET_MAP = {};
+    PALLET_OPTIONS.forEach(function(p){ PALLET_MAP[p.id] = p; });
     var palletOptsHtml = '<option value=""></option>';
     PALLET_OPTIONS.forEach(function(p){
         palletOptsHtml += '<option value="' + p.id + '" data-code="' + p.code + '">' + p.code + (p.mfr ? ' (' + p.mfr + ')' : '') + '</option>';
     });
+
+    function palletInfoHtml(pt) {
+        if (!pt) return '';
+        var dims = '';
+        if (pt.length_mm && pt.width_mm) {
+            dims = pt.length_mm + '×' + pt.width_mm;
+            if (pt.height_mm) dims += '×' + pt.height_mm;
+            dims += ' mm';
+        }
+        var wgt = pt.weight_empty_kg ? parseFloat(pt.weight_empty_kg).toLocaleString('pl-PL') + ' kg' : '';
+        var thumb = pt.image_path
+            ? '<img src="' + pt.image_path + '" style="max-width:36px;max-height:36px;border-radius:.2rem;margin-right:4px;vertical-align:middle">'
+            : '';
+        return '<div class="small text-muted mt-1" style="font-size:.7rem">' +
+               thumb + '<strong>' + (pt.name || pt.code) + '</strong>' +
+               (dims ? ' · ' + dims : '') +
+               (wgt ? ' · pusta: ' + wgt : '') +
+               (pt.load_capacity_kg ? ' · nośn: ' + parseInt(pt.load_capacity_kg).toLocaleString('pl-PL') + ' kg' : '') +
+               '</div>';
+    }
+
+    // Update info panelu po zmianie dropdown palety w cargo row
+    function updateCargoRowPalletInfo(row) {
+        var sel = row.querySelector('select[name$="[pallet_type_id]"]');
+        var info = row.querySelector('.so-cargo-pallet-info');
+        if (!sel || !info) return;
+        var pt = PALLET_MAP[sel.value];
+        info.innerHTML = palletInfoHtml(pt);
+    }
 
     function cargoRowHtml(idx) {
         return '<tr class="so-cargo-row" data-idx="' + idx + '">' +
             '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_code]" class="form-control form-control-sm" maxlength="60" placeholder="17"></td>' +
             '<td><input type="text" name="speed_order_cargo_items[' + idx + '][product_name]" class="form-control form-control-sm" maxlength="255" placeholder="COMBO 285 BD 5R"></td>' +
             '<td><select name="speed_order_cargo_items[' + idx + '][pallet_type_id]" class="form-select form-select-sm">' + palletOptsHtml + '</select>' +
-                '<input type="hidden" name="speed_order_cargo_items[' + idx + '][pallet_code]" value=""></td>' +
+                '<input type="hidden" name="speed_order_cargo_items[' + idx + '][pallet_code]" value="">' +
+                '<div class="so-cargo-pallet-info"></div></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_dry]" value="1" class="form-check-input"></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_wrapped]" value="1" class="form-check-input"></td>' +
             '<td class="text-center"><input type="checkbox" name="speed_order_cargo_items[' + idx + '][is_strapped]" value="1" class="form-check-input"></td>' +
@@ -3272,10 +3320,32 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         $cargoSummary.style.display = rows.length > 0 ? '' : 'none';
         $cargoEmpty.style.display = rows.length > 0 ? 'none' : '';
 
-        // Auto-fill cargo_weight_kg z sumy jesli puste albo user chce (opcjonalnie - komentuj z uwagi)
+        // Info pod polem cargo_weight_kg: pokaz sume z pozycji (nie auto-fill,
+        // zeby nie kolidowac z recznie wpisana). User klika przycisk zeby skopiowac.
         var $cargoWeight = $form.elements.cargo_weight_kg;
-        if ($cargoWeight && !$cargoWeight.dataset.userTouched && totalW > 0) {
-            $cargoWeight.value = Math.round(totalW);
+        var $sumHint = document.getElementById('so-cargo-weight-hint');
+        if ($cargoWeight && totalW > 0) {
+            if (!$sumHint) {
+                $sumHint = document.createElement('div');
+                $sumHint.id = 'so-cargo-weight-hint';
+                $sumHint.className = 'small mt-1';
+                $cargoWeight.parentNode.appendChild($sumHint);
+            }
+            var current = parseFloat($cargoWeight.value) || 0;
+            var diff = Math.abs(current - totalW);
+            var color = (current > 0 && diff > 0.5) ? 'text-warning' : 'text-muted';
+            $sumHint.innerHTML = '<span class="' + color + '">Suma pozycji: <strong>' + totalW.toLocaleString('pl-PL', {maximumFractionDigits: 2}) + ' kg</strong></span> ' +
+                '<a href="#" class="ms-1 text-primary" id="so-cargo-weight-apply">skopiuj do pola</a>';
+            var $apply = document.getElementById('so-cargo-weight-apply');
+            if ($apply) {
+                $apply.onclick = function(e){
+                    e.preventDefault();
+                    $cargoWeight.value = Math.round(totalW);
+                    $cargoWeight.dispatchEvent(new Event('input', { bubbles: true }));
+                };
+            }
+        } else if ($sumHint) {
+            $sumHint.remove();
         }
     }
 
@@ -3283,6 +3353,22 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         $cargoList.insertAdjacentHTML('beforeend', cargoRowHtml(cargoIdx++));
         recalcCargoSummary();
     });
+
+    // Change palety dropdown -> update info panel + zapisz kod do hidden
+    $cargoList.addEventListener('change', function(e){
+        var sel = e.target.closest('select[name$="[pallet_type_id]"]');
+        if (!sel) return;
+        var row = sel.closest('.so-cargo-row');
+        if (!row) return;
+        updateCargoRowPalletInfo(row);
+        // Synchronizuj pallet_code z code wybranej palety (dla fallback)
+        var hid = row.querySelector('input[name$="[pallet_code]"]');
+        var opt = sel.options[sel.selectedIndex];
+        if (hid && opt) hid.value = opt.dataset.code || '';
+    });
+
+    // Initial render info panelu dla istniejacych wierszy (edit mode)
+    $cargoList.querySelectorAll('.so-cargo-row').forEach(updateCargoRowPalletInfo);
 
     $cargoList.addEventListener('click', function(e){
         var rm = e.target.closest('.so-cargo-remove');

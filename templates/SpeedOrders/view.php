@@ -1274,7 +1274,21 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                             <td><?= h($ci->product_name ?? '-') ?></td>
                             <td class="small">
                                 <?php if ($ci->pallet_type): ?>
-                                    <span class="badge bg-warning-subtle text-warning" title="<?= h($ci->pallet_type->name) ?>"><?= h($ci->pallet_type->code) ?></span>
+                                    <?php $pt = $ci->pallet_type; ?>
+                                    <span class="badge bg-warning-subtle text-warning" title="<?= h($pt->name) ?>"><?= h($pt->code) ?></span>
+                                    <div class="d-flex align-items-center gap-1 mt-1" style="font-size:.7rem">
+                                        <?php if ($pt->image_path): ?>
+                                            <img src="<?= h($pt->image_path) ?>" style="max-width:36px;max-height:36px;border-radius:.2rem;border:1px solid #e5e7eb">
+                                        <?php endif; ?>
+                                        <div class="text-muted">
+                                            <?php if ($pt->length_mm && $pt->width_mm): ?>
+                                                <div><?= h($pt->length_mm) ?>×<?= h($pt->width_mm) ?><?= $pt->height_mm ? '×' . h($pt->height_mm) : '' ?> mm</div>
+                                            <?php endif; ?>
+                                            <?php if ($pt->weight_empty_kg): ?>
+                                                <div>pusta: <?= number_format((float)$pt->weight_empty_kg, 1, ',', ' ') ?> kg</div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
                                 <?php elseif ($ci->pallet_code): ?>
                                     <span class="badge bg-secondary-subtle text-secondary" title="Poza katalogiem"><?= h($ci->pallet_code) ?></span>
                                 <?php endif; ?>
@@ -1311,6 +1325,24 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                 <i class="ri-alert-line me-1"></i>
                 <strong>Uwaga:</strong> Rzeczywista ilość (<?= $ci_totalReal ?>) różni się od deklarowanej (<?= $ci_totalAdv ?>).
                 Różnica: <?= ($ci_totalReal - $ci_totalAdv > 0 ? '+' : '') . ($ci_totalReal - $ci_totalAdv) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        // Waga TOTAL brutto: cargo + waga pustych palet (qty * weight_empty_kg)
+        $palletsEmptyWeight = 0.0;
+        foreach ($order->speed_order_cargo_items as $ci) {
+            if ($ci->pallet_type && $ci->pallet_type->weight_empty_kg && $ci->qty_advised) {
+                $palletsEmptyWeight += (float)$ci->pallet_type->weight_empty_kg * (int)$ci->qty_advised;
+            }
+        }
+        $totalGross = $ci_totalW + $palletsEmptyWeight;
+        ?>
+        <?php if ($palletsEmptyWeight > 0): ?>
+            <div class="mt-2 small text-muted d-flex justify-content-end gap-3">
+                <span>Ładunek: <strong><?= number_format($ci_totalW, 2, ',', ' ') ?> kg</strong></span>
+                <span>+ Waga pustych palet: <strong><?= number_format($palletsEmptyWeight, 2, ',', ' ') ?> kg</strong></span>
+                <span class="text-dark">= Brutto: <strong><?= number_format($totalGross, 2, ',', ' ') ?> kg</strong></span>
             </div>
         <?php endif; ?>
     </div>
