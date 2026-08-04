@@ -716,12 +716,26 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                                     <i class="ri-delete-bin-line"></i>
                                 </button>
                             </div>
-                            <div class="col-md-2 col-lg-1 offset-md-1">
-                                <label class="form-label small text-muted mb-0"><?= __('GPS lat') ?></label>
+                            <!-- Drugi rząd: okno + kontakt (analogicznie do pickup/delivery) -->
+                            <div class="col-md-1"><label class="form-label small text-muted mb-0"><?= __('Okno od') ?></label>
+                                <input type="time" name="speed_order_stops[<?= $sIdx ?>][time_from]" class="form-control form-control-sm" value="<?= h($stop->time_from ? (string)$stop->time_from : '') ?>">
+                            </div>
+                            <div class="col-md-1"><label class="form-label small text-muted mb-0"><?= __('Okno do') ?></label>
+                                <input type="time" name="speed_order_stops[<?= $sIdx ?>][time_to]" class="form-control form-control-sm" value="<?= h($stop->time_to ? (string)$stop->time_to : '') ?>">
+                            </div>
+                            <div class="col-md-2"><label class="form-label small text-muted mb-0"><?= __('Kontakt imię') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][contact_name]" class="form-control form-control-sm" value="<?= h($stop->contact_name ?? '') ?>" maxlength="120">
+                            </div>
+                            <div class="col-md-2"><label class="form-label small text-muted mb-0"><?= __('Telefon') ?></label>
+                                <input type="tel" name="speed_order_stops[<?= $sIdx ?>][contact_phone]" class="form-control form-control-sm" value="<?= h($stop->contact_phone ?? '') ?>" maxlength="40">
+                            </div>
+                            <div class="col-md-2"><label class="form-label small text-muted mb-0"><?= __('Email') ?></label>
+                                <input type="email" name="speed_order_stops[<?= $sIdx ?>][contact_email]" class="form-control form-control-sm" value="<?= h($stop->contact_email ?? '') ?>" maxlength="180">
+                            </div>
+                            <div class="col-md-1"><label class="form-label small text-muted mb-0"><?= __('GPS lat') ?></label>
                                 <input type="number" step="0.0000001" name="speed_order_stops[<?= $sIdx ?>][lat]" class="form-control form-control-sm so-stop-lat" value="<?= h($stop->lat ?? '') ?>" placeholder="52.229...">
                             </div>
-                            <div class="col-md-2 col-lg-1">
-                                <label class="form-label small text-muted mb-0"><?= __('GPS lng') ?></label>
+                            <div class="col-md-1"><label class="form-label small text-muted mb-0"><?= __('GPS lng') ?></label>
                                 <input type="number" step="0.0000001" name="speed_order_stops[<?= $sIdx ?>][lng]" class="form-control form-control-sm so-stop-lng" value="<?= h($stop->lng ?? '') ?>" placeholder="21.012...">
                             </div>
                         </div>
@@ -3035,7 +3049,14 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                             setF('[name$="[city]"]', stop.city);
                             setF('[name$="[place_name]"]', stop.place_name || stop.address);
                             setF('[name$="[planned_at]"]', stop.planned_at);
+                            setF('[name$="[time_from]"]', stop.time_from);
+                            setF('[name$="[time_to]"]', stop.time_to);
+                            setF('[name$="[contact_name]"]', stop.contact_name);
+                            setF('[name$="[contact_phone]"]', stop.contact_phone);
+                            setF('[name$="[contact_email]"]', stop.contact_email);
                             setF('[name$="[cargo_notes]"]', stop.cargo_notes);
+                            setF('.so-stop-lat', stop.lat);
+                            setF('.so-stop-lng', stop.lng);
                         });
                         // Odswiez licznik + trigger autocomplete attach dla nowych wierszy
                         renumberStops();
@@ -3127,9 +3148,20 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                 '<input type="hidden" name="speed_order_stops[' + idx + '][stop_index]" value="' + (idx + 1) + '" class="so-stop-idx">' +
                 '<button type="button" class="btn btn-sm btn-outline-danger so-stop-remove"><i class="ri-delete-bin-line"></i></button>' +
                 '</div>' +
-                '<div class="col-md-2 col-lg-1 offset-md-1"><label class="form-label small text-muted mb-0">GPS lat</label>' +
+                // Drugi rzad: okno + kontakt + GPS
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">Okno od</label>' +
+                '<input type="time" name="speed_order_stops[' + idx + '][time_from]" class="form-control form-control-sm"></div>' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">Okno do</label>' +
+                '<input type="time" name="speed_order_stops[' + idx + '][time_to]" class="form-control form-control-sm"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Kontakt imię</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][contact_name]" class="form-control form-control-sm" maxlength="120"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Telefon</label>' +
+                '<input type="tel" name="speed_order_stops[' + idx + '][contact_phone]" class="form-control form-control-sm" maxlength="40"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Email</label>' +
+                '<input type="email" name="speed_order_stops[' + idx + '][contact_email]" class="form-control form-control-sm" maxlength="180"></div>' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">GPS lat</label>' +
                 '<input type="number" step="0.0000001" name="speed_order_stops[' + idx + '][lat]" class="form-control form-control-sm so-stop-lat" placeholder="52.229..."></div>' +
-                '<div class="col-md-2 col-lg-1"><label class="form-label small text-muted mb-0">GPS lng</label>' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">GPS lng</label>' +
                 '<input type="number" step="0.0000001" name="speed_order_stops[' + idx + '][lng]" class="form-control form-control-sm so-stop-lng" placeholder="21.012..."></div>' +
             '</div></div>';
     }

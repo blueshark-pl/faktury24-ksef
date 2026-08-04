@@ -18,9 +18,12 @@ use Cake\ORM\Entity;
  * @property string|null $address
  * @property string|null $place_name
  * @property \Cake\I18n\DateTime|null $planned_at
+ * @property \Cake\I18n\Time|null $time_from
+ * @property \Cake\I18n\Time|null $time_to
  * @property \Cake\I18n\DateTime|null $actual_at
  * @property string|null $contact_name
  * @property string|null $contact_phone
+ * @property string|null $contact_email
  * @property string|null $cargo_notes
  * @property \Cake\I18n\DateTime|null $completed_at
  * @property \Cake\I18n\DateTime $created

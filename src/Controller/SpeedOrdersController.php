@@ -2908,6 +2908,9 @@ poprawny JSON o dokladnie tej strukturze:
       "time_to": "HH:MM Opening hours do lub pusty",
       "contact_name": "kontakt na miejscu lub pusty",
       "contact_phone": "telefon lub pusty",
+      "contact_email": "email osoby na miejscu lub pusty",
+      "lat": liczba lub null (jesli w dokumencie sa wspolrzedne GPS),
+      "lng": liczba lub null,
       "cargo_notes": "kod, ilosc, waga total lub Location Instructions lub pusty (np. '3990 kg total, 2 items')"
     }
   ],
@@ -2948,13 +2951,25 @@ CARGO ITEMS w multi-stop:
 
 BARDZO WAZNE - CHECKBOXY OPAKOWANIA (is_dry, is_wrapped, is_strapped, is_sort_only):
 - DOMYSLNIE ZAWSZE false dla WSZYSTKICH tych checkboxow.
-- Ustaw true TYLKO gdy w dokumencie jest JAWNY checkbox ZAZNACZONY (☑ / X / v),
-  albo jawne slowo w kolumnie/wierszu tej pozycji (np. "Dry: yes", "wrapped=true").
-- BRAK wzmianki = false. NIE zgaduj z ogolnego kontekstu (np. "palety" NIE oznacza dry).
-- Jesli dokument NIE MA tych kolumn - wszystkie zostaja false. Zwykla tabela z Item Name +
-  Stack Height + Advised Quantity BEZ osobnych kolumn Dry/Wrapping = wszystkie false.
-- TOSCA Collection Note MA kolumny Dry/Wrapping/Strapping/Sort Only - patrz na checkboxy per row.
-- LTL / Shipment Detail Information tylko z Stack Height + Qty - wszystkie flagi false.
+- Ustaw true TYLKO gdy w dokumencie widzisz WYRAZNIE ZAZNACZONY checkbox lub X/✓ w konkretnym rows.
+- Jak wygladaja checkboxy w PDF-ach spedycji:
+  * □ (pusty kwadrat) = FALSE (unchecked)
+  * ☒ ☑ ⊠ ⊗ ⊕ ✓ X x V (kwadrat z jakimkolwiek znakiem w srodku) = TRUE (checked)
+  * Kolorowe/wypelnione kwadraty vs puste konturowe = odpowiednio TRUE/FALSE
+- PATRZ CAŁKOWICIE na tabele - jesli sa 3 rows i 4 columny checkboxow (Dry/Wrap/Strap/Sort),
+  to masz 12 checkboxow. Kazdy sprawdz osobno.
+- BRAK kolumn Dry/Wrapping/Strapping/Sort Only w tabeli = ZAWSZE wszystko false. Nie zgaduj.
+- BRAK wzmianki = false. NIE inferuj "palety" -> dry ani "chlodnia" -> wrapped itp.
+- Roznice per row: w tabeli TOSCA moze byc:
+   Row 1: ✓Dry □Wrap □Strap □Sort  -> is_dry:true, reszta false
+   Row 2: □Dry ✓Wrap ✓Strap □Sort  -> is_wrapped:true, is_strapped:true, reszta false
+   Row 3: □□□□  -> wszystko false
+  Kazdy row moze byc INNY. NIE kopiuj z jednego row na kolejne.
+- LTL / Shipment Detail Information / Trans / Timocom - te dokumenty NIE MAJA
+  kolumn checkbox opakowania. Zwroc wszystkie false dla cargo_items[].
+- TOSCA Collection Note wersja 1 (nie multi-stop) - ma te kolumny, patrz uwaznie.
+- Jesli NIE JESTES PEWIEN co widzisz -> false. Latwiej user zaznaczy sam recznie
+  niz odznaczac nieprawdziwie zaznaczone.
 
 Format sciscle. Nie dodawaj tekstu poza JSON.
 SYS;
