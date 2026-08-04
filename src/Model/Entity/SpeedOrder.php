@@ -39,6 +39,10 @@ use Cake\ORM\Entity;
  * @property string|null $unload_name
  * @property string|null $unload_city
  * @property string|null $unload_country
+ * @property float|null  $load_lat
+ * @property float|null  $load_lng
+ * @property float|null  $unload_lat
+ * @property float|null  $unload_lng
  * @property string|null $route_description
  * @property string|null $title1
  * @property string|null $title2

@@ -472,8 +472,15 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <input type="text" name="load_postal_code" class="form-control" value="<?= h($order->load_postal_code ?? '') ?>" maxlength="20">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label small text-muted"><?= __('Miasto') ?></label>
+                    <label class="form-label small text-muted">
+                        <?= __('Miasto') ?>
+                        <?php if (!empty($order->load_lat) && !empty($order->load_lng)): ?>
+                            <span class="badge bg-success-subtle text-success ms-1" title="Współrzędne zapisane: <?= h($order->load_lat) ?>, <?= h($order->load_lng) ?>" style="font-size:.55rem"><i class="ri-map-pin-2-line"></i></span>
+                        <?php endif; ?>
+                    </label>
                     <input type="text" name="load_city" class="form-control" value="<?= h($order->load_city ?? '') ?>" maxlength="100">
+                    <input type="hidden" name="load_lat" value="<?= h($order->load_lat ?? '') ?>">
+                    <input type="hidden" name="load_lng" value="<?= h($order->load_lng ?? '') ?>">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
@@ -505,8 +512,15 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     </select>
                 </div>
                 <div class="col-md-8">
-                    <label class="form-label small text-muted"><?= __('Miasto') ?></label>
+                    <label class="form-label small text-muted">
+                        <?= __('Miasto') ?>
+                        <?php if (!empty($order->unload_lat) && !empty($order->unload_lng)): ?>
+                            <span class="badge bg-success-subtle text-success ms-1" title="Współrzędne zapisane: <?= h($order->unload_lat) ?>, <?= h($order->unload_lng) ?>" style="font-size:.55rem"><i class="ri-map-pin-2-line"></i></span>
+                        <?php endif; ?>
+                    </label>
                     <input type="text" name="unload_city" class="form-control" value="<?= h($order->unload_city ?? '') ?>" maxlength="100">
+                    <input type="hidden" name="unload_lat" value="<?= h($order->unload_lat ?? '') ?>">
+                    <input type="hidden" name="unload_lng" value="<?= h($order->unload_lng ?? '') ?>">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
@@ -579,6 +593,8 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                             <div class="col-md-1 text-end">
                                 <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][id]" value="<?= h($stop->id ?? '') ?>">
                                 <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][stop_index]" value="<?= $sIdx + 1 ?>" class="so-stop-idx">
+                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][lat]" value="<?= h($stop->lat ?? '') ?>" class="so-stop-lat">
+                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][lng]" value="<?= h($stop->lng ?? '') ?>" class="so-stop-lng">
                                 <button type="button" class="btn btn-sm btn-outline-danger so-stop-remove">
                                     <i class="ri-delete-bin-line"></i>
                                 </button>
@@ -1405,12 +1421,24 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     $lcClose.addEventListener('click', function(){ $lcBox.classList.add('d-none'); });
 
     // =====================================================================
-    // HERE AUTOCOMPLETE MIAST (load_city, unload_city, buyer_city)
+    // HERE AUTOCOMPLETE MIAST (load/unload/buyer/multi-stop)
+    // Przyjmuje selektor CSS lub konkretny element - dziala zarowno dla
+    // static form fields jak i dynamicznych wierszy multi-stop.
     // =====================================================================
-    function attachCityAutocomplete(inputName, countryFieldName, postalFieldName) {
-        var $inp = $form.elements[inputName];
-        if (!$inp) return;
-        // Wrapper dropdownu
+    function attachCityAutocomplete($inp, opts) {
+        opts = opts || {};
+        if (typeof $inp === 'string') $inp = $form.elements[$inp] || document.querySelector($inp);
+        if (!$inp || $inp.dataset.acAttached === '1') return;
+        $inp.dataset.acAttached = '1';
+
+        // Helper: znajdz powiazane pole (name / element / callback)
+        function getRelated(spec) {
+            if (!spec) return null;
+            if (typeof spec === 'string') return $form.elements[spec] || null;
+            if (typeof spec === 'function') return spec($inp);
+            return spec; // element
+        }
+
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:absolute;z-index:1050;background:#fff;border:1px solid #d1d5db;border-radius:.3rem;box-shadow:0 4px 12px rgba(0,0,0,.1);max-height:240px;overflow-y:auto;min-width:260px;display:none';
         document.body.appendChild(wrap);
@@ -1420,7 +1448,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             var r = $inp.getBoundingClientRect();
             wrap.style.left = (r.left + window.scrollX) + 'px';
             wrap.style.top  = (r.bottom + window.scrollY + 2) + 'px';
-            wrap.style.width = r.width + 'px';
+            wrap.style.width = Math.max(r.width, 260) + 'px';
         }
 
         function render(items) {
@@ -1430,10 +1458,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 var city = it.city || it.title || '';
                 var zip  = it.postal_code || '';
                 var cc   = it.country || '';
+                var hasCoords = it.lat && it.lng;
                 html += '<div class="so-city-opt py-1 px-2" data-idx="' + idx + '" ' +
                         'style="cursor:pointer;border-bottom:1px solid #f3f4f6">' +
                         '<div><strong>' + city + '</strong> ' +
                         (cc ? '<span class="badge bg-secondary-subtle text-secondary" style="font-size:.65rem">' + cc + '</span>' : '') +
+                        (hasCoords ? ' <i class="ri-map-pin-2-line text-success" title="GPS" style="font-size:.7rem"></i>' : '') +
                         '</div>' +
                         '<div class="so-hint">' + (it.label || '') + (zip ? ' · ' + zip : '') + '</div>' +
                         '</div>';
@@ -1457,7 +1487,6 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         });
 
         $inp.addEventListener('blur', function(){
-            // Delay zeby click w dropdown zdazyl zadzialac
             setTimeout(function(){ wrap.style.display = 'none'; }, 150);
         });
 
@@ -1468,23 +1497,62 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             var it = items[parseInt(opt.dataset.idx, 10)];
             if (!it) return;
             $inp.value = it.city || it.title || $inp.value;
-            if (countryFieldName && $form.elements[countryFieldName] && it.country) {
-                $form.elements[countryFieldName].value = it.country;
-            }
-            if (postalFieldName && $form.elements[postalFieldName] && it.postal_code) {
-                $form.elements[postalFieldName].value = it.postal_code;
-            }
+            var $co = getRelated(opts.country);
+            if ($co && it.country) $co.value = it.country;
+            var $zip = getRelated(opts.postal);
+            if ($zip && it.postal_code) $zip.value = it.postal_code;
+            var $lat = getRelated(opts.lat);
+            if ($lat && it.lat) $lat.value = it.lat;
+            var $lng = getRelated(opts.lng);
+            if ($lng && it.lng) $lng.value = it.lng;
             wrap.style.display = 'none';
-            // Trigger change zeby zadzialal pricingHistory / autosave
             $inp.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
         window.addEventListener('resize', positionDropdown);
         window.addEventListener('scroll', positionDropdown, true);
     }
-    attachCityAutocomplete('load_city',    'load_country',   'load_postal_code');
-    attachCityAutocomplete('unload_city',  'unload_country', null);
-    attachCityAutocomplete('buyer_city',   'buyer_country',  'buyer_postal_code');
+
+    // Static form fields (load/unload/buyer)
+    attachCityAutocomplete('load_city', {
+        country: 'load_country', postal: 'load_postal_code',
+        lat: 'load_lat', lng: 'load_lng',
+    });
+    attachCityAutocomplete('unload_city', {
+        country: 'unload_country', postal: null,
+        lat: 'unload_lat', lng: 'unload_lng',
+    });
+    attachCityAutocomplete('buyer_city', {
+        country: 'buyer_country', postal: 'buyer_postal_code',
+    });
+
+    // Multi-stop: attach autocomplete do wszystkich istniejacych wierszy + do nowo dodawanych
+    function attachStopRowAutocomplete(row) {
+        var $city    = row.querySelector('input[name$="[city]"]');
+        var $country = row.querySelector('input[name$="[country_code]"], select[name$="[country_code]"]');
+        var $postal  = row.querySelector('input[name$="[postal_code]"]');
+        var $lat     = row.querySelector('.so-stop-lat');
+        var $lng     = row.querySelector('.so-stop-lng');
+        if (!$city) return;
+        attachCityAutocomplete($city, {
+            country: $country, postal: $postal, lat: $lat, lng: $lng,
+        });
+    }
+    // Attach istniejacych stopow (edit mode)
+    document.querySelectorAll('#so-stops-list .so-stop-row').forEach(attachStopRowAutocomplete);
+    // Attach nowo dodanych - obserwator + hook w handlerze $stopsAdd
+    (function(){
+        var origAdd = $stopsAdd.onclick;
+        // Nie polegamy na onclick bo listener uzywa addEventListener - dodajmy dodatkowy
+        $stopsAdd.addEventListener('click', function(){
+            // Po chwili (po insertAdjacentHTML) attach do ostatniego wiersza
+            setTimeout(function(){
+                var rows = $stopsList.querySelectorAll('.so-stop-row');
+                var last = rows[rows.length - 1];
+                if (last) attachStopRowAutocomplete(last);
+            }, 10);
+        });
+    })();
 
     // =====================================================================
     // GUS LOOKUP po NIP (PL, 10 cyfr) -> prefill danych firmy
@@ -2495,6 +2563,8 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 '<input type="text" name="speed_order_stops[' + idx + '][cargo_notes]" class="form-control form-control-sm"></div>' +
                 '<div class="col-md-1 text-end">' +
                 '<input type="hidden" name="speed_order_stops[' + idx + '][stop_index]" value="' + (idx + 1) + '" class="so-stop-idx">' +
+                '<input type="hidden" name="speed_order_stops[' + idx + '][lat]" value="" class="so-stop-lat">' +
+                '<input type="hidden" name="speed_order_stops[' + idx + '][lng]" value="" class="so-stop-lng">' +
                 '<button type="button" class="btn btn-sm btn-outline-danger so-stop-remove"><i class="ri-delete-bin-line"></i></button>' +
                 '</div>' +
             '</div></div>';

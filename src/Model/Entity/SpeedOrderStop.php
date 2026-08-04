@@ -13,6 +13,8 @@ use Cake\ORM\Entity;
  * @property string|null $country_code
  * @property string|null $postal_code
  * @property string|null $city
+ * @property float|null  $lat
+ * @property float|null  $lng
  * @property string|null $address
  * @property string|null $place_name
  * @property \Cake\I18n\DateTime|null $planned_at
