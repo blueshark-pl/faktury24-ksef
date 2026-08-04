@@ -1318,6 +1318,21 @@ class SpeedOrdersController extends AppController
                     $this->redirect(['action' => 'add']);
                     return;
                 }
+                // "Zapisz i wystaw fakture" -> Invoices::add z prefillem ze zlecenia
+                if ($this->request->getData('save_and_invoice')) {
+                    $invType = strtoupper((string)$order->currency) === 'PLN' ? 'vat' : 'currency';
+                    $this->redirect([
+                        'controller' => 'Invoices',
+                        'action'     => 'add',
+                        '?' => ['type' => $invType, 'from_order_id' => $order->id],
+                    ]);
+                    return;
+                }
+                // "Zapisz i dodaj zalacznik CMR" -> view z fokusem na attachments
+                if ($this->request->getData('save_and_attach')) {
+                    $this->redirect(['action' => 'view', $order->id, '?' => ['focus' => 'attachments']]);
+                    return;
+                }
                 $this->redirect(['action' => 'view', $order->id]);
                 return;
             }

@@ -245,7 +245,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     'novalidate' => 'novalidate',
 ]) ?>
 
-<input type="hidden" name="save_and_new" id="save_and_new" value="">
+<input type="hidden" name="save_and_new"     id="save_and_new"     value="">
+<input type="hidden" name="save_and_attach"  id="save_and_attach"  value="">
+<input type="hidden" name="save_and_invoice" id="save_and_invoice" value="">
 
 <!-- SEKCJA 1: Numer / meta -->
 <div class="col-12">
@@ -695,14 +697,29 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             <span class="opacity-25 d-none d-lg-inline">|</span>
             <span class="d-none d-lg-inline"><?= __('Auto-zapis co 30 s') ?></span>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-outline-secondary" id="so-btn-cancel">
                 <i class="ri-close-line me-1"></i><?= __('Anuluj') ?>
             </a>
             <?php if (!$isEdit): ?>
-                <button type="button" class="btn btn-outline-primary" id="so-btn-save-new">
-                    <i class="ri-add-line me-1"></i><?= __('Zapisz i dodaj kolejne') ?>
-                </button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline-primary" id="so-btn-save-new">
+                        <i class="ri-add-line me-1"></i><?= __('Zapisz + kolejne') ?>
+                    </button>
+                    <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <button type="button" class="dropdown-item" id="so-btn-save-attach">
+                                <i class="ri-attachment-2 me-1"></i><?= __('Zapisz + dodaj CMR') ?>
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item" id="so-btn-save-invoice">
+                                <i class="ri-file-add-line me-1"></i><?= __('Zapisz + wystaw fakturę') ?>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             <?php endif; ?>
             <button type="button" class="btn btn-primary fw-semibold" id="so-btn-save">
                 <i class="ri-save-line me-1"></i>
@@ -786,6 +803,20 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     if ($btnSaveNew) {
         $btnSaveNew.addEventListener('click', function(){
             $saveNewInput.value = '1';
+            $form.submit();
+        });
+    }
+    var $btnSaveAttach = document.getElementById('so-btn-save-attach');
+    if ($btnSaveAttach) {
+        $btnSaveAttach.addEventListener('click', function(){
+            document.getElementById('save_and_attach').value = '1';
+            $form.submit();
+        });
+    }
+    var $btnSaveInvoice = document.getElementById('so-btn-save-invoice');
+    if ($btnSaveInvoice) {
+        $btnSaveInvoice.addEventListener('click', function(){
+            document.getElementById('save_and_invoice').value = '1';
             $form.submit();
         });
     }

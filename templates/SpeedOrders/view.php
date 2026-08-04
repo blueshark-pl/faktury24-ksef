@@ -2251,6 +2251,22 @@ endif;
     document.getElementById('fk-search-q')?.addEventListener('keydown', function(e){
         if (e.key === 'Enter') document.getElementById('btn-fk-search').click();
     });
+
+    // Auto-scroll do sekcji ?focus=attachments (po "Zapisz + dodaj CMR" z formularza)
+    (function(){
+        var qs = new URLSearchParams(window.location.search);
+        if (qs.get('focus') === 'attachments') {
+            var el = document.getElementById('cmr-card');
+            if (el) {
+                setTimeout(function(){
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    el.style.boxShadow = '0 0 0 3px rgba(13,110,253,.35)';
+                    el.style.transition = 'box-shadow 1.2s ease';
+                    setTimeout(function(){ el.style.boxShadow = ''; }, 2500);
+                }, 300);
+            }
+        }
+    })();
 })();
 </script>
 <?php if (!$isModal): ?>
