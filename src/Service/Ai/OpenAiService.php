@@ -91,7 +91,7 @@ class OpenAiService
      * @param string|null $imageUrl Data URL 'data:image/png;base64,XXXX' lub public URL
      * @param int         $maxTokens
      */
-    public function chatVisionJson(string $system, string $user, ?string $imageUrl = null, int $maxTokens = 1500): array
+    public function chatVisionJson(string $system, string $user, ?string $imageUrl = null, int $maxTokens = 1500, array $extraImages = []): array
     {
         $userContent = [];
         if ($user !== '') {
@@ -99,6 +99,11 @@ class OpenAiService
         }
         if ($imageUrl) {
             $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]];
+        }
+        foreach ($extraImages as $extraUrl) {
+            if (is_string($extraUrl) && $extraUrl !== '') {
+                $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $extraUrl]];
+            }
         }
         $body = [
             'model' => $this->model,

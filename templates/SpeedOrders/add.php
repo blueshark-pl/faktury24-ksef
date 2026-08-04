@@ -56,6 +56,14 @@ $csrfToken = (string)$this->request->getAttribute('csrfToken');
 <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
 <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
 <?php endif; ?>
+<!-- pdf.js - do renderowania PDF zlecen jako obrazy dla AI Vision -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs" type="module"></script>
+<script type="module">
+    // pdf.js jako ES module - eksportujemy globalnie zeby dostep z regular skryptu
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
+    window.pdfjsLib = pdfjsLib;
+</script>
 
 <style>
 .so-form-wrap { padding-bottom: 90px; }
@@ -269,9 +277,11 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <textarea id="so-ai-text" class="form-control" rows="6" placeholder="<?= __('Wklej tutaj tekst wiadomości od klienta...') ?>"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small text-muted"><?= __('LUB screenshot (JPG/PNG, max 5 MB)') ?></label>
-                    <input type="file" id="so-ai-image" accept="image/png,image/jpeg,image/webp" class="form-control">
-                    <div class="so-hint mt-1"><?= __('Możesz też wkleić obraz (Ctrl+V) po kliknięciu w textarea powyżej.') ?></div>
+                    <label class="form-label small text-muted"><?= __('LUB screenshot / PDF (JPG/PNG/PDF, max 10 MB)') ?></label>
+                    <input type="file" id="so-ai-image" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" class="form-control">
+                    <div class="so-hint mt-1">
+                        <?= __('Możesz też wkleić obraz (Ctrl+V) po kliknięciu w textarea powyżej. PDF: renderujemy do 3 pierwszych stron.') ?>
+                    </div>
                     <div id="so-ai-preview" class="mt-2"></div>
                 </div>
                 <div id="so-ai-status" class="alert alert-info py-2 px-3 mb-0 d-none small"></div>
@@ -2592,19 +2602,80 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var $aiNote    = document.getElementById('so-ai-note');
     var $aiSummary = document.getElementById('so-ai-summary');
     var $aiBtn     = document.getElementById('so-ai-btn-parse');
-    var aiImageB64 = null;
+    var aiImageB64 = null;       // pojedynczy screenshot (JPG/PNG)
+    var aiPdfPages = [];         // strony PDF jako dataURL (max 3)
 
-    // Podglad screenshot
+    // Render pojedynczej strony PDF na canvas -> dataURL PNG
+    function renderPdfPage(pdf, pageNum, maxW) {
+        return pdf.getPage(pageNum).then(function(page){
+            var viewport = page.getViewport({ scale: 1 });
+            var scale = Math.min(maxW / viewport.width, 2.0);
+            var scaled = page.getViewport({ scale: scale });
+            var canvas = document.createElement('canvas');
+            canvas.width = scaled.width;
+            canvas.height = scaled.height;
+            var ctx = canvas.getContext('2d');
+            return page.render({ canvasContext: ctx, viewport: scaled }).promise.then(function(){
+                return canvas.toDataURL('image/png');
+            });
+        });
+    }
+
+    async function processPdfFile(f) {
+        if (!window.pdfjsLib) {
+            $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
+            $aiStatus.textContent = 'Biblioteka pdf.js jeszcze się ładuje - poczekaj chwilę i spróbuj ponownie.';
+            $aiStatus.classList.remove('d-none');
+            return;
+        }
+        $aiStatus.className = 'alert alert-info py-2 px-3 mb-0 small';
+        $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Renderuje strony PDF...';
+        $aiStatus.classList.remove('d-none');
+        try {
+            var buf = await f.arrayBuffer();
+            var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+            var maxPages = Math.min(pdf.numPages, 3);
+            aiPdfPages = [];
+            aiImageB64 = null;
+            var html = '<div class="d-flex flex-wrap gap-2">';
+            for (var i = 1; i <= maxPages; i++) {
+                var dataUrl = await renderPdfPage(pdf, i, 1600);
+                aiPdfPages.push(dataUrl);
+                html += '<div style="text-align:center"><img src="' + dataUrl + '" style="max-width:150px;max-height:200px;border:1px solid #d1d5db;border-radius:.3rem">' +
+                        '<div class="so-hint">Strona ' + i + '/' + pdf.numPages + '</div></div>';
+            }
+            html += '</div>';
+            if (pdf.numPages > 3) {
+                html += '<div class="so-hint mt-1"><i class="ri-information-line me-1"></i>PDF ma ' + pdf.numPages + ' stron - użyjemy pierwszych 3 do analizy AI.</div>';
+            }
+            $aiPreview.innerHTML = html;
+            $aiStatus.className = 'alert alert-success py-2 px-3 mb-0 small';
+            $aiStatus.textContent = 'Wyrenderowano ' + maxPages + ' stron. Kliknij "Przeanalizuj".';
+        } catch (e) {
+            $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
+            $aiStatus.textContent = 'Blad renderu PDF: ' + e.message;
+            aiPdfPages = [];
+        }
+    }
+
+    // Podglad screenshot / PDF
     if ($aiImage) {
         $aiImage.addEventListener('change', function(e){
             var f = e.target.files[0];
-            if (!f) { aiImageB64 = null; $aiPreview.innerHTML = ''; return; }
-            if (f.size > 5 * 1024 * 1024) {
+            if (!f) { aiImageB64 = null; aiPdfPages = []; $aiPreview.innerHTML = ''; return; }
+            if (f.size > 10 * 1024 * 1024) {
                 $aiStatus.className = 'alert alert-danger py-2 px-3 mb-0 small';
-                $aiStatus.textContent = 'Plik za duzy (max 5 MB)';
+                $aiStatus.textContent = 'Plik za duzy (max 10 MB)';
                 $aiStatus.classList.remove('d-none');
                 return;
             }
+            // PDF -> pdf.js render do dataURL PNG
+            if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+                processPdfFile(f);
+                return;
+            }
+            // Zwykly obraz - jak dotad
+            aiPdfPages = [];
             var reader = new FileReader();
             reader.onload = function(ev){
                 aiImageB64 = ev.target.result;
@@ -2639,15 +2710,17 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     if ($aiBtn) {
         $aiBtn.addEventListener('click', function(){
             var text = ($aiText.value || '').trim();
-            if (!text && !aiImageB64) {
+            if (!text && !aiImageB64 && aiPdfPages.length === 0) {
                 $aiStatus.className = 'alert alert-warning py-2 px-3 mb-0 small';
-                $aiStatus.textContent = 'Wklej email lub dodaj screenshot';
+                $aiStatus.textContent = 'Wklej email lub dodaj screenshot/PDF';
                 $aiStatus.classList.remove('d-none');
                 return;
             }
             $aiBtn.disabled = true;
             $aiStatus.className = 'alert alert-info py-2 px-3 mb-0 small';
-            $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Analiza AI... (10-20 sek)';
+            var pagesCount = aiPdfPages.length;
+            $aiStatus.innerHTML = '<i class="ri-loader-4-line spin me-1"></i>Analiza AI' +
+                (pagesCount > 0 ? ' (' + pagesCount + ' stron PDF)' : '') + '... (10-30 sek)';
             $aiStatus.classList.remove('d-none');
             $aiResult.classList.add('d-none');
 
@@ -2655,6 +2728,10 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
             fd.append('_csrfToken', CSRF);
             if (text) fd.append('text', text);
             if (aiImageB64) fd.append('image_base64', aiImageB64);
+            // PDF: wyslij strony jako image_pages[]
+            aiPdfPages.forEach(function(pageDataUrl){
+                fd.append('image_pages[]', pageDataUrl);
+            });
 
             fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'aiParseOrderJson']) ?>', {
                 method: 'POST',

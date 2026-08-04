@@ -2801,9 +2801,14 @@ class SpeedOrdersController extends AppController
         $this->request->allowMethod(['post']);
         $text  = trim((string)$this->request->getData('text', ''));
         $image = trim((string)$this->request->getData('image_base64', ''));
+        $pages = (array)$this->request->getData('image_pages', []);
+        // Odfiltruj puste + tylko data URLs (bezpieczenstwo - nie akceptujemy external URLs)
+        $pages = array_values(array_filter($pages, function ($p) {
+            return is_string($p) && strncmp($p, 'data:image/', 11) === 0;
+        }));
 
-        if ($text === '' && $image === '') {
-            $this->jsonResp(['ok' => false, 'error' => 'Wklej email/tekst LUB dodaj screenshot']);
+        if ($text === '' && $image === '' && empty($pages)) {
+            $this->jsonResp(['ok' => false, 'error' => 'Wklej email/tekst LUB dodaj screenshot/PDF']);
             return;
         }
 
@@ -2886,11 +2891,16 @@ SYS;
 
         try {
             $ai = new \App\Service\Ai\OpenAiService();
-            if ($image !== '') {
-                // Vision: przekazujemy image + opcjonalny text jako kontekst
-                $result = $ai->chatVisionJson($system, $text ?: 'Wyciagnij dane zlecenia z tego screenshotu.', $image, 1200);
+            $hasVision = ($image !== '' || !empty($pages));
+            if ($hasVision) {
+                // Multi-image: pierwszy z $image albo pages[0], reszta jako extraImages.
+                // Max tokens wyzsze dla PDF (moze byc wiele stron do przeanalizowania).
+                $primary  = $image !== '' ? $image : $pages[0];
+                $extra    = $image !== '' ? $pages : array_slice($pages, 1);
+                $maxToks  = 1200 + (min(count($extra), 5) * 400);
+                $prompt   = $text !== '' ? $text : 'Wyciagnij dane zlecenia z zalaczonego dokumentu (PDF/screenshot). Jesli sa 2+ strony - polacz informacje z wszystkich stron.';
+                $result = $ai->chatVisionJson($system, $prompt, $primary, $maxToks, $extra);
             } else {
-                // Zwykly text
                 $result = $ai->chatJson($system, $text, 1200);
             }
             $this->jsonResp(['ok' => true, 'data' => $result]);
