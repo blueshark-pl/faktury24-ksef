@@ -49,6 +49,14 @@ $autosaveKey = 'so_form_' . ($isEdit ? 'edit_' . $order->id : 'add');
 $csrfToken = (string)$this->request->getAttribute('csrfToken');
 ?>
 
+<?php if (!empty($hereApiKey)): ?>
+<link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+<script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+<?php endif; ?>
+
 <style>
 .so-form-wrap { padding-bottom: 90px; }
 .so-sticky-bar {
@@ -734,36 +742,55 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             </div>
             <div id="so-here-alert" class="alert alert-warning py-2 px-3 mb-2 d-none small"></div>
             <div class="row g-3">
-                <div class="col-md-2">
-                    <div class="p-2 rounded" style="background:#f0f7ff">
-                        <div class="so-hint"><?= __('Dystans') ?></div>
-                        <div class="fs-5 fw-semibold text-primary" id="so-here-km">-</div>
-                    </div>
-                </div>
-                <div class="col-md-2">
-                    <div class="p-2 rounded" style="background:#f0f7ff">
-                        <div class="so-hint"><?= __('Czas jazdy') ?></div>
-                        <div class="fs-5 fw-semibold" id="so-here-time">-</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="p-2 rounded" style="background:#fef3c7">
-                        <div class="so-hint"><?= __('Tolls (EUR)') ?></div>
-                        <div class="fs-5 fw-semibold" id="so-here-tolls">-</div>
-                        <div class="so-hint" id="so-here-tolls-detail"></div>
-                    </div>
-                </div>
-                <div class="col-md-5">
-                    <div class="p-2 rounded" style="background:#ecfdf5">
-                        <div class="so-hint"><?= __('Sugestia ceny (km × stawka + tolls)') ?></div>
-                        <div class="d-flex align-items-center gap-2 mt-1">
-                            <div class="fs-4 fw-bold text-success" id="so-here-price">-</div>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="so-here-apply" disabled>
-                                <i class="ri-magic-line me-1"></i><?= __('Ustaw jako netto') ?>
-                            </button>
+                <!-- Lewa: KPI + cena -->
+                <div class="col-lg-5">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="p-2 rounded" style="background:#f0f7ff">
+                                <div class="so-hint"><?= __('Dystans') ?></div>
+                                <div class="fs-5 fw-semibold text-primary" id="so-here-km">-</div>
+                            </div>
                         </div>
-                        <div class="so-hint mt-1" id="so-here-price-detail"></div>
+                        <div class="col-6">
+                            <div class="p-2 rounded" style="background:#f0f7ff">
+                                <div class="so-hint"><?= __('Czas jazdy') ?></div>
+                                <div class="fs-5 fw-semibold" id="so-here-time">-</div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="p-2 rounded" style="background:#fef3c7">
+                                <div class="so-hint"><?= __('Tolls (EUR)') ?></div>
+                                <div class="fs-5 fw-semibold" id="so-here-tolls">-</div>
+                                <div class="so-hint" id="so-here-tolls-detail"></div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="p-2 rounded" style="background:#ecfdf5">
+                                <div class="so-hint"><?= __('Sugestia ceny (km × stawka + tolls)') ?></div>
+                                <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                                    <div class="fs-4 fw-bold text-success" id="so-here-price">-</div>
+                                    <button type="button" class="btn btn-sm btn-outline-success" id="so-here-apply" disabled>
+                                        <i class="ri-magic-line me-1"></i><?= __('Ustaw jako netto') ?>
+                                    </button>
+                                </div>
+                                <div class="so-hint mt-1" id="so-here-price-detail"></div>
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Prawa: mapa HERE -->
+                <div class="col-lg-7">
+                    <?php if (!empty($hereApiKey)): ?>
+                        <div id="so-here-map" style="width:100%;height:320px;background:#e5e7eb;border-radius:.35rem;overflow:hidden"></div>
+                    <?php else: ?>
+                        <div class="p-3 text-center text-muted" style="background:#f8fafc;border-radius:.35rem;height:320px;display:flex;align-items:center;justify-content:center">
+                            <div><i class="ri-map-pin-line" style="font-size:2rem"></i><br><small>Konfiguruj HERE API key aby zobaczyć mapę</small></div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <!-- Legacy placeholder (dummy) -->
+                <div class="d-none">
                 </div>
             </div>
         </div>
@@ -1716,6 +1743,73 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     }
 
     // =====================================================================
+    // LIVE MAPKA HERE (JS SDK 3.1)
+    // =====================================================================
+    var HERE_KEY = <?= json_encode($hereApiKey ?? '') ?>;
+    var herePlatform = null, hereMap = null, hereMapUI = null, hereBehavior = null;
+    var hereMapEl = document.getElementById('so-here-map');
+    var currentPolyline = null;
+    var currentMarkers = [];
+
+    function initHereMap() {
+        if (!hereMapEl || !HERE_KEY || !window.H || herePlatform) return;
+        try {
+            herePlatform = new H.service.Platform({ apikey: HERE_KEY });
+            var layers = herePlatform.createDefaultLayers();
+            hereMap = new H.Map(hereMapEl, layers.vector.normal.map, {
+                center: { lat: 52.0, lng: 19.0 }, zoom: 5,
+                pixelRatio: window.devicePixelRatio || 1,
+            });
+            window.addEventListener('resize', function(){ hereMap.getViewPort().resize(); });
+            hereBehavior = new H.mapevents.Behavior(new H.mapevents.MapEvents(hereMap));
+            hereMapUI = H.ui.UI.createDefault(hereMap, layers);
+        } catch (e) {
+            console.error('HERE map init error:', e);
+        }
+    }
+
+    function clearMap() {
+        if (!hereMap) return;
+        if (currentPolyline) { try { hereMap.removeObject(currentPolyline); } catch(e){} currentPolyline = null; }
+        currentMarkers.forEach(function(m){ try { hereMap.removeObject(m); } catch(e){} });
+        currentMarkers = [];
+    }
+
+    function drawRouteOnMap(polylineStr, fromLL, toLL) {
+        if (!hereMap || !polylineStr) return;
+        clearMap();
+        try {
+            var lineString = H.geo.LineString.fromFlexiblePolyline(polylineStr);
+            currentPolyline = new H.map.Polyline(lineString, {
+                style: { strokeColor: '#3b82f6', lineWidth: 5 }
+            });
+            hereMap.addObject(currentPolyline);
+            // Markers
+            if (fromLL) {
+                var m1 = new H.map.Marker({ lat: fromLL.lat, lng: fromLL.lng });
+                hereMap.addObject(m1);
+                currentMarkers.push(m1);
+            }
+            if (toLL) {
+                var m2 = new H.map.Marker({ lat: toLL.lat, lng: toLL.lng });
+                hereMap.addObject(m2);
+                currentMarkers.push(m2);
+            }
+            // Fit to route
+            hereMap.getViewModel().setLookAtData({ bounds: currentPolyline.getBoundingBox() });
+        } catch (e) {
+            console.error('HERE drawRoute error:', e);
+        }
+    }
+
+    // Deferred init - odpal HERE gdy skrypty sie zaladuja
+    (function waitForHere(tries){
+        if (tries <= 0) return;
+        if (window.H && window.H.service) initHereMap();
+        else setTimeout(function(){ waitForHere(tries - 1); }, 200);
+    })(50);
+
+    // =====================================================================
     // LIVE KALKULATOR HERE (km, duration, tolls, sugestia ceny)
     // =====================================================================
     var $hWrap     = document.getElementById('so-here-wrap');
@@ -1790,6 +1884,11 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             $hKm.textContent   = j.distance_km.toLocaleString('pl-PL') + ' km';
             $hTime.textContent = fmtMin(j.duration_min);
             $hTolls.textContent = j.tolls_total_eur.toFixed(2) + ' €';
+
+            // Rysuj polyline na mapie
+            if (j.polyline && j.from && j.to) {
+                drawRouteOnMap(j.polyline, {lat: j.from.lat, lng: j.from.lng}, {lat: j.to.lat, lng: j.to.lng});
+            }
             var tollsD = Object.keys(j.tolls_by_country || {}).map(function(c){
                 return c + ': ' + j.tolls_by_country[c].toFixed(2) + ' €';
             }).join(', ');

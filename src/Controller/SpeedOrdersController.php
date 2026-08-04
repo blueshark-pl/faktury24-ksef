@@ -1578,6 +1578,7 @@ class SpeedOrdersController extends AppController
         $this->set('drivers',       $this->loadDriversForSelect());
         $this->set('vehicles',      $this->loadVehiclesForSelect());
         $this->set('recentInMonth', $this->loadRecentManualInMonth($companyNip));
+        $this->set('hereApiKey',    (string)\Cake\Core\Configure::read('Here.apiKey'));
         $this->render('add');
     }
 
@@ -1620,6 +1621,7 @@ class SpeedOrdersController extends AppController
         $this->set('isEdit', true);
         $this->set('drivers',  $this->loadDriversForSelect());
         $this->set('vehicles', $this->loadVehiclesForSelect());
+        $this->set('hereApiKey', (string)\Cake\Core\Configure::read('Here.apiKey'));
         $this->render('add');
     }
 
@@ -2440,8 +2442,9 @@ SYS;
                 'suggested_price'   => $suggestedInCurrency,
                 'suggested_currency' => $currency,
                 'rate_per_km'       => $ratePerKm,
-                'from' => ['label' => $from['label'], 'country' => $from['country']],
-                'to'   => ['label' => $to['label'],   'country' => $to['country']],
+                'polyline'          => (string)($r['polyline'] ?? ''),
+                'from' => ['label' => $from['label'], 'country' => $from['country'], 'lat' => $from['lat'], 'lng' => $from['lng']],
+                'to'   => ['label' => $to['label'],   'country' => $to['country'],   'lat' => $to['lat'],   'lng' => $to['lng']],
             ]);
         } catch (\Throwable $e) {
             \Cake\Log\Log::warning('routeCalcJson: ' . $e->getMessage());
