@@ -90,10 +90,14 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/zlecenia/usun/{id}',      ['controller' => 'SpeedOrders', 'action' => 'delete'])
             ->setPass(['id']);
-        $builder->get('/zlecenia/drivers.json',    ['controller' => 'SpeedOrders', 'action' => 'driversJson']);
-        $builder->get('/zlecenia/vehicles.json',   ['controller' => 'SpeedOrders', 'action' => 'vehiclesJson']);
-        $builder->get('/zlecenia/ostatnie-dla-klienta.json', ['controller' => 'SpeedOrders', 'action' => 'lastForBuyerJson']);
-        $builder->get('/zlecenia/cities.json', ['controller' => 'SpeedOrders', 'action' => 'citiesJson']);
+        // UWAGA: setExtensions(['json']) na scope stripuje .json z URL przed matchowaniem,
+        // wiec trasy definiujemy BEZ .json w path. URL /zlecenia/drivers.json → matcher
+        // szuka /zlecenia/drivers z ext=json.
+        $builder->get('/zlecenia/drivers',              ['controller' => 'SpeedOrders', 'action' => 'driversJson']);
+        $builder->get('/zlecenia/vehicles',             ['controller' => 'SpeedOrders', 'action' => 'vehiclesJson']);
+        $builder->get('/zlecenia/ostatnie-dla-klienta', ['controller' => 'SpeedOrders', 'action' => 'lastForBuyerJson']);
+        $builder->get('/zlecenia/cities',               ['controller' => 'SpeedOrders', 'action' => 'citiesJson']);
+        $builder->post('/zlecenia/route-calc',          ['controller' => 'SpeedOrders', 'action' => 'routeCalcJson']);
         $builder->get('/invoices/print-custom/{id}', ['controller' => 'Invoices', 'action' => 'printCustom'])->setPass(['id']);
         $builder->get('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'getLabel'])->setPass(['id']);
         $builder->post('/invoices/{id}/label', ['controller' => 'Invoices', 'action' => 'generateLabel'])->setPass(['id']);

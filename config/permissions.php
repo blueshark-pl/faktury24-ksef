@@ -454,6 +454,7 @@ return [
                 // Reczne zlecenia (source='manual')
                 'add', 'edit', 'delete',
                 'driversJson', 'vehiclesJson', 'lastForBuyerJson', 'citiesJson',
+                'routeCalcJson',
             ],
         ],
 

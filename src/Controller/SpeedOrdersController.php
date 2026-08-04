@@ -1271,6 +1271,8 @@ class SpeedOrdersController extends AppController
 
     private function jsonResp(array $data): void
     {
+        $this->viewBuilder()->disableAutoLayout();
+        $this->autoRender = false;
         $this->response = $this->response
             ->withType('application/json')
             ->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -1485,6 +1487,81 @@ class SpeedOrdersController extends AppController
                 'payment_terms'  => $order->payment_terms,
             ],
         ]);
+    }
+
+    /**
+     * AJAX: lekki live kalkulator trasy HERE dla formularza zlecenia.
+     * POST /zlecenia/route-calc.json body: from_city, from_country, to_city, to_country,
+     *                                       [currency=EUR], [rate_per_km=1.20]
+     * Zwraca: distance_km, duration_min, tolls_total (EUR), tolls_by_country,
+     *         suggested_price (km*rate + tolls), sugestia w PLN po kursie NBP.
+     */
+    public function routeCalcJson(): void
+    {
+        $this->request->allowMethod(['post']);
+        $data = (array)$this->request->getData();
+
+        $fromCity    = trim((string)($data['from_city'] ?? ''));
+        $fromCountry = strtoupper(trim((string)($data['from_country'] ?? '')));
+        $toCity      = trim((string)($data['to_city'] ?? ''));
+        $toCountry   = strtoupper(trim((string)($data['to_country'] ?? '')));
+        $currency    = strtoupper(trim((string)($data['currency'] ?? 'EUR')));
+        $ratePerKm   = (float)($data['rate_per_km'] ?? 1.20);
+
+        if ($fromCity === '' || $toCity === '') {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak miast trasy']);
+            return;
+        }
+
+        try {
+            $svc = new \App\Service\Routing\HereRoutingService();
+
+            $fromQ = trim($fromCity . ($fromCountry ? ', ' . $fromCountry : ''));
+            $toQ   = trim($toCity   . ($toCountry   ? ', ' . $toCountry   : ''));
+            $from  = $svc->geocode($fromQ);
+            $to    = $svc->geocode($toQ);
+
+            if (!$from || !$to) {
+                $this->jsonResp(['ok' => false, 'error' => 'Nie znaleziono lokalizacji']);
+                return;
+            }
+
+            // Bez vehicle -> car mode (szybsze, dla wstepnej estymaty). Tolls beda car-tolls.
+            $r = $svc->route(
+                ['lat' => $from['lat'], 'lng' => $from['lng']],
+                ['lat' => $to['lat'],   'lng' => $to['lng']],
+                null,
+                ['currency' => 'EUR']
+            );
+
+            $km     = (float)$r['distance_km'];
+            $tollsEUR = (float)($r['tolls_total'] ?? 0);
+            $suggestedEUR = round($km * $ratePerKm + $tollsEUR, 2);
+            $suggestedInCurrency = $suggestedEUR;
+
+            // Przeliczenie na waluta docelowa (przybliżony kurs statyczny — kurs NBP
+            // moze byc pobrany osobno, tu tylko rough estymata).
+            static $roughRates = ['EUR' => 1.0, 'PLN' => 4.30, 'USD' => 1.10, 'GBP' => 0.85, 'CHF' => 0.98];
+            if (isset($roughRates[$currency])) {
+                $suggestedInCurrency = round($suggestedEUR * $roughRates[$currency], 2);
+            }
+
+            $this->jsonResp([
+                'ok'                => true,
+                'distance_km'       => $km,
+                'duration_min'      => (int)$r['duration_min'],
+                'tolls_total_eur'   => round($tollsEUR, 2),
+                'tolls_by_country'  => $r['tolls_by_country'] ?? [],
+                'suggested_price'   => $suggestedInCurrency,
+                'suggested_currency' => $currency,
+                'rate_per_km'       => $ratePerKm,
+                'from' => ['label' => $from['label'], 'country' => $from['country']],
+                'to'   => ['label' => $to['label'],   'country' => $to['country']],
+            ]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('routeCalcJson: ' . $e->getMessage());
+            $this->jsonResp(['ok' => false, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

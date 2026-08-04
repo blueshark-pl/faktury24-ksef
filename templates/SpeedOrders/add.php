@@ -422,6 +422,58 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     </div>
 </div>
 
+<!-- WIDGET: Live kalkulator trasy HERE -->
+<div class="col-12" id="so-here-wrap" style="display:none">
+    <div class="card border-0 shadow-sm so-section-card" style="border-left:3px solid #6366f1 !important">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-map-pin-line me-1 text-primary"></i> <?= __('Sugestia trasy (HERE Maps)') ?>
+                    <span class="so-hint ms-2" id="so-here-status"></span>
+                </h6>
+                <div class="d-flex gap-1 align-items-center">
+                    <label class="so-hint mb-0"><?= __('Stawka EUR/km:') ?></label>
+                    <input type="number" step="0.01" min="0.1" max="5" id="so-here-rate" class="form-control form-control-sm" value="1.20" style="width:80px">
+                </div>
+            </div>
+            <div id="so-here-alert" class="alert alert-warning py-2 px-3 mb-2 d-none small"></div>
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <div class="p-2 rounded" style="background:#f0f7ff">
+                        <div class="so-hint"><?= __('Dystans') ?></div>
+                        <div class="fs-5 fw-semibold text-primary" id="so-here-km">-</div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="p-2 rounded" style="background:#f0f7ff">
+                        <div class="so-hint"><?= __('Czas jazdy') ?></div>
+                        <div class="fs-5 fw-semibold" id="so-here-time">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-2 rounded" style="background:#fef3c7">
+                        <div class="so-hint"><?= __('Tolls (EUR)') ?></div>
+                        <div class="fs-5 fw-semibold" id="so-here-tolls">-</div>
+                        <div class="so-hint" id="so-here-tolls-detail"></div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <div class="p-2 rounded" style="background:#ecfdf5">
+                        <div class="so-hint"><?= __('Sugestia ceny (km × stawka + tolls)') ?></div>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <div class="fs-4 fw-bold text-success" id="so-here-price">-</div>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="so-here-apply" disabled>
+                                <i class="ri-magic-line me-1"></i><?= __('Ustaw jako netto') ?>
+                            </button>
+                        </div>
+                        <div class="so-hint mt-1" id="so-here-price-detail"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- WIDGET: Historia stawek + alert dumpingu -->
 <div class="col-12" id="so-pricing-wrap" style="display:none">
     <div class="card border-0 shadow-sm so-section-card" id="so-pricing-card">
@@ -1070,7 +1122,128 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     // Initial check jesli trasy juz sa (edycja lub duplikat)
     if ($form.elements.load_city.value || $form.elements.unload_city.value) {
         setTimeout(fetchPricing, 500);
+        setTimeout(fetchHereRoute, 800);
     }
+
+    // =====================================================================
+    // LIVE KALKULATOR HERE (km, duration, tolls, sugestia ceny)
+    // =====================================================================
+    var $hWrap     = document.getElementById('so-here-wrap');
+    var $hStatus   = document.getElementById('so-here-status');
+    var $hKm       = document.getElementById('so-here-km');
+    var $hTime     = document.getElementById('so-here-time');
+    var $hTolls    = document.getElementById('so-here-tolls');
+    var $hTollsD   = document.getElementById('so-here-tolls-detail');
+    var $hPrice    = document.getElementById('so-here-price');
+    var $hPriceD   = document.getElementById('so-here-price-detail');
+    var $hApply    = document.getElementById('so-here-apply');
+    var $hAlert    = document.getElementById('so-here-alert');
+    var $hRate     = document.getElementById('so-here-rate');
+    var hereTimer  = null;
+    var hereLastResult = null;
+
+    function scheduleHereRoute() {
+        clearTimeout(hereTimer);
+        hereTimer = setTimeout(fetchHereRoute, 800);
+    }
+
+    function fmtMin(min) {
+        if (!min) return '-';
+        var h = Math.floor(min / 60);
+        var m = min % 60;
+        return (h > 0 ? h + 'h ' : '') + m + 'm';
+    }
+
+    function fetchHereRoute() {
+        var fromCity    = $form.elements.load_city.value.trim();
+        var toCity      = $form.elements.unload_city.value.trim();
+        var fromCountry = $form.elements.load_country.value.trim();
+        var toCountry   = $form.elements.unload_country.value.trim();
+        var currency    = $form.elements.currency.value;
+        var rate        = parseFloat($hRate.value) || 1.20;
+
+        if (!fromCity || !toCity) {
+            $hWrap.style.display = 'none';
+            return;
+        }
+
+        $hWrap.style.display = 'block';
+        $hStatus.innerHTML = '<i class="ri-loader-4-line spin"></i> obliczam…';
+        $hAlert.classList.add('d-none');
+
+        var fd = new FormData();
+        fd.append('_csrfToken', CSRF);
+        fd.append('from_city', fromCity);
+        fd.append('to_city', toCity);
+        if (fromCountry) fd.append('from_country', fromCountry);
+        if (toCountry)   fd.append('to_country', toCountry);
+        fd.append('currency', currency);
+        fd.append('rate_per_km', rate);
+
+        fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'routeCalcJson']) ?>', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            $hStatus.textContent = '';
+            if (!j.ok) {
+                $hAlert.className = 'alert alert-warning py-2 px-3 mb-2 small';
+                $hAlert.textContent = j.error || 'Nie udalo sie obliczyc trasy';
+                $hAlert.classList.remove('d-none');
+                $hApply.disabled = true;
+                return;
+            }
+            hereLastResult = j;
+            $hKm.textContent   = j.distance_km.toLocaleString('pl-PL') + ' km';
+            $hTime.textContent = fmtMin(j.duration_min);
+            $hTolls.textContent = j.tolls_total_eur.toFixed(2) + ' €';
+            var tollsD = Object.keys(j.tolls_by_country || {}).map(function(c){
+                return c + ': ' + j.tolls_by_country[c].toFixed(2) + ' €';
+            }).join(', ');
+            $hTollsD.textContent = tollsD;
+            $hPrice.textContent = j.suggested_price.toLocaleString('pl-PL') + ' ' + j.suggested_currency;
+            $hPriceD.textContent = j.distance_km + ' km × ' + j.rate_per_km + ' € + ' +
+                j.tolls_total_eur.toFixed(2) + ' € tolls (car mode, orientacyjnie)';
+            $hApply.disabled = false;
+
+            // Automatyczna sugestia w polu netto tylko jesli puste (nie nadpisujemy)
+            if (!$form.elements.netto.value || parseFloat($form.elements.netto.value) === 0) {
+                $hAlert.className = 'alert alert-info py-2 px-3 mb-2 small';
+                $hAlert.innerHTML = '<i class="ri-lightbulb-line me-1"></i>Pole "Netto" jest puste — kliknij <strong>Ustaw jako netto</strong> zeby uzyc sugestii.';
+                $hAlert.classList.remove('d-none');
+            }
+        })
+        .catch(function(e){
+            $hStatus.textContent = '';
+            $hAlert.className = 'alert alert-danger py-2 px-3 mb-2 small';
+            $hAlert.textContent = 'Blad HERE: ' + e.message;
+            $hAlert.classList.remove('d-none');
+            $hApply.disabled = true;
+        });
+    }
+
+    $hApply.addEventListener('click', function(){
+        if (!hereLastResult) return;
+        $form.elements.netto.value = hereLastResult.suggested_price;
+        calc(); // przelicz VAT/brutto
+        schedulePricingCheck(); // odswiez alert dumpingu
+        $hAlert.className = 'alert alert-success py-2 px-3 mb-2 small';
+        $hAlert.innerHTML = '<i class="ri-check-line me-1"></i>Netto ustawione na ' +
+            hereLastResult.suggested_price + ' ' + hereLastResult.suggested_currency;
+        $hAlert.classList.remove('d-none');
+    });
+
+    $hRate.addEventListener('change', scheduleHereRoute);
+
+    // Trigger HERE po zmianie trasy
+    ['load_city','unload_city','load_country','unload_country','currency'].forEach(function(f){
+        if ($form.elements[f]) {
+            $form.elements[f].addEventListener('change', scheduleHereRoute);
+        }
+    });
 
 })();
 </script>
