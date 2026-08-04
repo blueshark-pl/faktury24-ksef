@@ -698,6 +698,92 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                             <input type="text" name="unload_name" class="form-control" value="<?= h($order->unload_name ?? '') ?>" maxlength="200" placeholder="Magazyn XYZ Sp. z o.o.">
                         </div>
                     </div>
+
+                    <hr class="my-3">
+                    <h6 class="mb-2 small text-uppercase text-muted so-section-title"><i class="ri-scales-3-line me-1"></i><?= __('Wymiary / waga ładunku') ?></h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Waga (kg)') ?></label>
+                            <input type="number" min="0" step="1" name="cargo_weight_kg" class="form-control" value="<?= h($order->cargo_weight_kg ?? '') ?>">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Objętość (m³)') ?></label>
+                            <input type="number" min="0" step="0.01" name="cargo_volume_m3" class="form-control" value="<?= h($order->cargo_volume_m3 ?? '') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('LDM') ?></label>
+                            <input type="number" min="0" step="0.1" name="cargo_ldm" class="form-control" value="<?= h($order->cargo_ldm ?? '') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('Palety (szt.)') ?></label>
+                            <input type="number" min="0" step="1" name="cargo_pallets" class="form-control" value="<?= h($order->cargo_pallets ?? '') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('Typ palet') ?></label>
+                            <select name="cargo_pallet_type" class="form-select">
+                                <option value=""></option>
+                                <?php foreach (['EUR','PLA','BOX','DISP','INNE'] as $pt): ?>
+                                    <option value="<?= h($pt) ?>" <?= ($order->cargo_pallet_type ?? '') === $pt ? 'selected' : '' ?>><?= h($pt) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <hr class="my-3">
+                    <h6 class="mb-2 small text-uppercase text-muted so-section-title"><i class="ri-alarm-warning-line me-1"></i><?= __('ADR / temperatura') ?></h6>
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('ADR klasa') ?></label>
+                            <select name="adr_class" class="form-select">
+                                <option value=""></option>
+                                <?php foreach (['1','2','3','4.1','4.2','4.3','5.1','5.2','6.1','6.2','7','8','9'] as $ac): ?>
+                                    <option value="<?= h($ac) ?>" <?= ($order->adr_class ?? '') === $ac ? 'selected' : '' ?>><?= h($ac) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Nr UN') ?></label>
+                            <input type="text" name="adr_un" class="form-control" value="<?= h($order->adr_un ?? '') ?>" maxlength="10" placeholder="UN1203">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Temp. min (°C)') ?></label>
+                            <input type="number" step="0.1" name="temperature_min" class="form-control" value="<?= h($order->temperature_min ?? '') ?>">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Temp. max (°C)') ?></label>
+                            <input type="number" step="0.1" name="temperature_max" class="form-control" value="<?= h($order->temperature_max ?? '') ?>">
+                        </div>
+                    </div>
+
+                    <hr class="my-3">
+                    <h6 class="mb-2 small text-uppercase text-muted so-section-title"><i class="ri-file-text-line me-1"></i><?= __('Warunki + dokumenty') ?></h6>
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('INCOTERMS') ?></label>
+                            <select name="incoterms" class="form-select">
+                                <option value=""></option>
+                                <?php foreach (['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DAP','DPU','DDP'] as $ic): ?>
+                                    <option value="<?= h($ic) ?>" <?= ($order->incoterms ?? '') === $ic ? 'selected' : '' ?>><?= h($ic) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted"><?= __('Miejsce INCOTERMS') ?></label>
+                            <input type="text" name="incoterms_place" class="form-control" value="<?= h($order->incoterms_place ?? '') ?>" maxlength="100" placeholder="Hamburg, Germany">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted"><?= __('Nr CMR') ?></label>
+                            <input type="text" name="cmr_number" class="form-control" value="<?= h($order->cmr_number ?? '') ?>" maxlength="50">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted"><?= __('Ubezp. wartość') ?></label>
+                            <input type="number" min="0" step="0.01" name="insurance_value" class="form-control" value="<?= h($order->insurance_value ?? '') ?>">
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label small text-muted"><?= __('Waluta') ?></label>
+                            <input type="text" name="insurance_currency" class="form-control" value="<?= h($order->insurance_currency ?? '') ?>" maxlength="5" placeholder="EUR">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1925,6 +2011,18 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     'netto': 'netto',
                     'currency': 'currency',
                     'payment_terms': 'payment_terms',
+                    'cargo_weight_kg': 'cargo_weight_kg',
+                    'cargo_volume_m3': 'cargo_volume_m3',
+                    'cargo_ldm': 'cargo_ldm',
+                    'cargo_pallets': 'cargo_pallets',
+                    'cargo_pallet_type': 'cargo_pallet_type',
+                    'adr_class': 'adr_class',
+                    'adr_un': 'adr_un',
+                    'temperature_min': 'temperature_min',
+                    'temperature_max': 'temperature_max',
+                    'incoterms': 'incoterms',
+                    'incoterms_place': 'incoterms_place',
+                    'cmr_number': 'cmr_number',
                 };
                 var filled = [];
                 Object.keys(mapping).forEach(function(k){

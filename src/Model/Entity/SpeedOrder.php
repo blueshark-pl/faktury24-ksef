@@ -63,6 +63,20 @@ use Cake\ORM\Entity;
  * @property string|null $nick_created
  * @property string|null $nick_modified
  * @property string|null $raw_json
+ * @property int|null    $cargo_weight_kg
+ * @property float|null  $cargo_volume_m3
+ * @property float|null  $cargo_ldm
+ * @property int|null    $cargo_pallets
+ * @property string|null $cargo_pallet_type
+ * @property string|null $adr_class
+ * @property string|null $adr_un
+ * @property float|null  $temperature_min
+ * @property float|null  $temperature_max
+ * @property string|null $incoterms
+ * @property string|null $incoterms_place
+ * @property string|null $cmr_number
+ * @property float|null  $insurance_value
+ * @property string|null $insurance_currency
  * @property int         $nordlogis_status
  * @property string|null $invoice_id     [DEPRECATED] Legacy alias na pierwszą fakturę — używaj $order->invoices (M:N pivot speed_order_invoices)
  * @property \App\Model\Entity\Invoice[] $invoices  Wszystkie faktury sprzedażowe (M:N)

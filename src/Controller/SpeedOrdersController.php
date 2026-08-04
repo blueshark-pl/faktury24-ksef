@@ -2025,6 +2025,19 @@ poprawny JSON o dokladnie tej strukturze:
   "currency": "PLN/EUR/USD/GBP/CHF/CZK/... lub pusty",
   "payment_terms": "np. 'Przelew 30 dni' lub pusty",
 
+  "cargo_weight_kg": liczba lub null,
+  "cargo_volume_m3": liczba lub null,
+  "cargo_ldm": liczba lub null,
+  "cargo_pallets": liczba lub null,
+  "cargo_pallet_type": "EUR/PLA/BOX lub pusty",
+  "adr_class": "1/2/3/4.1/... lub pusty",
+  "adr_un": "UN1203 lub pusty",
+  "temperature_min": liczba lub null,
+  "temperature_max": liczba lub null,
+  "incoterms": "EXW/FCA/DAP/DDP/... lub pusty",
+  "incoterms_place": "miejsce dla INCOTERMS lub pusty",
+  "cmr_number": "nr CMR lub pusty",
+
   "confidence": 0-100 (jak pewien jestes co do wyciagnietych danych),
   "note": "krotki komentarz dla operatora - co udalo sie wyciagnac a co nie"
 }
