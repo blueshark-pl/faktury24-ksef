@@ -1302,6 +1302,17 @@ class SpeedOrdersController extends AppController
             $order = $SpeedOrders->patchEntity($order, $data);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
+
+                // Opcjonalna wysylka email do klienta po zapisie
+                if ($this->request->getData('send_email') && !empty($order->buyer_email)) {
+                    try {
+                        $this->sendOrderEmail($order);
+                        $this->Flash->info(__('Email z potwierdzeniem zlecenia wysłany do {0}.', $order->buyer_email));
+                    } catch (\Throwable $e) {
+                        $this->Flash->warning(__('Zlecenie zapisane, ale email nie został wysłany: {0}', $e->getMessage()));
+                    }
+                }
+
                 // Batch mode: "Zapisz i dodaj kolejne" -> wracaj na formularz
                 if ($this->request->getData('save_and_new')) {
                     $this->redirect(['action' => 'add']);
@@ -1487,6 +1498,74 @@ class SpeedOrdersController extends AppController
                 'payment_terms'  => $order->payment_terms,
             ],
         ]);
+    }
+
+    /**
+     * AJAX: lista zapisanych planow tras (route_plans) do wyboru w modalu
+     * "Zaladuj z planera".
+     * GET /zlecenia/plany-tras?limit=20&status=all|draft|accepted
+     */
+    public function routePlansJson(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            $this->jsonResp(['ok' => false, 'error' => 'Brak company_id']);
+            return;
+        }
+
+        $limit  = min(50, max(1, (int)$this->request->getQuery('limit', 20)));
+        $status = trim((string)$this->request->getQuery('status', ''));
+
+        $where = ['company_id' => $companyId, 'speed_order_id IS' => null];
+        if ($status && $status !== 'all') {
+            $where['status'] = $status;
+        }
+
+        $rows = [];
+        try {
+            $rows = $this->fetchTable('RoutePlans')->find()
+                ->select(['id', 'name', 'status', 'waypoints_json', 'distance_km', 'duration_min',
+                          'suggested_price', 'accepted_price', 'currency', 'planned_start_at', 'planned_end_at',
+                          'contractor_id', 'created'])
+                ->where($where)
+                ->orderByDesc('created')
+                ->limit($limit)
+                ->contain(['Contractors' => function ($q) {
+                    return $q->select(['id', 'name', 'nip']);
+                }])
+                ->all()
+                ->toList();
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('routePlansJson: ' . $e->getMessage());
+        }
+
+        $out = array_map(function ($p) {
+            $wp = $p->waypoints_json ? json_decode($p->waypoints_json, true) : [];
+            $from = $wp[0]['city'] ?? $wp[0]['name'] ?? '?';
+            $to   = end($wp);
+            $to   = $to ? ($to['city'] ?? $to['name'] ?? '?') : '?';
+            return [
+                'id'              => (string)$p->id,
+                'name'            => $p->name,
+                'status'          => $p->status,
+                'route'           => $from . ' → ' . $to,
+                'distance_km'     => $p->distance_km !== null ? (float)$p->distance_km : null,
+                'duration_min'    => $p->duration_min,
+                'suggested_price' => $p->suggested_price !== null ? (float)$p->suggested_price : null,
+                'accepted_price'  => $p->accepted_price !== null ? (float)$p->accepted_price : null,
+                'currency'        => $p->currency,
+                'planned_start_at' => $p->planned_start_at?->format('Y-m-d H:i'),
+                'planned_end_at'  => $p->planned_end_at?->format('Y-m-d H:i'),
+                'contractor_name' => $p->contractor?->name,
+                'contractor_nip'  => $p->contractor?->nip,
+                'waypoints'       => $wp,
+                'created'         => $p->created?->format('Y-m-d H:i'),
+            ];
+        }, $rows);
+
+        $this->jsonResp(['ok' => true, 'plans' => $out]);
     }
 
     /**
@@ -1989,6 +2068,25 @@ SYS;
         } catch (\Throwable) {}
 
         $this->jsonResp(['ok' => true, 'items' => $rows]);
+    }
+
+    /**
+     * Wysyla email z potwierdzeniem zlecenia do klienta (buyer_email).
+     * Uzywa template templates/email/html/speed_order_confirmation.php.
+     */
+    private function sendOrderEmail(\App\Model\Entity\SpeedOrder $order): void
+    {
+        if (empty($order->buyer_email)) {
+            throw new \RuntimeException('Brak buyer_email');
+        }
+        $mailer = new \Cake\Mailer\Mailer('default');
+        $subject = 'Potwierdzenie zlecenia ' . $order->symbol;
+        $mailer->setTo($order->buyer_email)
+            ->setSubject($subject)
+            ->setEmailFormat('html')
+            ->viewBuilder()->setLayout('default')->setTemplate('speed_order_confirmation');
+        $mailer->setViewVars(['order' => $order]);
+        $mailer->deliver();
     }
 
     // =========================================================================

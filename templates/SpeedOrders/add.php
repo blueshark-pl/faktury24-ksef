@@ -108,6 +108,9 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#so-ai-modal">
             <i class="ri-sparkling-2-line me-1"></i> <?= __('AI: wklej email lub screenshot') ?>
         </button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#so-plan-modal">
+            <i class="ri-route-line me-1"></i> <?= __('Załaduj z planera tras') ?>
+        </button>
         <?php endif; ?>
         <div class="so-hint text-end pt-1">
             <div><kbd>Ctrl</kbd>+<kbd>S</kbd> <?= __('zapisz') ?></div>
@@ -115,6 +118,41 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <?= __('zapisz + dodaj kolejne') ?></div>
             <?php endif; ?>
             <div><kbd>Esc</kbd> <?= __('anuluj') ?></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Wybor planu tras -->
+<div class="modal fade" id="so-plan-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ri-route-line me-1 text-primary"></i>
+                    <?= __('Wybierz plan trasy do załadowania') ?>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="so-plan-status" class="alert alert-info py-2 px-3 small"><?= __('Ładowanie planów...') ?></div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th><?= __('Nazwa') ?></th>
+                                <th><?= __('Status') ?></th>
+                                <th><?= __('Trasa') ?></th>
+                                <th><?= __('Km') ?></th>
+                                <th><?= __('Cena') ?></th>
+                                <th><?= __('Klient') ?></th>
+                                <th><?= __('Utworzono') ?></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="so-plan-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -645,10 +683,17 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 <!-- STICKY ACTION BAR -->
 <div class="so-sticky-bar">
     <div class="container-fluid d-flex justify-content-between align-items-center gap-2 flex-wrap">
-        <div class="text-muted small">
+        <div class="text-muted small d-flex align-items-center gap-3 flex-wrap">
             <span id="so-brutto-preview" class="fw-semibold text-dark">-</span>
-            <span class="mx-2 opacity-25">|</span>
-            <span class="d-none d-md-inline"><?= __('Auto-zapis co 30 s do przeglądarki') ?></span>
+            <span class="opacity-25">|</span>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="send_email" id="so-send-email" value="1" form="form-manual-order">
+                <label class="form-check-label small" for="so-send-email">
+                    <i class="ri-mail-send-line me-1"></i><?= __('Wyślij email do klienta po zapisie') ?>
+                </label>
+            </div>
+            <span class="opacity-25 d-none d-lg-inline">|</span>
+            <span class="d-none d-lg-inline"><?= __('Auto-zapis co 30 s') ?></span>
         </div>
         <div class="d-flex gap-2">
             <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-outline-secondary" id="so-btn-cancel">
@@ -1331,6 +1376,107 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
         if ($form.elements[f]) {
             $form.elements[f].addEventListener('change', scheduleHereRoute);
         }
+    });
+
+    // =====================================================================
+    // ZALADUJ Z PLANERA TRAS
+    // =====================================================================
+    var $planModal = document.getElementById('so-plan-modal');
+    var $planStatus = document.getElementById('so-plan-status');
+    var $planTbody = document.getElementById('so-plan-tbody');
+    var plansData = [];
+
+    if ($planModal) {
+        $planModal.addEventListener('shown.bs.modal', function(){
+            if (plansData.length > 0) return; // cached
+            $planStatus.className = 'alert alert-info py-2 px-3 small';
+            $planStatus.textContent = 'Ładowanie planów...';
+            fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'routePlansJson']) ?>', {
+                credentials: 'same-origin', headers: { 'Accept': 'application/json' }
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if (!j.ok) {
+                    $planStatus.className = 'alert alert-danger py-2 px-3 small';
+                    $planStatus.textContent = j.error || 'Błąd ładowania';
+                    return;
+                }
+                plansData = j.plans || [];
+                if (plansData.length === 0) {
+                    $planStatus.className = 'alert alert-warning py-2 px-3 small';
+                    $planStatus.textContent = 'Brak zapisanych planów tras. Utwórz plan w /planer-tras.';
+                    return;
+                }
+                $planStatus.className = 'alert alert-success py-2 px-3 small';
+                $planStatus.textContent = 'Znaleziono ' + plansData.length + ' planów. Kliknij na plan aby załadować.';
+                var html = '';
+                plansData.forEach(function(p, idx){
+                    var statusBadge = {
+                        'draft': 'secondary', 'offered': 'info', 'accepted': 'success',
+                        'rejected': 'danger', 'converted': 'primary', 'archived': 'dark'
+                    }[p.status] || 'secondary';
+                    var price = p.accepted_price || p.suggested_price;
+                    html += '<tr>' +
+                        '<td>' + (p.name || '') + '</td>' +
+                        '<td><span class="badge bg-' + statusBadge + '-subtle text-' + statusBadge + '">' + p.status + '</span></td>' +
+                        '<td class="small">' + (p.route || '-') + '</td>' +
+                        '<td>' + (p.distance_km !== null ? p.distance_km + ' km' : '-') + '</td>' +
+                        '<td>' + (price ? price.toLocaleString('pl-PL') + ' ' + (p.currency || 'PLN') : '-') + '</td>' +
+                        '<td class="small">' + (p.contractor_name || '<span class="text-muted">-</span>') + '</td>' +
+                        '<td class="small text-muted">' + (p.created || '') + '</td>' +
+                        '<td><button type="button" class="btn btn-sm btn-primary so-plan-pick" data-idx="' + idx + '"><i class="ri-download-2-line me-1"></i>Załaduj</button></td>' +
+                        '</tr>';
+                });
+                $planTbody.innerHTML = html;
+            });
+        });
+    }
+
+    document.addEventListener('click', function(e){
+        var btn = e.target.closest('.so-plan-pick');
+        if (!btn) return;
+        var p = plansData[parseInt(btn.dataset.idx, 10)];
+        if (!p) return;
+        // Prefill z planu
+        var wp = p.waypoints || [];
+        var first = wp[0] || {};
+        var last  = wp[wp.length - 1] || {};
+        if (first.city && $form.elements.load_city && !$form.elements.load_city.value) {
+            $form.elements.load_city.value = first.city;
+        }
+        if (first.country && $form.elements.load_country) {
+            $form.elements.load_country.value = first.country;
+        }
+        if (last.city && $form.elements.unload_city && !$form.elements.unload_city.value) {
+            $form.elements.unload_city.value = last.city;
+        }
+        if (last.country && $form.elements.unload_country) {
+            $form.elements.unload_country.value = last.country;
+        }
+        if (p.planned_start_at && $form.elements.date_deadline) {
+            $form.elements.date_deadline.value = p.planned_start_at.replace(' ', 'T');
+        }
+        if (p.planned_end_at && $form.elements.date_delivery) {
+            $form.elements.date_delivery.value = p.planned_end_at.replace(' ', 'T');
+        }
+        var price = p.accepted_price || p.suggested_price;
+        if (price && $form.elements.netto && !parseFloat($form.elements.netto.value)) {
+            $form.elements.netto.value = price;
+            if (p.currency) $form.elements.currency.value = p.currency;
+        }
+        if (p.contractor_nip && $form.elements.buyer_nip && !$form.elements.buyer_nip.value) {
+            $form.elements.buyer_nip.value = p.contractor_nip;
+        }
+        if (p.contractor_name && $form.elements.buyer_name && !$form.elements.buyer_name.value) {
+            $form.elements.buyer_name.value = p.contractor_name;
+        }
+        calc();
+        onCur();
+        schedulePricingCheck();
+        scheduleHereRoute();
+        scheduleConflictCheck();
+        var m = bootstrap.Modal.getInstance($planModal);
+        if (m) m.hide();
     });
 
     // =====================================================================
