@@ -1254,7 +1254,7 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
                         <th style="width:40px">#</th>
                         <th style="width:70px">Kod</th>
                         <th>Nazwa</th>
-                        <th style="width:120px">Paleta</th>
+                        <th style="width:120px" title="Typ palety (gdy palety są przewożone jako towar np. dla TOSCA)">Typ palety</th>
                         <th class="text-center" title="Dry">Dry</th>
                         <th class="text-center" title="Wrapping">Wrap</th>
                         <th class="text-center" title="Strapping">Strap</th>
@@ -1328,23 +1328,6 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
             </div>
         <?php endif; ?>
 
-        <?php
-        // Waga TOTAL brutto: cargo + waga pustych palet (qty * weight_empty_kg)
-        $palletsEmptyWeight = 0.0;
-        foreach ($order->speed_order_cargo_items as $ci) {
-            if ($ci->pallet_type && $ci->pallet_type->weight_empty_kg && $ci->qty_advised) {
-                $palletsEmptyWeight += (float)$ci->pallet_type->weight_empty_kg * (int)$ci->qty_advised;
-            }
-        }
-        $totalGross = $ci_totalW + $palletsEmptyWeight;
-        ?>
-        <?php if ($palletsEmptyWeight > 0): ?>
-            <div class="mt-2 small text-muted d-flex justify-content-end gap-3">
-                <span>Ładunek: <strong><?= number_format($ci_totalW, 2, ',', ' ') ?> kg</strong></span>
-                <span>+ Waga pustych palet: <strong><?= number_format($palletsEmptyWeight, 2, ',', ' ') ?> kg</strong></span>
-                <span class="text-dark">= Brutto: <strong><?= number_format($totalGross, 2, ',', ' ') ?> kg</strong></span>
-            </div>
-        <?php endif; ?>
     </div>
 </div>
 <?php endif; ?>

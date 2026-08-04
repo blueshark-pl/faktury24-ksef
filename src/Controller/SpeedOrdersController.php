@@ -2925,7 +2925,12 @@ Zasady:
 - Data w formacie YYYY-MM-DDTHH:MM (bez sekund, bez strefy). Jesli brak godziny, uzyj 08:00 dla zaladunku, 16:00 dla rozladunku.
 - Kraj: ZAWSZE 2-znakowy kod ISO (PL, DE, NL, CZ, SK, AT, FR, IT, ES, HU, RO, LT, LV, EE, GB, IE, CH, NO, SE, DK, FI, BE, LU, PT).
 - NIP zagraniczny: zostaw z prefixem (np. 'DE123456789', 'ATU12345678').
-- Cena: netto (bez VAT). Jesli klient podal brutto, przelicz netto = brutto/1.23 (PL) lub brutto (bez VAT UE).
+- Cena/VAT (TSL specific):
+  * "Shipment Price 200.0 EUR", "Rate", "Freight", "Kwota" itp. -> NETTO (bez VAT).
+  * Jesli klient ZAGRANICZNY (buyer_country != PL) -> netto zostaje jak jest, ale
+    zakladamy VAT 0% (reverse charge / wewnatrzwspolnotowa dostawa uslug).
+    Wystarczy netto - formularz auto ustawi VAT rate 0.
+  * Jesli klient POLSKI (buyer_country=PL) i podal brutto -> netto = brutto/1.23.
 - Wpisz "" (pusty string) zamiast null dla pol tekstowych; null tylko dla netto gdy brak.
 - Confidence: 90-100 = pelne dane; 60-89 = brakuje kilku pol; 0-59 = fragment.
 
@@ -3065,6 +3070,8 @@ SYS;
         $toCountry   = strtoupper(trim((string)($data['to_country'] ?? '')));
         $currency    = strtoupper(trim((string)($data['currency'] ?? 'EUR')));
         $ratePerKm   = (float)($data['rate_per_km'] ?? 1.20);
+        // Waypoints (multi-stop): array [{lat, lng, city, country}] w kolejnosci trasy
+        $waypoints   = (array)($data['waypoints'] ?? []);
 
         if ($fromCity === '' || $toCity === '') {
             $this->jsonResp(['ok' => false, 'error' => 'Brak miast trasy']);
@@ -3084,13 +3091,45 @@ SYS;
                 return;
             }
 
-            // Bez vehicle -> car mode (szybsze, dla wstepnej estymaty). Tolls beda car-tolls.
-            $r = $svc->route(
-                ['lat' => $from['lat'], 'lng' => $from['lng']],
-                ['lat' => $to['lat'],   'lng' => $to['lng']],
-                null,
-                ['currency' => 'EUR']
-            );
+            // Geocode waypointow (multi-stop) - opcjonalnie
+            $vias = [];
+            $viasResolved = []; // dla markerow w response
+            foreach ($waypoints as $wp) {
+                if (!is_array($wp)) continue;
+                $wpLat = isset($wp['lat']) ? (float)$wp['lat'] : 0;
+                $wpLng = isset($wp['lng']) ? (float)$wp['lng'] : 0;
+                if ($wpLat && $wpLng) {
+                    $vias[] = ['lat' => $wpLat, 'lng' => $wpLng];
+                    $viasResolved[] = ['lat' => $wpLat, 'lng' => $wpLng, 'label' => (string)($wp['label'] ?? '')];
+                } else {
+                    // Geocode po city + country
+                    $city = trim((string)($wp['city'] ?? ''));
+                    $country = strtoupper(trim((string)($wp['country'] ?? '')));
+                    if ($city === '') continue;
+                    $wpAddr = $city . ($country ? ', ' . $country : '');
+                    $wpGeo = $svc->geocode($wpAddr);
+                    if ($wpGeo) {
+                        $vias[] = ['lat' => $wpGeo['lat'], 'lng' => $wpGeo['lng']];
+                        $viasResolved[] = ['lat' => $wpGeo['lat'], 'lng' => $wpGeo['lng'], 'label' => $wpGeo['label']];
+                    }
+                }
+            }
+
+            // Multi-stop: uzyj routeMulti gdy sa vias, inaczej klasyczne route
+            $r = !empty($vias)
+                ? $svc->routeMulti(
+                    ['lat' => $from['lat'], 'lng' => $from['lng']],
+                    ['lat' => $to['lat'],   'lng' => $to['lng']],
+                    $vias,
+                    null,
+                    ['currency' => 'EUR']
+                )
+                : $svc->route(
+                    ['lat' => $from['lat'], 'lng' => $from['lng']],
+                    ['lat' => $to['lat'],   'lng' => $to['lng']],
+                    null,
+                    ['currency' => 'EUR']
+                );
 
             $km     = (float)$r['distance_km'];
             $tollsEUR = (float)($r['tolls_total'] ?? 0);
@@ -3104,6 +3143,16 @@ SYS;
                 $suggestedInCurrency = round($suggestedEUR * $roughRates[$currency], 2);
             }
 
+            // Multi-stop routeMulti moze zwrocic polyline per section - sprawdz raw
+            $polylines = [];
+            if (!empty($r['raw']['routes'][0]['sections'])) {
+                foreach ($r['raw']['routes'][0]['sections'] as $section) {
+                    if (!empty($section['polyline'])) {
+                        $polylines[] = (string)$section['polyline'];
+                    }
+                }
+            }
+
             $this->jsonResp([
                 'ok'                => true,
                 'distance_km'       => $km,
@@ -3114,8 +3163,10 @@ SYS;
                 'suggested_currency' => $currency,
                 'rate_per_km'       => $ratePerKm,
                 'polyline'          => (string)($r['polyline'] ?? ''),
+                'polylines'         => $polylines, // multi-section (multi-stop) polylines
                 'from' => ['label' => $from['label'], 'country' => $from['country'], 'lat' => $from['lat'], 'lng' => $from['lng']],
                 'to'   => ['label' => $to['label'],   'country' => $to['country'],   'lat' => $to['lat'],   'lng' => $to['lng']],
+                'vias' => $viasResolved,
             ]);
         } catch (\Throwable $e) {
             \Cake\Log\Log::warning('routeCalcJson: ' . $e->getMessage());
@@ -3674,6 +3725,14 @@ SYS;
         // — JS liczy to samo, ale zapisu ufamy tylko po serwerowej weryfikacji).
         $netto = (float)($data['netto'] ?? 0);
         $vatRate = isset($data['vat_rate']) ? trim((string)$data['vat_rate']) : '23';
+
+        // TSL: klient zagraniczny (buyer_country != PL) -> VAT 0% (reverse charge
+        // / wewnatrzwspolnotowa dostawa uslug). Wymusza tylko gdy user nie ustawil
+        // explicit inaczej niz domyslne 23.
+        $buyerCountry = strtoupper(trim((string)($data['buyer_country'] ?? '')));
+        if ($buyerCountry !== '' && $buyerCountry !== 'PL' && $vatRate === '23') {
+            $vatRate = '0';
+        }
 
         if (is_numeric($vatRate)) {
             $rate = (float)$vatRate;

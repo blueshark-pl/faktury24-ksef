@@ -844,7 +844,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                         <tr>
                             <th style="width:60px">Kod</th>
                             <th>Nazwa / produkt</th>
-                            <th style="width:130px">Paleta</th>
+                            <th style="width:130px" title="Typ palety - gdy palety są towarem (TOSCA/pooling), zostaw puste dla zwykłego ładunku">Typ palety</th>
                             <th class="text-center" style="width:50px" title="Dry">Dry</th>
                             <th class="text-center" style="width:50px" title="Wrapping">Wrap</th>
                             <th class="text-center" style="width:50px" title="Strapping">Strap</th>
@@ -988,7 +988,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                     <input type="number" step="0.01" min="0" name="netto" id="fin-netto" class="form-control fw-semibold" value="<?= h($order->netto ?? '0.00') ?>" required>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small text-muted"><?= __('Stawka VAT') ?></label>
+                    <label class="form-label small text-muted" title="Klient zagraniczny (non-PL) → auto 0% (reverse charge)">
+                        <?= __('Stawka VAT') ?> <i class="ri-information-line text-muted" style="cursor:help"></i>
+                    </label>
                     <select name="vat_rate" id="fin-vat-rate" class="form-select">
                         <?php foreach ($vatRates as $val => $lbl): ?>
                             <option value="<?= h($val) ?>" <?= $currentVatRate === (string)$val ? 'selected' : '' ?>><?= h($lbl) ?></option>
@@ -1330,6 +1332,31 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     var $brut  = document.getElementById('fin-brutto');
     var $cur   = document.getElementById('fin-currency');
     var $bpv   = document.getElementById('so-brutto-preview');
+
+    // TSL: klient zagraniczny (non-PL) -> auto VAT 0% (reverse charge / wewnatrzwspolnotowa)
+    // Zmienia tylko gdy vat_rate jest domyslne (23) - nie nadpisuje jesli user ustawil inaczej
+    var $buyerCountry = $form.elements.buyer_country;
+    if ($buyerCountry) {
+        $buyerCountry.addEventListener('change', function(){
+            var cc = ($buyerCountry.value || '').toUpperCase();
+            var $vatSel = document.getElementById('fin-vat-rate');
+            if (!$vatSel) return;
+            if (cc !== 'PL' && cc !== '' && $vatSel.value === '23') {
+                $vatSel.value = '0';
+                $vatSel.dispatchEvent(new Event('change'));
+                // Pokaz tooltip / hint na chwile
+                var $hint = document.createElement('div');
+                $hint.className = 'small text-info mt-1';
+                $hint.innerHTML = '<i class="ri-information-line me-1"></i>Auto: klient <strong>' + cc + '</strong> (nie PL) → VAT 0% (reverse charge). Zmień ręcznie jeśli inaczej.';
+                var $wrap = $vatSel.closest('div');
+                var existing = $wrap.querySelector('.so-vat-auto-hint');
+                if (existing) existing.remove();
+                $hint.className += ' so-vat-auto-hint';
+                $wrap.appendChild($hint);
+                setTimeout(function(){ $hint.remove(); }, 6000);
+            }
+        });
+    }
 
     var APPROVAL_THRESHOLD_PLN = <?= (int)(\Cake\Core\Configure::read('Orders.approvalThresholdPln') ?? 10000) ?>;
     var $approvalHint = document.getElementById('so-approval-hint');
@@ -2191,28 +2218,45 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         currentMarkers = [];
     }
 
-    function drawRouteOnMap(polylineStr, fromLL, toLL) {
-        if (!hereMap || !polylineStr) return;
+    function drawRouteOnMap(polylineStr, fromLL, toLL, polylinesArr, viasArr) {
+        if (!hereMap) return;
         clearMap();
         try {
-            var lineString = H.geo.LineString.fromFlexiblePolyline(polylineStr);
-            currentPolyline = new H.map.Polyline(lineString, {
-                style: { strokeColor: '#3b82f6', lineWidth: 5 }
+            var group = new H.map.Group();
+            // Multi-section polylines (multi-stop) LUB pojedynczy polyline
+            var toDraw = (Array.isArray(polylinesArr) && polylinesArr.length > 0)
+                ? polylinesArr : (polylineStr ? [polylineStr] : []);
+            toDraw.forEach(function(pl){
+                if (!pl) return;
+                var line = H.geo.LineString.fromFlexiblePolyline(pl);
+                var poly = new H.map.Polyline(line, { style: { strokeColor: '#3b82f6', lineWidth: 5 } });
+                group.addObject(poly);
             });
-            hereMap.addObject(currentPolyline);
-            // Markers
-            if (fromLL) {
-                var m1 = new H.map.Marker({ lat: fromLL.lat, lng: fromLL.lng });
-                hereMap.addObject(m1);
-                currentMarkers.push(m1);
+            // Markery: start (zielony), meta (czerwony), waypoints (żółte z numerami)
+            function markerIcon(color, label) {
+                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">' +
+                    '<path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="' + color + '"/>' +
+                    '<circle cx="14" cy="14" r="8" fill="#fff"/>' +
+                    '<text x="14" y="18" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="' + color + '">' + label + '</text>' +
+                    '</svg>';
+                return new H.map.Icon('data:image/svg+xml;base64,' + btoa(svg), { size: {w: 28, h: 36}, anchor: {x: 14, y: 36} });
             }
-            if (toLL) {
-                var m2 = new H.map.Marker({ lat: toLL.lat, lng: toLL.lng });
-                hereMap.addObject(m2);
-                currentMarkers.push(m2);
+            if (fromLL) group.addObject(new H.map.Marker({ lat: fromLL.lat, lng: fromLL.lng }, { icon: markerIcon('#10b981', 'A') }));
+            // Waypointy: B, C, D...
+            if (Array.isArray(viasArr)) {
+                viasArr.forEach(function(v, i){
+                    var lbl = String.fromCharCode(66 + i); // B=66, C=67...
+                    group.addObject(new H.map.Marker({ lat: v.lat, lng: v.lng }, { icon: markerIcon('#f59e0b', lbl) }));
+                });
             }
-            // Fit to route
-            hereMap.getViewModel().setLookAtData({ bounds: currentPolyline.getBoundingBox() });
+            // Endpoint: ostatnia litera
+            var endLetter = String.fromCharCode(65 + 1 + (viasArr ? viasArr.length : 0)); // B lub C, D itd
+            if (toLL) group.addObject(new H.map.Marker({ lat: toLL.lat, lng: toLL.lng }, { icon: markerIcon('#ef4444', endLetter) }));
+
+            hereMap.addObject(group);
+            currentPolyline = group; // do clearMap
+            currentMarkers = [];
+            hereMap.getViewModel().setLookAtData({ bounds: group.getBoundingBox() });
         } catch (e) {
             console.error('HERE drawRoute error:', e);
         }
@@ -2280,6 +2324,29 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
         fd.append('currency', currency);
         fd.append('rate_per_km', rate);
 
+        // Multi-stop: zbierz waypointy z formularza (speed_order_stops)
+        var stopRows = document.querySelectorAll('#so-stops-list .so-stop-row');
+        var wpIdx = 0;
+        stopRows.forEach(function(row){
+            var cityEl = row.querySelector('input[name$="[city]"]');
+            var latEl  = row.querySelector('.so-stop-lat');
+            var lngEl  = row.querySelector('.so-stop-lng');
+            var ccEl   = row.querySelector('input[name$="[country_code]"]');
+            var city   = cityEl ? cityEl.value.trim() : '';
+            var lat    = latEl ? parseFloat(latEl.value) : 0;
+            var lng    = lngEl ? parseFloat(lngEl.value) : 0;
+            var cc     = ccEl ? ccEl.value.trim() : '';
+            if (!city && !(lat && lng)) return;
+            fd.append('waypoints[' + wpIdx + '][city]', city);
+            fd.append('waypoints[' + wpIdx + '][country]', cc);
+            if (lat && lng) {
+                fd.append('waypoints[' + wpIdx + '][lat]', lat);
+                fd.append('waypoints[' + wpIdx + '][lng]', lng);
+            }
+            fd.append('waypoints[' + wpIdx + '][label]', city);
+            wpIdx++;
+        });
+
         fetch('<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'routeCalcJson']) ?>', {
             method: 'POST',
             body: fd,
@@ -2301,9 +2368,15 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
             $hTime.textContent = fmtMin(j.duration_min);
             $hTolls.textContent = j.tolls_total_eur.toFixed(2) + ' €';
 
-            // Rysuj polyline na mapie
-            if (j.polyline && j.from && j.to) {
-                drawRouteOnMap(j.polyline, {lat: j.from.lat, lng: j.from.lng}, {lat: j.to.lat, lng: j.to.lng});
+            // Rysuj polyline na mapie (multi-section jesli sa waypoints)
+            if ((j.polyline || (j.polylines && j.polylines.length)) && j.from && j.to) {
+                drawRouteOnMap(
+                    j.polyline,
+                    {lat: j.from.lat, lng: j.from.lng},
+                    {lat: j.to.lat, lng: j.to.lng},
+                    j.polylines,
+                    j.vias
+                );
             }
             var tollsD = Object.keys(j.tolls_by_country || {}).map(function(c){
                 return c + ': ' + j.tolls_by_country[c].toFixed(2) + ' €';
@@ -2347,6 +2420,13 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
     ['load_city','unload_city','load_country','unload_country','currency'].forEach(function(f){
         if ($form.elements[f]) {
             $form.elements[f].addEventListener('change', scheduleHereRoute);
+        }
+    });
+    // Trigger HERE gdy multi-stop wiersz zmieni city/country/lat/lng
+    document.getElementById('so-stops-list').addEventListener('change', function(e){
+        var t = e.target;
+        if (t.matches && t.matches('input[name$="[city]"], input[name$="[country_code]"], .so-stop-lat, .so-stop-lng')) {
+            scheduleHereRoute();
         }
     });
 
