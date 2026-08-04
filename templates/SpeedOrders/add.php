@@ -1031,6 +1031,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 
     var APPROVAL_THRESHOLD_PLN = <?= (int)(\Cake\Core\Configure::read('Orders.approvalThresholdPln') ?? 10000) ?>;
     var $approvalHint = document.getElementById('so-approval-hint');
+    var $rateFx = document.getElementById('fin-rate'); // musi byc PRZED calc() bo calc() go uzywa
 
     function calc() {
         var n = parseFloat($netto.value) || 0;
@@ -1046,7 +1047,7 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
 
         // Approval hint: pokazuj gdy brutto (PLN) > threshold
         if ($approvalHint) {
-            var rate = parseFloat($rateFx.value) || 1;
+            var rate = ($rateFx && $rateFx.value) ? (parseFloat($rateFx.value) || 1) : 1;
             var bruttoPln = $cur.value === 'PLN' ? b : b * rate;
             $approvalHint.style.display = (APPROVAL_THRESHOLD_PLN > 0 && bruttoPln > APPROVAL_THRESHOLD_PLN) ? '' : 'none';
         }
@@ -1057,7 +1058,6 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     calc();
 
     // ===== Currency change: exchange_rate = kurs NBP z dnia dokumentu =====
-    var $rateFx = document.getElementById('fin-rate');
     var lastFetchedRateKey = ''; // 'EUR|2026-08-04' cache
 
     function fetchNbpRate(code, dateStr) {
