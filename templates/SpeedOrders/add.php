@@ -475,12 +475,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <label class="form-label small text-muted">
                         <?= __('Miasto') ?>
                         <?php if (!empty($order->load_lat) && !empty($order->load_lng)): ?>
-                            <span class="badge bg-success-subtle text-success ms-1" title="Współrzędne zapisane: <?= h($order->load_lat) ?>, <?= h($order->load_lng) ?>" style="font-size:.55rem"><i class="ri-map-pin-2-line"></i></span>
+                            <a href="https://www.google.com/maps?q=<?= h($order->load_lat) ?>,<?= h($order->load_lng) ?>" target="_blank" class="text-success ms-1" title="Otwórz w Google Maps" style="font-size:.72rem">
+                                <i class="ri-map-pin-2-line"></i>
+                            </a>
                         <?php endif; ?>
                     </label>
                     <input type="text" name="load_city" class="form-control" value="<?= h($order->load_city ?? '') ?>" maxlength="100">
-                    <input type="hidden" name="load_lat" value="<?= h($order->load_lat ?? '') ?>">
-                    <input type="hidden" name="load_lng" value="<?= h($order->load_lng ?? '') ?>">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
@@ -489,6 +489,14 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Czas rzeczywisty') ?></label>
                     <input type="datetime-local" name="actual_load_at" class="form-control" value="<?= h($order->actual_load_at ? $order->actual_load_at->format('Y-m-d\TH:i') : '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('GPS lat') ?></label>
+                    <input type="number" step="0.0000001" name="load_lat" class="form-control form-control-sm" value="<?= h($order->load_lat ?? '') ?>" placeholder="np. 52.229676">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('GPS lng') ?></label>
+                    <input type="number" step="0.0000001" name="load_lng" class="form-control form-control-sm" value="<?= h($order->load_lng ?? '') ?>" placeholder="np. 21.012229">
                 </div>
             </div>
         </div>
@@ -515,12 +523,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                     <label class="form-label small text-muted">
                         <?= __('Miasto') ?>
                         <?php if (!empty($order->unload_lat) && !empty($order->unload_lng)): ?>
-                            <span class="badge bg-success-subtle text-success ms-1" title="Współrzędne zapisane: <?= h($order->unload_lat) ?>, <?= h($order->unload_lng) ?>" style="font-size:.55rem"><i class="ri-map-pin-2-line"></i></span>
+                            <a href="https://www.google.com/maps?q=<?= h($order->unload_lat) ?>,<?= h($order->unload_lng) ?>" target="_blank" class="text-success ms-1" title="Otwórz w Google Maps" style="font-size:.72rem">
+                                <i class="ri-map-pin-2-line"></i>
+                            </a>
                         <?php endif; ?>
                     </label>
                     <input type="text" name="unload_city" class="form-control" value="<?= h($order->unload_city ?? '') ?>" maxlength="100">
-                    <input type="hidden" name="unload_lat" value="<?= h($order->unload_lat ?? '') ?>">
-                    <input type="hidden" name="unload_lng" value="<?= h($order->unload_lng ?? '') ?>">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Planowana data') ?></label>
@@ -529,6 +537,14 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 <div class="col-md-6">
                     <label class="form-label small text-muted"><?= __('Czas rzeczywisty') ?></label>
                     <input type="datetime-local" name="actual_unload_at" class="form-control" value="<?= h($order->actual_unload_at ? $order->actual_unload_at->format('Y-m-d\TH:i') : '') ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('GPS lat') ?></label>
+                    <input type="number" step="0.0000001" name="unload_lat" class="form-control form-control-sm" value="<?= h($order->unload_lat ?? '') ?>" placeholder="np. 52.229676">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small text-muted"><?= __('GPS lng') ?></label>
+                    <input type="number" step="0.0000001" name="unload_lng" class="form-control form-control-sm" value="<?= h($order->unload_lng ?? '') ?>" placeholder="np. 21.012229">
                 </div>
             </div>
         </div>
@@ -593,11 +609,22 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                             <div class="col-md-1 text-end">
                                 <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][id]" value="<?= h($stop->id ?? '') ?>">
                                 <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][stop_index]" value="<?= $sIdx + 1 ?>" class="so-stop-idx">
-                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][lat]" value="<?= h($stop->lat ?? '') ?>" class="so-stop-lat">
-                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][lng]" value="<?= h($stop->lng ?? '') ?>" class="so-stop-lng">
+                                <?php if (!empty($stop->lat) && !empty($stop->lng)): ?>
+                                    <a href="https://www.google.com/maps?q=<?= h($stop->lat) ?>,<?= h($stop->lng) ?>" target="_blank" class="btn btn-sm btn-outline-success mb-1" title="Otwórz w Google Maps">
+                                        <i class="ri-map-pin-2-line"></i>
+                                    </a>
+                                <?php endif; ?>
                                 <button type="button" class="btn btn-sm btn-outline-danger so-stop-remove">
                                     <i class="ri-delete-bin-line"></i>
                                 </button>
+                            </div>
+                            <div class="col-md-2 col-lg-1 offset-md-1">
+                                <label class="form-label small text-muted mb-0"><?= __('GPS lat') ?></label>
+                                <input type="number" step="0.0000001" name="speed_order_stops[<?= $sIdx ?>][lat]" class="form-control form-control-sm so-stop-lat" value="<?= h($stop->lat ?? '') ?>" placeholder="52.229...">
+                            </div>
+                            <div class="col-md-2 col-lg-1">
+                                <label class="form-label small text-muted mb-0"><?= __('GPS lng') ?></label>
+                                <input type="number" step="0.0000001" name="speed_order_stops[<?= $sIdx ?>][lng]" class="form-control form-control-sm so-stop-lng" value="<?= h($stop->lng ?? '') ?>" placeholder="21.012...">
                             </div>
                         </div>
                     </div>
@@ -2566,10 +2593,12 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
                 '<input type="text" name="speed_order_stops[' + idx + '][cargo_notes]" class="form-control form-control-sm"></div>' +
                 '<div class="col-md-1 text-end">' +
                 '<input type="hidden" name="speed_order_stops[' + idx + '][stop_index]" value="' + (idx + 1) + '" class="so-stop-idx">' +
-                '<input type="hidden" name="speed_order_stops[' + idx + '][lat]" value="" class="so-stop-lat">' +
-                '<input type="hidden" name="speed_order_stops[' + idx + '][lng]" value="" class="so-stop-lng">' +
                 '<button type="button" class="btn btn-sm btn-outline-danger so-stop-remove"><i class="ri-delete-bin-line"></i></button>' +
                 '</div>' +
+                '<div class="col-md-2 col-lg-1 offset-md-1"><label class="form-label small text-muted mb-0">GPS lat</label>' +
+                '<input type="number" step="0.0000001" name="speed_order_stops[' + idx + '][lat]" class="form-control form-control-sm so-stop-lat" placeholder="52.229..."></div>' +
+                '<div class="col-md-2 col-lg-1"><label class="form-label small text-muted mb-0">GPS lng</label>' +
+                '<input type="number" step="0.0000001" name="speed_order_stops[' + idx + '][lng]" class="form-control form-control-sm so-stop-lng" placeholder="21.012..."></div>' +
             '</div></div>';
     }
 
