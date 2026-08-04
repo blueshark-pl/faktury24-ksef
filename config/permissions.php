@@ -454,7 +454,7 @@ return [
             'controller' => 'SpeedOrders',
             'action' => [
                 'index', 'dashboard', 'exportCsv', 'exportXlsx', 'view', 'viewModal',
-                'kanban', 'kanbanMove',
+                'kanban', 'kanbanMove', 'tracking',
                 'sync', 'updateStatus', 'createBatchInvoices',
                 'uploadAttachment', 'deleteAttachment',
                 // Reczne zlecenia (source='manual')

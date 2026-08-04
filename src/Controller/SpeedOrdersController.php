@@ -1294,6 +1294,107 @@ class SpeedOrdersController extends AppController
     }
 
     // =========================================================================
+    // TRACKING - dashboard aktywnych zlecen z live trip_events
+    // =========================================================================
+
+    /**
+     * GET /zlecenia/tracking - dashboard operatora dla zlecen w trasie.
+     * Pokazuje aktywne zlecenia (nordlogis_status IN [3,4] bez pod_at) z ostatnim
+     * eventem z trip_events, kierowca, pojazd, delay total, ETA.
+     */
+    public function tracking(): void
+    {
+        $this->request->allowMethod(['get']);
+
+        $companyNip = $this->currentCompanyNip();
+        $identity   = $this->request->getAttribute('identity');
+        $companyId  = $identity?->get('company_id');
+        if (!$companyNip) {
+            $this->Flash->error(__('Brak NIP firmy'));
+            $this->redirect(['action' => 'index']);
+            return;
+        }
+
+        $filterDriver  = trim((string)$this->request->getQuery('driver', ''));
+        $filterContract = trim((string)$this->request->getQuery('contract', ''));
+        $filterCountry = strtoupper(trim((string)$this->request->getQuery('country', '')));
+
+        // Aktywne zlecenia: zaladowane lub zrealizowane, bez POD
+        $q = $this->fetchTable('SpeedOrders')->find()
+            ->where([
+                'company_nip'          => $companyNip,
+                'nordlogis_status IN'  => [3, 4],
+                'OR' => [
+                    'pod_at IS' => null,
+                    'is_complete' => false,
+                ],
+            ])
+            ->orderByDesc('date_delivery')
+            ->limit(100);
+
+        if ($filterDriver !== '') $q->where(['driver LIKE' => '%' . $filterDriver . '%']);
+        if ($filterContract !== '') $q->where(['contract' => $filterContract]);
+        if ($filterCountry !== '') $q->where(['OR' => [
+            'load_country'   => $filterCountry,
+            'unload_country' => $filterCountry,
+        ]]);
+
+        $orders = $q->all();
+
+        // Ostatni event per order (mapa order_id -> event)
+        $lastEvents = [];
+        try {
+            $orderIds = array_map(fn($o) => $o->id, $orders->toArray());
+            if (!empty($orderIds)) {
+                $events = $this->fetchTable('TripEvents')->find()
+                    ->where(['speed_order_id IN' => $orderIds, 'company_id' => $companyId])
+                    ->orderByDesc('happened_at')
+                    ->all();
+                foreach ($events as $e) {
+                    if (!isset($lastEvents[$e->speed_order_id])) {
+                        $lastEvents[$e->speed_order_id] = $e;
+                    }
+                }
+            }
+        } catch (\Throwable) {}
+
+        // Statystyki
+        $stats = [
+            'total'    => $orders->count(),
+            'delayed'  => 0,
+            'loading'  => 0,
+            'in_transit' => 0,
+            'unloading' => 0,
+        ];
+        foreach ($orders as $o) {
+            $ev = $lastEvents[$o->id] ?? null;
+            if ($ev) {
+                if (in_array($ev->event_type, ['loading_started', 'loading_completed'], true)) $stats['loading']++;
+                elseif (in_array($ev->event_type, ['departure', 'border_crossed'], true)) $stats['in_transit']++;
+                elseif (in_array($ev->event_type, ['unloading_started', 'arrival'], true)) $stats['unloading']++;
+                if ((int)($ev->delay_minutes ?? 0) > 0 || $ev->event_type === 'delay_reported') $stats['delayed']++;
+            } else {
+                $stats['in_transit']++;
+            }
+        }
+
+        // Contracts dropdown
+        $contractsList = [];
+        try {
+            $rows = $this->fetchTable('SpeedOrders')->find()
+                ->select(['contract'])
+                ->where(['company_nip' => $companyNip, 'contract IS NOT' => null])
+                ->group('contract')
+                ->orderByAsc('contract')
+                ->disableHydration()
+                ->all();
+            foreach ($rows as $r) if (!empty($r['contract'])) $contractsList[] = $r['contract'];
+        } catch (\Throwable) {}
+
+        $this->set(compact('orders', 'lastEvents', 'stats', 'filterDriver', 'filterContract', 'filterCountry', 'contractsList'));
+    }
+
+    // =========================================================================
     // KANBAN operacyjny (5 kolumn per nordlogis_status)
     // =========================================================================
 

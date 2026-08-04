@@ -125,6 +125,9 @@ foreach ($orders as $order) {
         <a href="<?= $this->Url->build(['action' => 'kanban']) ?>" class="btn btn-sm btn-outline-primary">
             <i class="ri-kanban-view me-1"></i> Kanban
         </a>
+        <a href="<?= $this->Url->build(['action' => 'tracking']) ?>" class="btn btn-sm btn-outline-info">
+            <i class="ri-radar-line me-1"></i> Tracking
+        </a>
         <div class="btn-group">
             <a href="<?= $this->Url->build(['action' => 'exportCsv', '?' => ['q' => $search, 'status' => $status, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'delivery_from' => $deliveryFrom, 'delivery_to' => $deliveryTo]]) ?>"
                class="btn btn-sm btn-outline-success" title="<?= __('Eksportuj widoczne zlecenia do CSV') ?>">
