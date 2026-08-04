@@ -47,6 +47,15 @@ class SpeedOrdersTable extends Table
             'order'      => ['SpeedOrderStatusLogs.created' => 'ASC'],
             'dependent'  => true,
         ]);
+
+        // Stopy posrednie (multi-stop A->B->C->D)
+        $this->hasMany('SpeedOrderStops', [
+            'foreignKey' => 'speed_order_id',
+            'order'      => ['SpeedOrderStops.stop_index' => 'ASC'],
+            'dependent'  => true,
+            'cascadeCallbacks' => true,
+            'saveStrategy' => 'replace',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

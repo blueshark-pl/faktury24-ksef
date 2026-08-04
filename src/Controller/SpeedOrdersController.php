@@ -359,6 +359,7 @@ class SpeedOrdersController extends AppController
                     return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
                         ->orderByAsc('AllInvoices.date');
                 },
+                'SpeedOrderStops',
             ])
             ->firstOrFail();
         $rawData = null;
@@ -448,6 +449,7 @@ class SpeedOrdersController extends AppController
                     return $q->select(['id', 'fullnumber', 'date', 'total', 'currency', 'paymentstate'])
                         ->orderByAsc('AllInvoices.date');
                 },
+                'SpeedOrderStops',
             ])
             ->firstOrFail();
         $rawData = null;
@@ -1488,7 +1490,7 @@ class SpeedOrdersController extends AppController
 
         if ($this->request->is('post')) {
             $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
-            $order = $SpeedOrders->patchEntity($order, $data);
+            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops']]);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
 
@@ -1587,7 +1589,10 @@ class SpeedOrdersController extends AppController
         $this->request->allowMethod(['get', 'post']);
 
         $SpeedOrders = $this->fetchTable('SpeedOrders');
-        $order = $SpeedOrders->find()->where(['id' => $id])->first();
+        $order = $SpeedOrders->find()
+            ->where(['id' => $id])
+            ->contain(['SpeedOrderStops'])
+            ->first();
         if (!$order) {
             throw new NotFoundException(__('Zlecenie nie istnieje.'));
         }
@@ -1602,7 +1607,7 @@ class SpeedOrdersController extends AppController
             $data = $this->prepareManualOrderData($this->request->getData(), $companyNip, $companyName);
             // Zablokuj zmiane symbolu i manual_seq przy edycji (numer sie nie zmienia).
             unset($data['symbol'], $data['manual_seq'], $data['rok'], $data['mc'], $data['source']);
-            $order = $SpeedOrders->patchEntity($order, $data);
+            $order = $SpeedOrders->patchEntity($order, $data, ['associated' => ['SpeedOrderStops']]);
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało zaktualizowane.', $order->symbol));
                 $this->redirect(['action' => 'view', $order->id]);
@@ -3016,6 +3021,32 @@ SYS;
             if (isset($data[$ccKey])) {
                 $data[$ccKey] = strtoupper(trim((string)$data[$ccKey])) ?: null;
             }
+        }
+
+        // Multi-stop: normalizacja - filtruj puste stopy + puste datetime -> null,
+        // normalizuj country_code, ponumeruj stop_index od 1
+        if (isset($data['speed_order_stops']) && is_array($data['speed_order_stops'])) {
+            $clean = [];
+            $idx = 1;
+            foreach ($data['speed_order_stops'] as $stop) {
+                if (!is_array($stop)) continue;
+                // Skip zupelnie puste (bez city + bez place_name)
+                $city  = trim((string)($stop['city'] ?? ''));
+                $place = trim((string)($stop['place_name'] ?? ''));
+                if ($city === '' && $place === '') continue;
+                // Puste datetime -> null (walidator Cake)
+                foreach (['planned_at', 'actual_at', 'completed_at'] as $dtKey) {
+                    if (isset($stop[$dtKey]) && trim((string)$stop[$dtKey]) === '') {
+                        unset($stop[$dtKey]);
+                    }
+                }
+                if (isset($stop['country_code'])) {
+                    $stop['country_code'] = strtoupper(trim((string)$stop['country_code'])) ?: null;
+                }
+                $stop['stop_index'] = $idx++;
+                $clean[] = $stop;
+            }
+            $data['speed_order_stops'] = $clean;
         }
 
         // Approval workflow: jesli brutto (w PLN) > prog -> pending, inaczej not_required

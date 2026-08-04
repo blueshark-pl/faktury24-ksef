@@ -1230,6 +1230,64 @@ $csrfToken       = $this->request->getAttribute('csrfToken');
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- MULTI-STOP - dodatkowe stopy w trasie -->
+<?php if (!empty($order->speed_order_stops)): ?>
+<div class="card border-0 shadow-sm mb-3" id="stops-card">
+    <div class="card-header py-2 bg-white d-flex align-items-center gap-2 border-bottom">
+        <i class="ri-route-fill text-warning"></i>
+        <span class="fw-semibold">Dodatkowe stopy w trasie</span>
+        <span class="badge bg-warning-subtle text-warning ms-1"><?= count($order->speed_order_stops) ?></span>
+    </div>
+    <div class="card-body">
+        <?php
+        $stopTypeLabels = ['pickup' => 'Załadunek', 'delivery' => 'Rozładunek', 'transit' => 'Postój'];
+        $stopTypeColors = ['pickup' => 'success', 'delivery' => 'danger', 'transit' => 'secondary'];
+        $stopTypeIcons  = ['pickup' => 'ri-truck-line', 'delivery' => 'ri-inbox-line', 'transit' => 'ri-pause-line'];
+        ?>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light small">
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th>Typ</th>
+                        <th>Miejsce</th>
+                        <th>Planowany</th>
+                        <th>Rzeczywisty</th>
+                        <th>Uwagi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($order->speed_order_stops as $stop): ?>
+                        <?php
+                        $t = $stop->stop_type ?? 'delivery';
+                        $lbl = $stopTypeLabels[$t] ?? $t;
+                        $col = $stopTypeColors[$t] ?? 'secondary';
+                        $ico = $stopTypeIcons[$t] ?? 'ri-map-pin-line';
+                        ?>
+                        <tr>
+                            <td class="text-muted"><?= (int)$stop->stop_index ?></td>
+                            <td><span class="badge bg-<?= h($col) ?>-subtle text-<?= h($col) ?>"><i class="<?= h($ico) ?> me-1"></i><?= h($lbl) ?></span></td>
+                            <td>
+                                <?php if ($stop->place_name): ?><strong><?= h($stop->place_name) ?></strong><br><?php endif; ?>
+                                <span class="small">
+                                    <?= h(trim(($stop->country_code ?? '') . ' ' . ($stop->postal_code ?? '') . ' ' . ($stop->city ?? ''))) ?>
+                                </span>
+                                <?php if ($stop->contact_name || $stop->contact_phone): ?>
+                                    <div class="small text-muted"><i class="ri-user-line me-1"></i><?= h($stop->contact_name) ?> <?= h($stop->contact_phone) ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="small"><?= $stop->planned_at ? h($stop->planned_at->format('Y-m-d H:i')) : '-' ?></td>
+                            <td class="small"><?= $stop->actual_at ? h($stop->actual_at->format('Y-m-d H:i')) : ($stop->completed_at ? '<span class="text-success">✓ ' . h($stop->completed_at->format('Y-m-d H:i')) . '</span>' : '-') ?></td>
+                            <td class="small"><?= h($stop->cargo_notes ?? '-') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- APPROVAL WORKFLOW -->
 <?php
 $approvalStatus = $order->approval_status ?? 'not_required';

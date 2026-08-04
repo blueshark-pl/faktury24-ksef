@@ -513,6 +513,79 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
     </div>
 </div>
 
+<!-- SEKCJA 3b: Multi-stop (opcjonalne stopy posrednie) -->
+<div class="col-12">
+    <div class="card border-0 shadow-sm so-section-card" style="border-left:3px solid #f59e0b !important">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0 fw-semibold text-uppercase text-muted small so-section-title">
+                    <i class="ri-route-fill me-1 text-warning"></i> <?= __('Dodatkowe stopy w trasie (multi-stop)') ?>
+                    <span class="so-hint ms-1">opcjonalnie</span>
+                </h6>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="so-stops-add">
+                    <i class="ri-add-line me-1"></i><?= __('Dodaj stop') ?>
+                </button>
+            </div>
+            <div id="so-stops-list">
+                <?php
+                $existingStops = [];
+                if ($isEdit && !empty($order->speed_order_stops)) {
+                    $existingStops = $order->speed_order_stops;
+                }
+                ?>
+                <?php foreach ($existingStops as $sIdx => $stop): ?>
+                    <div class="so-stop-row border rounded p-2 mb-2" data-idx="<?= $sIdx ?>">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-1">
+                                <label class="form-label small text-muted mb-0"><?= __('Typ') ?></label>
+                                <select name="speed_order_stops[<?= $sIdx ?>][stop_type]" class="form-select form-select-sm">
+                                    <option value="pickup"   <?= $stop->stop_type === 'pickup'   ? 'selected' : '' ?>>Załad.</option>
+                                    <option value="delivery" <?= $stop->stop_type === 'delivery' ? 'selected' : '' ?>>Rozład.</option>
+                                    <option value="transit"  <?= $stop->stop_type === 'transit'  ? 'selected' : '' ?>>Transit</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label small text-muted mb-0"><?= __('Kraj') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][country_code]" class="form-control form-control-sm" value="<?= h($stop->country_code ?? '') ?>" maxlength="5">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label small text-muted mb-0"><?= __('Kod') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][postal_code]" class="form-control form-control-sm" value="<?= h($stop->postal_code ?? '') ?>" maxlength="20">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-0"><?= __('Miasto') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][city]" class="form-control form-control-sm" value="<?= h($stop->city ?? '') ?>" maxlength="120">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-0"><?= __('Miejsce/adres') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][place_name]" class="form-control form-control-sm" value="<?= h($stop->place_name ?? '') ?>" maxlength="200">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-0"><?= __('Planowany czas') ?></label>
+                                <input type="datetime-local" name="speed_order_stops[<?= $sIdx ?>][planned_at]" class="form-control form-control-sm" value="<?= h($stop->planned_at ? $stop->planned_at->format('Y-m-d\TH:i') : '') ?>">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-0"><?= __('Uwagi/palety') ?></label>
+                                <input type="text" name="speed_order_stops[<?= $sIdx ?>][cargo_notes]" class="form-control form-control-sm" value="<?= h($stop->cargo_notes ?? '') ?>">
+                            </div>
+                            <div class="col-md-1 text-end">
+                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][id]" value="<?= h($stop->id ?? '') ?>">
+                                <input type="hidden" name="speed_order_stops[<?= $sIdx ?>][stop_index]" value="<?= $sIdx + 1 ?>" class="so-stop-idx">
+                                <button type="button" class="btn btn-sm btn-outline-danger so-stop-remove">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <div id="so-stops-empty" class="text-muted small text-center py-2" <?= !empty($existingStops) ? 'style="display:none"' : '' ?>>
+                <?= __('Brak dodatkowych stopów. Zwykłe A → B (bez multi-stop). Kliknij „Dodaj stop" aby dodać pośredni załadunek lub rozładunek.') ?>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SEKCJA 4: Ladunek -->
 <div class="col-12">
     <div class="card border-0 shadow-sm so-section-card">
@@ -2215,6 +2288,62 @@ kbd { background:#f3f4f6;border:1px solid #d1d5db;border-radius:.2rem;padding:.0
             });
         });
     }
+
+    // =====================================================================
+    // MULTI-STOP: dodawanie/usuwanie stopow posrednich
+    // =====================================================================
+    var $stopsList  = document.getElementById('so-stops-list');
+    var $stopsAdd   = document.getElementById('so-stops-add');
+    var $stopsEmpty = document.getElementById('so-stops-empty');
+    var stopIdx     = $stopsList.querySelectorAll('.so-stop-row').length;
+
+    function stopRowHtml(idx) {
+        return '<div class="so-stop-row border rounded p-2 mb-2" data-idx="' + idx + '">' +
+            '<div class="row g-2 align-items-end">' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">Typ</label>' +
+                '<select name="speed_order_stops[' + idx + '][stop_type]" class="form-select form-select-sm">' +
+                '<option value="delivery">Rozład.</option><option value="pickup">Załad.</option><option value="transit">Transit</option>' +
+                '</select></div>' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">Kraj</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][country_code]" class="form-control form-control-sm" maxlength="5" placeholder="PL"></div>' +
+                '<div class="col-md-1"><label class="form-label small text-muted mb-0">Kod</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][postal_code]" class="form-control form-control-sm" maxlength="20"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Miasto</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][city]" class="form-control form-control-sm" maxlength="120"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Miejsce/adres</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][place_name]" class="form-control form-control-sm" maxlength="200"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Planowany czas</label>' +
+                '<input type="datetime-local" name="speed_order_stops[' + idx + '][planned_at]" class="form-control form-control-sm"></div>' +
+                '<div class="col-md-2"><label class="form-label small text-muted mb-0">Uwagi/palety</label>' +
+                '<input type="text" name="speed_order_stops[' + idx + '][cargo_notes]" class="form-control form-control-sm"></div>' +
+                '<div class="col-md-1 text-end">' +
+                '<input type="hidden" name="speed_order_stops[' + idx + '][stop_index]" value="' + (idx + 1) + '" class="so-stop-idx">' +
+                '<button type="button" class="btn btn-sm btn-outline-danger so-stop-remove"><i class="ri-delete-bin-line"></i></button>' +
+                '</div>' +
+            '</div></div>';
+    }
+
+    function renumberStops() {
+        $stopsList.querySelectorAll('.so-stop-row').forEach(function(row, i){
+            var idxInput = row.querySelector('.so-stop-idx');
+            if (idxInput) idxInput.value = i + 1;
+        });
+        var hasStops = $stopsList.querySelectorAll('.so-stop-row').length > 0;
+        $stopsEmpty.style.display = hasStops ? 'none' : '';
+    }
+
+    $stopsAdd.addEventListener('click', function(){
+        $stopsList.insertAdjacentHTML('beforeend', stopRowHtml(stopIdx++));
+        renumberStops();
+    });
+
+    $stopsList.addEventListener('click', function(e){
+        var rm = e.target.closest('.so-stop-remove');
+        if (rm) {
+            rm.closest('.so-stop-row').remove();
+            renumberStops();
+        }
+    });
 
     // =====================================================================
     // TEMPLATES ZLECEN (szablony)
