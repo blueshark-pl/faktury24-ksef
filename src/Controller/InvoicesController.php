@@ -7382,6 +7382,17 @@ private function makeClient(string $environment): KsefClient
         return $map[$upper] ?? 'PL';
     }
 
+    /**
+     * Prefiks kraju dla numeru VAT-UE (element KodUE, typ TKodyKrajowUE).
+     * Różni się od kodu ISO adresu (etd:TKodKraju) tylko dla Grecji: ISO „GR" → VAT „EL".
+     * Adres kontrahenta pozostaje „GR" (poprawne), a do numeru VAT-UE Grecja to „EL".
+     */
+    private function euVatCountryCode(string $iso): string
+    {
+        $c = strtoupper(trim($iso));
+        return $c === 'GR' ? 'EL' : $c;
+    }
+
     private function esc(string $value): string
     {
         return htmlspecialchars($value, ENT_XML1, 'UTF-8');
@@ -7606,10 +7617,14 @@ private function makeClient(string $environment): KsefClient
         if ($buyerVatEu !== '') {
             // VAT UE: KodUE + NrVatUE
             $kodUE = $buyerVatPrefix !== '' ? $buyerVatPrefix : ($countryCode !== 'PL' ? $countryCode : '');
-            // Jeśli NrVatUE zaczyna się od kodu kraju (np. "FR00951228071"), odetnij prefix
+            $kodUE = $this->euVatCountryCode($kodUE); // Grecja: ISO „GR" → VAT „EL"
+            // Jeśli NrVatUE zaczyna się od kodu kraju (np. "FR00951228071" lub "GR..."/"EL..."), odetnij prefix.
             $nrVatUE = $buyerVatEu;
-            if ($kodUE !== '' && strncasecmp($nrVatUE, $kodUE, strlen($kodUE)) === 0) {
-                $nrVatUE = substr($nrVatUE, strlen($kodUE));
+            foreach (array_values(array_unique(array_filter([$kodUE, strtoupper($countryCode)]))) as $__pfx) {
+                if ($__pfx !== '' && strncasecmp($nrVatUE, $__pfx, strlen($__pfx)) === 0) {
+                    $nrVatUE = substr($nrVatUE, strlen($__pfx));
+                    break;
+                }
             }
             $xml[] = '      <KodUE>' . $this->esc($kodUE) . '</KodUE>';
             $xml[] = '      <NrVatUE>' . $this->esc($nrVatUE) . '</NrVatUE>';
@@ -9858,8 +9873,16 @@ private function buildFormaPlatnosciXml(?string $method, string $indent): array
 
         $xml[] = '    <DaneIdentyfikacyjne>';
         if ($vatEu !== '') {
-            $xml[] = '      <KodUE>' . $this->esc($vatPrefix !== '' ? $vatPrefix : ($countryCode !== 'PL' ? $countryCode : '')) . '</KodUE>';
-            $xml[] = '      <NrVatUE>' . $this->esc($vatEu) . '</NrVatUE>';
+            $recKodUE = $this->euVatCountryCode($vatPrefix !== '' ? $vatPrefix : ($countryCode !== 'PL' ? $countryCode : '')); // Grecja: GR → EL
+            $recNrVatUE = $vatEu;
+            foreach (array_values(array_unique(array_filter([$recKodUE, strtoupper($countryCode)]))) as $__pfx) {
+                if ($__pfx !== '' && strncasecmp($recNrVatUE, $__pfx, strlen($__pfx)) === 0) {
+                    $recNrVatUE = substr($recNrVatUE, strlen($__pfx));
+                    break;
+                }
+            }
+            $xml[] = '      <KodUE>' . $this->esc($recKodUE) . '</KodUE>';
+            $xml[] = '      <NrVatUE>' . $this->esc($recNrVatUE) . '</NrVatUE>';
         } elseif ($taxIdOther !== '') {
             if ($taxIdOtherCountry !== '') {
                 $xml[] = '      <KodKraju>' . $this->esc($taxIdOtherCountry) . '</KodKraju>';
