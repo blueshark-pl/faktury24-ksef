@@ -133,6 +133,27 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/limity-kredytowe/usun/{id}',   ['controller' => 'ContractorCreditLimits', 'action' => 'delete'])
             ->setPass(['id']);
+
+        // ========== CRM (Leady) ==========
+        $builder->get('/crm',                           ['controller' => 'Leads', 'action' => 'index']);
+        $builder->get('/crm/kanban',                    ['controller' => 'Leads', 'action' => 'kanban']);
+        $builder->post('/crm/kanban/przenies/{id}',     ['controller' => 'Leads', 'action' => 'kanbanMove'])
+            ->setPass(['id']);
+        $builder->connect('/crm/dodaj',                 ['controller' => 'Leads', 'action' => 'add']);
+        $builder->connect('/crm/edytuj/{id}',           ['controller' => 'Leads', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->get('/crm/view/{id}',                 ['controller' => 'Leads', 'action' => 'view'])
+            ->setPass(['id']);
+        $builder->post('/crm/usun/{id}',                ['controller' => 'Leads', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->post('/crm/konwertuj/{id}',           ['controller' => 'Leads', 'action' => 'convertToContractor'])
+            ->setPass(['id']);
+        $builder->post('/crm/{leadId}/aktywnosc',       ['controller' => 'Leads', 'action' => 'activityAdd'])
+            ->setPass(['leadId']);
+        $builder->post('/crm/aktywnosc/{activityId}/usun', ['controller' => 'Leads', 'action' => 'activityDelete'])
+            ->setPass(['activityId']);
+        // ========== /CRM ==========
+
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
             ->setPass(['id']);
         $builder->post('/zlecenia/notatka/{noteId}/usun', ['controller' => 'SpeedOrders', 'action' => 'noteDelete'])

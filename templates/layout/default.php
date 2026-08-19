@@ -1577,6 +1577,38 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <!-- CRM Leady (potencjalni klienci) -->
+                            <li class="<?= $liClass(['leads']) ?>">
+                            <a href="javascript:void(0);" class="side-menu__item">
+                                <i class="ri-arrow-right-s-line side-menu__angle"></i>
+                                <i class="ri-user-search-line side-menu__icon"></i>
+                                <span class="side-menu__label"><?= __('CRM Leady') ?></span>
+                            </a>
+                            <ul class="slide-menu child1">
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-table-line me-1"></i>' . __('Lista leadów'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'index')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-layout-column-line me-1"></i>' . __('Pipeline (Kanban)'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'kanban'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'kanban')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-add-line me-1"></i>' . __('Nowy lead'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'add'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'add')]
+                                    ) ?>
+                                </li>
+                            </ul>
+                            </li>
+
                             <!-- Słownik adresów transportowych -->
                             <li class="slide <?= $navActive('TransportAddresses', 'index') || $navActive('TransportAddresses', 'add') || $navActive('TransportAddresses', 'edit') ?>">
                                 <?= $this->Html->link(

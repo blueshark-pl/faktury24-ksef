@@ -449,6 +449,15 @@ return [
             'controller' => 'ContractorCreditLimits',
             'action' => ['index', 'add', 'edit', 'delete'],
         ],
+        // CRM Leady - dostep dla wszystkich rol operacyjnych/sprzedazowych
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'Leads',
+            'action' => [
+                'index', 'kanban', 'kanbanMove', 'view', 'add', 'edit', 'delete',
+                'convertToContractor', 'activityAdd', 'activityDelete',
+            ],
+        ],
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'PalletTypes',

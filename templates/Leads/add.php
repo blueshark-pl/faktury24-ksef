@@ -1,0 +1,233 @@
+<?php
+/**
+ * @var \App\View\AppView $this
+ * @var \App\Model\Entity\Lead $lead
+ * @var iterable $users
+ * @var bool $isEdit
+ */
+$this->assign('title', $isEdit ? __('Edytuj lead') : __('Nowy lead'));
+$branches = [
+    'road' => 'Drogowy',
+    'road_reefer' => 'Drogowy chłodnia',
+    'road_adr' => 'Drogowy ADR',
+    'road_oversize' => 'Drogowy Oversize',
+    'sea' => 'Morski',
+    'rail' => 'Kolejowy',
+    'air' => 'Lotniczy',
+    'intermodal' => 'Intermodalny',
+    'any' => 'Dowolna',
+];
+$stages = [
+    'new' => 'Nowy lead', 'contact' => 'Kontakt', 'inquiry' => 'Zapytanie',
+    'offer' => 'Oferta', 'order' => 'Zlecenie', 'lost' => 'Utracone',
+];
+?>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-semibold">
+        <i class="ri-<?= $isEdit ? 'edit' : 'add' ?>-line me-1"></i>
+        <?= $isEdit ? __('Edytuj lead') : __('Nowy lead') ?>
+    </h4>
+    <a href="<?= $this->Url->build($isEdit ? ['action' => 'view', $lead->id] : ['action' => 'index']) ?>" class="btn btn-sm btn-outline-secondary">
+        <i class="ri-arrow-left-line"></i> <?= __('Anuluj') ?>
+    </a>
+</div>
+
+<?= $this->Form->create($lead) ?>
+<div class="row g-3">
+    <!-- Firma -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="ri-building-line"></i> <?= __('Dane firmy') ?></h6>
+                <div class="mb-2">
+                    <label class="form-label small"><?= __('Nazwa firmy') ?> *</label>
+                    <input name="company_name" required class="form-control" value="<?= h($lead->company_name) ?>">
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small">NIP / VAT</label>
+                        <input name="nip" class="form-control text-uppercase" value="<?= h($lead->nip) ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small"><?= __('Kraj') ?></label>
+                        <input name="country_code" maxlength="2" class="form-control text-uppercase" value="<?= h($lead->country_code) ?>" placeholder="PL">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small"><?= __('Kod') ?></label>
+                        <input name="postal_code" class="form-control" value="<?= h($lead->postal_code) ?>">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Miasto') ?></label>
+                        <input name="city" class="form-control" value="<?= h($lead->city) ?>">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Ulica') ?></label>
+                        <input name="street" class="form-control" value="<?= h($lead->street) ?>">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Gałąź transportu') ?></label>
+                        <select name="branch_type" class="form-select">
+                            <option value=""><?= __('— wybierz —') ?></option>
+                            <?php foreach ($branches as $k => $v): ?>
+                                <option value="<?= h($k) ?>" <?= $lead->branch_type === $k ? 'selected' : '' ?>><?= h($v) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Źródło') ?></label>
+                        <select name="source" class="form-select">
+                            <option value="manual"          <?= ($lead->source ?? 'manual') === 'manual' ? 'selected' : '' ?>><?= __('Ręczny') ?></option>
+                            <option value="website"         <?= $lead->source === 'website' ? 'selected' : '' ?>><?= __('WWW') ?></option>
+                            <option value="recommendation"  <?= $lead->source === 'recommendation' ? 'selected' : '' ?>><?= __('Polecenie') ?></option>
+                            <option value="cold_call"       <?= $lead->source === 'cold_call' ? 'selected' : '' ?>><?= __('Cold call') ?></option>
+                            <option value="import_csv"      <?= $lead->source === 'import_csv' ? 'selected' : '' ?>><?= __('Import CSV') ?></option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kontakt -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="ri-user-line"></i> <?= __('Osoba kontaktowa') ?></h6>
+                <div class="row g-2">
+                    <div class="col-md-7">
+                        <label class="form-label small"><?= __('Imię i nazwisko') ?></label>
+                        <input name="contact_person" class="form-control" value="<?= h($lead->contact_person) ?>">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small"><?= __('Stanowisko') ?></label>
+                        <input name="contact_role" class="form-control" value="<?= h($lead->contact_role) ?>">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Telefon') ?></label>
+                        <input name="phone" class="form-control" value="<?= h($lead->phone) ?>">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Email</label>
+                        <input name="email" type="email" class="form-control" value="<?= h($lead->email) ?>">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Preferowany kanał') ?></label>
+                        <select name="contact_channel" class="form-select">
+                            <option value=""><?= __('— dowolny —') ?></option>
+                            <option value="phone"   <?= $lead->contact_channel === 'phone' ? 'selected' : '' ?>><?= __('Telefon') ?></option>
+                            <option value="email"   <?= $lead->contact_channel === 'email' ? 'selected' : '' ?>>Email</option>
+                            <option value="meeting" <?= $lead->contact_channel === 'meeting' ? 'selected' : '' ?>><?= __('Spotkanie') ?></option>
+                            <option value="any"     <?= $lead->contact_channel === 'any' ? 'selected' : '' ?>><?= __('Dowolny') ?></option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Opiekun') ?></label>
+                        <select name="assigned_to_user_id" class="form-select">
+                            <option value=""><?= __('— nieprzypisany —') ?></option>
+                            <?php foreach ($users as $u):
+                                $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->email ?? $u->id);
+                            ?>
+                                <option value="<?= h($u->id) ?>" <?= $lead->assigned_to_user_id === $u->id ? 'selected' : '' ?>><?= h($name) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline + wartość -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="ri-funnels-line"></i> <?= __('Pipeline + wartość') ?></h6>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Etap') ?></label>
+                        <select name="stage" class="form-select">
+                            <?php foreach ($stages as $k => $v): ?>
+                                <option value="<?= h($k) ?>" <?= ($lead->stage ?? 'new') === $k ? 'selected' : '' ?>><?= h($v) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Skuteczność %') ?></label>
+                        <input name="probability" type="number" min="0" max="100" class="form-control"
+                               value="<?= h($lead->probability ?? 10) ?>">
+                        <div class="form-text small"><?= __('Auto-preset przy zmianie etapu (10/25/50/75/100)') ?></div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Szacowana wartość') ?></label>
+                        <div class="input-group">
+                            <input name="value_pln" type="number" step="0.01" class="form-control" value="<?= h($lead->value_pln) ?>">
+                            <span class="input-group-text">zł</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Waluta') ?></label>
+                        <input name="currency" maxlength="3" class="form-control text-uppercase" value="<?= h($lead->currency ?? 'PLN') ?>">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notatka + next action -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="ri-sticky-note-line"></i> <?= __('Notatka + follow-up') ?></h6>
+                <div class="mb-2">
+                    <label class="form-label small"><?= __('Notatka wewnętrzna') ?></label>
+                    <textarea name="note" class="form-control" rows="3"><?= h($lead->note) ?></textarea>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <label class="form-label small"><?= __('Termin następnej akcji') ?></label>
+                        <input name="next_action_at" type="datetime-local" class="form-control"
+                               value="<?= $lead->next_action_at ? $lead->next_action_at->format('Y-m-d\\TH:i') : '' ?>">
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label small"><?= __('Opis akcji') ?></label>
+                        <input name="next_action_description" class="form-control" value="<?= h($lead->next_action_description) ?>"
+                               placeholder="<?= __('np. Zadzwoń do Daniela ws. oferty') ?>">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Odłóż do (snooze)') ?></label>
+                        <input name="snooze_until" type="date" class="form-control"
+                               value="<?= $lead->snooze_until ? $lead->snooze_until->format('Y-m-d') : '' ?>">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="kanban_pinned" value="1"
+                                   id="kp" <?= $lead->kanban_pinned ? 'checked' : '' ?>>
+                            <label class="form-check-label small" for="kp"><?= __('Przypięty na górze Kanban') ?></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 text-end">
+        <a href="<?= $this->Url->build($isEdit ? ['action' => 'view', $lead->id] : ['action' => 'index']) ?>" class="btn btn-outline-secondary">
+            <?= __('Anuluj') ?>
+        </a>
+        <button type="submit" class="btn btn-success">
+            <i class="ri-save-line"></i> <?= __('Zapisz') ?>
+        </button>
+    </div>
+</div>
+<?= $this->Form->end() ?>

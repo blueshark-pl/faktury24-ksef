@@ -1770,3 +1770,299 @@ msgstr "Phone"
 
 msgid "np. +48 600 100 200"
 msgstr "e.g. +48 600 100 200"
+
+# === CRM Leads (2026-08-19) ===
+
+msgid "CRM – Leady"
+msgstr "CRM – Leads"
+
+msgid "CRM Leady"
+msgstr "CRM Leads"
+
+msgid "CRM – Kanban leadów"
+msgstr "CRM – Leads Kanban"
+
+msgid "Kanban leadów"
+msgstr "Leads Kanban"
+
+msgid "Lista leadów"
+msgstr "Leads list"
+
+msgid "Pipeline (Kanban)"
+msgstr "Pipeline (Kanban)"
+
+msgid "Nowy lead"
+msgstr "New lead"
+
+msgid "Edytuj lead"
+msgstr "Edit lead"
+
+msgid "Lead: "
+msgstr "Lead: "
+
+msgid "Wszystkie etapy"
+msgstr "All stages"
+
+msgid "Wszystkie gałęzie"
+msgstr "All branches"
+
+msgid "Firma, NIP, kontakt, email, miasto…"
+msgstr "Company, VAT, contact, email, city…"
+
+msgid "Kraj (PL, DE...)"
+msgstr "Country (PL, DE...)"
+
+msgid "Moje"
+msgstr "Mine"
+
+msgid "Kraj / Miasto"
+msgstr "Country / City"
+
+msgid "Osoba"
+msgstr "Person"
+
+msgid "Gałąź"
+msgstr "Branch"
+
+msgid "Etap"
+msgstr "Stage"
+
+msgid "Skut."
+msgstr "Prob."
+
+msgid "Skuteczność"
+msgstr "Probability"
+
+msgid "Skuteczność %"
+msgstr "Probability %"
+
+msgid "Wartość (zł)"
+msgstr "Value (PLN)"
+
+msgid "Aktywności"
+msgstr "Activities"
+
+msgid "Brak leadów spełniających filtry."
+msgstr "No leads match the filters."
+
+msgid "Zapytanie"
+msgstr "Inquiry"
+
+msgid "Utracone"
+msgstr "Lost"
+
+msgid "Drogowy"
+msgstr "Road"
+
+msgid "Drogowy chłodnia"
+msgstr "Road reefer"
+
+msgid "Drogowy ADR"
+msgstr "Road ADR"
+
+msgid "Drogowy Oversize"
+msgstr "Road Oversize"
+
+msgid "Morski"
+msgstr "Sea"
+
+msgid "Kolejowy"
+msgstr "Rail"
+
+msgid "Lotniczy"
+msgstr "Air"
+
+msgid "Intermodalny"
+msgstr "Intermodal"
+
+msgid "Timeline aktywności"
+msgstr "Activity timeline"
+
+msgid "Dodaj aktywność"
+msgstr "Add activity"
+
+msgid "📞 Rozmowa"
+msgstr "📞 Phone call"
+
+msgid "📤 Email wysłany"
+msgstr "📤 Email sent"
+
+msgid "📥 Email otrzymany"
+msgstr "📥 Email received"
+
+msgid "📅 Spotkanie"
+msgstr "📅 Meeting"
+
+msgid "📝 Notatka"
+msgstr "📝 Note"
+
+msgid "✅ Zadanie/przypomnienie"
+msgstr "✅ Task/reminder"
+
+msgid "Temat / tytuł"
+msgstr "Subject / title"
+
+msgid "Treść / opis"
+msgstr "Body / description"
+
+msgid "Termin (dla zadań)"
+msgstr "Due date (for tasks)"
+
+msgid "Wypełnij tylko dla zadań/przypomnień"
+msgstr "Fill only for tasks/reminders"
+
+msgid "Brak aktywności. Zapisz pierwszą rozmowę, email lub notatkę powyżej."
+msgstr "No activities yet. Log a first call, email or note above."
+
+msgid "Termin:"
+msgstr "Due:"
+
+msgid "Następna akcja"
+msgstr "Next action"
+
+msgid "Dane firmy"
+msgstr "Company data"
+
+msgid "Osoba kontaktowa"
+msgstr "Contact person"
+
+msgid "Preferowany kanał"
+msgstr "Preferred channel"
+
+msgid "Preferencja"
+msgstr "Preference"
+
+msgid "Utwórz kontrahenta"
+msgstr "Create contractor"
+
+msgid "Utworzyć kontrahenta z tego leada?"
+msgstr "Create a contractor from this lead?"
+
+msgid "Kontrahent utworzony i podpięty do leada."
+msgstr "Contractor created and linked to the lead."
+
+msgid "Lead już podpięty do kontrahenta."
+msgstr "Lead is already linked to a contractor."
+
+msgid "Błąd tworzenia kontrahenta."
+msgstr "Error creating contractor."
+
+msgid "Aktywność dodana."
+msgstr "Activity added."
+
+msgid "Błąd zapisu aktywności."
+msgstr "Error saving activity."
+
+msgid "Aktywność usunięta."
+msgstr "Activity deleted."
+
+msgid "Nieprawidłowy etap"
+msgstr "Invalid stage"
+
+msgid "Nieprawidłowy typ aktywności"
+msgstr "Invalid activity type"
+
+msgid "Lead dodany."
+msgstr "Lead added."
+
+msgid "Lead zaktualizowany."
+msgstr "Lead updated."
+
+msgid "Lead usunięty."
+msgstr "Lead deleted."
+
+msgid "Błąd zapisu leada."
+msgstr "Error saving lead."
+
+msgid "Usunąć leada?"
+msgstr "Delete lead?"
+
+msgid "Usunąć wpis?"
+msgstr "Delete entry?"
+
+msgid "Ręczny"
+msgstr "Manual"
+
+msgid "WWW"
+msgstr "Website"
+
+msgid "Polecenie"
+msgstr "Recommendation"
+
+msgid "Cold call"
+msgstr "Cold call"
+
+msgid "Import CSV"
+msgstr "CSV import"
+
+msgid "Pipeline + wartość"
+msgstr "Pipeline + value"
+
+msgid "Notatka + follow-up"
+msgstr "Note + follow-up"
+
+msgid "Notatka wewnętrzna"
+msgstr "Internal note"
+
+msgid "Termin następnej akcji"
+msgstr "Next action due"
+
+msgid "Opis akcji"
+msgstr "Action description"
+
+msgid "np. Zadzwoń do Daniela ws. oferty"
+msgstr "e.g. Call Daniel about the offer"
+
+msgid "Odłóż do (snooze)"
+msgstr "Snooze until"
+
+msgid "Przypięty na górze Kanban"
+msgstr "Pinned at top of Kanban"
+
+msgid "Auto-preset przy zmianie etapu (10/25/50/75/100)"
+msgstr "Auto-preset when stage changes (10/25/50/75/100)"
+
+msgid "Gałąź transportu"
+msgstr "Transport branch"
+
+msgid "Ulica"
+msgstr "Street"
+
+msgid "Imię i nazwisko"
+msgstr "First and last name"
+
+msgid "Stanowisko"
+msgstr "Role"
+
+msgid "— dowolny —"
+msgstr "— any —"
+
+msgid "— nieprzypisany —"
+msgstr "— unassigned —"
+
+msgid "— wybierz —"
+msgstr "— choose —"
+
+msgid "Tabela"
+msgstr "Table"
+
+msgid "Zobacz"
+msgstr "View"
+
+msgid "Błąd zmiany etapu"
+msgstr "Stage change error"
+
+msgid "Błąd sieciowy"
+msgstr "Network error"
+
+msgid "%d leadów · %d aktywnych · średnia skuteczność %d%%"
+msgstr "%d leads · %d active · avg probability %d%%"
+
+msgid "Łącznie: %d aktywnych, wartość pipeline: %s zł"
+msgstr "Total: %d active, pipeline value: %s PLN"
+
+msgid "Lead utworzony"
+msgstr "Lead created"
+
+msgid "Dodatkowe stopy w trasie"
+msgstr "Additional stops on the route"

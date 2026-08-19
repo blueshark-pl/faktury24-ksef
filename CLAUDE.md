@@ -214,6 +214,38 @@ Lookup GUS po NIP, import z Speed ERP, zarządzanie danymi.
 ### Faktury kosztowe (`CostInvoicesController`)
 Import faktur kosztowych z KSeF. Osobna tabela `cost_invoices`.
 
+### CRM Leady (`LeadsController`)
+Zarządzanie potencjalnymi klientami (leadami) — pipeline sprzedażowy dla działu handlowego spedycji.
+Powstał na bazie ręcznego arkusza Excel klienta (kolumny: firma / kraj / kod / miasto / ulica /
+kontakt / tel / email / gałąź / note / checkboxy Kontakt/Zapytanie/Oferta/Zlecenie / skuteczność %).
+
+**Widoki:**
+- `/crm` — lista tabelaryczna z filtrami (etap/gałąź/kraj/moje) + KPI pipeline (5 kafelków)
+- `/crm/kanban` — Kanban 5 kolumn z drag&drop (SortableJS 1.15 CDN → AJAX `POST /crm/kanban/przenies/{id}`)
+- `/crm/view/{id}` — detal leada + stepper etapów + panel „Następna akcja" + dane firmy/kontakt/notatka + timeline aktywności z formularzem dodawania
+- `/crm/dodaj` / `/crm/edytuj/{id}` — formularz (4 sekcje: firma / kontakt / pipeline+wartość / notatka+follow-up)
+
+**Etapy pipeline** (kolumna `stage`): `new` → `contact` → `inquiry` → `offer` → `order` (+ `lost`).
+
+**Auto-preset skuteczności** (`probability`) przy zmianie stage w `LeadsTable::beforeSave()`:
+`new=10 / contact=25 / inquiry=50 / offer=75 / order=100 / lost=0`. User może nadpisać ręcznie.
+
+**Auto-flagi** (`flag_contact/inquiry/offer/order`) — raz osiągnięty etap → flaga zostaje na zawsze
+(dla widoku K·Z·O·Zl w tabeli, jak w Excelu klienta).
+
+**Konwersja lead → contractor**: `POST /crm/konwertuj/{id}` — tworzy rekord w `contractors`
+z danymi leada i podpina `leads.contractor_id`. Guard: tylko jeśli jeszcze nie podpięty.
+
+**Timeline aktywności** (`lead_activities`) — każdy rekord to jedno zdarzenie (rozmowa/email/spotkanie/
+notatka/task/zmiana etapu). Typy: `phone_call / email_out / email_in / meeting / note / task / file /
+stage_change / assignment / offer_sent / order_won / order_lost`. Formularz w widoku szczegółów:
+typ + temat + treść + happened_at + duration_min + due_at (dla tasków). Zmiana etapu przez Kanban
+auto-loguje `stage_change` przez helper `LeadActivitiesTable::logSystem()` (best-effort try/catch).
+
+**Sidebar**: menu „CRM Leady" z 3 pozycjami (Lista / Pipeline / Nowy lead).
+**Permissions**: `asystent_spedytora | mlodszy_spedytor | spedycja_manager | sales_manager | user`
+(pełny CRUD + timeline + konwersja).
+
 ---
 
 ## Baza danych — kluczowe tabele
@@ -233,6 +265,8 @@ Import faktur kosztowych z KSeF. Osobna tabela `cost_invoices`.
 | `contractor_bank_accounts` | Konta bankowe kontrahentów |
 | `speed_orders` | Zlecenia z Speed ERP |
 | `cost_invoices` | Faktury kosztowe |
+| `leads` | CRM leady (potencjalni klienci) |
+| `lead_activities` | Timeline aktywności per lead |
 
 ### Ważne kolumny `invoices`
 
@@ -962,6 +996,70 @@ Migracja: `20260528100000_AddKanbanFieldsToInvoices.php`
 | `assigned_to_user_id` | uuid | FK do `users.id` (kto pilnuje) |
 | `kanban_pinned` | bool | przypięcie karty na górze kolumny |
 
+### Pełne kolumny `leads`
+Migracja: `20260819100000_CreateLeads.php`
+CRM — potencjalni klienci. Multi-tenant przez `company_id`. Może być podpięty do `contractors`
+(gdy skonwertowany) lub istnieć samodzielnie ("cold lead").
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | multi-tenant |
+| `contractor_id` | uuid | FK do `contractors` (nullable — set po konwersji) |
+| `company_name` | string(255) | nazwa firmy (wymagane) |
+| `nip` | string(30) | NIP/VAT — klucz dedup + matchowanie z contractors |
+| `country_code` | string(2) | ISO 3166-1 alpha-2 |
+| `postal_code` | string(20) | |
+| `city` | string(100) | |
+| `street` | string(255) | |
+| `contact_person` | string(150) | imię+nazwisko osoby kontaktowej |
+| `contact_role` | string(100) | stanowisko |
+| `phone` / `email` | string | |
+| `contact_channel` | string(30) | preferowany: `phone / email / meeting / any` |
+| `branch_type` | string(50) | `road / road_reefer / road_adr / road_oversize / sea / rail / air / intermodal / any` |
+| `stage` | string(20) | pipeline: `new / contact / inquiry / offer / order / lost` |
+| `probability` | int(3) | skuteczność 0-100 (auto-preset przy zmianie stage) |
+| `value_pln` | decimal(12,2) | szacowana wartość oferty netto |
+| `currency` | string(3) | default PLN |
+| `flag_contact / flag_inquiry / flag_offer / flag_order` | bool | Excel-style checkboxy — raz osiągnięty etap → true na zawsze |
+| `assigned_to_user_id` | uuid | FK do users (handlowiec pilnujący) |
+| `source` | string(50) | `manual / import_csv / website / recommendation / cold_call` |
+| `kanban_pinned` | bool | przypięcie na górze Kanban |
+| `snooze_until` | date | karta ukryta do daty |
+| `note` | text | notatka wewnętrzna (widoczna w tabeli/detalu) |
+| `next_action_at` | datetime | termin następnej zaplanowanej akcji |
+| `next_action_description` | string(500) | opis akcji („zadzwoń w piątek 09:00") |
+| `last_contacted_at` | datetime | ostatni kontakt (auto-update po activity) |
+| `stage_changed_at` | datetime | kiedy trafił do aktualnego etapu (dla „days in stage") |
+| `lost_reason` | string(500) | powód utraty (gdy stage=lost) |
+
+**Preset skuteczności** (LeadsTable::STAGE_PROBABILITY): 10 / 25 / 50 / 75 / 100 / 0.
+**Preset odbywa się w beforeSave** jeśli user nie ustawił ręcznie.
+
+### Pełne kolumny `lead_activities`
+Migracja: `20260819100100_CreateLeadActivities.php`
+Timeline aktywności per lead — CASCADE delete gdy lead usunięty.
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| `id` | uuid | PK |
+| `company_id` | uuid | |
+| `lead_id` | uuid | FK do `leads` (CASCADE) |
+| `user_id` | uuid | autor (NULL = system) |
+| `activity_type` | string(30) | `phone_call / email_out / email_in / meeting / note / task / file / stage_change / assignment / offer_sent / order_won / order_lost` |
+| `subject` | string(255) | krótki temat |
+| `body` | text | treść/opis |
+| `duration_min` | int | czas rozmowy/spotkania w minutach |
+| `happened_at` | datetime | kiedy się wydarzyło (dla history — może być w przeszłości) |
+| `due_at` | datetime | termin (dla task/reminder) |
+| `is_done` | bool | dla task |
+| `done_at` | datetime | |
+| `file_path` / `file_name` | string | dla `file` (POD/CMR/oferta) |
+| `payload_json` | text | metadane akcji (np. `{old:"inquiry", new:"offer"}` dla stage_change) |
+
+**Helper**: `LeadActivitiesTable::logSystem($companyId, $leadId, $type, $subject, $body, $payload, $userId)`
+— best-effort try/catch, używać zamiast ręcznego save z kontrolera dla eventów systemowych.
+
 ---
 
 ## ORM — pułapki i konwencje
@@ -1039,6 +1137,7 @@ Konwencja URL:
 
 | Data | Opis | Pliki |
 |------|------|-------|
+| 2026-08-19 | Feat: **CRM Leady** (pełny moduł) — 2 nowe tabele (`leads`, `lead_activities`), full CRUD `/crm` + Kanban 5 kolumn z drag&drop (SortableJS via CDN) + detal z stepper etapów + timeline aktywności z formularzem dodawania (call/email/meeting/note/task). Pipeline: `new → contact → inquiry → offer → order (+lost)` z auto-preset skuteczności per etap (10/25/50/75/100) w `LeadsTable::beforeSave()`. Auto-flagi Excel-style K·Z·O·Zl (raz osiągnięty etap → zostaje). Konwersja lead→contractor via `POST /crm/konwertuj/{id}`. Helper `LeadActivitiesTable::logSystem()` best-effort loguje event `stage_change` przy drag&drop w Kanban. Sidebar menu 3-poziomowe (Lista/Pipeline/Nowy). i18n EN kompletny (~90 kluczy). Poprzedzone designem 4-artboardowego CRM w Design skill (https://claude.ai/code/artifact/6a065118-d1e0-4069-b391-8ae580634544) z realnymi danymi z Excela klienta (Bowim, Mondi Simet, PipeLife, Tymbark, SILESIAN FLOUR, KATOENNATIE Cremona, Milcobel, Epifatech, Carlsberg, Dijo, Grodcono, Avery Denison, Omnivent) | 2 migracje `CreateLeads` + `CreateLeadActivities`, `LeadsTable` + `LeadActivitiesTable` + Entities, nowy `LeadsController` (index/kanban/kanbanMove/view/add/edit/delete/convertToContractor/activityAdd/activityDelete), 4 templates (`index.php` tabela, `kanban.php` drag&drop, `view.php` detal+timeline, `add.php` formularz), `routes.php`, `permissions.php`, `templates/layout/default.php` (sidebar), `resources/locales/en/default.po` (+~90 kluczy) |
 | 2026-08-04 | Feat: `/zlecenia/dodaj` **TSL upgrade** — pełny pakiet realnej spedycji: migracja 17 nowych kolumn (`load/unload_time_from/to`, `payment_days` + auto `payment_due_date` z `date_doc`, `required_vehicle_type` enum plandeka/mega/chłodnia/cysterna/wywrotka/kontener/bus/platforma/oversize, `pallets_exchange` bool + `pallets_exchange_count`, `docs_return_days` CMR/WZ, `load/unload_contact_name/phone/email`, `driver_instructions` osobne od notes); walidacja JS wagi cargo vs typowy DMC dla typu pojazdu (bus 3.5t / chłodnia 20t / plandeka 24t / oversize 50t); TSL flow quick-nav bar (Klient→Trasa→Ładunek→Transport→Cena) z badge numerów kroków 1-5 w headerach sekcji + kotwice `#sec-buyer/route/cargo/transport/finance` + smooth-scroll; AI parser JSON schema + JS mapping obejmuje wszystkie 17 nowych pól (boolean `pallets_exchange` osobny handler); Templates TPL_FIELDS rozszerzone o TSL fields; lat/lng widoczne edytowalne pola dla pickup/delivery/multi-stop z klikalnym linkiem Google Maps; naprawy 2 bugów JS (`$rateFx` i `$stopsAdd` używane przed definicją → refaktor kolejności + MutationObserver) | migracja `AddTslFieldsToSpeedOrders` + `AddLatLngToSpeedOrdersAndStops`, `SpeedOrdersController::prepareManualOrderData` (auto payment_due_date + normalizacja palet), Entity `SpeedOrder` (docblock 17 pól), `templates/SpeedOrders/add.php` (widgety kontaktów w sekcjach Za/Roz, dropdown required_vehicle_type + pallets_exchange w Ładunku, payment_days + due w Finansach, driver_instructions z warning "nie w email", quick-nav bar, badge kroków, JS payment auto + weight validation + AI mapping) |
 | 2026-08-04 | Feat: `/zlecenia/tracking` **Tracking dashboard FALA 10** — live monitoring aktywnych zleceń w trasie: filtr `nordlogis_status IN [3,4]` + `pod_at IS NULL`, dla każdego zlecenia karta z ostatnim eventem z `trip_events` (typ + ikona + kolor + timestamp + adres + opóźnienie + zdjęcie POD); 4 KPI (total/loading/in_transit/delayed); filtry: kierowca/kontrakt/kraj; button „Timeline" linkuje do `/trip-events/zlecenie/{id}`; **auto-refresh 60s** przez `<meta refresh>`; layout responsive (3 kolumny na xl, 2 na md); mapa event_type → label/icon/color dla 12 typów (departure/arrival/loading/unloading/border/delay/pod/cmr/incident/note) | `SpeedOrdersController::tracking`, `templates/SpeedOrders/tracking.php`, `index.php` (button), routes, permissions |
 | 2026-08-04 | Feat: `/zlecenia` **Excel export FALA 10** — nowa akcja `exportXlsx()` generuje plik `.xls` w formacie XML SpreadsheetML 2003 (Excel otwiera bezpośrednio, LibreOffice też wspiera); **bez PhpSpreadsheet** — czysty PHP przez XML builder; 44 kolumny snapshot (klient/trasa/ładunek/transport/finanse/statusy/dokumenty); style nagłówka bold + bg brand; wartości numeryczne jako `ss:Type="Number"` (SUM/AVG działa bez konwersji); limit 5000 zleceń; dropdown split button „CSV / Excel" w liście | `SpeedOrdersController::exportXlsx` + private `buildSpreadsheetXml`, `index.php` (dropdown), routes, permissions |
