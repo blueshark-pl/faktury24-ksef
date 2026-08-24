@@ -480,7 +480,8 @@ return [
             'role' => ['spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'CrmAdmin',
             'action' => ['tools', 'migrate', 'migrationStatus', 'clearCache',
-                         'pollEmails', 'runCron', 'gitPull', 'fileCheck', 'nuclearClear'],
+                         'pollEmails', 'runCron', 'gitPull', 'fileCheck', 'nuclearClear',
+                         'findLead', 'resetGmailHistory'],
         ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [
@@ -510,6 +511,8 @@ return [
                 'linkedinSearchJson',
                 // FALA 11: GPT AI
                 'aiDraftResponseJson', 'aiSummarizeJson',
+                // FALA 15: quote_request -> zlecenia
+                'createOrdersFromQuote',
             ],
         ],
         [

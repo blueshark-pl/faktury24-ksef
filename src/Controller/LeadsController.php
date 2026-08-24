@@ -1997,4 +1997,148 @@ class LeadsController extends AppController
 
         return $out;
     }
+
+    /**
+     * FALA 15: Utworz manualne zlecenia (speed_orders) z listy shipments wyekstraktowanej z emaila
+     * przez GPT (activity_type='quote_request').
+     * POST /crm/{leadId}/utworz-zlecenia-z-quote/{activityId}
+     */
+    public function createOrdersFromQuote(string $activityId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $Acts = $this->fetchTable('LeadActivities');
+        $act = $Acts->get($activityId, ['contain' => ['Leads']]);
+        if ((string)$act->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+        if ($act->activity_type !== 'quote_request') {
+            $this->Flash->error(__('Aktywność nie jest zapytaniem o wycenę.'));
+            $this->redirect(['action' => 'view', $act->lead_id]);
+            return $this->response;
+        }
+
+        $payload = !empty($act->payload_json) ? json_decode($act->payload_json, true) : [];
+        $shipments = $payload['shipments'] ?? [];
+        if (empty($shipments) || !is_array($shipments)) {
+            $this->Flash->error(__('Brak zleceń w danych aktywności.'));
+            $this->redirect(['action' => 'view', $act->lead_id]);
+            return $this->response;
+        }
+
+        $lead = $act->lead;
+        $SO = $this->fetchTable('SpeedOrders');
+        $Notes = null;
+        try { $Notes = $this->fetchTable('SpeedOrderNotes'); } catch (\Throwable $e) {}
+
+        // Wygeneruj numer manualny dla kazdego zlecenia (przez ostatni manual_seq per rok+mc)
+        $companyNip = (string)$identity?->get('company_nip');
+        $today = new \Cake\I18n\Date();
+        $rok = (int)$today->format('Y');
+        $mc  = (int)$today->format('m');
+
+        $created = 0;
+        $errors = 0;
+        foreach ($shipments as $s) {
+            try {
+                // Kolejny manual_seq per (company_nip, source=manual, rok, mc)
+                $lastSeq = $SO->find()
+                    ->where([
+                        'company_nip' => $companyNip,
+                        'source' => 'manual',
+                        'rok' => $rok,
+                        'mc'  => $mc,
+                    ])
+                    ->orderByDesc('manual_seq')
+                    ->first();
+                $newSeq = ($lastSeq && $lastSeq->manual_seq) ? ((int)$lastSeq->manual_seq + 1) : 1;
+                $symbol = sprintf('M-%04d/%02d/%d', $newSeq, $mc, $rok);
+
+                $order = $SO->newEntity([
+                    'source' => 'manual',
+                    'manual_seq' => $newSeq,
+                    'company_nip' => $companyNip,
+                    'rok' => $rok,
+                    'mc'  => $mc,
+                    'symbol' => $symbol,
+                    'date_doc' => $today,
+                    'buyer_name' => $lead->company_name,
+                    'buyer_nip'  => $lead->nip,
+                    'buyer_city' => $lead->city,
+                    'buyer_country' => $lead->country_code,
+                    'buyer_postal_code' => $lead->postal_code,
+                    'buyer_street' => $lead->street,
+                    'load_country' => $s['from_country'] ?? '',
+                    'load_postal'  => $s['from_postal'] ?? '',
+                    'load_city'    => $s['from_city'] ?? '',
+                    'load_company' => $s['from_company'] ?? '',
+                    'load_date'    => !empty($s['load_date']) ? $s['load_date'] : null,
+                    'unload_country' => $s['to_country'] ?? '',
+                    'unload_postal'  => $s['to_postal'] ?? '',
+                    'unload_city'    => $s['to_city'] ?? '',
+                    'unload_company' => $s['to_company'] ?? '',
+                    'unload_date'    => !empty($s['unload_date']) ? $s['unload_date'] : null,
+                    'cargo_weight_kg' => !empty($s['weight_kg']) ? (int)$s['weight_kg'] : null,
+                    'cargo_pallets'   => !empty($s['pallets']) ? (int)$s['pallets'] : null,
+                    'cargo_pallet_type' => $s['pallet_type'] ?? null,
+                    'required_vehicle_type' => $s['vehicle_type'] ?? null,
+                    'notes' => trim(($s['customer_order_ref'] ? 'Kundenbestellnummer/Ref: ' . $s['customer_order_ref'] . "\n" : '')
+                        . ($s['cargo_type'] ? 'Ładunek: ' . $s['cargo_type'] . "\n" : '')
+                        . ($s['notes'] ?? '')),
+                    'currency' => 'EUR',
+                    'vat_rate' => '0',
+                    'netto' => 0,
+                    'vat'   => 0,
+                    'brutto' => 0,
+                ]);
+                if ($SO->save($order)) {
+                    $created++;
+                    if ($Notes) {
+                        try {
+                            $Notes->logSystem((string)$companyId, (string)$order->id,
+                                sprintf('Utworzone automatycznie z zapytania o wycenę (lead #%s, aktywność %s).',
+                                    $lead->company_name, $act->id),
+                                ['source' => 'quote_request', 'lead_id' => $lead->id, 'activity_id' => $act->id]);
+                        } catch (\Throwable $ee) {}
+                    }
+                } else {
+                    $errors++;
+                }
+            } catch (\Throwable $e) {
+                $errors++;
+            }
+        }
+
+        if ($created > 0) {
+            // Zaktualizuj payload_json - dopisz flage created_orders + count
+            $payload['orders_created_at'] = date('Y-m-d H:i:s');
+            $payload['orders_created_count'] = $created;
+            $payload['orders_created_by_user_id'] = $userId;
+            $act->payload_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+            $Acts->save($act);
+
+            // Log w timeline
+            try {
+                $Acts->logSystem((string)$companyId, (string)$lead->id,
+                    'note',
+                    sprintf(__('Utworzono %d zleceń manualnych z zapytania o wycenę'), $created),
+                    sprintf(__('Aktywność #%s zawierała %d zleceń, utworzono %d w bazie (%d błędów).'),
+                        $act->id, count($shipments), $created, $errors),
+                    ['source' => 'quote_extract_apply', 'activity_id' => $act->id],
+                    $userId);
+            } catch (\Throwable $e) {}
+        }
+
+        if ($errors > 0) {
+            $this->Flash->warning(__('Utworzono {0} zleceń, {1} błędów.', $created, $errors));
+        } else {
+            $this->Flash->success(__('Utworzono {0} zleceń manualnych.', $created));
+        }
+        $this->redirect(['action' => 'view', $lead->id]);
+        return $this->response;
+    }
 }

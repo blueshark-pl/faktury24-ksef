@@ -28,6 +28,7 @@ $activityIcons = [
     'offer_sent' => ['ri-file-paper-line', 'purple'],
     'order_won'  => ['ri-trophy-line', 'green'],
     'order_lost' => ['ri-close-circle-line', 'red'],
+    'quote_request' => ['ri-file-list-3-line', 'green'],
 ];
 ?>
 <style>
@@ -522,6 +523,69 @@ $activityIcons = [
                             <?php if ($a->body): ?>
                                 <div class="mt-1" style="font-size: 13px;"><?= nl2br(h($a->body)) ?></div>
                             <?php endif; ?>
+                            <?php
+                            // FALA 15: widget dla activity_type='quote_request' - lista shipments z payload_json
+                            if ($a->activity_type === 'quote_request' && !empty($a->payload_json)):
+                                $payload = json_decode($a->payload_json, true);
+                                $shipments = $payload['shipments'] ?? [];
+                                if (!empty($shipments) && is_array($shipments)):
+                            ?>
+                                <div class="mt-2 p-2" style="background: #f8f9fa; border-radius: 6px; border-left: 3px solid #94C81F;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <div class="small fw-semibold text-success">
+                                            <i class="ri-truck-line"></i> <?= __('Wykryte zlecenia') ?> (<?= count($shipments) ?>)
+                                            <?php if (!empty($payload['customer_name'])): ?>
+                                                · <?= h($payload['customer_name']) ?>
+                                            <?php endif; ?>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-success btn-toggle-shipments" data-target="ship-<?= h($a->id) ?>">
+                                            <i class="ri-eye-line"></i> <?= __('Pokaż/ukryj') ?>
+                                        </button>
+                                    </div>
+                                    <div id="ship-<?= h($a->id) ?>" style="display:none; max-height: 400px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-2" style="font-size: 11px;">
+                                            <thead style="position: sticky; top: 0; background: #fff;">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th><?= __('Ref') ?></th>
+                                                    <th><?= __('Z') ?></th>
+                                                    <th><?= __('Do') ?></th>
+                                                    <th><?= __('Data') ?></th>
+                                                    <th><?= __('Kg') ?></th>
+                                                    <th><?= __('Palet') ?></th>
+                                                    <th><?= __('Uwagi') ?></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($shipments as $i => $s): ?>
+                                                <tr>
+                                                    <td><?= $i + 1 ?></td>
+                                                    <td class="fw-semibold text-primary" style="max-width:80px; word-break:break-all;"><?= h($s['customer_order_ref'] ?? '') ?></td>
+                                                    <td><?= h(trim(($s['from_postal'] ?? '') . ' ' . ($s['from_city'] ?? '') . ' ' . ($s['from_country'] ?? ''))) ?><?php if (!empty($s['from_company'])): ?><br><span class="text-muted"><?= h($s['from_company']) ?></span><?php endif; ?></td>
+                                                    <td><?= h(trim(($s['to_postal'] ?? '') . ' ' . ($s['to_city'] ?? '') . ' ' . ($s['to_country'] ?? ''))) ?><?php if (!empty($s['to_company'])): ?><br><span class="text-muted"><?= h($s['to_company']) ?></span><?php endif; ?></td>
+                                                    <td><?= h(($s['load_date'] ?? '') . ($s['load_time'] ? ' ' . $s['load_time'] : '')) ?><?php if (!empty($s['unload_date'])): ?><br><span class="text-muted">→ <?= h($s['unload_date']) ?></span><?php endif; ?></td>
+                                                    <td><?= !empty($s['weight_kg']) ? h(number_format($s['weight_kg'], 0, ',', ' ')) : '-' ?></td>
+                                                    <td><?= !empty($s['pallets']) ? (int)$s['pallets'] . ' ' . h($s['pallet_type'] ?? '') : '-' ?></td>
+                                                    <td style="max-width:200px; word-wrap:break-word;">
+                                                        <?php if (!empty($s['vehicle_type'])): ?><span class="badge bg-secondary"><?= h($s['vehicle_type']) ?></span> <?php endif; ?>
+                                                        <?php if (!empty($s['cargo_type'])): ?><span class="badge bg-info"><?= h($s['cargo_type']) ?></span> <?php endif; ?>
+                                                        <?= h($s['notes'] ?? '') ?>
+                                                    </td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                        <div class="d-flex gap-2 flex-wrap mt-2">
+                                            <?= $this->Form->postLink(
+                                                '<i class="ri-add-circle-line"></i> ' . __('Utwórz wszystkie zlecenia w bazie'),
+                                                ['action' => 'createOrdersFromQuote', $a->id],
+                                                ['escape' => false, 'class' => 'btn btn-sm btn-success',
+                                                 'confirm' => __('Utworzyć zlecenia typu manual dla każdego wpisu? Kontrahent zostanie automatycznie użyty z tego leada.')]
+                                            ) ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endif; endif; ?>
                             <?php if ($a->due_at): ?>
                                 <div class="mt-1 small text-warning">
                                     <i class="ri-alarm-line"></i> <?= __('Termin:') ?> <?= h($a->due_at->format('d.m.Y H:i')) ?>
@@ -897,5 +961,17 @@ $activityIcons = [
             });
         });
     }
+})();
+</script>
+
+<script>
+// FALA 15: Toggle listy zlecen z quote_request activity
+(function() {
+    document.querySelectorAll('.btn-toggle-shipments').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var t = document.getElementById(btn.getAttribute('data-target'));
+            if (t) t.style.display = (t.style.display === 'none' ? 'block' : 'none');
+        });
+    });
 })();
 </script>

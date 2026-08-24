@@ -35,6 +35,119 @@ class CrmAdminController extends AppController
     }
 
     /**
+     * GET /crm/admin/find-lead?email=X - znajdz lead po emailu i pokaz kompletne info
+     */
+    public function findLead(): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $email = strtolower(trim((string)$this->request->getQuery('email', '')));
+        $identity = $this->request->getAttribute('identity');
+        $currentCompanyId = $identity?->get('company_id');
+
+        $out = "=== FIND LEAD BY EMAIL ===\n\n";
+        $out .= "Twoj company_id: {$currentCompanyId}\n";
+        $out .= "Szukam email: <strong>{$email}</strong>\n\n";
+
+        if ($email === '') {
+            $out .= "Uzycie: /crm/admin/find-lead?email=marius.werth@wiegand-logistik.de\n";
+            $this->set('title', 'Find Lead');
+            $this->set('output', $out);
+            $this->render('output');
+            return;
+        }
+
+        $Leads = $this->fetchTable('Leads');
+
+        // Match EXACT
+        $exact = $Leads->find()
+            ->where(['LOWER(email)' => $email])
+            ->all()->toArray();
+        $out .= "=== EXACT MATCH LOWER(email) = '{$email}' ===\n";
+        $out .= "Znaleziono: " . count($exact) . "\n";
+        foreach ($exact as $l) {
+            $marker = ((string)$l->company_id === (string)$currentCompanyId) ? '<span style="color:green;">✓</span>' : '<span style="color:red;">✗ (INNA FIRMA!)</span>';
+            $out .= "  {$marker} {$l->id} · {$l->company_name} · company_id={$l->company_id} · stage={$l->stage}\n";
+        }
+
+        // Match LIKE (dla wychwycenia dodatkowych spacji, prefix/suffix)
+        $like = $Leads->find()
+            ->where(['email LIKE' => '%' . str_replace(['%', '_'], ['\%', '\_'], $email) . '%'])
+            ->all()->toArray();
+        $out .= "\n=== LIKE '%{$email}%' (wykrywa spacje/prefixy) ===\n";
+        $out .= "Znaleziono: " . count($like) . "\n";
+        foreach ($like as $l) {
+            $storedEmail = $l->email;
+            $sameCompany = ((string)$l->company_id === (string)$currentCompanyId);
+            $marker = $sameCompany ? '<span style="color:green;">✓</span>' : '<span style="color:red;">✗</span>';
+            $out .= "  {$marker} {$l->id} · {$l->company_name} · email='<strong>{$storedEmail}</strong>' · company_id={$l->company_id}\n";
+            // Compare bytes
+            if (strtolower($storedEmail) !== $email) {
+                $out .= "    <span style='color:orange;'>UWAGA: rozny od szukanego!</span>\n";
+                $out .= "    Szukane bytes: " . bin2hex($email) . "\n";
+                $out .= "    W bazie bytes: " . bin2hex(strtolower($storedEmail)) . "\n";
+            }
+        }
+
+        // Sprawdz tez email_messages
+        try {
+            $Msg = $this->fetchTable('CrmEmailMessages');
+            $msgs = $Msg->find()
+                ->where(['LOWER(from_email)' => $email])
+                ->orderByDesc('received_at')
+                ->limit(10)
+                ->all()->toArray();
+            $out .= "\n=== crm_email_messages od {$email} (ostatnie 10) ===\n";
+            $out .= "Znaleziono: " . count($msgs) . "\n";
+            foreach ($msgs as $m) {
+                $d = $m->received_at ? $m->received_at->format('Y-m-d H:i') : '?';
+                $out .= "  {$d} · {$m->subject} · lead_id={$m->lead_id}\n";
+            }
+        } catch (\Throwable $e) {
+            $out .= "\ncrm_email_messages error: " . $e->getMessage() . "\n";
+        }
+
+        $this->set('title', "Find Lead: {$email}");
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
+     * POST /crm/admin/reset-gmail-history - wymus fresh Gmail sync (zeruje history_id)
+     */
+    public function resetGmailHistory(): void
+    {
+        $this->request->allowMethod(['post', 'get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $out = "=== RESET GMAIL HISTORY_ID ===\n\n";
+        try {
+            $EA = $this->fetchTable('CrmEmailAccounts');
+            $accounts = $EA->find()->where([
+                'company_id' => $companyId,
+                'auth_type' => 'gmail_oauth',
+            ])->all();
+            $count = 0;
+            foreach ($accounts as $acc) {
+                $out .= "Reset: {$acc->label} ({$acc->username}) - stary history_id: " . ($acc->oauth_history_id ?? 'null') . "\n";
+                $acc->oauth_history_id = null;
+                $acc->last_synced_at = null; // ignore cooldown na nastepny poll
+                $EA->save($acc);
+                $count++;
+            }
+            $out .= "\n✓ Zresetowano {$count} kont. Nastepny poll pobierze inbox z ostatnich 30 dni (max 100 msg).\n";
+            $out .= "\nSprobuj teraz: Poll emails NOW (FORCE).\n";
+        } catch (\Throwable $e) {
+            $out .= "❌ " . $e->getMessage() . "\n";
+        }
+        $this->set('title', 'Reset Gmail history');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
      * GET /crm/admin/file-check - diagnostyka aktualnej wersji CrmEmailPollCommand.php
      */
     public function fileCheck(): void

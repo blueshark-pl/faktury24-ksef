@@ -162,6 +162,9 @@ return function (RouteBuilder $routes): void {
         // FALA 2: integracja z ofertami/zleceniami
         $builder->post('/crm/{leadId}/utworz-oferte',       ['controller' => 'Leads', 'action' => 'createOfferFromLead'])
             ->setPass(['leadId']);
+        // FALA 15: utworz zlecenia manualne z quote_request activity (email GPT extract)
+        $builder->post('/crm/utworz-zlecenia-z-quote/{activityId}', ['controller' => 'Leads', 'action' => 'createOrdersFromQuote'])
+            ->setPass(['activityId']);
         // FALA 3: bulk actions + dashboard
         $builder->post('/crm/bulk',                         ['controller' => 'Leads', 'action' => 'bulk']);
         $builder->get('/crm/dashboard',                     ['controller' => 'Leads', 'action' => 'dashboard']);
@@ -218,6 +221,9 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/admin/file-check',              ['controller' => 'CrmAdmin', 'action' => 'fileCheck']);
         $builder->post('/crm/admin/nuclear-clear',          ['controller' => 'CrmAdmin', 'action' => 'nuclearClear']);
         $builder->get('/crm/admin/nuclear-clear',           ['controller' => 'CrmAdmin', 'action' => 'nuclearClear']);
+        $builder->get('/crm/admin/find-lead',               ['controller' => 'CrmAdmin', 'action' => 'findLead']);
+        $builder->post('/crm/admin/reset-gmail-history',    ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
+        $builder->get('/crm/admin/reset-gmail-history',     ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);

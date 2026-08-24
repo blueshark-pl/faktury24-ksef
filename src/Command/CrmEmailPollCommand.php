@@ -591,6 +591,7 @@ class CrmEmailPollCommand extends Command
             try {
                 $data = $service->getMessage($accessToken, $gmailId);
                 if (!$data) continue;
+                $data['gmail_id'] = $gmailId;
                 $msgCount++;
 
                 // Match po from_email do leada
@@ -663,6 +664,14 @@ class CrmEmailPollCommand extends Command
                 $lead->last_contacted_at = $data['received_at'];
                 $Leads->save($lead);
                 $actCount++;
+
+                // FALA 15: Wykryj czy email zawiera zapytanie o wycene zlecen (multi-shipment quote)
+                try {
+                    $extraCount = $this->tryExtractQuoteRequest($data, $lead, $Acts, $Leads, $io);
+                    $actCount += $extraCount;
+                } catch (\Throwable $ee) {
+                    $io->out('    quote-extract skipped: ' . $ee->getMessage());
+                }
             } catch (\Throwable $e) {
                 $io->error(sprintf('    %s: exception - %s', $gmailId, $e->getMessage()));
             }
@@ -679,5 +688,193 @@ class CrmEmailPollCommand extends Command
 
         $io->success(sprintf('  Gmail: %d wiadomosci, %d activities.', $msgCount, $actCount));
         return [$msgCount, $actCount];
+    }
+
+    /**
+     * FALA 15: Wykryj czy email zawiera zapytanie o wycene zlecen (multi-shipment quote).
+     * GPT ekstraktor:
+     *  - Rozpoznaje forwarded/kierowane maile (WG:/FW:/---Weitergeleitet---)
+     *  - Ekstraktuje liste zlecen (from/to/date/weight/pallets/notes/customer_order_ref)
+     *  - Zwraca minimum 1 zlecenie -> loguje activity_type='quote_request' z payload_json
+     *  - Auto podnosi stage z new/contact -> inquiry
+     *
+     * Bezpieczne (best-effort try/catch, nie wywala polling'u).
+     *
+     * @return int liczba dodanych activities (0 lub 1)
+     */
+    private function tryExtractQuoteRequest(array $data, $lead, $Acts, $Leads, ConsoleIo $io): int
+    {
+        $subject  = (string)($data['subject'] ?? '');
+        $bodyText = (string)($data['body_text'] ?? '');
+
+        // Filtry pre-GPT: pomin krótkie / niezawierajace zadnych sygnalow shipmentu
+        if (strlen($bodyText) < 100) {
+            return 0;
+        }
+        // Heurystyka: sygnaly zapytania o transport (jesli brak - pomijamy zeby oszczedzic tokeny)
+        $signals = ['liefern', 'lieferung', 'transport', 'zlecenie', 'wycen', 'oferta',
+            'quote', 'shipment', 'ladunek', 'zaladu', 'rozladu', 'anbieten',
+            'offerte', 'preis', 'stawka', 'palet', 'kg', 'tonn', 'ldm',
+            'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
+            'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
+            'trasa', 'zaladunek', 'rozladunek', 'przewoz'];
+        $bodyLc = mb_strtolower($bodyText);
+        $matched = 0;
+        foreach ($signals as $s) {
+            if (strpos($bodyLc, $s) !== false) { $matched++; }
+            if ($matched >= 2) break;
+        }
+        if ($matched < 2) {
+            return 0; // za malo sygnalow - to prawdopodobnie nie zapytanie o transport
+        }
+
+        // Dedup: sprawdz czy juz mamy quote_request dla tego message_id
+        try {
+            $existing = $Acts->find()
+                ->where([
+                    'lead_id' => $lead->id,
+                    'activity_type' => 'quote_request',
+                    'payload_json LIKE' => '%' . ($data['message_id'] ?: $data['subject']) . '%',
+                ])->first();
+            if ($existing) {
+                $io->out('    quote-extract: already exists for this message');
+                return 0;
+            }
+        } catch (\Throwable $e) {
+            // ignoruj
+        }
+
+        $io->out('    Quote-extract: GPT analizuje email pod katem listy zlecen...');
+        try {
+            $svc = new \App\Service\Ai\OpenAiService();
+            $system = "Jestes spedytorem analizujacym maile z zapytaniami o transport. "
+                . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
+                . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht). "
+                . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
+                . "Zwroc STRICT JSON: {"
+                . "\"is_quote_request\": bool (czy email zawiera konkretne zapytanie o wycene/przewoz - nie same 'chetnie ofertuj' bez trasy), "
+                . "\"customer_name\": string (kto pyta o wycene - z podpisu/tresci), "
+                . "\"customer_contact\": string (osoba kontaktowa), "
+                . "\"shipments_count\": int (liczba zlecen wykrytych), "
+                . "\"shipments\": [ {"
+                . "  \"customer_order_ref\": string (numer zamowienia klienta jesli podany, np. Kundenbestellnummer/PO/BE26002538), "
+                . "  \"from_country\": string (2-znak ISO np. DE/PL), "
+                . "  \"from_postal\": string, "
+                . "  \"from_city\": string, "
+                . "  \"from_company\": string, "
+                . "  \"to_country\": string, "
+                . "  \"to_postal\": string, "
+                . "  \"to_city\": string, "
+                . "  \"to_company\": string, "
+                . "  \"load_date\": string (ISO YYYY-MM-DD jesli mozna wyliczyc), "
+                . "  \"load_time\": string (HH:MM lub okno 'HH:MM-HH:MM'), "
+                . "  \"unload_date\": string (ISO), "
+                . "  \"unload_time\": string, "
+                . "  \"weight_kg\": int, "
+                . "  \"pallets\": int, "
+                . "  \"pallet_type\": string ('EUR'/'IND'/'PET' etc), "
+                . "  \"cargo_type\": string ('napoje','szklo','stal','ADR-klasa-X' etc), "
+                . "  \"vehicle_type\": string ('plandeka'/'chlodnia'/'mega'/'cysterna'), "
+                . "  \"notes\": string (uwagi z tresci - okna czasowe, wymagania sprzetu, referencje) "
+                . "} ]"
+                . "}"
+                . "Puste pola = \"\" lub 0. is_quote_request=false jesli to zwykla korespondencja bez konkretnych zlecen.";
+
+            // Ekstract tresc + email metadane
+            $user = "Temat: {$subject}\n\n"
+                . "Nadawca: " . ($data['from_name'] ?? '') . " <" . ($data['from_email'] ?? '') . ">\n\n"
+                . "Tresc emaila (moze zawierac forwarded/tabele/HTML converted):\n"
+                . mb_substr($bodyText, 0, 8000);
+
+            $extracted = $svc->chatJson($system, $user, 2500);
+        } catch (\Throwable $e) {
+            $io->out('    Quote GPT failed: ' . $e->getMessage());
+            return 0;
+        }
+
+        if (empty($extracted['is_quote_request']) || empty($extracted['shipments']) || !is_array($extracted['shipments'])) {
+            $io->out('    Quote GPT: nie zapytanie o wycene (is_quote_request=false lub brak shipments)');
+            return 0;
+        }
+
+        // Filter valid shipments (musi miec choc from lub to)
+        $valid = [];
+        foreach ($extracted['shipments'] as $s) {
+            $hasFrom = !empty($s['from_city']) || !empty($s['from_country']);
+            $hasTo   = !empty($s['to_city']) || !empty($s['to_country']);
+            if ($hasFrom || $hasTo) {
+                $valid[] = $s;
+            }
+        }
+        if (empty($valid)) {
+            $io->out('    Quote GPT: 0 poprawnych shipments (brak from/to)');
+            return 0;
+        }
+
+        $count = count($valid);
+        $subj  = sprintf('Zapytanie o wycene: %d zlecen (%s)',
+            $count,
+            $extracted['customer_name'] ?? $lead->company_name);
+
+        // Body summary dla activity - lista skrocona
+        $body = "Wykryto {$count} zlecen do wyceny w mailu:\n\n";
+        foreach ($valid as $i => $s) {
+            if ($i >= 20) { $body .= sprintf("... +%d wiecej\n", $count - $i); break; }
+            $from = trim(($s['from_postal'] ?? '') . ' ' . ($s['from_city'] ?? '') . ' ' . ($s['from_country'] ?? ''));
+            $to   = trim(($s['to_postal'] ?? '') . ' ' . ($s['to_city'] ?? '') . ' ' . ($s['to_country'] ?? ''));
+            $extra = [];
+            if (!empty($s['load_date'])) $extra[] = 'zal. ' . $s['load_date'];
+            if (!empty($s['weight_kg'])) $extra[] = $s['weight_kg'] . 'kg';
+            if (!empty($s['pallets']))   $extra[] = $s['pallets'] . 'x' . ($s['pallet_type'] ?? 'pal');
+            if (!empty($s['customer_order_ref'])) $extra[] = 'ref:' . $s['customer_order_ref'];
+            $body .= sprintf("%d. %s -> %s%s\n", $i + 1, $from, $to,
+                $extra ? ' (' . implode(', ', $extra) . ')' : '');
+        }
+
+        // Payload: pelna lista z metadanymi - do widoku szczegolowego + button "Utworz zlecenia"
+        $payload = [
+            'source' => 'email_gpt_extract',
+            'gmail_id' => $data['gmail_id'] ?? null,
+            'message_id' => $data['message_id'] ?? null,
+            'from_email' => $data['from_email'] ?? null,
+            'customer_name' => $extracted['customer_name'] ?? '',
+            'customer_contact' => $extracted['customer_contact'] ?? '',
+            'shipments_count' => $count,
+            'shipments' => $valid,
+            'extracted_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $Acts->logSystem(
+            (string)$lead->company_id,
+            (string)$lead->id,
+            'quote_request',
+            $subj,
+            $body,
+            $payload,
+            null
+        );
+
+        // Auto-podnies stage z new/contact -> inquiry (zapytanie = etap oferty)
+        if (in_array($lead->stage, ['new', 'contact'], true)) {
+            $oldStage = $lead->stage;
+            $lead->stage = 'inquiry';
+            try {
+                $Leads->save($lead);
+                $Acts->logSystem(
+                    (string)$lead->company_id,
+                    (string)$lead->id,
+                    'stage_change',
+                    'Automat: stage inquiry (zapytanie o wycene z mailem)',
+                    "Przeniesiono z '{$oldStage}' -> 'inquiry' na podstawie wykrytego zapytania o wycene.",
+                    ['auto' => true, 'old' => $oldStage, 'new' => 'inquiry', 'trigger' => 'quote_request_detected'],
+                    null
+                );
+            } catch (\Throwable $e) {
+                $io->out('    Auto-stage change failed: ' . $e->getMessage());
+            }
+        }
+
+        $io->success("    ✓ Quote-request wykryty: {$count} zlecen zalogowano do timeline");
+        return 1;
     }
 }

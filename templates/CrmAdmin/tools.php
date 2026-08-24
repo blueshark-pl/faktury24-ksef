@@ -105,6 +105,37 @@ $this->assign('title', __('CRM Admin Tools'));
         </div>
     </div>
 
+    <div class="col-md-12">
+        <div class="card" style="border-left: 4px solid #FF9800;">
+            <div class="card-body">
+                <h6 class="fw-bold"><i class="ri-search-eye-line"></i> Diagnostyka leadow / emaila (FALA 14 troubleshoot)</h6>
+                <form method="get" action="<?= $this->Url->build(['action' => 'findLead']) ?>" target="_blank" class="row g-2 mb-2">
+                    <div class="col-md-8">
+                        <input type="email" name="email" class="form-control" placeholder="marius.werth@wiegand-logistik.de" required>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-outline-primary w-100">
+                            <i class="ri-user-search-line"></i> Znajdz lead po emailu
+                        </button>
+                    </div>
+                </form>
+                <div class="d-flex gap-2 flex-wrap">
+                    <?= $this->Form->postLink(
+                        '<i class="ri-restart-line"></i> Reset Gmail history_id (fresh sync ostatnie 30 dni)',
+                        ['action' => 'resetGmailHistory'],
+                        ['escape' => false, 'class' => 'btn btn-outline-warning',
+                         'target' => '_blank',
+                         'confirm' => 'Zresetowac history_id wszystkich kont Gmail? Kolejny sync pobierze ostatnie 30 dni maili (max 100).']
+                    ) ?>
+                </div>
+                <div class="small text-muted mt-2">
+                    <strong>Znajdz lead</strong> - sprawdza czy lead z podanym emailem istnieje (exact + LIKE) + porownuje bytes (wykrywa spacje/wielkosc liter). Pokazuje tez ostatnie maile w <code>crm_email_messages</code>.<br>
+                    <strong>Reset history_id</strong> - gdy Gmail juz przetworzyl maila w poprzednim polling'u i teraz go nie widzisz. Wymus fresh sync.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="col-md-6">
         <div class="card">
             <div class="card-body">
