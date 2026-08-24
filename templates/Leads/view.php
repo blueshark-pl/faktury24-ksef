@@ -85,6 +85,85 @@ $activityIcons = [
                  'confirm' => __('Utworzyć kontrahenta z tego leada?')]
             ) ?>
         <?php endif; ?>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#offerModal">
+            <i class="ri-mail-send-line"></i> <?= __('Utwórz ofertę') ?>
+        </button>
+        <a href="<?= $this->Url->build(['controller' => 'SpeedOrders', 'action' => 'add', '?' => ['lead_id' => $lead->id]]) ?>"
+           class="btn btn-sm btn-success">
+            <i class="ri-truck-line"></i> <?= __('Utwórz zlecenie') ?>
+        </a>
+    </div>
+</div>
+
+<!-- Modal: Utwórz ofertę -->
+<div class="modal fade" id="offerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <?= $this->Form->create(null, ['url' => ['action' => 'createOfferFromLead', $lead->id]]) ?>
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="ri-mail-send-line"></i> <?= __('Nowa oferta dla') ?>: <?= h($lead->company_name) ?></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <label class="form-label small"><?= __('Odbiorca (email)') ?> *</label>
+                            <input name="sent_to_email" type="email" required class="form-control" value="<?= h($lead->email) ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small"><?= __('Imię i nazwisko') ?></label>
+                            <input name="sent_to_name" class="form-control" value="<?= h($lead->contact_person) ?>">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small"><?= __('Temat') ?></label>
+                        <input name="subject" class="form-control"
+                               value="<?= h(sprintf(__('Oferta transportowa dla %s'), $lead->company_name)) ?>">
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-5">
+                            <label class="form-label small"><?= __('Cena netto') ?> *</label>
+                            <div class="input-group">
+                                <input name="price" type="number" step="0.01" required class="form-control"
+                                       value="<?= h($lead->value_pln) ?>">
+                                <span class="input-group-text"><?= h($lead->currency ?: 'PLN') ?></span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small"><?= __('Waluta') ?></label>
+                            <input name="currency" maxlength="3" class="form-control text-uppercase" value="<?= h($lead->currency ?: 'PLN') ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">VAT %</label>
+                            <input name="vat_rate" type="number" min="0" max="100" class="form-control" value="23">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small"><?= __('Płatność (dni)') ?></label>
+                            <input name="payment_days" type="number" min="0" class="form-control" value="30">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small"><?= __('Ważność oferty do') ?></label>
+                        <input name="valid_until" type="date" class="form-control"
+                               value="<?= (new \DateTimeImmutable('+14 days'))->format('Y-m-d') ?>">
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small"><?= __('Treść wiadomości (opcjonalnie)') ?></label>
+                        <textarea name="message_body" class="form-control" rows="3"><?= h(sprintf(__("Dzień dobry,\n\nzgodnie z ustaleniami przesyłam ofertę.\n\nPozdrawiam")) ) ?></textarea>
+                    </div>
+                    <div class="alert alert-info small mt-3 mb-0">
+                        <i class="ri-information-line"></i>
+                        <?= __('Utworzy się oferta w statusie „draft" bez konkretnej trasy. Możesz ją potem uzupełnić w /oferty przed wysyłką.') ?>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><?= __('Anuluj') ?></button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ri-check-line"></i> <?= __('Utwórz ofertę i przejdź do wysyłki') ?>
+                    </button>
+                </div>
+            <?= $this->Form->end() ?>
+        </div>
     </div>
 </div>
 

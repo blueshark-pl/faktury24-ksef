@@ -1858,6 +1858,33 @@ class SpeedOrdersController extends AppController
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
 
+                // CRM: jesli zlecenie utworzone z leada -> zmien stage + zaloguj activity
+                $fromLeadId = (string)$this->request->getSession()->read('Crm.orderFromLeadId', '');
+                if ($fromLeadId !== '') {
+                    $this->request->getSession()->delete('Crm.orderFromLeadId');
+                    try {
+                        $Leads = $this->fetchTable('Leads');
+                        $lead = $Leads->find()->where(['id' => $fromLeadId])->first();
+                        if ($lead && !in_array($lead->stage, ['order', 'lost'], true)) {
+                            $lead->stage = 'order';
+                            $Leads->save($lead);
+                            $identity = $this->request->getAttribute('identity');
+                            $this->fetchTable('LeadActivities')->logSystem(
+                                (string)$lead->company_id, (string)$lead->id, 'order_won',
+                                sprintf(__('Utworzono zlecenie %s'), $order->symbol),
+                                sprintf(__('Zlecenie #%d z leada. Kwota: %s %s'),
+                                    (int)$order->id, number_format((float)($order->netto ?? 0), 2, ',', ' '),
+                                    strtoupper((string)($order->currency ?? 'PLN'))),
+                                ['speed_order_id' => $order->id, 'symbol' => $order->symbol],
+                                $identity?->get('id')
+                            );
+                            $this->Flash->info(__('Lead „{0}" przeniesiony do etapu „Zlecenie".', $lead->company_name));
+                        }
+                    } catch (\Throwable $e) {
+                        \Cake\Log\Log::warning('SpeedOrders::add lead-to-order stage sync failed: ' . $e->getMessage());
+                    }
+                }
+
                 // Opcjonalna wysylka email do klienta po zapisie
                 if ($this->request->getData('send_email') && !empty($order->buyer_email)) {
                     try {
@@ -1931,6 +1958,34 @@ class SpeedOrdersController extends AppController
                         }
                     }
                     $this->Flash->info(__('Załadowano dane ze zlecenia {0}. Zmień co potrzebne i zapisz.', $src->symbol));
+                }
+            }
+
+            // CRM: ?lead_id={uuid} -> prefill z leada (buyer_*, contact, note)
+            $leadId = (string)$this->request->getQuery('lead_id', '');
+            if ($leadId !== '') {
+                try {
+                    $Leads = $this->fetchTable('Leads');
+                    $lead = $Leads->find()->where(['id' => $leadId])->first();
+                    if ($lead) {
+                        $identity  = $this->request->getAttribute('identity');
+                        $sessCompanyId = $identity?->get('company_id');
+                        if ((string)$lead->company_id === (string)$sessCompanyId) {
+                            if (!empty($lead->company_name))  $defaults['buyer_name']    = $lead->company_name;
+                            if (!empty($lead->nip))           $defaults['buyer_nip']     = $lead->nip;
+                            if (!empty($lead->street))        $defaults['buyer_street']  = $lead->street;
+                            if (!empty($lead->postal_code))   $defaults['buyer_postal_code'] = $lead->postal_code;
+                            if (!empty($lead->city))          $defaults['buyer_city']    = $lead->city;
+                            if (!empty($lead->country_code))  $defaults['buyer_country'] = strtoupper((string)$lead->country_code);
+                            if (!empty($lead->email))         $defaults['buyer_email']   = $lead->email;
+                            if (!empty($lead->note))          $defaults['notes']         = $lead->note;
+                            // Zapis leadId do sesji - po zapisie zlecenia (POST) zaktualizujemy stage=order
+                            $this->request->getSession()->write('Crm.orderFromLeadId', $leadId);
+                            $this->Flash->info(__('Załadowano dane z leada „{0}". Uzupełnij trasę i zapisz.', $lead->company_name));
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    \Cake\Log\Log::warning('SpeedOrders::add lead prefill failed: ' . $e->getMessage());
                 }
             }
 

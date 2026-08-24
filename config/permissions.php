@@ -458,6 +458,8 @@ return [
                 'convertToContractor', 'activityAdd', 'activityDelete',
                 // FALA 1: import CSV, GUS, moje zadania
                 'importCsv', 'importCsvTemplate', 'gusLookupJson', 'myTasks', 'taskDone',
+                // FALA 2: integracja z ofertami/zleceniami
+                'createOfferFromLead',
             ],
         ],
         [

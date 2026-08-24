@@ -386,6 +386,120 @@ class LeadsController extends AppController
     }
 
     /**
+     * Utworz oferte cenowa (route_offer) na podstawie leada.
+     * POST /crm/{id}/utworz-oferte
+     * Body: price, currency, vat_rate?, payment_days?, valid_until?, subject?, message_body?
+     * Tworzy pusty route_plan (bez trasy) + route_offer w statusie 'draft'.
+     * Ustawia lead.stage = 'offer' + loguje activity 'offer_sent'.
+     */
+    public function createOfferFromLead(string $leadId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $Leads = $this->fetchTable('Leads');
+        $lead = $Leads->get($leadId);
+        if ((string)$lead->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+
+        $data = (array)$this->request->getData();
+        $price = (float)($data['price'] ?? $lead->value_pln ?? 0);
+        if ($price <= 0) {
+            $this->Flash->error(__('Podaj cenę oferty.'));
+            $this->redirect(['action' => 'view', $lead->id]);
+            return $this->response;
+        }
+        $currency = strtoupper((string)($data['currency'] ?? $lead->currency ?? 'PLN'));
+        $vatRate  = isset($data['vat_rate']) && $data['vat_rate'] !== '' ? (int)$data['vat_rate'] : 23;
+        $paymentDays = isset($data['payment_days']) && $data['payment_days'] !== '' ? (int)$data['payment_days'] : 30;
+        $validUntil = trim((string)($data['valid_until'] ?? ''));
+        $subject = trim((string)($data['subject'] ?? '')) ?: __('Oferta transportowa dla {0}', $lead->company_name);
+        $message = trim((string)($data['message_body'] ?? ''));
+        $sentToEmail = trim((string)($data['sent_to_email'] ?? $lead->email ?? ''));
+        $sentToName  = trim((string)($data['sent_to_name']  ?? $lead->contact_person ?? ''));
+
+        if ($sentToEmail === '' || !filter_var($sentToEmail, FILTER_VALIDATE_EMAIL)) {
+            $this->Flash->error(__('Brak lub nieprawidłowy adres email odbiorcy.'));
+            $this->redirect(['action' => 'view', $lead->id]);
+            return $this->response;
+        }
+
+        try {
+            $RP = $this->fetchTable('RoutePlans');
+            $plan = $RP->newEntity([
+                'id'             => \Cake\Utility\Text::uuid(),
+                'company_id'     => $companyId,
+                'author_user_id' => $userId,
+                'contractor_id'  => $lead->contractor_id,
+                'name'           => sprintf(__('Oferta dla %s'), $lead->company_name),
+                'status'         => 'offered',
+                'currency'       => $currency,
+                'suggested_price' => $price,
+            ]);
+            if (!$RP->save($plan)) {
+                $this->Flash->error(__('Błąd tworzenia planu trasy.'));
+                $this->redirect(['action' => 'view', $lead->id]);
+                return $this->response;
+            }
+
+            $RO = $this->fetchTable('RouteOffers');
+            $offer = $RO->newEntity([
+                'id'              => \Cake\Utility\Text::uuid(),
+                'company_id'      => $companyId,
+                'route_plan_id'   => $plan->id,
+                'contractor_id'   => $lead->contractor_id,
+                'sent_to_email'   => $sentToEmail,
+                'sent_to_name'    => $sentToName,
+                'subject'         => $subject,
+                'message_body'    => $message,
+                'price'           => $price,
+                'currency'        => $currency,
+                'vat_rate'        => $vatRate,
+                'payment_days'    => $paymentDays,
+                'valid_until'     => $validUntil !== '' ? $validUntil : null,
+                'access_token'    => bin2hex(random_bytes(24)),
+                'status'          => 'draft',
+                'created_by_user_id' => $userId,
+            ]);
+            if (!$RO->save($offer)) {
+                $this->Flash->error(__('Błąd zapisu oferty.'));
+                $this->redirect(['action' => 'view', $lead->id]);
+                return $this->response;
+            }
+
+            // Zmien stage leada na 'offer' (jesli nie jest juz dalej)
+            if (in_array($lead->stage, ['new', 'contact', 'inquiry'], true)) {
+                $lead->stage = 'offer';
+                $lead->value_pln = $price;
+                $lead->currency = $currency;
+                $Leads->save($lead);
+            }
+
+            // Log activity
+            $this->fetchTable('LeadActivities')->logSystem(
+                $companyId, $lead->id, 'offer_sent',
+                sprintf(__('Oferta cenowa: %s %s'), number_format($price, 2, ',', ' '), $currency),
+                sprintf(__('Utworzono ofertę #%s dla %s (%s)'), substr($offer->id, 0, 8), $sentToName, $sentToEmail),
+                ['route_offer_id' => $offer->id, 'price' => $price, 'currency' => $currency],
+                $userId
+            );
+
+            $this->Flash->success(__('Oferta utworzona. Przejdź do „Oferty" żeby wysłać ją do klienta.'));
+            $this->redirect(['controller' => 'RouteOffers', 'action' => 'view', $offer->id]);
+            return $this->response;
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('LeadsController::createOfferFromLead failed: ' . $e->getMessage());
+            $this->Flash->error(__('Błąd: {0}', $e->getMessage()));
+            $this->redirect(['action' => 'view', $lead->id]);
+            return $this->response;
+        }
+    }
+
+    /**
      * Widok "Moje zadania" - lista task-activities przypisanych do usera
      * (activity_type=task, is_done=false, due_at IN ostatnie 30 dni / kolejne 30 dni).
      */

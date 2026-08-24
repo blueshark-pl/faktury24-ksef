@@ -159,6 +159,9 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/zadania',                       ['controller' => 'Leads', 'action' => 'myTasks']);
         $builder->post('/crm/zadanie/{activityId}/gotowe',  ['controller' => 'Leads', 'action' => 'taskDone'])
             ->setPass(['activityId']);
+        // FALA 2: integracja z ofertami/zleceniami
+        $builder->post('/crm/{leadId}/utworz-oferte',       ['controller' => 'Leads', 'action' => 'createOfferFromLead'])
+            ->setPass(['leadId']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
