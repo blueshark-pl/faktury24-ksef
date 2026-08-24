@@ -47,6 +47,10 @@ class CrmEmailPollCommand extends Command
 
     public function execute(Arguments $args, ConsoleIo $io): int
     {
+        // FALA 16: Vision GPT z 8000 tokens moze zajac 60-120s per obraz.
+        // Standard PHP CLI ma unlimited, ale dla pewnosci na cyberfolks:
+        @set_time_limit(600); // 10 minut - miejsce na kilka wiadomosci z Vision
+
         // FALA 13: ext-imap wymagane tylko dla auth_type='imap' kont.
         // Konta gmail_oauth uzywaja Gmail API i nie potrzebuja rozszerzenia.
         if (!function_exists('imap_open')) {

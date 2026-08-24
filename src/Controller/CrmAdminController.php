@@ -43,6 +43,9 @@ class CrmAdminController extends AppController
     {
         $this->request->allowMethod(['get']);
         $this->viewBuilder()->setLayout('ajax');
+        // FALA 16: Vision GPT 8000 tokens moze zajac 2-3 min
+        @set_time_limit(600);
+        @ini_set('max_execution_time', '600');
         $identity = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
         $leadIdFilter = trim((string)$this->request->getQuery('lead_id', ''));
@@ -835,6 +838,11 @@ class CrmAdminController extends AppController
             $this->redirect(['action' => 'tools']);
             return;
         }
+        // FALA 16: Vision GPT z duzymi obrazkami + 8000 tokens = do 3 min per mail.
+        // Zwiekszamy limit web-requestu zeby cron dokonczyl.
+        @set_time_limit(600);
+        @ini_set('max_execution_time', '600');
+
         // Zbieramy opcje z query string
         $options = [];
         if ($this->request->getQuery('force') === '1') $options['force'] = true;
