@@ -174,6 +174,10 @@ class CrmAdminController extends AppController
             }
 
             $hasAttach = !empty($liveAttachments) || !empty($attachmentsFromDb);
+            $hasImage = false;
+            foreach (($liveAttachments ?: $attachmentsFromDb) as $__att) {
+                if (str_starts_with((string)($__att['mime'] ?? ''), 'image/')) { $hasImage = true; break; }
+            }
 
             // KROK 1: filter body length
             $out .= "\n";
@@ -193,18 +197,33 @@ class CrmAdminController extends AppController
                 'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
                 'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
                 'trasa', 'zaladunek', 'rozladunek', 'przewoz',
-                'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger'];
-            $bodyLc = mb_strtolower($bodyText);
+                'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger',
+                'cargo', 'przewiezc', 'przewiozc', 'stawki'];
+            // Szukaj w SUBJECT + BODY (forwarded maile maja tresc w tytule)
+            $searchText = mb_strtolower((string)$msg->subject . ' ' . $bodyText);
             $matched = [];
             foreach ($signals as $s) {
-                if (strpos($bodyLc, $s) !== false) { $matched[] = $s; }
+                if (strpos($searchText, $s) !== false) { $matched[] = $s; }
             }
-            $requiredSignals = $hasAttach ? 1 : 2;
-            $out .= "\n✓ STEP 2: heurystyka pre-GPT (wymagane: {$requiredSignals}" . ($hasAttach ? " - luzniej bo sa zalaczniki" : "") . ")\n";
+            // FALA 16 fix: hierarchia progu identyczna z Command:
+            //  hasImage -> 0 (Vision widzi tabele na obrazku)
+            //  hasAttach text/PDF -> 1
+            //  tylko body -> 2
+            if ($hasImage) {
+                $requiredSignals = 0;
+                $reason = " - 0 bo jest obrazek (Vision zobaczy tabele)";
+            } elseif ($hasAttach) {
+                $requiredSignals = 1;
+                $reason = " - 1 bo zalaczniki tekstowe";
+            } else {
+                $requiredSignals = 2;
+                $reason = "";
+            }
+            $out .= "\n✓ STEP 2: heurystyka pre-GPT (wymagane: {$requiredSignals}{$reason})\n";
             $out .= "  Znalezione sygnaly (" . count($matched) . "): " . implode(', ', $matched) . "\n";
             if (count($matched) < $requiredSignals) {
                 $out .= "❌ STOP: <{$requiredSignals} sygnaly => tryExtractQuoteRequest zwraca 0.\n";
-                $out .= "\nSUGESTIA: Body nie zawiera slow kluczy transportowych.\n";
+                $out .= "\nSUGESTIA: Body/subject nie zawiera slow kluczy transportowych.\n";
                 $out .= "Pierwsze 500 znakow body:\n---\n" . mb_substr($bodyText, 0, 500) . "\n---\n";
                 $this->set('title', 'Analyze');
                 $this->set('output', $out);

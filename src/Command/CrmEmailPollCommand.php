@@ -723,28 +723,47 @@ class CrmEmailPollCommand extends Command
         $bodyText = (string)($data['body_text'] ?? '');
         $attachments = (array)($data['attachments'] ?? []);
         $hasAttach = count($attachments) > 0;
+        // FALA 16 fix: sprawdz czy sa obrazki (Vision GPT je rozczyta niezaleznie od body)
+        $hasImage = false;
+        foreach ($attachments as $att) {
+            if (str_starts_with((string)($att['mime'] ?? ''), 'image/')) {
+                $hasImage = true;
+                break;
+            }
+        }
 
         // Filtry pre-GPT: pomin krótkie / niezawierajace zadnych sygnalow shipmentu
         // UWAGA: gdy sa zalaczniki, pozwalamy na krotsze body (FALA 16 - zalaczniki dostarczaja tresc)
         if (strlen($bodyText) < 100 && !$hasAttach) {
             return 0;
         }
-        // Heurystyka: sygnaly zapytania o transport
+        // Heurystyka: sygnaly zapytania o transport - szuka W SUBJECT + BODY (forwarded maile
+        // czesto maja treść tylko w tytule, np. "Fwd: transport 28")
         $signals = ['liefern', 'lieferung', 'transport', 'zlecenie', 'wycen', 'oferta',
             'quote', 'shipment', 'ladunek', 'zaladu', 'rozladu', 'anbieten',
             'offerte', 'preis', 'stawka', 'palet', 'kg', 'tonn', 'ldm',
             'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
             'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
             'trasa', 'zaladunek', 'rozladunek', 'przewoz',
-            'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger'];
-        $bodyLc = mb_strtolower($bodyText);
+            'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger',
+            'cargo', 'przewiezc', 'przewiozc', 'stawki'];
+        $searchText = mb_strtolower($subject . ' ' . $bodyText);
         $matched = 0;
         foreach ($signals as $s) {
-            if (strpos($bodyLc, $s) !== false) { $matched++; }
+            if (strpos($searchText, $s) !== false) { $matched++; }
             if ($matched >= 2) break;
         }
-        // FALA 16: gdy sa zalaczniki, wymagamy tylko 1 sygnal (transport/attachment sam z siebie hint)
-        $requiredSignals = $hasAttach ? 1 : 2;
+        // FALA 16 fix: hierarchia progu:
+        //  - hasImage: 0 sygnalow (Vision widzi wszystko na obrazku - i tak warto sprawdzic)
+        //  - hasAttach (tekst/PDF): 1 sygnal
+        //  - tylko body: 2 sygnaly
+        if ($hasImage) {
+            $requiredSignals = 0;
+        } elseif ($hasAttach) {
+            $requiredSignals = 1;
+        } else {
+            $requiredSignals = 2;
+        }
         if ($matched < $requiredSignals) {
             return 0;
         }
