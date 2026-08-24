@@ -216,6 +216,43 @@ class GmailApiService
     }
 
     /**
+     * FALA 16: Pobierz zawartosc pojedynczego zalacznika (base64url encoded).
+     * Zwraca binarna zawartosc (decoded z base64url) lub null przy bledzie.
+     *
+     * @param string $accessToken OAuth token
+     * @param string $msgId Gmail message ID
+     * @param string $attachmentId ID z attachments[]['attachment_id']
+     * @param int $maxSize max bajtow do pobrania (dla ochrony przed OOM)
+     */
+    public function getAttachment(string $accessToken, string $msgId, string $attachmentId, int $maxSize = 10485760): ?string
+    {
+        try {
+            $client = new Client(['timeout' => 60]);
+            $response = $client->get(
+                self::API_BASE . '/messages/' . $msgId . '/attachments/' . $attachmentId,
+                [],
+                ['headers' => ['Authorization' => 'Bearer ' . $accessToken, 'Accept' => 'application/json']]
+            );
+            if (!$response->isOk()) {
+                Log::warning('Gmail getAttachment HTTP ' . $response->getStatusCode() . ' dla ' . $msgId . '/' . $attachmentId);
+                return null;
+            }
+            $data = json_decode((string)$response->getBody(), true);
+            $b64 = $data['data'] ?? '';
+            $size = (int)($data['size'] ?? 0);
+            if ($b64 === '') return null;
+            if ($size > $maxSize) {
+                Log::warning('Gmail attachment za duzy (' . $size . 'B > ' . $maxSize . 'B), skipping');
+                return null;
+            }
+            return base64_decode(strtr($b64, '-_', '+/'));
+        } catch (\Throwable $e) {
+            Log::warning('Gmail getAttachment failed dla ' . $msgId . ': ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Parsuje Gmail API message payload -> plaska struktura.
      */
     private function parseMessage(array $msg): array
@@ -279,9 +316,10 @@ class GmailApiService
         // Attachment (ma filename)
         if ($filename !== '') {
             $attachments[] = [
-                'filename' => $filename,
-                'mime'     => $mime,
-                'size'     => (int)($part['body']['size'] ?? 0),
+                'filename'      => $filename,
+                'mime'          => $mime,
+                'size'          => (int)($part['body']['size'] ?? 0),
+                'attachment_id' => $part['body']['attachmentId'] ?? null,
             ];
             return;
         }

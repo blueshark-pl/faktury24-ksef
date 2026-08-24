@@ -70,7 +70,35 @@ class CrmAdminController extends AppController
             $out .= "Subject: {$msg->subject}\n";
             $out .= "Lead: {$msg->lead_id}\n";
             $out .= "Body length: " . strlen((string)$msg->body_text) . " chars\n";
-            $out .= "Attachments: " . (int)$msg->attachments_count . "\n\n";
+            $out .= "Attachments: " . (int)$msg->attachments_count . "\n";
+
+            // FALA 16: pokaz zalaczniki
+            if ((int)$msg->attachments_count > 0) {
+                $attList = json_decode((string)$msg->attachments_json, true);
+                if (is_array($attList)) {
+                    $out .= "  Zalaczniki:\n";
+                    foreach ($attList as $i => $att) {
+                        $sz = isset($att['size']) ? round($att['size'] / 1024, 1) . 'KB' : '?';
+                        $hasId = !empty($att['attachment_id']) ? '(ID OK)' : '(ID BRAK - trzeba re-fetch)';
+                        $out .= sprintf("    [%d] %s | %s | %s %s\n",
+                            $i + 1,
+                            $att['filename'] ?? '?',
+                            $att['mime'] ?? '?',
+                            $sz,
+                            $hasId
+                        );
+                    }
+                    // Sprawdz czy pdftotext dostepny
+                    $reader = new \App\Service\Email\EmailAttachmentReaderService();
+                    $ref = new \ReflectionClass($reader);
+                    $m = $ref->getMethod('findBinary');
+                    $m->setAccessible(true);
+                    $pdftotext = $m->invoke($reader, 'pdftotext');
+                    $out .= "  pdftotext CLI: " . ($pdftotext ?: '❌ BRAK - dla PDF text ekstract') . "\n";
+                    $out .= "  smalot/pdfparser: " . (class_exists('\Smalot\PdfParser\Parser') ? 'OK (fallback)' : '❌ brak (composer require smalot/pdfparser)') . "\n";
+                }
+            }
+            $out .= "\n";
 
             $bodyText = (string)$msg->body_text;
 

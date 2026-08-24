@@ -678,7 +678,7 @@ class CrmEmailPollCommand extends Command
 
                 // FALA 15: Wykryj czy email zawiera zapytanie o wycene zlecen (multi-shipment quote)
                 try {
-                    $extraCount = $this->tryExtractQuoteRequest($data, $lead, $Acts, $Leads, $io);
+                    $extraCount = $this->tryExtractQuoteRequest($data, $lead, $Acts, $Leads, $io, $service, $accessToken);
                     $actCount += $extraCount;
                 } catch (\Throwable $ee) {
                     $io->out('    quote-extract skipped: ' . $ee->getMessage());
@@ -713,30 +713,36 @@ class CrmEmailPollCommand extends Command
      *
      * @return int liczba dodanych activities (0 lub 1)
      */
-    private function tryExtractQuoteRequest(array $data, $lead, $Acts, $Leads, ConsoleIo $io): int
+    private function tryExtractQuoteRequest(array $data, $lead, $Acts, $Leads, ConsoleIo $io, $service = null, string $accessToken = ''): int
     {
         $subject  = (string)($data['subject'] ?? '');
         $bodyText = (string)($data['body_text'] ?? '');
+        $attachments = (array)($data['attachments'] ?? []);
+        $hasAttach = count($attachments) > 0;
 
         // Filtry pre-GPT: pomin krótkie / niezawierajace zadnych sygnalow shipmentu
-        if (strlen($bodyText) < 100) {
+        // UWAGA: gdy sa zalaczniki, pozwalamy na krotsze body (FALA 16 - zalaczniki dostarczaja tresc)
+        if (strlen($bodyText) < 100 && !$hasAttach) {
             return 0;
         }
-        // Heurystyka: sygnaly zapytania o transport (jesli brak - pomijamy zeby oszczedzic tokeny)
+        // Heurystyka: sygnaly zapytania o transport
         $signals = ['liefern', 'lieferung', 'transport', 'zlecenie', 'wycen', 'oferta',
             'quote', 'shipment', 'ladunek', 'zaladu', 'rozladu', 'anbieten',
             'offerte', 'preis', 'stawka', 'palet', 'kg', 'tonn', 'ldm',
             'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
             'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
-            'trasa', 'zaladunek', 'rozladunek', 'przewoz'];
+            'trasa', 'zaladunek', 'rozladunek', 'przewoz',
+            'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger'];
         $bodyLc = mb_strtolower($bodyText);
         $matched = 0;
         foreach ($signals as $s) {
             if (strpos($bodyLc, $s) !== false) { $matched++; }
             if ($matched >= 2) break;
         }
-        if ($matched < 2) {
-            return 0; // za malo sygnalow - to prawdopodobnie nie zapytanie o transport
+        // FALA 16: gdy sa zalaczniki, wymagamy tylko 1 sygnal (transport/attachment sam z siebie hint)
+        $requiredSignals = $hasAttach ? 1 : 2;
+        if ($matched < $requiredSignals) {
+            return 0;
         }
 
         // Dedup: sprawdz czy juz mamy quote_request dla tego message_id
@@ -755,12 +761,58 @@ class CrmEmailPollCommand extends Command
             // ignoruj
         }
 
-        $io->out('    Quote-extract: GPT analizuje email pod katem listy zlecen...');
+        // FALA 16: Pobierz + rozczytaj zalaczniki (image/pdf/text). Max 3 zalaczniki, max 8MB kazdy.
+        $imageDataUris = [];
+        $attachmentTexts = [];
+        $attachmentSummary = [];
+        if ($hasAttach && $service && $accessToken) {
+            $reader = new \App\Service\Email\EmailAttachmentReaderService();
+            $processed = 0;
+            foreach ($attachments as $att) {
+                if ($processed >= 3) { $attachmentSummary[] = '[+more skipped]'; break; }
+                $attId = $att['attachment_id'] ?? null;
+                if (!$attId) { $attachmentSummary[] = $att['filename'] . '(no id)'; continue; }
+                if (($att['size'] ?? 0) > 8 * 1024 * 1024) {
+                    $attachmentSummary[] = $att['filename'] . '(za duzy ' . round($att['size'] / 1024 / 1024, 1) . 'MB)';
+                    continue;
+                }
+                $io->out('    Attach: fetching ' . $att['filename'] . ' (' . $att['mime'] . ')');
+                $binary = $service->getAttachment($accessToken, $data['gmail_id'], $attId, 8 * 1024 * 1024);
+                if ($binary === null) {
+                    $attachmentSummary[] = $att['filename'] . '(fetch fail)';
+                    continue;
+                }
+                $read = $reader->read($binary, $att['mime'], $att['filename']);
+                if ($read['type'] === 'image') {
+                    $imageDataUris[] = $read['content'];
+                    $attachmentSummary[] = $att['filename'] . '(image OK)';
+                    $processed++;
+                } elseif ($read['type'] === 'text') {
+                    $t = trim($read['content'] ?? '');
+                    if ($t !== '') {
+                        $attachmentTexts[] = "[ZALACZNIK: " . $att['filename'] . "]\n" . mb_substr($t, 0, 12000);
+                        $attachmentSummary[] = $att['filename'] . '(text ' . strlen($t) . 'ch)';
+                        $processed++;
+                    } else {
+                        $attachmentSummary[] = $att['filename'] . '(empty text)';
+                    }
+                } else {
+                    $attachmentSummary[] = $att['filename'] . '(' . ($read['error'] ?? 'unsupported') . ')';
+                }
+            }
+        }
+        if (!empty($attachmentSummary)) {
+            $io->out('    Attachments processed: ' . implode(', ', $attachmentSummary));
+        }
+
+        $io->out('    Quote-extract: GPT analizuje email pod katem listy zlecen' .
+            (count($imageDataUris) ? ' (' . count($imageDataUris) . ' obr. via Vision)' : '') . '...');
         try {
             $svc = new \App\Service\Ai\OpenAiService();
             $system = "Jestes spedytorem analizujacym maile z zapytaniami o transport. "
                 . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
-                . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht). "
+                . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht, tabele w zalacznikach PDF/obrazkach/CSV). "
+                . "Analizuj TAKZE zalaczniki - moga zawierac cala tresc zamowienia. "
                 . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
                 . "Zwroc STRICT JSON: {"
                 . "\"is_quote_request\": bool (czy email zawiera konkretne zapytanie o wycene/przewoz - nie same 'chetnie ofertuj' bez trasy), "
@@ -770,34 +822,35 @@ class CrmEmailPollCommand extends Command
                 . "\"shipments\": [ {"
                 . "  \"customer_order_ref\": string (numer zamowienia klienta jesli podany, np. Kundenbestellnummer/PO/BE26002538), "
                 . "  \"from_country\": string (2-znak ISO np. DE/PL), "
-                . "  \"from_postal\": string, "
-                . "  \"from_city\": string, "
-                . "  \"from_company\": string, "
-                . "  \"to_country\": string, "
-                . "  \"to_postal\": string, "
-                . "  \"to_city\": string, "
-                . "  \"to_company\": string, "
-                . "  \"load_date\": string (ISO YYYY-MM-DD jesli mozna wyliczyc), "
-                . "  \"load_time\": string (HH:MM lub okno 'HH:MM-HH:MM'), "
-                . "  \"unload_date\": string (ISO), "
-                . "  \"unload_time\": string, "
-                . "  \"weight_kg\": int, "
-                . "  \"pallets\": int, "
-                . "  \"pallet_type\": string ('EUR'/'IND'/'PET' etc), "
-                . "  \"cargo_type\": string ('napoje','szklo','stal','ADR-klasa-X' etc), "
+                . "  \"from_postal\": string, \"from_city\": string, \"from_company\": string, "
+                . "  \"to_country\": string, \"to_postal\": string, \"to_city\": string, \"to_company\": string, "
+                . "  \"load_date\": string (ISO YYYY-MM-DD), \"load_time\": string (HH:MM), "
+                . "  \"unload_date\": string (ISO), \"unload_time\": string, "
+                . "  \"weight_kg\": int, \"pallets\": int, \"pallet_type\": string ('EUR'/'IND'/'PET'), "
+                . "  \"cargo_type\": string ('napoje','szklo','stal','ADR-klasa-X'), "
                 . "  \"vehicle_type\": string ('plandeka'/'chlodnia'/'mega'/'cysterna'), "
                 . "  \"notes\": string (uwagi z tresci - okna czasowe, wymagania sprzetu, referencje) "
-                . "} ]"
-                . "}"
+                . "} ] } "
                 . "Puste pola = \"\" lub 0. is_quote_request=false jesli to zwykla korespondencja bez konkretnych zlecen.";
 
-            // Ekstract tresc + email metadane
-            $user = "Temat: {$subject}\n\n"
+            // Merge body + tresc zalacznikow tekstowych
+            $userText = "Temat: {$subject}\n\n"
                 . "Nadawca: " . ($data['from_name'] ?? '') . " <" . ($data['from_email'] ?? '') . ">\n\n"
-                . "Tresc emaila (moze zawierac forwarded/tabele/HTML converted):\n"
-                . mb_substr($bodyText, 0, 8000);
+                . "Tresc emaila:\n" . mb_substr($bodyText, 0, 6000);
+            if (!empty($attachmentTexts)) {
+                $userText .= "\n\n=== TRESC ZALACZNIKOW ===\n" . implode("\n\n", $attachmentTexts);
+            }
+            if (!empty($imageDataUris)) {
+                $userText .= "\n\n=== ZALACZNIKI OBRAZKOWE ===\nPrzeanalizuj rowniez zalaczone obrazy - moga zawierac tabele zlecen (screenshoty Excela, skany CMR).";
+            }
 
-            $extracted = $svc->chatJson($system, $user, 2500);
+            // Vision gdy sa obrazy, chatJson gdy tylko tekst
+            if (!empty($imageDataUris)) {
+                $firstImg = array_shift($imageDataUris);
+                $extracted = $svc->chatVisionJson($system, $userText, $firstImg, 2500, $imageDataUris);
+            } else {
+                $extracted = $svc->chatJson($system, $userText, 2500);
+            }
         } catch (\Throwable $e) {
             $io->out('    Quote GPT failed: ' . $e->getMessage());
             return 0;
