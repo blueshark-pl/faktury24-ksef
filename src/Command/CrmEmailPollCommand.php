@@ -39,7 +39,9 @@ class CrmEmailPollCommand extends Command
                 'help' => 'Preview mode - loguje co by zostalo utworzone, nie zapisuje.'])
             ->addOption('account', ['default' => null, 'help' => 'Konkretne konto (uuid)'])
             ->addOption('company', ['default' => null, 'help' => 'Ogranicz do jednej firmy'])
-            ->addOption('max', ['default' => 100, 'help' => 'Max wiadomosci per konto na jeden run']);
+            ->addOption('max', ['default' => 100, 'help' => 'Max wiadomosci per konto na jeden run'])
+            ->addOption('force', ['boolean' => true, 'default' => false,
+                'help' => 'Ignoruj cooldown sync_frequency_min - wymus sync wszystkich aktywnych kont']);
         return $parser;
     }
 
@@ -55,6 +57,7 @@ class CrmEmailPollCommand extends Command
         $accountId = $args->getOption('account');
         $companyFilter = $args->getOption('company');
         $max = (int)$args->getOption('max');
+        $force = (bool)$args->getOption('force');
 
         $EA = TableRegistry::getTableLocator()->get('CrmEmailAccounts');
         $Leads = TableRegistry::getTableLocator()->get('Leads');
@@ -62,6 +65,12 @@ class CrmEmailPollCommand extends Command
 
         if ($accountId) {
             $accounts = [$EA->get($accountId)];
+        } elseif ($force) {
+            // --force: bierz wszystkie aktywne konta niezaleznie od cooldown
+            $q = $EA->find()->where(['is_active' => true]);
+            if ($companyFilter) $q->where(['company_id' => $companyFilter]);
+            $accounts = $q->all()->toArray();
+            $io->out('FORCE mode - ignoruje cooldown sync_frequency_min');
         } else {
             $accounts = $EA->findDueForSync($companyFilter);
         }

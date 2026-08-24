@@ -96,8 +96,16 @@ $this->assign('title', __('CRM Admin Tools'));
                          'target' => '_blank',
                          'confirm' => 'Uruchomic crm_email_poll teraz?']
                     ) ?>
+                    <?= $this->Form->postLink(
+                        '<i class="ri-refresh-line"></i> Poll emails NOW (FORCE - ignoruj cooldown)',
+                        ['action' => 'runCron', 'crm_email_poll', '?' => ['force' => 1]],
+                        ['escape' => false, 'class' => 'btn btn-warning',
+                         'target' => '_blank',
+                         'confirm' => 'Uruchomic z --force? Ignoruje 5-minutowy cooldown miedzy sync-ami.']
+                    ) ?>
                     <div class="small text-muted">
-                        Odpowiednik <code>bin/cake crm_email_poll</code>. Pobiera nowe wiadomosci z aktywnych kont Gmail OAuth + IMAP i tworzy activities dla matched leadow.
+                        Standardowy poll respektuje <code>sync_frequency_min</code> (default 5 min).
+                        Uzyj <strong>FORCE</strong> gdy poprzedni sync wywalil sie z bledem i chcesz od razu sprobowac ponownie.
                     </div>
                 </div>
             </div>

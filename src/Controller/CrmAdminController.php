@@ -377,21 +377,24 @@ class CrmAdminController extends AppController
     }
 
     /**
-     * POST /crm/admin/run-cron/{name}
+     * POST /crm/admin/run-cron/{name}?force=1&dry=1
      */
     public function runCron(string $name): void
     {
-        // Whitelist commands
         $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'alerts'];
         if (!in_array($name, $allowed, true)) {
             $this->Flash->error('Command niedozwolony');
             $this->redirect(['action' => 'tools']);
             return;
         }
-        $this->runCommand($name);
+        // Zbieramy opcje z query string
+        $options = [];
+        if ($this->request->getQuery('force') === '1') $options['force'] = true;
+        if ($this->request->getQuery('dry') === '1')   $options['dry'] = true;
+        $this->runCommand($name, $options);
     }
 
-    private function runCommand(string $commandName): void
+    private function runCommand(string $commandName, array $options = []): void
     {
         $this->viewBuilder()->setLayout('ajax');
         $out = "=== CRON: bin/cake {$commandName} ===\n\n";
@@ -421,7 +424,8 @@ class CrmAdminController extends AppController
                 $method->setAccessible(true);
                 $parser = $method->invoke($command, $parser);
             }
-            $args = new Arguments([], [], []);
+            // Zbuduj Arguments z opcjami (np. force, dry)
+            $args = new Arguments([], $options, []);
 
             $exitCode = $command->execute($args, $io);
             $lines = array_merge($stubOutput->messages(), $stubErr->messages());
