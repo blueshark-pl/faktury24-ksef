@@ -85,6 +85,9 @@ $activityIcons = [
                  'confirm' => __('Utworzyć kontrahenta z tego leada?')]
             ) ?>
         <?php endif; ?>
+        <button type="button" class="btn btn-sm btn-outline-info" id="btn-ai-summarize" title="<?= __('GPT AI: podsumuj historie + rekomenduj') ?>">
+            <i class="ri-magic-line"></i> AI Podsumuj
+        </button>
         <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#offerModal">
             <i class="ri-mail-send-line"></i> <?= __('Utwórz ofertę') ?>
         </button>
@@ -411,10 +414,81 @@ $activityIcons = [
                             <div class="form-text small"><?= __('Wypełnij tylko dla zadań/przypomnień') ?></div>
                         </div>
                         <div class="col-md-8 text-end">
+                            <button type="button" class="btn btn-sm btn-outline-info me-1" id="btn-ai-draft" title="<?= __('GPT AI: napisz odpowiedź na ostatni email klienta') ?>">
+                                <i class="ri-magic-line"></i> AI Draft odpowiedzi
+                            </button>
                             <button class="btn btn-sm btn-primary"><i class="ri-add-line"></i> <?= __('Dodaj aktywność') ?></button>
                         </div>
                     </div>
                 <?= $this->Form->end() ?>
+
+                <!-- Modal: AI Draft response -->
+                <div class="modal fade" id="aiDraftModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="ri-magic-line text-info"></i> AI Draft odpowiedzi email</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="ai-draft-loading" style="display:none;" class="text-center py-4">
+                                    <i class="ri-loader-4-line fs-2 text-info"></i>
+                                    <div class="mt-2">GPT-4o generuje odpowiedź na podstawie historii korespondencji…</div>
+                                </div>
+                                <div id="ai-draft-content" style="display:none;">
+                                    <div class="mb-2">
+                                        <label class="form-label small">Ton:</label>
+                                        <select id="ai-tone" class="form-select form-select-sm" style="max-width:250px; display:inline-block;">
+                                            <option value="professional">Profesjonalny (default)</option>
+                                            <option value="friendly">Przyjazny</option>
+                                            <option value="urgent">Zdecydowany/pilny</option>
+                                            <option value="formal">Bardzo formalny</option>
+                                        </select>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="ai-regen">
+                                            <i class="ri-refresh-line"></i> Regeneruj
+                                        </button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Dodatkowy kontekst (opcjonalnie):</label>
+                                        <input type="text" id="ai-extra" class="form-control form-control-sm" placeholder="np. 'zaproponuj cenę 5000 zł' albo 'zapytaj o termin'">
+                                    </div>
+                                    <hr>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Temat:</label>
+                                        <input type="text" id="ai-subject" class="form-control">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Treść (edytuj przed skopiowaniem):</label>
+                                        <textarea id="ai-body" class="form-control" rows="12" style="font-family:monospace; font-size:13px;"></textarea>
+                                    </div>
+                                    <div class="small text-muted" id="ai-meta"></div>
+                                </div>
+                                <div id="ai-draft-error" class="alert alert-warning" style="display:none;"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zamknij</button>
+                                <button type="button" class="btn btn-success" id="ai-copy">
+                                    <i class="ri-clipboard-line"></i> Kopiuj do schowka
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: AI Summary -->
+                <div class="modal fade" id="aiSummaryModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="ri-magic-line text-info"></i> AI Podsumowanie leada</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" id="ai-summary-body">
+                                <div class="text-center py-4"><i class="ri-loader-4-line fs-2 text-info"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <?php if (empty($lead->lead_activities)): ?>
                     <div class="alert alert-info small mb-0">
@@ -706,5 +780,122 @@ $activityIcons = [
             $btn.addEventListener('click', function() { search($btn.dataset.mode, $btn); });
         }
     });
+})();
+</script>
+
+<script>
+// FALA 11: AI Draft response + AI Summary
+(function() {
+    var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+    var leadId = '<?= h($lead->id) ?>';
+    var URL_DRAFT = '<?= $this->Url->build(['action' => 'aiDraftResponseJson']) ?>';
+    var URL_SUMMARY = '<?= $this->Url->build(['action' => 'aiSummarizeJson']) ?>';
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>"]/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+        });
+    }
+
+    // ===== AI DRAFT =====
+    var $btnDraft = document.getElementById('btn-ai-draft');
+    if ($btnDraft) {
+        var modalEl = document.getElementById('aiDraftModal');
+        var modal = new bootstrap.Modal(modalEl);
+        var $loading = document.getElementById('ai-draft-loading');
+        var $content = document.getElementById('ai-draft-content');
+        var $error = document.getElementById('ai-draft-error');
+        var $tone = document.getElementById('ai-tone');
+        var $extra = document.getElementById('ai-extra');
+        var $subject = document.getElementById('ai-subject');
+        var $body = document.getElementById('ai-body');
+        var $meta = document.getElementById('ai-meta');
+        var $copy = document.getElementById('ai-copy');
+        var $regen = document.getElementById('ai-regen');
+
+        function generate() {
+            $content.style.display = 'none';
+            $error.style.display = 'none';
+            $loading.style.display = 'block';
+            var fd = new FormData();
+            fd.append('_csrfToken', csrf);
+            fd.append('lead_id', leadId);
+            fd.append('tone', $tone.value);
+            fd.append('context', $extra.value);
+            fetch(URL_DRAFT, {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': csrf }
+            }).then(function(r){return r.json();}).then(function(j) {
+                $loading.style.display = 'none';
+                if (!j.ok) {
+                    $error.textContent = j.hint || j.error || 'Błąd AI';
+                    $error.style.display = 'block';
+                    return;
+                }
+                $subject.value = j.draft_subject || '';
+                $body.value = j.draft_body || '';
+                $meta.innerHTML = 'Bazujące na ' + (j.thread_count || 0) + ' wiadomościach. Ostatnia: ' +
+                    esc(j.last_msg_from || '?') + ' z ' + esc(j.last_msg_date || '?');
+                $content.style.display = 'block';
+            }).catch(function(e) {
+                $loading.style.display = 'none';
+                $error.textContent = 'Błąd sieciowy: ' + e.message;
+                $error.style.display = 'block';
+            });
+        }
+
+        $btnDraft.addEventListener('click', function() {
+            modal.show();
+            generate();
+        });
+        $regen.addEventListener('click', generate);
+        $copy.addEventListener('click', function() {
+            var full = 'Temat: ' + $subject.value + '\n\n' + $body.value;
+            navigator.clipboard.writeText(full).then(function() {
+                $copy.innerHTML = '<i class="ri-check-double-line"></i> Skopiowane!';
+                setTimeout(function() {
+                    $copy.innerHTML = '<i class="ri-clipboard-line"></i> Kopiuj do schowka';
+                }, 2000);
+            });
+        });
+    }
+
+    // ===== AI SUMMARY =====
+    var $btnSum = document.getElementById('btn-ai-summarize');
+    if ($btnSum) {
+        var sumModal = new bootstrap.Modal(document.getElementById('aiSummaryModal'));
+        var $sumBody = document.getElementById('ai-summary-body');
+
+        $btnSum.addEventListener('click', function() {
+            sumModal.show();
+            $sumBody.innerHTML = '<div class="text-center py-4"><i class="ri-loader-4-line fs-2 text-info"></i><div class="mt-2 small">GPT analizuje historię leada…</div></div>';
+            var fd = new FormData();
+            fd.append('_csrfToken', csrf);
+            fd.append('lead_id', leadId);
+            fetch(URL_SUMMARY, {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': csrf }
+            }).then(function(r){return r.json();}).then(function(j) {
+                if (!j.ok) {
+                    $sumBody.innerHTML = '<div class="alert alert-warning">' + esc(j.hint || j.error) + '</div>';
+                    return;
+                }
+                var sentColor = {positive:'success',neutral:'secondary',negative:'danger',urgent:'warning'}[j.sentiment] || 'secondary';
+                var stepsHtml = '';
+                (j.next_steps || []).forEach(function(s) {
+                    stepsHtml += '<li>' + esc(s) + '</li>';
+                });
+                $sumBody.innerHTML =
+                    '<div class="mb-3">' +
+                        '<span class="badge bg-' + sentColor + ' me-1">Sentyment: ' + esc(j.sentiment) + '</span>' +
+                        (j.probability_hint > 0 ? '<span class="badge bg-info">AI sugeruje probability: ' + j.probability_hint + '%</span>' : '') +
+                    '</div>' +
+                    '<div class="mb-3"><strong>Podsumowanie:</strong><p class="mt-1">' + esc(j.summary).replace(/\n/g, '<br>') + '</p></div>' +
+                    (stepsHtml ? '<div><strong>Rekomendowane następne kroki:</strong><ol class="mt-1">' + stepsHtml + '</ol></div>' : '');
+            }).catch(function(e) {
+                $sumBody.innerHTML = '<div class="alert alert-danger">Błąd sieciowy: ' + esc(e.message) + '</div>';
+            });
+        });
+    }
 })();
 </script>

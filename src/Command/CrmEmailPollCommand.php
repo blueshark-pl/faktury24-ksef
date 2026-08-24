@@ -145,25 +145,65 @@ class CrmEmailPollCommand extends Command
                             continue;
                         }
 
-                        // Pobierz krotki fragment body (100 znakow)
-                        $body = '';
-                        try {
-                            $raw = @imap_fetchbody($conn, $uid, 1, FT_UID | FT_PEEK);
-                            if ($raw) $body = mb_substr(strip_tags(quoted_printable_decode($raw)), 0, 500);
-                        } catch (\Throwable $e) {}
+                        // Pobierz PELNE body: text + HTML + attachments (FALA 11)
+                        [$bodyText, $bodyHtml, $attachments] = $this->fetchFullBody($conn, $uid);
+                        $bodySnippet = $bodyText ? mb_substr($bodyText, 0, 500) : '';
 
-                        $io->out(sprintf('    UID %d: from=%s -> lead %s (%s)',
-                            $uid, $fromEmail, $lead->id, $lead->company_name));
+                        $messageId = trim((string)($header->message_id ?? ''));
+                        $inReplyTo = trim((string)($header->references ?? '') ?: (string)($header->in_reply_to ?? ''));
+                        $threadId  = $this->makeThreadId($subject, $inReplyTo);
+                        $fromName  = self::decodeMime((string)($header->from[0]->personal ?? ''));
+                        $toEmails  = self::extractEmails($header->to ?? []);
+                        $ccEmails  = self::extractEmails($header->cc ?? []);
+
+                        $io->out(sprintf('    UID %d: from=%s -> lead %s (%s), body %d chars, %d attach',
+                            $uid, $fromEmail, $lead->id, $lead->company_name,
+                            strlen($bodyText), count($attachments)));
 
                         if (!$dry) {
                             $Acts->logSystem(
                                 (string)$acc->company_id, (string)$lead->id, 'email_in',
                                 $subject ?: '(bez tematu)',
-                                $body,
+                                $bodySnippet,
                                 ['imap_uid' => $uid, 'from' => $fromEmail, 'account_id' => $acc->id],
                                 null
                             );
-                            // Aktualizuj last_contacted_at leada
+
+                            // Zapisz PELNA wiadomosc do crm_email_messages
+                            try {
+                                $Messages = TableRegistry::getTableLocator()->get('CrmEmailMessages');
+                                $existsQ = $Messages->find()->where(['account_id' => $acc->id, 'imap_uid' => $uid]);
+                                if ($messageId !== '') {
+                                    $existsQ->orWhere(['message_id' => $messageId]);
+                                }
+                                if ($existsQ->count() === 0) {
+                                    $Messages->save($Messages->newEntity([
+                                        'id'          => \Cake\Utility\Text::uuid(),
+                                        'company_id'  => $acc->company_id,
+                                        'account_id'  => $acc->id,
+                                        'lead_id'     => $lead->id,
+                                        'imap_uid'    => $uid,
+                                        'message_id'  => $messageId ?: null,
+                                        'in_reply_to' => $inReplyTo ?: null,
+                                        'thread_id'   => $threadId,
+                                        'direction'   => 'in',
+                                        'from_email'  => $fromEmail,
+                                        'from_name'   => $fromName ?: null,
+                                        'to_emails'   => $toEmails,
+                                        'cc_emails'   => $ccEmails,
+                                        'subject'     => mb_substr($subject, 0, 500),
+                                        'received_at' => $receivedAt,
+                                        'body_text'   => mb_substr($bodyText, 0, 500000),
+                                        'body_html'   => mb_substr($bodyHtml, 0, 500000),
+                                        'body_length' => strlen($bodyText),
+                                        'attachments_json' => json_encode($attachments, JSON_UNESCAPED_UNICODE),
+                                        'attachments_count' => count($attachments),
+                                    ]));
+                                }
+                            } catch (\Throwable $e) {
+                                \Cake\Log\Log::warning('CrmEmailMessages save failed: ' . $e->getMessage());
+                            }
+
                             $lead->last_contacted_at = $receivedAt;
                             $Leads->save($lead);
                         }
@@ -222,5 +262,142 @@ class CrmEmailPollCommand extends Command
             $out .= $text;
         }
         return $out;
+    }
+
+    /**
+     * Pobiera pelne body wiadomosci (text + HTML) + attachments meta.
+     * Iteruje po MIME parts przez imap_fetchstructure.
+     *
+     * @return array [body_text, body_html, [attachments_meta]]
+     */
+    private function fetchFullBody($conn, int $uid): array
+    {
+        $bodyText = '';
+        $bodyHtml = '';
+        $attachments = [];
+
+        try {
+            $structure = @imap_fetchstructure($conn, $uid, FT_UID);
+            if (!$structure) return ['', '', []];
+
+            $this->walkParts($conn, $uid, $structure, '', $bodyText, $bodyHtml, $attachments);
+
+            // Jesli nie ma text ale jest HTML - zrob strip
+            if ($bodyText === '' && $bodyHtml !== '') {
+                $bodyText = trim(strip_tags(preg_replace('#<br\s*/?>#i', "\n", $bodyHtml)));
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('fetchFullBody exception UID ' . $uid . ': ' . $e->getMessage());
+        }
+        return [$bodyText, $bodyHtml, $attachments];
+    }
+
+    private function walkParts($conn, int $uid, $part, string $section, string &$bodyText, string &$bodyHtml, array &$attachments): void
+    {
+        // Multipart - rekurencja po sub-parts
+        if (!empty($part->parts) && is_array($part->parts)) {
+            foreach ($part->parts as $i => $sub) {
+                $newSection = $section === '' ? (string)($i + 1) : $section . '.' . ($i + 1);
+                $this->walkParts($conn, $uid, $sub, $newSection, $bodyText, $bodyHtml, $attachments);
+            }
+            return;
+        }
+
+        $type = $part->type ?? 0;      // 0=text, 5=image, 4=audio, 7=video, 3=app
+        $subtype = strtoupper((string)($part->subtype ?? ''));
+        $encoding = $part->encoding ?? 0;
+        $filename = '';
+        $isAttachment = false;
+
+        // Sprawdz disposition
+        if (!empty($part->dparameters) && is_array($part->dparameters)) {
+            foreach ($part->dparameters as $p) {
+                if (strtolower((string)$p->attribute) === 'filename') {
+                    $filename = self::decodeMime((string)$p->value);
+                    $isAttachment = true;
+                }
+            }
+        }
+        if (!empty($part->parameters) && is_array($part->parameters)) {
+            foreach ($part->parameters as $p) {
+                if (strtolower((string)$p->attribute) === 'name' && $filename === '') {
+                    $filename = self::decodeMime((string)$p->value);
+                    $isAttachment = true;
+                }
+            }
+        }
+        if (isset($part->disposition) && strtolower((string)$part->disposition) === 'attachment') {
+            $isAttachment = true;
+        }
+
+        $secKey = $section === '' ? '1' : $section;
+        $raw = @imap_fetchbody($conn, $uid, $secKey, FT_UID | FT_PEEK);
+
+        // Decode wg encoding
+        if ($encoding === 3) $raw = base64_decode((string)$raw);
+        elseif ($encoding === 4) $raw = quoted_printable_decode((string)$raw);
+
+        // Charset
+        $charset = 'utf-8';
+        if (!empty($part->parameters) && is_array($part->parameters)) {
+            foreach ($part->parameters as $p) {
+                if (strtolower((string)$p->attribute) === 'charset') $charset = strtolower((string)$p->value);
+            }
+        }
+        if ($charset !== 'utf-8' && $charset !== '' && function_exists('iconv') && !$isAttachment) {
+            $conv = @iconv($charset, 'UTF-8//IGNORE', (string)$raw);
+            if ($conv !== false) $raw = $conv;
+        }
+
+        if ($isAttachment) {
+            $attachments[] = [
+                'filename' => $filename ?: 'attachment_' . $secKey,
+                'mime'     => strtolower(($this->mimeTypeName($type)) . '/' . $subtype),
+                'size'     => strlen((string)$raw),
+            ];
+            return;
+        }
+
+        // Body - text/html lub text/plain
+        if ($type === 0) {
+            if ($subtype === 'HTML') {
+                $bodyHtml .= (string)$raw;
+            } else {
+                $bodyText .= (string)$raw;
+            }
+        }
+    }
+
+    private function mimeTypeName(int $type): string
+    {
+        return ['text', 'multipart', 'message', 'application', 'audio', 'image', 'video', 'other'][$type] ?? 'other';
+    }
+
+    /**
+     * Grupowanie watku po znormalizowanym subject (bez Re:/Fwd:) + reply chain.
+     */
+    private function makeThreadId(string $subject, string $inReplyTo): string
+    {
+        $norm = preg_replace('/^(re|fwd|fw|odp)\s*:\s*/i', '', trim($subject));
+        $norm = preg_replace('/\s+/', ' ', $norm);
+        // Jesli mamy reply chain (References/In-Reply-To) - uzywaj pierwszego msg id
+        if ($inReplyTo !== '') {
+            preg_match('/<([^>]+)>/', $inReplyTo, $m);
+            $first = $m[1] ?? '';
+            if ($first !== '') return substr(md5($first), 0, 16);
+        }
+        return substr(md5(strtolower($norm)), 0, 16);
+    }
+
+    private static function extractEmails($addresses): ?string
+    {
+        if (!is_array($addresses)) return null;
+        $out = [];
+        foreach ($addresses as $a) {
+            if (!empty($a->mailbox) && !empty($a->host)) {
+                $out[] = strtolower($a->mailbox . '@' . $a->host);
+            }
+        }
+        return $out ? implode(',', $out) : null;
     }
 }

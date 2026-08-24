@@ -195,6 +195,9 @@ return function (RouteBuilder $routes): void {
         $builder->post('/crm/krs-lookup',                   ['controller' => 'Leads', 'action' => 'krsLookupJson']);
         // FALA 10: LinkedIn search (Serper/Brave/Google CSE)
         $builder->post('/crm/linkedin-search',              ['controller' => 'Leads', 'action' => 'linkedinSearchJson']);
+        // FALA 11: GPT AI (draft response + summarize)
+        $builder->post('/crm/ai/draft-response',            ['controller' => 'Leads', 'action' => 'aiDraftResponseJson']);
+        $builder->post('/crm/ai/summarize',                 ['controller' => 'Leads', 'action' => 'aiSummarizeJson']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

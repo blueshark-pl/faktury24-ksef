@@ -487,6 +487,8 @@ return [
                 'krsLookupJson',
                 // FALA 10: LinkedIn search
                 'linkedinSearchJson',
+                // FALA 11: GPT AI
+                'aiDraftResponseJson', 'aiSummarizeJson',
             ],
         ],
         [

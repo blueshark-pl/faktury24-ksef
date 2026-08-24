@@ -1082,6 +1082,213 @@ class LeadsController extends AppController
     }
 
     /**
+     * GPT AI: draft odpowiedzi email na podstawie pelnej historii korespondencji.
+     *
+     * POST /crm/ai/draft-response
+     * Body: {lead_id, message_id?, tone?, context?}
+     * Return: {ok, draft_subject, draft_body, tokens_used}
+     */
+    public function aiDraftResponseJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $leadId = trim((string)$this->request->getData('lead_id', ''));
+        $msgId  = trim((string)$this->request->getData('message_id', ''));
+        $tone   = trim((string)$this->request->getData('tone', 'professional'));
+        $extraContext = trim((string)$this->request->getData('context', ''));
+
+        $Leads = $this->fetchTable('Leads');
+        try {
+            $lead = $Leads->get($leadId, contain: [
+                'AssignedUser' => fn($q) => $q->select(['id', 'first_name', 'last_name', 'email']),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->jsonResp(['ok' => false, 'error' => 'lead_not_found'], 404);
+        }
+        if ((string)$lead->company_id !== (string)$companyId) {
+            return $this->jsonResp(['ok' => false, 'error' => 'not_owned'], 403);
+        }
+
+        // Pobierz ostatnia wiadomosc lub konkretna
+        $Messages = $this->fetchTable('CrmEmailMessages');
+        $msgQuery = $Messages->find()->where(['lead_id' => $lead->id]);
+        if ($msgId !== '') {
+            $msgQuery->where(['id' => $msgId]);
+        } else {
+            $msgQuery->orderByDesc('received_at');
+        }
+        $lastMsg = $msgQuery->first();
+        if (!$lastMsg) {
+            return $this->jsonResp(['ok' => false, 'error' => 'no_email',
+                'hint' => __('Brak zapisanych emaili od tego leada. Uruchom cron IMAP zeby pobrac.')], 400);
+        }
+
+        // Pobierz cala history w tym watku (do 10 ostatnich)
+        $threadMsgs = $Messages->find()
+            ->where(['lead_id' => $lead->id, 'thread_id' => $lastMsg->thread_id])
+            ->orderByAsc('received_at')
+            ->limit(10)
+            ->all();
+
+        // Build context dla GPT
+        $threadText = '';
+        foreach ($threadMsgs as $m) {
+            $threadText .= sprintf("=== [%s] %s <%s> -> %s ===\nTemat: %s\n\n%s\n\n",
+                $m->received_at ? $m->received_at->format('Y-m-d H:i') : '?',
+                $m->from_name ?: '?',
+                $m->from_email,
+                $m->to_emails ?: '?',
+                $m->subject ?: '(bez tematu)',
+                mb_substr($m->body_text ?: '', 0, 3000)
+            );
+        }
+
+        // Ostatnie 5 activities (poza email_in - to juz mamy)
+        $Acts = $this->fetchTable('LeadActivities');
+        $otherActs = $Acts->find()
+            ->where(['lead_id' => $lead->id, 'activity_type NOT IN' => ['email_in']])
+            ->orderByDesc('happened_at')
+            ->limit(5)
+            ->all();
+        $actsText = '';
+        foreach ($otherActs as $a) {
+            $actsText .= sprintf("- [%s] %s: %s\n",
+                ($a->happened_at ?? $a->created)->format('Y-m-d H:i'),
+                $a->activity_type,
+                mb_substr(($a->subject ?: '') . ' ' . ($a->body ?: ''), 0, 200)
+            );
+        }
+
+        $handlerName = trim(($lead->assigned_user?->first_name ?? '') . ' ' . ($lead->assigned_user?->last_name ?? '')) ?: 'Zespol Booklio TMS';
+
+        $toneMap = [
+            'professional' => 'profesjonalnym, biznesowym',
+            'friendly'     => 'ciepłym, przyjaznym',
+            'urgent'       => 'zdecydowanym, wzywającym do akcji',
+            'formal'       => 'bardzo formalnym',
+        ];
+        $toneDesc = $toneMap[$tone] ?? $toneMap['professional'];
+
+        $systemPrompt = "Jestes doswiadczonym handlowcem w polskiej firmie spedycyjnej (transport drogowy PL/EU). "
+            . "Twoim zadaniem jest napisac odpowiedz emailem klientowi na podstawie historii korespondencji. "
+            . "Piszesz w " . $toneDesc . " tonie, po polsku (chyba ze klient pisze w innym jezyku - wtedy dopasuj). "
+            . "Bądz konkretny, oferuj rozwiazania. Podpisz jako: " . $handlerName . ". "
+            . "Zwroc wynik w formacie JSON: {\"subject\": \"...\", \"body\": \"...\"}. "
+            . "Zwykle 'subject' to 'Re: ' + oryginalny temat.";
+
+        $userPrompt = "=== KONTEKST LEADA ===\n"
+            . "Firma: " . $lead->company_name . "\n"
+            . "Osoba kontaktowa: " . ($lead->contact_person ?: '?') . "\n"
+            . "Etap: " . $lead->stage . "\n"
+            . "Wartosc: " . ($lead->value_pln ? number_format((float)$lead->value_pln, 0, ',', ' ') . ' PLN' : '?') . "\n"
+            . "Galaz: " . ($lead->branch_type ?: '?') . "\n"
+            . "Notatka wewnetrzna: " . ($lead->note ?: '(brak)') . "\n\n"
+            . "=== HISTORIA EMAILI (watku) ===\n" . $threadText . "\n"
+            . "=== OSTATNIE AKTYWNOSCI ===\n" . ($actsText ?: '(brak)') . "\n"
+            . ($extraContext !== '' ? "\n=== DODATKOWY KONTEKST OD HANDLOWCA ===\n" . $extraContext . "\n" : '')
+            . "\n=== ZADANIE ===\n"
+            . "Napisz odpowiedz na ostatnia wiadomosc od klienta. "
+            . "Odpowiadaj konkretnie na jego pytania/oferty/prosby. "
+            . "Zwroc wynik w formacie JSON.";
+
+        try {
+            $service = new \App\Service\Ai\OpenAiService();
+            $result = $service->chatJson($systemPrompt, $userPrompt, 2000);
+            $subject = trim((string)($result['subject'] ?? ('Re: ' . $lastMsg->subject)));
+            $body    = trim((string)($result['body'] ?? ''));
+
+            return $this->jsonResp([
+                'ok'            => true,
+                'draft_subject' => $subject,
+                'draft_body'    => $body,
+                'thread_count'  => count($threadMsgs),
+                'last_msg_from' => $lastMsg->from_email,
+                'last_msg_date' => $lastMsg->received_at ? $lastMsg->received_at->format('d.m.Y H:i') : null,
+            ]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('AI draft response failed: ' . $e->getMessage());
+            return $this->jsonResp(['ok' => false, 'error' => 'ai_failed', 'hint' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * GPT AI: summarize timeline leada + rekomendacja next step.
+     * POST /crm/ai/summarize {lead_id}
+     */
+    public function aiSummarizeJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $leadId = trim((string)$this->request->getData('lead_id', ''));
+        $Leads = $this->fetchTable('Leads');
+        try {
+            $lead = $Leads->get($leadId, contain: [
+                'LeadActivities' => fn($q) => $q->orderByDesc('happened_at')->limit(30),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->jsonResp(['ok' => false, 'error' => 'lead_not_found'], 404);
+        }
+        if ((string)$lead->company_id !== (string)$companyId) {
+            return $this->jsonResp(['ok' => false, 'error' => 'not_owned'], 403);
+        }
+
+        $Messages = $this->fetchTable('CrmEmailMessages');
+        $emails = $Messages->find()
+            ->where(['lead_id' => $lead->id])
+            ->orderByDesc('received_at')
+            ->limit(10)
+            ->all();
+
+        $emailsText = '';
+        foreach ($emails as $m) {
+            $emailsText .= sprintf("[%s] %s: %s\n%s\n\n",
+                $m->received_at ? $m->received_at->format('Y-m-d') : '?',
+                $m->from_email, $m->subject ?: '',
+                mb_substr($m->body_text ?: '', 0, 500)
+            );
+        }
+        $actsText = '';
+        foreach (($lead->lead_activities ?? []) as $a) {
+            $actsText .= sprintf("[%s] %s: %s\n",
+                ($a->happened_at ?? $a->created)->format('Y-m-d'),
+                $a->activity_type,
+                mb_substr(($a->subject ?: '') . ' ' . ($a->body ?: ''), 0, 200)
+            );
+        }
+
+        $system = "Jestes sales managerem analizujacym historie leada w CRM. "
+            . "Wygeneruj krotkie (max 200 slow) podsumowanie po polsku + 3-5 konkretnych rekomendacji nastepnych krokow. "
+            . "Zwroc JSON: {\"summary\": \"...\", \"next_steps\": [\"krok1\", \"krok2\", ...], \"sentiment\": \"positive|neutral|negative|urgent\", \"probability_hint\": 0-100}";
+        $user = sprintf("=== LEAD ===\nFirma: %s\nStage: %s\nProb: %d%%\nWartosc: %s\nGalaz: %s\nOsoba: %s\n\n=== EMAILE ===\n%s\n=== ACTIVITIES ===\n%s",
+            $lead->company_name, $lead->stage, (int)$lead->probability,
+            $lead->value_pln ?: '?', $lead->branch_type ?: '?',
+            $lead->contact_person ?: '?',
+            $emailsText ?: '(brak)',
+            $actsText ?: '(brak)'
+        );
+
+        try {
+            $result = (new \App\Service\Ai\OpenAiService())->chatJson($system, $user, 1500);
+            return $this->jsonResp([
+                'ok'         => true,
+                'summary'    => $result['summary'] ?? '',
+                'next_steps' => $result['next_steps'] ?? [],
+                'sentiment'  => $result['sentiment'] ?? 'neutral',
+                'probability_hint' => (int)($result['probability_hint'] ?? 0),
+            ]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('AI summarize failed: ' . $e->getMessage());
+            return $this->jsonResp(['ok' => false, 'error' => 'ai_failed', 'hint' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * LinkedIn search - znajdz publiczny URL profilu osoby/firmy przez
      * zewnetrzne Search API (Serper.dev/Brave/Google CSE).
      *
