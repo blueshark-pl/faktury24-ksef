@@ -62,10 +62,20 @@ class CrmAdminController extends AppController
         $hasNewVersion = strpos($content, "PHP IMAP extension nie jest dostepne - konta auth_type=imap zostana pominiete") !== false;
         $hasGmailBranch = strpos($content, 'syncGmailOauth') !== false;
 
+        // FALA 14: sprawdz auto-create lead metody
+        $hasAutoCreateCall = strpos($content, "tryCreateLeadFromEmail(\$data") !== false;
+        $hasAutoCreateDef  = strpos($content, "private function tryCreateLeadFromEmail") !== false;
+
         $out .= "WERSJA:\n";
         $out .= "  Stara (return error): " . ($hasOldVersion ? '<span style="color:red;">TAK</span>' : 'NIE') . "\n";
         $out .= "  Nowa (warning+continue): " . ($hasNewVersion ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - STARY PLIK!</span>') . "\n";
-        $out .= "  syncGmailOauth (FALA 13): " . ($hasGmailBranch ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - STARY PLIK!</span>') . "\n\n";
+        $out .= "  syncGmailOauth (FALA 13): " . ($hasGmailBranch ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - STARY PLIK!</span>') . "\n";
+        $out .= "  FALA 14 wywolanie tryCreateLeadFromEmail: " . ($hasAutoCreateCall ? '<span style="color:green;">TAK</span>' : 'NIE') . "\n";
+        $out .= "  FALA 14 DEFINICJA tryCreateLeadFromEmail: " . ($hasAutoCreateDef ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - BRAK METODY!</span>') . "\n\n";
+        if ($hasAutoCreateCall && !$hasAutoCreateDef) {
+            $out .= "<strong style='color:red;'>PROBLEM: masz WYWOLANIE metody ale nie masz jej DEFINICJI!</strong>\n";
+            $out .= "Plik zostal wgrany CZESCIOWO. Uzyj Admin Tools -> Git Pull FORCE (reset --hard).\n\n";
+        }
 
         // Sekcja execute() - pokaz pierwsze 20 linii
         preg_match('/public function execute\(.*?\).*?\{(.*?)^\s{4}\}/sm', $content, $m);
@@ -194,39 +204,44 @@ class CrmAdminController extends AppController
     }
 
     /**
-     * POST /crm/admin/git-pull - odpali git pull na serwerze
+     * POST /crm/admin/git-pull?force=1 - git pull lub git reset --hard
      */
     public function gitPull(): void
     {
         $this->request->allowMethod(['post', 'get']);
         $this->viewBuilder()->setLayout('ajax');
-        $out = "=== GIT PULL ===\n\n";
+        $force = $this->request->getQuery('force') === '1';
+        $out = "=== " . ($force ? 'GIT RESET --HARD (brute force)' : 'GIT PULL') . " ===\n\n";
 
         $rootDir = ROOT;
         $gitBinary = trim((string)shell_exec('which git 2>&1')) ?: 'git';
 
-        // Sprawdz czy .git istnieje
         if (!is_dir($rootDir . DS . '.git')) {
             $out .= "❌ Brak katalogu .git w " . $rootDir . "\n";
-            $out .= "Ten projekt nie jest git repo albo git dir jest gdzie indziej.\n";
         } else {
-            // Aktualny commit przed pull
             $currentBefore = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse HEAD 2>&1"));
-            $out .= "Commit przed pull: {$currentBefore}\n\n";
+            $out .= "Commit przed: {$currentBefore}\n\n";
 
-            // Git pull
-            $cmd = "cd " . escapeshellarg($rootDir) . " && {$gitBinary} pull 2>&1";
-            $out .= "> {$cmd}\n\n";
-            $pullOutput = (string)shell_exec($cmd);
-            $out .= $pullOutput . "\n";
+            if ($force) {
+                // git fetch + reset --hard origin/current-branch
+                $branch = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse --abbrev-ref HEAD 2>&1"));
+                $out .= "Branch: {$branch}\n\n";
 
-            // Commit po pull
+                $cmd1 = "cd " . escapeshellarg($rootDir) . " && {$gitBinary} fetch origin 2>&1";
+                $out .= "> {$cmd1}\n" . (string)shell_exec($cmd1) . "\n";
+
+                $cmd2 = "cd " . escapeshellarg($rootDir) . " && {$gitBinary} reset --hard origin/" . escapeshellarg($branch) . " 2>&1";
+                $out .= "> {$cmd2}\n" . (string)shell_exec($cmd2) . "\n";
+            } else {
+                $cmd = "cd " . escapeshellarg($rootDir) . " && {$gitBinary} pull 2>&1";
+                $out .= "> {$cmd}\n\n" . (string)shell_exec($cmd) . "\n";
+            }
+
             $currentAfter = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse HEAD 2>&1"));
-            $out .= "\nCommit po pull:   {$currentAfter}\n";
+            $out .= "\nCommit po: {$currentAfter}\n";
 
             if ($currentBefore !== $currentAfter) {
-                $out .= "\n✓ Zaktualizowano! Teraz kliknij 'Clear cache' zeby PHP przeladowal klasy.\n";
-                $out .= "  Bez clear cache OPcache dalej trzyma stary kod w pamieci.\n";
+                $out .= "\n✓ Zaktualizowano! Teraz KONIECZNIE Nuclear Clear (opcache_reset + touch).\n";
             } else {
                 $out .= "\n= Brak zmian - juz miales najnowszy commit.\n";
             }

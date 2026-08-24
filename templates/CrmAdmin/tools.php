@@ -31,16 +31,37 @@ $this->assign('title', __('CRM Admin Tools'));
 <div class="card mb-3" style="border-left: 4px solid #94C81F;">
     <div class="card-body">
         <h6 class="fw-bold"><i class="ri-download-cloud-line"></i> Deploy najnowszej wersji</h6>
-        <?= $this->Form->postLink(
-            '<i class="ri-git-pull-request-line"></i> Git Pull (pobierz najnowsze commity)',
-            ['action' => 'gitPull'],
-            ['escape' => false, 'class' => 'btn btn-success',
-             'target' => '_blank',
-             'confirm' => 'Uruchomic git pull na serwerze? Pobierze najnowsze commity z GitHub.']
-        ) ?>
+        <div class="d-flex gap-2 flex-wrap">
+            <?= $this->Form->postLink(
+                '<i class="ri-git-pull-request-line"></i> Git Pull',
+                ['action' => 'gitPull'],
+                ['escape' => false, 'class' => 'btn btn-success',
+                 'target' => '_blank',
+                 'confirm' => 'Uruchomic git pull na serwerze?']
+            ) ?>
+            <?= $this->Form->postLink(
+                '<i class="ri-refresh-line"></i> Git Reset --HARD (brute force)',
+                ['action' => 'gitPull', '?' => ['force' => 1]],
+                ['escape' => false, 'class' => 'btn btn-danger',
+                 'target' => '_blank',
+                 'confirm' => 'UWAGA: git reset --hard USUNIE wszelkie lokalne zmiany + wymusi resync z GitHub. Uzyj tylko gdy git pull nie wgrywa poprawnie plikow!']
+            ) ?>
+            <a href="<?= $this->Url->build(['action' => 'fileCheck']) ?>" class="btn btn-outline-info" target="_blank">
+                <i class="ri-file-search-line"></i> File Check (CrmEmailPollCommand.php)
+            </a>
+            <?= $this->Form->postLink(
+                '<i class="ri-nuclear-line"></i> Nuclear Clear (opcache + composer + touch)',
+                ['action' => 'nuclearClear'],
+                ['escape' => false, 'class' => 'btn btn-warning',
+                 'target' => '_blank',
+                 'confirm' => 'Brute force cache reset - opcache + touch wszystkich .php + composer autoload?']
+            ) ?>
+        </div>
         <div class="small text-muted mt-2">
-            Wywoluje <code>git pull</code> w katalogu <code><?= h(ROOT) ?></code>.
-            Po pull koniecznie kliknij <strong>Clear cache</strong> (bo OPcache trzyma stare klasy w pamieci).
+            <strong>Git Pull</strong> - zwykły merge z remote.<br>
+            <strong>Reset --HARD</strong> - gdy pliki wgraly sie CZESCIOWO (np. metoda ma wywolanie ale nie ma definicji).<br>
+            <strong>File Check</strong> - pokazuje ktore FALA metody sa w pliku (weryfikacja czy deploy przeszedl).<br>
+            <strong>Nuclear Clear</strong> - opcache_reset + touch wszystkich .php + composer autoload. UZYWAJ PO git pull!
         </div>
     </div>
 </div>
