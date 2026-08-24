@@ -171,6 +171,23 @@ $activityIcons = [
     </div>
 </div>
 
+<?php
+// FALA 16 diagnostyka: krotki hint w górze widoku żeby user widział czy sync działa
+$__totalAct = count($lead->lead_activities ?? []);
+$__quoteAct = 0; $__emailAct = 0;
+foreach ($lead->lead_activities as $__a) {
+    if ($__a->activity_type === 'quote_request') $__quoteAct++;
+    if ($__a->activity_type === 'email_in') $__emailAct++;
+}
+?>
+<div class="mb-2 small text-muted" style="font-size: 11px;">
+    <i class="ri-database-2-line"></i>
+    Aktywności: <strong><?= $__totalAct ?></strong>
+    · email_in: <strong><?= $__emailAct ?></strong>
+    · quote_request: <strong class="<?= $__quoteAct > 0 ? 'text-success' : 'text-muted' ?>"><?= $__quoteAct ?></strong>
+    · Wiadomości email: <strong><?= count($emailMessages ?? []) ?></strong>
+</div>
+
 <!-- Hero card -->
 <div class="card mb-3">
     <div class="card-body">
@@ -386,7 +403,37 @@ $activityIcons = [
         $qrList = $quoteRequests ?? [];
         $shipAll = $allShipments ?? [];
         $ordersDone = (int)($totalOrdersCreated ?? 0);
-        if (!empty($qrList)):
+
+        // Debug fallback: sprawdz czy w timeline SA quote_request activities
+        // (ale kontroler ich nie zagregowal - to znaczy problem parse payload_json)
+        $rawQuoteCount = 0;
+        $rawSamplePayload = null;
+        foreach ($lead->lead_activities as $__a) {
+            if ($__a->activity_type === 'quote_request') {
+                $rawQuoteCount++;
+                if ($rawSamplePayload === null) $rawSamplePayload = $__a->payload_json;
+            }
+        }
+        if (empty($qrList) && $rawQuoteCount > 0):
+        ?>
+        <div class="alert alert-warning small mb-3">
+            <strong>⚠️ Panel „Zapytania o wycenę" nie zrenderowany, ale w timeline JEST <?= $rawQuoteCount ?> quote_request activities.</strong><br>
+            Prawdopodobnie <code>payload_json</code> nie zawiera pola <code>shipments</code> lub jest niepoprawny JSON.<br>
+            Pierwsze 300 znakow payload_json (dla debug):
+            <pre style="background:#fff; padding:6px; margin-top:6px; font-size:11px; max-height:200px; overflow:auto;"><?= h(mb_substr((string)$rawSamplePayload, 0, 300)) ?></pre>
+        </div>
+        <?php elseif (empty($qrList) && $rawQuoteCount === 0): ?>
+        <div class="alert alert-secondary small mb-3">
+            <i class="ri-information-line"></i>
+            <?= __('Ten lead nie ma jeszcze wykrytych zapytań o wycenę z emaili.') ?>
+            <?= __('Wysłać maila z zapytaniem transportowym na skrzynkę Gmail lub sprawdzić czy Poll emails działa.') ?>
+            <a href="<?= $this->Url->build(['controller' => 'CrmAdmin', 'action' => 'analyzeLastEmail', '?' => ['lead_id' => $lead->id]]) ?>" target="_blank" class="ms-2">
+                Diagnostyka FALA 15 →
+            </a>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($qrList)):
             $shipCount = count($shipAll);
             $shipRemaining = max(0, $shipCount - $ordersDone);
         ?>
