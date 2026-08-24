@@ -16,6 +16,35 @@ $this->assign('title', __('CRM Admin Tools'));
     Wszystkie linki otwieraj w nowej karcie (Ctrl+Click) żeby móc łatwo powrócić.
 </div>
 
+<?php if (!empty($gitInfo['available'])): ?>
+    <div class="alert alert-secondary small mb-3" style="background:#2d3140; color:#d4d4d4; border-color:#444;">
+        <i class="ri-git-branch-line"></i>
+        <strong>Aktualnie zainstalowany:</strong>
+        <code style="color:#4ec9b0;"><?= h($gitInfo['commit'] ?? '?') ?></code>
+        · branch <code style="color:#dcdcaa;"><?= h($gitInfo['branch'] ?? '?') ?></code>
+        · <?= h($gitInfo['date'] ?? '?') ?><br>
+        <span style="color:#9cdcfe;"><?= h($gitInfo['message'] ?? '') ?></span>
+    </div>
+<?php endif; ?>
+
+<!-- Git Pull (na gorze, najwazniejsze) -->
+<div class="card mb-3" style="border-left: 4px solid #94C81F;">
+    <div class="card-body">
+        <h6 class="fw-bold"><i class="ri-download-cloud-line"></i> Deploy najnowszej wersji</h6>
+        <?= $this->Form->postLink(
+            '<i class="ri-git-pull-request-line"></i> Git Pull (pobierz najnowsze commity)',
+            ['action' => 'gitPull'],
+            ['escape' => false, 'class' => 'btn btn-success',
+             'target' => '_blank',
+             'confirm' => 'Uruchomic git pull na serwerze? Pobierze najnowsze commity z GitHub.']
+        ) ?>
+        <div class="small text-muted mt-2">
+            Wywoluje <code>git pull</code> w katalogu <code><?= h(ROOT) ?></code>.
+            Po pull koniecznie kliknij <strong>Clear cache</strong> (bo OPcache trzyma stare klasy w pamieci).
+        </div>
+    </div>
+</div>
+
 <div class="row g-3">
     <div class="col-md-6">
         <div class="card">

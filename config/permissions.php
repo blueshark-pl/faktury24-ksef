@@ -480,7 +480,7 @@ return [
             'role' => ['spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'CrmAdmin',
             'action' => ['tools', 'migrate', 'migrationStatus', 'clearCache',
-                         'pollEmails', 'runCron'],
+                         'pollEmails', 'runCron', 'gitPull'],
         ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [

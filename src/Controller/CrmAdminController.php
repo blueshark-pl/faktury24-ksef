@@ -28,6 +28,77 @@ class CrmAdminController extends AppController
     public function tools(): void
     {
         $this->request->allowMethod(['get']);
+
+        // Info o aktualnie zainstalowanym kodzie
+        $gitInfo = $this->getGitInfo();
+        $this->set('gitInfo', $gitInfo);
+    }
+
+    /**
+     * POST /crm/admin/git-pull - odpali git pull na serwerze
+     */
+    public function gitPull(): void
+    {
+        $this->request->allowMethod(['post', 'get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $out = "=== GIT PULL ===\n\n";
+
+        $rootDir = ROOT;
+        $gitBinary = trim((string)shell_exec('which git 2>&1')) ?: 'git';
+
+        // Sprawdz czy .git istnieje
+        if (!is_dir($rootDir . DS . '.git')) {
+            $out .= "❌ Brak katalogu .git w " . $rootDir . "\n";
+            $out .= "Ten projekt nie jest git repo albo git dir jest gdzie indziej.\n";
+        } else {
+            // Aktualny commit przed pull
+            $currentBefore = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse HEAD 2>&1"));
+            $out .= "Commit przed pull: {$currentBefore}\n\n";
+
+            // Git pull
+            $cmd = "cd " . escapeshellarg($rootDir) . " && {$gitBinary} pull 2>&1";
+            $out .= "> {$cmd}\n\n";
+            $pullOutput = (string)shell_exec($cmd);
+            $out .= $pullOutput . "\n";
+
+            // Commit po pull
+            $currentAfter = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse HEAD 2>&1"));
+            $out .= "\nCommit po pull:   {$currentAfter}\n";
+
+            if ($currentBefore !== $currentAfter) {
+                $out .= "\n✓ Zaktualizowano! Teraz kliknij 'Clear cache' zeby PHP przeladowal klasy.\n";
+                $out .= "  Bez clear cache OPcache dalej trzyma stary kod w pamieci.\n";
+            } else {
+                $out .= "\n= Brak zmian - juz miales najnowszy commit.\n";
+            }
+        }
+
+        $this->set('title', 'Git pull');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
+     * Zwraca info o aktualnym commit dla wyswietlania.
+     */
+    private function getGitInfo(): array
+    {
+        $rootDir = ROOT;
+        if (!is_dir($rootDir . DS . '.git')) return ['available' => false];
+
+        $gitBinary = trim((string)shell_exec('which git 2>&1')) ?: 'git';
+        $commit = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse --short HEAD 2>&1"));
+        $branch = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} rev-parse --abbrev-ref HEAD 2>&1"));
+        $date   = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} log -1 --format='%ci' 2>&1"));
+        $msg    = trim((string)shell_exec("cd " . escapeshellarg($rootDir) . " && {$gitBinary} log -1 --format='%s' 2>&1"));
+
+        return [
+            'available' => true,
+            'commit'    => $commit,
+            'branch'    => $branch,
+            'date'      => $date,
+            'message'   => $msg,
+        ];
     }
 
     /**

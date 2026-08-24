@@ -213,6 +213,8 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/admin/clear-cache',             ['controller' => 'CrmAdmin', 'action' => 'clearCache']);
         $builder->post('/crm/admin/run-cron/{name}',        ['controller' => 'CrmAdmin', 'action' => 'runCron'])
             ->setPass(['name']);
+        $builder->post('/crm/admin/git-pull',               ['controller' => 'CrmAdmin', 'action' => 'gitPull']);
+        $builder->get('/crm/admin/git-pull',                ['controller' => 'CrmAdmin', 'action' => 'gitPull']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);
