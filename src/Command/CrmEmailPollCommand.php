@@ -687,6 +687,13 @@ class CrmEmailPollCommand extends Command
                 } catch (\Throwable $ee) {
                     $io->out('    quote-extract skipped: ' . $ee->getMessage());
                 }
+
+                // FALA 18: AI klasyfikator email_in (sentiment/intent/urgency/action)
+                try {
+                    $this->tryClassifyEmail($data, $lead, $Acts, $io);
+                } catch (\Throwable $ee) {
+                    $io->out('    email-classify skipped: ' . $ee->getMessage());
+                }
             } catch (\Throwable $e) {
                 $io->error(sprintf('    %s: exception - %s', $gmailId, $e->getMessage()));
             }
@@ -1004,5 +1011,95 @@ class CrmEmailPollCommand extends Command
 
         $io->success("    ✓ Quote-request wykryty: {$count} zlecen zalogowano do timeline");
         return 1;
+    }
+
+    /**
+     * FALA 18: Klasyfikuj przychodzacy email przez GPT.
+     * Zapisuje wynik jako klucze w payload_json OSTATNIEGO email_in activity
+     * (dla tego lead+message_id). Nie tworzy nowej activity.
+     *
+     * Best-effort try/catch - blad nie wywala polling'u.
+     */
+    private function tryClassifyEmail(array $data, $lead, $Acts, ConsoleIo $io): void
+    {
+        $subject  = (string)($data['subject'] ?? '');
+        $bodyText = (string)($data['body_text'] ?? '');
+        $messageId = (string)($data['message_id'] ?? '');
+        $fromEmail = (string)($data['from_email'] ?? '');
+
+        if (strlen($bodyText) < 20) return; // za krotkie do klasyfikacji
+
+        // Znajdz swiezo utworzone email_in activity dla tego message_id
+        try {
+            $act = $Acts->find()
+                ->where([
+                    'lead_id' => $lead->id,
+                    'activity_type' => 'email_in',
+                    'payload_json LIKE' => '%' . $messageId . '%',
+                ])
+                ->orderByDesc('created')
+                ->first();
+            if (!$act) {
+                $io->out('    classify skip: brak matching email_in activity');
+                return;
+            }
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        // Jesli juz sklasyfikowano - skip (dedup)
+        $existing = json_decode((string)$act->payload_json, true) ?: [];
+        if (!empty($existing['classification'])) {
+            return;
+        }
+
+        $io->out('    classify: GPT analizuje sentyment/intent/urgency...');
+        try {
+            $svc = new \App\Service\Ai\OpenAiService();
+            $system = "Klasyfikujesz emaile przychodzace do polskiej firmy spedycyjnej. "
+                . "Zwroc STRICT JSON: {"
+                . "\"sentiment\": string (\"positive\"|\"neutral\"|\"negative\"|\"urgent\" - pilne = klient wymaga natychmiastowej odpowiedzi/reklamacja), "
+                . "\"intent\": string (\"quote_request\"|\"complaint\"|\"follow_up\"|\"thank_you\"|\"inquiry\"|\"payment\"|\"spam\"|\"other\"), "
+                . "\"urgency\": int (1=niska, 3=srednia, 5=krytyczna/reklamacja/opoznione zlecenie), "
+                . "\"action_required\": bool (czy handel MUSI odpowiedziec), "
+                . "\"summary\": string (1 zdanie po polsku, max 150 znakow, co klient chce), "
+                . "\"suggested_action\": string (1 zdanie: konkretna akcja np. \"Wyslij oferte na trase Berlin-Warsaw\", \"Zadzwon i przeprosic za opoznienie\", \"Zignoruj - to spam\")"
+                . "}. Bez emoji. Bez markdown.";
+            $user = "Temat: {$subject}\n"
+                . "Od: {$fromEmail}\n\n"
+                . "Tresc:\n" . mb_substr($bodyText, 0, 4000);
+
+            $classification = $svc->chatJson($system, $user, 500);
+        } catch (\Throwable $e) {
+            $io->out('    classify GPT failed: ' . $e->getMessage());
+            return;
+        }
+
+        // Waliduj enum (CLAUDE.md #4 - twarda walidacja AI output)
+        $validSentiments = ['positive', 'neutral', 'negative', 'urgent'];
+        $validIntents = ['quote_request', 'complaint', 'follow_up', 'thank_you', 'inquiry', 'payment', 'spam', 'other'];
+        $classification['sentiment'] = in_array($classification['sentiment'] ?? '', $validSentiments, true)
+            ? $classification['sentiment'] : 'neutral';
+        $classification['intent'] = in_array($classification['intent'] ?? '', $validIntents, true)
+            ? $classification['intent'] : 'other';
+        $classification['urgency'] = max(1, min(5, (int)($classification['urgency'] ?? 2)));
+        $classification['action_required'] = (bool)($classification['action_required'] ?? false);
+        $classification['summary'] = mb_substr((string)($classification['summary'] ?? ''), 0, 300);
+        $classification['suggested_action'] = mb_substr((string)($classification['suggested_action'] ?? ''), 0, 500);
+        $classification['classified_at'] = date('Y-m-d H:i:s');
+
+        // Merge do payload_json (nie tworzymy nowej activity, aktualizujemy istniejaca)
+        $existing['classification'] = $classification;
+        $act->payload_json = json_encode($existing, JSON_UNESCAPED_UNICODE);
+        try {
+            $Acts->save($act);
+            $io->success(sprintf("    ✓ Classified: %s / %s / urgency=%d%s",
+                $classification['sentiment'],
+                $classification['intent'],
+                $classification['urgency'],
+                $classification['action_required'] ? ' (ACTION!)' : ''));
+        } catch (\Throwable $e) {
+            $io->out('    classify save failed: ' . $e->getMessage());
+        }
     }
 }

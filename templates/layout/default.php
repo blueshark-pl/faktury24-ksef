@@ -1615,6 +1615,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-alarm-warning-line me-1 text-danger"></i>' . __('Pilne emaile'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'urgentEmails'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'urgentEmails')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-upload-cloud-2-line me-1"></i>' . __('Import CSV'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'importCsv'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'importCsv')]

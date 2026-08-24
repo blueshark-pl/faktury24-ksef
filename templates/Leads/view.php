@@ -730,6 +730,8 @@ foreach ($lead->lead_activities as $__a) {
                                 $fromEmail = (string)($ep['from'] ?? '');
                                 $fromName = $matchedMsg?->from_name ?: strstr($fromEmail, '@', true) ?: '?';
                                 $avatarInitial = strtoupper(mb_substr($fromName, 0, 1));
+                                // FALA 18: klasyfikacja AI z payload_json (moze byc null jesli jeszcze nie sklasyfikowano)
+                                $cls = $ep['classification'] ?? null;
                                 $avatarColors = ['#7c3aed', '#059669', '#dc2626', '#ea580c', '#2563eb', '#b45309'];
                                 $avatarBg = $avatarColors[crc32($fromEmail) % count($avatarColors)];
                                 $bodyHtml = $matchedMsg?->body_html ? (string)$matchedMsg->body_html : '';
@@ -763,6 +765,52 @@ foreach ($lead->lead_activities as $__a) {
                                                     · <span class="text-muted">cc:</span> <?= h($matchedMsg->cc_emails) ?>
                                                 <?php endif; ?>
                                             </div>
+                                            <?php if ($cls): ?>
+                                            <div class="mt-2 d-flex gap-1 flex-wrap align-items-center">
+                                                <?php
+                                                $sentColors = [
+                                                    'positive' => ['bg' => '#d1fae5', 'text' => '#059669', 'label' => 'Pozytywny', 'emoji' => '😊'],
+                                                    'neutral'  => ['bg' => '#e2e8f0', 'text' => '#475569', 'label' => 'Neutralny', 'emoji' => '😐'],
+                                                    'negative' => ['bg' => '#fee2e2', 'text' => '#dc2626', 'label' => 'Negatywny', 'emoji' => '😠'],
+                                                    'urgent'   => ['bg' => '#fed7aa', 'text' => '#ea580c', 'label' => 'PILNE',     'emoji' => '🚨'],
+                                                ];
+                                                $intentLabels = [
+                                                    'quote_request' => 'Zapytanie o wycenę',
+                                                    'complaint' => 'Reklamacja',
+                                                    'follow_up' => 'Follow-up',
+                                                    'thank_you' => 'Podziękowanie',
+                                                    'inquiry' => 'Zapytanie',
+                                                    'payment' => 'Płatność',
+                                                    'spam' => 'Spam',
+                                                    'other' => 'Inne',
+                                                ];
+                                                $s = $sentColors[$cls['sentiment']] ?? $sentColors['neutral'];
+                                                $u = (int)($cls['urgency'] ?? 2);
+                                                ?>
+                                                <span class="badge" style="background: <?= $s['bg'] ?>; color: <?= $s['text'] ?>; font-weight: 600;">
+                                                    <?= $s['emoji'] ?> <?= $s['label'] ?>
+                                                </span>
+                                                <span class="badge bg-secondary"><?= h($intentLabels[$cls['intent']] ?? $cls['intent']) ?></span>
+                                                <span class="badge" style="background: <?= $u >= 4 ? '#fee2e2' : ($u >= 3 ? '#fef3c7' : '#e2e8f0') ?>; color: <?= $u >= 4 ? '#dc2626' : ($u >= 3 ? '#b45309' : '#475569') ?>;" title="Pilnosc 1-5">
+                                                    <?= str_repeat('!', $u) ?> Urgency <?= $u ?>/5
+                                                </span>
+                                                <?php if (!empty($cls['action_required'])): ?>
+                                                    <span class="badge bg-danger">
+                                                        <i class="ri-alarm-warning-line"></i> AKCJA WYMAGANA
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php if (!empty($cls['summary'])): ?>
+                                                <div class="mt-2 small" style="background: #f8fafc; padding: 6px 10px; border-radius: 4px; border-left: 3px solid #94C81F;">
+                                                    <strong>💬 <?= __('AI podsumowanie:') ?></strong> <?= h($cls['summary']) ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($cls['suggested_action'])): ?>
+                                                <div class="mt-1 small" style="background: #fff7ed; padding: 6px 10px; border-radius: 4px; border-left: 3px solid #ea580c;">
+                                                    <strong>👉 <?= __('Sugerowana akcja:') ?></strong> <?= h($cls['suggested_action']) ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
 

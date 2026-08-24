@@ -513,6 +513,8 @@ return [
                 'aiDraftResponseJson', 'aiSummarizeJson',
                 // FALA 15: quote_request -> zlecenia
                 'createOrdersFromQuote',
+                // FALA 18: kolejka pilnych maili sklasyfikowanych przez AI
+                'urgentEmails',
             ],
         ],
         [

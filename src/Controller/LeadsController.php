@@ -819,6 +819,82 @@ class LeadsController extends AppController
      * Widok "Moje zadania" - lista task-activities przypisanych do usera
      * (activity_type=task, is_done=false, due_at IN ostatnie 30 dni / kolejne 30 dni).
      */
+    /**
+     * FALA 18: Kolejka pilnych maili - wszystkie email_in gdzie AI klasyfikator
+     * wykryl urgency>=4 lub action_required=true, jeszcze nie oznaczone jako "zalatwione".
+     * Grupowane po lead, sortowane najnowsze pierwsze.
+     * GET /crm/pilne
+     */
+    public function urgentEmails(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $onlyMine = $this->request->getQuery('mine') === '1';
+        $onlyUrgent = $this->request->getQuery('urgent') === '1';
+
+        $Acts = $this->fetchTable('LeadActivities');
+
+        // Fetch email_in z payload_json - filter po AI klasyfikatorze
+        $query = $Acts->find()
+            ->where([
+                'LeadActivities.company_id' => $companyId,
+                'LeadActivities.activity_type' => 'email_in',
+                'LeadActivities.payload_json LIKE' => '%"classification"%',
+            ])
+            ->contain([
+                'Leads' => function ($q) {
+                    return $q->select(['id', 'company_name', 'stage', 'nip', 'city', 'country_code',
+                        'assigned_to_user_id', 'email', 'phone', 'contact_person']);
+                },
+            ])
+            ->orderByDesc('LeadActivities.created')
+            ->limit(200);
+
+        $rows = $query->all()->toArray();
+
+        // Filter po klasyfikacji + assigned user (na PHP level bo JSON w MySQL)
+        $filtered = [];
+        $stats = ['total' => 0, 'urgent' => 0, 'action' => 0, 'complaint' => 0];
+        foreach ($rows as $act) {
+            $p = json_decode((string)$act->payload_json, true) ?: [];
+            $cls = $p['classification'] ?? null;
+            if (!$cls) continue;
+            $urgency = (int)($cls['urgency'] ?? 0);
+            $action = !empty($cls['action_required']);
+            $sentiment = $cls['sentiment'] ?? '';
+            $intent = $cls['intent'] ?? '';
+
+            $isPriority = ($urgency >= 4) || $action || ($sentiment === 'urgent') || ($intent === 'complaint');
+            if (!$isPriority) continue;
+
+            if ($onlyMine && (string)$act->lead?->assigned_to_user_id !== (string)$userId) continue;
+            if ($onlyUrgent && $urgency < 5) continue;
+
+            $stats['total']++;
+            if ($urgency >= 4) $stats['urgent']++;
+            if ($action) $stats['action']++;
+            if ($intent === 'complaint') $stats['complaint']++;
+
+            $act->set('_classification', $cls, ['guard' => false]);
+            $filtered[] = $act;
+        }
+
+        // Grupuj po lead
+        $byLead = [];
+        foreach ($filtered as $act) {
+            $lid = (string)$act->lead_id;
+            if (!isset($byLead[$lid])) {
+                $byLead[$lid] = ['lead' => $act->lead, 'activities' => []];
+            }
+            $byLead[$lid]['activities'][] = $act;
+        }
+
+        $this->set(compact('byLead', 'stats', 'onlyMine', 'onlyUrgent'));
+    }
+
     public function myTasks(): void
     {
         $this->request->allowMethod(['get']);
