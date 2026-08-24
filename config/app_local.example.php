@@ -124,6 +124,18 @@ return [
         'googleCseCx'     => env('GOOGLE_CSE_CX', ''),
     ],
 
+    // CRM (FALA 14) - encryption key + auto-lead z email
+    'Crm' => [
+        // AES-256 key do szyfrowania OAuth tokens + IMAP passwords w crm_email_accounts.
+        // Musi byc 64 hex chars, wygeneruj przez: php -r "echo bin2hex(random_bytes(32));"
+        // NIGDY nie zmieniaj po dodaniu pierwszego konta email!
+        'encryptionKey' => env('CRM_ENCRYPTION_KEY', ''),
+        // Auto-tworzenie leada z nowego emaila (nie od istniejacego kontaktu).
+        // GPT-4o analizuje tresc + podpis, wyciaga dane firmy, tworzy lead source=email_inbound.
+        // Wymaga OpenAI API key (Openai.apiKey).
+        'autoCreateLeadsFromEmail' => env('CRM_AUTO_CREATE_LEADS', true),
+    ],
+
     // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.
     // Setup: https://console.cloud.google.com/ -> nowy projekt -> Gmail API enable
     // -> OAuth consent screen -> Credentials -> OAuth 2.0 Client ID (Web application)

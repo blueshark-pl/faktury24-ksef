@@ -435,6 +435,119 @@ class CrmEmailPollCommand extends Command
     }
 
     /**
+     * FALA 14: Auto-create lead z emaila przez GPT.
+     * Analizuje treść + podpis, wyciąga dane firmy (nazwa/NIP/adres/telefon/osoba),
+     * tworzy lead z source='email_inbound'.
+     *
+     * Aktywne tylko gdy Configure Crm.autoCreateLeadsFromEmail = true.
+     *
+     * @return mixed Zapisany lead Entity lub null
+     */
+    private function tryCreateLeadFromEmail(array $data, $acc, $Leads, ConsoleIo $io)
+    {
+        $fromEmail = (string)($data['from_email'] ?? '');
+        $fromName  = (string)($data['from_name'] ?? '');
+        $subject   = (string)($data['subject'] ?? '');
+        $bodyText  = (string)($data['body_text'] ?? '');
+
+        // Filter: pomin auto-reply / notifications / vacation replies
+        $skipPatterns = ['noreply', 'no-reply', 'notifications', 'mailer-daemon',
+            'postmaster', 'no.reply', 'auto-confirm', 'newsletter', 'donotreply'];
+        foreach ($skipPatterns as $p) {
+            if (stripos($fromEmail, $p) !== false) {
+                $io->out("    Auto-skip (system email): {$fromEmail}");
+                return null;
+            }
+        }
+        // Filter: pomin jeśli from = własny adres skrzynki (nie tworzymy leada z siebie)
+        if (strtolower($fromEmail) === strtolower((string)$acc->username)) {
+            $io->out("    Auto-skip (self): {$fromEmail}");
+            return null;
+        }
+        // Filter: pomin gdy body zbyt krotkie (probably auto-response)
+        if (strlen($bodyText) < 20) {
+            $io->out("    Auto-skip (body too short): " . strlen($bodyText) . ' chars');
+            return null;
+        }
+
+        // Dedup: jesli lead z tym emailem juz istnieje (od poprzedniego auto-create)
+        $existing = $Leads->find()->where([
+            'company_id' => $acc->company_id,
+            'LOWER(email)' => strtolower($fromEmail),
+        ])->first();
+        if ($existing) {
+            $io->out("    Lead juz istnieje (auto-created wczesniej): {$existing->id}");
+            return $existing;
+        }
+
+        // GPT extract danych firmy
+        $io->out("    Auto-create: GPT analizuje email od {$fromEmail}...");
+        try {
+            $svc = new \App\Service\Ai\OpenAiService();
+            $system = "Jestes analitykiem sprzedazy w polskiej firmie spedycyjnej. "
+                . "Analizuj otrzymany email i wyciagaj dane firmy nadawcy z tresci i podpisu. "
+                . "Zwroc JSON: {"
+                . "\"is_inquiry\": bool (czy to zapytanie handlowe/ofertowe/prosba o kontakt, nie spam/newsletter/personal), "
+                . "\"company_name\": string (nazwa firmy z podpisu lub tresci - np. '3CK Software', 'ABC Sp. z o.o.'), "
+                . "\"contact_person\": string (imie i nazwisko osoby), "
+                . "\"phone\": string (numer tel. w formacie miedzynarodowym lub polskim), "
+                . "\"nip\": string (NIP jesli podany, 10 cyfr bez mysnikow), "
+                . "\"city\": string, "
+                . "\"street\": string (z numerem), "
+                . "\"postal_code\": string (format 00-000), "
+                . "\"branch_type\": string (jesli mozesz zgadnac: 'road'/'road_reefer'/'road_adr'/'sea'/'air'/'rail'/'intermodal'/'road_oversize'), "
+                . "\"message_summary\": string (2-3 zdania po polsku streszczajace zapytanie klienta)"
+                . "}"
+                . "Puste pola zwroc jako \"\". is_inquiry=false gdy niepewne.";
+
+            $user = "Email od: {$fromName} <{$fromEmail}>\n"
+                . "Temat: {$subject}\n\n"
+                . "Tresc:\n" . mb_substr($bodyText, 0, 4000);
+
+            $extracted = $svc->chatJson($system, $user, 800);
+        } catch (\Throwable $e) {
+            $io->error('    GPT extract failed: ' . $e->getMessage());
+            return null;
+        }
+
+        if (empty($extracted['is_inquiry'])) {
+            $io->out("    GPT: nie zapytanie (is_inquiry=false), pomijam");
+            return null;
+        }
+
+        // Normalize
+        $nip = preg_replace('/[^0-9]/', '', (string)($extracted['nip'] ?? ''));
+        $lead = $Leads->newEntity([
+            'company_id'      => $acc->company_id,
+            'company_name'    => trim((string)($extracted['company_name'] ?? '')) ?: ('Nieznany (' . $fromEmail . ')'),
+            'nip'             => strlen($nip) === 10 ? $nip : null,
+            'country_code'    => 'PL',
+            'city'            => trim((string)($extracted['city'] ?? '')) ?: null,
+            'street'          => trim((string)($extracted['street'] ?? '')) ?: null,
+            'postal_code'     => trim((string)($extracted['postal_code'] ?? '')) ?: null,
+            'contact_person'  => trim((string)($extracted['contact_person'] ?? '')) ?: ($fromName ?: null),
+            'email'           => strtolower($fromEmail),
+            'phone'           => trim((string)($extracted['phone'] ?? '')) ?: null,
+            'branch_type'     => trim((string)($extracted['branch_type'] ?? '')) ?: null,
+            'contact_channel' => 'email',
+            'source'          => 'email_inbound',
+            'stage'           => 'new',
+            'note'            => trim((string)($extracted['message_summary'] ?? '')) ?: mb_substr($bodyText, 0, 500),
+            'next_action_at'  => new DateTime('+1 day'),
+            'next_action_description' => 'Odpowiedz na zapytanie z email (auto-utworzony przez CRM)',
+            'last_contacted_at' => $data['received_at'] ?? new DateTime(),
+        ]);
+
+        if (!$Leads->save($lead)) {
+            $io->error('    GPT extracted OK ale save failed: ' . json_encode($lead->getErrors()));
+            return null;
+        }
+
+        $io->success("    ✓ Auto-utworzono lead: {$lead->company_name} ({$lead->id})");
+        return $lead;
+    }
+
+    /**
      * FALA 13: Gmail OAuth sync przez Gmail API v1 (zamiast IMAP).
      * @return array [msgCount, actCount]
      */
@@ -488,6 +601,10 @@ class CrmEmailPollCommand extends Command
                         'company_id' => $acc->company_id,
                         'LOWER(email)' => $fromEmail,
                     ])->first();
+                }
+                // FALA 14: Auto-create lead z email jesli enabled w config
+                if (!$lead && (bool)\Cake\Core\Configure::read('Crm.autoCreateLeadsFromEmail', false)) {
+                    $lead = $this->tryCreateLeadFromEmail($data, $acc, $Leads, $io);
                 }
                 if (!$lead) {
                     $io->out(sprintf('    %s: from=%s - brak leada', $gmailId, $fromEmail));
