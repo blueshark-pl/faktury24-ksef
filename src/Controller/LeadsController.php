@@ -209,7 +209,53 @@ class LeadsController extends AppController
         if ((string)$lead->company_id !== (string)$companyId) {
             throw new NotFoundException();
         }
-        $this->set(compact('lead'));
+
+        // FALA 15+16: agregat wykrytych zlecen z quote_request activities
+        // + pobierz peine wiadomosci email z crm_email_messages (dla rozbudowanego widoku)
+        $allShipments = [];
+        $quoteRequests = [];
+        $totalOrdersCreated = 0;
+        foreach ($lead->lead_activities as $a) {
+            if ($a->activity_type === 'quote_request' && !empty($a->payload_json)) {
+                $p = json_decode($a->payload_json, true);
+                if (!empty($p['shipments']) && is_array($p['shipments'])) {
+                    $quoteRequests[] = [
+                        'activity_id' => $a->id,
+                        'created' => $a->created,
+                        'happened_at' => $a->happened_at,
+                        'from_email' => $p['from_email'] ?? '',
+                        'customer_name' => $p['customer_name'] ?? '',
+                        'shipments' => $p['shipments'],
+                        'shipments_count' => count($p['shipments']),
+                        'orders_created_count' => (int)($p['orders_created_count'] ?? 0),
+                        'orders_created_at' => $p['orders_created_at'] ?? null,
+                        'message_id' => $p['message_id'] ?? null,
+                    ];
+                    foreach ($p['shipments'] as $s) {
+                        $allShipments[] = $s + ['_activity_id' => $a->id];
+                    }
+                    $totalOrdersCreated += (int)($p['orders_created_count'] ?? 0);
+                }
+            }
+        }
+
+        // Fetch emailowe wiadomosci z crm_email_messages dla tego leada (attachments)
+        $emailMessages = [];
+        try {
+            $Msg = $this->fetchTable('CrmEmailMessages');
+            $rows = $Msg->find()
+                ->where(['lead_id' => $lead->id])
+                ->orderByDesc('received_at')
+                ->limit(50)
+                ->all()->toArray();
+            foreach ($rows as $m) {
+                $emailMessages[(string)($m->message_id ?: $m->id)] = $m;
+            }
+        } catch (\Throwable $e) {
+            // ignoruj jesli tabela nieodstepna
+        }
+
+        $this->set(compact('lead', 'quoteRequests', 'allShipments', 'totalOrdersCreated', 'emailMessages'));
     }
 
     public function add(): void

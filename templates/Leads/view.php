@@ -379,8 +379,140 @@ $activityIcons = [
         <?php endif; ?>
     </div>
 
-    <!-- RIGHT: timeline + add activity -->
+    <!-- RIGHT: quote_requests aggregate + timeline + add activity -->
     <div class="col-lg-8">
+        <?php
+        // FALA 15+16: Agregat wykrytych zlecen (quote_request) - DUZY panel u gory
+        $qrList = $quoteRequests ?? [];
+        $shipAll = $allShipments ?? [];
+        $ordersDone = (int)($totalOrdersCreated ?? 0);
+        if (!empty($qrList)):
+            $shipCount = count($shipAll);
+            $shipRemaining = max(0, $shipCount - $ordersDone);
+        ?>
+        <div class="card mb-3" style="border-left: 5px solid #94C81F;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <div class="fw-bold" style="font-size: 16px;">
+                            <i class="ri-file-list-3-line text-success"></i>
+                            <?= __('Zapytania o wycenę wykryte przez AI') ?>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            <?= __('GPT rozpoznał zapytania w emailach (body + załączniki via Vision).') ?>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('qr-details').style.display = document.getElementById('qr-details').style.display === 'none' ? 'block' : 'none';">
+                        <i class="ri-arrow-up-down-line"></i> <?= __('Zwiń/rozwiń tabelę') ?>
+                    </button>
+                </div>
+
+                <!-- KPI kafelki -->
+                <div class="row g-2 mb-3">
+                    <div class="col">
+                        <div class="p-2 rounded text-center" style="background: #e8f5e9;">
+                            <div class="fw-bold text-success" style="font-size: 22px;"><?= (int)$shipCount ?></div>
+                            <div class="small text-muted"><?= __('Wszystkich zleceń') ?></div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-2 rounded text-center" style="background: #e3f2fd;">
+                            <div class="fw-bold text-primary" style="font-size: 22px;"><?= (int)$ordersDone ?></div>
+                            <div class="small text-muted"><?= __('Utworzone w bazie') ?></div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-2 rounded text-center" style="background: #fff3e0;">
+                            <div class="fw-bold text-warning" style="font-size: 22px;"><?= (int)$shipRemaining ?></div>
+                            <div class="small text-muted"><?= __('Jeszcze do utworzenia') ?></div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-2 rounded text-center" style="background: #f3e5f5;">
+                            <div class="fw-bold" style="font-size: 22px; color: #7c3aed;"><?= count($qrList) ?></div>
+                            <div class="small text-muted"><?= __('Zapytań (emaili)') ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="qr-details" style="display: block;">
+                <?php foreach ($qrList as $qi => $qr): ?>
+                    <div class="mb-3 p-2" style="background: #fafbfc; border: 1px solid #e9ecef; border-radius: 6px;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="small">
+                                <strong><i class="ri-mail-download-line"></i> <?= h($qr['from_email'] ?: __('nieznany nadawca')) ?></strong>
+                                <?php if (!empty($qr['customer_name'])): ?>
+                                    · <?= h($qr['customer_name']) ?>
+                                <?php endif; ?>
+                                <span class="badge bg-success ms-2"><?= $qr['shipments_count'] ?> <?= __('zleceń') ?></span>
+                                <?php if ($qr['orders_created_count'] > 0): ?>
+                                    <span class="badge bg-primary"><?= (int)$qr['orders_created_count'] ?> <?= __('utworzonych') ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <?php if ($qr['orders_created_count'] < $qr['shipments_count']): ?>
+                                    <?= $this->Form->postLink(
+                                        '<i class="ri-add-circle-line"></i> ' . __('Utwórz zlecenia w bazie'),
+                                        ['action' => 'createOrdersFromQuote', $qr['activity_id']],
+                                        ['escape' => false, 'class' => 'btn btn-sm btn-success',
+                                         'confirm' => __('Utworzyć {0} zleceń manualnych z tego emaila?', $qr['shipments_count'])]
+                                    ) ?>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary"><i class="ri-check-double-line"></i> <?= __('wszystkie utworzone') ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0" style="font-size: 11px;">
+                                <thead style="position: sticky; top: 0; background: #fff; z-index: 2;">
+                                    <tr>
+                                        <th style="width:30px;">#</th>
+                                        <th><?= __('Ref') ?></th>
+                                        <th><?= __('Załadunek') ?></th>
+                                        <th><?= __('Rozładunek') ?></th>
+                                        <th><?= __('Data') ?></th>
+                                        <th><?= __('Kg') ?></th>
+                                        <th><?= __('Palet') ?></th>
+                                        <th><?= __('Sprzęt') ?></th>
+                                        <th><?= __('Uwagi') ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($qr['shipments'] as $i => $s): ?>
+                                    <tr>
+                                        <td><?= $i + 1 ?></td>
+                                        <td class="fw-semibold text-primary" style="max-width: 90px; word-break: break-all;"><?= h($s['customer_order_ref'] ?? '') ?></td>
+                                        <td>
+                                            <?= h(trim(($s['from_postal'] ?? '') . ' ' . ($s['from_city'] ?? '') . ' ' . ($s['from_country'] ?? ''))) ?>
+                                            <?php if (!empty($s['from_company'])): ?><br><span class="text-muted small"><?= h($s['from_company']) ?></span><?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?= h(trim(($s['to_postal'] ?? '') . ' ' . ($s['to_city'] ?? '') . ' ' . ($s['to_country'] ?? ''))) ?>
+                                            <?php if (!empty($s['to_company'])): ?><br><span class="text-muted small"><?= h($s['to_company']) ?></span><?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?= h($s['load_date'] ?? '') ?><?= !empty($s['load_time']) ? ' ' . h($s['load_time']) : '' ?>
+                                            <?php if (!empty($s['unload_date'])): ?><br><span class="text-muted">→ <?= h($s['unload_date']) ?></span><?php endif; ?>
+                                        </td>
+                                        <td class="text-end"><?= !empty($s['weight_kg']) ? h(number_format((int)$s['weight_kg'], 0, ',', ' ')) : '-' ?></td>
+                                        <td class="text-end"><?= !empty($s['pallets']) ? (int)$s['pallets'] . ' ' . h($s['pallet_type'] ?? '') : '-' ?></td>
+                                        <td><?php if (!empty($s['vehicle_type'])): ?><span class="badge bg-secondary"><?= h($s['vehicle_type']) ?></span><?php endif; ?></td>
+                                        <td style="max-width: 200px; word-wrap: break-word;">
+                                            <?php if (!empty($s['cargo_type'])): ?><span class="badge bg-info"><?= h($s['cargo_type']) ?></span> <?php endif; ?>
+                                            <?= h($s['notes'] ?? '') ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <div class="card">
             <div class="card-body">
                 <div class="fw-bold mb-3"><i class="ri-history-line"></i> <?= __('Timeline aktywności') ?></div>
@@ -522,6 +654,63 @@ $activityIcons = [
                             </div>
                             <?php if ($a->body): ?>
                                 <div class="mt-1" style="font-size: 13px;"><?= nl2br(h($a->body)) ?></div>
+                            <?php endif; ?>
+                            <?php
+                            // FALA 16: dla email_in - pelny body toggle + lista zalacznikow z crm_email_messages
+                            if ($a->activity_type === 'email_in' && !empty($a->payload_json)):
+                                $ep = json_decode($a->payload_json, true);
+                                // Znajdz odpowiadajaca wiadomosc w emailMessages (po gmail_id / from)
+                                $matchedMsg = null;
+                                if (!empty($emailMessages)) {
+                                    foreach ($emailMessages as $key => $mm) {
+                                        // dopasowanie po dokladnym subject + from lub message_id z payload
+                                        if ((string)$mm->subject === (string)$a->subject
+                                            && (string)strtolower((string)$mm->from_email) === (string)strtolower((string)($ep['from'] ?? ''))) {
+                                            $matchedMsg = $mm;
+                                            break;
+                                        }
+                                    }
+                                }
+                                $attList = [];
+                                $fullBody = null;
+                                if ($matchedMsg) {
+                                    $attList = json_decode((string)$matchedMsg->attachments_json, true) ?: [];
+                                    $fullBody = (string)($matchedMsg->body_text ?: $matchedMsg->body_html);
+                                }
+                            ?>
+                                <div class="mt-2 p-2" style="background: #faf5ff; border-radius: 4px; border-left: 3px solid #7c3aed;">
+                                    <div class="d-flex gap-3 small">
+                                        <div><strong><?= __('Od:') ?></strong> <?= h($ep['from'] ?? '?') ?></div>
+                                        <?php if (!empty($matchedMsg?->received_at)): ?>
+                                            <div><strong><?= __('Otrzymano:') ?></strong> <?= h($matchedMsg->received_at->format('d.m.Y H:i')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($attList)): ?>
+                                        <div class="mt-1 small">
+                                            <strong><i class="ri-attachment-2"></i> <?= count($attList) ?> <?= __('załączników') ?>:</strong>
+                                            <?php foreach ($attList as $att): $mm = $att['mime'] ?? ''; ?>
+                                                <span class="badge bg-white text-dark border me-1" title="<?= h($mm) ?>">
+                                                    <?php if (str_starts_with($mm, 'image/')): ?><i class="ri-image-line text-primary"></i>
+                                                    <?php elseif ($mm === 'application/pdf'): ?><i class="ri-file-pdf-line text-danger"></i>
+                                                    <?php elseif (str_starts_with($mm, 'text/')): ?><i class="ri-file-text-line text-secondary"></i>
+                                                    <?php elseif (str_contains($mm, 'spreadsheet') || str_contains($mm, 'excel')): ?><i class="ri-file-excel-line text-success"></i>
+                                                    <?php elseif (str_contains($mm, 'word')): ?><i class="ri-file-word-line text-primary"></i>
+                                                    <?php else: ?><i class="ri-file-line"></i><?php endif; ?>
+                                                    <?= h($att['filename'] ?? '?') ?>
+                                                    <span class="text-muted">(<?= isset($att['size']) ? round($att['size'] / 1024, 1) : '?' ?>KB)</span>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($fullBody && strlen($fullBody) > 500): ?>
+                                        <div class="mt-2">
+                                            <button type="button" class="btn btn-sm btn-link p-0" onclick="var el=document.getElementById('body-<?= h($a->id) ?>'); if(el){el.style.display=(el.style.display==='none'?'block':'none');}">
+                                                <i class="ri-eye-line"></i> <?= __('Pokaż pełny body') ?> (<?= strlen($fullBody) ?> znaków)
+                                            </button>
+                                            <div id="body-<?= h($a->id) ?>" style="display:none; max-height: 400px; overflow-y: auto; background: #fff; padding: 8px; margin-top: 6px; border-radius: 4px; font-family: monospace; font-size: 11px; white-space: pre-wrap;"><?= h($fullBody) ?></div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
                             <?php endif; ?>
                             <?php
                             // FALA 15: widget dla activity_type='quote_request' - lista shipments z payload_json
