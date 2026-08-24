@@ -41,6 +41,9 @@ class CrmTasksDigestCommand extends Command
             )
             ->addOption('user', ['default' => null,
                 'help' => 'Ogranicz do jednego usera (user_id) - dla testow']
+            )
+            ->addOption('stale-days', ['default' => 14,
+                'help' => 'Prog dni bez aktywnosci dla "Zapomniane leady" (default 14, 0 = wylacz)']
             );
         return $parser;
     }
@@ -51,6 +54,7 @@ class CrmTasksDigestCommand extends Command
         $days = (int)$args->getOption('days');
         $companyFilter = $args->getOption('company');
         $userFilter = $args->getOption('user');
+        $staleDays = (int)$args->getOption('stale-days');
 
         $LeadActivities = TableRegistry::getTableLocator()->get('LeadActivities');
         $Leads = TableRegistry::getTableLocator()->get('Leads');
@@ -117,9 +121,50 @@ class CrmTasksDigestCommand extends Command
             $followupsByUser[$uid][] = $l;
         }
 
-        $allUserIds = array_unique(array_merge(array_keys($byUser), array_keys($followupsByUser)));
-        $io->out(sprintf('Znaleziono %d taskow + %d follow-upow dla %d handlowcow.',
-            count($tasks), count($followups), count($allUserIds)));
+        // Zapomniane leady - bez aktywnosci przez X dni (last_contacted_at + activity_since)
+        $staleByUser = [];
+        if ($staleDays > 0) {
+            $staleThreshold = new DateTime("-{$staleDays} days");
+            $staleQuery = $Leads->find()
+                ->contain([
+                    'AssignedUser' => function ($q) {
+                        return $q->select(['id', 'first_name', 'last_name', 'email']);
+                    },
+                ])
+                ->where([
+                    'Leads.stage IN' => ['new', 'contact', 'inquiry', 'offer'],
+                    'Leads.assigned_to_user_id IS NOT' => null,
+                    'OR' => [
+                        'Leads.last_contacted_at IS' => null,
+                        'Leads.last_contacted_at <'  => $staleThreshold,
+                    ],
+                    // Ignoruj snoozed
+                    'OR2' => [
+                        'Leads.snooze_until IS' => null,
+                        'Leads.snooze_until <=' => new DateTime(),
+                    ],
+                    'Leads.modified <' => $staleThreshold, // dodatkowo: nie ruszany od X dni
+                ]);
+            if ($companyFilter) {
+                $staleQuery->where(['Leads.company_id' => $companyFilter]);
+            }
+            $staleLeads = $staleQuery->limit(200)->all();
+            foreach ($staleLeads as $l) {
+                $uid = (string)$l->assigned_to_user_id;
+                if ($userFilter && $uid !== $userFilter) continue;
+                $staleByUser[$uid][] = $l;
+            }
+        }
+
+        $allUserIds = array_unique(array_merge(
+            array_keys($byUser),
+            array_keys($followupsByUser),
+            array_keys($staleByUser)
+        ));
+        $io->out(sprintf('Znaleziono %d taskow + %d follow-upow + %d zapomnianych dla %d handlowcow.',
+            count($tasks), count($followups),
+            array_sum(array_map('count', $staleByUser)),
+            count($allUserIds)));
 
         if ($dry) $io->warning('DRY-RUN — nie wysylamy maili.');
 
@@ -133,7 +178,8 @@ class CrmTasksDigestCommand extends Command
 
             $userTasks = $byUser[$uid] ?? [];
             $userFollowups = $followupsByUser[$uid] ?? [];
-            $total = count($userTasks) + count($userFollowups);
+            $userStale = $staleByUser[$uid] ?? [];
+            $total = count($userTasks) + count($userFollowups) + count($userStale);
             if ($total === 0) continue;
 
             $userName = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->email;
@@ -155,9 +201,9 @@ class CrmTasksDigestCommand extends Command
                 else                    $upcoming[] = ['type' => 'followup', 'item' => $l];
             }
 
-            $io->out(sprintf('[%s] %s → %s (przeterm: %d, dzis: %d, do %d dni: %d)',
+            $io->out(sprintf('[%s] %s → %s (przeterm: %d, dzis: %d, do %d dni: %d, zapomniane: %d)',
                 $uid, $userName, $user->email,
-                count($overdue), count($todayList), $days, count($upcoming)
+                count($overdue), count($todayList), $days, count($upcoming), count($userStale)
             ));
 
             if ($dry) continue;
@@ -174,6 +220,8 @@ class CrmTasksDigestCommand extends Command
                     'overdue'   => $overdue,
                     'todayList' => $todayList,
                     'upcoming'  => $upcoming,
+                    'stale'     => $userStale,
+                    'staleDays' => $staleDays,
                     'days'      => $days,
                     'baseUrl'   => rtrim((string)\Cake\Core\Configure::read('App.fullBaseUrl'), '/'),
                 ]);

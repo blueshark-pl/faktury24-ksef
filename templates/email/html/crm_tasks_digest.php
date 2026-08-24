@@ -5,9 +5,13 @@
  * @var array $overdue    array of ['type' => 'task'|'followup', 'item' => Entity]
  * @var array $todayList
  * @var array $upcoming
+ * @var array $stale     array of Lead entities - leady bez aktywnosci
+ * @var int $staleDays
  * @var int $days
  * @var string $baseUrl
  */
+$stale = $stale ?? [];
+$staleDays = $staleDays ?? 14;
 
 $renderRow = function($group, $baseUrl): string {
     $out = '';
@@ -91,6 +95,44 @@ $renderRow = function($group, $baseUrl): string {
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <?= $renderRow($upcoming, $baseUrl) ?>
+            </table>
+        <?php endif; ?>
+
+        <?php if (!empty($stale)): ?>
+            <div style="background: #f3f4f6; padding: 12px 16px; border-radius: 8px; margin-top: 24px; margin-bottom: 16px;">
+                <div style="font-weight: 700; color: #4b5563; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    💤 Zapomniane leady - brak aktywności ponad <?= (int)$staleDays ?> dni (<?= count($stale) ?>)
+                </div>
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <?php foreach ($stale as $sl):
+                    $viewUrl = $baseUrl . '/crm/view/' . h($sl->id);
+                    $lastAt = $sl->last_contacted_at
+                        ? $sl->last_contacted_at->format('d.m.Y')
+                        : 'nigdy';
+                ?>
+                    <tr style="border-bottom: 1px solid #f1f3f5;">
+                        <td style="padding: 10px 8px; vertical-align: top; white-space: nowrap; color: #9ca3af; font-size: 12px;">
+                            <?= h($lastAt) ?>
+                        </td>
+                        <td style="padding: 10px 8px;">
+                            <a href="<?= h($viewUrl) ?>" style="font-weight: 600; color: #1a1d29; text-decoration: none;">
+                                <?= h($sl->company_name) ?>
+                            </a>
+                            <span style="background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-size: 11px; color: #4b5563; margin-left: 4px;">
+                                <?= h($sl->stage) ?>
+                            </span>
+                            <?php if ($sl->contact_person): ?>
+                                <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">
+                                    <?= h($sl->contact_person) ?><?php if ($sl->phone): ?> · <?= h($sl->phone) ?><?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                        <td style="padding: 10px 8px; vertical-align: top; text-align: right;">
+                            <a href="<?= h($viewUrl) ?>" style="background: #6b7280; color: #fff; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600;">Otwórz</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
             </table>
         <?php endif; ?>
 

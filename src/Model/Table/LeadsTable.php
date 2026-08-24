@@ -5,6 +5,8 @@ namespace App\Model\Table;
 
 use Cake\Event\EventInterface;
 use Cake\I18n\DateTime;
+use Cake\Log\Log;
+use Cake\Mailer\Mailer;
 use Cake\ORM\Query\SelectQuery;
 use Cake\ORM\Table;
 use Cake\Validation\Validator;
@@ -76,6 +78,11 @@ class LeadsTable extends Table
      */
     public function beforeSave(EventInterface $event, $entity, ArrayObject $options): void
     {
+        // Zapamietaj poprzedni stage - dla afterSave (auto-thanks email)
+        if (!$entity->isNew() && $entity->isDirty('stage')) {
+            $entity->_previous_stage = (string)$entity->getOriginal('stage');
+        }
+
         // Auto-preset probability przy pierwszym zapisie lub gdy zmienil sie etap
         if ($entity->isNew() || $entity->isDirty('stage')) {
             if ($entity->isDirty('stage')) {
@@ -100,6 +107,68 @@ class LeadsTable extends Table
         }
         if ($stage === 'order') {
             $entity->flag_order = true;
+        }
+    }
+
+    /**
+     * Po zapisie - jesli lead trafil na stage=order i ma email -> wyslij thank-you.
+     * Best-effort: try/catch, nie moze wywrocic save().
+     * Idempotent: nie wysyla ponownie jesli poprzedni stage tez byl 'order'.
+     * Kontrolowane przez Configure key 'Crm.autoThanksEnabled' (default true).
+     */
+    public function afterSave(EventInterface $event, $entity, ArrayObject $options): void
+    {
+        try {
+            $enabled = (bool)\Cake\Core\Configure::read('Crm.autoThanksEnabled', true);
+            if (!$enabled) return;
+
+            $prev = (string)($entity->_previous_stage ?? '');
+            if ($entity->stage !== 'order') return;
+            if ($prev === 'order') return; // nie duplikujemy
+            if (empty($entity->email)) return;
+            if (!filter_var($entity->email, FILTER_VALIDATE_EMAIL)) return;
+
+            $this->sendThankYouEmail($entity);
+        } catch (\Throwable $e) {
+            Log::warning('LeadsTable::afterSave thanks email failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Wysyla email thank-you do kontaktu leada. Publiczna zeby mozna bylo
+     * ewentualnie wywolac recznie z kontrolera (np. "wyslij ponownie").
+     */
+    public function sendThankYouEmail($lead): bool
+    {
+        try {
+            $mailer = new Mailer('default');
+            $mailer->setTo((string)$lead->email, (string)($lead->contact_person ?? $lead->company_name))
+                ->setSubject(sprintf(__d('crm', 'Dziękujemy za zaufanie – %s'), $lead->company_name))
+                ->setEmailFormat('html')
+                ->viewBuilder()->setLayout('default')->setTemplate('crm_lead_thanks');
+            $mailer->setViewVars([
+                'lead' => $lead,
+            ]);
+            $mailer->deliver();
+
+            // Log activity - best effort
+            try {
+                $Acts = $this->getAssociation('LeadActivities')->getTarget();
+                $Acts->logSystem(
+                    (string)$lead->company_id, (string)$lead->id, 'email_out',
+                    __d('crm', 'Auto-thanks (stage=order)'),
+                    sprintf(__d('crm', 'Wysłano do %s'), $lead->email),
+                    ['auto' => true, 'trigger' => 'stage_change_to_order'],
+                    null
+                );
+            } catch (\Throwable $e) {
+                Log::warning('CRM auto-thanks activity log failed: ' . $e->getMessage());
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('CRM sendThankYouEmail failed: ' . $e->getMessage());
+            return false;
         }
     }
 
