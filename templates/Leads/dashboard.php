@@ -44,6 +44,100 @@ while ($cur <= $end) {
     </div>
 </div>
 
+<!-- TOP 10 DO DZWONIENIA (rules-based scoring) -->
+<div class="card mb-3" style="border-left: 4px solid #94C81F;">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div class="fw-bold">
+            <i class="ri-phone-fill text-success"></i> <?= __('Top 10 do dzwonienia dzisiaj') ?>
+            <span class="badge bg-light text-dark border ms-1" title="Score wg regul: przeterm.+50 / stage / dni bez kontaktu / wartosc / probability">
+                <?= __('smart priority') ?>
+            </span>
+        </div>
+        <a href="?days=<?= $days ?>&top_mine=<?= $onlyMineTop ? '0' : '1' ?>" class="btn btn-sm btn-outline-secondary">
+            <i class="ri-<?= $onlyMineTop ? 'group' : 'user' ?>-line"></i>
+            <?= $onlyMineTop ? __('Zespol') : __('Tylko moje') ?>
+        </a>
+    </div>
+    <div class="table-responsive">
+        <?php if (empty($topPriority)): ?>
+            <div class="text-center text-muted py-4"><?= __('Brak leadow do pilnego kontaktu.') ?></div>
+        <?php else: ?>
+            <table class="table table-sm table-hover mb-0 align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;">#</th>
+                        <th style="width:70px; text-align:center;">Score</th>
+                        <th><?= __('Firma') ?></th>
+                        <th><?= __('Osoba + tel') ?></th>
+                        <th><?= __('Stage') ?></th>
+                        <th class="text-end"><?= __('Wartosc') ?></th>
+                        <th><?= __('Ostatni kontakt') ?></th>
+                        <th><?= __('Powod priorytetu') ?></th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($topPriority as $i => $p):
+                        $l = $p['lead'];
+                        $sc = $p['score'];
+                        $scColor = $sc >= 80 ? '#dc3545' : ($sc >= 60 ? '#f59e0b' : '#94C81F');
+                        $lastAt = $l->last_contacted_at ? $l->last_contacted_at->format('d.m.Y') : '—';
+                    ?>
+                    <tr>
+                        <td class="fw-bold text-muted"><?= $i + 1 ?></td>
+                        <td class="text-center">
+                            <span style="display:inline-block; padding:4px 10px; border-radius:12px;
+                                background:<?= $scColor ?>; color:#fff; font-weight:700; font-size:12px;">
+                                <?= $sc ?>
+                            </span>
+                        </td>
+                        <td>
+                            <a href="<?= $this->Url->build(['action' => 'view', $l->id]) ?>" class="fw-semibold text-dark text-decoration-none">
+                                <?= h($l->company_name) ?>
+                            </a>
+                            <div class="text-muted small">
+                                <?= h(strtoupper((string)$l->country_code)) ?>
+                                <?php if ($l->city): ?> · <?= h($l->city) ?><?php endif; ?>
+                            </div>
+                        </td>
+                        <td>
+                            <?php if ($l->contact_person): ?>
+                                <div><?= h($l->contact_person) ?></div>
+                            <?php endif; ?>
+                            <?php if ($l->phone): ?>
+                                <a href="tel:<?= h($l->phone) ?>" class="text-decoration-none small">
+                                    <i class="ri-phone-line"></i> <?= h($l->phone) ?>
+                                </a>
+                            <?php endif; ?>
+                        </td>
+                        <td><span class="badge bg-light text-dark border"><?= h($l->stage) ?></span></td>
+                        <td class="text-end fw-semibold">
+                            <?= $l->value_pln ? number_format((float)$l->value_pln, 0, ',', ' ') . ' zl' : '—' ?>
+                        </td>
+                        <td class="small text-muted"><?= h($lastAt) ?></td>
+                        <td class="small">
+                            <?php foreach ($p['reasons'] as $r): ?>
+                                <span class="badge bg-warning-subtle text-warning-emphasis border me-1"><?= h($r) ?></span>
+                            <?php endforeach; ?>
+                        </td>
+                        <td class="text-end">
+                            <?php if ($l->phone): ?>
+                                <a href="tel:<?= h($l->phone) ?>" class="btn btn-sm btn-success" title="Zadzwon">
+                                    <i class="ri-phone-fill"></i>
+                                </a>
+                            <?php endif; ?>
+                            <a href="<?= $this->Url->build(['action' => 'view', $l->id]) ?>" class="btn btn-sm btn-outline-primary" title="Zobacz">
+                                <i class="ri-arrow-right-line"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Global KPI -->
 <div class="row g-2 mb-3">
     <div class="col-md-3">

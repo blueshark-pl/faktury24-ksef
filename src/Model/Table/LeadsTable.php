@@ -187,6 +187,107 @@ class LeadsTable extends Table
     }
 
     /**
+     * Top X leadow do dzwonienia dzis - rules-based scoring.
+     *
+     * Reguly (im wyzszy score, tym pilniejszy):
+     *  - next_action_at przeterminowane        +50
+     *  - next_action_at do 24h                 +30
+     *  - stage: offer=25 / inquiry=20 / contact=15 / new=5 / lost=0
+     *  - last_contacted_at NULL                +15
+     *  - last_contacted_at > 14 dni temu       +20
+     *  - last_contacted_at > 7 dni temu        +10
+     *  - value_pln / 1000, max +30             (10k = +10, 30k = +30)
+     *  - probability / 5, max +20              (100% = +20)
+     *
+     * @return array Lista rekordow z wyliczonym score, posortowana desc.
+     */
+    public function topPriority(string $companyId, ?string $userId = null, int $limit = 10): array
+    {
+        $now = new \DateTimeImmutable();
+        $in24h = $now->modify('+1 day');
+        $days7 = $now->modify('-7 days');
+        $days14 = $now->modify('-14 days');
+
+        $query = $this->find()
+            ->contain(['AssignedUser' => function ($q) {
+                return $q->select(['id', 'first_name', 'last_name']);
+            }])
+            ->where([
+                'Leads.company_id' => $companyId,
+                'Leads.stage NOT IN' => ['order', 'lost'],
+                // Pomin snoozed
+                'OR' => [
+                    'Leads.snooze_until IS' => null,
+                    'Leads.snooze_until <=' => new DateTime(),
+                ],
+            ])
+            ->limit(200); // Bierzemy 200 do wyliczenia, sortujemy w PHP
+
+        if ($userId) {
+            $query->where(['Leads.assigned_to_user_id' => $userId]);
+        }
+        $leads = $query->all();
+
+        $stagePriority = ['offer' => 25, 'inquiry' => 20, 'contact' => 15, 'new' => 5, 'lost' => 0];
+        $scored = [];
+        foreach ($leads as $lead) {
+            $score = 0;
+            $reasons = [];
+
+            // Next action urgency
+            if ($lead->next_action_at) {
+                $na = new \DateTimeImmutable($lead->next_action_at->format('c'));
+                if ($na < $now) {
+                    $score += 50;
+                    $reasons[] = 'Przeterminowana akcja';
+                } elseif ($na < $in24h) {
+                    $score += 30;
+                    $reasons[] = 'Akcja dzis';
+                }
+            }
+
+            // Stage priority
+            $sp = $stagePriority[$lead->stage] ?? 0;
+            $score += $sp;
+            if ($sp >= 20) $reasons[] = ucfirst($lead->stage);
+
+            // Last contacted
+            if (!$lead->last_contacted_at) {
+                $score += 15;
+                $reasons[] = 'Nigdy niekontaktowany';
+            } else {
+                $lc = new \DateTimeImmutable($lead->last_contacted_at->format('c'));
+                if ($lc < $days14) {
+                    $score += 20;
+                    $reasons[] = '14+ dni bez kontaktu';
+                } elseif ($lc < $days7) {
+                    $score += 10;
+                    $reasons[] = '7+ dni bez kontaktu';
+                }
+            }
+
+            // Value
+            $val = (float)($lead->value_pln ?? 0);
+            $vs = (int)min(30, $val / 1000);
+            $score += $vs;
+            if ($vs >= 20) $reasons[] = 'Duza wartosc';
+
+            // Probability
+            $score += (int)(($lead->probability ?? 0) / 5);
+
+            $scored[] = [
+                'lead'    => $lead,
+                'score'   => $score,
+                'reasons' => $reasons,
+            ];
+        }
+
+        // Sort desc + limit
+        usort($scored, fn($a, $b) => $b['score'] <=> $a['score']);
+        return array_slice($scored, 0, $limit);
+    }
+
+    /**
      * Statystyki pipeline dla dashboardu.
      * Zwraca array [stage => ['count' => X, 'value_pln' => Y]].
      */

@@ -635,9 +635,14 @@ class LeadsController extends AppController
             ->disableHydration()
             ->toArray();
 
+        // Top 10 do dzwonienia dzis (rules-based scoring)
+        $onlyMineTop = $this->request->getQuery('top_mine') === '1';
+        $topPriority = $Leads->topPriority($companyId, $onlyMineTop ? $identity?->get('id') : null, 10);
+
         $this->set(compact(
             'stats', 'totalActive', 'totalValue', 'wonCount', 'lostCount', 'conversion',
-            'ranking', 'activityByDay', 'sourceRows', 'days'
+            'ranking', 'activityByDay', 'sourceRows', 'days',
+            'topPriority', 'onlyMineTop'
         ));
     }
 
