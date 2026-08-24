@@ -1759,17 +1759,13 @@ class SpeedOrdersController extends AppController
     {
         $content = str_replace("\r\n", "\n", $content);
         $content = ltrim($content, "\xEF\xBB\xBF"); // strip BOM
-        if (!mb_check_encoding($content, 'UTF-8')) {
-            // "Windows-1250" nie jest walidnym aliasem w niektorych buildach PHP - uzywamy CP1250.
-            $detected = mb_detect_encoding($content, ['UTF-8', 'CP1250', 'ISO-8859-2', 'ISO-8859-1'], true);
-            if ($detected && $detected !== 'UTF-8') {
-                try {
-                    $content = mb_convert_encoding($content, 'UTF-8', $detected);
-                } catch (\Throwable $e) {
-                    $content = @iconv('CP1250', 'UTF-8//IGNORE', $content) ?: $content;
+        // Encoding detection best-effort - patrz LeadsController::parseCsv (same fix).
+        if (preg_match('//u', $content) !== 1) {
+            if (function_exists('iconv')) {
+                $converted = @iconv('CP1250', 'UTF-8//IGNORE', $content);
+                if ($converted !== false && $converted !== '') {
+                    $content = $converted;
                 }
-            } else {
-                $content = @iconv('CP1250', 'UTF-8//IGNORE', $content) ?: $content;
             }
         }
         $lines = explode("\n", $content);
