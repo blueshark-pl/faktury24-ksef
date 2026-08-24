@@ -46,7 +46,13 @@ $stages = [
                 <div class="row g-2">
                     <div class="col-md-6">
                         <label class="form-label small">NIP / VAT</label>
-                        <input name="nip" class="form-control text-uppercase" value="<?= h($lead->nip) ?>">
+                        <div class="input-group">
+                            <input name="nip" id="lead-nip" class="form-control text-uppercase" value="<?= h($lead->nip) ?>">
+                            <button type="button" class="btn btn-outline-primary" id="btn-lead-gus" title="<?= __('Pobierz z GUS i sprawdź duplikaty') ?>">
+                                <i class="ri-download-line"></i> GUS
+                            </button>
+                        </div>
+                        <div id="lead-gus-msg" class="small mt-1"></div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small"><?= __('Kraj') ?></label>
@@ -231,3 +237,75 @@ $stages = [
     </div>
 </div>
 <?= $this->Form->end() ?>
+
+<script>
+(function() {
+    var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+    var $btn = document.getElementById('btn-lead-gus');
+    var $nip = document.getElementById('lead-nip');
+    var $msg = document.getElementById('lead-gus-msg');
+    if (!$btn || !$nip) return;
+
+    // Automatyczny dedup-check po blur (bez pobierania GUS)
+    $nip.addEventListener('blur', function() {
+        var digits = ($nip.value || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (digits.length < 10) return;
+        var fd = new FormData();
+        fd.append('nip', digits);
+        fd.append('_csrfToken', csrf);
+        // Ciche wywolanie tylko dla dedup-check
+        fetch('<?= $this->Url->build(['action' => 'gusLookupJson']) ?>', {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (j && j.duplicate) {
+                var url = '<?= $this->Url->build(['action' => 'view']) ?>/' + j.duplicate.id;
+                $msg.innerHTML = '<div class="alert alert-warning py-1 mb-0"><i class="ri-alert-line"></i> '
+                    + '<?= __("Istnieje już lead z tym NIP") ?>: <a href="' + url + '"><strong>'
+                    + (j.duplicate.company_name || '') + '</strong></a> (etap: ' + (j.duplicate.stage || '?') + ')</div>';
+            }
+        })
+        .catch(function() {});
+    });
+
+    // GUS lookup po kliknieciu
+    $btn.addEventListener('click', function() {
+        var digits = ($nip.value || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (digits.length !== 10) {
+            $msg.innerHTML = '<span class="text-danger"><?= __("NIP musi mieć 10 cyfr (PL)") ?></span>';
+            return;
+        }
+        $msg.innerHTML = '<span class="text-muted"><i class="ri-loader-4-line"></i> <?= __("Pobieram z GUS…") ?></span>';
+        var fd = new FormData();
+        fd.append('nip', digits);
+        fd.append('_csrfToken', csrf);
+        fetch('<?= $this->Url->build(['controller' => 'Contractors', 'action' => 'gusLookup']) ?>', {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j.success) {
+                $msg.innerHTML = '<span class="text-danger">' + (j.message || '<?= __("Błąd pobierania z GUS") ?>') + '</span>';
+                return;
+            }
+            var c = j.contractor || {};
+            var form = document.querySelector('form');
+            if (c.name && form.elements.company_name && !form.elements.company_name.value) form.elements.company_name.value = c.name;
+            if (c.street && form.elements.street) form.elements.street.value = c.street;
+            if (c.zip && form.elements.postal_code) form.elements.postal_code.value = c.zip;
+            if (c.city && form.elements.city) form.elements.city.value = c.city;
+            if (form.elements.country_code && !form.elements.country_code.value) form.elements.country_code.value = 'PL';
+            var vatBadge = j.vat && j.vat.statusVat === 'Czynny'
+                ? '<span class="badge bg-success-subtle text-success ms-1">VAT czynny</span>'
+                : (j.vat && j.vat.statusVat ? '<span class="badge bg-warning-subtle text-warning ms-1">VAT ' + j.vat.statusVat + '</span>' : '');
+            $msg.innerHTML = '<span class="text-success"><i class="ri-check-line"></i> <?= __("Uzupełnione z GUS") ?></span> ' + vatBadge;
+        })
+        .catch(function(e) {
+            $msg.innerHTML = '<span class="text-danger"><?= __("Błąd sieciowy") ?>: ' + e.message + '</span>';
+        });
+    });
+})();
+</script>

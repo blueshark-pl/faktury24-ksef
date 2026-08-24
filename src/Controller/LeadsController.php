@@ -385,6 +385,310 @@ class LeadsController extends AppController
         $this->redirect(['action' => 'view', $lead->id]);
     }
 
+    /**
+     * Widok "Moje zadania" - lista task-activities przypisanych do usera
+     * (activity_type=task, is_done=false, due_at IN ostatnie 30 dni / kolejne 30 dni).
+     */
+    public function myTasks(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $onlyMine = $this->request->getQuery('all') !== '1';
+        $range    = (int)$this->request->getQuery('days', '14');
+        if (!in_array($range, [7, 14, 30, 60, 90], true)) $range = 14;
+
+        $Acts = $this->fetchTable('LeadActivities');
+        $from = new \Cake\I18n\DateTime('-30 days');
+        $to   = new \Cake\I18n\DateTime('+' . $range . ' days');
+
+        $query = $Acts->find()
+            ->contain([
+                'Leads' => function ($q) {
+                    return $q->select(['id', 'company_name', 'stage', 'probability', 'value_pln',
+                        'nip', 'city', 'country_code', 'assigned_to_user_id']);
+                },
+                'Users' => function ($q) {
+                    return $q->select(['id', 'first_name', 'last_name']);
+                },
+            ])
+            ->where([
+                'LeadActivities.company_id'    => $companyId,
+                'LeadActivities.activity_type' => 'task',
+                'LeadActivities.is_done'       => false,
+                'LeadActivities.due_at IS NOT' => null,
+                'LeadActivities.due_at >='     => $from,
+                'LeadActivities.due_at <='     => $to,
+            ])
+            ->orderByAsc('LeadActivities.due_at');
+
+        if ($onlyMine && $userId) {
+            $query->where(['OR' => [
+                'LeadActivities.user_id' => $userId,
+                'Leads.assigned_to_user_id' => $userId,
+            ]]);
+        }
+
+        $tasks = $query->limit(500)->all();
+
+        // Rowniez leady z next_action_at (jesli nie ma dedykowanego task)
+        $Leads = $this->fetchTable('Leads');
+        $nextActionQuery = $Leads->find()
+            ->contain(['AssignedUser' => function ($q) { return $q->select(['id', 'first_name', 'last_name']); }])
+            ->where([
+                'Leads.company_id' => $companyId,
+                'Leads.next_action_at IS NOT' => null,
+                'Leads.next_action_at >=' => $from,
+                'Leads.next_action_at <=' => $to,
+            ])
+            ->orderByAsc('Leads.next_action_at');
+        if ($onlyMine && $userId) {
+            $nextActionQuery->where(['Leads.assigned_to_user_id' => $userId]);
+        }
+        $nextActions = $nextActionQuery->limit(200)->all();
+
+        // Statystyki
+        $today = new \Cake\I18n\DateTime('today');
+        $tomorrow = new \Cake\I18n\DateTime('+1 day');
+        $overdueCnt = 0;
+        $todayCnt = 0;
+        $upcomingCnt = 0;
+        foreach ($tasks as $t) {
+            if ($t->due_at < $today) $overdueCnt++;
+            elseif ($t->due_at < $tomorrow) $todayCnt++;
+            else $upcomingCnt++;
+        }
+
+        $this->set(compact('tasks', 'nextActions', 'onlyMine', 'range', 'overdueCnt', 'todayCnt', 'upcomingCnt'));
+    }
+
+    /**
+     * Oznacz task jako wykonany.
+     */
+    public function taskDone(string $activityId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Acts = $this->fetchTable('LeadActivities');
+        $act = $Acts->get($activityId);
+        if ((string)$act->company_id !== (string)$companyId) {
+            return $this->jsonResp(['ok' => false, 'error' => 'not_owned'], 403);
+        }
+        $act->is_done = true;
+        $act->done_at = new \Cake\I18n\DateTime();
+        if ($Acts->save($act)) {
+            return $this->jsonResp(['ok' => true]);
+        }
+        return $this->jsonResp(['ok' => false, 'error' => 'save_failed'], 500);
+    }
+
+    /**
+     * Import CSV lead-ow z arkusza klienta.
+     * Kolumny (case-insensitive): company_name (lub 'nazwa firmy'), nip, country_code,
+     * postal_code, city, street, contact_person, phone, email, branch_type, note,
+     * flag_contact/inquiry/offer/order (checkboxy: 1/yes/tak/x/true = true), probability, stage, value_pln.
+     */
+    public function importCsv(): void
+    {
+        $this->request->allowMethod(['get', 'post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $preview = null;
+        $errors = [];
+        $importedCount = 0;
+        $errorRows = [];
+        $content = '';
+        $csvText = '';
+
+        if ($this->request->is('post')) {
+            $upload = $this->request->getUploadedFile('csv');
+            $isConfirm = (bool)$this->request->getData('confirm');
+            $csvText = (string)$this->request->getData('csv_text');
+
+            $rows = [];
+            if ($upload && $upload->getError() === UPLOAD_ERR_OK) {
+                if ($upload->getSize() > 5 * 1024 * 1024) {
+                    $errors[] = __('Plik za duży (max 5 MB)');
+                } else {
+                    $content = (string)$upload->getStream()->getContents();
+                    $rows = $this->parseCsv($content);
+                }
+            } elseif ($isConfirm && $csvText !== '') {
+                $rows = $this->parseCsv($csvText);
+            }
+
+            if (empty($errors) && empty($rows)) {
+                $errors[] = __('CSV jest pusty lub niepoprawny');
+            }
+
+            if (!empty($rows)) {
+                $Leads = $this->fetchTable('Leads');
+                foreach ($rows as $idx => $r) {
+                    $mapped = $this->mapCsvRowToLead($r);
+                    if (empty(trim((string)($mapped['company_name'] ?? '')))) {
+                        $errorRows[] = ['row' => $idx + 2, 'error' => __('Brak nazwy firmy'), 'data' => $r];
+                        continue;
+                    }
+                    if (!$isConfirm) continue;
+
+                    try {
+                        $data = $this->prepareLeadData($mapped, $companyId, $userId);
+                        $data['source'] = 'import_csv';
+                        // Dedup po NIP (opcjonalnie - tylko warning w preview)
+                        if (!empty($data['nip'])) {
+                            $exists = $Leads->find()
+                                ->where(['company_id' => $companyId, 'nip' => $data['nip']])
+                                ->count();
+                            if ($exists > 0) {
+                                $errorRows[] = ['row' => $idx + 2, 'error' => __('Duplikat NIP: ') . $data['nip'], 'data' => $r];
+                                continue;
+                            }
+                        }
+                        $lead = $Leads->newEntity($data);
+                        if ($Leads->save($lead)) {
+                            $importedCount++;
+                        } else {
+                            $errorRows[] = ['row' => $idx + 2, 'error' => __('Walidacja: ') . json_encode($lead->getErrors(), JSON_UNESCAPED_UNICODE), 'data' => $r];
+                        }
+                    } catch (\Throwable $e) {
+                        $errorRows[] = ['row' => $idx + 2, 'error' => $e->getMessage(), 'data' => $r];
+                    }
+                }
+
+                if ($isConfirm) {
+                    $msg = sprintf(__('%d leadów zaimportowanych'), $importedCount);
+                    if (!empty($errorRows)) $msg .= ', ' . count($errorRows) . ' ' . __('błędów');
+                    $this->Flash->success($msg);
+                    if ($importedCount > 0) {
+                        $this->redirect(['action' => 'index']);
+                        return;
+                    }
+                } else {
+                    $preview = array_map([$this, 'mapCsvRowToLead'], $rows);
+                    $this->set('csvText', $content ?: $csvText);
+                }
+            }
+        }
+
+        $this->set(compact('preview', 'errors', 'errorRows', 'importedCount'));
+    }
+
+    /**
+     * Szablon CSV do pobrania.
+     */
+    public function importCsvTemplate(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+
+        $header = [
+            'company_name', 'nip', 'country_code', 'postal_code', 'city', 'street',
+            'contact_person', 'contact_role', 'phone', 'email', 'contact_channel',
+            'branch_type', 'stage', 'probability', 'value_pln',
+            'flag_contact', 'flag_inquiry', 'flag_offer', 'flag_order',
+            'note', 'next_action_description',
+        ];
+        $example = [
+            'SILESIAN FLOUR Sp. z o.o.', '8971834912', 'PL', '57-220', 'Ziębice', 'Przemysłowa 34',
+            'Daniel Wachowicz', 'Dyrektor sprzedaży', '+48 663 877 760', 'daniel.wachowicz@sgrain.pl', 'phone',
+            'road', 'offer', '75', '24500',
+            '1', '1', '1', '0',
+            'Klient B2B, silny partner na trasie PL→DE', 'Follow-up oferty w piątek 09:00',
+        ];
+        $csv = implode(';', $header) . "\n" . implode(';', array_map(fn($v) => '"' . str_replace('"', '""', (string)$v) . '"', $example)) . "\n";
+        return $this->response
+            ->withType('text/csv')
+            ->withHeader('Content-Disposition', 'attachment; filename="crm-leads-template.csv"')
+            ->withStringBody("\xEF\xBB\xBF" . $csv);
+    }
+
+    /**
+     * GUS lookup - proxy do ContractorsController::gusLookup.
+     * Zwraca danymi w formacie leada (dopasowane pola).
+     */
+    public function gusLookupJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $nip = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$this->request->getData('nip', '')));
+        if (strlen($nip) < 10) {
+            return $this->jsonResp(['ok' => false, 'error' => __('Nieprawidłowy NIP')], 400);
+        }
+
+        // Dedup check
+        $Leads = $this->fetchTable('Leads');
+        $existing = $Leads->find()
+            ->select(['id', 'company_name', 'stage'])
+            ->where(['company_id' => $companyId, 'nip' => $nip])
+            ->first();
+        $duplicate = null;
+        if ($existing) {
+            $duplicate = [
+                'id' => $existing->id,
+                'company_name' => $existing->company_name,
+                'stage' => $existing->stage,
+                'view_url' => $this->request->getAttribute('webroot') . 'crm/view/' . $existing->id,
+            ];
+        }
+
+        // GUS query - reuse istniejacego GUS service (jesli dostepny)
+        $gusData = null;
+        try {
+            if (class_exists('\App\Service\GusService')) {
+                $svc = new \App\Service\GusService();
+                if (method_exists($svc, 'lookupByNip')) {
+                    $gusData = $svc->lookupByNip($nip);
+                }
+            }
+            // Fallback: try Contractors table
+            if (!$gusData) {
+                $Contractors = $this->fetchTable('Contractors');
+                $existing_c = $Contractors->find()
+                    ->where(['nip' => $nip])
+                    ->first();
+                if ($existing_c) {
+                    $gusData = [
+                        'name'     => $existing_c->name,
+                        'street'   => $existing_c->street ?? null,
+                        'zipcode'  => $existing_c->zipcode ?? null,
+                        'city'     => $existing_c->city ?? null,
+                        'country'  => $existing_c->country ?? null,
+                        'phone'    => $existing_c->phone ?? null,
+                        'email'    => $existing_c->email ?? null,
+                        'source'   => 'contractors_table',
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('CRM GUS lookup failed: ' . $e->getMessage());
+        }
+
+        return $this->jsonResp([
+            'ok'        => true,
+            'nip'       => $nip,
+            'duplicate' => $duplicate,
+            'company'   => $gusData ? [
+                'company_name' => $gusData['name'] ?? null,
+                'country_code' => strtoupper((string)($gusData['country'] ?? 'PL')),
+                'postal_code'  => $gusData['zipcode'] ?? null,
+                'city'         => $gusData['city'] ?? null,
+                'street'       => $gusData['street'] ?? null,
+                'phone'        => $gusData['phone'] ?? null,
+                'email'        => $gusData['email'] ?? null,
+            ] : null,
+        ]);
+    }
+
     // ================= HELPERS =================
 
     private function prepareLeadData(array $data, string $companyId, ?string $userId, bool $isEdit = false): array
@@ -434,5 +738,104 @@ class LeadsController extends AppController
             ->withStatus($status)
             ->withType('application/json')
             ->withStringBody(json_encode($body, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * Parser CSV - obsluguje separatory , ; \t; encoding UTF-8/Win-1250; BOM strip.
+     */
+    private function parseCsv(string $content): array
+    {
+        $content = str_replace("\r\n", "\n", $content);
+        $content = ltrim($content, "\xEF\xBB\xBF");
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1250');
+        }
+        $lines = explode("\n", $content);
+        if (count($lines) < 2) return [];
+
+        $firstLine = $lines[0];
+        $sep = ',';
+        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) $sep = ';';
+        elseif (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) $sep = "\t";
+
+        $header = str_getcsv($firstLine, $sep);
+        $header = array_map(function ($h) { return trim(strtolower(trim($h)), '"'); }, $header);
+
+        $rows = [];
+        for ($i = 1; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') continue;
+            $cells = str_getcsv($line, $sep);
+            if (count($cells) < count($header)) {
+                $cells = array_pad($cells, count($header), '');
+            }
+            $row = [];
+            foreach ($header as $j => $col) {
+                $row[$col] = isset($cells[$j]) ? trim((string)$cells[$j]) : '';
+            }
+            $rows[] = $row;
+        }
+        return $rows;
+    }
+
+    /**
+     * Mapa naglowkow CSV -> pola leada.
+     * Akceptuje polskie i angielskie naglowki (case-insensitive).
+     */
+    private function mapCsvRowToLead(array $r): array
+    {
+        // Aliasy naglowkow (klucz = pole w bazie, wartosc = mozliwe naglowki w CSV)
+        $aliases = [
+            'company_name'   => ['company_name', 'nazwa', 'nazwa firmy', 'firma'],
+            'nip'            => ['nip', 'vat', 'vat_id'],
+            'country_code'   => ['country_code', 'kraj', 'country'],
+            'postal_code'    => ['postal_code', 'kod', 'kod pocztowy', 'zip'],
+            'city'           => ['city', 'miasto'],
+            'street'         => ['street', 'ulica', 'adres'],
+            'contact_person' => ['contact_person', 'osoba kontaktowa', 'kontakt', 'osoba'],
+            'contact_role'   => ['contact_role', 'stanowisko', 'rola'],
+            'phone'          => ['phone', 'telefon', 'tel', 'numer tel.', 'numer telefonu'],
+            'email'          => ['email', 'e-mail', 'adres mailowy', 'mail'],
+            'contact_channel'=> ['contact_channel', 'rodzaj kontaktu', 'kanal'],
+            'branch_type'    => ['branch_type', 'galaz', 'gałąź', 'galaz transportu', 'gałąź transportu'],
+            'stage'          => ['stage', 'etap'],
+            'probability'    => ['probability', 'skutecznosc', 'skuteczność', 'skutecznosc %', 'skuteczność %'],
+            'value_pln'      => ['value_pln', 'wartosc', 'wartość', 'kwota'],
+            'flag_contact'   => ['flag_contact', 'kontakt (checkbox)', 'k'],
+            'flag_inquiry'   => ['flag_inquiry', 'zapytanie (checkbox)', 'z'],
+            'flag_offer'     => ['flag_offer', 'oferta (checkbox)', 'o'],
+            'flag_order'     => ['flag_order', 'zlecenie (checkbox)', 'zl'],
+            'note'           => ['note', 'notatka', 'uwagi'],
+            'next_action_description' => ['next_action_description', 'nastepna akcja', 'następna akcja'],
+        ];
+
+        $out = [];
+        foreach ($aliases as $field => $names) {
+            foreach ($names as $n) {
+                $key = strtolower($n);
+                if (isset($r[$key]) && $r[$key] !== '') {
+                    $out[$field] = $r[$key];
+                    break;
+                }
+            }
+        }
+
+        // Normalizacja checkboxow
+        foreach (['flag_contact', 'flag_inquiry', 'flag_offer', 'flag_order'] as $b) {
+            if (isset($out[$b])) {
+                $v = strtolower(trim((string)$out[$b]));
+                $out[$b] = in_array($v, ['1', 'true', 'tak', 'yes', 'x', '✓', 'v'], true);
+            }
+        }
+
+        // Probability - clamp 0-100
+        if (isset($out['probability'])) {
+            $out['probability'] = max(0, min(100, (int)$out['probability']));
+        }
+        if (isset($out['value_pln'])) {
+            $out['value_pln'] = str_replace([' ', ','], ['', '.'], (string)$out['value_pln']);
+        }
+
+        return $out;
     }
 }

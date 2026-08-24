@@ -61,9 +61,15 @@ $stageBg = [
                 $avgProb) ?>
         </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= $this->Url->build(['action' => 'myTasks']) ?>" class="btn btn-sm btn-outline-warning">
+            <i class="ri-checkbox-line me-1"></i><?= __('Moje zadania') ?>
+        </a>
         <a href="<?= $this->Url->build(['action' => 'kanban']) ?>" class="btn btn-sm btn-outline-primary">
             <i class="ri-layout-column-line me-1"></i><?= __('Kanban') ?>
+        </a>
+        <a href="<?= $this->Url->build(['action' => 'importCsv']) ?>" class="btn btn-sm btn-outline-secondary">
+            <i class="ri-upload-cloud-2-line me-1"></i><?= __('Import CSV') ?>
         </a>
         <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-success">
             <i class="ri-add-line me-1"></i><?= __('Nowy lead') ?>

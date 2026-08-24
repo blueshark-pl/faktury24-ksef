@@ -456,6 +456,8 @@ return [
             'action' => [
                 'index', 'kanban', 'kanbanMove', 'view', 'add', 'edit', 'delete',
                 'convertToContractor', 'activityAdd', 'activityDelete',
+                // FALA 1: import CSV, GUS, moje zadania
+                'importCsv', 'importCsvTemplate', 'gusLookupJson', 'myTasks', 'taskDone',
             ],
         ],
         [

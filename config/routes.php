@@ -152,6 +152,13 @@ return function (RouteBuilder $routes): void {
             ->setPass(['leadId']);
         $builder->post('/crm/aktywnosc/{activityId}/usun', ['controller' => 'Leads', 'action' => 'activityDelete'])
             ->setPass(['activityId']);
+        // FALA 1: import CSV + GUS + moje zadania
+        $builder->connect('/crm/import-csv',                ['controller' => 'Leads', 'action' => 'importCsv']);
+        $builder->get('/crm/import-csv/szablon.csv',        ['controller' => 'Leads', 'action' => 'importCsvTemplate']);
+        $builder->post('/crm/gus-lookup',                   ['controller' => 'Leads', 'action' => 'gusLookupJson']);
+        $builder->get('/crm/zadania',                       ['controller' => 'Leads', 'action' => 'myTasks']);
+        $builder->post('/crm/zadanie/{activityId}/gotowe',  ['controller' => 'Leads', 'action' => 'taskDone'])
+            ->setPass(['activityId']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

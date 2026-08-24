@@ -1601,6 +1601,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-checkbox-line me-1"></i>' . __('Moje zadania'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'myTasks'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'myTasks')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-upload-cloud-2-line me-1"></i>' . __('Import CSV'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'importCsv'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'importCsv')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-add-line me-1"></i>' . __('Nowy lead'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'add'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'add')]
