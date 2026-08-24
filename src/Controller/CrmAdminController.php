@@ -232,7 +232,8 @@ class CrmAdminController extends AppController
             }
 
             // KROK 3: OpenAI dostepne?
-            $apiKey = \Cake\Core\Configure::read('Openai.apiKey');
+            // Case matters: OpenAiService uzywa 'OpenAI.apiKey' (duze AI)
+            $apiKey = \Cake\Core\Configure::read('OpenAI.apiKey');
             if (!$apiKey) {
                 $out .= "\n❌ STOP: brak Configure Openai.apiKey. Dodaj do app_local.php.\n";
                 $this->set('title', 'Analyze');
