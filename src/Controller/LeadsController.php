@@ -576,11 +576,15 @@ class LeadsController extends AppController
         $userIds = array_keys($byUser);
         $usersData = [];
         if (!empty($userIds)) {
-            $usersData = $Users->find()
+            // W CakePHP 5 indexBy() jest na ResultSet, nie na SelectQuery -
+            // trzeba najpierw ->all() i dopiero potem indeksowac.
+            $rows = $Users->find()
                 ->select(['id', 'first_name', 'last_name', 'email'])
                 ->where(['Users.id IN' => $userIds])
-                ->indexBy('id')
-                ->toArray();
+                ->all();
+            foreach ($rows as $u) {
+                $usersData[(string)$u->id] = $u;
+            }
         }
         $ranking = [];
         foreach ($byUser as $uid => $s) {
