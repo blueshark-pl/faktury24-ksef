@@ -147,23 +147,56 @@ class CrmEmailAccountsController extends AppController
                 $appBaseUrl  = (string)\Cake\Core\Configure::read('App.fullBaseUrl');
                 $configUri   = (string)\Cake\Core\Configure::read('Google.redirectUri');
 
+                // Security.salt diagnostyka (FALA 13c)
+                $salt = (string)\Cake\Core\Configure::read('Security.salt');
+                $saltLen = strlen($salt);
+                $saltPreview = $saltLen > 0 ? (mb_substr($salt, 0, 8) . '...' . mb_substr($salt, -4)) : '(PUSTY!)';
+                $saltStatus = $saltLen >= 16 ? 'OK' : ($saltLen === 0 ? '<span style="color:red;">BRAK - MUSISZ USTAWIC</span>' : '<span style="color:orange;">ZA KROTKI</span>');
+                $envSalt = getenv('SECURITY_SALT');
+                $envSaltStatus = $envSalt === false ? 'NIE USTAWIONE (OK)' :
+                    ($envSalt === '' ? '<span style="color:red;">USTAWIONE NA PUSTY STRING (blad!)</span>' :
+                    'ustawione (' . strlen($envSalt) . ' znakow)');
+                $appLocalPath = CONFIG . 'app_local.php';
+                $appLocalExists = file_exists($appLocalPath);
+                $appLocalReadable = $appLocalExists && is_readable($appLocalPath);
+
                 $html = '<pre style="font-family:monospace; padding:20px; background:#f5f5f5; font-size:13px; line-height:1.6;">';
-                $html .= "<strong>Google OAuth DEBUG</strong>\n\n";
-                $html .= "1. App.fullBaseUrl (config):  <strong>" . htmlspecialchars($appBaseUrl) . "</strong>\n";
-                $html .= "2. Google.redirectUri (config): <strong>" . htmlspecialchars($configUri) . "</strong>\n";
-                $html .= "3. Google.clientId (config):   " . htmlspecialchars(mb_substr($clientId, 0, 20) . '...') . "\n\n";
+                $html .= "<strong>=== Security.salt DIAGNOSTYKA ===</strong>\n";
+                $html .= "Configure::read(Security.salt) len: <strong>{$saltLen}</strong> - {$saltStatus}\n";
+                $html .= "Configure::read(Security.salt) preview: {$saltPreview}\n";
+                $html .= "getenv(SECURITY_SALT): {$envSaltStatus}\n";
+                $html .= "app_local.php path: " . htmlspecialchars($appLocalPath) . "\n";
+                $html .= "app_local.php exists: " . ($appLocalExists ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n";
+                $html .= "app_local.php readable: " . ($appLocalReadable ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n\n";
+                if ($saltLen === 0) {
+                    $html .= "<strong style='color:red;'>=== PROBLEM SECURITY.SALT ===</strong>\n";
+                    $html .= "Salt nie jest ustawiony!\n\n";
+                    $html .= "FIX: Zaloguj sie przez SSH na cyberfolks i edytuj\n";
+                    $html .= "<strong>" . htmlspecialchars($appLocalPath) . "</strong>\n";
+                    $html .= "Znajdz sekcje 'Security' i podmien na:\n\n";
+                    $html .= "    'Security' => [\n";
+                    $html .= "        'salt' => 'WYGENEROWANY_64_HEX_STRING',\n";
+                    $html .= "    ],\n\n";
+                    $html .= "Wygeneruj przez:\n";
+                    $html .= "    php -r \"echo bin2hex(random_bytes(32));\"\n\n";
+                    $html .= "Uwaga: uzyj HARDCODED value (bez env()), zeby hosting env var\n";
+                    $html .= "nie zeplu (jesli SECURITY_SALT jest ustawione na pusty string).\n\n";
+                    $html .= "Potem wyczysc cache: rm -rf tmp/cache/*\n\n---\n\n";
+                }
+
+                $html .= "<strong>=== Google OAuth DEBUG ===</strong>\n\n";
+                $html .= "1. App.fullBaseUrl (config):    <strong>" . htmlspecialchars($appBaseUrl ?: '(pusty!)') . "</strong>\n";
+                $html .= "2. Google.redirectUri (config): <strong>" . htmlspecialchars($configUri ?: '(pusty!)') . "</strong>\n";
+                $html .= "3. Google.clientId (config):    " . htmlspecialchars(mb_substr($clientId, 0, 20) . '...') . "\n\n";
                 $html .= "REDIRECT_URI wysylane do Google (skopiuj DOKLADNIE do Google Cloud Console):\n";
                 $html .= "<strong style='background:yellow; padding:3px;'>" . htmlspecialchars($redirectUri) . "</strong>\n\n";
                 $html .= "Actual URL request:\n" . htmlspecialchars($url) . "\n\n";
-                $html .= "---\n\n<strong>ROZWIAZANIE:</strong>\n";
+                $html .= "---\n\n<strong>ROZWIAZANIE redirect_uri_mismatch:</strong>\n";
                 $html .= "1. Zaloguj sie na https://console.cloud.google.com/apis/credentials\n";
                 $html .= "2. Otwórz OAuth 2.0 Client ID uzywany w tej aplikacji\n";
-                $html .= "3. W sekcji 'Authorized redirect URIs' dodaj DOKLADNIE:\n";
-                $html .= "   <strong>" . htmlspecialchars($redirectUri) . "</strong>\n";
+                $html .= "3. W sekcji 'Authorized redirect URIs' dodaj DOKLADNIE ten URL zolty wyzej\n";
                 $html .= "4. Kliknij Save i poczekaj 30 sekund\n";
                 $html .= "5. Wroc na /crm/email-accounts i kliknij 'Podlacz Gmail'\n";
-                $html .= "\n<em>Jesli redirect_uri wyzej wyglada zle (np. https vs http, missing subdomain, trailing slash)</em>\n";
-                $html .= "<em>-> sprawdz config/app_local.php sekcja 'Google' i popraw redirectUri</em>\n";
                 $html .= '</pre>';
 
                 return $this->response->withStringBody($html)->withType('text/html');
