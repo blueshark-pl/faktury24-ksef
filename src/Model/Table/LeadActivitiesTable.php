@@ -18,6 +18,8 @@ class LeadActivitiesTable extends Table
     public const TYPES = [
         'phone_call', 'email_out', 'email_in', 'meeting', 'note', 'task',
         'file', 'stage_change', 'assignment', 'offer_sent', 'order_won', 'order_lost',
+        // FALA 15: zapytanie o wycene wykryte przez AI (email z lista zlecen)
+        'quote_request',
     ];
 
     public function initialize(array $config): void
@@ -67,9 +69,14 @@ class LeadActivitiesTable extends Table
                 'happened_at'   => new \Cake\I18n\DateTime(),
                 'payload_json'  => $payload ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
             ]);
-            $this->save($entity);
+            $saved = $this->save($entity);
+            if ($saved === false) {
+                // Validation errors nie throwaja - loguj recznie zeby command nie zwracal false success
+                Log::warning('LeadActivities::logSystem save failed (type=' . $type . '): '
+                    . json_encode($entity->getErrors(), JSON_UNESCAPED_UNICODE));
+            }
         } catch (\Throwable $e) {
-            Log::warning('LeadActivities::logSystem failed: ' . $e->getMessage());
+            Log::warning('LeadActivities::logSystem exception (type=' . $type . '): ' . $e->getMessage());
         }
     }
 }
