@@ -460,6 +460,8 @@ return [
                 'importCsv', 'importCsvTemplate', 'gusLookupJson', 'myTasks', 'taskDone',
                 // FALA 2: integracja z ofertami/zleceniami
                 'createOfferFromLead',
+                // FALA 3: bulk actions + dashboard
+                'bulk', 'dashboard',
             ],
         ],
         [

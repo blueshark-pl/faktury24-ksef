@@ -1601,6 +1601,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-dashboard-3-line me-1"></i>' . __('Dashboard KPI'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'dashboard'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'dashboard')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-checkbox-line me-1"></i>' . __('Moje zadania'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'myTasks'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'myTasks')]

@@ -10,8 +10,18 @@
  * @var bool   $mine
  * @var int    $totalCount
  * @var int    $avgProb
+ * @var string $sortCol
+ * @var string $sortDir
+ * @var iterable $users
  */
 $this->assign('title', __('CRM – Leady'));
+$currentQuery = $this->request->getQuery();
+$sortLink = function($col, $label) use ($currentQuery, $sortCol, $sortDir) {
+    $newDir = ($sortCol === $col && $sortDir === 'asc') ? 'desc' : 'asc';
+    $arrow = $sortCol !== $col ? '' : ($sortDir === 'asc' ? ' <i class="ri-arrow-up-s-line"></i>' : ' <i class="ri-arrow-down-s-line"></i>');
+    $q = array_merge($currentQuery, ['sort' => $col, 'dir' => $newDir]);
+    return '<a href="?' . http_build_query($q) . '" class="text-decoration-none text-dark">' . h($label) . $arrow . '</a>';
+};
 
 $stageLabels = [
     'new'     => __('Nowy lead'),
@@ -62,6 +72,9 @@ $stageBg = [
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= $this->Url->build(['action' => 'dashboard']) ?>" class="btn btn-sm btn-outline-info">
+            <i class="ri-dashboard-3-line me-1"></i><?= __('Dashboard') ?>
+        </a>
         <a href="<?= $this->Url->build(['action' => 'myTasks']) ?>" class="btn btn-sm btn-outline-warning">
             <i class="ri-checkbox-line me-1"></i><?= __('Moje zadania') ?>
         </a>
@@ -89,6 +102,13 @@ $stageBg = [
             </div>
         </div>
     <?php endforeach; ?>
+</div>
+
+<!-- Saved filters (localStorage) -->
+<div class="mb-2 small d-flex align-items-center gap-2 flex-wrap">
+    <span class="text-muted"><i class="ri-bookmark-line"></i> <?= __('Zapisane widoki:') ?></span>
+    <div id="saved-views" class="d-flex gap-1 flex-wrap"></div>
+    <button type="button" class="btn btn-sm btn-link p-0" id="save-view-btn"><i class="ri-add-line"></i> <?= __('Zapisz aktualny widok') ?></button>
 </div>
 
 <!-- Filtry -->
@@ -143,27 +163,29 @@ $stageBg = [
     </div>
 </div>
 
+<?= $this->Form->create(null, ['url' => ['action' => 'bulk'], 'id' => 'bulk-form']) ?>
 <div class="card">
     <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light small">
                 <tr>
-                    <th><?= __('Firma') ?></th>
-                    <th><?= __('Kraj / Miasto') ?></th>
+                    <th style="width:32px;"><input type="checkbox" id="chk-all" class="form-check-input"></th>
+                    <th><?= $sortLink('company_name', __('Firma')) ?></th>
+                    <th><?= $sortLink('city', __('Kraj / Miasto')) ?></th>
                     <th><?= __('Osoba') ?></th>
                     <th><?= __('Kontakt') ?></th>
                     <th><?= __('Gałąź') ?></th>
                     <th class="text-center" title="Kontakt · Zapytanie · Oferta · Zlecenie">K·Z·O·Zl</th>
-                    <th><?= __('Etap') ?></th>
+                    <th><?= $sortLink('stage', __('Etap')) ?></th>
                     <th><?= __('Opiekun') ?></th>
-                    <th class="text-end"><?= __('Wartość') ?></th>
-                    <th><?= __('Skut.') ?></th>
+                    <th class="text-end"><?= $sortLink('value_pln', __('Wartość')) ?></th>
+                    <th><?= $sortLink('probability', __('Skut.')) ?></th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (count($leads) === 0): ?>
-                    <tr><td colspan="11" class="text-center text-muted py-4"><?= __('Brak leadów spełniających filtry.') ?></td></tr>
+                    <tr><td colspan="12" class="text-center text-muted py-4"><?= __('Brak leadów spełniających filtry.') ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($leads as $lead):
                         $flagCls = 'crm-flag crm-flag-' . strtolower((string)$lead->country_code);
@@ -173,7 +195,10 @@ $stageBg = [
                         $initials = strtoupper(mb_substr($lead->assigned_user?->first_name ?? '?', 0, 1)
                             . mb_substr($lead->assigned_user?->last_name ?? '', 0, 1));
                     ?>
-                    <tr onclick="location.href='<?= $this->Url->build(['action' => 'view', $lead->id]) ?>'" style="cursor:pointer;">
+                    <tr onclick="if(event.target.type!=='checkbox') location.href='<?= $this->Url->build(['action' => 'view', $lead->id]) ?>'" style="cursor:pointer;">
+                        <td onclick="event.stopPropagation();">
+                            <input type="checkbox" name="ids[]" value="<?= h($lead->id) ?>" class="form-check-input chk-row">
+                        </td>
                         <td>
                             <div class="fw-semibold"><?= h($lead->company_name) ?></div>
                             <?php if ($lead->nip): ?>
@@ -262,3 +287,138 @@ $stageBg = [
         </table>
     </div>
 </div>
+
+<!-- Bulk action bar (sticky, wyświetla się gdy zaznaczono >0) -->
+<div id="bulk-bar" class="position-fixed" style="display:none; bottom:20px; left:50%; transform:translateX(-50%);
+     background:#1a1d29; color:#fff; padding:10px 18px; border-radius:12px; box-shadow:0 10px 30px rgba(20,25,50,.3);
+     z-index:1050; min-width:600px;">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span><strong id="bulk-count">0</strong> <?= __('zaznaczonych') ?></span>
+        <span style="opacity:0.4;">|</span>
+
+        <div class="d-flex gap-1 align-items-center">
+            <label class="small mb-0"><?= __('Etap:') ?></label>
+            <select name="stage" class="form-select form-select-sm" style="width:auto; background:#2d3140; color:#fff; border-color:#4b5063;">
+                <option value=""><?= __('— zmień na —') ?></option>
+                <?php foreach ($stageLabels as $sk => $sv): ?>
+                    <option value="<?= h($sk) ?>"><?= h($sv) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" name="bulk_action" value="change_stage" class="btn btn-sm btn-primary"
+                    onclick="return confirm('<?= __('Zmienić etap dla zaznaczonych?') ?>');"><?= __('Zastosuj') ?></button>
+        </div>
+
+        <div class="d-flex gap-1 align-items-center">
+            <label class="small mb-0"><?= __('Opiekun:') ?></label>
+            <select name="assigned_to_user_id" class="form-select form-select-sm" style="width:auto; background:#2d3140; color:#fff; border-color:#4b5063;">
+                <option value=""><?= __('— nieprzypisany —') ?></option>
+                <?php foreach ($users as $u):
+                    $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->email ?? $u->id);
+                ?>
+                    <option value="<?= h($u->id) ?>"><?= h($name) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" name="bulk_action" value="assign" class="btn btn-sm btn-primary"
+                    onclick="return confirm('<?= __('Przypisać zaznaczone?') ?>');"><?= __('Przypisz') ?></button>
+        </div>
+
+        <button type="submit" name="bulk_action" value="delete" class="btn btn-sm btn-danger"
+                onclick="return confirm('<?= __('USUNĄĆ zaznaczonych leadów? Nie da się cofnąć.') ?>');">
+            <i class="ri-delete-bin-line"></i> <?= __('Usuń') ?>
+        </button>
+
+        <button type="button" class="btn btn-sm btn-link text-white ms-auto" id="bulk-clear">
+            <?= __('Odznacz wszystko') ?>
+        </button>
+    </div>
+</div>
+
+<?= $this->Form->end() ?>
+
+<script>
+(function() {
+    // === Bulk actions ===
+    var $chkAll = document.getElementById('chk-all');
+    var $rows = document.querySelectorAll('.chk-row');
+    var $bar = document.getElementById('bulk-bar');
+    var $count = document.getElementById('bulk-count');
+
+    function updateBulkBar() {
+        var checked = document.querySelectorAll('.chk-row:checked').length;
+        $count.textContent = checked;
+        $bar.style.display = checked > 0 ? 'block' : 'none';
+    }
+
+    if ($chkAll) {
+        $chkAll.addEventListener('change', function() {
+            $rows.forEach(function(c) { c.checked = $chkAll.checked; });
+            updateBulkBar();
+        });
+    }
+    $rows.forEach(function(c) {
+        c.addEventListener('change', updateBulkBar);
+    });
+    document.getElementById('bulk-clear')?.addEventListener('click', function() {
+        $rows.forEach(function(c) { c.checked = false; });
+        if ($chkAll) $chkAll.checked = false;
+        updateBulkBar();
+    });
+
+    // === Saved views (localStorage) ===
+    var STORAGE_KEY = 'crm_leads_saved_views';
+    var $savedViews = document.getElementById('saved-views');
+    var $saveBtn = document.getElementById('save-view-btn');
+
+    function getViews() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+        catch (e) { return []; }
+    }
+    function setViews(v) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(v)); }
+        catch (e) {}
+    }
+    function currentQueryString() {
+        var qs = window.location.search.substring(1);
+        return qs;
+    }
+    function renderViews() {
+        var views = getViews();
+        $savedViews.innerHTML = '';
+        views.forEach(function(v, idx) {
+            var isActive = v.query === currentQueryString();
+            var wrap = document.createElement('span');
+            wrap.className = 'badge ' + (isActive ? 'bg-primary' : 'bg-light text-dark border') + ' d-inline-flex align-items-center gap-1';
+            wrap.innerHTML = '<a href="?' + v.query + '" class="text-decoration-none ' + (isActive ? 'text-white' : 'text-dark') + '">' +
+                escapeHtml(v.name) + '</a>' +
+                '<a href="#" class="del-view text-danger" data-idx="' + idx + '" style="text-decoration:none;">×</a>';
+            $savedViews.appendChild(wrap);
+        });
+        $savedViews.querySelectorAll('.del-view').forEach(function(a) {
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                var idx = parseInt(a.dataset.idx);
+                var views = getViews();
+                views.splice(idx, 1);
+                setViews(views);
+                renderViews();
+            });
+        });
+    }
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"]/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+        });
+    }
+    if ($saveBtn) {
+        $saveBtn.addEventListener('click', function() {
+            var name = prompt('<?= __('Nazwa widoku:') ?>');
+            if (!name) return;
+            var views = getViews();
+            views.push({ name: name, query: currentQueryString() });
+            setViews(views);
+            renderViews();
+        });
+    }
+    renderViews();
+})();
+</script>

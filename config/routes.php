@@ -162,6 +162,9 @@ return function (RouteBuilder $routes): void {
         // FALA 2: integracja z ofertami/zleceniami
         $builder->post('/crm/{leadId}/utworz-oferte',       ['controller' => 'Leads', 'action' => 'createOfferFromLead'])
             ->setPass(['leadId']);
+        // FALA 3: bulk actions + dashboard
+        $builder->post('/crm/bulk',                         ['controller' => 'Leads', 'action' => 'bulk']);
+        $builder->get('/crm/dashboard',                     ['controller' => 'Leads', 'action' => 'dashboard']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

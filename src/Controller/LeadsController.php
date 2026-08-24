@@ -33,6 +33,23 @@ class LeadsController extends AppController
         $userId  = $identity?->get('id');
 
         $Leads = $this->fetchTable('Leads');
+
+        // Sortowanie z whitelist (chroni przed SQL injection)
+        $sortMap = [
+            'company_name' => 'Leads.company_name',
+            'city'         => 'Leads.city',
+            'stage'        => 'Leads.stage',
+            'probability'  => 'Leads.probability',
+            'value_pln'    => 'Leads.value_pln',
+            'modified'     => 'Leads.modified',
+            'created'      => 'Leads.created',
+            'next_action_at' => 'Leads.next_action_at',
+        ];
+        $sortCol = (string)$this->request->getQuery('sort', 'modified');
+        $sortDir = strtolower((string)$this->request->getQuery('dir', 'desc'));
+        if (!isset($sortMap[$sortCol])) $sortCol = 'modified';
+        if (!in_array($sortDir, ['asc', 'desc'], true)) $sortDir = 'desc';
+
         $query = $Leads->find()
             ->contain([
                 'AssignedUser' => function ($q) {
@@ -40,7 +57,7 @@ class LeadsController extends AppController
                 },
             ])
             ->where(['Leads.company_id' => $companyId])
-            ->orderByDesc('Leads.modified');
+            ->orderBy([$sortMap[$sortCol] => $sortDir]);
 
         if ($q !== '') {
             $like = '%' . $q . '%';
@@ -79,7 +96,13 @@ class LeadsController extends AppController
             $avgProb = (int)round(((float)($probSum['s'] ?? 0)) / $totalCount);
         }
 
-        $this->set(compact('leads', 'stats', 'q', 'stage', 'branch', 'country', 'mine', 'totalCount', 'avgProb'));
+        // Lista userow do bulk assign
+        $users = $this->fetchTable('Users')->find()
+            ->where(['company_id' => $companyId])
+            ->orderByAsc('last_name')->all();
+
+        $this->set(compact('leads', 'stats', 'q', 'stage', 'branch', 'country', 'mine',
+            'totalCount', 'avgProb', 'sortCol', 'sortDir', 'users'));
     }
 
     /**
@@ -383,6 +406,235 @@ class LeadsController extends AppController
             $this->Flash->error(__('Błąd tworzenia kontrahenta.'));
         }
         $this->redirect(['action' => 'view', $lead->id]);
+    }
+
+    /**
+     * Bulk actions - zaznacz X leadow w tabeli → zmien etap / przypisz / usun.
+     * POST /crm/bulk
+     * Body: action (change_stage|assign|delete|snooze), ids[], stage?, user_id?, snooze_until?
+     */
+    public function bulk(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $data = (array)$this->request->getData();
+        $action = (string)($data['bulk_action'] ?? '');
+        $ids = (array)($data['ids'] ?? []);
+        $ids = array_values(array_filter(array_map('strval', $ids), fn($x) => $x !== ''));
+
+        if (empty($ids)) {
+            $this->Flash->warning(__('Nie zaznaczono żadnego leada.'));
+            $this->redirect(['action' => 'index']);
+            return $this->response;
+        }
+        if (count($ids) > 500) {
+            $this->Flash->error(__('Zbyt wiele leadów w jednej operacji (max 500).'));
+            $this->redirect(['action' => 'index']);
+            return $this->response;
+        }
+
+        $Leads = $this->fetchTable('Leads');
+        $leads = $Leads->find()
+            ->where(['Leads.company_id' => $companyId, 'Leads.id IN' => $ids])
+            ->all();
+
+        $count = 0;
+        $Acts = $this->fetchTable('LeadActivities');
+
+        switch ($action) {
+            case 'change_stage':
+                $newStage = (string)($data['stage'] ?? '');
+                if (!in_array($newStage, \App\Model\Table\LeadsTable::STAGES, true)) {
+                    $this->Flash->error(__('Nieprawidłowy etap.'));
+                    $this->redirect(['action' => 'index']);
+                    return $this->response;
+                }
+                foreach ($leads as $lead) {
+                    if ($lead->stage === $newStage) continue;
+                    $old = $lead->stage;
+                    $lead->stage = $newStage;
+                    if ($Leads->save($lead)) {
+                        $count++;
+                        $Acts->logSystem($companyId, $lead->id, 'stage_change',
+                            sprintf('%s → %s (bulk)', $old, $newStage),
+                            null, ['old' => $old, 'new' => $newStage, 'source' => 'bulk'], $userId);
+                    }
+                }
+                $this->Flash->success(sprintf(__('Zmieniono etap dla %d leadów.'), $count));
+                break;
+
+            case 'assign':
+                $newUserId = trim((string)($data['assigned_to_user_id'] ?? '')) ?: null;
+                foreach ($leads as $lead) {
+                    if ((string)$lead->assigned_to_user_id === (string)$newUserId) continue;
+                    $lead->assigned_to_user_id = $newUserId;
+                    if ($Leads->save($lead)) {
+                        $count++;
+                        $Acts->logSystem($companyId, $lead->id, 'assignment',
+                            $newUserId ? __('Przypisano do usera (bulk)') : __('Odpięto opiekuna (bulk)'),
+                            null, ['user_id' => $newUserId, 'source' => 'bulk'], $userId);
+                    }
+                }
+                $this->Flash->success(sprintf(__('Zmieniono opiekuna dla %d leadów.'), $count));
+                break;
+
+            case 'snooze':
+                $until = trim((string)($data['snooze_until'] ?? ''));
+                $date = $until !== '' ? new \Cake\I18n\Date($until) : null;
+                foreach ($leads as $lead) {
+                    $lead->snooze_until = $date;
+                    if ($Leads->save($lead)) $count++;
+                }
+                $this->Flash->success(sprintf(__('Ustawiono snooze dla %d leadów.'), $count));
+                break;
+
+            case 'delete':
+                foreach ($leads as $lead) {
+                    if ($Leads->delete($lead)) $count++;
+                }
+                $this->Flash->success(sprintf(__('Usunięto %d leadów.'), $count));
+                break;
+
+            default:
+                $this->Flash->error(__('Nieznana akcja bulk.'));
+        }
+
+        $this->redirect(['action' => 'index']);
+        return $this->response;
+    }
+
+    /**
+     * Dashboard KPI CRM per handlowiec + wykresy.
+     */
+    public function dashboard(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        if (!$companyId) {
+            throw new BadRequestException();
+        }
+
+        $days = (int)$this->request->getQuery('days', '90');
+        if (!in_array($days, [30, 90, 180, 365], true)) $days = 90;
+        $from = new \Cake\I18n\DateTime("-{$days} days");
+
+        $Leads = $this->fetchTable('Leads');
+        $Acts  = $this->fetchTable('LeadActivities');
+        $Users = $this->fetchTable('Users');
+
+        // Global KPI
+        $stats = $Leads->pipelineStats($companyId);
+        $totalActive = 0; $totalValue = 0.0;
+        foreach ($stats as $s => $v) {
+            if ($s !== 'lost') { $totalActive += $v['count']; $totalValue += $v['value_pln']; }
+        }
+        $wonCount = (int)($stats['order']['count'] ?? 0);
+        $lostCount = (int)($stats['lost']['count'] ?? 0);
+        $conversion = ($wonCount + $lostCount) > 0
+            ? round($wonCount / ($wonCount + $lostCount) * 100, 1) : 0;
+
+        // Per user - ranking handlowcow
+        $rows = $Leads->find()
+            ->select([
+                'user_id' => 'Leads.assigned_to_user_id',
+                'cnt'     => $Leads->find()->func()->count('*'),
+                'value'   => $Leads->find()->func()->sum('value_pln'),
+            ])
+            ->where(['Leads.company_id' => $companyId])
+            ->groupBy('Leads.assigned_to_user_id')
+            ->disableHydration()
+            ->toArray();
+        $byUser = [];
+        foreach ($rows as $r) {
+            if (empty($r['user_id'])) continue;
+            $byUser[$r['user_id']] = ['count' => (int)$r['cnt'], 'value' => (float)$r['value']];
+        }
+        // Won/lost per user
+        $wonLost = $Leads->find()
+            ->select([
+                'user_id' => 'Leads.assigned_to_user_id',
+                'stage'   => 'Leads.stage',
+                'cnt'     => $Leads->find()->func()->count('*'),
+            ])
+            ->where(['Leads.company_id' => $companyId, 'Leads.stage IN' => ['order', 'lost']])
+            ->groupBy(['Leads.assigned_to_user_id', 'Leads.stage'])
+            ->disableHydration()
+            ->toArray();
+        foreach ($wonLost as $r) {
+            $uid = (string)($r['user_id'] ?? '');
+            if (!$uid) continue;
+            if (!isset($byUser[$uid])) $byUser[$uid] = ['count' => 0, 'value' => 0];
+            $byUser[$uid][$r['stage']] = (int)$r['cnt'];
+        }
+
+        // Fetch user details + assemble ranking
+        $userIds = array_keys($byUser);
+        $usersData = [];
+        if (!empty($userIds)) {
+            $usersData = $Users->find()
+                ->select(['id', 'first_name', 'last_name', 'email'])
+                ->where(['Users.id IN' => $userIds])
+                ->indexBy('id')
+                ->toArray();
+        }
+        $ranking = [];
+        foreach ($byUser as $uid => $s) {
+            $u = $usersData[$uid] ?? null;
+            $name = $u ? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) : '?';
+            $won = (int)($s['order'] ?? 0);
+            $lost = (int)($s['lost'] ?? 0);
+            $conv = ($won + $lost) > 0 ? round($won / ($won + $lost) * 100, 1) : 0;
+            $ranking[] = [
+                'user_id' => $uid,
+                'name'    => $name ?: ($u->email ?? '—'),
+                'total'   => $s['count'],
+                'value'   => $s['value'],
+                'won'     => $won,
+                'lost'    => $lost,
+                'conversion' => $conv,
+            ];
+        }
+        usort($ranking, fn($a, $b) => $b['value'] <=> $a['value']);
+
+        // Activity heatmap (ostatnie X dni)
+        $activityRows = $Acts->find()
+            ->select([
+                'day' => 'DATE(LeadActivities.created)',
+                'cnt' => $Acts->find()->func()->count('*'),
+            ])
+            ->where([
+                'LeadActivities.company_id' => $companyId,
+                'LeadActivities.created >=' => $from,
+            ])
+            ->groupBy('day')
+            ->orderByAsc('day')
+            ->disableHydration()
+            ->toArray();
+        $activityByDay = [];
+        foreach ($activityRows as $r) {
+            $activityByDay[(string)$r['day']] = (int)$r['cnt'];
+        }
+
+        // Nowe leady w okresie (source breakdown)
+        $sourceRows = $Leads->find()
+            ->select([
+                'source' => 'Leads.source',
+                'cnt'    => $Leads->find()->func()->count('*'),
+            ])
+            ->where(['Leads.company_id' => $companyId, 'Leads.created >=' => $from])
+            ->groupBy('Leads.source')
+            ->disableHydration()
+            ->toArray();
+
+        $this->set(compact(
+            'stats', 'totalActive', 'totalValue', 'wonCount', 'lostCount', 'conversion',
+            'ranking', 'activityByDay', 'sourceRows', 'days'
+        ));
     }
 
     /**
