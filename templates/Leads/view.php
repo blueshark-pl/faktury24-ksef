@@ -725,37 +725,133 @@ foreach ($lead->lead_activities as $__a) {
                                     $fullBody = (string)($matchedMsg->body_text ?: $matchedMsg->body_html);
                                 }
                             ?>
-                                <div class="mt-2 p-2" style="background: #faf5ff; border-radius: 4px; border-left: 3px solid #7c3aed;">
-                                    <div class="d-flex gap-3 small">
-                                        <div><strong><?= __('Od:') ?></strong> <?= h($ep['from'] ?? '?') ?></div>
-                                        <?php if (!empty($matchedMsg?->received_at)): ?>
-                                            <div><strong><?= __('Otrzymano:') ?></strong> <?= h($matchedMsg->received_at->format('d.m.Y H:i')) ?></div>
+                                <?php
+                                // FALA 17: Gmail-style email viewer
+                                $fromEmail = (string)($ep['from'] ?? '');
+                                $fromName = $matchedMsg?->from_name ?: strstr($fromEmail, '@', true) ?: '?';
+                                $avatarInitial = strtoupper(mb_substr($fromName, 0, 1));
+                                $avatarColors = ['#7c3aed', '#059669', '#dc2626', '#ea580c', '#2563eb', '#b45309'];
+                                $avatarBg = $avatarColors[crc32($fromEmail) % count($avatarColors)];
+                                $bodyHtml = $matchedMsg?->body_html ? (string)$matchedMsg->body_html : '';
+                                $bodyText = $matchedMsg?->body_text ? (string)$matchedMsg->body_text : '';
+                                $emailId = 'mail-' . h($a->id);
+                                // Wykryj zacytowana czesc (forwarded) - odejmiemy z body zeby pokazac tylko rzeczywista wiadomosc
+                                $quoteMarkers = ['---------- Forwarded message', '--- Treść przekazanej', 'Weitergeleitete Nachricht',
+                                    'From:', 'Von:', 'Nadawca:', 'On ', 'W dniu ', 'Am ', 'Le '];
+                                ?>
+                                <div class="mt-2" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+                                    <!-- Gmail-style header -->
+                                    <div class="d-flex gap-2 p-3" style="border-bottom: 1px solid #f1f3f5;">
+                                        <div style="width: 40px; height: 40px; border-radius: 50%; background: <?= $avatarBg ?>; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0;">
+                                            <?= h($avatarInitial) ?>
+                                        </div>
+                                        <div class="flex-grow-1" style="min-width: 0;">
+                                            <div class="d-flex justify-content-between align-items-baseline">
+                                                <div>
+                                                    <span class="fw-semibold" style="font-size: 14px;"><?= h($fromName) ?></span>
+                                                    <span class="text-muted small">&lt;<?= h($fromEmail) ?>&gt;</span>
+                                                </div>
+                                                <div class="text-muted small" style="white-space: nowrap;">
+                                                    <?php if (!empty($matchedMsg?->received_at)): ?>
+                                                        <i class="ri-time-line"></i> <?= h($matchedMsg->received_at->format('d.m.Y H:i')) ?>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                            <div class="small text-muted mt-1">
+                                                <span class="text-muted"><?= __('do:') ?></span> <?= h($matchedMsg?->to_emails ?: '?') ?>
+                                                <?php if ($matchedMsg?->cc_emails): ?>
+                                                    · <span class="text-muted">cc:</span> <?= h($matchedMsg->cc_emails) ?>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Body: prawdziwy HTML w iframe sandbox (izolacja XSS/JS/cookies) -->
+                                    <div class="p-3">
+                                        <?php if ($bodyHtml !== ''):
+                                            // Sanitize inline via iframe sandbox (bez allow-scripts, bez allow-same-origin)
+                                            // srcdoc z ESC HTML (& -> &amp; " -> &quot;) zeby atrybut nie zerwal
+                                            $safeSrc = htmlspecialchars($bodyHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                                        ?>
+                                        <iframe id="<?= $emailId ?>-frame" sandbox="" srcdoc="<?= $safeSrc ?>"
+                                                style="width: 100%; border: none; min-height: 100px; background: #fff;"
+                                                onload="try{this.style.height=(this.contentWindow.document.body.scrollHeight+20)+'px';}catch(e){this.style.height='400px';}"></iframe>
+                                        <?php elseif ($bodyText !== ''): ?>
+                                            <?php
+                                            // Text-only: podziel na main + quote (forwarded content)
+                                            $mainBody = $bodyText;
+                                            $quotePart = '';
+                                            foreach ($quoteMarkers as $marker) {
+                                                $pos = strpos($bodyText, $marker);
+                                                if ($pos !== false && $pos > 20) {
+                                                    $mainBody = trim(substr($bodyText, 0, $pos));
+                                                    $quotePart = trim(substr($bodyText, $pos));
+                                                    break;
+                                                }
+                                            }
+                                            ?>
+                                            <div style="font-size: 13px; white-space: pre-wrap; word-wrap: break-word;"><?= nl2br(h($mainBody)) ?></div>
+                                            <?php if ($quotePart !== ''): ?>
+                                                <div class="mt-2">
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary" style="font-size: 11px; padding: 2px 8px;"
+                                                            onclick="var el=document.getElementById('<?= $emailId ?>-quote'); if(el){el.style.display=(el.style.display==='none'?'block':'none');}">
+                                                        <i class="ri-more-line"></i> <?= __('Pokaż/ukryj cytowaną wiadomość') ?>
+                                                    </button>
+                                                    <div id="<?= $emailId ?>-quote" style="display:none; margin-top: 8px; padding: 10px; border-left: 3px solid #cbd5e1; background: #f8fafc; color: #64748b; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;"><?= nl2br(h($quotePart)) ?></div>
+                                                </div>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <div class="text-muted small fst-italic">(<?= __('Brak treści') ?>)</div>
                                         <?php endif; ?>
                                     </div>
+
                                     <?php if (!empty($attList)): ?>
-                                        <div class="mt-1 small">
-                                            <strong><i class="ri-attachment-2"></i> <?= count($attList) ?> <?= __('załączników') ?>:</strong>
+                                    <!-- Attachments strip - Gmail style -->
+                                    <div class="p-3" style="border-top: 1px solid #f1f3f5; background: #fafbfc;">
+                                        <div class="small text-muted mb-2">
+                                            <i class="ri-attachment-2"></i> <strong><?= count($attList) ?> <?= __('załączników') ?></strong>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
                                             <?php foreach ($attList as $att): $mm = $att['mime'] ?? ''; ?>
-                                                <span class="badge bg-white text-dark border me-1" title="<?= h($mm) ?>">
-                                                    <?php if (str_starts_with($mm, 'image/')): ?><i class="ri-image-line text-primary"></i>
-                                                    <?php elseif ($mm === 'application/pdf'): ?><i class="ri-file-pdf-line text-danger"></i>
-                                                    <?php elseif (str_starts_with($mm, 'text/')): ?><i class="ri-file-text-line text-secondary"></i>
-                                                    <?php elseif (str_contains($mm, 'spreadsheet') || str_contains($mm, 'excel')): ?><i class="ri-file-excel-line text-success"></i>
-                                                    <?php elseif (str_contains($mm, 'word')): ?><i class="ri-file-word-line text-primary"></i>
-                                                    <?php else: ?><i class="ri-file-line"></i><?php endif; ?>
-                                                    <?= h($att['filename'] ?? '?') ?>
-                                                    <span class="text-muted">(<?= isset($att['size']) ? round($att['size'] / 1024, 1) : '?' ?>KB)</span>
-                                                </span>
+                                                <div class="d-flex align-items-center gap-2 p-2" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; min-width: 200px;" title="<?= h($mm) ?>">
+                                                    <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 20px;
+                                                        <?php if (str_starts_with($mm, 'image/')): ?>background: #dbeafe; color: #2563eb;
+                                                        <?php elseif ($mm === 'application/pdf'): ?>background: #fee2e2; color: #dc2626;
+                                                        <?php elseif (str_contains($mm, 'spreadsheet') || str_contains($mm, 'excel')): ?>background: #d1fae5; color: #059669;
+                                                        <?php elseif (str_contains($mm, 'word')): ?>background: #dbeafe; color: #2563eb;
+                                                        <?php else: ?>background: #e2e8f0; color: #64748b;<?php endif; ?>">
+                                                        <?php if (str_starts_with($mm, 'image/')): ?><i class="ri-image-line"></i>
+                                                        <?php elseif ($mm === 'application/pdf'): ?><i class="ri-file-pdf-line"></i>
+                                                        <?php elseif (str_contains($mm, 'spreadsheet') || str_contains($mm, 'excel')): ?><i class="ri-file-excel-line"></i>
+                                                        <?php elseif (str_contains($mm, 'word')): ?><i class="ri-file-word-line"></i>
+                                                        <?php else: ?><i class="ri-file-line"></i><?php endif; ?>
+                                                    </div>
+                                                    <div style="min-width: 0; flex: 1;">
+                                                        <div class="text-truncate fw-semibold" style="font-size: 12px; max-width: 180px;"><?= h($att['filename'] ?? '?') ?></div>
+                                                        <div class="text-muted" style="font-size: 10px;">
+                                                            <?= isset($att['size']) ? round($att['size'] / 1024, 1) : '?' ?>KB · <?= h($mm) ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             <?php endforeach; ?>
                                         </div>
+                                    </div>
                                     <?php endif; ?>
-                                    <?php if ($fullBody && strlen($fullBody) > 500): ?>
-                                        <div class="mt-2">
-                                            <button type="button" class="btn btn-sm btn-link p-0" onclick="var el=document.getElementById('body-<?= h($a->id) ?>'); if(el){el.style.display=(el.style.display==='none'?'block':'none');}">
-                                                <i class="ri-eye-line"></i> <?= __('Pokaż pełny body') ?> (<?= strlen($fullBody) ?> znaków)
-                                            </button>
-                                            <div id="body-<?= h($a->id) ?>" style="display:none; max-height: 400px; overflow-y: auto; background: #fff; padding: 8px; margin-top: 6px; border-radius: 4px; font-family: monospace; font-size: 11px; white-space: pre-wrap;"><?= h($fullBody) ?></div>
-                                        </div>
+
+                                    <!-- Action bar -->
+                                    <div class="p-2 d-flex gap-2" style="border-top: 1px solid #f1f3f5; background: #f8fafc;">
+                                        <button type="button" class="btn btn-sm btn-outline-primary btn-ai-draft" data-email-body="<?= h(mb_substr($bodyText, 0, 2000)) ?>" data-email-subject="<?= h($a->subject) ?>">
+                                            <i class="ri-reply-line"></i> <?= __('Odpowiedz z AI') ?>
+                                        </button>
+                                        <?php if ($bodyHtml !== '' && $bodyText !== ''): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                onclick="var el=document.getElementById('<?= $emailId ?>-plain'); if(el){el.style.display=(el.style.display==='none'?'block':'none');}">
+                                            <i class="ri-code-line"></i> <?= __('Zobacz plain text') ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($bodyHtml !== '' && $bodyText !== ''): ?>
+                                        <div id="<?= $emailId ?>-plain" style="display:none; padding: 12px; border-top: 1px solid #f1f3f5; background: #f8fafc; font-family: monospace; font-size: 11px; white-space: pre-wrap; max-height: 300px; overflow: auto;"><?= h($bodyText) ?></div>
                                     <?php endif; ?>
                                 </div>
                             <?php endif; ?>
@@ -1147,6 +1243,13 @@ foreach ($lead->lead_activities as $__a) {
         $btnDraft.addEventListener('click', function() {
             modal.show();
             generate();
+        });
+        // FALA 17: buttony w timeline (email_in card) tez triggeruja ten modal
+        document.querySelectorAll('.btn-ai-draft').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                modal.show();
+                generate();
+            });
         });
         $regen.addEventListener('click', generate);
         $copy.addEventListener('click', function() {
