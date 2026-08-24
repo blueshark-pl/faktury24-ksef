@@ -455,6 +455,12 @@ return [
             'controller' => 'CrmContracts',
             'action' => ['index', 'add', 'edit', 'delete', 'matchJson'],
         ],
+        // CRM Email accounts IMAP - tylko manager/admin (hasla sensytywne)
+        [
+            'role' => ['spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'CrmEmailAccounts',
+            'action' => ['index', 'add', 'edit', 'delete', 'test'],
+        ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [
             'role'       => '*',

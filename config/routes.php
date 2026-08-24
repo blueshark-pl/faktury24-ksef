@@ -178,6 +178,15 @@ return function (RouteBuilder $routes): void {
         $builder->post('/kontrakty/usun/{id}',              ['controller' => 'CrmContracts', 'action' => 'delete'])
             ->setPass(['id']);
         $builder->get('/kontrakty/match',                   ['controller' => 'CrmContracts', 'action' => 'matchJson']);
+        // FALA 6: Email IMAP sync
+        $builder->get('/crm/email-accounts',                ['controller' => 'CrmEmailAccounts', 'action' => 'index']);
+        $builder->connect('/crm/email-accounts/dodaj',      ['controller' => 'CrmEmailAccounts', 'action' => 'add']);
+        $builder->connect('/crm/email-accounts/edytuj/{id}',['controller' => 'CrmEmailAccounts', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/email-accounts/usun/{id}',     ['controller' => 'CrmEmailAccounts', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->post('/crm/email-accounts/test/{id}',     ['controller' => 'CrmEmailAccounts', 'action' => 'test'])
+            ->setPass(['id']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

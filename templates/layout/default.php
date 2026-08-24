@@ -1634,6 +1634,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmcontracts')]
                                     ) ?>
                                 </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-mail-settings-line me-1"></i>' . __('Skrzynki IMAP'),
+                                        ['plugin' => false, 'controller' => 'CrmEmailAccounts', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmemailaccounts')]
+                                    ) ?>
+                                </li>
                             </ul>
                             </li>
 
