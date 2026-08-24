@@ -884,14 +884,22 @@ class LeadsController extends AppController
                     $errors[] = __('Plik za duży (max 5 MB)');
                 } else {
                     $content = (string)$upload->getStream()->getContents();
+                    \Cake\Log\Log::info(sprintf('CRM importCsv upload: name=%s, size=%d, len=%d, first120=%s',
+                        (string)$upload->getClientFilename(),
+                        (int)$upload->getSize(),
+                        strlen($content),
+                        substr(str_replace(["\r", "\n"], ['<CR>', '<LF>'], $content), 0, 120)
+                    ));
                     $rows = $this->parseCsv($content);
                 }
+            } elseif ($upload && $upload->getError() !== UPLOAD_ERR_NO_FILE) {
+                $errors[] = sprintf(__('Błąd uploadu pliku (kod PHP: %d)'), $upload->getError());
             } elseif ($isConfirm && $csvText !== '') {
                 $rows = $this->parseCsv($csvText);
             }
 
             if (empty($errors) && empty($rows)) {
-                $errors[] = __('CSV jest pusty lub niepoprawny');
+                $errors[] = __('CSV jest pusty lub niepoprawny. Sprawdź: separator (;), kodowanie (UTF-8), pierwsza linia = nagłówek, dane od 2. linii.');
             }
 
             if (!empty($rows)) {
@@ -1111,7 +1119,9 @@ class LeadsController extends AppController
      */
     private function parseCsv(string $content): array
     {
-        $content = str_replace("\r\n", "\n", $content);
+        // Normalizacja newlinow: Windows (CRLF), Mac Classic (CR) i Unix (LF) -> LF.
+        // Kolejnosc wazna: najpierw CRLF, potem samo CR (zeby nie zamienic \r\n na \n\n).
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
         $content = ltrim($content, "\xEF\xBB\xBF");
         // Encoding detection best-effort - niektore prod PHP-e maja okrojony mbstring
         // gdzie CP1250/Windows-1250 rzucaja ValueError. Sprawdzamy UTF-8 przez regex
@@ -1124,8 +1134,14 @@ class LeadsController extends AppController
                 }
             }
         }
-        $lines = explode("\n", $content);
-        if (count($lines) < 2) return [];
+        // Split na linie + wywal puste (moze byc wiele trailing \n)
+        $lines = array_values(array_filter(explode("\n", $content), fn($l) => trim($l) !== ''));
+        if (count($lines) < 2) {
+            \Cake\Log\Log::warning('CRM parseCsv: mniej niz 2 linie po parsowaniu. Content len: '
+                . strlen($content) . ', lines: ' . count($lines)
+                . ', first 200 chars: ' . substr($content, 0, 200));
+            return [];
+        }
 
         $firstLine = $lines[0];
         $sep = ',';

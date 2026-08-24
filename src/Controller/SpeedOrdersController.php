@@ -1757,7 +1757,8 @@ class SpeedOrdersController extends AppController
      */
     private function parseCsv(string $content): array
     {
-        $content = str_replace("\r\n", "\n", $content);
+        // Normalizacja newlinow: CRLF/CR/LF -> LF (Mac Classic i Windows tez).
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
         $content = ltrim($content, "\xEF\xBB\xBF"); // strip BOM
         // Encoding detection best-effort - patrz LeadsController::parseCsv (same fix).
         if (preg_match('//u', $content) !== 1) {
@@ -1768,7 +1769,7 @@ class SpeedOrdersController extends AppController
                 }
             }
         }
-        $lines = explode("\n", $content);
+        $lines = array_values(array_filter(explode("\n", $content), fn($l) => trim($l) !== ''));
         if (count($lines) < 2) return [];
 
         // Detect separator
