@@ -101,16 +101,87 @@ class CrmAdminController extends AppController
             $out .= "\n";
 
             $bodyText = (string)$msg->body_text;
+            $attachmentsFromDb = json_decode((string)$msg->attachments_json, true) ?: [];
+
+            // FALA 16: LIVE re-fetch z Gmail API zeby dostac swiezy attachment_id
+            // Sprawdz account i typ auth
+            $liveAttachments = [];
+            $liveFetchDone = false;
+            try {
+                $EA = $this->fetchTable('CrmEmailAccounts');
+                $acc = $EA->get($msg->account_id);
+                if ($acc && $acc->auth_type === 'gmail_oauth' && !empty($msg->message_id)) {
+                    $out .= "\n=== LIVE FETCH z Gmail API (dla attachment_id) ===\n";
+                    $svc = new \App\Service\GmailApiService();
+
+                    // Refresh token jesli wygasl
+                    $accessToken = $EA->decryptPassword($acc->oauth_access_token);
+                    $needsRefresh = !$acc->oauth_expires_at || $acc->oauth_expires_at->isPast();
+                    if ($needsRefresh) {
+                        $refreshToken = $EA->decryptPassword($acc->oauth_refresh_token);
+                        $tokens = $svc->refreshAccessToken($refreshToken);
+                        $accessToken = $tokens['access_token'];
+                        $out .= "  Access token refreshed\n";
+                    }
+
+                    // Znajdz gmail_id z payload_json wiadomosci (jest tam z syncGmailOauth)
+                    // Fallback: search po message_id
+                    $gmailId = null;
+                    // Sprobuj wyciagnac gmail_id z activity payload
+                    try {
+                        $Acts = $this->fetchTable('LeadActivities');
+                        $act = $Acts->find()
+                            ->where([
+                                'lead_id' => $msg->lead_id,
+                                'activity_type' => 'email_in',
+                                'payload_json LIKE' => '%' . $msg->message_id . '%',
+                            ])->first();
+                        if ($act && $act->payload_json) {
+                            $p = json_decode($act->payload_json, true);
+                            $gmailId = $p['gmail_id'] ?? null;
+                        }
+                    } catch (\Throwable $e) {}
+
+                    if (!$gmailId) {
+                        $out .= "  ⚠️ Brak gmail_id w LeadActivities.payload_json - musisz Reset Gmail history + Poll zeby zapisac.\n";
+                    } else {
+                        $out .= "  Gmail ID: {$gmailId}\n";
+                        $freshMsg = $svc->getMessage($accessToken, $gmailId);
+                        if ($freshMsg) {
+                            $liveAttachments = $freshMsg['attachments'] ?? [];
+                            $liveFetchDone = true;
+                            $bodyText = $freshMsg['body_text']; // wez swiezy body tez
+                            $out .= "  ✓ Pobrano " . count($liveAttachments) . " zalacznikow z Gmail\n";
+                            foreach ($liveAttachments as $i => $att) {
+                                $out .= sprintf("    [%d] %s | %s | %dB | id=%s\n",
+                                    $i + 1,
+                                    $att['filename'] ?? '?',
+                                    $att['mime'] ?? '?',
+                                    (int)($att['size'] ?? 0),
+                                    substr($att['attachment_id'] ?? '', 0, 20) . '...'
+                                );
+                            }
+                        } else {
+                            $out .= "  ❌ Gmail getMessage() zwrocil null\n";
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                $out .= "  Live fetch error: " . $e->getMessage() . "\n";
+            }
+
+            $hasAttach = !empty($liveAttachments) || !empty($attachmentsFromDb);
 
             // KROK 1: filter body length
-            if (strlen($bodyText) < 100) {
-                $out .= "❌ STOP: body_text < 100 chars ({$msg->body_length}). tryExtractQuoteRequest zwraca 0.\n";
+            $out .= "\n";
+            if (strlen($bodyText) < 100 && !$hasAttach) {
+                $out .= "❌ STOP: body_text < 100 chars ({$msg->body_length}) i brak zalacznikow.\n";
                 $this->set('title', 'Analyze');
                 $this->set('output', $out);
                 $this->render('output');
                 return;
             }
-            $out .= "✓ STEP 1: body >= 100 chars\n";
+            $out .= "✓ STEP 1: body " . strlen($bodyText) . " chars" . ($hasAttach ? " + " . count($liveAttachments ?: $attachmentsFromDb) . " zalacznikow" : "") . "\n";
 
             // KROK 2: heurystyka sygnalow
             $signals = ['liefern', 'lieferung', 'transport', 'zlecenie', 'wycen', 'oferta',
@@ -118,16 +189,18 @@ class CrmAdminController extends AppController
                 'offerte', 'preis', 'stawka', 'palet', 'kg', 'tonn', 'ldm',
                 'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
                 'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
-                'trasa', 'zaladunek', 'rozladunek', 'przewoz'];
+                'trasa', 'zaladunek', 'rozladunek', 'przewoz',
+                'auftrag', 'sendung', 'fracht', 'lieferant', 'empfanger'];
             $bodyLc = mb_strtolower($bodyText);
             $matched = [];
             foreach ($signals as $s) {
                 if (strpos($bodyLc, $s) !== false) { $matched[] = $s; }
             }
-            $out .= "\n✓ STEP 2: heurystyka pre-GPT\n";
+            $requiredSignals = $hasAttach ? 1 : 2;
+            $out .= "\n✓ STEP 2: heurystyka pre-GPT (wymagane: {$requiredSignals}" . ($hasAttach ? " - luzniej bo sa zalaczniki" : "") . ")\n";
             $out .= "  Znalezione sygnaly (" . count($matched) . "): " . implode(', ', $matched) . "\n";
-            if (count($matched) < 2) {
-                $out .= "❌ STOP: <2 sygnaly => tryExtractQuoteRequest zwraca 0 (nie wysyla do GPT).\n";
+            if (count($matched) < $requiredSignals) {
+                $out .= "❌ STOP: <{$requiredSignals} sygnaly => tryExtractQuoteRequest zwraca 0.\n";
                 $out .= "\nSUGESTIA: Body nie zawiera slow kluczy transportowych.\n";
                 $out .= "Pierwsze 500 znakow body:\n---\n" . mb_substr($bodyText, 0, 500) . "\n---\n";
                 $this->set('title', 'Analyze');
@@ -147,9 +220,55 @@ class CrmAdminController extends AppController
             }
             $out .= "\n✓ STEP 3: Openai.apiKey OK (len " . strlen($apiKey) . ")\n";
 
+            // FALA 16: STEP 3b - fetch zalacznikow z Gmail + parse
+            $imageDataUris = [];
+            $attachmentTexts = [];
+            $attSource = $liveAttachments ?: $attachmentsFromDb;
+            if (!empty($attSource) && $liveFetchDone && isset($accessToken, $svc, $gmailId)) {
+                $reader = new \App\Service\Email\EmailAttachmentReaderService();
+                $out .= "\n=== STEP 3b: FETCH ZALACZNIKI (FALA 16) ===\n";
+                $processed = 0;
+                foreach ($attSource as $att) {
+                    if ($processed >= 3) { $out .= "  ... +more skipped (max 3)\n"; break; }
+                    $attId = $att['attachment_id'] ?? null;
+                    if (!$attId) {
+                        $out .= "  ⚠️ " . ($att['filename'] ?? '?') . ": brak attachment_id\n";
+                        continue;
+                    }
+                    if (($att['size'] ?? 0) > 8 * 1024 * 1024) {
+                        $out .= "  ❌ " . $att['filename'] . " za duzy: " . round($att['size'] / 1024 / 1024, 1) . "MB\n";
+                        continue;
+                    }
+                    $out .= "  Fetching " . $att['filename'] . " (" . round($att['size'] / 1024, 1) . "KB)...\n";
+                    $binary = $svc->getAttachment($accessToken, $gmailId, $attId, 8 * 1024 * 1024);
+                    if ($binary === null) {
+                        $out .= "    ❌ getAttachment zwrocilo null\n";
+                        continue;
+                    }
+                    $read = $reader->read($binary, $att['mime'], $att['filename']);
+                    if ($read['type'] === 'image') {
+                        $imageDataUris[] = $read['content'];
+                        $out .= "    ✓ IMAGE -> data URI (" . round(strlen($read['content']) / 1024, 1) . "KB base64) -> pojdzie do Vision\n";
+                        $processed++;
+                    } elseif ($read['type'] === 'text') {
+                        $t = trim($read['content'] ?? '');
+                        if ($t !== '') {
+                            $attachmentTexts[] = "[ZALACZNIK: " . $att['filename'] . "]\n" . mb_substr($t, 0, 12000);
+                            $out .= "    ✓ TEXT extracted (" . strlen($t) . " chars)\n";
+                            $processed++;
+                        } else {
+                            $out .= "    ⚠️ TEXT empty\n";
+                        }
+                    } else {
+                        $out .= "    ❌ " . ($read['error'] ?? 'unsupported') . "\n";
+                    }
+                }
+            }
+
             // KROK 4: wywolaj GPT (identyczny prompt jak w Command)
-            $out .= "\n✓ STEP 4: wywoluje GPT-4o-mini z body (max 8000 chars)...\n";
-            $svc = new \App\Service\Ai\OpenAiService();
+            $useVision = !empty($imageDataUris);
+            $out .= "\n✓ STEP 4: wywoluje GPT-4o-mini " . ($useVision ? "z " . count($imageDataUris) . " obr. (Vision multi-modal)" : "text only") . "...\n";
+            $svc2 = new \App\Service\Ai\OpenAiService();
             $system = "Jestes spedytorem analizujacym maile z zapytaniami o transport. "
                 . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
                 . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht). "
@@ -168,11 +287,22 @@ class CrmAdminController extends AppController
                 . "} ] } "
                 . "Puste pola = \"\" lub 0. is_quote_request=false jesli to zwykla korespondencja bez konkretnych zlecen.";
             $user = "Temat: {$msg->subject}\n\nNadawca: {$msg->from_name} <{$msg->from_email}>\n\nTresc:\n"
-                . mb_substr($bodyText, 0, 8000);
+                . mb_substr($bodyText, 0, 6000);
+            if (!empty($attachmentTexts)) {
+                $user .= "\n\n=== TRESC ZALACZNIKOW ===\n" . implode("\n\n", $attachmentTexts);
+            }
+            if ($useVision) {
+                $user .= "\n\n=== ZALACZNIKI OBRAZKOWE ===\nPrzeanalizuj tez zalaczone obrazy - moga zawierac tabele zlecen.";
+            }
 
             $t0 = microtime(true);
             try {
-                $extracted = $svc->chatJson($system, $user, 2500);
+                if ($useVision) {
+                    $firstImg = array_shift($imageDataUris);
+                    $extracted = $svc2->chatVisionJson($system, $user, $firstImg, 2500, $imageDataUris);
+                } else {
+                    $extracted = $svc2->chatJson($system, $user, 2500);
+                }
                 $dt = round((microtime(true) - $t0) * 1000);
                 $out .= "  GPT odpowiedzial w {$dt}ms\n";
             } catch (\Throwable $e) {
