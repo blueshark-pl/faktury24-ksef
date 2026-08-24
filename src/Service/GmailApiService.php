@@ -130,6 +130,9 @@ class GmailApiService
      */
     public function listMessages(string $accessToken, ?string $historyId = null, int $maxResults = 100): array
     {
+        // Gmail API limits: /messages max=500, /history max=500. Guard.
+        $maxResults = max(1, min(500, $maxResults));
+
         $client = new Client(['timeout' => 30]);
         $ids = [];
         $newHistoryId = null;
@@ -139,7 +142,7 @@ class GmailApiService
             $response = $client->get(self::API_BASE . '/history', [
                 'startHistoryId' => $historyId,
                 'historyTypes'   => 'messageAdded',
-                'maxResults'     => (string)$maxResults,
+                'maxResults'     => $maxResults, // INT, nie string!
             ], [
                 'headers' => ['Authorization' => 'Bearer ' . $accessToken, 'Accept' => 'application/json'],
             ]);
@@ -159,9 +162,9 @@ class GmailApiService
                 }
             }
         } else {
-            // Fresh: /messages?q=is:unread OR najnowsze
+            // Fresh: /messages?q=in:inbox newer_than:30d
             $response = $client->get(self::API_BASE . '/messages', [
-                'maxResults' => (string)$maxResults,
+                'maxResults' => $maxResults, // INT, nie string!
                 'q'          => 'in:inbox newer_than:30d',
             ], [
                 'headers' => ['Authorization' => 'Bearer ' . $accessToken, 'Accept' => 'application/json'],

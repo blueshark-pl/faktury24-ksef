@@ -215,6 +215,9 @@ return function (RouteBuilder $routes): void {
             ->setPass(['name']);
         $builder->post('/crm/admin/git-pull',               ['controller' => 'CrmAdmin', 'action' => 'gitPull']);
         $builder->get('/crm/admin/git-pull',                ['controller' => 'CrmAdmin', 'action' => 'gitPull']);
+        $builder->get('/crm/admin/file-check',              ['controller' => 'CrmAdmin', 'action' => 'fileCheck']);
+        $builder->post('/crm/admin/nuclear-clear',          ['controller' => 'CrmAdmin', 'action' => 'nuclearClear']);
+        $builder->get('/crm/admin/nuclear-clear',           ['controller' => 'CrmAdmin', 'action' => 'nuclearClear']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);

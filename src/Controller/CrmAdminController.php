@@ -35,6 +35,165 @@ class CrmAdminController extends AppController
     }
 
     /**
+     * GET /crm/admin/file-check - diagnostyka aktualnej wersji CrmEmailPollCommand.php
+     */
+    public function fileCheck(): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $out = "=== FILE CHECK: CrmEmailPollCommand.php ===\n\n";
+
+        $file = ROOT . DS . 'src' . DS . 'Command' . DS . 'CrmEmailPollCommand.php';
+        $out .= "Path: {$file}\n";
+        $out .= "Exists: " . (file_exists($file) ? 'TAK' : 'NIE') . "\n";
+        if (!file_exists($file)) {
+            $this->set('title', 'File check');
+            $this->set('output', $out);
+            $this->render('output');
+            return;
+        }
+        $content = file_get_contents($file);
+        $out .= "Size: " . number_format(strlen($content)) . " bytes\n";
+        $out .= "Modified: " . date('Y-m-d H:i:s', filemtime($file)) . "\n";
+        $out .= "SHA-256: " . hash('sha256', $content) . "\n\n";
+
+        // Sprawdz WERSJE - nowa ma warning zamiast error
+        $hasOldVersion = strpos($content, "PHP IMAP extension nie jest zainstalowane. Zainstaluj php-imap.") !== false;
+        $hasNewVersion = strpos($content, "PHP IMAP extension nie jest dostepne - konta auth_type=imap zostana pominiete") !== false;
+        $hasGmailBranch = strpos($content, 'syncGmailOauth') !== false;
+
+        $out .= "WERSJA:\n";
+        $out .= "  Stara (return error): " . ($hasOldVersion ? '<span style="color:red;">TAK</span>' : 'NIE') . "\n";
+        $out .= "  Nowa (warning+continue): " . ($hasNewVersion ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - STARY PLIK!</span>') . "\n";
+        $out .= "  syncGmailOauth (FALA 13): " . ($hasGmailBranch ? '<span style="color:green;">TAK</span>' : '<span style="color:red;">NIE - STARY PLIK!</span>') . "\n\n";
+
+        // Sekcja execute() - pokaz pierwsze 20 linii
+        preg_match('/public function execute\(.*?\).*?\{(.*?)^\s{4}\}/sm', $content, $m);
+        $execBody = $m[1] ?? '';
+        $execFirstLines = implode("\n", array_slice(explode("\n", $execBody), 0, 20));
+        $out .= "=== execute() first 20 lines ===\n";
+        $out .= $execFirstLines . "\n\n";
+
+        // OPcache status
+        $out .= "=== OPCACHE ===\n";
+        if (function_exists('opcache_get_status')) {
+            $status = @opcache_get_status(false);
+            if ($status) {
+                $out .= "Enabled: " . ($status['opcache_enabled'] ?? '?') . "\n";
+                $out .= "Cached scripts: " . ($status['opcache_statistics']['num_cached_scripts'] ?? '?') . "\n";
+                $scripts = @opcache_get_status(true)['scripts'] ?? [];
+                if (isset($scripts[$file])) {
+                    $s = $scripts[$file];
+                    $out .= "Ten plik W OPCACHE:\n";
+                    $out .= "  timestamp: " . date('Y-m-d H:i:s', $s['timestamp'] ?? 0) . "\n";
+                    $out .= "  hits: " . ($s['hits'] ?? '?') . "\n";
+                } else {
+                    $out .= "Ten plik NIE jest w opcache\n";
+                }
+            } else {
+                $out .= "opcache_get_status() zwrocil false (moze zablokowane)\n";
+            }
+        } else {
+            $out .= "opcache_get_status() niedostepne\n";
+        }
+
+        if ($hasOldVersion || !$hasNewVersion) {
+            $out .= "\n<strong style='color:red;'>PROBLEM: plik na serwerze to STARA wersja!</strong>\n\n";
+            $out .= "MOZLIWE PRZYCZYNY:\n";
+            $out .= " 1. Git pull nie zdeployowal tego pliku (mimo ze pokazuje 'juz najnowszy')\n";
+            $out .= " 2. Wgrales pliki recznie ale ten sie NIE zaladowal (moze conflict, moze skip)\n";
+            $out .= " 3. Filesystem cache trzyma stara wersje\n\n";
+            $out .= "FIX:\n";
+            $out .= " - Wgraj plik ROZNICE recznie przez FTP/SFTP na serwer\n";
+            $out .= " - Skopiuj z /src/Command/CrmEmailPollCommand.php z lokalu do serwera\n";
+            $out .= " - Potem: /crm/admin/nuclear-clear (usunie ALL cache + regeneruje autoload)\n";
+        }
+
+        $this->set('title', 'File check: CrmEmailPollCommand.php');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
+     * POST /crm/admin/nuclear-clear - brute force cache reset (opcache + autoload)
+     */
+    public function nuclearClear(): void
+    {
+        $this->request->allowMethod(['post', 'get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $out = "=== NUCLEAR CACHE CLEAR ===\n\n";
+
+        try {
+            // 1. Cake cache
+            \Cake\Cache\Cache::clearAll();
+            $out .= "✓ Cake Cache::clearAll()\n";
+
+            // 2. Wszystkie pliki w tmp/ rekursywnie
+            $tmpDir = ROOT . DS . 'tmp';
+            $count = 0;
+            if (is_dir($tmpDir)) {
+                $iter = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($tmpDir, \FilesystemIterator::SKIP_DOTS),
+                    \RecursiveIteratorIterator::CHILD_FIRST
+                );
+                foreach ($iter as $f) {
+                    $basename = $f->getBasename();
+                    if ($basename === 'empty' || $basename === '.htaccess') continue;
+                    if ($f->isFile()) {
+                        @unlink($f->getPathname());
+                        $count++;
+                    }
+                }
+            }
+            $out .= "✓ tmp/**: {$count} plikow usunieto (rekursywnie)\n";
+
+            // 3. OPcache
+            if (function_exists('opcache_reset')) {
+                opcache_reset();
+                $out .= "✓ opcache_reset()\n";
+            }
+            if (function_exists('opcache_invalidate')) {
+                $file = ROOT . DS . 'src' . DS . 'Command' . DS . 'CrmEmailPollCommand.php';
+                if (file_exists($file)) {
+                    opcache_invalidate($file, true);
+                    $out .= "✓ opcache_invalidate(CrmEmailPollCommand.php, force=true)\n";
+                }
+            }
+
+            // 4. Touch wszystkie .php w src/ zeby OPcache widzial jako 'zmienione'
+            $srcDir = ROOT . DS . 'src';
+            $touched = 0;
+            if (is_dir($srcDir)) {
+                $iter = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($srcDir, \FilesystemIterator::SKIP_DOTS)
+                );
+                foreach ($iter as $f) {
+                    if ($f->isFile() && str_ends_with($f->getFilename(), '.php')) {
+                        @touch($f->getPathname());
+                        $touched++;
+                    }
+                }
+            }
+            $out .= "✓ touch: {$touched} plikow .php w src/ (OPcache invalidation trigger)\n";
+
+            // 5. Composer autoload regeneracja - via shell
+            $composerCmd = "cd " . escapeshellarg(ROOT) . " && composer dump-autoload -o 2>&1";
+            $out .= "\n> {$composerCmd}\n";
+            $composerOut = @shell_exec($composerCmd);
+            $out .= ($composerOut ?: "(brak output - composer moze niedostepny)") . "\n";
+
+            $out .= "\n✓ ZAKONCZONO. Sprobuj teraz /crm/admin/file-check zeby zobaczyc czy plik jest zaktualizowany.\n";
+            $out .= "Jesli plik dalej stary - trzeba go recznie wgrac przez FTP.\n";
+        } catch (\Throwable $e) {
+            $out .= "❌ EXCEPTION: " . $e->getMessage() . "\n";
+        }
+
+        $this->set('title', 'Nuclear clear');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
      * POST /crm/admin/git-pull - odpali git pull na serwerze
      */
     public function gitPull(): void
