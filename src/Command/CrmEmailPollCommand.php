@@ -813,6 +813,8 @@ class CrmEmailPollCommand extends Command
                 . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
                 . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht, tabele w zalacznikach PDF/obrazkach/CSV). "
                 . "Analizuj TAKZE zalaczniki - moga zawierac cala tresc zamowienia. "
+                . "WAZNE: gdy tabela ma DUZO wierszy (30+), MUSISZ wyciagnac WSZYSTKIE - nie skracaj, nie samplu, nie pomijaj. "
+                . "Idz WIERSZ PO WIERSZU od pierwszego do ostatniego. Jesli wpis jest niepelny (brak np. wagi), tez go dodaj z brakami. "
                 . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
                 . "Zwroc STRICT JSON: {"
                 . "\"is_quote_request\": bool (czy email zawiera konkretne zapytanie o wycene/przewoz - nie same 'chetnie ofertuj' bez trasy), "
@@ -845,11 +847,12 @@ class CrmEmailPollCommand extends Command
             }
 
             // Vision gdy sa obrazy, chatJson gdy tylko tekst
+            // max_tokens 8000 - miejsce na ~30-40 shipmentow (duze tabele 25.08)
             if (!empty($imageDataUris)) {
                 $firstImg = array_shift($imageDataUris);
-                $extracted = $svc->chatVisionJson($system, $userText, $firstImg, 2500, $imageDataUris);
+                $extracted = $svc->chatVisionJson($system, $userText, $firstImg, 8000, $imageDataUris);
             } else {
-                $extracted = $svc->chatJson($system, $userText, 2500);
+                $extracted = $svc->chatJson($system, $userText, 8000);
             }
         } catch (\Throwable $e) {
             $io->out('    Quote GPT failed: ' . $e->getMessage());

@@ -299,9 +299,9 @@ class CrmAdminController extends AppController
             try {
                 if ($useVision) {
                     $firstImg = array_shift($imageDataUris);
-                    $extracted = $svc2->chatVisionJson($system, $user, $firstImg, 2500, $imageDataUris);
+                    $extracted = $svc2->chatVisionJson($system, $user, $firstImg, 8000, $imageDataUris);
                 } else {
-                    $extracted = $svc2->chatJson($system, $user, 2500);
+                    $extracted = $svc2->chatJson($system, $user, 8000);
                 }
                 $dt = round((microtime(true) - $t0) * 1000);
                 $out .= "  GPT odpowiedzial w {$dt}ms\n";
