@@ -250,6 +250,28 @@ $activityIcons = [
         </div>
         <?php endif; ?>
 
+        <!-- KRS Enrichment Panel -->
+        <?php if (strtoupper((string)$lead->country_code) === 'PL' || empty($lead->country_code)): ?>
+        <div class="card mb-3" style="border-left: 4px solid #7c3aed;">
+            <div class="card-body">
+                <div class="fw-bold mb-2 d-flex justify-content-between align-items-center">
+                    <span><i class="ri-building-4-line text-purple"></i> <?= __('KRS enrichment') ?></span>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-krs-fetch">
+                        <i class="ri-download-line"></i> <?= __('Pobierz z KRS') ?>
+                    </button>
+                </div>
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text">KRS</span>
+                    <input id="krs-input" class="form-control" placeholder="0000123456 (10 cyfr)" maxlength="10" autocomplete="off">
+                </div>
+                <div id="krs-hint" class="small text-muted">
+                    <?= __('Nie znasz KRS? Znajdz na') ?> <a href="https://wyszukiwarka-krs.ms.gov.pl/" target="_blank">wyszukiwarka-krs.ms.gov.pl</a>
+                </div>
+                <div id="krs-panel" style="display:none;"></div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <div class="card mb-3">
             <div class="card-body">
                 <div class="fw-bold mb-2"><?= __('Dane firmy') ?></div>
@@ -406,3 +428,146 @@ $activityIcons = [
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    var $btn = document.getElementById('btn-krs-fetch');
+    var $input = document.getElementById('krs-input');
+    var $panel = document.getElementById('krs-panel');
+    var $hint = document.getElementById('krs-hint');
+    if (!$btn || !$input || !$panel) return;
+    var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+    var leadId = '<?= h($lead->id) ?>';
+    var leadNip = '<?= h($lead->nip ?? '') ?>';
+    var URL_KRS = '<?= $this->Url->build(['action' => 'krsLookupJson']) ?>';
+
+    function tryCacheByNip() {
+        if (!leadNip) return;
+        var fd = new FormData();
+        fd.append('_csrfToken', csrf);
+        fd.append('nip', leadNip);
+        fd.append('lead_id', leadId);
+        fetch(URL_KRS, {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        }).then(function(r){return r.json();}).then(function(j) {
+            if (j.ok && j.data) {
+                $input.value = j.data.krs;
+                render(j.data);
+            } else if (j.hint) {
+                $hint.textContent = j.hint;
+            }
+        }).catch(function(){});
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"]/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+        });
+    }
+
+    function render(d) {
+        if (!d) { $panel.style.display = 'none'; return; }
+        var kapital = d.kapital_zakladowy > 0
+            ? new Intl.NumberFormat('pl-PL').format(d.kapital_zakladowy) + ' ' + (d.waluta_kapitalu || 'PLN')
+            : '<em class="text-muted">brak</em>';
+        var status = d.status_dzialajaca
+            ? '<span class="badge bg-success">Aktywna</span>'
+            : '<span class="badge bg-danger">Nieaktywna/Upadłość</span>';
+        var wspolnicyHtml = '';
+        if (d.wspolnicy && d.wspolnicy.length) {
+            wspolnicyHtml = '<div class="mt-2"><strong>Wspólnicy:</strong><ul class="small mb-0">';
+            d.wspolnicy.slice(0, 5).forEach(function(w) {
+                var name = ((w.imie || '') + ' ' + (w.nazwisko || '')).trim() || w.firma || '?';
+                wspolnicyHtml += '<li>' + escapeHtml(name);
+                if (w.udzialy_liczba) wspolnicyHtml += ' (' + w.udzialy_liczba + ' udziałów)';
+                wspolnicyHtml += '</li>';
+            });
+            wspolnicyHtml += '</ul></div>';
+        }
+        var zarzadHtml = '';
+        if (d.reprezentacja && d.reprezentacja.czlonkowie && d.reprezentacja.czlonkowie.length) {
+            zarzadHtml = '<div class="mt-2"><strong>Zarząd:</strong><ul class="small mb-0">';
+            d.reprezentacja.czlonkowie.slice(0, 5).forEach(function(z) {
+                zarzadHtml += '<li>' + escapeHtml(((z.imie || '') + ' ' + (z.nazwisko || '')).trim()) +
+                    (z.funkcja ? ' <span class="text-muted">— ' + escapeHtml(z.funkcja) + '</span>' : '') + '</li>';
+            });
+            zarzadHtml += '</ul></div>';
+        }
+        var pkdHtml = '';
+        if (d.pkd_glowne_kod) {
+            pkdHtml = '<div class="mt-2 small"><strong>PKD gł:</strong> ' +
+                escapeHtml(d.pkd_glowne_kod) + ' ' + escapeHtml(d.pkd_glowne_opis || '') + '</div>';
+        }
+        var applyBtn = '<button type="button" class="btn btn-sm btn-success mt-2" id="btn-krs-apply"><i class="ri-check-line"></i> Auto-fill do leada</button>';
+
+        $panel.innerHTML =
+            '<div class="alert alert-info small mt-2 mb-0">' +
+                '<div class="d-flex justify-content-between align-items-start">' +
+                    '<div><strong>' + escapeHtml(d.nazwa) + '</strong> ' + status + '<br>' +
+                        '<span class="text-muted">' + escapeHtml(d.forma_prawna) + '</span></div>' +
+                    '<div class="text-end small text-muted">KRS ' + escapeHtml(d.krs) + '<br>NIP ' + escapeHtml(d.nip) + '</div>' +
+                '</div>' +
+                '<div class="mt-2 small">' +
+                    '<i class="ri-map-pin-2-line"></i> ' +
+                    escapeHtml(d.kod_pocztowy + ' ' + d.miejscowosc) + ' · ' +
+                    escapeHtml(d.ulica + ' ' + d.nr_domu + (d.nr_lokalu ? '/' + d.nr_lokalu : '')) +
+                '</div>' +
+                '<div class="mt-1 small"><strong>Kapitał:</strong> ' + kapital +
+                    (d.data_wpisu ? ' · <strong>Wpis:</strong> ' + escapeHtml(d.data_wpisu) : '') + '</div>' +
+                pkdHtml + zarzadHtml + wspolnicyHtml + applyBtn +
+            '</div>';
+        $panel.style.display = 'block';
+
+        var $apply = document.getElementById('btn-krs-apply');
+        if ($apply) {
+            $apply.addEventListener('click', function() {
+                doFetch($input.value, true);
+            });
+        }
+    }
+
+    function doFetch(krs, apply) {
+        krs = (krs || '').replace(/[^0-9]/g, '');
+        if (krs.length !== 10) { alert('KRS musi mieć 10 cyfr'); return; }
+        $btn.disabled = true;
+        $btn.innerHTML = '<i class="ri-loader-4-line"></i> Pobieram…';
+        var fd = new FormData();
+        fd.append('_csrfToken', csrf);
+        fd.append('krs', krs);
+        fd.append('lead_id', leadId);
+        if (apply) fd.append('apply', '1');
+        fetch(URL_KRS, {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        }).then(function(r){return r.json();}).then(function(j) {
+            $btn.disabled = false;
+            $btn.innerHTML = '<i class="ri-download-line"></i> Pobierz z KRS';
+            if (j.ok && j.data) {
+                render(j.data);
+                if (apply && j.applied && j.applied.length) {
+                    setTimeout(function() {
+                        alert('Zaktualizowano pola: ' + j.applied.join(', ') + '. Odświeżam…');
+                        location.reload();
+                    }, 200);
+                }
+            } else {
+                $panel.innerHTML = '<div class="alert alert-warning small mt-2 mb-0"><i class="ri-error-warning-line"></i> ' +
+                    escapeHtml(j.hint || j.error || 'Nie znaleziono danych.') + '</div>';
+                $panel.style.display = 'block';
+            }
+        }).catch(function(e) {
+            $btn.disabled = false;
+            $btn.innerHTML = '<i class="ri-download-line"></i> Pobierz z KRS';
+            alert('Błąd sieciowy: ' + e.message);
+        });
+    }
+
+    $btn.addEventListener('click', function() { doFetch($input.value, false); });
+    $input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doFetch($input.value, false); }
+    });
+
+    tryCacheByNip();
+})();
+</script>

@@ -483,6 +483,8 @@ return [
                 'bulk', 'dashboard',
                 // FALA 7: duplicate merge UI
                 'duplicates', 'mergeReview', 'merge',
+                // FALA 8: KRS enrichment
+                'krsLookupJson',
             ],
         ],
         [

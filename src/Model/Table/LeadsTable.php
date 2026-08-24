@@ -275,6 +275,27 @@ class LeadsTable extends Table
             // Probability
             $score += (int)(($lead->probability ?? 0) / 5);
 
+            // KRS enrichment bonus: wielkosc firmy wg kapitalu (jesli w cache)
+            if (!empty($lead->nip)) {
+                try {
+                    $krs = $this->getConnection()->execute(
+                        'SELECT kapital_zakladowy FROM crm_krs_cache WHERE nip = :nip LIMIT 1',
+                        ['nip' => $lead->nip]
+                    )->fetch('assoc');
+                    if ($krs && !empty($krs['kapital_zakladowy'])) {
+                        $kap = (float)$krs['kapital_zakladowy'];
+                        // 100k+ = +10, 1M+ = +20, 10M+ = +30 (log scaling)
+                        if ($kap >= 10000000) {
+                            $score += 30; $reasons[] = 'Duza spolka (kapital 10M+)';
+                        } elseif ($kap >= 1000000) {
+                            $score += 20; $reasons[] = 'Sredniej wielkosci (kapital 1M+)';
+                        } elseif ($kap >= 100000) {
+                            $score += 10;
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            }
+
             $scored[] = [
                 'lead'    => $lead,
                 'score'   => $score,

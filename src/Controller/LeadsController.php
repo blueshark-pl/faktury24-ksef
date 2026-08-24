@@ -1082,6 +1082,105 @@ class LeadsController extends AppController
     }
 
     /**
+     * KRS lookup - pobiera pelny wypis MS-KRS API dla podanego numeru KRS lub NIP.
+     * Auto-apply do leada + zwraca panel z dodatkowymi info (kapital, PKD, wspolnicy).
+     *
+     * POST /crm/krs-lookup
+     * Body: { lead_id, krs? , nip?, apply? }  - apply=1 zapisuje pola do leada
+     */
+    public function krsLookupJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $leadId = trim((string)$this->request->getData('lead_id', ''));
+        $krs    = trim((string)$this->request->getData('krs', ''));
+        $nip    = trim((string)$this->request->getData('nip', ''));
+        $apply  = (bool)$this->request->getData('apply');
+
+        $krs = str_pad(preg_replace('/[^0-9]/', '', $krs), 10, '0', STR_PAD_LEFT);
+        $nip = preg_replace('/[^0-9]/', '', $nip);
+
+        $service = new \App\Service\KrsService();
+        $data = null;
+
+        if (strlen($krs) === 10 && $krs !== '0000000000') {
+            $data = $service->fetchByKrs($krs);
+        } elseif (strlen($nip) === 10) {
+            $data = $service->fetchByNipFromCache($nip);
+            if (!$data) {
+                return $this->jsonResp([
+                    'ok' => true,
+                    'data' => null,
+                    'hint' => __('Podaj KRS - MS API nie oferuje wyszukiwania po NIP. Znajdz KRS przez wyszukiwarka-krs.ms.gov.pl'),
+                ]);
+            }
+        } else {
+            return $this->jsonResp(['ok' => false, 'error' => __('Podaj KRS (10 cyfr) lub NIP.')], 400);
+        }
+
+        if (!$data) {
+            return $this->jsonResp(['ok' => true, 'data' => null,
+                'hint' => __('Nie znaleziono w rejestrze P (przedsiebiorcy) ani S (stowarzyszenia).')]);
+        }
+
+        // Opcjonalnie apply do leada
+        $applied = [];
+        if ($apply && $leadId !== '') {
+            try {
+                $Leads = $this->fetchTable('Leads');
+                $lead = $Leads->get($leadId);
+                if ((string)$lead->company_id === (string)$companyId) {
+                    $updates = [];
+                    if (empty($lead->company_name) && $data['nazwa']) {
+                        $lead->company_name = $data['nazwa']; $updates[] = 'company_name';
+                    }
+                    if (empty($lead->nip) && $data['nip']) {
+                        $lead->nip = $data['nip']; $updates[] = 'nip';
+                    }
+                    if (empty($lead->country_code)) {
+                        $lead->country_code = 'PL'; $updates[] = 'country_code';
+                    }
+                    if (empty($lead->postal_code) && $data['kod_pocztowy']) {
+                        $lead->postal_code = $data['kod_pocztowy']; $updates[] = 'postal_code';
+                    }
+                    if (empty($lead->city) && $data['miejscowosc']) {
+                        $lead->city = $data['miejscowosc']; $updates[] = 'city';
+                    }
+                    if (empty($lead->street) && ($data['ulica'] || $data['nr_domu'])) {
+                        $street = trim(($data['ulica'] ?? '') . ' ' . ($data['nr_domu'] ?? '') .
+                            ($data['nr_lokalu'] ? '/' . $data['nr_lokalu'] : ''));
+                        $lead->street = $street; $updates[] = 'street';
+                    }
+                    if (!empty($updates)) {
+                        $Leads->save($lead);
+                        // Log activity
+                        $this->fetchTable('LeadActivities')->logSystem(
+                            $companyId, $lead->id, 'note',
+                            __('Auto-fill z KRS'),
+                            sprintf(__('Uzupelnione pola z KRS %s: %s'), $data['krs'], implode(', ', $updates)),
+                            ['krs' => $data['krs'], 'fields' => $updates],
+                            $userId
+                        );
+                        $applied = $updates;
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Cake\Log\Log::warning('KRS auto-apply failed: ' . $e->getMessage());
+            }
+        }
+
+        return $this->jsonResp([
+            'ok'      => true,
+            'data'    => $data,
+            'applied' => $applied,
+        ]);
+    }
+
+    /**
      * Widok duplikatow: pary lead-ow do potencjalnej konsolidacji.
      * Wykrywa: same NIP / same email / same phone / podobna nazwa (Levenshtein).
      */

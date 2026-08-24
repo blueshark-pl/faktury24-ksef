@@ -191,6 +191,8 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);
         $builder->post('/crm/merge',                        ['controller' => 'Leads', 'action' => 'merge']);
+        // FALA 8: KRS enrichment (MS-KRS API)
+        $builder->post('/crm/krs-lookup',                   ['controller' => 'Leads', 'action' => 'krsLookupJson']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
