@@ -64,11 +64,22 @@ class CrmEmailAccountsTable extends Table
 
     private function getKey(): string
     {
-        $salt = (string)Configure::read('Security.salt');
-        if ($salt === '') {
-            throw new \RuntimeException('Security.salt musi byc ustawione dla szyfrowania hasel IMAP');
+        // FALA 13c: preferuj Crm.encryptionKey (nasz nowy klucz), fallback do Security.salt
+        // Umozliwia szyfrowanie na hostingach gdzie Security.salt jest nadpisywany
+        // na pusty string przez env('SECURITY_SALT', '') hosting-specific setup.
+        $key = (string)Configure::read('Crm.encryptionKey');
+        if ($key === '') {
+            $key = (string)Configure::read('Security.salt');
         }
-        return hash('sha256', $salt, true);
+        if ($key === '') {
+            throw new \RuntimeException(
+                'Brak klucza szyfrowania. Ustaw jeden z:'
+                . ' Configure::write(\'Crm.encryptionKey\', \'<64-hex-chars>\')'
+                . ' lub Configure::write(\'Security.salt\', \'<64-hex-chars>\').'
+                . ' Wygeneruj przez: php -r "echo bin2hex(random_bytes(32));"'
+            );
+        }
+        return hash('sha256', $key, true);
     }
 
     /**

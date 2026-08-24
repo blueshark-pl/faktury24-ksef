@@ -147,11 +147,13 @@ class CrmEmailAccountsController extends AppController
                 $appBaseUrl  = (string)\Cake\Core\Configure::read('App.fullBaseUrl');
                 $configUri   = (string)\Cake\Core\Configure::read('Google.redirectUri');
 
-                // Security.salt diagnostyka (FALA 13c)
+                // Klucz szyfrowania diagnostyka (FALA 13c)
                 $salt = (string)\Cake\Core\Configure::read('Security.salt');
+                $crmKey = (string)\Cake\Core\Configure::read('Crm.encryptionKey');
                 $saltLen = strlen($salt);
+                $crmKeyLen = strlen($crmKey);
                 $saltPreview = $saltLen > 0 ? (mb_substr($salt, 0, 8) . '...' . mb_substr($salt, -4)) : '(PUSTY!)';
-                $saltStatus = $saltLen >= 16 ? 'OK' : ($saltLen === 0 ? '<span style="color:red;">BRAK - MUSISZ USTAWIC</span>' : '<span style="color:orange;">ZA KROTKI</span>');
+                $crmPreview  = $crmKeyLen > 0 ? (mb_substr($crmKey, 0, 8) . '...' . mb_substr($crmKey, -4)) : '(PUSTY)';
                 $envSalt = getenv('SECURITY_SALT');
                 $envSaltStatus = $envSalt === false ? 'NIE USTAWIONE (OK)' :
                     ($envSalt === '' ? '<span style="color:red;">USTAWIONE NA PUSTY STRING (blad!)</span>' :
@@ -159,29 +161,30 @@ class CrmEmailAccountsController extends AppController
                 $appLocalPath = CONFIG . 'app_local.php';
                 $appLocalExists = file_exists($appLocalPath);
                 $appLocalReadable = $appLocalExists && is_readable($appLocalPath);
+                $effectiveKey = $crmKey ?: $salt;
+                $effectiveLen = strlen($effectiveKey);
+                $encStatus = $effectiveLen >= 16 ? '<strong style="color:green;">OK</strong>' : '<strong style="color:red;">BRAK KLUCZA</strong>';
 
                 $html = '<pre style="font-family:monospace; padding:20px; background:#f5f5f5; font-size:13px; line-height:1.6;">';
-                $html .= "<strong>=== Security.salt DIAGNOSTYKA ===</strong>\n";
-                $html .= "Configure::read(Security.salt) len: <strong>{$saltLen}</strong> - {$saltStatus}\n";
-                $html .= "Configure::read(Security.salt) preview: {$saltPreview}\n";
-                $html .= "getenv(SECURITY_SALT): {$envSaltStatus}\n";
-                $html .= "app_local.php path: " . htmlspecialchars($appLocalPath) . "\n";
-                $html .= "app_local.php exists: " . ($appLocalExists ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n";
-                $html .= "app_local.php readable: " . ($appLocalReadable ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n\n";
-                if ($saltLen === 0) {
-                    $html .= "<strong style='color:red;'>=== PROBLEM SECURITY.SALT ===</strong>\n";
-                    $html .= "Salt nie jest ustawiony!\n\n";
-                    $html .= "FIX: Zaloguj sie przez SSH na cyberfolks i edytuj\n";
-                    $html .= "<strong>" . htmlspecialchars($appLocalPath) . "</strong>\n";
-                    $html .= "Znajdz sekcje 'Security' i podmien na:\n\n";
-                    $html .= "    'Security' => [\n";
-                    $html .= "        'salt' => 'WYGENEROWANY_64_HEX_STRING',\n";
+                $html .= "<strong>=== KLUCZ SZYFROWANIA DIAGNOSTYKA ===</strong>\n";
+                $html .= "Status szyfrowania: {$encStatus}\n\n";
+                $html .= "Crm.encryptionKey len:   <strong>{$crmKeyLen}</strong> - preview: {$crmPreview}\n";
+                $html .= "Security.salt len:       <strong>{$saltLen}</strong> - preview: {$saltPreview}\n";
+                $html .= "getenv(SECURITY_SALT):   {$envSaltStatus}\n";
+                $html .= "app_local.php path:      " . htmlspecialchars($appLocalPath) . "\n";
+                $html .= "app_local.php exists:    " . ($appLocalExists ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n";
+                $html .= "app_local.php readable:  " . ($appLocalReadable ? 'TAK' : '<span style="color:red;">NIE</span>') . "\n\n";
+                if ($effectiveLen === 0) {
+                    $html .= "<strong style='color:red;'>=== BRAK KLUCZA - NAPRAW NATYCHMIAST ===</strong>\n\n";
+                    $html .= "Zaloguj sie na cyberfolks i edytuj plik:\n";
+                    $html .= "<strong>" . htmlspecialchars($appLocalPath) . "</strong>\n\n";
+                    $html .= "Znajdz koniec 'return [' na poczatku pliku i DOKLEJ WEWNATRZ:\n\n";
+                    $html .= "    'Crm' => [\n";
+                    $html .= "        'encryptionKey' => '4ceb86127366d33d2f2df5e1b50654ec701c639ecd70f23bcb3d5a4264ee8c3e',\n";
                     $html .= "    ],\n\n";
-                    $html .= "Wygeneruj przez:\n";
-                    $html .= "    php -r \"echo bin2hex(random_bytes(32));\"\n\n";
-                    $html .= "Uwaga: uzyj HARDCODED value (bez env()), zeby hosting env var\n";
-                    $html .= "nie zeplu (jesli SECURITY_SALT jest ustawione na pusty string).\n\n";
-                    $html .= "Potem wyczysc cache: rm -rf tmp/cache/*\n\n---\n\n";
+                    $html .= "<em>(To musi byc HARDCODED string, NIE env(). Wygeneruj wlasny przez:</em>\n";
+                    $html .= "<em>php -r \"echo bin2hex(random_bytes(32));\")</em>\n\n";
+                    $html .= "Potem: rm -rf tmp/cache/*\n\n---\n\n";
                 }
 
                 $html .= "<strong>=== Google OAuth DEBUG ===</strong>\n\n";
