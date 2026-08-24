@@ -627,43 +627,54 @@ class CrmEmailPollCommand extends Command
                     ['gmail_id' => $gmailId, 'from' => $fromEmail, 'account_id' => $acc->id],
                     null
                 );
+                $actCount++; // liczymy zaraz po logSystem - blad ponizej nie moze cofnac tego
 
-                // Dedup po message_id (jesli jest)
-                $existsQ = $Messages->find()->where(['account_id' => $acc->id]);
-                if (!empty($data['message_id'])) {
-                    $existsQ->where(['message_id' => $data['message_id']]);
-                } else {
-                    // Fallback dedup przez gmail_id w payload_json - trudniejsze
-                    // Uzywamy imap_uid = 0 dla gmail (nie ma UID) - dedup by message_id preferujemy
-                    $existsQ->where(['imap_uid' => 0, 'subject' => mb_substr($subject, 0, 500)]);
+                // Dedup po message_id (Gmail: naturalny unikat). Best-effort - blad nie przerywa flow.
+                try {
+                    $existsQ = $Messages->find()->where(['account_id' => $acc->id]);
+                    if (!empty($data['message_id'])) {
+                        $existsQ->where(['message_id' => $data['message_id']]);
+                    } else {
+                        // Bez message_id - dedup przez subject+received_at
+                        $existsQ->where([
+                            'received_at' => $data['received_at'],
+                            'subject' => mb_substr($subject, 0, 500),
+                        ]);
+                    }
+                    if ($existsQ->count() === 0) {
+                        $Messages->save($Messages->newEntity([
+                            'id'          => \Cake\Utility\Text::uuid(),
+                            'company_id'  => $acc->company_id,
+                            'account_id'  => $acc->id,
+                            'lead_id'     => $lead->id,
+                            'imap_uid'    => null, // Gmail nie ma UID - NULL (dopuszczalne wielokrotnie w unique)
+                            'message_id'  => $data['message_id'] ?: null,
+                            'in_reply_to' => $data['in_reply_to'] ?: null,
+                            'thread_id'   => $data['thread_id'] ?: null,
+                            'direction'   => 'in',
+                            'from_email'  => $fromEmail,
+                            'from_name'   => $data['from_name'] ?: null,
+                            'to_emails'   => $data['to_emails'],
+                            'cc_emails'   => $data['cc_emails'],
+                            'subject'     => mb_substr($subject, 0, 500),
+                            'received_at' => $data['received_at'],
+                            'body_text'   => mb_substr($data['body_text'], 0, 500000),
+                            'body_html'   => mb_substr($data['body_html'], 0, 500000),
+                            'body_length' => strlen($data['body_text']),
+                            'attachments_json' => json_encode($data['attachments'], JSON_UNESCAPED_UNICODE),
+                            'attachments_count' => count($data['attachments']),
+                        ]));
+                    }
+                } catch (\Throwable $ex) {
+                    $io->out('    Messages->save skipped: ' . $ex->getMessage());
                 }
-                if ($existsQ->count() === 0) {
-                    $Messages->save($Messages->newEntity([
-                        'id'          => \Cake\Utility\Text::uuid(),
-                        'company_id'  => $acc->company_id,
-                        'account_id'  => $acc->id,
-                        'lead_id'     => $lead->id,
-                        'imap_uid'    => 0, // Gmail nie ma IMAP UID - uzywamy 0 marker
-                        'message_id'  => $data['message_id'] ?: null,
-                        'in_reply_to' => $data['in_reply_to'] ?: null,
-                        'thread_id'   => $data['thread_id'] ?: null,
-                        'direction'   => 'in',
-                        'from_email'  => $fromEmail,
-                        'from_name'   => $data['from_name'] ?: null,
-                        'to_emails'   => $data['to_emails'],
-                        'cc_emails'   => $data['cc_emails'],
-                        'subject'     => mb_substr($subject, 0, 500),
-                        'received_at' => $data['received_at'],
-                        'body_text'   => mb_substr($data['body_text'], 0, 500000),
-                        'body_html'   => mb_substr($data['body_html'], 0, 500000),
-                        'body_length' => strlen($data['body_text']),
-                        'attachments_json' => json_encode($data['attachments'], JSON_UNESCAPED_UNICODE),
-                        'attachments_count' => count($data['attachments']),
-                    ]));
+
+                try {
+                    $lead->last_contacted_at = $data['received_at'];
+                    $Leads->save($lead);
+                } catch (\Throwable $ex) {
+                    $io->out('    Leads update skipped: ' . $ex->getMessage());
                 }
-                $lead->last_contacted_at = $data['received_at'];
-                $Leads->save($lead);
-                $actCount++;
 
                 // FALA 15: Wykryj czy email zawiera zapytanie o wycene zlecen (multi-shipment quote)
                 try {
