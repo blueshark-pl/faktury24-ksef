@@ -316,6 +316,39 @@ $activityIcons = [
                 <?php if ($lead->contact_channel): ?>
                     <div class="info-row"><div class="info-label"><?= __('Preferencja') ?></div><div><?= h($lead->contact_channel) ?></div></div>
                 <?php endif; ?>
+                <?php if (!empty($lead->linkedin_url) || !empty($lead->linkedin_company_url)): ?>
+                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                        <?php if (!empty($lead->linkedin_url)): ?>
+                            <a href="<?= h($lead->linkedin_url) ?>" target="_blank" rel="noopener"
+                               class="btn btn-sm text-white" style="background:#0a66c2;">
+                                <i class="ri-linkedin-box-fill"></i> <?= __('Profil osoby') ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if (!empty($lead->linkedin_company_url)): ?>
+                            <a href="<?= h($lead->linkedin_company_url) ?>" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-outline-primary" style="border-color:#0a66c2; color:#0a66c2;">
+                                <i class="ri-building-line"></i> <?= __('Profil firmy') ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if (empty($lead->linkedin_url) && !empty($lead->contact_person)): ?>
+                            <a href="https://www.google.com/search?q=<?= urlencode(($lead->contact_person ?? '') . ' ' . ($lead->company_name ?? '') . ' linkedin') ?>"
+                               target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="<?= __('Szukaj w Google') ?>">
+                                <i class="ri-search-line"></i> Znajdź LinkedIn
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php elseif ($lead->contact_person): ?>
+                    <div class="mt-2">
+                        <a href="https://www.google.com/search?q=<?= urlencode(($lead->contact_person ?? '') . ' ' . ($lead->company_name ?? '') . ' linkedin') ?>"
+                           target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+                            <i class="ri-linkedin-box-fill" style="color:#0a66c2;"></i>
+                            <?= __('Znajdź LinkedIn w Google') ?>
+                        </a>
+                        <div class="small text-muted mt-1">
+                            <?= __('Skopiuj URL i wklej w Edytuj lead → LinkedIn osoby') ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
         <?php endif; ?>

@@ -19,6 +19,8 @@ use Cake\ORM\Entity;
  * @property string|null $contact_role
  * @property string|null $phone
  * @property string|null $email
+ * @property string|null $linkedin_url
+ * @property string|null $linkedin_company_url
  * @property string|null $contact_channel
  * @property string|null $branch_type
  * @property string      $stage

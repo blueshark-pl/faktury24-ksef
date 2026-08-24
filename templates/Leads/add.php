@@ -125,6 +125,22 @@ $stages = [
                 </div>
                 <div class="row g-2 mt-1">
                     <div class="col-md-6">
+                        <label class="form-label small">
+                            <i class="ri-linkedin-box-fill" style="color:#0a66c2;"></i> LinkedIn osoby
+                        </label>
+                        <input name="linkedin_url" type="url" class="form-control" value="<?= h($lead->linkedin_url ?? '') ?>"
+                               placeholder="https://linkedin.com/in/jan-kowalski">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">
+                            <i class="ri-linkedin-box-fill" style="color:#0a66c2;"></i> LinkedIn firmy
+                        </label>
+                        <input name="linkedin_company_url" type="url" class="form-control" value="<?= h($lead->linkedin_company_url ?? '') ?>"
+                               placeholder="https://linkedin.com/company/silesian-flour">
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
                         <label class="form-label small"><?= __('Preferowany kanał') ?></label>
                         <select name="contact_channel" class="form-select">
                             <option value=""><?= __('— dowolny —') ?></option>
