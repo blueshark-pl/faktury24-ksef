@@ -838,6 +838,9 @@ class CrmEmailPollCommand extends Command
                 . "Analizuj TAKZE zalaczniki - moga zawierac cala tresc zamowienia. "
                 . "WAZNE: gdy tabela ma DUZO wierszy (30+), MUSISZ wyciagnac WSZYSTKIE - nie skracaj, nie samplu, nie pomijaj. "
                 . "Idz WIERSZ PO WIERSZU od pierwszego do ostatniego. Jesli wpis jest niepelny (brak np. wagi), tez go dodaj z brakami. "
+                . "Policz ile wierszy tabela ma i zwroc dokladnie tyle shipmentow. "
+                . "PRZYKLAD: jesli obrazek pokazuje tabele z 50 wierszami, `shipments_count` = 50 i `shipments[]` ma 50 elementow. "
+                . "Nie skracaj do 20 czy 30 z uwagi na dlugosc - masz duzy budzet tokenow. "
                 . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
                 . "Zwroc STRICT JSON: {"
                 . "\"is_quote_request\": bool (czy email zawiera konkretne zapytanie o wycene/przewoz - nie same 'chetnie ofertuj' bez trasy), "
@@ -870,12 +873,12 @@ class CrmEmailPollCommand extends Command
             }
 
             // Vision gdy sa obrazy, chatJson gdy tylko tekst
-            // max_tokens 8000 - miejsce na ~30-40 shipmentow (duze tabele 25.08)
+            // max_tokens 16000 (max output gpt-4o-mini) - miejsce na ~55-70 shipmentow dla duzych tabel
             if (!empty($imageDataUris)) {
                 $firstImg = array_shift($imageDataUris);
-                $extracted = $svc->chatVisionJson($system, $userText, $firstImg, 8000, $imageDataUris);
+                $extracted = $svc->chatVisionJson($system, $userText, $firstImg, 16000, $imageDataUris);
             } else {
-                $extracted = $svc->chatJson($system, $userText, 8000);
+                $extracted = $svc->chatJson($system, $userText, 16000);
             }
         } catch (\Throwable $e) {
             $io->out('    Quote GPT failed: ' . $e->getMessage());

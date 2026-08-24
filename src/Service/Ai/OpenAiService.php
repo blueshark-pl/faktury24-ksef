@@ -30,9 +30,9 @@ class OpenAiService
         }
         $this->apiKey = $key;
         $this->model = (string)(Configure::read('OpenAI.model') ?: 'gpt-4o-mini');
-        // 180s timeout - Vision z duzymi obrazami + max_tokens 8000 moze
-        // zajac 60-120s (screenshot Excela 50+ wierszy). 60s bylo za malo.
-        $this->client = $client ?? new Client(['timeout' => 180]);
+        // 300s timeout - Vision z duzymi obrazami + max_tokens 16000 moze
+        // zajac 120-240s (screenshot Excela 50-70 wierszy). Bezpieczny margines.
+        $this->client = $client ?? new Client(['timeout' => 300]);
     }
 
     /**
