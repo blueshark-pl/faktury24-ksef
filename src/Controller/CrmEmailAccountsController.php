@@ -117,12 +117,16 @@ class CrmEmailAccountsController extends AppController
      * FALA 13: OAuth 2.0 z Gmail - redirect do consent screen.
      * GET /crm/email-accounts/google-auth
      */
-    public function googleAuth(): void
+    public function googleAuth(): ?\Cake\Http\Response
     {
         $this->request->allowMethod(['get']);
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
         $userId    = $identity?->get('id');
+
+        // DEBUG mode - pokaz dokladnie co wysylamy zamiast redirect
+        // Wywolaj /crm/email-accounts/google-auth?debug=1 zeby zobaczyc.
+        $isDebug = $this->request->getQuery('debug') === '1';
 
         // Zapisujemy user context w sesji - callback bez auth mozliwosci
         $this->request->getSession()->write('GoogleOauth.pendingCompanyId', $companyId);
@@ -131,13 +135,46 @@ class CrmEmailAccountsController extends AppController
 
         try {
             $service = new \App\Service\GmailApiService();
-            $url = $service->getAuthorizationUrl(
-                (string)$this->request->getSession()->read('GoogleOauth.state')
-            );
+            $state = (string)$this->request->getSession()->read('GoogleOauth.state');
+            $url = $service->getAuthorizationUrl($state);
+
+            if ($isDebug) {
+                $this->autoRender = false;
+                $parsed = parse_url($url);
+                parse_str($parsed['query'] ?? '', $params);
+                $redirectUri = $params['redirect_uri'] ?? '(brak!)';
+                $clientId    = $params['client_id'] ?? '(brak!)';
+                $appBaseUrl  = (string)\Cake\Core\Configure::read('App.fullBaseUrl');
+                $configUri   = (string)\Cake\Core\Configure::read('Google.redirectUri');
+
+                $html = '<pre style="font-family:monospace; padding:20px; background:#f5f5f5; font-size:13px; line-height:1.6;">';
+                $html .= "<strong>Google OAuth DEBUG</strong>\n\n";
+                $html .= "1. App.fullBaseUrl (config):  <strong>" . htmlspecialchars($appBaseUrl) . "</strong>\n";
+                $html .= "2. Google.redirectUri (config): <strong>" . htmlspecialchars($configUri) . "</strong>\n";
+                $html .= "3. Google.clientId (config):   " . htmlspecialchars(mb_substr($clientId, 0, 20) . '...') . "\n\n";
+                $html .= "REDIRECT_URI wysylane do Google (skopiuj DOKLADNIE do Google Cloud Console):\n";
+                $html .= "<strong style='background:yellow; padding:3px;'>" . htmlspecialchars($redirectUri) . "</strong>\n\n";
+                $html .= "Actual URL request:\n" . htmlspecialchars($url) . "\n\n";
+                $html .= "---\n\n<strong>ROZWIAZANIE:</strong>\n";
+                $html .= "1. Zaloguj sie na https://console.cloud.google.com/apis/credentials\n";
+                $html .= "2. Otwórz OAuth 2.0 Client ID uzywany w tej aplikacji\n";
+                $html .= "3. W sekcji 'Authorized redirect URIs' dodaj DOKLADNIE:\n";
+                $html .= "   <strong>" . htmlspecialchars($redirectUri) . "</strong>\n";
+                $html .= "4. Kliknij Save i poczekaj 30 sekund\n";
+                $html .= "5. Wroc na /crm/email-accounts i kliknij 'Podlacz Gmail'\n";
+                $html .= "\n<em>Jesli redirect_uri wyzej wyglada zle (np. https vs http, missing subdomain, trailing slash)</em>\n";
+                $html .= "<em>-> sprawdz config/app_local.php sekcja 'Google' i popraw redirectUri</em>\n";
+                $html .= '</pre>';
+
+                return $this->response->withStringBody($html)->withType('text/html');
+            }
+
             $this->redirect($url);
+            return null;
         } catch (\Throwable $e) {
             $this->Flash->error(sprintf(__('Google OAuth: %s'), $e->getMessage()));
             $this->redirect(['action' => 'index']);
+            return null;
         }
     }
 
