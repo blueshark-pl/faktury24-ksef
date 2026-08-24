@@ -1865,6 +1865,18 @@ class SpeedOrdersController extends AppController
             if ($SpeedOrders->save($order)) {
                 $this->Flash->success(__('Zlecenie {0} zostało utworzone.', $order->symbol));
 
+                // CRM: jesli byl match kontraktu ramowego (hidden field z formularza)
+                // - increment used_volume + log info
+                $contractId = trim((string)$this->request->getData('_from_contract_id', ''));
+                if ($contractId !== '') {
+                    try {
+                        $this->fetchTable('CrmContracts')->incrementUsedVolume($contractId);
+                        $this->Flash->info(__('Kontrakt ramowy: wolumen zaktualizowany.'));
+                    } catch (\Throwable $e) {
+                        \Cake\Log\Log::warning('SpeedOrders::add contract volume inc failed: ' . $e->getMessage());
+                    }
+                }
+
                 // CRM: jesli zlecenie utworzone z leada -> zmien stage + zaloguj activity
                 $fromLeadId = (string)$this->request->getSession()->read('Crm.orderFromLeadId', '');
                 if ($fromLeadId !== '') {

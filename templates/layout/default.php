@@ -1627,6 +1627,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'add')]
                                     ) ?>
                                 </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-file-list-3-line me-1"></i>' . __('Kontrakty ramowe'),
+                                        ['plugin' => false, 'controller' => 'CrmContracts', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmcontracts')]
+                                    ) ?>
+                                </li>
                             </ul>
                             </li>
 

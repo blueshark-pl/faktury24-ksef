@@ -449,6 +449,12 @@ return [
             'controller' => 'ContractorCreditLimits',
             'action' => ['index', 'add', 'edit', 'delete'],
         ],
+        // CRM Kontrakty ramowe - CRUD + AJAX match
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'CrmContracts',
+            'action' => ['index', 'add', 'edit', 'delete', 'matchJson'],
+        ],
         // CRM Leady - dostep dla wszystkich rol operacyjnych/sprzedazowych
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],

@@ -970,6 +970,26 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
                 <span class="so-step-badge bg-primary text-white">5</span>
                 <i class="ri-money-euro-circle-line me-1 text-primary"></i> <?= __('Finanse') ?>
             </h6>
+
+            <!-- CRM: match kontraktu ramowego -->
+            <input type="hidden" name="_from_contract_id" id="cm-contract-id" value="">
+            <div id="contract-match-box" class="mb-3" style="display:none;">
+                <div class="alert alert-success py-2 mb-0 d-flex justify-content-between align-items-center">
+                    <div class="small">
+                        <i class="ri-file-list-3-line me-1"></i>
+                        <strong>Znaleziono kontrakt ramowy:</strong>
+                        <span id="cm-name" class="fw-semibold"></span> ·
+                        <span id="cm-route" class="text-muted"></span> ·
+                        <strong id="cm-price"></strong>
+                        <span id="cm-vol" class="badge bg-secondary ms-1" style="display:none;"></span>
+                        <span id="cm-expiry" class="badge bg-warning text-dark ms-1" style="display:none;"></span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-success" id="cm-apply">
+                        <i class="ri-check-line"></i> Zastosuj cenę
+                    </button>
+                </div>
+            </div>
+
             <div class="row g-3 align-items-end">
                 <div class="col-md-2">
                     <label class="form-label small text-muted"><?= __('Waluta') ?></label>
@@ -3696,3 +3716,97 @@ html { scroll-behavior: smooth; scroll-padding-top: 80px; }
 .spin { animation: so-spin 1s linear infinite; display: inline-block; }
 @keyframes so-spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 </style>
+
+<script>
+(function() {
+    // CRM: match kontraktu ramowego przy nowym zleceniu
+    var CSRF = document.querySelector('meta[name="csrfToken"]')?.getAttribute('content') || '';
+    var $nip       = document.getElementsByName('buyer_nip')[0];
+    var $fromCity  = document.getElementsByName('load_city')[0];
+    var $toCity    = document.getElementsByName('unload_city')[0];
+    var $fromCountry = document.getElementsByName('load_country')[0];
+    var $toCountry   = document.getElementsByName('unload_country')[0];
+    var $box   = document.getElementById('contract-match-box');
+    var $name  = document.getElementById('cm-name');
+    var $route = document.getElementById('cm-route');
+    var $price = document.getElementById('cm-price');
+    var $vol   = document.getElementById('cm-vol');
+    var $expiry = document.getElementById('cm-expiry');
+    var $apply = document.getElementById('cm-apply');
+    var $netto = document.getElementById('fin-netto');
+    var $currency = document.getElementById('fin-currency');
+    var $vatRate = document.getElementById('fin-vat-rate');
+    var $termDays = document.getElementsByName('payment_terms')[0];
+
+    if (!$nip || !$box) return;
+
+    var lastMatch = null;
+    var debounceT = null;
+
+    function checkContract() {
+        var nip = ($nip.value || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (nip.length < 10) { $box.style.display = 'none'; return; }
+        var q = new URLSearchParams({
+            nip: nip,
+            from_country: ($fromCountry?.value || '').toUpperCase(),
+            from_city: $fromCity?.value || '',
+            to_country: ($toCountry?.value || '').toUpperCase(),
+            to_city: $toCity?.value || '',
+        });
+        fetch('<?= $this->Url->build(['controller' => 'CrmContracts', 'action' => 'matchJson']) ?>?' + q.toString(), {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (!j.ok || !j.match) { $box.style.display = 'none'; lastMatch = null; return; }
+            lastMatch = j.match;
+            $name.textContent  = j.match.name;
+            $route.textContent = j.match.route_label;
+            $price.textContent = j.match.price_netto.toFixed(2) + ' ' + j.match.currency;
+            if (j.match.volume_used_pct !== null) {
+                $vol.textContent = 'Wolumen: ' + j.match.volume_used_pct + '%';
+                $vol.style.display = 'inline';
+            } else { $vol.style.display = 'none'; }
+            if (j.match.valid_to) {
+                var days = Math.floor((new Date(j.match.valid_to) - new Date()) / 86400000);
+                if (days <= 30 && days >= 0) {
+                    $expiry.textContent = 'Wygasa za ' + days + ' dni';
+                    $expiry.style.display = 'inline';
+                } else { $expiry.style.display = 'none'; }
+            } else { $expiry.style.display = 'none'; }
+            $box.style.display = 'block';
+        })
+        .catch(function() {});
+    }
+
+    function scheduleCheck() {
+        clearTimeout(debounceT);
+        debounceT = setTimeout(checkContract, 400);
+    }
+
+    [$nip, $fromCity, $toCity, $fromCountry, $toCountry].forEach(function(el) {
+        if (el) el.addEventListener('blur', scheduleCheck);
+    });
+
+    if ($apply) {
+        $apply.addEventListener('click', function() {
+            if (!lastMatch) return;
+            if ($netto) $netto.value = lastMatch.price_netto.toFixed(2);
+            if ($currency && lastMatch.currency) $currency.value = lastMatch.currency;
+            if ($vatRate && lastMatch.vat_rate !== null) $vatRate.value = String(lastMatch.vat_rate);
+            if ($termDays && lastMatch.payment_days) $termDays.value = String(lastMatch.payment_days);
+            // Trigger input event zeby przeliczyc brutto/VAT
+            if ($netto) $netto.dispatchEvent(new Event('input', { bubbles: true }));
+            // Zapisz contract_id w hidden field zeby backend zwiekszyl used_volume po save
+            var $cmId = document.getElementById('cm-contract-id');
+            if ($cmId) $cmId.value = lastMatch.id;
+            $apply.disabled = true;
+            $apply.innerHTML = '<i class="ri-check-double-line"></i> Zastosowano';
+        });
+    }
+
+    // Uruchom raz przy załadowaniu (jeśli NIP jest już wypełniony np. z prefill)
+    setTimeout(checkContract, 500);
+})();
+</script>

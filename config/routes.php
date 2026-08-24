@@ -165,6 +165,14 @@ return function (RouteBuilder $routes): void {
         // FALA 3: bulk actions + dashboard
         $builder->post('/crm/bulk',                         ['controller' => 'Leads', 'action' => 'bulk']);
         $builder->get('/crm/dashboard',                     ['controller' => 'Leads', 'action' => 'dashboard']);
+        // FALA 5a: kontrakty ramowe
+        $builder->get('/kontrakty',                         ['controller' => 'CrmContracts', 'action' => 'index']);
+        $builder->connect('/kontrakty/dodaj',               ['controller' => 'CrmContracts', 'action' => 'add']);
+        $builder->connect('/kontrakty/edytuj/{id}',         ['controller' => 'CrmContracts', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/kontrakty/usun/{id}',              ['controller' => 'CrmContracts', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->get('/kontrakty/match',                   ['controller' => 'CrmContracts', 'action' => 'matchJson']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])
