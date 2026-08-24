@@ -120,6 +120,9 @@ $this->assign('title', __('CRM Admin Tools'));
                     </div>
                 </form>
                 <div class="d-flex gap-2 flex-wrap">
+                    <a href="<?= $this->Url->build(['action' => 'analyzeLastEmail']) ?>" class="btn btn-primary" target="_blank">
+                        <i class="ri-radar-line"></i> Analizuj ostatni email (FALA 15 debug)
+                    </a>
                     <?= $this->Form->postLink(
                         '<i class="ri-restart-line"></i> Reset Gmail history_id (fresh sync ostatnie 30 dni)',
                         ['action' => 'resetGmailHistory'],
@@ -129,6 +132,7 @@ $this->assign('title', __('CRM Admin Tools'));
                     ) ?>
                 </div>
                 <div class="small text-muted mt-2">
+                    <strong>Analizuj ostatni email</strong> - bierze OSTATNI email z <code>crm_email_messages</code> (mozesz filtrowac <code>?lead_id=...</code>) i pokazuje krok-po-kroku dlaczego FALA 15 nie utworzyla quote_request: body length / sygnaly heurystyki / GPT response z listą shipments.<br>
                     <strong>Znajdz lead</strong> - sprawdza czy lead z podanym emailem istnieje (exact + LIKE) + porownuje bytes (wykrywa spacje/wielkosc liter). Pokazuje tez ostatnie maile w <code>crm_email_messages</code>.<br>
                     <strong>Reset history_id</strong> - gdy Gmail juz przetworzyl maila w poprzednim polling'u i teraz go nie widzisz. Wymus fresh sync.
                 </div>

@@ -35,6 +35,168 @@ class CrmAdminController extends AppController
     }
 
     /**
+     * GET /crm/admin/analyze-last-email?lead_id=X (opt)
+     * Wez ostatni email z crm_email_messages i pokaz krok-po-kroku dlaczego
+     * FALA 15 tryExtractQuoteRequest nie wykryl zapytania o wycene.
+     */
+    public function analyzeLastEmail(): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $leadIdFilter = trim((string)$this->request->getQuery('lead_id', ''));
+        $msgIdFilter = trim((string)$this->request->getQuery('message_id', ''));
+
+        $out = "=== ANALYZE LAST EMAIL (FALA 15 debug) ===\n\n";
+        try {
+            $Msg = $this->fetchTable('CrmEmailMessages');
+            $q = $Msg->find()->where(['company_id' => $companyId, 'direction' => 'in'])
+                ->orderByDesc('received_at')->limit(1);
+            if ($leadIdFilter !== '') $q->where(['lead_id' => $leadIdFilter]);
+            if ($msgIdFilter !== '') $q->where(['message_id' => $msgIdFilter]);
+            $msg = $q->first();
+            if (!$msg) {
+                $out .= "Brak wiadomosci w bazie dla tej firmy.\n";
+                $out .= "Filter: lead_id={$leadIdFilter}, message_id={$msgIdFilter}\n";
+                $this->set('title', 'Analyze Last Email');
+                $this->set('output', $out);
+                $this->render('output');
+                return;
+            }
+            $out .= "Message: {$msg->id}\n";
+            $out .= "Received: " . ($msg->received_at ? $msg->received_at->format('Y-m-d H:i:s') : '?') . "\n";
+            $out .= "From: {$msg->from_email} ({$msg->from_name})\n";
+            $out .= "Subject: {$msg->subject}\n";
+            $out .= "Lead: {$msg->lead_id}\n";
+            $out .= "Body length: " . strlen((string)$msg->body_text) . " chars\n";
+            $out .= "Attachments: " . (int)$msg->attachments_count . "\n\n";
+
+            $bodyText = (string)$msg->body_text;
+
+            // KROK 1: filter body length
+            if (strlen($bodyText) < 100) {
+                $out .= "❌ STOP: body_text < 100 chars ({$msg->body_length}). tryExtractQuoteRequest zwraca 0.\n";
+                $this->set('title', 'Analyze');
+                $this->set('output', $out);
+                $this->render('output');
+                return;
+            }
+            $out .= "✓ STEP 1: body >= 100 chars\n";
+
+            // KROK 2: heurystyka sygnalow
+            $signals = ['liefern', 'lieferung', 'transport', 'zlecenie', 'wycen', 'oferta',
+                'quote', 'shipment', 'ladunek', 'zaladu', 'rozladu', 'anbieten',
+                'offerte', 'preis', 'stawka', 'palet', 'kg', 'tonn', 'ldm',
+                'kundenbestellnummer', 'transportauftrag', 'frachtbrief',
+                'from:', 'to:', 'load:', 'unload:', 'pickup', 'delivery',
+                'trasa', 'zaladunek', 'rozladunek', 'przewoz'];
+            $bodyLc = mb_strtolower($bodyText);
+            $matched = [];
+            foreach ($signals as $s) {
+                if (strpos($bodyLc, $s) !== false) { $matched[] = $s; }
+            }
+            $out .= "\n✓ STEP 2: heurystyka pre-GPT\n";
+            $out .= "  Znalezione sygnaly (" . count($matched) . "): " . implode(', ', $matched) . "\n";
+            if (count($matched) < 2) {
+                $out .= "❌ STOP: <2 sygnaly => tryExtractQuoteRequest zwraca 0 (nie wysyla do GPT).\n";
+                $out .= "\nSUGESTIA: Body nie zawiera slow kluczy transportowych.\n";
+                $out .= "Pierwsze 500 znakow body:\n---\n" . mb_substr($bodyText, 0, 500) . "\n---\n";
+                $this->set('title', 'Analyze');
+                $this->set('output', $out);
+                $this->render('output');
+                return;
+            }
+
+            // KROK 3: OpenAI dostepne?
+            $apiKey = \Cake\Core\Configure::read('Openai.apiKey');
+            if (!$apiKey) {
+                $out .= "\n❌ STOP: brak Configure Openai.apiKey. Dodaj do app_local.php.\n";
+                $this->set('title', 'Analyze');
+                $this->set('output', $out);
+                $this->render('output');
+                return;
+            }
+            $out .= "\n✓ STEP 3: Openai.apiKey OK (len " . strlen($apiKey) . ")\n";
+
+            // KROK 4: wywolaj GPT (identyczny prompt jak w Command)
+            $out .= "\n✓ STEP 4: wywoluje GPT-4o-mini z body (max 8000 chars)...\n";
+            $svc = new \App\Service\Ai\OpenAiService();
+            $system = "Jestes spedytorem analizujacym maile z zapytaniami o transport. "
+                . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
+                . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht). "
+                . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
+                . "Zwroc STRICT JSON: {"
+                . "\"is_quote_request\": bool, "
+                . "\"customer_name\": string, \"customer_contact\": string, "
+                . "\"shipments_count\": int, "
+                . "\"shipments\": [ {"
+                . "\"customer_order_ref\": string, "
+                . "\"from_country\": string, \"from_postal\": string, \"from_city\": string, \"from_company\": string, "
+                . "\"to_country\": string, \"to_postal\": string, \"to_city\": string, \"to_company\": string, "
+                . "\"load_date\": string, \"load_time\": string, \"unload_date\": string, \"unload_time\": string, "
+                . "\"weight_kg\": int, \"pallets\": int, \"pallet_type\": string, "
+                . "\"cargo_type\": string, \"vehicle_type\": string, \"notes\": string"
+                . "} ] } "
+                . "Puste pola = \"\" lub 0. is_quote_request=false jesli to zwykla korespondencja bez konkretnych zlecen.";
+            $user = "Temat: {$msg->subject}\n\nNadawca: {$msg->from_name} <{$msg->from_email}>\n\nTresc:\n"
+                . mb_substr($bodyText, 0, 8000);
+
+            $t0 = microtime(true);
+            try {
+                $extracted = $svc->chatJson($system, $user, 2500);
+                $dt = round((microtime(true) - $t0) * 1000);
+                $out .= "  GPT odpowiedzial w {$dt}ms\n";
+            } catch (\Throwable $e) {
+                $out .= "❌ STOP: GPT rzucil wyjatek: " . $e->getMessage() . "\n";
+                $this->set('title', 'Analyze');
+                $this->set('output', $out);
+                $this->render('output');
+                return;
+            }
+
+            $out .= "\n=== GPT RESPONSE ===\n";
+            $out .= "  is_quote_request: " . var_export($extracted['is_quote_request'] ?? null, true) . "\n";
+            $out .= "  customer_name: " . ($extracted['customer_name'] ?? '(brak)') . "\n";
+            $out .= "  customer_contact: " . ($extracted['customer_contact'] ?? '(brak)') . "\n";
+            $out .= "  shipments_count: " . (int)($extracted['shipments_count'] ?? 0) . "\n";
+            $ships = $extracted['shipments'] ?? [];
+            $out .= "  shipments[] length: " . (is_array($ships) ? count($ships) : 'nie-array') . "\n\n";
+
+            if (empty($extracted['is_quote_request'])) {
+                $out .= "❌ STOP: GPT: is_quote_request=false. Analiza:\n";
+                $out .= "  GPT ocenil ze to zwykla korespondencja, nie zapytanie o transport.\n";
+                $out .= "  Aby zmusic ekstrakcje - popraw prompt/heurystyke lub oznacz manualnie.\n\n";
+            } elseif (empty($ships)) {
+                $out .= "❌ STOP: is_quote_request=true ALE shipments[] puste. Prompt GPT nie wyekstraktowal danych.\n\n";
+            } else {
+                $out .= "✓ STEP 5: {$extracted['shipments_count']} shipments znaleziono!\n\n";
+                foreach ($ships as $i => $s) {
+                    if ($i >= 5) { $out .= "  ... +" . (count($ships) - 5) . " wiecej\n"; break; }
+                    $out .= sprintf("  %d. %s %s -> %s %s | %skg %spal | %s\n",
+                        $i + 1,
+                        $s['from_city'] ?? '', $s['from_country'] ?? '',
+                        $s['to_city'] ?? '',   $s['to_country'] ?? '',
+                        $s['weight_kg'] ?? '?', $s['pallets'] ?? '?',
+                        $s['customer_order_ref'] ?? '');
+                }
+                $out .= "\nDLACZEGO nie ma tego w timeline leada? Sprawdz w /crm/view/{$msg->lead_id} czy jest activity quote_request.\n";
+                $out .= "Jesli nie ma - Command sie wywalil PRZED tryExtractQuoteRequest lub cache stary.\n";
+                $out .= "\nRAW JSON:\n" . json_encode($extracted, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n";
+            }
+
+            $out .= "\n=== KOPIA BODY (500 chars) ===\n";
+            $out .= mb_substr($bodyText, 0, 500) . "\n";
+
+        } catch (\Throwable $e) {
+            $out .= "\nEXCEPTION: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
+        }
+        $this->set('title', 'Analyze Last Email');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
      * GET /crm/admin/find-lead?email=X - znajdz lead po emailu i pokaz kompletne info
      */
     public function findLead(): void

@@ -481,7 +481,7 @@ return [
             'controller' => 'CrmAdmin',
             'action' => ['tools', 'migrate', 'migrationStatus', 'clearCache',
                          'pollEmails', 'runCron', 'gitPull', 'fileCheck', 'nuclearClear',
-                         'findLead', 'resetGmailHistory'],
+                         'findLead', 'resetGmailHistory', 'analyzeLastEmail'],
         ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [

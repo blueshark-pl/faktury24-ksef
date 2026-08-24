@@ -224,6 +224,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/admin/find-lead',               ['controller' => 'CrmAdmin', 'action' => 'findLead']);
         $builder->post('/crm/admin/reset-gmail-history',    ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
         $builder->get('/crm/admin/reset-gmail-history',     ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
+        $builder->get('/crm/admin/analyze-last-email',      ['controller' => 'CrmAdmin', 'action' => 'analyzeLastEmail']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);
