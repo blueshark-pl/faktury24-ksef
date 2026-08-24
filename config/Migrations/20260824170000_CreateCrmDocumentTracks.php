@@ -57,8 +57,9 @@ class CreateCrmDocumentTracks extends BaseMigration
                 'comment' => 'Sumaryczny czas przegladania (heartbeat co 10s przy otwartym PDF)'])
 
             // Log otwarcac (JSON array)
-            ->addColumn('opens_json', 'mediumtext', ['null' => true,
-                'comment' => 'JSON [{ip, ua, city (geo), opened_at, duration_s}] max 200 wpisow'])
+            ->addColumn('opens_json', 'text', ['null' => true,
+                'limit' => \Phinx\Db\Adapter\MysqlAdapter::TEXT_MEDIUM,
+                'comment' => 'JSON [{ip, ua, source, at}] max 200 wpisow (MEDIUMTEXT)'])
 
             // TTL - opcjonalny, ograniczenie dostepu po dacie
             ->addColumn('expires_at', 'datetime', ['null' => true,

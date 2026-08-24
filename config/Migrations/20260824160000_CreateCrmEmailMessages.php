@@ -51,10 +51,12 @@ class CreateCrmEmailMessages extends BaseMigration
             ->addColumn('received_at', 'datetime', ['null' => true])
 
             // Body
-            ->addColumn('body_text', 'mediumtext', ['null' => true,
-                'comment' => 'Plain text body (stripped HTML jesli tylko HTML dostepny)'])
-            ->addColumn('body_html', 'mediumtext', ['null' => true,
-                'comment' => 'HTML body raw (max 500KB)'])
+            ->addColumn('body_text', 'text', ['null' => true,
+                'limit' => \Phinx\Db\Adapter\MysqlAdapter::TEXT_MEDIUM,
+                'comment' => 'Plain text body (MEDIUMTEXT do 16MB)'])
+            ->addColumn('body_html', 'text', ['null' => true,
+                'limit' => \Phinx\Db\Adapter\MysqlAdapter::TEXT_MEDIUM,
+                'comment' => 'HTML body raw (MEDIUMTEXT do 16MB)'])
             ->addColumn('body_length', 'integer', ['null' => true])
 
             // Attachments (tylko metadata, nie zawartosc - za duze)

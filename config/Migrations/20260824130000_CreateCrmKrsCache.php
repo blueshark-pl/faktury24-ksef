@@ -52,8 +52,9 @@ class CreateCrmKrsCache extends BaseMigration
                 'comment' => 'Sposob reprezentacji + lista czlonkow zarzadu JSON'])
             ->addColumn('wspolnicy_json', 'text', ['null' => true,
                 'comment' => 'Wspolnicy dla sp. z o.o. JSON [{imie, nazwisko, udzialy}]'])
-            ->addColumn('raw_json', 'mediumtext', ['null' => true,
-                'comment' => 'Pelen response z MS-KRS API dla debugowania'])
+            ->addColumn('raw_json', 'text', ['null' => true,
+                'limit' => \Phinx\Db\Adapter\MysqlAdapter::TEXT_MEDIUM,
+                'comment' => 'Pelen response z MS-KRS API dla debugowania (MEDIUMTEXT do 16MB)'])
             ->addColumn('fetched_at', 'datetime', ['null' => false, 'default' => 'CURRENT_TIMESTAMP'])
             ->addColumn('fetch_error', 'text', ['null' => true])
             ->addIndex(['nip'], ['name' => 'BY_NIP'])
