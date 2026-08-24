@@ -455,6 +455,13 @@ return [
             'controller' => 'CrmContracts',
             'action' => ['index', 'add', 'edit', 'delete', 'matchJson'],
         ],
+        // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'Leads',
+            'action'     => ['publicForm', 'publicFormThanks'],
+        ],
         // CRM Leady - dostep dla wszystkich rol operacyjnych/sprzedazowych
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],

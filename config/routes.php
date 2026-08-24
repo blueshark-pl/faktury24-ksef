@@ -165,6 +165,11 @@ return function (RouteBuilder $routes): void {
         // FALA 3: bulk actions + dashboard
         $builder->post('/crm/bulk',                         ['controller' => 'Leads', 'action' => 'bulk']);
         $builder->get('/crm/dashboard',                     ['controller' => 'Leads', 'action' => 'dashboard']);
+        // FALA 5c: publiczny formularz kontaktowy (bez auth) - dla embedding na www klienta
+        $builder->connect('/kontakt/{companyId}',           ['controller' => 'Leads', 'action' => 'publicForm'])
+            ->setPass(['companyId'])->setPatterns(['companyId' => '[0-9a-f-]{36}']);
+        $builder->get('/kontakt/{companyId}/dziekujemy',    ['controller' => 'Leads', 'action' => 'publicFormThanks'])
+            ->setPass(['companyId'])->setPatterns(['companyId' => '[0-9a-f-]{36}']);
         // FALA 5a: kontrakty ramowe
         $builder->get('/kontrakty',                         ['controller' => 'CrmContracts', 'action' => 'index']);
         $builder->connect('/kontrakty/dodaj',               ['controller' => 'CrmContracts', 'action' => 'add']);

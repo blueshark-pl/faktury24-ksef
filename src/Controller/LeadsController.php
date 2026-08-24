@@ -13,6 +13,15 @@ use Cake\I18n\DateTime;
  */
 class LeadsController extends AppController
 {
+    public function beforeFilter(\Cake\Event\EventInterface $event)
+    {
+        parent::beforeFilter($event);
+        // Publiczny formularz kontaktowy dostepny bez logowania
+        if ($this->components()->has('Authentication')) {
+            $this->Authentication->allowUnauthenticated(['publicForm', 'publicFormThanks']);
+        }
+    }
+
     /**
      * Lista tabelaryczna (jak Excel) z filtrami.
      */
@@ -1070,6 +1079,168 @@ class LeadsController extends AppController
                 'email'        => $gusData['email'] ?? null,
             ] : null,
         ]);
+    }
+
+    /**
+     * PUBLICZNY: formularz kontaktowy dla klientow z www.
+     * GET/POST /kontakt/{companyId}
+     * Auto-tworzy lead z source='website', stage='new'.
+     * Anti-spam: honeypot pole + rate limit po IP (5/h) + minimum czas formularza 3s.
+     */
+    public function publicForm(string $companyId = ''): void
+    {
+        $this->request->allowMethod(['get', 'post']);
+        $this->viewBuilder()->setLayout('ajax');
+
+        // Walidacja companyId - musi istniec
+        $companyId = trim($companyId);
+        if ($companyId === '') {
+            $companyId = (string)\Cake\Core\Configure::read('App.defaultCompanyId', '');
+        }
+        if ($companyId === '' || !preg_match('/^[0-9a-f-]{36}$/i', $companyId)) {
+            throw new NotFoundException(__('Nieprawidlowy adres formularza kontaktowego.'));
+        }
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->where(['id' => $companyId])->first();
+            if (!$company) {
+                throw new NotFoundException(__('Firma nie istnieje.'));
+            }
+        } catch (\Throwable $e) {
+            throw new NotFoundException(__('Firma nie istnieje.'));
+        }
+
+        $errors = [];
+        $submitted = false;
+
+        if ($this->request->is('post')) {
+            $data = $this->request->getData();
+
+            // Honeypot: pole 'website_url' (ukryte) musi byc puste - boty je wypelnia
+            if (!empty($data['website_url'])) {
+                // Silent success dla botow (nie chcemy im dawac sygnalu)
+                $this->redirect(['action' => 'publicFormThanks', $companyId]);
+                return;
+            }
+
+            // Minimum 3 sekundy od otwarcia formularza (t = timestamp)
+            $t = (int)($data['t'] ?? 0);
+            if ($t > 0 && (time() - $t) < 3) {
+                $this->redirect(['action' => 'publicFormThanks', $companyId]);
+                return;
+            }
+
+            // Rate limit - max 5 formularzy z jednego IP na godzine
+            $ip = (string)$this->request->clientIp();
+            $rateKey = 'crm_public_form:' . md5($ip);
+            $count = (int)($this->request->getSession()->read($rateKey) ?? 0);
+            if ($count >= 5) {
+                $errors[] = __('Zbyt wiele formularzy wyslanych z tego adresu. Sprobuj za godzine.');
+            } else {
+                $this->request->getSession()->write($rateKey, $count + 1);
+            }
+
+            // Walidacja
+            $companyName = trim((string)($data['company_name'] ?? ''));
+            $email       = trim((string)($data['email'] ?? ''));
+            $person      = trim((string)($data['contact_person'] ?? ''));
+            $phone       = trim((string)($data['phone'] ?? ''));
+            $message     = trim((string)($data['message'] ?? ''));
+
+            if ($companyName === '') $errors[] = __('Nazwa firmy jest wymagana.');
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = __('Podaj prawidlowy adres email.');
+            }
+            if ($message === '' && $phone === '') {
+                $errors[] = __('Podaj tresc zapytania lub numer telefonu.');
+            }
+            if (mb_strlen($message) > 2000) {
+                $errors[] = __('Wiadomosc jest za dluga (max 2000 znakow).');
+            }
+
+            if (empty($errors)) {
+                try {
+                    $Leads = $this->fetchTable('Leads');
+                    $lead = $Leads->newEntity([
+                        'company_id'      => $companyId,
+                        'company_name'    => $companyName,
+                        'nip'             => strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)($data['nip'] ?? ''))) ?: null,
+                        'country_code'    => strtoupper(substr(trim((string)($data['country_code'] ?? '')), 0, 2)) ?: null,
+                        'city'            => trim((string)($data['city'] ?? '')) ?: null,
+                        'contact_person'  => $person ?: null,
+                        'phone'           => $phone ?: null,
+                        'email'           => $email,
+                        'contact_channel' => 'email',
+                        'branch_type'     => trim((string)($data['branch_type'] ?? '')) ?: null,
+                        'source'          => 'website',
+                        'stage'           => 'new',
+                        'note'            => $message,
+                        'next_action_at'  => new DateTime('+1 day'),
+                        'next_action_description' => __('Odpowiedz na zapytanie z www'),
+                    ]);
+                    if ($Leads->save($lead)) {
+                        // Log activity
+                        $this->fetchTable('LeadActivities')->logSystem(
+                            $companyId, $lead->id, 'email_in',
+                            __('Zapytanie z formularza kontaktowego'),
+                            $message ?: __('(brak tresci)'),
+                            ['ip' => $ip, 'user_agent' => (string)$this->request->getHeaderLine('User-Agent')],
+                            null
+                        );
+
+                        // Powiadom admina firmy (best-effort)
+                        try {
+                            $Users = $this->fetchTable('Users');
+                            $admin = $Users->find()
+                                ->where(['company_id' => $companyId])
+                                ->orderByAsc('created')
+                                ->first();
+                            if ($admin && !empty($admin->email)) {
+                                $mailer = new \Cake\Mailer\Mailer('default');
+                                $mailer->setTo((string)$admin->email)
+                                    ->setSubject(sprintf('[CRM] Nowe zapytanie z www: %s', $companyName))
+                                    ->deliver(
+                                        sprintf("Nowe zapytanie z www:\n\nFirma: %s\nOsoba: %s\nEmail: %s\nTel: %s\n\nWiadomosc:\n%s\n\nZobacz lead: %s/crm/view/%s",
+                                            $companyName, $person, $email, $phone, $message,
+                                            rtrim((string)\Cake\Core\Configure::read('App.fullBaseUrl'), '/'),
+                                            $lead->id
+                                        )
+                                    );
+                            }
+                        } catch (\Throwable $e) {
+                            \Cake\Log\Log::warning('publicForm admin notify failed: ' . $e->getMessage());
+                        }
+
+                        $submitted = true;
+                        $this->redirect(['action' => 'publicFormThanks', $companyId]);
+                        return;
+                    }
+                    $errors[] = __('Blad zapisu zapytania. Sprobuj ponownie.');
+                    \Cake\Log\Log::warning('publicForm save failed: ' . json_encode($lead->getErrors()));
+                } catch (\Throwable $e) {
+                    $errors[] = __('Wystapil blad techniczny.');
+                    \Cake\Log\Log::error('publicForm exception: ' . $e->getMessage());
+                }
+            }
+        }
+
+        $this->set(compact('company', 'errors', 'submitted'));
+    }
+
+    /**
+     * PUBLICZNE: podziekowanie po submicie formularza.
+     */
+    public function publicFormThanks(string $companyId): void
+    {
+        $this->request->allowMethod(['get']);
+        $this->viewBuilder()->setLayout('ajax');
+        try {
+            $Companies = $this->fetchTable('Companies');
+            $company = $Companies->find()->where(['id' => $companyId])->first();
+        } catch (\Throwable $e) {
+            $company = null;
+        }
+        $this->set(compact('company'));
     }
 
     // ================= HELPERS =================
