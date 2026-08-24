@@ -1641,6 +1641,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmemailaccounts')]
                                     ) ?>
                                 </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-file-copy-2-line me-1"></i>' . __('Duplikaty'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'duplicates'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'duplicates')]
+                                    ) ?>
+                                </li>
                             </ul>
                             </li>
 

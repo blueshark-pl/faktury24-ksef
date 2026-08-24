@@ -1082,6 +1082,203 @@ class LeadsController extends AppController
     }
 
     /**
+     * Widok duplikatow: pary lead-ow do potencjalnej konsolidacji.
+     * Wykrywa: same NIP / same email / same phone / podobna nazwa (Levenshtein).
+     */
+    public function duplicates(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Leads = $this->fetchTable('Leads');
+        $all = $Leads->find()
+            ->select(['id', 'company_name', 'nip', 'email', 'phone', 'city', 'country_code',
+                      'stage', 'probability', 'value_pln', 'contact_person', 'last_contacted_at',
+                      'modified'])
+            ->where(['company_id' => $companyId])
+            ->orderByDesc('modified')
+            ->all();
+
+        $byNip   = [];
+        $byEmail = [];
+        $byPhone = [];
+        $byName  = [];
+        $leadsIdx = [];
+
+        foreach ($all as $l) {
+            $leadsIdx[(string)$l->id] = $l;
+            if (!empty($l->nip))   $byNip[strtoupper(trim($l->nip))][] = $l->id;
+            if (!empty($l->email)) $byEmail[strtolower(trim($l->email))][] = $l->id;
+            $normPhone = preg_replace('/[^0-9]/', '', (string)$l->phone);
+            if (strlen($normPhone) >= 6) $byPhone[$normPhone][] = $l->id;
+            $normName = strtolower(preg_replace('/\s+/', ' ', trim((string)$l->company_name)));
+            $normName = preg_replace('/\s+(sp\.?\s*z\s*o\.?\s*o\.?|s\.a\.|sa|gmbh|kg|b\.v\.|bv|ag|s\.r\.o\.?|srl|kft)$/i', '', $normName);
+            if ($normName !== '') $byName[$normName][] = $l->id;
+        }
+
+        // Zbierz pary z powodem
+        $pairs = [];
+        $seen = []; // klucz "id1|id2" (sorted)
+        $addPair = function ($a, $b, $reason) use (&$pairs, &$seen, $leadsIdx) {
+            if ($a === $b) return;
+            $k = min($a, $b) . '|' . max($a, $b);
+            if (isset($seen[$k])) {
+                $pairs[$k]['reasons'][] = $reason;
+                return;
+            }
+            if (!isset($leadsIdx[$a]) || !isset($leadsIdx[$b])) return;
+            $seen[$k] = true;
+            $pairs[$k] = [
+                'a' => $leadsIdx[$a],
+                'b' => $leadsIdx[$b],
+                'reasons' => [$reason],
+            ];
+        };
+        foreach ($byNip as $ids)   foreach ($ids as $x) foreach ($ids as $y) if ($x < $y) $addPair($x, $y, 'ten sam NIP');
+        foreach ($byEmail as $ids) foreach ($ids as $x) foreach ($ids as $y) if ($x < $y) $addPair($x, $y, 'ten sam email');
+        foreach ($byPhone as $ids) foreach ($ids as $x) foreach ($ids as $y) if ($x < $y) $addPair($x, $y, 'ten sam tel');
+        foreach ($byName as $ids)  foreach ($ids as $x) foreach ($ids as $y) if ($x < $y) $addPair($x, $y, 'ta sama nazwa');
+
+        // Fuzzy match nazw (Levenshtein <= 3, tylko jesli obie >= 5 znakow) - drozsze, tylko dla small subset
+        // Pomijamy dla dyzych zbiorow zeby nie zamulic
+        if (count($all) < 500) {
+            $names = [];
+            foreach ($all as $l) {
+                $n = strtolower(preg_replace('/[^a-z0-9]/', '', (string)$l->company_name));
+                if (strlen($n) >= 5) $names[(string)$l->id] = $n;
+            }
+            $keys = array_keys($names);
+            $vals = array_values($names);
+            $n = count($keys);
+            for ($i = 0; $i < $n; $i++) {
+                for ($j = $i + 1; $j < $n; $j++) {
+                    if (abs(strlen($vals[$i]) - strlen($vals[$j])) > 3) continue;
+                    $d = levenshtein($vals[$i], $vals[$j]);
+                    if ($d > 0 && $d <= 2) $addPair($keys[$i], $keys[$j], 'podobna nazwa (typo)');
+                }
+            }
+        }
+
+        // Sortuj po liczbie powodow desc + ograniczenie
+        usort($pairs, fn($p1, $p2) => count($p2['reasons']) <=> count($p1['reasons']));
+        $pairs = array_slice($pairs, 0, 200);
+
+        $this->set(compact('pairs'));
+    }
+
+    /**
+     * UI: podglad przed merge - wybierz ktora wartosc zachowac per pole.
+     * GET /crm/merge?a=uuid&b=uuid
+     */
+    public function mergeReview(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Leads = $this->fetchTable('Leads');
+        $aId = trim((string)$this->request->getQuery('a', ''));
+        $bId = trim((string)$this->request->getQuery('b', ''));
+        if ($aId === '' || $bId === '' || $aId === $bId) {
+            throw new BadRequestException('Podaj dwa rozne lead id.');
+        }
+        $a = $Leads->get($aId, contain: ['LeadActivities']);
+        $b = $Leads->get($bId, contain: ['LeadActivities']);
+        if ((string)$a->company_id !== (string)$companyId || (string)$b->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+        $this->set(compact('a', 'b'));
+    }
+
+    /**
+     * POST /crm/merge - scala 2 leady w 1.
+     * Wybieramy wartosci per pole (default lead A), a lead B jest usuwany.
+     * Wszystkie activities z B sa przenoszone do A.
+     */
+    public function merge(): void
+    {
+        $this->request->allowMethod(['post']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $data = $this->request->getData();
+        $aId = trim((string)($data['a'] ?? ''));
+        $bId = trim((string)($data['b'] ?? ''));
+        if ($aId === '' || $bId === '' || $aId === $bId) {
+            $this->Flash->error(__('Podaj dwa różne lead ID.'));
+            $this->redirect(['action' => 'duplicates']);
+            return;
+        }
+
+        $Leads = $this->fetchTable('Leads');
+        $Acts  = $this->fetchTable('LeadActivities');
+        $a = $Leads->get($aId);
+        $b = $Leads->get($bId);
+        if ((string)$a->company_id !== (string)$companyId || (string)$b->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+
+        // Fields to merge - dla kazdego pola $data['field_source_X'] = 'a'|'b'
+        $mergeFields = ['company_name', 'nip', 'country_code', 'postal_code', 'city', 'street',
+            'contact_person', 'contact_role', 'phone', 'email', 'contact_channel', 'branch_type',
+            'value_pln', 'currency', 'assigned_to_user_id', 'note', 'next_action_description'];
+        foreach ($mergeFields as $f) {
+            $source = (string)($data['field_source_' . $f] ?? 'a');
+            $a->{$f} = ($source === 'b') ? $b->{$f} : $a->{$f};
+        }
+
+        // Wyzszy stage/probability z obu
+        $stageOrder = ['new' => 0, 'contact' => 1, 'inquiry' => 2, 'offer' => 3, 'order' => 4, 'lost' => -1];
+        if (($stageOrder[$b->stage] ?? 0) > ($stageOrder[$a->stage] ?? 0)) $a->stage = $b->stage;
+        $a->probability = max((int)$a->probability, (int)$b->probability);
+
+        // Auto-flagi OR
+        foreach (['flag_contact', 'flag_inquiry', 'flag_offer', 'flag_order'] as $flag) {
+            $a->{$flag} = ((bool)$a->{$flag}) || ((bool)$b->{$flag});
+        }
+
+        // Latest last_contacted
+        if ($b->last_contacted_at && (!$a->last_contacted_at || $b->last_contacted_at > $a->last_contacted_at)) {
+            $a->last_contacted_at = $b->last_contacted_at;
+        }
+
+        $connection = $Leads->getConnection();
+        $connection->begin();
+        try {
+            // Zapisz zaktualizowanego A
+            if (!$Leads->save($a)) {
+                throw new \RuntimeException('Nie mozna zapisac leada A: ' . json_encode($a->getErrors()));
+            }
+
+            // Przenies activities z B do A
+            $Acts->updateAll(['lead_id' => $a->id], ['lead_id' => $b->id]);
+
+            // Log merge
+            $Acts->logSystem(
+                $companyId, $a->id, 'note',
+                sprintf(__('Scalono z leadem: %s'), $b->company_name),
+                sprintf(__('ID scalonego leada: %s. Wszystkie activities przeniesione.'), $b->id),
+                ['merged_from' => $b->id, 'merged_from_name' => $b->company_name],
+                $userId
+            );
+
+            // Usun B
+            $Leads->delete($b);
+
+            $connection->commit();
+            $this->Flash->success(sprintf(__('Scalono %s z %s.'), $b->company_name, $a->company_name));
+            $this->redirect(['action' => 'view', $a->id]);
+        } catch (\Throwable $e) {
+            $connection->rollback();
+            \Cake\Log\Log::error('CRM merge failed: ' . $e->getMessage());
+            $this->Flash->error(sprintf(__('Błąd scalenia: %s'), $e->getMessage()));
+            $this->redirect(['action' => 'duplicates']);
+        }
+    }
+
+    /**
      * PUBLICZNY: formularz kontaktowy dla klientow z www.
      * GET/POST /kontakt/{companyId}
      * Auto-tworzy lead z source='website', stage='new'.

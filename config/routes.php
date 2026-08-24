@@ -187,6 +187,10 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/crm/email-accounts/test/{id}',     ['controller' => 'CrmEmailAccounts', 'action' => 'test'])
             ->setPass(['id']);
+        // FALA 7: Duplicate merge UI
+        $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
+        $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);
+        $builder->post('/crm/merge',                        ['controller' => 'Leads', 'action' => 'merge']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

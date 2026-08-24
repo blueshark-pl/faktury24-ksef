@@ -481,6 +481,8 @@ return [
                 'createOfferFromLead',
                 // FALA 3: bulk actions + dashboard
                 'bulk', 'dashboard',
+                // FALA 7: duplicate merge UI
+                'duplicates', 'mergeReview', 'merge',
             ],
         ],
         [
