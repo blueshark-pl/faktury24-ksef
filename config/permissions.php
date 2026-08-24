@@ -468,11 +468,12 @@ return [
             'controller' => 'CrmDocumentTracks',
             'action' => ['create', 'stats', 'deactivate'],
         ],
-        // CRM Email accounts IMAP - tylko manager/admin (hasla sensytywne)
+        // CRM Email accounts IMAP + Gmail OAuth - tylko manager/admin (hasla sensytywne)
         [
             'role' => ['spedycja_manager', 'sales_manager', 'user'],
             'controller' => 'CrmEmailAccounts',
-            'action' => ['index', 'add', 'edit', 'delete', 'test'],
+            'action' => ['index', 'add', 'edit', 'delete', 'test',
+                         'googleAuth', 'googleCallback'],
         ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [

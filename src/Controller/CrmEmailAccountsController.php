@@ -114,6 +114,111 @@ class CrmEmailAccountsController extends AppController
     }
 
     /**
+     * FALA 13: OAuth 2.0 z Gmail - redirect do consent screen.
+     * GET /crm/email-accounts/google-auth
+     */
+    public function googleAuth(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        // Zapisujemy user context w sesji - callback bez auth mozliwosci
+        $this->request->getSession()->write('GoogleOauth.pendingCompanyId', $companyId);
+        $this->request->getSession()->write('GoogleOauth.pendingUserId', $userId);
+        $this->request->getSession()->write('GoogleOauth.state', bin2hex(random_bytes(16)));
+
+        try {
+            $service = new \App\Service\GmailApiService();
+            $url = $service->getAuthorizationUrl(
+                (string)$this->request->getSession()->read('GoogleOauth.state')
+            );
+            $this->redirect($url);
+        } catch (\Throwable $e) {
+            $this->Flash->error(sprintf(__('Google OAuth: %s'), $e->getMessage()));
+            $this->redirect(['action' => 'index']);
+        }
+    }
+
+    /**
+     * GET /crm/email-accounts/google-callback?code=X&state=Y
+     * Google przekierowuje tutaj po consent.
+     */
+    public function googleCallback(): void
+    {
+        $this->request->allowMethod(['get']);
+        $code = trim((string)$this->request->getQuery('code', ''));
+        $state = trim((string)$this->request->getQuery('state', ''));
+        $error = trim((string)$this->request->getQuery('error', ''));
+
+        $sessionState = (string)$this->request->getSession()->read('GoogleOauth.state', '');
+        $companyId = (string)$this->request->getSession()->read('GoogleOauth.pendingCompanyId', '');
+        $userId    = (string)$this->request->getSession()->read('GoogleOauth.pendingUserId', '');
+
+        if ($error !== '') {
+            $this->Flash->error(sprintf(__('Google OAuth blad: %s'), $error));
+            $this->redirect(['action' => 'index']);
+            return;
+        }
+        if ($code === '' || $state !== $sessionState) {
+            $this->Flash->error(__('Blad OAuth - nieprawidlowy state lub brak kodu.'));
+            $this->redirect(['action' => 'index']);
+            return;
+        }
+        if ($companyId === '') {
+            $this->Flash->error(__('Sesja OAuth wygasla - sprobuj ponownie.'));
+            $this->redirect(['action' => 'index']);
+            return;
+        }
+
+        try {
+            $service = new \App\Service\GmailApiService();
+            $tokens = $service->exchangeCodeForToken($code);
+            $email = $service->getUserEmail($tokens['access_token']) ?: 'unknown@gmail.com';
+
+            $EA = $this->fetchTable('CrmEmailAccounts');
+            // Sprawdz czy juz istnieje konto dla tego emaila
+            $existing = $EA->find()
+                ->where(['company_id' => $companyId, 'username' => $email])
+                ->first();
+            $entity = $existing ?: $EA->newEmptyEntity();
+            $entity->company_id = $companyId;
+            $entity->user_id = $userId ?: null;
+            $entity->label = $existing?->label ?: ('Gmail: ' . $email);
+            $entity->auth_type = 'gmail_oauth';
+            $entity->username = $email;
+            // IMAP fields nullable dla oauth
+            $entity->imap_host = null;
+            $entity->imap_port = null;
+            $entity->use_ssl = false;
+            $entity->password_encrypted = null;
+            $entity->folder = 'INBOX';
+            $entity->sync_frequency_min = $existing?->sync_frequency_min ?: 5;
+            $entity->is_active = true;
+            // Encrypt tokens
+            $entity->oauth_access_token = $EA->encryptPassword($tokens['access_token']);
+            if (!empty($tokens['refresh_token'])) {
+                $entity->oauth_refresh_token = $EA->encryptPassword($tokens['refresh_token']);
+            }
+            $expiresIn = (int)($tokens['expires_in'] ?? 3600);
+            $entity->oauth_expires_at = new \Cake\I18n\DateTime('+' . $expiresIn . ' seconds');
+            $entity->last_error = null;
+
+            if ($EA->save($entity)) {
+                $this->Flash->success(sprintf(__('Konto Gmail %s dodane. Uruchom `bin/cake crm_email_poll` zeby zsynchronizowac.'), $email));
+            } else {
+                $this->Flash->error(__('Blad zapisu konta OAuth: ') . json_encode($entity->getErrors()));
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('Google OAuth callback failed: ' . $e->getMessage());
+            $this->Flash->error(sprintf(__('Google OAuth blad: %s'), $e->getMessage()));
+        }
+        $this->request->getSession()->delete('GoogleOauth');
+        $this->redirect(['action' => 'index']);
+    }
+
+    /**
      * Test polaczenia IMAP - bez pobierania nowych, tylko login+status folderu.
      */
     public function test(string $id): void

@@ -123,4 +123,14 @@ return [
         'google_cseApiKey' => env('GOOGLE_CSE_API_KEY', ''),
         'googleCseCx'     => env('GOOGLE_CSE_CX', ''),
     ],
+
+    // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.
+    // Setup: https://console.cloud.google.com/ -> nowy projekt -> Gmail API enable
+    // -> OAuth consent screen -> Credentials -> OAuth 2.0 Client ID (Web application)
+    // Authorized redirect URIs musi zawierac: <APP_URL>/crm/email-accounts/google-callback
+    'Google' => [
+        'clientId'     => env('GOOGLE_CLIENT_ID', ''),
+        'clientSecret' => env('GOOGLE_CLIENT_SECRET', ''),
+        'redirectUri'  => env('GOOGLE_REDIRECT_URI', 'https://booklio.pl/crm/email-accounts/google-callback'),
+    ],
 ];

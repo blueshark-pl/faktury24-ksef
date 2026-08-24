@@ -13,16 +13,45 @@ $this->assign('title', __('Skrzynki IMAP dla CRM'));
             <?= __('Uruchom manualnie:') ?> <code>bin/cake crm_email_poll</code>
         </div>
     </div>
-    <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-success">
-        <i class="ri-add-line me-1"></i><?= __('Nowe konto') ?>
-    </a>
+    <div class="btn-group">
+        <a href="<?= $this->Url->build(['action' => 'googleAuth']) ?>" class="btn btn-sm text-white" style="background:#EA4335;">
+            <i class="ri-google-fill me-1"></i><?= __('Podłącz Gmail') ?>
+        </a>
+        <a href="<?= $this->Url->build(['action' => 'add']) ?>" class="btn btn-sm btn-outline-secondary">
+            <i class="ri-mail-settings-line me-1"></i><?= __('IMAP manualnie') ?>
+        </a>
+    </div>
 </div>
 
 <?php if (!function_exists('imap_open')): ?>
-    <div class="alert alert-warning">
+    <div class="alert alert-info">
+        <i class="ri-information-line"></i>
+        <strong><?= __('PHP <code>imap</code> extension niedostępny.') ?></strong>
+        <?= __('Ale możesz podłączyć skrzynkę Gmail przez OAuth 2.0 (nie wymaga rozszerzenia)') ?> —
+        kliknij <strong>„Podłącz Gmail"</strong> powyżej.
+        <div class="small text-muted mt-1">
+            <?= __('Dla innych skrzynek (Outlook, home.pl, cyberfolks) włącz ext-imap w panelu hostingu (Advanced Features → Select PHP Version).') ?>
+        </div>
+    </div>
+<?php endif; ?>
+
+<?php
+    $googleConfigured = (string)\Cake\Core\Configure::read('Google.clientId', '') !== '';
+    if (!$googleConfigured):
+?>
+    <div class="alert alert-warning small">
         <i class="ri-alert-line"></i>
-        <?= __('PHP <code>imap</code> extension nie jest zainstalowane. Skontaktuj się z hostingiem, żeby zainstalowali') ?>
-        <code>php-imap</code>.
+        <strong>Gmail OAuth nie skonfigurowany</strong> — dodaj w <code>config/app_local.php</code>:
+        <pre class="mb-0 mt-1" style="font-size:11px;">'Google' =&gt; [
+    'clientId'     =&gt; 'XXX.apps.googleusercontent.com',
+    'clientSecret' =&gt; 'XXX',
+    'redirectUri'  =&gt; '<?= h(rtrim((string)\Cake\Core\Configure::read('App.fullBaseUrl'), '/')) ?>/crm/email-accounts/google-callback',
+],</pre>
+        <div class="mt-1">
+            Setup: <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a>
+            → nowy projekt → Enable Gmail API → OAuth consent screen → Credentials → OAuth 2.0 Client ID (Web application)
+            → skopiuj Client ID i Secret + dodaj Authorized redirect URI podany wyżej.
+        </div>
     </div>
 <?php endif; ?>
 
@@ -32,6 +61,7 @@ $this->assign('title', __('Skrzynki IMAP dla CRM'));
             <thead class="table-light">
                 <tr>
                     <th><?= __('Nazwa') ?></th>
+                    <th><?= __('Auth') ?></th>
                     <th><?= __('Skrzynka') ?></th>
                     <th><?= __('Host / Port') ?></th>
                     <th><?= __('Właściciel') ?></th>
@@ -43,13 +73,31 @@ $this->assign('title', __('Skrzynki IMAP dla CRM'));
             </thead>
             <tbody>
                 <?php if (count($rows) === 0): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-4"><?= __('Brak skonfigurowanych skrzynek.') ?></td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4"><?= __('Brak skonfigurowanych skrzynek.') ?></td></tr>
                 <?php else: ?>
-                    <?php foreach ($rows as $r): ?>
+                    <?php foreach ($rows as $r):
+                        $isOauth = ($r->auth_type ?? 'imap') === 'gmail_oauth';
+                    ?>
                         <tr>
                             <td class="fw-semibold"><?= h($r->label) ?></td>
+                            <td>
+                                <?php if ($isOauth): ?>
+                                    <span class="badge" style="background:#EA4335; color:#fff;">
+                                        <i class="ri-google-fill"></i> Gmail OAuth
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary">IMAP</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?= h($r->username) ?><br><small class="text-muted"><?= h($r->folder) ?></small></td>
-                            <td class="small"><?= h($r->imap_host) ?>:<?= (int)$r->imap_port ?> <?= $r->use_ssl ? '<span class="badge bg-success-subtle text-success">SSL</span>' : '' ?></td>
+                            <td class="small">
+                                <?php if ($isOauth): ?>
+                                    <span class="text-muted">via Gmail API v1</span>
+                                <?php else: ?>
+                                    <?= h($r->imap_host) ?>:<?= (int)$r->imap_port ?>
+                                    <?= $r->use_ssl ? '<span class="badge bg-success-subtle text-success">SSL</span>' : '' ?>
+                                <?php endif; ?>
+                            </td>
                             <td class="small"><?= h(trim(($r->user?->first_name ?? '') . ' ' . ($r->user?->last_name ?? ''))) ?: '—' ?></td>
                             <td class="text-end small">
                                 <?= (int)$r->messages_synced_total ?> msg<br>

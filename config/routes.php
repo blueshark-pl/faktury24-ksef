@@ -187,6 +187,9 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/crm/email-accounts/test/{id}',     ['controller' => 'CrmEmailAccounts', 'action' => 'test'])
             ->setPass(['id']);
+        // FALA 13: Gmail OAuth 2.0
+        $builder->get('/crm/email-accounts/google-auth',    ['controller' => 'CrmEmailAccounts', 'action' => 'googleAuth']);
+        $builder->get('/crm/email-accounts/google-callback',['controller' => 'CrmEmailAccounts', 'action' => 'googleCallback']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);

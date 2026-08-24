@@ -45,9 +45,10 @@ class CrmEmailPollCommand extends Command
 
     public function execute(Arguments $args, ConsoleIo $io): int
     {
+        // FALA 13: ext-imap wymagane tylko dla auth_type='imap' kont.
+        // Konta gmail_oauth uzywaja Gmail API i nie potrzebuja rozszerzenia.
         if (!function_exists('imap_open')) {
-            $io->error('PHP IMAP extension nie jest zainstalowane. Zainstaluj php-imap.');
-            return static::CODE_ERROR;
+            $io->warning('PHP IMAP extension nie jest dostepne - konta auth_type=imap zostana pominiete. Konta gmail_oauth beda dzialac normalnie.');
         }
 
         $dry = (bool)$args->getOption('dry');
@@ -71,8 +72,31 @@ class CrmEmailPollCommand extends Command
         $totalMsg = 0;
         $totalAct = 0;
         foreach ($accounts as $acc) {
-            $io->out(sprintf('[%s] %s (%s@%s:%d)', $acc->id, $acc->label,
-                $acc->username, $acc->imap_host, $acc->imap_port));
+            $authType = $acc->auth_type ?? 'imap';
+            $io->out(sprintf('[%s] %s (%s, auth=%s)', $acc->id, $acc->label, $acc->username, $authType));
+
+            // FALA 13: Gmail OAuth path
+            if ($authType === 'gmail_oauth') {
+                try {
+                    [$msgs, $acts] = $this->syncGmailOauth($acc, $EA, $Leads, $Acts, $io, $dry, $max);
+                    $totalMsg += $msgs;
+                    $totalAct += $acts;
+                } catch (\Throwable $e) {
+                    $io->error('  Gmail OAuth exception: ' . $e->getMessage());
+                    if (!$dry) {
+                        $acc->last_error = substr($e->getMessage(), 0, 500);
+                        $acc->last_synced_at = new DateTime();
+                        $EA->save($acc);
+                    }
+                }
+                continue;
+            }
+
+            // ==== IMAP path (FALA 6) ====
+            if (!function_exists('imap_open')) {
+                $io->error('  IMAP ext niedostepny - pomin lub przelacz konto na Gmail OAuth.');
+                continue;
+            }
 
             $password = $EA->decryptPassword($acc->password_encrypted);
             if (!$password) {
@@ -399,5 +423,135 @@ class CrmEmailPollCommand extends Command
             }
         }
         return $out ? implode(',', $out) : null;
+    }
+
+    /**
+     * FALA 13: Gmail OAuth sync przez Gmail API v1 (zamiast IMAP).
+     * @return array [msgCount, actCount]
+     */
+    private function syncGmailOauth($acc, $EA, $Leads, $Acts, ConsoleIo $io, bool $dry, int $max): array
+    {
+        $service = new \App\Service\GmailApiService();
+
+        // Sprawdz access_token expiry - jesli za < 60s -> refresh
+        $accessToken = $EA->decryptPassword((string)$acc->oauth_access_token);
+        $refreshToken = $EA->decryptPassword((string)($acc->oauth_refresh_token ?? ''));
+        $needsRefresh = false;
+        if ($acc->oauth_expires_at) {
+            $expiresIn = $acc->oauth_expires_at->getTimestamp() - time();
+            if ($expiresIn < 60) $needsRefresh = true;
+        }
+        if (!$accessToken || $needsRefresh) {
+            if (!$refreshToken) {
+                throw new \RuntimeException('Brak refresh_token - user musi ponownie autoryzowac przez /crm/email-accounts/google-auth');
+            }
+            $io->out('  Refreshing access_token...');
+            $tokens = $service->refreshAccessToken($refreshToken);
+            $accessToken = $tokens['access_token'];
+            $expiresIn = (int)($tokens['expires_in'] ?? 3600);
+            if (!$dry) {
+                $acc->oauth_access_token = $EA->encryptPassword($accessToken);
+                $acc->oauth_expires_at = new DateTime('+' . $expiresIn . ' seconds');
+                $EA->save($acc);
+            }
+        }
+
+        // Lista nowych wiadomosci (incremental via historyId lub fresh)
+        [$newHistoryId, $msgIds] = $service->listMessages($accessToken, $acc->oauth_history_id, $max);
+        $io->out(sprintf('  Nowych wiadomosci: %d (historyId: %s -> %s)',
+            count($msgIds), $acc->oauth_history_id ?? 'null', $newHistoryId ?? '?'));
+
+        $Messages = TableRegistry::getTableLocator()->get('CrmEmailMessages');
+        $msgCount = 0;
+        $actCount = 0;
+
+        foreach ($msgIds as $gmailId) {
+            try {
+                $data = $service->getMessage($accessToken, $gmailId);
+                if (!$data) continue;
+                $msgCount++;
+
+                // Match po from_email do leada
+                $fromEmail = (string)$data['from_email'];
+                $lead = null;
+                if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                    $lead = $Leads->find()->where([
+                        'company_id' => $acc->company_id,
+                        'LOWER(email)' => $fromEmail,
+                    ])->first();
+                }
+                if (!$lead) {
+                    $io->out(sprintf('    %s: from=%s - brak leada', $gmailId, $fromEmail));
+                    continue;
+                }
+                $io->out(sprintf('    %s: from=%s -> lead %s (body %d chars, %d attach)',
+                    $gmailId, $fromEmail, $lead->company_name,
+                    strlen($data['body_text']), count($data['attachments'])));
+
+                if ($dry) continue;
+
+                // Log activity + zapisz pelna wiadomosc
+                $subject = (string)$data['subject'];
+                $bodySnippet = mb_substr($data['body_text'], 0, 500);
+                $Acts->logSystem(
+                    (string)$acc->company_id, (string)$lead->id, 'email_in',
+                    $subject ?: '(bez tematu)',
+                    $bodySnippet,
+                    ['gmail_id' => $gmailId, 'from' => $fromEmail, 'account_id' => $acc->id],
+                    null
+                );
+
+                // Dedup po message_id (jesli jest)
+                $existsQ = $Messages->find()->where(['account_id' => $acc->id]);
+                if (!empty($data['message_id'])) {
+                    $existsQ->where(['message_id' => $data['message_id']]);
+                } else {
+                    // Fallback dedup przez gmail_id w payload_json - trudniejsze
+                    // Uzywamy imap_uid = 0 dla gmail (nie ma UID) - dedup by message_id preferujemy
+                    $existsQ->where(['imap_uid' => 0, 'subject' => mb_substr($subject, 0, 500)]);
+                }
+                if ($existsQ->count() === 0) {
+                    $Messages->save($Messages->newEntity([
+                        'id'          => \Cake\Utility\Text::uuid(),
+                        'company_id'  => $acc->company_id,
+                        'account_id'  => $acc->id,
+                        'lead_id'     => $lead->id,
+                        'imap_uid'    => 0, // Gmail nie ma IMAP UID - uzywamy 0 marker
+                        'message_id'  => $data['message_id'] ?: null,
+                        'in_reply_to' => $data['in_reply_to'] ?: null,
+                        'thread_id'   => $data['thread_id'] ?: null,
+                        'direction'   => 'in',
+                        'from_email'  => $fromEmail,
+                        'from_name'   => $data['from_name'] ?: null,
+                        'to_emails'   => $data['to_emails'],
+                        'cc_emails'   => $data['cc_emails'],
+                        'subject'     => mb_substr($subject, 0, 500),
+                        'received_at' => $data['received_at'],
+                        'body_text'   => mb_substr($data['body_text'], 0, 500000),
+                        'body_html'   => mb_substr($data['body_html'], 0, 500000),
+                        'body_length' => strlen($data['body_text']),
+                        'attachments_json' => json_encode($data['attachments'], JSON_UNESCAPED_UNICODE),
+                        'attachments_count' => count($data['attachments']),
+                    ]));
+                }
+                $lead->last_contacted_at = $data['received_at'];
+                $Leads->save($lead);
+                $actCount++;
+            } catch (\Throwable $e) {
+                $io->error(sprintf('    %s: exception - %s', $gmailId, $e->getMessage()));
+            }
+        }
+
+        if (!$dry) {
+            if ($newHistoryId) $acc->oauth_history_id = $newHistoryId;
+            $acc->last_synced_at = new DateTime();
+            $acc->last_error = null;
+            $acc->messages_synced_total = (int)$acc->messages_synced_total + $msgCount;
+            $acc->activities_created_total = (int)$acc->activities_created_total + $actCount;
+            $EA->save($acc);
+        }
+
+        $io->success(sprintf('  Gmail: %d wiadomosci, %d activities.', $msgCount, $actCount));
+        return [$msgCount, $actCount];
     }
 }
