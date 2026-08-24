@@ -119,8 +119,13 @@ class Application extends BaseApplication
             ->add((new CsrfProtectionMiddleware([
                 'httponly' => true,
             ]))->skipCheckCallback(function (\Cake\Http\ServerRequest $request) {
+                $path = $request->getUri()->getPath();
                 // Pomiń CSRF dla API — autoryzacja przez Bearer token
-                return str_starts_with($request->getUri()->getPath(), '/api');
+                if (str_starts_with($path, '/api')) return true;
+                // FALA 12: Document tracking public endpoints
+                // /doc/{hash}/heartbeat - AJAX ping z zewnetrznego wcielenia
+                if (preg_match('#^/doc/[a-f0-9]+/heartbeat$#i', $path)) return true;
+                return false;
             }));
 
         return $middlewareQueue;

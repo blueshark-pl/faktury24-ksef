@@ -198,6 +198,21 @@ return function (RouteBuilder $routes): void {
         // FALA 11: GPT AI (draft response + summarize)
         $builder->post('/crm/ai/draft-response',            ['controller' => 'Leads', 'action' => 'aiDraftResponseJson']);
         $builder->post('/crm/ai/summarize',                 ['controller' => 'Leads', 'action' => 'aiSummarizeJson']);
+        // FALA 12: Document tracking
+        // Publiczne (bez auth)
+        $builder->get('/doc/{hash}',                        ['controller' => 'CrmDocumentTracks', 'action' => 'view'])
+            ->setPass(['hash'])->setPatterns(['hash' => '[a-f0-9]{48}']);
+        $builder->get('/doc/{hash}.pdf',                    ['controller' => 'CrmDocumentTracks', 'action' => 'download'])
+            ->setPass(['hash'])->setPatterns(['hash' => '[a-f0-9]{48}']);
+        $builder->get('/doc/{hash}/pixel.png',              ['controller' => 'CrmDocumentTracks', 'action' => 'pixel'])
+            ->setPass(['hash'])->setPatterns(['hash' => '[a-f0-9]{48}']);
+        $builder->post('/doc/{hash}/heartbeat',             ['controller' => 'CrmDocumentTracks', 'action' => 'heartbeat'])
+            ->setPass(['hash'])->setPatterns(['hash' => '[a-f0-9]{48}']);
+        // Admin (auth)
+        $builder->post('/crm/doc/create',                   ['controller' => 'CrmDocumentTracks', 'action' => 'create']);
+        $builder->get('/crm/doc/stats',                     ['controller' => 'CrmDocumentTracks', 'action' => 'stats']);
+        $builder->post('/crm/doc/{id}/deactivate',          ['controller' => 'CrmDocumentTracks', 'action' => 'deactivate'])
+            ->setPass(['id']);
         // ========== /CRM ==========
 
         $builder->post('/zlecenia/{id}/notatka',        ['controller' => 'SpeedOrders', 'action' => 'noteAdd'])

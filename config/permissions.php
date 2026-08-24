@@ -455,6 +455,19 @@ return [
             'controller' => 'CrmContracts',
             'action' => ['index', 'add', 'edit', 'delete', 'matchJson'],
         ],
+        // CRM Document tracking - publiczne view/download/pixel/heartbeat
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'CrmDocumentTracks',
+            'action'     => ['view', 'download', 'pixel', 'heartbeat'],
+        ],
+        // Admin: create/stats/deactivate
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'CrmDocumentTracks',
+            'action' => ['create', 'stats', 'deactivate'],
+        ],
         // CRM Email accounts IMAP - tylko manager/admin (hasla sensytywne)
         [
             'role' => ['spedycja_manager', 'sales_manager', 'user'],
