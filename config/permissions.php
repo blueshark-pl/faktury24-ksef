@@ -515,6 +515,8 @@ return [
                 'createOrdersFromQuote',
                 // FALA 18: kolejka pilnych maili sklasyfikowanych przez AI
                 'urgentEmails',
+                // FALA 19: realny reply przez Gmail API
+                'replyByGmail',
             ],
         ],
         [

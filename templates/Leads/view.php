@@ -645,10 +645,22 @@ foreach ($lead->lead_activities as $__a) {
                                 </div>
                                 <div id="ai-draft-error" class="alert alert-warning" style="display:none;"></div>
                             </div>
+                            <!-- FALA 19: input odbiorcy dla realnego send przez Gmail -->
+                            <div class="mt-2" id="ai-send-fields" style="display:none;">
+                                <label class="small text-muted">Do (odbiorca):</label>
+                                <input type="email" id="ai-to" class="form-control form-control-sm" placeholder="klient@example.com">
+                                <div class="small text-muted mt-1">
+                                    <i class="ri-information-line"></i> Wysyłamy przez Gmail OAuth (kontakt@nordlogis.pl). Threading: In-Reply-To + References ustawione.
+                                </div>
+                            </div>
+                            <div id="ai-send-result" style="display:none;" class="mt-2"></div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zamknij</button>
-                                <button type="button" class="btn btn-success" id="ai-copy">
+                                <button type="button" class="btn btn-outline-primary" id="ai-copy">
                                     <i class="ri-clipboard-line"></i> Kopiuj do schowka
+                                </button>
+                                <button type="button" class="btn btn-success" id="ai-send" data-activity-id="">
+                                    <i class="ri-send-plane-line"></i> Wyślij przez Gmail
                                 </button>
                             </div>
                         </div>
@@ -888,7 +900,11 @@ foreach ($lead->lead_activities as $__a) {
 
                                     <!-- Action bar -->
                                     <div class="p-2 d-flex gap-2" style="border-top: 1px solid #f1f3f5; background: #f8fafc;">
-                                        <button type="button" class="btn btn-sm btn-outline-primary btn-ai-draft" data-email-body="<?= h(mb_substr($bodyText, 0, 2000)) ?>" data-email-subject="<?= h($a->subject) ?>">
+                                        <button type="button" class="btn btn-sm btn-outline-primary btn-ai-draft"
+                                                data-email-body="<?= h(mb_substr($bodyText, 0, 2000)) ?>"
+                                                data-email-subject="<?= h($a->subject) ?>"
+                                                data-activity-id="<?= h($a->id) ?>"
+                                                data-email-from="<?= h($fromEmail) ?>">
                                             <i class="ri-reply-line"></i> <?= __('Odpowiedz z AI') ?>
                                         </button>
                                         <?php if ($bodyHtml !== '' && $bodyText !== ''): ?>
@@ -1289,16 +1305,90 @@ foreach ($lead->lead_activities as $__a) {
         }
 
         $btnDraft.addEventListener('click', function() {
+            document.getElementById('ai-send-fields').style.display = 'none';
+            document.getElementById('ai-send').setAttribute('data-activity-id', '');
             modal.show();
             generate();
         });
-        // FALA 17: buttony w timeline (email_in card) tez triggeruja ten modal
+        // FALA 17+19: buttony w timeline (email_in card) tez triggeruja ten modal
+        // FALA 19: extra przekazuja activity_id + prefill To
         document.querySelectorAll('.btn-ai-draft').forEach(function(btn) {
             btn.addEventListener('click', function() {
+                var activityId = btn.getAttribute('data-activity-id') || '';
+                var toEmail = btn.getAttribute('data-email-from') || '';
+                if (activityId) {
+                    document.getElementById('ai-send-fields').style.display = 'block';
+                    document.getElementById('ai-to').value = toEmail;
+                    document.getElementById('ai-send').setAttribute('data-activity-id', activityId);
+                } else {
+                    document.getElementById('ai-send-fields').style.display = 'none';
+                    document.getElementById('ai-send').setAttribute('data-activity-id', '');
+                }
+                document.getElementById('ai-send-result').style.display = 'none';
                 modal.show();
                 generate();
             });
         });
+
+        // FALA 19: Wyslij przez Gmail
+        var $send = document.getElementById('ai-send');
+        var $sendResult = document.getElementById('ai-send-result');
+        var $to = document.getElementById('ai-to');
+        if ($send) {
+            $send.addEventListener('click', function() {
+                var activityId = $send.getAttribute('data-activity-id');
+                if (!activityId) {
+                    $sendResult.className = 'alert alert-warning';
+                    $sendResult.textContent = 'Nie mozna wyslac - brak powiazania z konkretnym mailem. Otworz modal przez button "Odpowiedz z AI" pod mailem.';
+                    $sendResult.style.display = 'block';
+                    return;
+                }
+                if (!$to.value || !$to.value.includes('@')) {
+                    $sendResult.className = 'alert alert-warning';
+                    $sendResult.textContent = 'Podaj prawidlowy adres odbiorcy.';
+                    $sendResult.style.display = 'block';
+                    return;
+                }
+                if (!$body.value.trim()) {
+                    $sendResult.className = 'alert alert-warning';
+                    $sendResult.textContent = 'Tresc jest pusta.';
+                    $sendResult.style.display = 'block';
+                    return;
+                }
+                $send.disabled = true;
+                $send.innerHTML = '<i class="ri-loader-4-line"></i> Wysylanie...';
+                $sendResult.style.display = 'none';
+
+                var fd = new FormData();
+                fd.append('_csrfToken', csrf);
+                fd.append('to', $to.value);
+                fd.append('subject', $subject.value);
+                fd.append('body_text', $body.value);
+                fetch('/crm/reply/' + activityId, {
+                    method: 'POST', body: fd, credentials: 'same-origin',
+                    headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+                }).then(function(r){return r.json();}).then(function(j) {
+                    $send.disabled = false;
+                    $send.innerHTML = '<i class="ri-send-plane-line"></i> Wyślij przez Gmail';
+                    if (!j.ok) {
+                        $sendResult.className = 'alert alert-danger';
+                        $sendResult.textContent = 'Blad: ' + (j.error || 'nieznany');
+                        $sendResult.style.display = 'block';
+                        return;
+                    }
+                    $sendResult.className = 'alert alert-success';
+                    $sendResult.innerHTML = '<i class="ri-check-double-line"></i> Wyslano! Gmail ID: <code>' + esc(j.gmail_id) + '</code>. Za chwile odswiez strone zeby zobaczyc email_out w timeline.';
+                    $sendResult.style.display = 'block';
+                    setTimeout(function() { location.reload(); }, 2500);
+                }).catch(function(e) {
+                    $send.disabled = false;
+                    $send.innerHTML = '<i class="ri-send-plane-line"></i> Wyślij przez Gmail';
+                    $sendResult.className = 'alert alert-danger';
+                    $sendResult.textContent = 'Blad sieciowy: ' + e.message;
+                    $sendResult.style.display = 'block';
+                });
+            });
+        }
         $regen.addEventListener('click', generate);
         $copy.addEventListener('click', function() {
             var full = 'Temat: ' + $subject.value + '\n\n' + $body.value;

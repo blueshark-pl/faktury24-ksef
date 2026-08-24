@@ -38,6 +38,8 @@ class GmailApiService
 
     private const SCOPES = [
         'https://www.googleapis.com/auth/gmail.readonly',
+        // FALA 19: send scope - potrzebny dla POST messages/send. Wymaga re-authoryzacji uzytkownika.
+        'https://www.googleapis.com/auth/gmail.send',
         'https://www.googleapis.com/auth/userinfo.email',
     ];
 
@@ -224,6 +226,132 @@ class GmailApiService
      * @param string $attachmentId ID z attachments[]['attachment_id']
      * @param int $maxSize max bajtow do pobrania (dla ochrony przed OOM)
      */
+    /**
+     * FALA 19: Wyslij email przez Gmail API (POST messages/send).
+     *
+     * Build MIME message + base64url encode + POST do Gmail API. Threadowanie
+     * po In-Reply-To / References + threadId (jesli podane) - Gmail klienta zobaczy
+     * odpowiedz w tym samym watku co oryginal.
+     *
+     * @param string $accessToken OAuth token (musi miec scope gmail.send)
+     * @param string $fromEmail Adres nadawcy (musi zgadzac sie z autentykowanym kontem)
+     * @param string $fromName Wyswietlana nazwa nadawcy
+     * @param string $to Adres odbiorcy (raw email lub 'Name <email@x>')
+     * @param string $subject Temat (bez 'Re: ' prefix - dodamy jeśli nie ma)
+     * @param string $bodyPlain Tresc plain text (obowiazkowa)
+     * @param string $bodyHtml Tresc HTML (opcjonalnie - jesli podana, wysylamy multipart/alternative)
+     * @param string $inReplyTo Message-ID oryginalnego maila (do naglowka In-Reply-To)
+     * @param string $references Referencje watku (do naglowka References)
+     * @param string $threadId Gmail thread ID (Gmail-specific, dla threading w Gmail)
+     * @return array|null ['id' => gmailMsgId, 'threadId' => X] lub null przy bledzie
+     */
+    public function sendMessage(
+        string $accessToken,
+        string $fromEmail,
+        string $fromName,
+        string $to,
+        string $subject,
+        string $bodyPlain,
+        string $bodyHtml = '',
+        string $inReplyTo = '',
+        string $references = '',
+        string $threadId = ''
+    ): ?array {
+        try {
+            // Build RFC 2822 MIME message
+            $boundary = 'crm_' . bin2hex(random_bytes(8));
+            $headers = [];
+            $headers[] = 'From: ' . $this->mimeEncodeAddress($fromName, $fromEmail);
+            $headers[] = 'To: ' . $to;
+            $headers[] = 'Subject: ' . $this->mimeEncodeHeader($subject);
+            $headers[] = 'MIME-Version: 1.0';
+            if ($inReplyTo !== '') {
+                $headers[] = 'In-Reply-To: <' . trim($inReplyTo, '<>') . '>';
+            }
+            if ($references !== '') {
+                $headers[] = 'References: <' . trim($references, '<>') . '>';
+            }
+
+            if ($bodyHtml !== '') {
+                // multipart/alternative: text + HTML
+                $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
+                $body = "--{$boundary}\r\n"
+                    . "Content-Type: text/plain; charset=UTF-8\r\n"
+                    . "Content-Transfer-Encoding: base64\r\n\r\n"
+                    . chunk_split(base64_encode($bodyPlain)) . "\r\n"
+                    . "--{$boundary}\r\n"
+                    . "Content-Type: text/html; charset=UTF-8\r\n"
+                    . "Content-Transfer-Encoding: base64\r\n\r\n"
+                    . chunk_split(base64_encode($bodyHtml)) . "\r\n"
+                    . "--{$boundary}--\r\n";
+            } else {
+                // text/plain only
+                $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+                $headers[] = 'Content-Transfer-Encoding: base64';
+                $body = "\r\n" . chunk_split(base64_encode($bodyPlain));
+            }
+
+            $mime = implode("\r\n", $headers) . "\r\n" . $body;
+
+            // Gmail API expects base64url (no padding, - _ zamiast + /)
+            $raw = rtrim(strtr(base64_encode($mime), '+/', '-_'), '=');
+
+            $payload = ['raw' => $raw];
+            if ($threadId !== '') {
+                $payload['threadId'] = $threadId;
+            }
+
+            $client = new Client(['timeout' => 60]);
+            $response = $client->post(
+                self::API_BASE . '/messages/send',
+                json_encode($payload),
+                ['headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ]]
+            );
+
+            if (!$response->isOk()) {
+                Log::warning('Gmail sendMessage HTTP ' . $response->getStatusCode()
+                    . ': ' . substr((string)$response->getBody(), 0, 500));
+                return null;
+            }
+
+            $data = json_decode((string)$response->getBody(), true);
+            return [
+                'id' => (string)($data['id'] ?? ''),
+                'threadId' => (string)($data['threadId'] ?? ''),
+                'labelIds' => $data['labelIds'] ?? [],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Gmail sendMessage failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * RFC 2047 encode dla headera z UTF-8 (np. Subject z polskimi znakami)
+     */
+    private function mimeEncodeHeader(string $text): string
+    {
+        // Jeśli tylko ASCII - nie enkoduj
+        if (preg_match('//u', $text) && mb_check_encoding($text, 'ASCII')) {
+            return $text;
+        }
+        return '=?UTF-8?B?' . base64_encode($text) . '?=';
+    }
+
+    /**
+     * Encode 'Name <email>' z UTF-8 name gdy nazwa nie-ASCII
+     */
+    private function mimeEncodeAddress(string $name, string $email): string
+    {
+        if ($name === '') return $email;
+        $encName = $this->mimeEncodeHeader($name);
+        return $encName . ' <' . $email . '>';
+    }
+
     public function getAttachment(string $accessToken, string $msgId, string $attachmentId, int $maxSize = 10485760): ?string
     {
         try {

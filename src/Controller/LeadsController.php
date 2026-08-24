@@ -2125,6 +2125,153 @@ class LeadsController extends AppController
      * przez GPT (activity_type='quote_request').
      * POST /crm/{leadId}/utworz-zlecenia-z-quote/{activityId}
      */
+    /**
+     * FALA 19: Wyslij odpowiedz przez Gmail API (POST messages/send).
+     * Wymaga: Gmail OAuth z scope gmail.send + activityId email_in do ktorego odpowiadamy.
+     *
+     * POST /crm/reply/{activityId}
+     * Body: subject, body_text, body_html?, to?
+     *
+     * Response JSON: ok, gmail_id, thread_id, error?
+     */
+    public function replyByGmail(string $activityId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId = $identity?->get('id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data));
+            return $this->response;
+        };
+
+        try {
+            // Fetch original email_in activity
+            $Acts = $this->fetchTable('LeadActivities');
+            $orig = $Acts->get($activityId, ['contain' => ['Leads']]);
+            if ((string)$orig->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'Brak dostepu do tego leada'], 403);
+            }
+            if ($orig->activity_type !== 'email_in') {
+                return $json(['ok' => false, 'error' => 'Mozna odpowiadac tylko na email_in'], 400);
+            }
+
+            $lead = $orig->lead;
+            $data = (array)$this->request->getData();
+            $subject = trim((string)($data['subject'] ?? ''));
+            $bodyText = trim((string)($data['body_text'] ?? ''));
+            $bodyHtml = trim((string)($data['body_html'] ?? ''));
+            $to = trim((string)($data['to'] ?? ''));
+
+            if ($bodyText === '') {
+                return $json(['ok' => false, 'error' => 'body_text jest wymagany'], 400);
+            }
+
+            // Znajdz original crm_email_message dla message_id (do threadingu)
+            $origMsg = null;
+            try {
+                $Msg = $this->fetchTable('CrmEmailMessages');
+                $origMsg = $Msg->find()
+                    ->where(['lead_id' => $lead->id])
+                    ->orderByDesc('received_at')
+                    ->first();
+            } catch (\Throwable $e) {}
+
+            // Fallback: to = from oryginalnego maila lub lead.email
+            $origPayload = json_decode((string)$orig->payload_json, true) ?: [];
+            if ($to === '') {
+                $to = $origPayload['from'] ?? $lead->email ?? '';
+            }
+            if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                return $json(['ok' => false, 'error' => 'Brak lub nieprawidlowy adres odbiorcy'], 400);
+            }
+
+            // Subject: dodaj 'Re: ' jesli brak
+            if ($subject === '') {
+                $subject = 'Re: ' . ($orig->subject ?: '(bez tematu)');
+            } elseif (stripos($subject, 're:') !== 0 && stripos($subject, 'odp:') !== 0) {
+                $subject = 'Re: ' . $subject;
+            }
+
+            // Znajdz Gmail account firmy
+            $EA = $this->fetchTable('CrmEmailAccounts');
+            $acc = $EA->find()->where([
+                'company_id' => $companyId,
+                'auth_type' => 'gmail_oauth',
+                'is_active' => true,
+            ])->first();
+            if (!$acc) {
+                return $json(['ok' => false, 'error' => 'Brak aktywnego konta Gmail OAuth w tej firmie. Skonfiguruj w /crm/email-accounts'], 400);
+            }
+
+            $svc = new \App\Service\GmailApiService();
+            $accessToken = $EA->decryptPassword($acc->oauth_access_token);
+            $needsRefresh = !$acc->oauth_expires_at || $acc->oauth_expires_at->isPast();
+            if ($needsRefresh) {
+                $refreshToken = $EA->decryptPassword($acc->oauth_refresh_token);
+                $tokens = $svc->refreshAccessToken($refreshToken);
+                if (empty($tokens['access_token'])) {
+                    return $json(['ok' => false, 'error' => 'Nie mozna odswiezyc access token - re-authoryzuj konto'], 500);
+                }
+                $accessToken = $tokens['access_token'];
+                $acc->oauth_access_token = $EA->encryptPassword($accessToken);
+                $acc->oauth_expires_at = new \Cake\I18n\DateTime('+' . (int)($tokens['expires_in'] ?? 3600) . ' seconds');
+                $EA->save($acc);
+            }
+
+            $fromEmail = $acc->username;
+            $fromName = trim(($identity?->get('first_name') ?? '') . ' ' . ($identity?->get('last_name') ?? '')) ?: 'CRM';
+
+            $inReplyTo = $origMsg?->message_id ?: '';
+            $references = $origMsg?->in_reply_to ? trim($origMsg->in_reply_to, '<>') . ' ' : '';
+            $references .= $inReplyTo;
+            $threadId = $origMsg?->thread_id ?: '';
+
+            $result = $svc->sendMessage(
+                $accessToken, $fromEmail, $fromName, $to,
+                $subject, $bodyText, $bodyHtml,
+                $inReplyTo, trim($references), $threadId
+            );
+
+            if (!$result || empty($result['id'])) {
+                return $json(['ok' => false, 'error' => 'Gmail API sendMessage zwrocilo blad - sprawdz logi. Byc moze scope gmail.send jeszcze nie dodany - re-authoryzuj konto Gmail.'], 500);
+            }
+
+            // Log w timeline jako email_out
+            try {
+                $Acts->logSystem(
+                    (string)$companyId, (string)$lead->id, 'email_out',
+                    $subject,
+                    mb_substr($bodyText, 0, 500),
+                    [
+                        'gmail_id' => $result['id'],
+                        'thread_id' => $result['threadId'],
+                        'to' => $to,
+                        'from' => $fromEmail,
+                        'reply_to_activity' => $activityId,
+                        'sent_via' => 'gmail_api',
+                    ],
+                    $userId
+                );
+            } catch (\Throwable $e) {}
+
+            // Update last_contacted_at
+            try {
+                $Leads = $this->fetchTable('Leads');
+                $lead->last_contacted_at = new \Cake\I18n\DateTime();
+                $Leads->save($lead);
+            } catch (\Throwable $e) {}
+
+            return $json(['ok' => true, 'gmail_id' => $result['id'], 'thread_id' => $result['threadId']]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('replyByGmail exception: ' . $e->getMessage());
+            return $json(['ok' => false, 'error' => 'Exception: ' . $e->getMessage()], 500);
+        }
+    }
+
     public function createOrdersFromQuote(string $activityId): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);
