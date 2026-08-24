@@ -190,6 +190,19 @@ return function (RouteBuilder $routes): void {
         // FALA 13: Gmail OAuth 2.0
         $builder->get('/crm/email-accounts/google-auth',    ['controller' => 'CrmEmailAccounts', 'action' => 'googleAuth']);
         $builder->get('/crm/email-accounts/google-callback',['controller' => 'CrmEmailAccounts', 'action' => 'googleCallback']);
+
+        // FALA 13d: aliasy DashedRoute-friendly URLs (dla reverse routing z Form->postLink)
+        // Cake generator DashedRoute wybiera /crm-email-accounts/* - dublujemy explicit
+        $builder->get('/crm-email-accounts',                ['controller' => 'CrmEmailAccounts', 'action' => 'index']);
+        $builder->connect('/crm-email-accounts/add',        ['controller' => 'CrmEmailAccounts', 'action' => 'add']);
+        $builder->connect('/crm-email-accounts/edit/{id}',  ['controller' => 'CrmEmailAccounts', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm-email-accounts/delete/{id}',   ['controller' => 'CrmEmailAccounts', 'action' => 'delete'])
+            ->setPass(['id']);
+        $builder->post('/crm-email-accounts/test/{id}',     ['controller' => 'CrmEmailAccounts', 'action' => 'test'])
+            ->setPass(['id']);
+        $builder->get('/crm-email-accounts/google-auth',    ['controller' => 'CrmEmailAccounts', 'action' => 'googleAuth']);
+        $builder->get('/crm-email-accounts/google-callback',['controller' => 'CrmEmailAccounts', 'action' => 'googleCallback']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);
