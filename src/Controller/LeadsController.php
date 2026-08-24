@@ -1082,6 +1082,92 @@ class LeadsController extends AppController
     }
 
     /**
+     * LinkedIn search - znajdz publiczny URL profilu osoby/firmy przez
+     * zewnetrzne Search API (Serper.dev/Brave/Google CSE).
+     *
+     * POST /crm/linkedin-search
+     * Body: {lead_id, mode: 'person'|'company', save: 1?}
+     * Return: {ok, results:[{url,title,snippet}], saved: bool, provider}
+     */
+    public function linkedinSearchJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        $leadId = trim((string)$this->request->getData('lead_id', ''));
+        $mode   = trim((string)$this->request->getData('mode', 'person'));
+        $save   = (bool)$this->request->getData('save');
+
+        if (!in_array($mode, ['person', 'company'], true)) {
+            return $this->jsonResp(['ok' => false, 'error' => 'invalid_mode'], 400);
+        }
+
+        $Leads = $this->fetchTable('Leads');
+        try {
+            $lead = $Leads->get($leadId);
+        } catch (\Throwable $e) {
+            return $this->jsonResp(['ok' => false, 'error' => 'lead_not_found'], 404);
+        }
+        if ((string)$lead->company_id !== (string)$companyId) {
+            return $this->jsonResp(['ok' => false, 'error' => 'not_owned'], 403);
+        }
+
+        $service = new \App\Service\LinkedinSearchService();
+        if (!$service->isConfigured()) {
+            return $this->jsonResp([
+                'ok' => false,
+                'error' => 'search_not_configured',
+                'hint' => __('Search API nie skonfigurowany. Dodaj klucz w config/app_local.php: Search.provider + Search.serperApiKey (lub braveApiKey/googleCseApiKey).'),
+            ], 400);
+        }
+
+        try {
+            if ($mode === 'person') {
+                $name = trim((string)$lead->contact_person);
+                if ($name === '') {
+                    return $this->jsonResp(['ok' => false, 'error' => 'no_contact_person',
+                        'hint' => __('Uzupelnij osobe kontaktowa w leadzie zeby moc wyszukac profil.')], 400);
+                }
+                $results = $service->findPerson($name, (string)$lead->company_name);
+            } else {
+                $results = $service->findCompany((string)$lead->company_name);
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::error('LinkedIn search failed: ' . $e->getMessage());
+            return $this->jsonResp(['ok' => false, 'error' => 'search_failed', 'hint' => $e->getMessage()], 500);
+        }
+
+        $saved = false;
+        if ($save && !empty($results)) {
+            $topUrl = $results[0]['url'];
+            $field = $mode === 'person' ? 'linkedin_url' : 'linkedin_company_url';
+            if ((string)($lead->{$field} ?? '') === '') {
+                $lead->{$field} = $topUrl;
+                if ($Leads->save($lead)) {
+                    $saved = true;
+                    $this->fetchTable('LeadActivities')->logSystem(
+                        $companyId, $lead->id, 'note',
+                        __('Znaleziono LinkedIn URL'),
+                        sprintf(__('%s: %s (provider: %s)'), $field, $topUrl, $service->getProvider()),
+                        ['field' => $field, 'url' => $topUrl, 'provider' => $service->getProvider()],
+                        $userId
+                    );
+                }
+            }
+        }
+
+        return $this->jsonResp([
+            'ok'       => true,
+            'results'  => $results,
+            'saved'    => $saved,
+            'provider' => $service->getProvider(),
+        ]);
+    }
+
+    /**
      * KRS lookup - pobiera pelny wypis MS-KRS API dla podanego numeru KRS lub NIP.
      * Auto-apply do leada + zwraca panel z dodatkowymi info (kapital, PKD, wspolnicy).
      *

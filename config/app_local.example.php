@@ -110,4 +110,17 @@ return [
             'from' => ['no-reply@faktury24.com' => 'Faktury24'],
         ],
     ],
+
+    // CRM Search API dla LinkedIn URL lookup (FALA 10).
+    // Provider: 'serper' | 'brave' | 'google_cse' - wybierz jeden.
+    // Serper.dev:  2500 free na start, potem $50/2500 - https://serper.dev
+    // Brave:       2000/mies free na karte, potem $3/1000 - https://api.search.brave.com
+    // Google CSE:  100/dzien free - https://developers.google.com/custom-search
+    'Search' => [
+        'provider' => env('SEARCH_PROVIDER', 'serper'),
+        'serperApiKey'    => env('SERPER_API_KEY', ''),
+        'braveApiKey'     => env('BRAVE_API_KEY', ''),
+        'google_cseApiKey' => env('GOOGLE_CSE_API_KEY', ''),
+        'googleCseCx'     => env('GOOGLE_CSE_CX', ''),
+    ],
 ];

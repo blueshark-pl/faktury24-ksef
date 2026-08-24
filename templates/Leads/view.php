@@ -316,39 +316,39 @@ $activityIcons = [
                 <?php if ($lead->contact_channel): ?>
                     <div class="info-row"><div class="info-label"><?= __('Preferencja') ?></div><div><?= h($lead->contact_channel) ?></div></div>
                 <?php endif; ?>
-                <?php if (!empty($lead->linkedin_url) || !empty($lead->linkedin_company_url)): ?>
-                    <div class="mt-2 d-flex gap-2 flex-wrap">
-                        <?php if (!empty($lead->linkedin_url)): ?>
-                            <a href="<?= h($lead->linkedin_url) ?>" target="_blank" rel="noopener"
-                               class="btn btn-sm text-white" style="background:#0a66c2;">
-                                <i class="ri-linkedin-box-fill"></i> <?= __('Profil osoby') ?>
-                            </a>
-                        <?php endif; ?>
-                        <?php if (!empty($lead->linkedin_company_url)): ?>
-                            <a href="<?= h($lead->linkedin_company_url) ?>" target="_blank" rel="noopener"
-                               class="btn btn-sm btn-outline-primary" style="border-color:#0a66c2; color:#0a66c2;">
-                                <i class="ri-building-line"></i> <?= __('Profil firmy') ?>
-                            </a>
-                        <?php endif; ?>
-                        <?php if (empty($lead->linkedin_url) && !empty($lead->contact_person)): ?>
-                            <a href="https://www.google.com/search?q=<?= urlencode(($lead->contact_person ?? '') . ' ' . ($lead->company_name ?? '') . ' linkedin') ?>"
-                               target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="<?= __('Szukaj w Google') ?>">
-                                <i class="ri-search-line"></i> Znajdź LinkedIn
-                            </a>
-                        <?php endif; ?>
-                    </div>
-                <?php elseif ($lead->contact_person): ?>
-                    <div class="mt-2">
-                        <a href="https://www.google.com/search?q=<?= urlencode(($lead->contact_person ?? '') . ' ' . ($lead->company_name ?? '') . ' linkedin') ?>"
-                           target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
-                            <i class="ri-linkedin-box-fill" style="color:#0a66c2;"></i>
-                            <?= __('Znajdź LinkedIn w Google') ?>
+                <div class="mt-2 d-flex gap-2 flex-wrap" id="li-buttons">
+                    <?php if (!empty($lead->linkedin_url)): ?>
+                        <a href="<?= h($lead->linkedin_url) ?>" target="_blank" rel="noopener"
+                           class="btn btn-sm text-white" style="background:#0a66c2;">
+                            <i class="ri-linkedin-box-fill"></i> <?= __('Profil osoby') ?>
                         </a>
-                        <div class="small text-muted mt-1">
-                            <?= __('Skopiuj URL i wklej w Edytuj lead → LinkedIn osoby') ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
+                    <?php endif; ?>
+                    <?php if (!empty($lead->linkedin_company_url)): ?>
+                        <a href="<?= h($lead->linkedin_company_url) ?>" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-outline-primary" style="border-color:#0a66c2; color:#0a66c2;">
+                            <i class="ri-building-line"></i> <?= __('Profil firmy') ?>
+                        </a>
+                    <?php endif; ?>
+                    <?php if (empty($lead->linkedin_url) && !empty($lead->contact_person)): ?>
+                        <button type="button" class="btn btn-sm btn-primary" id="li-search-person"
+                                data-mode="person" style="background:#0a66c2; border-color:#0a66c2;">
+                            <i class="ri-search-eye-line"></i> <?= __('Znajdź profil auto') ?>
+                        </button>
+                    <?php endif; ?>
+                    <?php if (empty($lead->linkedin_company_url)): ?>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="li-search-company"
+                                data-mode="company" style="border-color:#0a66c2; color:#0a66c2;">
+                            <i class="ri-search-eye-line"></i> <?= __('Znajdź firmę auto') ?>
+                        </button>
+                    <?php endif; ?>
+                    <?php if (!empty($lead->contact_person) || !empty($lead->company_name)): ?>
+                        <a href="https://www.google.com/search?q=<?= urlencode(($lead->contact_person ?? '') . ' ' . ($lead->company_name ?? '') . ' linkedin') ?>"
+                           target="_blank" rel="noopener" class="btn btn-sm btn-link text-muted small" title="<?= __('Google search fallback') ?>">
+                            <i class="ri-external-link-line"></i> Google
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div id="li-results" class="mt-2" style="display:none;"></div>
             </div>
         </div>
         <?php endif; ?>
@@ -602,5 +602,109 @@ $activityIcons = [
     });
 
     tryCacheByNip();
+})();
+</script>
+
+<script>
+(function() {
+    var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+    var leadId = '<?= h($lead->id) ?>';
+    var URL_LI = '<?= $this->Url->build(['action' => 'linkedinSearchJson']) ?>';
+    var $results = document.getElementById('li-results');
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"]/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+        });
+    }
+
+    function search(mode, $btn) {
+        var origHtml = $btn.innerHTML;
+        $btn.disabled = true;
+        $btn.innerHTML = '<i class="ri-loader-4-line"></i> Szukam…';
+        var fd = new FormData();
+        fd.append('_csrfToken', csrf);
+        fd.append('lead_id', leadId);
+        fd.append('mode', mode);
+        fetch(URL_LI, {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        }).then(function(r){return r.json();}).then(function(j) {
+            $btn.disabled = false;
+            $btn.innerHTML = origHtml;
+            if (!j.ok) {
+                $results.innerHTML = '<div class="alert alert-warning small py-2 mb-0">' +
+                    '<i class="ri-error-warning-line"></i> ' + escapeHtml(j.hint || j.error || 'Blad wyszukiwania') + '</div>';
+                $results.style.display = 'block';
+                return;
+            }
+            if (!j.results || j.results.length === 0) {
+                $results.innerHTML = '<div class="alert alert-info small py-2 mb-0">' +
+                    '<i class="ri-search-line"></i> Nie znaleziono profilu na LinkedIn. Sprobuj Google fallback.</div>';
+                $results.style.display = 'block';
+                return;
+            }
+            var html = '<div class="small text-muted mb-1">Znaleziono ' + j.results.length + ' wynik(ów) via ' + j.provider + ':</div>';
+            html += '<div class="list-group list-group-flush">';
+            j.results.forEach(function(r, i) {
+                html += '<div class="list-group-item px-2 py-2">' +
+                    '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                        '<div class="flex-grow-1 small">' +
+                            '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" style="color:#0a66c2;" class="fw-semibold">' +
+                                '<i class="ri-linkedin-box-fill"></i> ' + escapeHtml(r.title) + '</a>' +
+                            '<div class="text-muted small mt-1">' + escapeHtml(r.snippet) + '</div>' +
+                            '<div class="text-muted small"><code style="font-size:11px;">' + escapeHtml(r.url) + '</code></div>' +
+                        '</div>' +
+                        '<button type="button" class="btn btn-sm btn-success save-li" ' +
+                            'data-url="' + escapeHtml(r.url) + '" data-mode="' + mode + '" title="Zapisz do leada">' +
+                            '<i class="ri-check-line"></i>' +
+                        '</button>' +
+                    '</div>' +
+                '</div>';
+            });
+            html += '</div>';
+            $results.innerHTML = html;
+            $results.style.display = 'block';
+
+            // Save button handler
+            $results.querySelectorAll('.save-li').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var fd2 = new FormData();
+                    fd2.append('_csrfToken', csrf);
+                    fd2.append('lead_id', leadId);
+                    fd2.append('mode', btn.dataset.mode);
+                    fd2.append('save', '1');
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="ri-loader-4-line"></i>';
+                    fetch(URL_LI, {
+                        method: 'POST', body: fd2, credentials: 'same-origin',
+                        headers: { 'X-CSRF-Token': csrf }
+                    }).then(function(r){return r.json();}).then(function(j2) {
+                        if (j2.ok && j2.saved) {
+                            btn.innerHTML = '<i class="ri-check-double-line"></i>';
+                            btn.classList.replace('btn-success', 'btn-outline-success');
+                            setTimeout(function() { location.reload(); }, 800);
+                        } else {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="ri-check-line"></i>';
+                            alert(j2.hint || 'Nie zapisano - moze pole juz wypelnione?');
+                        }
+                    });
+                });
+            });
+        }).catch(function(e) {
+            $btn.disabled = false;
+            $btn.innerHTML = origHtml;
+            $results.innerHTML = '<div class="alert alert-danger small py-2 mb-0">Blad sieciowy: ' + escapeHtml(e.message) + '</div>';
+            $results.style.display = 'block';
+        });
+    }
+
+    ['li-search-person', 'li-search-company'].forEach(function(id) {
+        var $btn = document.getElementById(id);
+        if ($btn) {
+            $btn.addEventListener('click', function() { search($btn.dataset.mode, $btn); });
+        }
+    });
 })();
 </script>

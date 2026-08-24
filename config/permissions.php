@@ -485,6 +485,8 @@ return [
                 'duplicates', 'mergeReview', 'merge',
                 // FALA 8: KRS enrichment
                 'krsLookupJson',
+                // FALA 10: LinkedIn search
+                'linkedinSearchJson',
             ],
         ],
         [
