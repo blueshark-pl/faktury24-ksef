@@ -203,6 +203,16 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->get('/crm-email-accounts/google-auth',    ['controller' => 'CrmEmailAccounts', 'action' => 'googleAuth']);
         $builder->get('/crm-email-accounts/google-callback',['controller' => 'CrmEmailAccounts', 'action' => 'googleCallback']);
+
+        // FALA 13e: CRM Admin Tools (webowe migracje/cache/cron)
+        $builder->get('/crm/admin/tools',                   ['controller' => 'CrmAdmin', 'action' => 'tools']);
+        $builder->post('/crm/admin/migrate',                ['controller' => 'CrmAdmin', 'action' => 'migrate']);
+        $builder->get('/crm/admin/migrate',                 ['controller' => 'CrmAdmin', 'action' => 'migrate']);
+        $builder->get('/crm/admin/migration-status',        ['controller' => 'CrmAdmin', 'action' => 'migrationStatus']);
+        $builder->post('/crm/admin/clear-cache',            ['controller' => 'CrmAdmin', 'action' => 'clearCache']);
+        $builder->get('/crm/admin/clear-cache',             ['controller' => 'CrmAdmin', 'action' => 'clearCache']);
+        $builder->post('/crm/admin/run-cron/{name}',        ['controller' => 'CrmAdmin', 'action' => 'runCron'])
+            ->setPass(['name']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);

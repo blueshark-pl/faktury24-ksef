@@ -1648,6 +1648,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'duplicates')]
                                     ) ?>
                                 </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-tools-line me-1"></i>' . __('Admin Tools'),
+                                        ['plugin' => false, 'controller' => 'CrmAdmin', 'action' => 'tools'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmadmin')]
+                                    ) ?>
+                                </li>
                             </ul>
                             </li>
 

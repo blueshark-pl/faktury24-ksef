@@ -475,6 +475,13 @@ return [
             'action' => ['index', 'add', 'edit', 'delete', 'test',
                          'googleAuth', 'googleCallback'],
         ],
+        // CRM Admin Tools - webowe migracje/cache/cron (tylko admin/user)
+        [
+            'role' => ['spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'CrmAdmin',
+            'action' => ['tools', 'migrate', 'migrationStatus', 'clearCache',
+                         'pollEmails', 'runCron'],
+        ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [
             'role'       => '*',
