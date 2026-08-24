@@ -104,12 +104,13 @@ class OpenAiService
         if ($user !== '') {
             $userContent[] = ['type' => 'text', 'text' => $user];
         }
+        // detail=high dla screenshotow tabel Excela - inaczej Vision tylko 512x512 (halucynuje drobny druk)
         if ($imageUrl) {
-            $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]];
+            $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl, 'detail' => 'high']];
         }
         foreach ($extraImages as $extraUrl) {
             if (is_string($extraUrl) && $extraUrl !== '') {
-                $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $extraUrl]];
+                $userContent[] = ['type' => 'image_url', 'image_url' => ['url' => $extraUrl, 'detail' => 'high']];
             }
         }
         $body = [

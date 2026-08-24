@@ -833,14 +833,19 @@ class CrmEmailPollCommand extends Command
         try {
             $svc = new \App\Service\Ai\OpenAiService();
             $system = "Jestes spedytorem analizujacym maile z zapytaniami o transport. "
-                . "Wyciagnij ze zrodla WSZYSTKIE zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
+                . "Wyciagnij ze zrodla zlecenia transportowe (mozna wiele w jednym mailu - np. tabela Excel wklejona w body, "
                 . "lista zaladunkow, forwarded WG:/FW:/Weitergeleitete Nachricht, tabele w zalacznikach PDF/obrazkach/CSV). "
                 . "Analizuj TAKZE zalaczniki - moga zawierac cala tresc zamowienia. "
-                . "WAZNE: gdy tabela ma DUZO wierszy (30+), MUSISZ wyciagnac WSZYSTKIE - nie skracaj, nie samplu, nie pomijaj. "
-                . "Idz WIERSZ PO WIERSZU od pierwszego do ostatniego. Jesli wpis jest niepelny (brak np. wagi), tez go dodaj z brakami. "
-                . "Policz ile wierszy tabela ma i zwroc dokladnie tyle shipmentow. "
-                . "PRZYKLAD: jesli obrazek pokazuje tabele z 50 wierszami, `shipments_count` = 50 i `shipments[]` ma 50 elementow. "
-                . "Nie skracaj do 20 czy 30 z uwagi na dlugosc - masz duzy budzet tokenow. "
+                . "\n\n"
+                . "!!! ZASADA ANTY-HALUCYNACJI (KRYTYCZNA) !!! \n"
+                . "1. Zwracaj TYLKO to co WYRAZNIE WIDZISZ w tabeli/tresci. \n"
+                . "2. NIE WYMYSLAJ danych. Jesli nie widzisz konkretnego wiersza - NIE dodawaj go. \n"
+                . "3. NIE POWTARZAJ tego samego wiersza z inkrementowanym numerem (np. 4500095109 -> 4500185109). \n"
+                . "4. NIE ROTUJ vehicle_type/cargo_type w kolko (plandeka/chlodnia/mega/cysterna) - to znak halucynacji. \n"
+                . "5. Jesli obraz jest NIECZYTELNY dla czesci tabeli - zwroc tylko czytelne wiersze + w notes ostatniego: 'obraz nieczytelny, wiecej wierszy mozliwe'. \n"
+                . "6. Lepiej zwroc 5 PRAWDZIWYCH shipmentow niz 50 wymyslonych. \n"
+                . "7. Kazdy shipment MUSI miec inny customer_order_ref/from_city/to_city ILEROC tabela pokazuje rozne wiersze. \n"
+                . "\n"
                 . "Ignoruj podpisy, stopki, zaznaczenia zaufania, boilerplate. "
                 . "Zwroc STRICT JSON: {"
                 . "\"is_quote_request\": bool (czy email zawiera konkretne zapytanie o wycene/przewoz - nie same 'chetnie ofertuj' bez trasy), "
@@ -903,6 +908,36 @@ class CrmEmailPollCommand extends Command
             $io->out('    Quote GPT: 0 poprawnych shipments (brak from/to)');
             return 0;
         }
+
+        // FALA 15 anti-halucynacja: usun ewidentne duplikaty i fake wpisy.
+        // Vision GPT lubi wypelniac max_tokens fake danymi jesli obraz jest za maly/nieczytelny.
+        // Wykrywamy:
+        //  1. Duplikaty po ref (najbardziej pewny wskaznik - unikalny id klienta)
+        //  2. Powtarzajace sie trasa + waga + palety (>50% shipments identycznych = halucynacja)
+        $beforeCount = count($valid);
+        $seenRefs = [];
+        $routeKeys = [];
+        $dedup = [];
+        foreach ($valid as $s) {
+            $ref = trim((string)($s['customer_order_ref'] ?? ''));
+            $routeKey = strtolower(trim(
+                ($s['from_postal'] ?? '') . '|' . ($s['from_city'] ?? '') . '|' .
+                ($s['to_postal'] ?? '') . '|' . ($s['to_city'] ?? '') . '|' .
+                ($s['weight_kg'] ?? '') . '|' . ($s['pallets'] ?? '')
+            ));
+            // Skip: duplikat referencji
+            if ($ref !== '' && isset($seenRefs[$ref])) continue;
+            // Skip: identyczna trasa+waga+palety (>3 razy wystarczy potwierdzenie halucynacji)
+            $routeKeys[$routeKey] = ($routeKeys[$routeKey] ?? 0) + 1;
+            if ($routeKeys[$routeKey] > 1 && $routeKey !== '|||||') continue;
+            if ($ref !== '') $seenRefs[$ref] = true;
+            $dedup[] = $s;
+        }
+        $removed = $beforeCount - count($dedup);
+        if ($removed > 0) {
+            $io->out(sprintf('    Anti-hallucination: usunieto %d duplikatow (GPT wygenerowal identyczne wpisy)', $removed));
+        }
+        $valid = $dedup;
 
         $count = count($valid);
         $subj  = sprintf('Zapytanie o wycene: %d zlecen (%s)',
