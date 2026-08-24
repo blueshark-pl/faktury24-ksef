@@ -1114,7 +1114,19 @@ class LeadsController extends AppController
         $content = str_replace("\r\n", "\n", $content);
         $content = ltrim($content, "\xEF\xBB\xBF");
         if (!mb_check_encoding($content, 'UTF-8')) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1250');
+            // Auto-detect z listy typowych PL/EU encoding-ow.
+            // "Windows-1250" nie jest walidnym aliasem w niektorych buildach PHP - uzywamy CP1250.
+            $detected = mb_detect_encoding($content, ['UTF-8', 'CP1250', 'ISO-8859-2', 'ISO-8859-1'], true);
+            if ($detected && $detected !== 'UTF-8') {
+                try {
+                    $content = mb_convert_encoding($content, 'UTF-8', $detected);
+                } catch (\Throwable $e) {
+                    // Fallback: iconv z //IGNORE nie throwuje na nieznane bajty
+                    $content = @iconv('CP1250', 'UTF-8//IGNORE', $content) ?: $content;
+                }
+            } else {
+                $content = @iconv('CP1250', 'UTF-8//IGNORE', $content) ?: $content;
+            }
         }
         $lines = explode("\n", $content);
         if (count($lines) < 2) return [];
