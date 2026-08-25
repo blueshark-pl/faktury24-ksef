@@ -138,6 +138,10 @@ class LeadsController extends AppController
         $this->request->allowMethod(['get']);
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
+        $userId    = $identity?->get('id');
+
+        // Filter tylko moje (?mine=1)
+        $onlyMine = $this->request->getQuery('mine') === '1';
 
         // FALA 21: Multi-pipeline - default 'spot' (backward compat z URL bez ?pipeline)
         $pipelineType = trim((string)$this->request->getQuery('pipeline', 'spot'));
@@ -164,6 +168,9 @@ class LeadsController extends AppController
         ];
         if ($hasPipelineColumn) {
             $baseWhere['Leads.pipeline_type'] = $pipelineType;
+        }
+        if ($onlyMine && $userId) {
+            $baseWhere['Leads.assigned_to_user_id'] = $userId;
         }
         // FALA extras: domyslnie chowamy archived (chyba ze ?archived=1)
         try {
@@ -217,7 +224,7 @@ class LeadsController extends AppController
         $stageLabels = $this->stageLabelsForPipeline($pipelineType);
 
         $this->set(compact('columns', 'stats', 'pipelineType', 'pipelineCounts',
-            'displayStages', 'stageLabels'));
+            'displayStages', 'stageLabels', 'onlyMine'));
     }
 
     /**
