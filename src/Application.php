@@ -69,69 +69,6 @@ class Application extends BaseApplication
      */
     public function middleware(MiddlewareQueue $middlewareQueue): MiddlewareQueue
     {
-        // BYPASS dla /crm/cron/* - webhook cronu wykonuje sie PRZED cala reszta middleware
-        // (Authentication/Authorization/CSRF/RoutingMiddleware). Zwraca response bezposrednio.
-        // Token check + whitelist commands + wywolanie App\Command bezposrednio.
-        $middlewareQueue->add(new class implements \Psr\Http\Server\MiddlewareInterface {
-            public function process(ServerRequestInterface $req, RequestHandlerInterface $handler): ResponseInterface
-            {
-                $path = $req->getUri()->getPath();
-                if (!preg_match('#^/crm/cron/([a-z_]+)/?$#', $path, $m)) {
-                    return $handler->handle($req);
-                }
-                $command = $m[1];
-                @set_time_limit(600);
-                @ini_set('max_execution_time', '600');
-
-                // Token
-                $expectedToken = trim((string)Configure::read('Crm.cronToken'));
-                $providedToken = trim((string)($req->getQueryParams()['token'] ?? ''));
-                if ($expectedToken === '') {
-                    return (new \Cake\Http\Response())->withStatus(500)->withType('text/plain')
-                        ->withStringBody("Configure Crm.cronToken not set in app_local.php\n");
-                }
-                if (!hash_equals($expectedToken, $providedToken)) {
-                    return (new \Cake\Http\Response())->withStatus(401)->withType('text/plain')
-                        ->withStringBody("Invalid token\n");
-                }
-
-                // Whitelist
-                $classMap = [
-                    'crm_email_poll'   => \App\Command\CrmEmailPollCommand::class,
-                    'crm_workflow_run' => \App\Command\CrmWorkflowRunCommand::class,
-                    'crm_tasks_digest' => \App\Command\CrmTasksDigestCommand::class,
-                    'alerts'           => \App\Command\AlertsCommand::class,
-                ];
-                if (!isset($classMap[$command]) || !class_exists($classMap[$command])) {
-                    return (new \Cake\Http\Response())->withStatus(400)->withType('text/plain')
-                        ->withStringBody("Command '{$command}' not allowed. Allowed: " . implode(', ', array_keys($classMap)) . "\n");
-                }
-
-                // Options
-                $options = [];
-                if (($req->getQueryParams()['force'] ?? '') === '1') $options['force'] = true;
-                if (($req->getQueryParams()['dry']   ?? '') === '1') $options['dry']   = true;
-
-                $out = "=== CRON WEBHOOK: {$command} ===\nStarted: " . date('Y-m-d H:i:s') . "\n\n";
-                try {
-                    $cmd = new $classMap[$command]();
-                    $stubOutput = new \Cake\Console\TestSuite\StubConsoleOutput();
-                    $stubErr    = new \Cake\Console\TestSuite\StubConsoleOutput();
-                    $io = new \Cake\Console\ConsoleIo($stubOutput, $stubErr,
-                        new \Cake\Console\TestSuite\StubConsoleInput([]));
-                    $args = new \Cake\Console\Arguments([], $options, []);
-                    $exit = $cmd->execute($args, $io);
-                    $lines = array_merge($stubOutput->messages(), $stubErr->messages());
-                    $out .= implode("\n", $lines) . "\n\nEXIT: {$exit}\nFinished: " . date('Y-m-d H:i:s') . "\n";
-                } catch (\Throwable $e) {
-                    return (new \Cake\Http\Response())->withStatus(500)->withType('text/plain')
-                        ->withStringBody("EXCEPTION: " . $e->getMessage() . "\n" . $e->getTraceAsString());
-                }
-
-                return (new \Cake\Http\Response())->withType('text/plain')->withStringBody($out);
-            }
-        });
-
         // CORS dla /api/* — obsługa preflight i nagłówki dla cross-origin fetch
         $allowedOrigins = Configure::read('Api.corsOrigins') ?? [];
         $middlewareQueue->add(new class($allowedOrigins) implements \Psr\Http\Server\MiddlewareInterface {

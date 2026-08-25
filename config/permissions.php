@@ -484,12 +484,15 @@ return [
                          'findLead', 'resetGmailHistory', 'analyzeLastEmail',
                          'clearLeadAssignments'],
         ],
-        // Cron webhook - bez auth (token-secured w app_local Crm.cronToken)
+        // Cron webhook - bez auth (token-secured w app_local Crm.cronToken).
+        // CakeDC/Auth 'bypassAuth' => true = omija AuthenticationMiddleware (nie wymaga logowania).
         [
             'role'       => '*',
+            'prefix'     => false,
             'plugin'     => false,
             'controller' => 'CrmAdmin',
             'action'     => ['cronWebhook'],
+            'bypassAuth' => true,
         ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [
