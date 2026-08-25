@@ -1799,7 +1799,7 @@ foreach ($lead->lead_activities as $__a) {
             var payload = { points: points };
             // Base64 encode UTF-8 safe (JS atob wymaga latin1)
             var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-            var url = '/planer-tras?embed=1&r=' + encoded;
+            var url = '/trasy?embed=1&r=' + encoded;
             var iframe = document.getElementById('planer-iframe');
             iframe.src = url;
             var modal = new bootstrap.Modal(document.getElementById('planerModal'));
