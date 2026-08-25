@@ -354,6 +354,30 @@ $myUserId = $identity?->get('id');
 }
 </style>
 
+<script>
+// FALA extras: auto-collapse sidebar na starcie Kanban (jak po kliku burger).
+// Kliknieta .sidemenu-toggle wywoluje istniejacy toggleSidemenu() z defaultmenu.min.js.
+// Warunek: tylko na desktop (mobile juz ma sidebar domyslnie zwiniety).
+(function() {
+    if (sessionStorage.getItem('crmKanbanSidebarAuto') === 'done') return;
+    if (window.innerWidth < 992) return;
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+            var btn = document.querySelector('.sidemenu-toggle');
+            if (btn) {
+                btn.click();
+                sessionStorage.setItem('crmKanbanSidebarAuto', 'done');
+            }
+        }, 100);
+    });
+    // Reset flagi gdy user wychodzi z Kanban - zeby przy kolejnym wejsciu tez sie zwinelo
+    window.addEventListener('beforeunload', function() {
+        var stillOnKanban = location.pathname.indexOf('/crm/kanban') === 0;
+        if (!stillOnKanban) sessionStorage.removeItem('crmKanbanSidebarAuto');
+    });
+})();
+</script>
+
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
 (function() {
