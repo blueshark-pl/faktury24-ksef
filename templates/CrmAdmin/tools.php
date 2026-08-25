@@ -123,6 +123,22 @@ $this->assign('title', __('CRM Admin Tools'));
                     <a href="<?= $this->Url->build(['action' => 'analyzeLastEmail']) ?>" class="btn btn-primary" target="_blank">
                         <i class="ri-radar-line"></i> Analizuj ostatni email (FALA 15 debug)
                     </a>
+                    <a href="<?= $this->Url->build(['action' => 'clearLeadAssignments']) ?>" class="btn btn-outline-secondary" target="_blank">
+                        <i class="ri-eye-line"></i> Podgląd: kto ma leady przypisane
+                    </a>
+                    <?= $this->Form->postLink(
+                        '<i class="ri-user-unfollow-line"></i> Wyczyść przypisania leadów (assigned_to = NULL)',
+                        ['action' => 'clearLeadAssignments'],
+                        ['escape' => false, 'class' => 'btn btn-danger',
+                         'target' => '_blank',
+                         'confirm' => 'UWAGA: wyczysci WSZYSTKICH opiekunow (assigned_to_user_id) dla wszystkich leadow Twojej firmy. Nie ma powrotu. Potwierdzasz?']
+                    ) ?>
+                </div>
+                <div class="small text-muted mt-2 mb-2">
+                    <strong>Podgląd</strong> - pokazuje kto ma ile leadów przypisanych (nie zmienia niczego).<br>
+                    <strong>Wyczyść</strong> - jednym UPDATE ustawia <code>assigned_to_user_id = NULL</code> dla wszystkich leadów firmy. Historia w timeline zostaje (nie ruszamy activities), tylko obecny opiekun.
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
                     <?= $this->Form->postLink(
                         '<i class="ri-restart-line"></i> Reset Gmail history_id (fresh sync ostatnie 30 dni)',
                         ['action' => 'resetGmailHistory'],

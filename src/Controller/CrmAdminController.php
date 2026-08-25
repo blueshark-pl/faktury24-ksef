@@ -44,6 +44,106 @@ class CrmAdminController extends AppController
     }
 
     /**
+     * POST /crm/admin/clear-lead-assignments - wyczyść assigned_to_user_id
+     * dla WSZYSTKICH leadów tej firmy. Uzywac ostroznie - bez powrotu (chyba
+     * ze robisz backup przed).
+     * Zwraca ilosc dotknietych rekordow + krotki raport starych opiekunow.
+     */
+    public function clearLeadAssignments(): void
+    {
+        $this->request->allowMethod(['post', 'get']);
+        $this->viewBuilder()->setLayout('ajax');
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $out = "=== CLEAR LEAD ASSIGNMENTS ===\n\n";
+        $out .= "Twoj company_id: {$companyId}\n\n";
+
+        try {
+            $Leads = $this->fetchTable('Leads');
+            // Najpierw pokaz stan PRZED: kto ma leady przypisane
+            $before = $Leads->find()
+                ->select([
+                    'assigned_to_user_id',
+                    'cnt' => 'COUNT(*)',
+                ])
+                ->where([
+                    'company_id' => $companyId,
+                    'assigned_to_user_id IS NOT' => null,
+                ])
+                ->groupBy('assigned_to_user_id')
+                ->disableHydration()
+                ->all()->toArray();
+
+            $out .= "=== STAN PRZED ===\n";
+            $totalBefore = 0;
+            $userIds = [];
+            foreach ($before as $r) {
+                $userIds[] = $r['assigned_to_user_id'];
+                $totalBefore += (int)$r['cnt'];
+            }
+            // Fetch user names
+            $userNames = [];
+            if (!empty($userIds)) {
+                try {
+                    $Users = $this->fetchTable('Users');
+                    $users = $Users->find()
+                        ->select(['id', 'first_name', 'last_name', 'email'])
+                        ->where(['id IN' => $userIds])
+                        ->all();
+                    foreach ($users as $u) {
+                        $userNames[(string)$u->id] = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) . ' <' . ($u->email ?? '?') . '>';
+                    }
+                } catch (\Throwable $e) {}
+            }
+            foreach ($before as $r) {
+                $uid = (string)$r['assigned_to_user_id'];
+                $name = $userNames[$uid] ?? 'Unknown';
+                $out .= sprintf("  %s (id=%s): %d leadow\n", $name, substr($uid, 0, 8), (int)$r['cnt']);
+            }
+            $out .= "\nRAZEM: {$totalBefore} leadow z przypisanym opiekunem.\n\n";
+
+            if ($this->request->is('post')) {
+                // Wykonanie UPDATE
+                $affected = $Leads->updateAll(
+                    ['assigned_to_user_id' => null],
+                    ['company_id' => $companyId, 'assigned_to_user_id IS NOT' => null]
+                );
+                $out .= "=== EXECUTED ===\n";
+                $out .= "✓ Zaktualizowano {$affected} leadow (assigned_to_user_id = NULL)\n\n";
+
+                // Verify
+                $stillAssigned = $Leads->find()->where([
+                    'company_id' => $companyId,
+                    'assigned_to_user_id IS NOT' => null,
+                ])->count();
+                $out .= "Weryfikacja: pozostalo {$stillAssigned} leadow z opiekunem.\n";
+
+                // Log activity - dla audytu
+                try {
+                    $Acts = $this->fetchTable('LeadActivities');
+                    // Note: nie mozemy logowac per lead (za drogo), robimy jeden systemowy note bez lead_id
+                    // ale LeadActivities wymaga lead_id NOT NULL - wiec zostawiam Log::warning zamiast
+                    \Cake\Log\Log::warning(sprintf(
+                        'CRM: user %s wyczyscil assigned_to_user_id dla %d leadow firmy %s',
+                        $identity?->get('email') ?? '?', $affected, $companyId
+                    ));
+                } catch (\Throwable $e) {}
+            } else {
+                $out .= "=== TRYB PODGLADU (GET) ===\n";
+                $out .= "To jest tylko podglad. Aby WYKONAC UPDATE, wroc do /crm/admin/tools\n";
+                $out .= "i kliknij czerwony button 'Wyczysc przypisania leadow' (POST z confirm).\n";
+            }
+        } catch (\Throwable $e) {
+            $out .= "❌ EXCEPTION: " . $e->getMessage() . "\n";
+        }
+
+        $this->set('title', 'Clear lead assignments');
+        $this->set('output', $out);
+        $this->render('output');
+    }
+
+    /**
      * GET /crm/admin/analyze-last-email?lead_id=X (opt)
      * Wez ostatni email z crm_email_messages i pokaz krok-po-kroku dlaczego
      * FALA 15 tryExtractQuoteRequest nie wykryl zapytania o wycene.

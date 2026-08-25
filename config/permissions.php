@@ -481,7 +481,8 @@ return [
             'controller' => 'CrmAdmin',
             'action' => ['tools', 'migrate', 'migrationStatus', 'clearCache',
                          'pollEmails', 'runCron', 'gitPull', 'fileCheck', 'nuclearClear',
-                         'findLead', 'resetGmailHistory', 'analyzeLastEmail'],
+                         'findLead', 'resetGmailHistory', 'analyzeLastEmail',
+                         'clearLeadAssignments'],
         ],
         // Cron webhook - bez auth (token-secured w app_local Crm.cronToken)
         [
