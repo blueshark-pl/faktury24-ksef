@@ -32,7 +32,14 @@ $stages = [
     </a>
 </div>
 
-<?= $this->Form->create($lead) ?>
+<?php
+// FALA 21 fix: explicit URL + method zeby ominac auto-generacja z Form->create(entity)
+// ktora moze isc na PUT / fallback /leads/edit zamiast naszej trasy /crm/edytuj
+$formUrl = $isEdit
+    ? ['action' => 'edit', $lead->id]
+    : ['action' => 'add'];
+?>
+<?= $this->Form->create($lead, ['type' => 'post', 'url' => $formUrl]) ?>
 <div class="row g-3">
     <!-- Firma -->
     <div class="col-lg-6">
