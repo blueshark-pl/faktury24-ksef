@@ -139,8 +139,13 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/kanban',                    ['controller' => 'Leads', 'action' => 'kanban']);
         $builder->post('/crm/kanban/przenies/{id}',     ['controller' => 'Leads', 'action' => 'kanbanMove'])
             ->setPass(['id']);
-        $builder->connect('/crm/dodaj',                 ['controller' => 'Leads', 'action' => 'add']);
-        $builder->connect('/crm/edytuj/{id}',           ['controller' => 'Leads', 'action' => 'edit'])
+        // FALA 21 fix: jawne GET+POST zamiast connect() - Cake 5 wysypuje 405 przy connect
+        // gdy trasa nie ma jawnego setMethods()
+        $builder->get('/crm/dodaj',                     ['controller' => 'Leads', 'action' => 'add']);
+        $builder->post('/crm/dodaj',                    ['controller' => 'Leads', 'action' => 'add']);
+        $builder->get('/crm/edytuj/{id}',               ['controller' => 'Leads', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/edytuj/{id}',              ['controller' => 'Leads', 'action' => 'edit'])
             ->setPass(['id']);
         $builder->get('/crm/view/{id}',                 ['controller' => 'Leads', 'action' => 'view'])
             ->setPass(['id']);
