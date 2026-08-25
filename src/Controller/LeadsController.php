@@ -192,6 +192,8 @@ class LeadsController extends AppController
 
         // Filter tylko moje (?mine=1)
         $onlyMine = $this->request->getQuery('mine') === '1';
+        // FALA extras: filter tylko wolne (?free=1) - leady bez opiekuna
+        $onlyFree = $this->request->getQuery('free') === '1';
 
         // FALA 21: Multi-pipeline - default 'spot' (backward compat z URL bez ?pipeline)
         $pipelineType = trim((string)$this->request->getQuery('pipeline', 'spot'));
@@ -224,6 +226,10 @@ class LeadsController extends AppController
         }
         if ($onlyMine && $userId) {
             $baseWhere['Leads.assigned_to_user_id'] = $userId;
+        }
+        if ($onlyFree) {
+            // Leady bez opiekuna (assigned_to_user_id IS NULL) - "wolne do wziecia"
+            $baseWhere['Leads.assigned_to_user_id IS'] = null;
         }
         // FALA extras: domyslnie chowamy archived (chyba ze ?archived=1)
         try {
@@ -287,7 +293,7 @@ class LeadsController extends AppController
         $stageLabels = $this->stageLabelsForPipeline($pipelineType);
 
         $this->set(compact('columns', 'stats', 'pipelineType', 'pipelineCounts',
-            'displayStages', 'stageLabels', 'onlyMine'));
+            'displayStages', 'stageLabels', 'onlyMine', 'onlyFree'));
     }
 
     /**

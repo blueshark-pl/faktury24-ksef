@@ -133,11 +133,19 @@ body { background: #f4f5f7; }
         <?php
         $mineParams = ['pipeline' => $pipelineType];
         if (!$onlyMine) $mineParams['mine'] = 1;
+        $freeParams = ['pipeline' => $pipelineType];
+        if (!($onlyFree ?? false)) $freeParams['free'] = 1;
         ?>
         <a href="<?= $this->Url->build(['action' => 'kanban', '?' => $mineParams]) ?>"
            class="crm-mine-btn <?= $onlyMine ? 'active' : '' ?>">
             <i class="ri-user-star-line"></i>
             <?= $onlyMine ? __('Widok: Moje') : __('Tylko moje') ?>
+        </a>
+        <a href="<?= $this->Url->build(['action' => 'kanban', '?' => $freeParams]) ?>"
+           class="crm-mine-btn <?= ($onlyFree ?? false) ? 'active' : '' ?>"
+           title="<?= __('Leady bez przypisanego opiekuna - do wzięcia') ?>">
+            <i class="ri-user-unfollow-line"></i>
+            <?= ($onlyFree ?? false) ? __('Widok: Wolne') : __('Tylko wolne') ?>
         </a>
         <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="crm-mine-btn">
             <i class="ri-table-line"></i> <?= __('Tabela') ?>
