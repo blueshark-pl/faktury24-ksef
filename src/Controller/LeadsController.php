@@ -162,9 +162,12 @@ class LeadsController extends AppController
             $hasPipelineColumn = in_array('pipeline_type', $schema->columns(), true);
         } catch (\Throwable $e) {}
 
+        // FALA extras: 'disqualified' widoczne w Kanban jako ostatnia kolumna
+        // (uzytkownik moze tam przeciagac zdyskwalifikowanych).
+        // 'lost'/'churned' NIE wyswietlane (historia, poza pipeline).
         $baseWhere = [
             'Leads.company_id' => $companyId,
-            'Leads.stage NOT IN' => ['lost', 'churned', 'disqualified'],
+            'Leads.stage NOT IN' => ['lost', 'churned'],
         ];
         if ($hasPipelineColumn) {
             $baseWhere['Leads.pipeline_type'] = $pipelineType;
