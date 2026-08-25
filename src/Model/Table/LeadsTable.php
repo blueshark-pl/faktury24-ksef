@@ -220,13 +220,25 @@ class LeadsTable extends Table
     public function sendThankYouEmail($lead): bool
     {
         try {
+            // TEST MODE: Configure Crm.testEmailOverride redirecting wszystkie CRM maile
+            // na jeden adres (dla testow przed uruchomieniem produkcji)
+            $originalTo = (string)$lead->email;
+            $override = trim((string)\Cake\Core\Configure::read('Crm.testEmailOverride'));
+            $realTo = $override !== '' ? $override : $originalTo;
+            $subject = sprintf(__d('crm', 'Dziękujemy za zaufanie – %s'), $lead->company_name);
+            if ($override !== '') {
+                $subject = '[TEST → ' . $originalTo . '] ' . $subject;
+            }
+
             $mailer = new Mailer('default');
-            $mailer->setTo((string)$lead->email, (string)($lead->contact_person ?? $lead->company_name))
-                ->setSubject(sprintf(__d('crm', 'Dziękujemy za zaufanie – %s'), $lead->company_name))
+            $mailer->setTo($realTo, (string)($lead->contact_person ?? $lead->company_name))
+                ->setSubject($subject)
                 ->setEmailFormat('html')
                 ->viewBuilder()->setLayout('default')->setTemplate('crm_lead_thanks');
             $mailer->setViewVars([
                 'lead' => $lead,
+                'testMode' => $override !== '',
+                'originalTo' => $originalTo,
             ]);
             $mailer->deliver();
 
@@ -236,8 +248,11 @@ class LeadsTable extends Table
                 $Acts->logSystem(
                     (string)$lead->company_id, (string)$lead->id, 'email_out',
                     __d('crm', 'Auto-thanks (stage=order)'),
-                    sprintf(__d('crm', 'Wysłano do %s'), $lead->email),
-                    ['auto' => true, 'trigger' => 'stage_change_to_order'],
+                    $override !== ''
+                        ? sprintf(__d('crm', 'TEST MODE: przekierowano do %s (miał iść do %s)'), $realTo, $originalTo)
+                        : sprintf(__d('crm', 'Wysłano do %s'), $originalTo),
+                    ['auto' => true, 'trigger' => 'stage_change_to_order',
+                     'test_mode' => $override !== '', 'original_to' => $originalTo, 'sent_to' => $realTo],
                     null
                 );
             } catch (\Throwable $e) {

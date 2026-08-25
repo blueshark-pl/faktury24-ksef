@@ -7,6 +7,15 @@ $contactName = trim((string)($lead->contact_person ?? '')) ?: '';
 ?>
 <div style="font-family: system-ui, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1d29;">
 
+    <?php if (!empty($testMode)): ?>
+    <div style="background: #fff7ed; border: 2px solid #ea580c; padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; color: #7c2d12; font-size: 13px;">
+        <strong>⚠ TRYB TESTOWY</strong><br>
+        Ten mail miał zostać wysłany do: <strong><?= h($originalTo ?? '?') ?></strong>
+        (klient: <?= h($lead->company_name) ?>).<br>
+        Redirect z <code>Configure Crm.testEmailOverride</code>. Wyłącz gdy chcesz uruchomić produkcyjnie.
+    </div>
+    <?php endif; ?>
+
     <div style="background: linear-gradient(135deg, #94C81F, #6b8f14); color: white; padding: 30px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85;">Booklio TMS</div>
         <h1 style="margin: 8px 0 0; font-size: 24px;">Dziękujemy za zaufanie 🙏</h1>

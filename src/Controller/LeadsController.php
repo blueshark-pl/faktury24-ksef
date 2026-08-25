@@ -2589,6 +2589,15 @@ class LeadsController extends AppController
                 $bodyText = "Dzień dobry,\n\nw załączniku przesyłam wycenę transportu.\n\nW razie pytań pozostaję do dyspozycji.\n\nPozdrawiam";
             }
 
+            // TEST MODE: przekierowanie na Crm.testEmailOverride
+            $override = trim((string)\Cake\Core\Configure::read('Crm.testEmailOverride'));
+            $originalTo = $to;
+            if ($override !== '') {
+                $to = $override;
+                $subject = '[TEST → ' . $originalTo . '] ' . $subject;
+                $bodyText = "!!! TRYB TESTOWY - mial isc do: {$originalTo} !!!\n\n" . $bodyText;
+            }
+
             // Wygeneruj PDF do stringa
             $pdfContent = $this->renderQuotePdfString($act);
             if (!$pdfContent) {
@@ -2850,6 +2859,19 @@ class LeadsController extends AppController
                 $subject = 'Re: ' . ($orig->subject ?: '(bez tematu)');
             } elseif (stripos($subject, 're:') !== 0 && stripos($subject, 'odp:') !== 0) {
                 $subject = 'Re: ' . $subject;
+            }
+
+            // TEST MODE: przekierowanie na Crm.testEmailOverride
+            $override = trim((string)\Cake\Core\Configure::read('Crm.testEmailOverride'));
+            $originalTo = $to;
+            if ($override !== '') {
+                $to = $override;
+                $subject = '[TEST → ' . $originalTo . '] ' . $subject;
+                $bodyText = "!!! TRYB TESTOWY - mial isc do: {$originalTo} !!!\n\n" . $bodyText;
+                if ($bodyHtml !== '') {
+                    $bodyHtml = '<div style="background:#fff7ed;border:2px solid #ea580c;padding:10px;margin-bottom:12px;color:#7c2d12;font-family:sans-serif;font-size:12px;">'
+                        . '⚠ TRYB TESTOWY - mial isc do: <strong>' . htmlspecialchars($originalTo) . '</strong></div>' . $bodyHtml;
+                }
             }
 
             // Znajdz Gmail account firmy

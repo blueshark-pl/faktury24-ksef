@@ -141,6 +141,12 @@ return [
         // Cyberfolks Cron Jobs:
         //   */5 * * * *  curl -s "https://booklio.pl/crm/cron/crm_email_poll?token=XXX"
         'cronToken' => env('CRM_CRON_TOKEN', ''),
+        // TEST MODE: przekieruj WSZYSTKIE wychodzace maile CRM (auto-thanks, reply Gmail,
+        // wysylka wyceny PDF) na TEN adres zamiast do klienta. Subject dostanie prefix
+        // [TEST → oryginalny_odbiorca], body dostanie banner na gorze.
+        // Zostaw pusty ('') dla produkcji - maile ida do klientow normalnie.
+        // Przyklad: 'krzysztof@3ck.pl' - wszystko trafia do mnie zamiast do klientow
+        'testEmailOverride' => env('CRM_TEST_EMAIL_OVERRIDE', ''),
     ],
 
     // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.
