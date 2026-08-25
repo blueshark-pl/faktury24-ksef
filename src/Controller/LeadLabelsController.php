@@ -16,6 +16,17 @@ class LeadLabelsController extends AppController
         $identity = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
+        // Guard: tabela lead_labels musi istniec (migracja odpalona)
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            $tables = $conn->getSchemaCollection()->listTables();
+            if (!in_array('lead_labels', $tables, true)) {
+                $this->Flash->error(__('Etykiety wymagają migracji CreateLeadLabels. Uruchom: /crm/admin/tools → „Uruchom pending migracje".'));
+                $this->redirect(['controller' => 'CrmAdmin', 'action' => 'tools']);
+                return;
+            }
+        } catch (\Throwable $e) {}
+
         $Labels = $this->fetchTable('LeadLabels');
         $labels = $Labels->find()
             ->where(['company_id' => $companyId])

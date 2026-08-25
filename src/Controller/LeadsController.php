@@ -188,10 +188,13 @@ class LeadsController extends AppController
         $containKanban = ['AssignedUser' => function ($q) {
             return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
         }];
-        // FALA extras: user labels na kartach Kanban - jesli tabela istnieje
+        // FALA extras: user labels na kartach Kanban - jesli tabela lead_labels ISTNIEJE w bazie
         try {
-            $this->fetchTable('LeadLabels');
-            $containKanban['LeadLabels'] = [];
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            $tables = $conn->getSchemaCollection()->listTables();
+            if (in_array('lead_labels', $tables, true) && in_array('leads_lead_labels', $tables, true)) {
+                $containKanban['LeadLabels'] = [];
+            }
         } catch (\Throwable $e) {}
 
         $rows = $Leads->find()
@@ -287,12 +290,16 @@ class LeadsController extends AppController
                     return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(1);
                 },
             ];
-            // Opcjonalnie: labels + attachments jesli tabele istnieja
+            // Opcjonalnie: labels + attachments - sprawdz czy tabele w DB (nie tylko Table klasa)
             try {
-                if ($this->fetchTable('LeadLabels')) $containSpec['LeadLabels'] = [];
-            } catch (\Throwable $e) {}
-            try {
-                if ($this->fetchTable('LeadAttachments')) $containSpec['LeadAttachments'] = [];
+                $conn = \Cake\Datasource\ConnectionManager::get('default');
+                $tables = $conn->getSchemaCollection()->listTables();
+                if (in_array('lead_labels', $tables, true) && in_array('leads_lead_labels', $tables, true)) {
+                    $containSpec['LeadLabels'] = [];
+                }
+                if (in_array('lead_attachments', $tables, true)) {
+                    $containSpec['LeadAttachments'] = [];
+                }
             } catch (\Throwable $e) {}
 
             $lead = $Leads->get($id, ['contain' => $containSpec]);
