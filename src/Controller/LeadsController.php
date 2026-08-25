@@ -2534,10 +2534,11 @@ class LeadsController extends AppController
         $quoteNumber = 'WYC/' . $issueDate->format('Y/m') . '/' . strtoupper(substr($activityId, 0, 6));
 
         $download = (bool)$this->request->getQuery('download', 0);
+        // Cake 5: setLayout(false) rzuca TypeError - trzeba disableAutoLayout()
+        $this->viewBuilder()->disableAutoLayout();
         $this->viewBuilder()
             ->setClassName('CakePdf.Pdf')
             ->setTemplate('quote_response')
-            ->setLayout(false)
             ->setOptions([
                 'pdfConfig' => [
                     'filename'    => 'Wycena-' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string)$lead->company_name) . '-' . $issueDate->format('Y-m-d') . '.pdf',
@@ -2682,11 +2683,12 @@ class LeadsController extends AppController
             $validUntil = $issueDate->modify('+7 days');
             $quoteNumber = 'WYC/' . $issueDate->format('Y/m') . '/' . strtoupper(substr((string)$act->id, 0, 6));
 
+            // Cake 5: setLayout(false) rzuca TypeError - disableAutoLayout() zamiast
             $viewBuilder = new \Cake\View\ViewBuilder();
+            $viewBuilder->disableAutoLayout();
             $viewBuilder
                 ->setClassName('CakePdf.Pdf')
                 ->setTemplate('quote_response')
-                ->setLayout(false)
                 ->setTemplatePath('Leads')
                 ->setOptions([
                     'pdfConfig' => [
