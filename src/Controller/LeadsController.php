@@ -63,7 +63,7 @@ class LeadsController extends AppController
         $query = $Leads->find()
             ->contain([
                 'AssignedUser' => function ($q) {
-                    return $q->select(['id', 'first_name', 'last_name', 'email']);
+                    return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
                 },
             ])
             ->where(['Leads.company_id' => $companyId])
@@ -135,7 +135,7 @@ class LeadsController extends AppController
         if ($hasIndustry) $indexContain['LeadIndustries'] = [];
         if ($hasVehicleType) $indexContain['LeadVehicleTypes'] = [];
         if (!empty($indexContain)) $query->contain(array_merge(['AssignedUser' => function ($q) {
-            return $q->select(['id', 'first_name', 'last_name', 'email']);
+            return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
         }], $indexContain));
 
         $leads = $query->limit(500)->all();

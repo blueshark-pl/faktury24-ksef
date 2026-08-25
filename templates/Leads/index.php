@@ -282,8 +282,20 @@ $stageBg = [
                             </span>
                         </td>
                         <td>
-                            <?php if ($assignedName): ?>
-                                <span class="crm-avatar" style="background:#94C81F;"><?= h($initials) ?></span>
+                            <?php if ($assignedName):
+                                $avatarUrl = trim((string)($lead->assigned_user->avatar ?? ''));
+                                $avatarColors = ['#7c3aed', '#059669', '#dc2626', '#ea580c', '#2563eb', '#b45309', '#db2777', '#0891b2'];
+                                $avatarBg = $avatarColors[crc32((string)($lead->assigned_user->email ?? $lead->assigned_user->id)) % count($avatarColors)];
+                            ?>
+                                <?php if ($avatarUrl !== ''): ?>
+                                    <img src="<?= h($avatarUrl) ?>" alt="<?= h($assignedName) ?>"
+                                         class="crm-avatar" style="object-fit: cover;"
+                                         title="<?= h($assignedName) ?>"
+                                         onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';">
+                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>; display: none;" title="<?= h($assignedName) ?>"><?= h($initials) ?></span>
+                                <?php else: ?>
+                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>;" title="<?= h($assignedName) ?>"><?= h($initials) ?></span>
+                                <?php endif; ?>
                                 <span class="small"><?= h($assignedName) ?></span>
                             <?php else: ?>
                                 <span class="text-muted small">—</span>
