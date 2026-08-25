@@ -253,6 +253,76 @@ class LeadsController extends AppController
     /**
      * Drag&drop w Kanban - zmiana etapu.
      */
+    /**
+     * FALA extras: Trello-style peek modal - lekki JSON dla popup w Kanban.
+     * GET /crm/peek/{id}.json
+     */
+    public function peekJson(string $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $Leads = $this->fetchTable('Leads');
+            $lead = $Leads->get($id, [
+                'contain' => [
+                    'AssignedUser' => function ($q) {
+                        return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
+                    },
+                    'LeadActivities' => function ($q) {
+                        return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(1);
+                    },
+                ],
+            ]);
+            if ((string)$lead->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+            }
+
+            $lastAct = $lead->lead_activities[0] ?? null;
+            $u = $lead->assigned_user ?? null;
+            $userName = $u ? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) : null;
+
+            return $json(['ok' => true, 'lead' => [
+                'id' => (string)$lead->id,
+                'company_name' => $lead->company_name,
+                'nip' => $lead->nip,
+                'country_code' => $lead->country_code,
+                'postal_code' => $lead->postal_code,
+                'city' => $lead->city,
+                'street' => $lead->street,
+                'branch_type' => $lead->branch_type,
+                'stage' => $lead->stage,
+                'probability' => (int)$lead->probability,
+                'value_pln' => $lead->value_pln,
+                'contact_person' => $lead->contact_person,
+                'email' => $lead->email,
+                'phone' => $lead->phone,
+                'note' => $lead->note,
+                'days_in_stage' => $lead->getDaysInStage(),
+                'assigned_user' => $u ? [
+                    'name' => $userName,
+                    'email' => $u->email,
+                    'avatar' => $u->avatar,
+                ] : null,
+                'last_activity' => $lastAct ? [
+                    'type' => $lastAct->activity_type,
+                    'subject' => $lastAct->subject,
+                    'date' => ($lastAct->happened_at ?? $lastAct->created)?->format('d.m.Y H:i'),
+                ] : null,
+            ]]);
+        } catch (\Throwable $e) {
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
     public function kanbanMove(string $id): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);

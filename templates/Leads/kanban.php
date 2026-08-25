@@ -194,7 +194,7 @@ $myUserId = $identity?->get('id');
                 if ($lead->value_pln && (float)$lead->value_pln >= 10000) $labels[] = ['color' => '#10b981']; // hi-value
             ?>
             <div class="crm-card" data-id="<?= h($lead->id) ?>"
-                 onclick="if(!event.target.closest('a,button')) location.href='<?= $this->Url->build(['action' => 'view', $lead->id]) ?>'">
+                 onclick="if(!event.target.closest('a,button')) window.openLeadPeek('<?= h($lead->id) ?>');">
                 <?php if (!empty($labels)): ?>
                 <div class="crm-label-strip">
                     <?php foreach ($labels as $lbl): ?>
@@ -264,10 +264,41 @@ $myUserId = $identity?->get('id');
     <?php endforeach; ?>
 </div>
 
+<!-- Trello-style Lead Peek Modal -->
+<div class="modal fade" id="leadPeekModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background: #f4f5f7;">
+            <div class="modal-header" id="peek-header" style="background: #fff; border-bottom: 1px solid #dfe1e6;">
+                <div class="flex-grow-1">
+                    <div class="small text-muted" id="peek-stage-label" style="text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; font-size: 11px;"></div>
+                    <h5 class="modal-title mb-0 mt-1" id="peek-title" style="color: #172b4d;"></h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body" id="peek-body" style="padding: 20px;">
+                <div class="text-center py-5">
+                    <i class="ri-loader-4-line" style="font-size: 32px; color: #5e6c84; animation: spin 1s linear infinite;"></i>
+                </div>
+            </div>
+            <div class="modal-footer" style="background: #fff; border-top: 1px solid #dfe1e6;">
+                <a href="#" id="peek-view-full" class="btn btn-sm btn-outline-primary" target="_blank">
+                    <i class="ri-external-link-line"></i> <?= __('Pełny widok') ?>
+                </a>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+            </div>
+        </div>
+    </div>
+</div>
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
 (function() {
     var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+    // Stage color map dla live update label po drag
+    var stageColorMap = <?= json_encode(array_column(array_map(fn($k) => [$k, $stageColors[$k]['color'] ?? '#5e6c84'], array_keys($stageColors)), 1, 0)) ?>;
+    var stageLabelMap = <?= json_encode($stageLabels) ?>;
+
     document.querySelectorAll('.crm-cards').forEach(function(list) {
         new Sortable(list, {
             group: 'crm-leads',
@@ -293,6 +324,12 @@ $myUserId = $identity?->get('id');
                         alert('<?= __('Błąd zmiany etapu') ?>: ' + (j.error || 'unknown'));
                         // Cofnij pozycję
                         evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
+                        return;
+                    }
+                    // LIVE UPDATE: zmien pierwsze label kolor na nowy stage color
+                    var firstLabel = card.querySelector('.crm-label-strip .crm-label');
+                    if (firstLabel && stageColorMap[newStage]) {
+                        firstLabel.style.background = stageColorMap[newStage];
                     }
                 })
                 .catch(function() {
@@ -302,5 +339,115 @@ $myUserId = $identity?->get('id');
             }
         });
     });
+
+    // === MODAL PEEK (Trello-style quick view) ===
+    var peekModal = new bootstrap.Modal(document.getElementById('leadPeekModal'));
+    var peekBody = document.getElementById('peek-body');
+    var peekTitle = document.getElementById('peek-title');
+    var peekStageLabel = document.getElementById('peek-stage-label');
+    var peekViewFull = document.getElementById('peek-view-full');
+    var peekHeader = document.getElementById('peek-header');
+    var URL_PEEK = '<?= $this->Url->build(['action' => 'peekJson']) ?>';
+    var URL_VIEW = '<?= $this->Url->build(['action' => 'view']) ?>';
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+    window.openLeadPeek = function(leadId) {
+        peekTitle.textContent = '';
+        peekStageLabel.textContent = '';
+        peekBody.innerHTML = '<div class="text-center py-5"><i class="ri-loader-4-line" style="font-size:32px;color:#5e6c84;animation:spin 1s linear infinite;"></i></div>';
+        peekViewFull.href = URL_VIEW + '/' + leadId;
+        peekModal.show();
+
+        fetch(URL_PEEK + '/' + leadId, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(j) {
+                if (!j.ok) {
+                    peekBody.innerHTML = '<div class="alert alert-danger">' + esc(j.error || 'Blad') + '</div>';
+                    return;
+                }
+                var l = j.lead;
+                var stageColor = stageColorMap[l.stage] || '#5e6c84';
+                var stageLbl = stageLabelMap[l.stage] || l.stage;
+
+                peekTitle.textContent = l.company_name || '(bez nazwy)';
+                peekStageLabel.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + stageColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(stageLbl);
+                peekHeader.style.borderTop = '4px solid ' + stageColor;
+
+                var html = '';
+
+                // KPI kafelki
+                html += '<div class="row g-2 mb-3">';
+                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.probability || 0) + '%</div>'
+                    + '<div class="small text-muted">Skuteczność</div></div></div>';
+                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.value_pln ? Number(l.value_pln).toLocaleString('pl-PL') + ' zł' : '—') + '</div>'
+                    + '<div class="small text-muted">Wartość</div></div></div>';
+                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.days_in_stage != null ? l.days_in_stage + 'd' : '—') + '</div>'
+                    + '<div class="small text-muted">W etapie</div></div></div>';
+                html += '</div>';
+
+                // Dane firmy
+                html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                html += '<h6 class="fw-bold mb-2"><i class="ri-building-line"></i> Dane firmy</h6>';
+                if (l.nip)          html += '<div class="small"><strong>NIP:</strong> ' + esc(l.nip) + '</div>';
+                if (l.country_code || l.city) html += '<div class="small"><i class="ri-map-pin-2-line text-muted"></i> ' + esc((l.country_code || '') + ' ' + (l.postal_code || '') + ' ' + (l.city || '')) + '</div>';
+                if (l.street)       html += '<div class="small">' + esc(l.street) + '</div>';
+                if (l.branch_type)  html += '<div class="small mt-1"><span class="badge bg-secondary">' + esc(l.branch_type) + '</span></div>';
+                html += '</div>';
+
+                // Kontakt
+                if (l.contact_person || l.email || l.phone) {
+                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-user-line"></i> Kontakt</h6>';
+                    if (l.contact_person) html += '<div class="small fw-semibold">' + esc(l.contact_person) + '</div>';
+                    if (l.email) html += '<div class="small"><a href="mailto:' + esc(l.email) + '"><i class="ri-mail-line"></i> ' + esc(l.email) + '</a></div>';
+                    if (l.phone) html += '<div class="small"><a href="tel:' + esc(l.phone) + '"><i class="ri-phone-line"></i> ' + esc(l.phone) + '</a></div>';
+                    html += '</div>';
+                }
+
+                // Opiekun
+                if (l.assigned_user) {
+                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-user-star-line"></i> Opiekun</h6>';
+                    html += '<div class="d-flex gap-2 align-items-center">';
+                    if (l.assigned_user.avatar) {
+                        html += '<img src="' + esc(l.assigned_user.avatar) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">';
+                    } else {
+                        html += '<div style="width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">' + esc((l.assigned_user.name || '?').charAt(0)) + '</div>';
+                    }
+                    html += '<div><div class="small fw-semibold">' + esc(l.assigned_user.name || '') + '</div>';
+                    if (l.assigned_user.email) html += '<div class="small text-muted">' + esc(l.assigned_user.email) + '</div>';
+                    html += '</div></div>';
+                    html += '</div>';
+                }
+
+                // Notatka
+                if (l.note) {
+                    html += '<div class="mb-3 p-3" style="background:#fffae6;border-radius:6px;border-left:3px solid #f59e0b;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-sticky-note-line"></i> Notatka</h6>';
+                    html += '<div class="small" style="white-space:pre-wrap;">' + esc(l.note) + '</div>';
+                    html += '</div>';
+                }
+
+                // Ostatnia aktywność
+                if (l.last_activity) {
+                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-history-line"></i> Ostatnia aktywność</h6>';
+                    html += '<div class="small">';
+                    html += '<span class="badge bg-secondary">' + esc(l.last_activity.type) + '</span> ';
+                    html += esc(l.last_activity.subject || '') + '</div>';
+                    html += '<div class="small text-muted mt-1">' + esc(l.last_activity.date || '') + '</div>';
+                    html += '</div>';
+                }
+
+                peekBody.innerHTML = html;
+            })
+            .catch(function(e) {
+                peekBody.innerHTML = '<div class="alert alert-danger">Blad sieci: ' + esc(e.message) + '</div>';
+            });
+    };
 })();
 </script>

@@ -532,6 +532,8 @@ return [
                 'attachmentDownload',
                 // FALA extras: archiwum leadow
                 'archive', 'unarchive',
+                // FALA extras: Trello-style peek modal
+                'peekJson',
                 // FALA 20: AI auto-quote workflow
                 'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
                 // FALA 22: Executive dashboard

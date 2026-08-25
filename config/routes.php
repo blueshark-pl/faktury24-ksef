@@ -139,6 +139,9 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/kanban',                    ['controller' => 'Leads', 'action' => 'kanban']);
         $builder->post('/crm/kanban/przenies/{id}',     ['controller' => 'Leads', 'action' => 'kanbanMove'])
             ->setPass(['id']);
+        // FALA extras: Trello-style modal peek dla Kanban card click
+        $builder->get('/crm/peek/{id}',                 ['controller' => 'Leads', 'action' => 'peekJson'])
+            ->setPass(['id']);
         // FALA 21 fix: jawne GET+POST zamiast connect() - Cake 5 wysypuje 405 przy connect
         // gdy trasa nie ma jawnego setMethods()
         $builder->get('/crm/dodaj',                     ['controller' => 'Leads', 'action' => 'add']);
