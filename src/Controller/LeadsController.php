@@ -184,7 +184,7 @@ class LeadsController extends AppController
 
         $rows = $Leads->find()
             ->contain(['AssignedUser' => function ($q) {
-                return $q->select(['id', 'first_name', 'last_name']);
+                return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
             }])
             ->where($baseWhere)
             ->orderByDesc('Leads.kanban_pinned')

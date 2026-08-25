@@ -33,7 +33,7 @@ $colsCount = count($displayStages);
 $pipelineIcons = [
     'long_term' => 'ri-building-line', 'spot' => 'ri-flashlight-line', 'recurring' => 'ri-repeat-line',
 ];
-// Avatar helper - deterministic color per user
+// Avatar helper - realny avatar z DB jesli jest, fallback do initials
 $avatarColors = ['#7c3aed', '#059669', '#dc2626', '#ea580c', '#2563eb', '#b45309', '#db2777', '#0891b2'];
 $avatarFor = function($user) use ($avatarColors) {
     if (!$user) return null;
@@ -44,7 +44,9 @@ $avatarFor = function($user) use ($avatarColors) {
         $initials .= mb_strtoupper(mb_substr($part, 0, 1));
         if (strlen($initials) >= 2) break;
     }
+    $avatarUrl = trim((string)($user->avatar ?? ''));
     return [
+        'url' => $avatarUrl,
         'initials' => $initials,
         'name' => $name,
         'bg' => $avatarColors[crc32($user->email ?? $user->id) % count($avatarColors)],
@@ -233,10 +235,22 @@ $myUserId = $identity?->get('id');
                 <div class="crm-card-footer">
                     <div style="flex: 1;"></div>
                     <?php if ($avatar): ?>
-                        <div class="crm-avatar <?= $isMine ? 'mine' : '' ?>" style="background: <?= $avatar['bg'] ?>;"
-                             title="<?= h($avatar['name']) ?><?= $isMine ? ' (Ty)' : '' ?>">
-                            <?= h($avatar['initials']) ?>
-                        </div>
+                        <?php if (!empty($avatar['url'])): ?>
+                            <img src="<?= h($avatar['url']) ?>" alt="<?= h($avatar['name']) ?>"
+                                 class="crm-avatar <?= $isMine ? 'mine' : '' ?>"
+                                 style="object-fit: cover;"
+                                 title="<?= h($avatar['name']) ?><?= $isMine ? ' (Ty)' : '' ?>"
+                                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                            <div class="crm-avatar <?= $isMine ? 'mine' : '' ?>" style="background: <?= $avatar['bg'] ?>; display: none;"
+                                 title="<?= h($avatar['name']) ?><?= $isMine ? ' (Ty)' : '' ?>">
+                                <?= h($avatar['initials']) ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="crm-avatar <?= $isMine ? 'mine' : '' ?>" style="background: <?= $avatar['bg'] ?>;"
+                                 title="<?= h($avatar['name']) ?><?= $isMine ? ' (Ty)' : '' ?>">
+                                <?= h($avatar['initials']) ?>
+                            </div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <div class="crm-avatar unassigned" title="<?= __('Nieprzypisany') ?>">
                             <i class="ri-user-line"></i>
