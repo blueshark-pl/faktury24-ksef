@@ -327,6 +327,56 @@ class LeadsController extends AppController
      * FALA extras: Lista wszystkich etykiet firmy dla picker'a (dropdown w modal).
      * GET /crm/labels-all.json
      */
+    /**
+     * FALA extras: Inline create nowej etykiety z modal peek (JSON).
+     * POST /crm/labels/create-inline - body: name, color
+     * Zwraca JSON z nowa etykieta - klient auto-assign do leada.
+     */
+    public function labelCreateInlineJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $this->response = $this->response->withType('application/json');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withStatus($code)->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            if (!in_array('lead_labels', $conn->getSchemaCollection()->listTables(), true)) {
+                return $json(['ok' => false, 'error' => 'Migracja lead_labels nie odpalona'], 400);
+            }
+        } catch (\Throwable $e) {}
+
+        $name = trim((string)$this->request->getData('name'));
+        $color = trim((string)$this->request->getData('color', '#94C81F'));
+        if ($name === '') return $json(['ok' => false, 'error' => 'Nazwa wymagana'], 400);
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $color)) $color = '#94C81F';
+
+        try {
+            $L = $this->fetchTable('LeadLabels');
+            $entity = $L->newEntity([
+                'id' => \Cake\Utility\Text::uuid(),
+                'company_id' => $companyId,
+                'name' => mb_substr($name, 0, 60),
+                'color' => strtoupper($color),
+                'sort_order' => 100,
+            ]);
+            if (!$L->save($entity)) {
+                return $json(['ok' => false, 'error' => 'Zapis fail', 'details' => $entity->getErrors()], 500);
+            }
+            return $json(['ok' => true, 'label' => [
+                'id' => (string)$entity->id, 'name' => $entity->name, 'color' => $entity->color,
+            ]]);
+        } catch (\Throwable $e) {
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
     public function labelsAllJson(): \Cake\Http\Response
     {
         $this->request->allowMethod(['get']);

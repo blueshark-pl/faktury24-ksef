@@ -505,48 +505,106 @@ foreach ($lead->lead_activities as $__a) {
                     if (!lblLoaded) {
                         fetch('<?= $this->Url->build(['action' => 'labelsAllJson']) ?>', {credentials: 'same-origin', headers: {'Accept':'application/json'}})
                         .then(function(r){ return r.json(); }).then(function(j){
-                            if (!j.ok || !j.labels || !j.labels.length) {
-                                lblMenu.innerHTML = '<div class="small text-muted">Brak etykiet. <a href="/crm/etykiety" target="_blank">Utwórz</a></div>';
-                                lblMenu.style.display = 'block';
-                                lblLoaded = true;
-                                return;
-                            }
-                            var html = '';
-                            j.labels.forEach(function(lb) {
-                                var chk = currentLabelIds.indexOf(lb.id) !== -1 ? 'checked' : '';
-                                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:12px;">'
-                                    + '<input type="checkbox" value="'+lb.id+'" '+chk+'>'
-                                    + '<span style="flex:1;background:'+lb.color+';color:#fff;padding:4px 10px;border-radius:4px;font-weight:600;">'+lb.name+'</span>'
-                                    + '</label>';
-                            });
-                            lblMenu.innerHTML = html;
+                            renderLabelsMenu(j.labels || []);
                             lblMenu.style.display = 'block';
                             lblLoaded = true;
-                            lblMenu.querySelectorAll('input[type=checkbox]').forEach(function(chk){
-                                chk.addEventListener('change', function(){
-                                    if (chk.checked) currentLabelIds.push(chk.value);
-                                    else currentLabelIds = currentLabelIds.filter(function(x){return x !== chk.value;});
-                                    var fd = new FormData();
-                                    fd.append('_csrfToken', csrf);
-                                    currentLabelIds.forEach(function(id){ fd.append('label_ids[]', id); });
-                                    fetch('/crm/'+leadId+'/labels', {method:'POST', body:fd, credentials:'same-origin', headers:{'X-CSRF-Token':csrf}})
-                                    .then(function(r){return r.json();}).then(function(j){
-                                        if (j.ok) {
-                                            // Refresh display
-                                            var display = document.getElementById('view-labels-display');
-                                            var newHtml = '';
-                                            lblMenu.querySelectorAll('input[type=checkbox]:checked').forEach(function(c){
-                                                var sw = c.parentElement.querySelector('span');
-                                                newHtml += '<span style="background:'+sw.style.background+';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">'+sw.textContent+'</span>';
-                                            });
-                                            display.innerHTML = newHtml || '<span class="text-muted small">Brak etykiet</span>';
-                                        }
-                                    });
-                                });
-                            });
                         });
                     } else {
                         lblMenu.style.display = lblMenu.style.display === 'none' ? 'block' : 'none';
+                    }
+                });
+            }
+
+            function renderLabelsMenu(labels) {
+                var html = '';
+                labels.forEach(function(lb) {
+                    var chk = currentLabelIds.indexOf(lb.id) !== -1 ? 'checked' : '';
+                    html += '<label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:12px;">'
+                        + '<input type="checkbox" value="'+lb.id+'" '+chk+'>'
+                        + '<span style="flex:1;background:'+lb.color+';color:#fff;padding:4px 10px;border-radius:4px;font-weight:600;">'+lb.name+'</span>'
+                        + '</label>';
+                });
+                // Inline creator (Trello style): input nazwa + palette
+                html += '<div style="border-top:1px solid #dfe1e6;margin-top:6px;padding-top:8px;">'
+                    + '<div style="font-size:11px;color:#5e6c84;font-weight:600;margin-bottom:4px;text-transform:uppercase;">Nowa etykieta</div>'
+                    + '<div class="d-flex gap-1">'
+                    +   '<input type="text" id="new-lbl-name" maxlength="60" class="form-control form-control-sm" style="font-size:12px;" placeholder="np. ADR, Pilne, Duży kontrakt">'
+                    +   '<input type="color" id="new-lbl-color" value="#94C81F" class="form-control form-control-color form-control-sm" style="width:36px;padding:0;">'
+                    +   '<button type="button" id="new-lbl-save" class="btn btn-sm btn-success" style="font-size:11px;"><i class="ri-add-line"></i></button>'
+                    + '</div>'
+                    + '<div class="d-flex flex-wrap gap-1 mt-2" id="new-lbl-palette">'
+                    +   ['#94C81F','#059669','#0891b2','#3b82f6','#7c3aed','#db2777','#dc2626','#ea580c','#f59e0b','#78716c'].map(function(c){
+                            return '<span class="new-lbl-swatch" data-color="'+c+'" style="width:20px;height:20px;border-radius:3px;background:'+c+';cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px #dee2e6;"></span>';
+                        }).join('')
+                    + '</div>'
+                    + '<div id="new-lbl-error" class="small text-danger mt-1" style="display:none;"></div>'
+                    + '</div>';
+                lblMenu.innerHTML = html;
+                // Wire checkbox handlers (przypisanie etykiety)
+                lblMenu.querySelectorAll('input[type=checkbox]').forEach(function(chk){
+                    chk.addEventListener('change', function(){
+                        if (chk.checked) currentLabelIds.push(chk.value);
+                        else currentLabelIds = currentLabelIds.filter(function(x){return x !== chk.value;});
+                        saveLeadLabels();
+                    });
+                });
+                // Palette click -> ustaw color-picker
+                lblMenu.querySelectorAll('.new-lbl-swatch').forEach(function(sw){
+                    sw.addEventListener('click', function(){
+                        document.getElementById('new-lbl-color').value = sw.dataset.color;
+                    });
+                });
+                // Save new label
+                var saveBtn = document.getElementById('new-lbl-save');
+                var nameInp = document.getElementById('new-lbl-name');
+                var colorInp = document.getElementById('new-lbl-color');
+                var errBox = document.getElementById('new-lbl-error');
+                function saveNew() {
+                    var name = nameInp.value.trim();
+                    if (!name) { errBox.textContent = 'Wpisz nazwę'; errBox.style.display = 'block'; return; }
+                    errBox.style.display = 'none';
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="ri-loader-4-line"></i>';
+                    var fd = new FormData();
+                    fd.append('_csrfToken', csrf);
+                    fd.append('name', name);
+                    fd.append('color', colorInp.value);
+                    fetch('/crm/labels/create-inline', {method:'POST', body:fd, credentials:'same-origin', headers:{'X-CSRF-Token':csrf, 'Accept':'application/json'}})
+                    .then(function(r){return r.json();}).then(function(j){
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="ri-add-line"></i>';
+                        if (!j.ok) { errBox.textContent = j.error || 'Błąd'; errBox.style.display = 'block'; return; }
+                        // Fetch fresh list + auto-check nowa etykieta
+                        currentLabelIds.push(j.label.id);
+                        fetch('<?= $this->Url->build(['action' => 'labelsAllJson']) ?>', {credentials:'same-origin'})
+                        .then(function(r){return r.json();}).then(function(j2){
+                            renderLabelsMenu(j2.labels || []);
+                            saveLeadLabels(); // przypisz od razu do leada
+                        });
+                    }).catch(function(e){
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="ri-add-line"></i>';
+                        errBox.textContent = 'Błąd sieci: ' + e.message; errBox.style.display = 'block';
+                    });
+                }
+                saveBtn.addEventListener('click', saveNew);
+                nameInp.addEventListener('keypress', function(e){ if (e.key === 'Enter') { e.preventDefault(); saveNew(); } });
+            }
+
+            function saveLeadLabels() {
+                var fd = new FormData();
+                fd.append('_csrfToken', csrf);
+                currentLabelIds.forEach(function(id){ fd.append('label_ids[]', id); });
+                fetch('/crm/'+leadId+'/labels', {method:'POST', body:fd, credentials:'same-origin', headers:{'X-CSRF-Token':csrf}})
+                .then(function(r){return r.json();}).then(function(j){
+                    if (j.ok) {
+                        var display = document.getElementById('view-labels-display');
+                        var newHtml = '';
+                        lblMenu.querySelectorAll('input[type=checkbox]:checked').forEach(function(c){
+                            var sw = c.parentElement.querySelector('span');
+                            newHtml += '<span style="background:'+sw.style.background+';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">'+sw.textContent+'</span>';
+                        });
+                        display.innerHTML = newHtml || '<span class="text-muted small">Brak etykiet</span>';
                     }
                 });
             }

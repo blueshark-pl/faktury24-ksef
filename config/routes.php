@@ -143,6 +143,7 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/peek/{id}',                 ['controller' => 'Leads', 'action' => 'peekJson'])
             ->setPass(['id']);
         $builder->get('/crm/labels-all',                ['controller' => 'Leads', 'action' => 'labelsAllJson']);
+        $builder->post('/crm/labels/create-inline',     ['controller' => 'Leads', 'action' => 'labelCreateInlineJson']);
         // FALA 21 fix: jawne GET+POST zamiast connect() - Cake 5 wysypuje 405 przy connect
         // gdy trasa nie ma jawnego setMethods()
         $builder->get('/crm/dodaj',                     ['controller' => 'Leads', 'action' => 'add']);
