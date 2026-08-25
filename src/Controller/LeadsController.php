@@ -264,8 +264,10 @@ class LeadsController extends AppController
             return $this->jsonResp(['ok' => false, 'error' => 'not_owned'], 403);
         }
         $newStage = (string)$this->request->getData('stage');
-        if (!in_array($newStage, \App\Model\Table\LeadsTable::STAGES, true)) {
-            return $this->jsonResp(['ok' => false, 'error' => 'invalid_stage'], 400);
+        // FALA 21+extras: waliduj po UNII wszystkich pipeline stages (nie tylko legacy STAGES)
+        $allStages = array_unique(array_merge(...array_values(\App\Model\Table\LeadsTable::PIPELINE_STAGES)));
+        if (!in_array($newStage, $allStages, true)) {
+            return $this->jsonResp(['ok' => false, 'error' => 'invalid_stage', 'allowed' => $allStages], 400);
         }
         $oldStage = $lead->stage;
         if ($oldStage === $newStage) {
