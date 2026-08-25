@@ -144,6 +144,10 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->get('/crm/labels-all',                ['controller' => 'Leads', 'action' => 'labelsAllJson']);
         $builder->post('/crm/labels/create-inline',     ['controller' => 'Leads', 'action' => 'labelCreateInlineJson']);
+        // FALA extras: Browser Push Notifications
+        $builder->post('/crm/push/subscribe',           ['controller' => 'CrmPush', 'action' => 'subscribe']);
+        $builder->post('/crm/push/unsubscribe',         ['controller' => 'CrmPush', 'action' => 'unsubscribe']);
+        $builder->get('/crm/push/status',               ['controller' => 'CrmPush', 'action' => 'status']);
         // FALA 21 fix: jawne GET+POST zamiast connect() - Cake 5 wysypuje 405 przy connect
         // gdy trasa nie ma jawnego setMethods()
         $builder->get('/crm/dodaj',                     ['controller' => 'Leads', 'action' => 'add']);

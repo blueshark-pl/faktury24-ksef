@@ -501,6 +501,12 @@ return [
             'controller' => 'Leads',
             'action'     => ['publicForm', 'publicFormThanks'],
         ],
+        // CRM Push Notifications - subscribe/unsubscribe/status
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user', 'admin'],
+            'controller' => 'CrmPush',
+            'action' => ['subscribe', 'unsubscribe', 'status'],
+        ],
         // CRM Etykiety CRUD - te same role co Leads
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],

@@ -63,10 +63,11 @@ if (!hash_equals($expectedToken, $providedToken)) {
 // Whitelist commands
 $command = trim((string)($_GET['cmd'] ?? ''));
 $classMap = [
-    'crm_email_poll'    => \App\Command\CrmEmailPollCommand::class,
-    'crm_workflow_run'  => \App\Command\CrmWorkflowRunCommand::class,
-    'crm_tasks_digest'  => \App\Command\CrmTasksDigestCommand::class,
-    'alerts'            => \App\Command\AlertsCommand::class,
+    'crm_email_poll'         => \App\Command\CrmEmailPollCommand::class,
+    'crm_workflow_run'       => \App\Command\CrmWorkflowRunCommand::class,
+    'crm_tasks_digest'       => \App\Command\CrmTasksDigestCommand::class,
+    'crm_contract_renewals'  => \App\Command\CrmContractRenewalsCommand::class,
+    'alerts'                 => \App\Command\AlertsCommand::class,
 ];
 if (!isset($classMap[$command])) {
     http_response_code(400);

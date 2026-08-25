@@ -155,6 +155,17 @@ return [
         // (asystent_spedytora nadal ma osobny wlasny minimal menu z Kontrahentami)
         'restrictedMenuRoles' => [],
     ],
+    // Web Push Notifications (VAPID keys)
+    // Wygeneruj przez:
+    //   composer require minishlink/web-push
+    //   php -r "require 'vendor/autoload.php'; print_r(\\Minishlink\\WebPush\\VAPID::createVapidKeys());"
+    // ALBO uzyj generatora online: https://vapidkeys.com/
+    // NIGDY nie zmieniaj po tym jak user'y sa subskrybowani - straca dostep.
+    'Push' => [
+        'vapidPublicKey'  => env('PUSH_VAPID_PUBLIC', ''),
+        'vapidPrivateKey' => env('PUSH_VAPID_PRIVATE', ''),
+        'vapidSubject'    => env('PUSH_VAPID_SUBJECT', 'mailto:kontakt@nordlogis.pl'),
+    ],
 
     // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.
     // Setup: https://console.cloud.google.com/ -> nowy projekt -> Gmail API enable

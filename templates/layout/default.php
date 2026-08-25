@@ -359,6 +359,12 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <?= $this->Html->css('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css') ?>
     <?= $this->Html->script('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js') ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons/css/flag-icons.min.css">
+    <!-- CSRF token dla JS fetch calls (FALA push notifications) -->
+    <meta name="csrfToken" content="<?= h($this->request->getAttribute('csrfToken')) ?>">
+    <!-- CRM Push init - service worker + browser subscription -->
+    <?php if (($currentRole ?? '') !== 'client'): ?>
+        <?= $this->Html->script('/assets/js/crm-push-init.js', ['defer' => true]) ?>
+    <?php endif; ?>
 
 </head>
 

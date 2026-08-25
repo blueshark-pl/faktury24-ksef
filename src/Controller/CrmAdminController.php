@@ -987,7 +987,7 @@ class CrmAdminController extends AppController
         }
 
         // Whitelist commands
-        $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'alerts'];
+        $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'crm_contract_renewals', 'alerts'];
         if (!in_array($command, $allowed, true)) {
             $this->response = $this->response->withStatus(400)
                 ->withStringBody("Command not allowed. Allowed: " . implode(', ', $allowed) . "\n");
@@ -1002,10 +1002,11 @@ class CrmAdminController extends AppController
         // Run command - reuse runCommand() ale zbieramy output do zwrocenia plain
         try {
             $classMap = [
-                'crm_email_poll'    => \App\Command\CrmEmailPollCommand::class,
-                'crm_workflow_run'  => \App\Command\CrmWorkflowRunCommand::class,
-                'crm_tasks_digest'  => \App\Command\CrmTasksDigestCommand::class,
-                'alerts'            => \App\Command\AlertsCommand::class,
+                'crm_email_poll'         => \App\Command\CrmEmailPollCommand::class,
+                'crm_workflow_run'       => \App\Command\CrmWorkflowRunCommand::class,
+                'crm_tasks_digest'       => \App\Command\CrmTasksDigestCommand::class,
+                'crm_contract_renewals'  => \App\Command\CrmContractRenewalsCommand::class,
+                'alerts'                 => \App\Command\AlertsCommand::class,
             ];
             $class = $classMap[$command] ?? null;
             if (!$class || !class_exists($class)) {
@@ -1035,7 +1036,7 @@ class CrmAdminController extends AppController
      */
     public function runCron(string $name): void
     {
-        $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'alerts'];
+        $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'crm_contract_renewals', 'alerts'];
         if (!in_array($name, $allowed, true)) {
             $this->Flash->error('Command niedozwolony');
             $this->redirect(['action' => 'tools']);
@@ -1060,10 +1061,11 @@ class CrmAdminController extends AppController
 
         try {
             $classMap = [
-                'crm_email_poll'    => \App\Command\CrmEmailPollCommand::class,
-                'crm_workflow_run'  => \App\Command\CrmWorkflowRunCommand::class,
-                'crm_tasks_digest'  => \App\Command\CrmTasksDigestCommand::class,
-                'alerts'            => \App\Command\AlertsCommand::class,
+                'crm_email_poll'         => \App\Command\CrmEmailPollCommand::class,
+                'crm_workflow_run'       => \App\Command\CrmWorkflowRunCommand::class,
+                'crm_tasks_digest'       => \App\Command\CrmTasksDigestCommand::class,
+                'crm_contract_renewals'  => \App\Command\CrmContractRenewalsCommand::class,
+                'alerts'                 => \App\Command\AlertsCommand::class,
             ];
             $class = $classMap[$commandName] ?? null;
             if (!$class || !class_exists($class)) {
