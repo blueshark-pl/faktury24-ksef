@@ -20,9 +20,8 @@ use ArrayObject;
  */
 class LeadsTable extends Table
 {
+    // LEGACY (spot pipeline default) - zachowane dla kompatybilnosci starych zapytan
     public const STAGES = ['new', 'contact', 'inquiry', 'offer', 'order', 'lost'];
-
-    // Domyslne skutecznosci per etap - preset przy zmianie stage
     public const STAGE_PROBABILITY = [
         'new'     => 10,
         'contact' => 25,
@@ -31,6 +30,74 @@ class LeadsTable extends Table
         'order'   => 100,
         'lost'    => 0,
     ];
+
+    // FALA 21: Multi-pipeline dla spedycji - 3 rozne cykle sprzedazowe
+    public const PIPELINE_TYPES = ['long_term', 'spot', 'recurring'];
+
+    /**
+     * Stages per pipeline_type. 'lost' zawsze na koncu jako fail state.
+     * SPOT (default) uzywa starych stages new/contact/inquiry/offer/order/lost - backward compat.
+     */
+    public const PIPELINE_STAGES = [
+        'long_term' => [
+            'new',            // Kontakt zainicjowany
+            'qualification',  // Weryfikacja potrzeb, budzetu, decyzyjnosci
+            'proposal',       // Wysłana propozycja handlowa
+            'negotiation',    // Rozmowa o warunkach kontraktu
+            'contract',       // Podpisany kontrakt ramowy
+            'active',         // Kontrakt czynny, generuje zlecenia
+            'lost',
+        ],
+        'spot' => self::STAGES,  // legacy: new/contact/inquiry/offer/order/lost
+        'recurring' => [
+            'prospect',       // Potencjalny stały klient
+            'trial',          // Pierwsze zlecenia probne (0-3 msc)
+            'active',         // Regularne zlecenia (>3 msc)
+            'churned',        // Odszedl / brak zlecen >60 dni
+        ],
+    ];
+
+    /**
+     * Skutecznosc per (pipeline, stage). Preset przy zmianie stage.
+     * Long-term: dluzsze etapy = wolniejsze rosnace probability.
+     * Spot: szybki cycle = strome krzywe.
+     * Recurring: prospect/trial na dolnym plateau, active = 100.
+     */
+    public const PIPELINE_PROBABILITY = [
+        'long_term' => [
+            'new' => 5, 'qualification' => 20, 'proposal' => 40,
+            'negotiation' => 65, 'contract' => 90, 'active' => 100, 'lost' => 0,
+        ],
+        'spot' => self::STAGE_PROBABILITY,
+        'recurring' => [
+            'prospect' => 15, 'trial' => 50, 'active' => 100, 'churned' => 0,
+        ],
+    ];
+
+    // Ludzkie labelki dla dropdown pipeline_type
+    public const PIPELINE_LABELS = [
+        'long_term' => 'Kontrakt długoterminowy',
+        'spot' => 'Zlecenie jednorazowe (spot)',
+        'recurring' => 'Klient regularny (recurring)',
+    ];
+
+    /**
+     * Pomocnicza: zwraca stages dla podanego pipeline_type (fallback do spot).
+     */
+    public static function stagesForPipeline(?string $pipelineType): array
+    {
+        $pt = $pipelineType ?: 'spot';
+        return self::PIPELINE_STAGES[$pt] ?? self::PIPELINE_STAGES['spot'];
+    }
+
+    /**
+     * Pomocnicza: zwraca probability preset dla (pipeline, stage). Null jesli nieznane.
+     */
+    public static function probabilityForStage(?string $pipelineType, string $stage): ?int
+    {
+        $pt = $pipelineType ?: 'spot';
+        return self::PIPELINE_PROBABILITY[$pt][$stage] ?? null;
+    }
 
     public function initialize(array $config): void
     {
@@ -66,9 +133,12 @@ class LeadsTable extends Table
             ->allowEmptyString('street')->maxLength('street', 255)
             ->allowEmptyString('email')->email('email', false, 'Nieprawidlowy email')
             ->allowEmptyString('phone')->maxLength('phone', 30)
-            ->inList('stage', self::STAGES, 'Nieprawidlowy etap')
+            // FALA 21: walidacja stage uwzglednia pipeline_type (post-validation w beforeSave)
+            // W validator: akceptujemy dowolny stage z UNII wszystkich pipelines, ostra walidacja w beforeSave
+            ->inList('stage', array_unique(array_merge(...array_values(self::PIPELINE_STAGES))), 'Nieprawidlowy etap')
             ->range('probability', [0, 100])
-            ->allowEmptyString('value_pln')->decimal('value_pln');
+            ->allowEmptyString('value_pln')->decimal('value_pln')
+            ->inList('pipeline_type', self::PIPELINE_TYPES, 'Nieprawidlowy pipeline');
 
         return $validator;
     }
@@ -83,14 +153,23 @@ class LeadsTable extends Table
             $entity->_previous_stage = (string)$entity->getOriginal('stage');
         }
 
+        // FALA 21: default pipeline_type dla nowych rekordow
+        if ($entity->isNew() && empty($entity->pipeline_type)) {
+            $entity->pipeline_type = 'spot';
+        }
+
         // Auto-preset probability przy pierwszym zapisie lub gdy zmienil sie etap
         if ($entity->isNew() || $entity->isDirty('stage')) {
             if ($entity->isDirty('stage')) {
                 $entity->stage_changed_at = new DateTime();
             }
             // Ustawiaj probability tylko jesli user nie ustawil recznie
-            if (!$entity->isDirty('probability') && isset(self::STAGE_PROBABILITY[$entity->stage])) {
-                $entity->probability = self::STAGE_PROBABILITY[$entity->stage];
+            // FALA 21: preset per (pipeline_type, stage) - fallback do legacy STAGE_PROBABILITY
+            if (!$entity->isDirty('probability')) {
+                $preset = self::probabilityForStage($entity->pipeline_type ?? 'spot', (string)$entity->stage);
+                if ($preset !== null) {
+                    $entity->probability = $preset;
+                }
             }
         }
 

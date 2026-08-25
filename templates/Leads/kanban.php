@@ -3,23 +3,39 @@
  * @var \App\View\AppView $this
  * @var array<string, iterable<\App\Model\Entity\Lead>> $columns
  * @var array $stats
+ * @var string $pipelineType
+ * @var array $pipelineCounts
+ * @var array $displayStages
+ * @var array $stageLabels
  */
-$this->assign('title', __('CRM – Kanban leadów'));
+$this->assign('title', __('CRM – Kanban leadów') . ' (' . h(\App\Model\Table\LeadsTable::PIPELINE_LABELS[$pipelineType] ?? $pipelineType) . ')');
 
-$stageLabels = [
-    'new'     => __('Nowy lead'),
-    'contact' => __('Kontakt'),
-    'inquiry' => __('Zapytanie'),
-    'offer'   => __('Oferta'),
-    'order'   => __('Zlecenie'),
-];
+// stageLabels przekazane z kontrolera zawiera wszystkie moliwe stages - jest kompletne
+// stageColors: unified paleta per stage across pipelines
 $stageColors = [
+    // spot legacy
     'new' => '#0d6efd', 'contact' => '#0dcaf0', 'inquiry' => '#f59e0b',
     'offer' => '#7c3aed', 'order' => '#198754',
+    // long_term
+    'qualification' => '#0dcaf0', 'proposal' => '#f59e0b',
+    'negotiation' => '#7c3aed', 'contract' => '#198754', 'active' => '#059669',
+    // recurring
+    'prospect' => '#0d6efd', 'trial' => '#f59e0b',
+];
+$colsCount = count($displayStages);
+$pipelineIcons = [
+    'long_term' => 'ri-building-line', 'spot' => 'ri-flashlight-line', 'recurring' => 'ri-repeat-line',
 ];
 ?>
 <style>
-.crm-kb { display: grid; grid-template-columns: repeat(5, minmax(250px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+.crm-kb { display: grid; grid-template-columns: repeat(<?= $colsCount ?>, minmax(250px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+.pipe-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 2px solid #dee2e6; }
+.pipe-tab { padding: 8px 16px; border-radius: 6px 6px 0 0; text-decoration: none; color: #6c757d; font-weight: 600; font-size: 13px;
+    border: 2px solid transparent; border-bottom: none; margin-bottom: -2px; display: flex; align-items: center; gap: 6px; }
+.pipe-tab:hover { color: #212529; background: #f8f9fa; }
+.pipe-tab.active { color: #94C81F; border-color: #dee2e6 #dee2e6 #fff; background: #fff; }
+.pipe-tab .cnt { background: #f1f3f5; color: #495057; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.pipe-tab.active .cnt { background: rgba(148,200,31,0.15); color: #6b8f14; }
 .crm-col { background: #f5f6fa; border-radius: 10px; min-height: 400px; padding: 10px; }
 .crm-col-hdr { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 10px; }
 .crm-col-hdr .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
@@ -53,6 +69,18 @@ $stageColors = [
             <i class="ri-add-line me-1"></i><?= __('Nowy lead') ?>
         </a>
     </div>
+</div>
+
+<!-- FALA 21: Pipeline tabs -->
+<div class="pipe-tabs">
+    <?php foreach (\App\Model\Table\LeadsTable::PIPELINE_TYPES as $pt): ?>
+        <a href="<?= $this->Url->build(['action' => 'kanban', '?' => ['pipeline' => $pt]]) ?>"
+           class="pipe-tab <?= $pt === $pipelineType ? 'active' : '' ?>">
+            <i class="<?= h($pipelineIcons[$pt] ?? 'ri-flow-chart') ?>"></i>
+            <?= h(\App\Model\Table\LeadsTable::PIPELINE_LABELS[$pt] ?? $pt) ?>
+            <span class="cnt"><?= (int)($pipelineCounts[$pt] ?? 0) ?></span>
+        </a>
+    <?php endforeach; ?>
 </div>
 
 <div class="crm-kb">

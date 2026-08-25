@@ -1622,6 +1622,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-bar-chart-box-line me-1 text-primary"></i>' . __('Executive Dashboard'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'managerDashboard'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'managerDashboard')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-upload-cloud-2-line me-1"></i>' . __('Import CSV'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'importCsv'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'importCsv')]

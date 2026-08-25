@@ -170,6 +170,8 @@ return function (RouteBuilder $routes): void {
         // FALA 19: realny reply przez Gmail API (POST messages/send)
         $builder->post('/crm/reply/{activityId}', ['controller' => 'Leads', 'action' => 'replyByGmail'])
             ->setPass(['activityId']);
+        // FALA 22: Executive dashboard
+        $builder->get('/crm/manager', ['controller' => 'Leads', 'action' => 'managerDashboard']);
         // FALA 20: AI auto-quote workflow
         $builder->connect('/crm/suggest-price', ['controller' => 'Leads', 'action' => 'suggestPriceJson']);
         $builder->post('/crm/quote/{activityId}/save-prices', ['controller' => 'Leads', 'action' => 'savePricesJson'])

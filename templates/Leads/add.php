@@ -171,12 +171,38 @@ $stages = [
         <div class="card">
             <div class="card-body">
                 <h6 class="fw-bold mb-3"><i class="ri-funnels-line"></i> <?= __('Pipeline + wartość') ?></h6>
+                <!-- FALA 21: Multi-pipeline selektor -->
+                <div class="row g-2 mb-2">
+                    <div class="col-md-12">
+                        <label class="form-label small"><?= __('Typ pipeline') ?></label>
+                        <select name="pipeline_type" id="lead-pipeline-type" class="form-select">
+                            <?php foreach (\App\Model\Table\LeadsTable::PIPELINE_LABELS as $pt => $lbl): ?>
+                                <option value="<?= h($pt) ?>" <?= ($lead->pipeline_type ?? 'spot') === $pt ? 'selected' : '' ?>><?= h($lbl) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text small">
+                            <?= __('Long-term: kontrakty miesięczne · Spot: pojedyncze zlecenia · Recurring: klient regularny') ?>
+                        </div>
+                    </div>
+                </div>
                 <div class="row g-2">
                     <div class="col-md-6">
                         <label class="form-label small"><?= __('Etap') ?></label>
-                        <select name="stage" class="form-select">
-                            <?php foreach ($stages as $k => $v): ?>
-                                <option value="<?= h($k) ?>" <?= ($lead->stage ?? 'new') === $k ? 'selected' : '' ?>><?= h($v) ?></option>
+                        <select name="stage" id="lead-stage-select" class="form-select">
+                            <?php
+                            $currentPipeline = $lead->pipeline_type ?? 'spot';
+                            $availableStages = \App\Model\Table\LeadsTable::stagesForPipeline($currentPipeline);
+                            $stageHumanLabels = [
+                                'new' => 'Nowy', 'contact' => 'Kontakt', 'inquiry' => 'Zapytanie',
+                                'offer' => 'Oferta', 'order' => 'Zlecenie', 'lost' => 'Utracone',
+                                'qualification' => 'Kwalifikacja', 'proposal' => 'Propozycja',
+                                'negotiation' => 'Negocjacje', 'contract' => 'Kontrakt', 'active' => 'Aktywny',
+                                'prospect' => 'Prospekt', 'trial' => 'Trial', 'churned' => 'Churned',
+                            ];
+                            foreach ($availableStages as $k):
+                                $v = $stageHumanLabels[$k] ?? $k;
+                            ?>
+                                <option value="<?= h($k) ?>" <?= ($lead->stage ?? $availableStages[0]) === $k ? 'selected' : '' ?>><?= h($v) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -322,6 +348,34 @@ $stages = [
         .catch(function(e) {
             $msg.innerHTML = '<span class="text-danger"><?= __("Błąd sieciowy") ?>: ' + e.message + '</span>';
         });
+    });
+})();
+</script>
+
+<script>
+// FALA 21: Dynamiczne stages per pipeline_type (bez reload strony)
+(function() {
+    var pipelineStages = <?= json_encode(\App\Model\Table\LeadsTable::PIPELINE_STAGES) ?>;
+    var stageLabels = {
+        'new':'Nowy','contact':'Kontakt','inquiry':'Zapytanie','offer':'Oferta','order':'Zlecenie','lost':'Utracone',
+        'qualification':'Kwalifikacja','proposal':'Propozycja','negotiation':'Negocjacje','contract':'Kontrakt','active':'Aktywny',
+        'prospect':'Prospekt','trial':'Trial','churned':'Churned'
+    };
+    var $pt = document.getElementById('lead-pipeline-type');
+    var $st = document.getElementById('lead-stage-select');
+    if (!$pt || !$st) return;
+    $pt.addEventListener('change', function() {
+        var stages = pipelineStages[$pt.value] || [];
+        var prev = $st.value;
+        $st.innerHTML = '';
+        stages.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s; opt.textContent = stageLabels[s] || s;
+            if (s === prev) opt.selected = true;
+            $st.appendChild(opt);
+        });
+        // Jesli poprzedni stage nie istnieje w nowym pipeline - wybierz pierwszy
+        if (stages.indexOf(prev) === -1 && stages.length) $st.value = stages[0];
     });
 })();
 </script>

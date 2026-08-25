@@ -123,26 +123,71 @@ class LeadsController extends AppController
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
 
+        // FALA 21: Multi-pipeline - default 'spot' (backward compat z URL bez ?pipeline)
+        $pipelineType = trim((string)$this->request->getQuery('pipeline', 'spot'));
+        if (!in_array($pipelineType, \App\Model\Table\LeadsTable::PIPELINE_TYPES, true)) {
+            $pipelineType = 'spot';
+        }
+        $stages = \App\Model\Table\LeadsTable::stagesForPipeline($pipelineType);
+        // Wykluczamy 'lost'/'churned' z Kanban (widoczne w liscie index z filtrem)
+        $displayStages = array_filter($stages, fn($s) => !in_array($s, ['lost', 'churned'], true));
+
         $Leads = $this->fetchTable('Leads');
         $rows = $Leads->find()
             ->contain(['AssignedUser' => function ($q) {
                 return $q->select(['id', 'first_name', 'last_name']);
             }])
-            ->where(['Leads.company_id' => $companyId, 'Leads.stage !=' => 'lost'])
+            ->where([
+                'Leads.company_id' => $companyId,
+                'Leads.pipeline_type' => $pipelineType,
+                'Leads.stage NOT IN' => ['lost', 'churned'],
+            ])
             ->orderByDesc('Leads.kanban_pinned')
             ->orderByDesc('Leads.modified')
             ->limit(500)
             ->all();
 
-        $columns = ['new' => [], 'contact' => [], 'inquiry' => [], 'offer' => [], 'order' => []];
+        $columns = [];
+        foreach ($displayStages as $s) $columns[$s] = [];
         foreach ($rows as $lead) {
             if (isset($columns[$lead->stage])) {
                 $columns[$lead->stage][] = $lead;
             }
         }
-        $stats = $Leads->pipelineStats($companyId);
 
-        $this->set(compact('columns', 'stats'));
+        // Liczniki per pipeline dla tabs
+        $pipelineCounts = [];
+        foreach (\App\Model\Table\LeadsTable::PIPELINE_TYPES as $pt) {
+            $pipelineCounts[$pt] = $Leads->find()->where([
+                'company_id' => $companyId,
+                'pipeline_type' => $pt,
+                'stage NOT IN' => ['lost', 'churned'],
+            ])->count();
+        }
+
+        $stats = $Leads->pipelineStats($companyId);
+        $stageLabels = $this->stageLabelsForPipeline($pipelineType);
+
+        $this->set(compact('columns', 'stats', 'pipelineType', 'pipelineCounts',
+            'displayStages', 'stageLabels'));
+    }
+
+    /**
+     * FALA 21: Ludzkie labelki dla stages danego pipeline (do wyswietlania w naglowkach Kanban).
+     */
+    private function stageLabelsForPipeline(string $pipelineType): array
+    {
+        $labels = [
+            // spot (legacy)
+            'new' => 'Nowy', 'contact' => 'Kontakt', 'inquiry' => 'Zapytanie',
+            'offer' => 'Oferta', 'order' => 'Zlecenie', 'lost' => 'Utracone',
+            // long_term
+            'qualification' => 'Kwalifikacja', 'proposal' => 'Propozycja',
+            'negotiation' => 'Negocjacje', 'contract' => 'Kontrakt', 'active' => 'Aktywny',
+            // recurring
+            'prospect' => 'Prospekt', 'trial' => 'Trial', 'churned' => 'Churned',
+        ];
+        return $labels;
     }
 
     /**
@@ -825,6 +870,193 @@ class LeadsController extends AppController
      * Grupowane po lead, sortowane najnowsze pierwsze.
      * GET /crm/pilne
      */
+    /**
+     * FALA 22: Executive dashboard dla managera - weighted forecast, sales velocity,
+     * cohort analysis, revenue attribution. Chart.js dla wizualizacji.
+     * GET /crm/manager
+     */
+    public function managerDashboard(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity  = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Leads = $this->fetchTable('Leads');
+
+        // 1. WEIGHTED FORECAST - SUM(value_pln * probability/100) per pipeline
+        //    Wszystkie leady aktywne (nie lost/churned)
+        $activeStages = ['lost', 'churned'];
+        $forecastRows = $Leads->find()
+            ->select([
+                'pipeline_type', 'stage', 'assigned_to_user_id',
+                'total_val' => 'SUM(value_pln)',
+                'weighted' => 'SUM(value_pln * probability / 100)',
+                'cnt' => 'COUNT(*)',
+            ])
+            ->where(['company_id' => $companyId, 'stage NOT IN' => $activeStages])
+            ->groupBy(['pipeline_type', 'stage', 'assigned_to_user_id'])
+            ->disableHydration()
+            ->all()->toArray();
+
+        // Agreguj do KPI
+        $forecast = ['total' => 0, 'weighted' => 0, 'count' => 0, 'per_pipeline' => []];
+        $forecastPerRep = []; // [userId => [total, weighted, count]]
+        foreach ($forecastRows as $r) {
+            $forecast['total'] += (float)$r['total_val'];
+            $forecast['weighted'] += (float)$r['weighted'];
+            $forecast['count'] += (int)$r['cnt'];
+            $pt = $r['pipeline_type'] ?: 'spot';
+            if (!isset($forecast['per_pipeline'][$pt])) {
+                $forecast['per_pipeline'][$pt] = ['total' => 0, 'weighted' => 0, 'count' => 0];
+            }
+            $forecast['per_pipeline'][$pt]['total'] += (float)$r['total_val'];
+            $forecast['per_pipeline'][$pt]['weighted'] += (float)$r['weighted'];
+            $forecast['per_pipeline'][$pt]['count'] += (int)$r['cnt'];
+
+            $uid = (string)($r['assigned_to_user_id'] ?? '');
+            if ($uid !== '') {
+                if (!isset($forecastPerRep[$uid])) {
+                    $forecastPerRep[$uid] = ['total' => 0, 'weighted' => 0, 'count' => 0];
+                }
+                $forecastPerRep[$uid]['total'] += (float)$r['total_val'];
+                $forecastPerRep[$uid]['weighted'] += (float)$r['weighted'];
+                $forecastPerRep[$uid]['count'] += (int)$r['cnt'];
+            }
+        }
+
+        // Fetch user names dla forecastPerRep
+        $Users = $this->fetchTable('Users');
+        $userMap = [];
+        if (!empty($forecastPerRep)) {
+            $u = $Users->find()
+                ->select(['id', 'first_name', 'last_name'])
+                ->where(['id IN' => array_keys($forecastPerRep)])
+                ->all();
+            foreach ($u as $usr) {
+                $userMap[(string)$usr->id] = trim($usr->first_name . ' ' . $usr->last_name);
+            }
+        }
+
+        // 2. SALES VELOCITY - dni contact/inquiry -> offer -> order
+        //    Fetch leady zamkniete (stage=order/active/contract) z ost 6 mies
+        $velocitySince = (new \DateTimeImmutable('-6 months'))->format('Y-m-d H:i:s');
+        $Acts = $this->fetchTable('LeadActivities');
+        // Dla velocity: dla kazdego wygranego leada, znajdz timestamp pierwszej activity + timestamp order_won
+        $wonLeads = $Leads->find()
+            ->select(['id', 'stage_changed_at', 'created', 'assigned_to_user_id', 'pipeline_type'])
+            ->where([
+                'company_id' => $companyId,
+                'stage IN' => ['order', 'active', 'contract'],
+                'stage_changed_at >=' => $velocitySince,
+            ])
+            ->limit(500)
+            ->all()->toArray();
+        $velocityDays = []; // [pipelineType => [days...]]
+        $velocityPerRep = []; // [userId => [days...]]
+        foreach ($wonLeads as $wl) {
+            if (!$wl->stage_changed_at || !$wl->created) continue;
+            $daysToWin = (int)$wl->created->diffInDays($wl->stage_changed_at);
+            if ($daysToWin < 0 || $daysToWin > 365) continue; // outliers
+            $pt = $wl->pipeline_type ?: 'spot';
+            $velocityDays[$pt][] = $daysToWin;
+            $uid = (string)($wl->assigned_to_user_id ?? '');
+            if ($uid !== '') $velocityPerRep[$uid][] = $daysToWin;
+        }
+        $velocityMedian = function ($arr) {
+            if (empty($arr)) return null;
+            sort($arr);
+            return $arr[intdiv(count($arr), 2)];
+        };
+        $velocityStats = [];
+        foreach ($velocityDays as $pt => $days) {
+            $velocityStats[$pt] = ['median' => $velocityMedian($days), 'count' => count($days)];
+        }
+        $velocityRepStats = [];
+        foreach ($velocityPerRep as $uid => $days) {
+            $velocityRepStats[$uid] = [
+                'name' => $userMap[$uid] ?? 'Unknown',
+                'median_days' => $velocityMedian($days),
+                'won_count' => count($days),
+            ];
+        }
+        uasort($velocityRepStats, fn($a, $b) => (int)$a['median_days'] <=> (int)$b['median_days']);
+
+        // 3. COHORT ANALYSIS - leady z miesiaca X -> aktualny status
+        //    Fetch leady z ost 6 mies grupowane po YYYY-MM created
+        $cohortSince = (new \DateTimeImmutable('-6 months'))->format('Y-m-d');
+        $cohortRows = $Leads->find()
+            ->select([
+                'cohort_month' => "DATE_FORMAT(created, '%Y-%m')",
+                'stage',
+                'cnt' => 'COUNT(*)',
+            ])
+            ->where(['company_id' => $companyId, 'created >=' => $cohortSince])
+            ->groupBy(["DATE_FORMAT(created, '%Y-%m')", 'stage'])
+            ->disableHydration()
+            ->all()->toArray();
+        $cohorts = []; // [YYYY-MM => [stage => count, total => X, won => Y, lost => Z]]
+        foreach ($cohortRows as $r) {
+            $m = $r['cohort_month'];
+            if (!isset($cohorts[$m])) $cohorts[$m] = ['stages' => [], 'total' => 0, 'won' => 0, 'lost' => 0];
+            $cohorts[$m]['stages'][$r['stage']] = (int)$r['cnt'];
+            $cohorts[$m]['total'] += (int)$r['cnt'];
+            if (in_array($r['stage'], ['order', 'active', 'contract'], true)) $cohorts[$m]['won'] += (int)$r['cnt'];
+            if (in_array($r['stage'], ['lost', 'churned'], true)) $cohorts[$m]['lost'] += (int)$r['cnt'];
+        }
+        krsort($cohorts);
+
+        // 4. REVENUE ATTRIBUTION - source (website/linkedin/csv/manual) -> sum wygranych
+        $attrRows = $Leads->find()
+            ->select([
+                'source',
+                'won_val' => 'SUM(value_pln)',
+                'won_cnt' => 'COUNT(*)',
+            ])
+            ->where([
+                'company_id' => $companyId,
+                'stage IN' => ['order', 'active', 'contract'],
+            ])
+            ->groupBy('source')
+            ->disableHydration()
+            ->all()->toArray();
+        $revenueAttribution = [];
+        foreach ($attrRows as $r) {
+            $src = $r['source'] ?: 'manual';
+            $revenueAttribution[$src] = [
+                'value' => (float)$r['won_val'],
+                'count' => (int)$r['won_cnt'],
+            ];
+        }
+        arsort($revenueAttribution);
+
+        // 5. MONTHLY FORECAST TIMELINE - suma weighted per miesiac (na podstawie next_action_at
+        //    lub stage_changed_at + prognoza zamkniecia 30 dni)
+        // Uproszczone: fake miesieczna prognoza na podst. modified date + weighted
+        $timelineRows = $Leads->find()
+            ->select([
+                'month' => "DATE_FORMAT(modified, '%Y-%m')",
+                'weighted' => 'SUM(value_pln * probability / 100)',
+                'cnt' => 'COUNT(*)',
+            ])
+            ->where(['company_id' => $companyId, 'stage NOT IN' => $activeStages,
+                'modified >=' => $cohortSince])
+            ->groupBy(["DATE_FORMAT(modified, '%Y-%m')"])
+            ->orderByAsc('month')
+            ->disableHydration()
+            ->all()->toArray();
+        $monthlyForecast = [];
+        foreach ($timelineRows as $r) {
+            $monthlyForecast[$r['month']] = [
+                'weighted' => round((float)$r['weighted'], 2),
+                'count' => (int)$r['cnt'],
+            ];
+        }
+
+        $this->set(compact('forecast', 'forecastPerRep', 'userMap',
+            'velocityStats', 'velocityRepStats', 'cohorts', 'revenueAttribution',
+            'monthlyForecast'));
+    }
+
     public function urgentEmails(): void
     {
         $this->request->allowMethod(['get']);
@@ -1959,6 +2191,16 @@ class LeadsController extends AppController
     private function prepareLeadData(array $data, string $companyId, ?string $userId, bool $isEdit = false): array
     {
         $data['company_id'] = $companyId;
+
+        // FALA 21: Multi-pipeline - walidacja + default
+        if (empty($data['pipeline_type']) || !in_array($data['pipeline_type'], \App\Model\Table\LeadsTable::PIPELINE_TYPES, true)) {
+            $data['pipeline_type'] = 'spot';
+        }
+        // Walidacja stage vs pipeline (jesli user manualnie postnie zly stage)
+        $allowedStages = \App\Model\Table\LeadsTable::stagesForPipeline($data['pipeline_type']);
+        if (!empty($data['stage']) && !in_array($data['stage'], $allowedStages, true)) {
+            $data['stage'] = $allowedStages[0]; // fallback do pierwszego stage tego pipeline
+        }
 
         // Normalizacja
         if (isset($data['nip'])) {

@@ -519,6 +519,8 @@ return [
                 'replyByGmail',
                 // FALA 20: AI auto-quote workflow
                 'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
+                // FALA 22: Executive dashboard
+                'managerDashboard',
             ],
         ],
         [
