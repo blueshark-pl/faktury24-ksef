@@ -331,6 +331,77 @@ class GmailApiService
     }
 
     /**
+     * FALA 20: sendMessage z ZAŁĄCZNIKIEM (np. PDF wyceny).
+     * Buduje multipart/mixed z: text/plain + application/pdf attachment.
+     * Uzywa base64 encoding attachmentu (~33% overhead ale prosta interoperability).
+     *
+     * @param string $attachmentContent Binary content zalacznika
+     * @param string $attachmentFilename Nazwa pliku
+     * @param string $attachmentMime MIME type (default application/pdf)
+     */
+    public function sendMessageWithAttachment(
+        string $accessToken,
+        string $fromEmail,
+        string $fromName,
+        string $to,
+        string $subject,
+        string $bodyPlain,
+        string $attachmentContent,
+        string $attachmentFilename,
+        string $attachmentMime = 'application/pdf'
+    ): ?array {
+        try {
+            $boundary = 'mixed_' . bin2hex(random_bytes(8));
+
+            $headers = [
+                'From: ' . $this->mimeEncodeAddress($fromName, $fromEmail),
+                'To: ' . $to,
+                'Subject: ' . $this->mimeEncodeHeader($subject),
+                'MIME-Version: 1.0',
+                'Content-Type: multipart/mixed; boundary="' . $boundary . '"',
+            ];
+
+            $body = "--{$boundary}\r\n"
+                . "Content-Type: text/plain; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n\r\n"
+                . chunk_split(base64_encode($bodyPlain)) . "\r\n"
+                . "--{$boundary}\r\n"
+                . "Content-Type: {$attachmentMime}; name=\"" . $attachmentFilename . "\"\r\n"
+                . "Content-Transfer-Encoding: base64\r\n"
+                . "Content-Disposition: attachment; filename=\"" . $attachmentFilename . "\"\r\n\r\n"
+                . chunk_split(base64_encode($attachmentContent)) . "\r\n"
+                . "--{$boundary}--\r\n";
+
+            $mime = implode("\r\n", $headers) . "\r\n" . $body;
+            $raw = rtrim(strtr(base64_encode($mime), '+/', '-_'), '=');
+
+            $client = new Client(['timeout' => 120]);
+            $response = $client->post(
+                self::API_BASE . '/messages/send',
+                json_encode(['raw' => $raw]),
+                ['headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ]]
+            );
+            if (!$response->isOk()) {
+                Log::warning('Gmail sendMessageWithAttachment HTTP ' . $response->getStatusCode()
+                    . ': ' . substr((string)$response->getBody(), 0, 500));
+                return null;
+            }
+            $data = json_decode((string)$response->getBody(), true);
+            return [
+                'id' => (string)($data['id'] ?? ''),
+                'threadId' => (string)($data['threadId'] ?? ''),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Gmail sendMessageWithAttachment failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * RFC 2047 encode dla headera z UTF-8 (np. Subject z polskimi znakami)
      */
     private function mimeEncodeHeader(string $text): string

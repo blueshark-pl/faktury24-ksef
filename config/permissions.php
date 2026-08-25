@@ -517,6 +517,8 @@ return [
                 'urgentEmails',
                 // FALA 19: realny reply przez Gmail API
                 'replyByGmail',
+                // FALA 20: AI auto-quote workflow
+                'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
             ],
         ],
         [

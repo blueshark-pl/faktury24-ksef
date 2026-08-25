@@ -2134,6 +2134,294 @@ class LeadsController extends AppController
      *
      * Response JSON: ok, gmail_id, thread_id, error?
      */
+    /**
+     * FALA 20: Sugeruj cene dla jednego shipment (AJAX).
+     * POST /crm/suggest-price?activity_id=X&shipment_index=N
+     */
+    public function suggestPriceJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post', 'get']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $companyNip = $identity?->get('company_nip');
+
+        $activityId = trim((string)($this->request->getQuery('activity_id') ?: $this->request->getData('activity_id')));
+        $shipIndex = (int)($this->request->getQuery('shipment_index') ?: $this->request->getData('shipment_index'));
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $Acts = $this->fetchTable('LeadActivities');
+            $act = $Acts->get($activityId, ['contain' => ['Leads']]);
+            if ((string)$act->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+            }
+            $payload = json_decode((string)$act->payload_json, true) ?: [];
+            $ships = $payload['shipments'] ?? [];
+            if (!isset($ships[$shipIndex])) {
+                return $json(['ok' => false, 'error' => 'shipment_index poza zakresem'], 400);
+            }
+            $shipment = $ships[$shipIndex];
+
+            $Contracts = $this->fetchTable('CrmContracts');
+            $suggestion = $Contracts->suggestPrice(
+                (string)$companyId,
+                $act->lead?->nip,
+                $shipment,
+                $companyNip
+            );
+            return $json(['ok' => true, 'suggestion' => $suggestion, 'shipment' => $shipment]);
+        } catch (\Throwable $e) {
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * FALA 20: Zapisz ceny dla wszystkich shipments w payload_json.
+     * POST /crm/quote/{activityId}/save-prices
+     * Body: prices[] = [{shipment_index: N, price: X, currency: Y}, ...]
+     */
+    public function savePricesJson(string $activityId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $Acts = $this->fetchTable('LeadActivities');
+            $act = $Acts->get($activityId);
+            if ((string)$act->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+            }
+            $payload = json_decode((string)$act->payload_json, true) ?: [];
+            $prices = (array)$this->request->getData('prices');
+            foreach ($prices as $p) {
+                $idx = (int)($p['shipment_index'] ?? -1);
+                if (!isset($payload['shipments'][$idx])) continue;
+                $payload['shipments'][$idx]['_quote_price'] = (float)($p['price'] ?? 0);
+                $payload['shipments'][$idx]['_quote_currency'] = strtoupper((string)($p['currency'] ?? 'EUR'));
+            }
+            $payload['prices_saved_at'] = date('Y-m-d H:i:s');
+            $act->payload_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+            $Acts->save($act);
+            return $json(['ok' => true, 'saved' => count($prices)]);
+        } catch (\Throwable $e) {
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * FALA 20: Wygeneruj PDF wyceny z quote_request.
+     * GET /crm/quote/{activityId}/pdf?download=1
+     */
+    public function quotePdf(string $activityId): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Acts = $this->fetchTable('LeadActivities');
+        $act = $Acts->get($activityId, ['contain' => ['Leads']]);
+        if ((string)$act->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+        $payload = json_decode((string)$act->payload_json, true) ?: [];
+        $shipments = $payload['shipments'] ?? [];
+        $lead = $act->lead;
+
+        // Total
+        $total = 0.0;
+        $currency = 'EUR';
+        foreach ($shipments as $s) {
+            $p = (float)($s['_quote_price'] ?? 0);
+            if ($p > 0) {
+                $total += $p;
+                if (!empty($s['_quote_currency'])) $currency = $s['_quote_currency'];
+            }
+        }
+
+        $issueDate = new \Cake\I18n\Date();
+        $validUntil = $issueDate->modify('+7 days');
+        $quoteNumber = 'WYC/' . $issueDate->format('Y/m') . '/' . strtoupper(substr($activityId, 0, 6));
+
+        $download = (bool)$this->request->getQuery('download', 0);
+        $this->viewBuilder()
+            ->setClassName('CakePdf.Pdf')
+            ->setTemplate('quote_response')
+            ->setLayout(false)
+            ->setOptions([
+                'pdfConfig' => [
+                    'filename'    => 'Wycena-' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string)$lead->company_name) . '-' . $issueDate->format('Y-m-d') . '.pdf',
+                    'download'    => $download,
+                    'orientation' => 'portrait',
+                    'paper'       => 'A4',
+                    'engine'      => 'CakePdf.DomPdf',
+                ],
+            ]);
+
+        $this->set(compact('act', 'lead', 'shipments', 'total', 'currency',
+            'quoteNumber', 'issueDate', 'validUntil', 'payload'));
+    }
+
+    /**
+     * FALA 20: Wyslij PDF wyceny przez Gmail (reuse GmailApiService::sendMessage z attach).
+     * POST /crm/quote/{activityId}/send
+     * Body: to, subject?, body_text?
+     */
+    public function sendQuoteJson(string $activityId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId = $identity?->get('id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $Acts = $this->fetchTable('LeadActivities');
+            $act = $Acts->get($activityId, ['contain' => ['Leads']]);
+            if ((string)$act->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+            }
+            $lead = $act->lead;
+            $data = (array)$this->request->getData();
+            $to = trim((string)($data['to'] ?? ($lead->email ?? '')));
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                return $json(['ok' => false, 'error' => 'brak/zly adres odbiorcy'], 400);
+            }
+            $subject = trim((string)($data['subject'] ?? 'Wycena transportu')) ?: 'Wycena transportu';
+            $bodyText = trim((string)($data['body_text'] ?? ''));
+            if ($bodyText === '') {
+                $bodyText = "Dzień dobry,\n\nw załączniku przesyłam wycenę transportu.\n\nW razie pytań pozostaję do dyspozycji.\n\nPozdrawiam";
+            }
+
+            // Wygeneruj PDF do stringa
+            $pdfContent = $this->renderQuotePdfString($act);
+            if (!$pdfContent) {
+                return $json(['ok' => false, 'error' => 'PDF generation failed'], 500);
+            }
+
+            // Znajdz Gmail account
+            $EA = $this->fetchTable('CrmEmailAccounts');
+            $acc = $EA->find()->where([
+                'company_id' => $companyId,
+                'auth_type' => 'gmail_oauth',
+                'is_active' => true,
+            ])->first();
+            if (!$acc) {
+                return $json(['ok' => false, 'error' => 'brak aktywnego Gmail OAuth'], 400);
+            }
+
+            $svc = new \App\Service\GmailApiService();
+            $accessToken = $EA->decryptPassword($acc->oauth_access_token);
+            if (!$acc->oauth_expires_at || $acc->oauth_expires_at->isPast()) {
+                $tokens = $svc->refreshAccessToken($EA->decryptPassword($acc->oauth_refresh_token));
+                $accessToken = $tokens['access_token'];
+                $acc->oauth_access_token = $EA->encryptPassword($accessToken);
+                $acc->oauth_expires_at = new \Cake\I18n\DateTime('+' . (int)($tokens['expires_in'] ?? 3600) . ' seconds');
+                $EA->save($acc);
+            }
+
+            $fromName = trim(($identity?->get('first_name') ?? '') . ' ' . ($identity?->get('last_name') ?? '')) ?: 'CRM';
+            $pdfFilename = 'Wycena-' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string)$lead->company_name) . '.pdf';
+
+            $result = $svc->sendMessageWithAttachment(
+                $accessToken, $acc->username, $fromName, $to, $subject, $bodyText,
+                $pdfContent, $pdfFilename, 'application/pdf'
+            );
+            if (!$result || empty($result['id'])) {
+                return $json(['ok' => false, 'error' => 'Gmail sendMessage failed - moze brak scope gmail.send, re-authoryzuj konto'], 500);
+            }
+
+            // Log w timeline
+            $payload = json_decode((string)$act->payload_json, true) ?: [];
+            $payload['quote_sent_at'] = date('Y-m-d H:i:s');
+            $payload['quote_sent_to'] = $to;
+            $payload['quote_gmail_id'] = $result['id'];
+            $act->payload_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+            $Acts->save($act);
+
+            try {
+                $Acts->logSystem((string)$companyId, (string)$lead->id, 'offer_sent',
+                    $subject,
+                    sprintf('Wysłano wycenę PDF do %s (Gmail ID: %s)', $to, $result['id']),
+                    ['source' => 'quote_pdf', 'gmail_id' => $result['id'], 'to' => $to,
+                     'from_activity' => $activityId, 'shipments_count' => count($payload['shipments'] ?? [])],
+                    $userId);
+            } catch (\Throwable $e) {}
+
+            return $json(['ok' => true, 'gmail_id' => $result['id']]);
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('sendQuoteJson exception: ' . $e->getMessage());
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper: renderuje quotePdf template do stringa (dla attach do email).
+     */
+    private function renderQuotePdfString($act): ?string
+    {
+        try {
+            $payload = json_decode((string)$act->payload_json, true) ?: [];
+            $shipments = $payload['shipments'] ?? [];
+            $lead = $act->lead;
+            $total = 0.0;
+            $currency = 'EUR';
+            foreach ($shipments as $s) {
+                $p = (float)($s['_quote_price'] ?? 0);
+                if ($p > 0) {
+                    $total += $p;
+                    if (!empty($s['_quote_currency'])) $currency = $s['_quote_currency'];
+                }
+            }
+            $issueDate = new \Cake\I18n\Date();
+            $validUntil = $issueDate->modify('+7 days');
+            $quoteNumber = 'WYC/' . $issueDate->format('Y/m') . '/' . strtoupper(substr((string)$act->id, 0, 6));
+
+            $viewBuilder = new \Cake\View\ViewBuilder();
+            $viewBuilder
+                ->setClassName('CakePdf.Pdf')
+                ->setTemplate('quote_response')
+                ->setLayout(false)
+                ->setTemplatePath('Leads')
+                ->setOptions([
+                    'pdfConfig' => [
+                        'orientation' => 'portrait',
+                        'paper' => 'A4',
+                        'engine' => 'CakePdf.DomPdf',
+                    ],
+                ]);
+            $view = $viewBuilder->build([
+                'act' => $act, 'lead' => $lead, 'shipments' => $shipments,
+                'total' => $total, 'currency' => $currency,
+                'quoteNumber' => $quoteNumber, 'issueDate' => $issueDate,
+                'validUntil' => $validUntil, 'payload' => $payload,
+            ]);
+            return $view->render();
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('renderQuotePdfString failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     public function replyByGmail(string $activityId): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);

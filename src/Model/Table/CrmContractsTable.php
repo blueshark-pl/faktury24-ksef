@@ -149,4 +149,170 @@ class CrmContractsTable extends Table
             \Cake\Log\Log::warning('CrmContracts::incrementUsedVolume failed: ' . $e->getMessage());
         }
     }
+
+    /**
+     * FALA 20: Sugeruj cene dla shipment (kaskada 3-poziomowa).
+     *
+     * Kolejnosc:
+     *   1. Kontrakt ramowy dla tego klienta + trasy (100% pewnosci)
+     *   2. Historia zlecen (speed_orders) dla tej trasy - mediana z ost. 6 mies
+     *   3. Historia rynkowa (bez klienta) - fallback average
+     *
+     * @return array {
+     *   price: float,
+     *   currency: string,
+     *   source: 'contract'|'history_client'|'history_market'|'unknown',
+     *   reason: string (human-readable),
+     *   confidence: 'high'|'medium'|'low',
+     *   sample_size: int (ile rekordow uzyto do mediany)
+     * }
+     */
+    public function suggestPrice(string $companyId, ?string $nip, array $shipment, ?string $ownCompanyNip = null): array
+    {
+        $route = [
+            'from_country' => (string)($shipment['from_country'] ?? ''),
+            'from_city'    => (string)($shipment['from_city'] ?? ''),
+            'to_country'   => (string)($shipment['to_country'] ?? ''),
+            'to_city'      => (string)($shipment['to_city'] ?? ''),
+        ];
+
+        // POZIOM 1: kontrakt ramowy dla klienta
+        if (!empty($nip)) {
+            $contract = $this->findBestMatch($companyId, $nip, $route);
+            if ($contract && (float)$contract->price_netto > 0) {
+                $matchLevel = 'unknown';
+                if (!empty($contract->from_city) && !empty($contract->to_city)) $matchLevel = 'city';
+                elseif (!empty($contract->from_country) && !empty($contract->to_country)) $matchLevel = 'country';
+                else $matchLevel = 'global';
+                return [
+                    'price' => (float)$contract->price_netto,
+                    'currency' => $contract->currency ?: 'EUR',
+                    'source' => 'contract',
+                    'reason' => sprintf('Kontrakt "%s" (%s match)', $contract->name, $matchLevel),
+                    'confidence' => $matchLevel === 'city' ? 'high' : ($matchLevel === 'country' ? 'medium' : 'low'),
+                    'sample_size' => 1,
+                    'contract_id' => $contract->id,
+                ];
+            }
+        }
+
+        // POZIOM 2 + 3: historia speed_orders dla tej trasy
+        try {
+            $SO = \Cake\ORM\TableRegistry::getTableLocator()->get('SpeedOrders');
+            $sinceDate = (new \DateTimeImmutable('-6 months'))->format('Y-m-d');
+            $baseWhere = [
+                'netto > ' => 0,
+                'date_doc >=' => $sinceDate,
+            ];
+            if ($ownCompanyNip) $baseWhere['company_nip'] = $ownCompanyNip;
+
+            // Try 1: same klient (buyer_nip) + route city LIKE
+            if (!empty($nip) && !empty($route['from_city']) && !empty($route['to_city'])) {
+                $rows = $SO->find()->where($baseWhere)
+                    ->where([
+                        'buyer_nip' => $nip,
+                        'LOWER(load_city) LIKE' => '%' . strtolower($route['from_city']) . '%',
+                        'LOWER(unload_city) LIKE' => '%' . strtolower($route['to_city']) . '%',
+                    ])
+                    ->select(['netto', 'currency', 'date_doc', 'currency_exchange'])
+                    ->limit(50)->all()->toArray();
+                if (count($rows) >= 1) {
+                    return $this->buildPriceSuggestion($rows, 'history_client',
+                        sprintf('Historia %d zleceń dla klienta na tej trasie (6 mies)', count($rows)));
+                }
+            }
+
+            // Try 2: any klient + route (mediana rynkowa)
+            if (!empty($route['from_city']) && !empty($route['to_city'])) {
+                $rows = $SO->find()->where($baseWhere)
+                    ->where([
+                        'LOWER(load_city) LIKE' => '%' . strtolower($route['from_city']) . '%',
+                        'LOWER(unload_city) LIKE' => '%' . strtolower($route['to_city']) . '%',
+                    ])
+                    ->select(['netto', 'currency', 'date_doc', 'currency_exchange'])
+                    ->limit(100)->all()->toArray();
+                if (count($rows) >= 3) {
+                    return $this->buildPriceSuggestion($rows, 'history_market',
+                        sprintf('Mediana %d zleceń rynkowych na tej trasie (6 mies)', count($rows)));
+                }
+            }
+
+            // Try 3: same kraje (bez miast)
+            if (!empty($route['from_country']) && !empty($route['to_country'])) {
+                $rows = $SO->find()->where($baseWhere)
+                    ->where([
+                        'load_country' => strtoupper($route['from_country']),
+                        'unload_country' => strtoupper($route['to_country']),
+                    ])
+                    ->select(['netto', 'currency', 'date_doc', 'currency_exchange'])
+                    ->limit(100)->all()->toArray();
+                if (count($rows) >= 5) {
+                    return $this->buildPriceSuggestion($rows, 'history_market',
+                        sprintf('Mediana %d zleceń dla kierunku %s→%s (6 mies)', count($rows),
+                            strtoupper($route['from_country']), strtoupper($route['to_country'])));
+                }
+            }
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('suggestPrice history query failed: ' . $e->getMessage());
+        }
+
+        return [
+            'price' => 0,
+            'currency' => 'EUR',
+            'source' => 'unknown',
+            'reason' => 'Brak danych historycznych ani kontraktu dla tej trasy',
+            'confidence' => 'low',
+            'sample_size' => 0,
+        ];
+    }
+
+    /**
+     * Wylicz mediane netto ze zlecen (uwzglednia currency_exchange -> PLN i konwertuje z powrotem do EUR default)
+     */
+    private function buildPriceSuggestion(array $rows, string $source, string $reason): array
+    {
+        // Zbierz wszystkie kwoty w PLN dla porownawczej mediany
+        $amountsPln = [];
+        $currencies = [];
+        foreach ($rows as $r) {
+            $netto = (float)$r->netto;
+            $fx = (float)($r->currency_exchange ?: 1);
+            $currencyOrig = strtoupper((string)($r->currency ?: 'PLN'));
+            $currencies[$currencyOrig] = ($currencies[$currencyOrig] ?? 0) + 1;
+            $amountsPln[] = $currencyOrig === 'PLN' ? $netto : $netto * $fx;
+        }
+        sort($amountsPln);
+        $n = count($amountsPln);
+        $median = $n > 0 ? $amountsPln[intdiv($n, 2)] : 0;
+
+        // Wybierz dominujaca walute
+        arsort($currencies);
+        $dominantCurrency = key($currencies) ?: 'EUR';
+
+        // Convert median z PLN na dominant currency (approx: mediana FX z rows)
+        $priceInDominant = $median;
+        if ($dominantCurrency !== 'PLN') {
+            // Znajdz sredni FX dla tej waluty w rows
+            $fxs = [];
+            foreach ($rows as $r) {
+                if (strtoupper((string)($r->currency ?: 'PLN')) === $dominantCurrency && (float)$r->currency_exchange > 0) {
+                    $fxs[] = (float)$r->currency_exchange;
+                }
+            }
+            if (!empty($fxs)) {
+                sort($fxs);
+                $avgFx = $fxs[intdiv(count($fxs), 2)];
+                $priceInDominant = $median / $avgFx;
+            }
+        }
+
+        return [
+            'price' => round($priceInDominant, 2),
+            'currency' => $dominantCurrency,
+            'source' => $source,
+            'reason' => $reason,
+            'confidence' => $n >= 5 ? 'high' : ($n >= 3 ? 'medium' : 'low'),
+            'sample_size' => $n,
+        ];
+    }
 }

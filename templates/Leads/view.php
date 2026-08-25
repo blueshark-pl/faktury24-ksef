@@ -497,9 +497,21 @@ foreach ($lead->lead_activities as $__a) {
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary btn-bulk-suggest-price" data-activity-id="<?= h($qr['activity_id']) ?>" data-ships-count="<?= (int)$qr['shipments_count'] ?>">
+                                    <i class="ri-price-tag-3-line"></i> <?= __('Wyceń wszystkie AI') ?>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary btn-save-prices" data-activity-id="<?= h($qr['activity_id']) ?>">
+                                    <i class="ri-save-line"></i> <?= __('Zapisz ceny') ?>
+                                </button>
+                                <a href="<?= $this->Url->build(['action' => 'quotePdf', $qr['activity_id'], '?' => ['download' => 1]]) ?>" class="btn btn-sm btn-outline-danger" target="_blank">
+                                    <i class="ri-file-pdf-line"></i> PDF
+                                </a>
+                                <button type="button" class="btn btn-sm btn-primary btn-send-quote" data-activity-id="<?= h($qr['activity_id']) ?>" data-lead-email="<?= h($lead->email ?? '') ?>" data-from-email="<?= h($qr['from_email']) ?>">
+                                    <i class="ri-send-plane-line"></i> <?= __('Wyślij wycenę') ?>
+                                </button>
                                 <?php if ($qr['orders_created_count'] < $qr['shipments_count']): ?>
                                     <?= $this->Form->postLink(
-                                        '<i class="ri-add-circle-line"></i> ' . __('Utwórz zlecenia w bazie'),
+                                        '<i class="ri-add-circle-line"></i> ' . __('Utwórz zlecenia'),
                                         ['action' => 'createOrdersFromQuote', $qr['activity_id']],
                                         ['escape' => false, 'class' => 'btn btn-sm btn-success',
                                          'confirm' => __('Utworzyć {0} zleceń manualnych z tego emaila?', $qr['shipments_count'])]
@@ -509,8 +521,9 @@ foreach ($lead->lead_activities as $__a) {
                                 <?php endif; ?>
                             </div>
                         </div>
-                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                            <table class="table table-sm table-hover mb-0" style="font-size: 11px;">
+                        <div id="qr-<?= h($qr['activity_id']) ?>-status" class="small mb-2" style="display:none;"></div>
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0 qr-shipments-table" style="font-size: 11px;" data-activity-id="<?= h($qr['activity_id']) ?>">
                                 <thead style="position: sticky; top: 0; background: #fff; z-index: 2;">
                                     <tr>
                                         <th style="width:30px;">#</th>
@@ -521,12 +534,13 @@ foreach ($lead->lead_activities as $__a) {
                                         <th><?= __('Kg') ?></th>
                                         <th><?= __('Palet') ?></th>
                                         <th><?= __('Sprzęt') ?></th>
+                                        <th style="min-width:160px;"><?= __('Cena netto') ?></th>
                                         <th><?= __('Uwagi') ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($qr['shipments'] as $i => $s): ?>
-                                    <tr>
+                                    <?php foreach ($qr['shipments'] as $i => $s): $existingPrice = (float)($s['_quote_price'] ?? 0); $existingCurrency = strtoupper((string)($s['_quote_currency'] ?? 'EUR')); ?>
+                                    <tr data-shipment-index="<?= $i ?>">
                                         <td><?= $i + 1 ?></td>
                                         <td class="fw-semibold text-primary" style="max-width: 90px; word-break: break-all;"><?= h($s['customer_order_ref'] ?? '') ?></td>
                                         <td>
@@ -544,7 +558,19 @@ foreach ($lead->lead_activities as $__a) {
                                         <td class="text-end"><?= !empty($s['weight_kg']) ? h(number_format((int)$s['weight_kg'], 0, ',', ' ')) : '-' ?></td>
                                         <td class="text-end"><?= !empty($s['pallets']) ? (int)$s['pallets'] . ' ' . h($s['pallet_type'] ?? '') : '-' ?></td>
                                         <td><?php if (!empty($s['vehicle_type'])): ?><span class="badge bg-secondary"><?= h($s['vehicle_type']) ?></span><?php endif; ?></td>
-                                        <td style="max-width: 200px; word-wrap: break-word;">
+                                        <td>
+                                            <div class="input-group input-group-sm" style="width: 155px;">
+                                                <input type="number" step="0.01" min="0" class="form-control form-control-sm price-input" style="font-size: 11px;" value="<?= $existingPrice > 0 ? h($existingPrice) : '' ?>" placeholder="—">
+                                                <select class="form-select form-select-sm currency-input" style="font-size: 11px; max-width: 55px;">
+                                                    <?php foreach (['EUR', 'PLN', 'USD', 'GBP'] as $cur): ?>
+                                                        <option value="<?= $cur ?>" <?= $cur === $existingCurrency ? 'selected' : '' ?>><?= $cur ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button type="button" class="btn btn-outline-primary btn-suggest-one" data-activity-id="<?= h($qr['activity_id']) ?>" data-shipment-index="<?= $i ?>" title="Wyceń AI"><i class="ri-magic-line"></i></button>
+                                            </div>
+                                            <div class="small text-muted price-reason mt-1" style="font-size: 9px;"></div>
+                                        </td>
+                                        <td style="max-width: 180px; word-wrap: break-word;">
                                             <?php if (!empty($s['cargo_type'])): ?><span class="badge bg-info"><?= h($s['cargo_type']) ?></span> <?php endif; ?>
                                             <?= h($s['notes'] ?? '') ?>
                                         </td>
@@ -552,6 +578,10 @@ foreach ($lead->lead_activities as $__a) {
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="mt-2 small text-muted d-flex justify-content-between">
+                            <div><i class="ri-information-line"></i> <?= __('Kliknij ✨ przy cenie aby AI zasugerowała z historii kontraktów / zleceń.') ?></div>
+                            <div>Suma: <strong class="qr-sum" data-activity-id="<?= h($qr['activity_id']) ?>">—</strong></div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -1448,6 +1478,178 @@ foreach ($lead->lead_activities as $__a) {
         btn.addEventListener('click', function() {
             var t = document.getElementById(btn.getAttribute('data-target'));
             if (t) t.style.display = (t.style.display === 'none' ? 'block' : 'none');
+        });
+    });
+})();
+
+// FALA 20: AI auto-quote workflow
+(function() {
+    var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+
+    function calcSum(activityId) {
+        var table = document.querySelector('.qr-shipments-table[data-activity-id="' + activityId + '"]');
+        if (!table) return;
+        var total = 0; var currency = 'EUR';
+        table.querySelectorAll('tbody tr').forEach(function(tr) {
+            var p = parseFloat(tr.querySelector('.price-input').value) || 0;
+            if (p > 0) {
+                total += p;
+                currency = tr.querySelector('.currency-input').value;
+            }
+        });
+        var el = document.querySelector('.qr-sum[data-activity-id="' + activityId + '"]');
+        if (el) el.textContent = total > 0 ? total.toLocaleString('pl-PL', {maximumFractionDigits: 2}) + ' ' + currency : '—';
+    }
+
+    function showStatus(activityId, msg, cls) {
+        var el = document.getElementById('qr-' + activityId + '-status');
+        if (!el) return;
+        el.className = 'small mb-2 alert alert-' + (cls || 'info') + ' py-1';
+        el.innerHTML = msg;
+        el.style.display = 'block';
+        if (cls === 'success') setTimeout(function(){ el.style.display = 'none'; }, 3500);
+    }
+
+    function suggestOne(activityId, shipIdx) {
+        var tr = document.querySelector('.qr-shipments-table[data-activity-id="' + activityId + '"] tbody tr[data-shipment-index="' + shipIdx + '"]');
+        if (!tr) return Promise.resolve(false);
+        var btn = tr.querySelector('.btn-suggest-one');
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ri-loader-4-line"></i>';
+        return fetch('/crm/suggest-price?activity_id=' + encodeURIComponent(activityId) + '&shipment_index=' + shipIdx, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        }).then(function(r) { return r.json(); }).then(function(j) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            if (!j.ok || !j.suggestion) {
+                tr.querySelector('.price-reason').textContent = '❌ ' + (j.error || 'brak sugestii');
+                return false;
+            }
+            var s = j.suggestion;
+            if (s.price > 0) {
+                tr.querySelector('.price-input').value = s.price;
+                tr.querySelector('.currency-input').value = s.currency;
+            }
+            var confBadge = s.confidence === 'high' ? '🟢' : (s.confidence === 'medium' ? '🟡' : '🔴');
+            tr.querySelector('.price-reason').innerHTML = confBadge + ' ' + s.reason.replace(/</g, '&lt;');
+            calcSum(activityId);
+            return true;
+        }).catch(function(e) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            tr.querySelector('.price-reason').textContent = 'Blad sieci: ' + e.message;
+            return false;
+        });
+    }
+
+    // Single row wycen
+    document.querySelectorAll('.btn-suggest-one').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            suggestOne(btn.getAttribute('data-activity-id'), parseInt(btn.getAttribute('data-shipment-index'), 10));
+        });
+    });
+
+    // Bulk wycen wszystkie
+    document.querySelectorAll('.btn-bulk-suggest-price').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var activityId = btn.getAttribute('data-activity-id');
+            var count = parseInt(btn.getAttribute('data-ships-count'), 10);
+            if (!confirm('Uruchomic AI wycene dla ' + count + ' shipmentow? Kazdy zapyta do OpenAI + historia zlecen.')) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ri-loader-4-line"></i> Wyceniam 0/' + count;
+            var done = 0;
+            var chain = Promise.resolve();
+            for (var i = 0; i < count; i++) {
+                (function(idx) {
+                    chain = chain.then(function() {
+                        return suggestOne(activityId, idx).then(function() {
+                            done++;
+                            btn.innerHTML = '<i class="ri-loader-4-line"></i> Wyceniam ' + done + '/' + count;
+                        });
+                    });
+                })(i);
+            }
+            chain.then(function() {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-price-tag-3-line"></i> Wyceń wszystkie AI';
+                showStatus(activityId, 'Ukonczono AI wycene ' + done + '/' + count + ' shipmentow. Sprawdz ceny i kliknij "Zapisz ceny".', 'success');
+            });
+        });
+    });
+
+    // Save prices
+    document.querySelectorAll('.btn-save-prices').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var activityId = btn.getAttribute('data-activity-id');
+            var table = document.querySelector('.qr-shipments-table[data-activity-id="' + activityId + '"]');
+            var fd = new FormData();
+            fd.append('_csrfToken', csrf);
+            var count = 0;
+            table.querySelectorAll('tbody tr').forEach(function(tr) {
+                var idx = tr.getAttribute('data-shipment-index');
+                var price = parseFloat(tr.querySelector('.price-input').value) || 0;
+                var currency = tr.querySelector('.currency-input').value;
+                if (price > 0) {
+                    fd.append('prices[' + count + '][shipment_index]', idx);
+                    fd.append('prices[' + count + '][price]', price);
+                    fd.append('prices[' + count + '][currency]', currency);
+                    count++;
+                }
+            });
+            if (count === 0) { showStatus(activityId, 'Brak cen do zapisania.', 'warning'); return; }
+            fetch('/crm/quote/' + activityId + '/save-prices', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+            }).then(function(r) { return r.json(); }).then(function(j) {
+                if (j.ok) showStatus(activityId, '✓ Zapisano ' + j.saved + ' cen w bazie.', 'success');
+                else showStatus(activityId, 'Blad: ' + (j.error || 'unknown'), 'danger');
+            });
+        });
+    });
+
+    // Recalc sum on manual edit
+    document.querySelectorAll('.qr-shipments-table').forEach(function(t) {
+        var aid = t.getAttribute('data-activity-id');
+        t.addEventListener('input', function(){ calcSum(aid); });
+        t.addEventListener('change', function(){ calcSum(aid); });
+        calcSum(aid); // initial
+    });
+
+    // Send quote button - prompt for email + subject + body + POST
+    document.querySelectorAll('.btn-send-quote').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var activityId = btn.getAttribute('data-activity-id');
+            var defaultTo = btn.getAttribute('data-lead-email') || btn.getAttribute('data-from-email') || '';
+            var to = prompt('Adres odbiorcy wyceny:', defaultTo);
+            if (!to) return;
+            if (!to.includes('@')) { alert('Nieprawidlowy email.'); return; }
+            var subject = prompt('Temat wyceny:', 'Wycena transportu — NordLogis');
+            if (subject === null) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ri-loader-4-line"></i> Wysylanie...';
+            var fd = new FormData();
+            fd.append('_csrfToken', csrf);
+            fd.append('to', to);
+            fd.append('subject', subject);
+            fetch('/crm/quote/' + activityId + '/send', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+            }).then(function(r){ return r.json(); }).then(function(j) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-send-plane-line"></i> Wyślij wycenę';
+                if (j.ok) {
+                    showStatus(activityId, '✓ Wyslano PDF wyceny do ' + to + '. Gmail ID: <code>' + j.gmail_id + '</code>. Za chwile odswiez.', 'success');
+                    setTimeout(function(){ location.reload(); }, 3000);
+                } else {
+                    showStatus(activityId, 'Blad: ' + (j.error || 'unknown'), 'danger');
+                }
+            }).catch(function(e) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-send-plane-line"></i> Wyślij wycenę';
+                showStatus(activityId, 'Blad sieci: ' + e.message, 'danger');
+            });
         });
     });
 })();
