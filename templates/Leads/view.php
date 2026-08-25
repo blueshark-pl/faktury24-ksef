@@ -896,14 +896,42 @@ foreach ($lead->lead_activities as $__a) {
                                     </div>
 
                                     <?php if (!empty($attList)): ?>
-                                    <!-- Attachments strip - Gmail style -->
+                                    <!-- Attachments strip - Gmail style + FALA 23 clickable + image thumbnails -->
                                     <div class="p-3" style="border-top: 1px solid #f1f3f5; background: #fafbfc;">
                                         <div class="small text-muted mb-2">
                                             <i class="ri-attachment-2"></i> <strong><?= count($attList) ?> <?= __('załączników') ?></strong>
                                         </div>
+                                        <?php // Podglad obrazkow - inline thumbnail row PRZED kartami ?>
+                                        <?php $images = array_filter($attList, fn($a) => str_starts_with((string)($a['mime'] ?? ''), 'image/') && !empty($a['attachment_id'])); ?>
+                                        <?php if (!empty($images)): ?>
+                                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                                <?php foreach ($attList as $idx => $att):
+                                                    if (!str_starts_with((string)($att['mime'] ?? ''), 'image/')) continue;
+                                                    if (empty($att['attachment_id'])) continue;
+                                                    $url = $this->Url->build(['action' => 'attachmentDownload', $a->id, $idx]);
+                                                    $urlDl = $this->Url->build(['action' => 'attachmentDownload', $a->id, $idx, '?' => ['download' => 1]]);
+                                                ?>
+                                                    <a href="<?= $url ?>" target="_blank" title="<?= h($att['filename']) ?> - kliknij aby otworzyć"
+                                                       style="display: block; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #fff; width: 160px; height: 120px; position: relative;">
+                                                        <img src="<?= $url ?>" alt="<?= h($att['filename']) ?>"
+                                                             style="width: 100%; height: 100%; object-fit: cover; display: block;"
+                                                             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                                                        <div style="display:none; width:100%; height:100%; align-items:center; justify-content:center; color:#9ca3af; font-size:24px;">
+                                                            <i class="ri-image-line"></i>
+                                                        </div>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+
                                         <div class="d-flex flex-wrap gap-2">
-                                            <?php foreach ($attList as $att): $mm = $att['mime'] ?? ''; ?>
-                                                <div class="d-flex align-items-center gap-2 p-2" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; min-width: 200px;" title="<?= h($mm) ?>">
+                                            <?php foreach ($attList as $idx => $att): $mm = $att['mime'] ?? ''; ?>
+                                                <?php
+                                                $hasId = !empty($att['attachment_id']);
+                                                $urlView = $hasId ? $this->Url->build(['action' => 'attachmentDownload', $a->id, $idx]) : null;
+                                                $urlDl = $hasId ? $this->Url->build(['action' => 'attachmentDownload', $a->id, $idx, '?' => ['download' => 1]]) : null;
+                                                ?>
+                                                <div class="d-flex align-items-center gap-2 p-2" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; min-width: 240px;" title="<?= h($mm) ?>">
                                                     <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 20px;
                                                         <?php if (str_starts_with($mm, 'image/')): ?>background: #dbeafe; color: #2563eb;
                                                         <?php elseif ($mm === 'application/pdf'): ?>background: #fee2e2; color: #dc2626;
@@ -917,11 +945,23 @@ foreach ($lead->lead_activities as $__a) {
                                                         <?php else: ?><i class="ri-file-line"></i><?php endif; ?>
                                                     </div>
                                                     <div style="min-width: 0; flex: 1;">
-                                                        <div class="text-truncate fw-semibold" style="font-size: 12px; max-width: 180px;"><?= h($att['filename'] ?? '?') ?></div>
+                                                        <div class="text-truncate fw-semibold" style="font-size: 12px; max-width: 160px;"><?= h($att['filename'] ?? '?') ?></div>
                                                         <div class="text-muted" style="font-size: 10px;">
                                                             <?= isset($att['size']) ? round($att['size'] / 1024, 1) : '?' ?>KB · <?= h($mm) ?>
                                                         </div>
                                                     </div>
+                                                    <?php if ($hasId): ?>
+                                                        <div class="d-flex flex-column gap-1">
+                                                            <a href="<?= $urlView ?>" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size: 10px;" title="Otwórz w nowej karcie">
+                                                                <i class="ri-eye-line"></i>
+                                                            </a>
+                                                            <a href="<?= $urlDl ?>" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size: 10px;" title="Pobierz">
+                                                                <i class="ri-download-line"></i>
+                                                            </a>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <span class="badge bg-warning text-dark" title="Brak attachment_id - re-poll wiadomosc" style="font-size: 9px;">?</span>
+                                                    <?php endif; ?>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>

@@ -2699,6 +2699,97 @@ class LeadsController extends AppController
         }
     }
 
+    /**
+     * FALA 23: Download / inline preview zalacznika z email_in.
+     * GET /crm/attachment/{activityId}/{index}?download=1
+     *
+     * Fetch Gmail attachment po attachment_id z crm_email_messages.attachments_json[index].
+     * Streamuje binary do przegladarki z Content-Disposition inline (default) lub attachment.
+     */
+    public function attachmentDownload(string $activityId, string $index): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        @set_time_limit(120);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        try {
+            $Acts = $this->fetchTable('LeadActivities');
+            $act = $Acts->get($activityId);
+            if ((string)$act->company_id !== (string)$companyId) {
+                throw new NotFoundException();
+            }
+            $payload = json_decode((string)$act->payload_json, true) ?: [];
+            $gmailId = $payload['gmail_id'] ?? null;
+            $accountId = $payload['account_id'] ?? null;
+            if (!$gmailId || !$accountId) {
+                throw new NotFoundException(__('Brak gmail_id lub account_id w activity - re-poll wiadomosc.'));
+            }
+
+            // Match crm_email_messages po lead_id + subject + from (najlepszy match)
+            $Msg = $this->fetchTable('CrmEmailMessages');
+            $msg = $Msg->find()
+                ->where(['lead_id' => $act->lead_id, 'account_id' => $accountId])
+                ->orderByDesc('received_at')
+                ->all()->toArray();
+            // Znajdz message z pasujacym subject
+            $matched = null;
+            foreach ($msg as $m) {
+                if ((string)$m->subject === (string)$act->subject) { $matched = $m; break; }
+            }
+            if (!$matched) {
+                throw new NotFoundException(__('Nie znaleziono crm_email_messages dla tej activity.'));
+            }
+            $atts = json_decode((string)$matched->attachments_json, true) ?: [];
+            $idx = (int)$index;
+            if (!isset($atts[$idx])) {
+                throw new NotFoundException(__('Zalacznik o indeksie {0} nie istnieje ({1} zalacznikow).', $idx, count($atts)));
+            }
+            $att = $atts[$idx];
+            $attId = $att['attachment_id'] ?? null;
+            if (!$attId) {
+                throw new NotFoundException(__('Zalacznik nie ma attachment_id - byl zapisany przed FALA 16. Reset Gmail history + Poll.'));
+            }
+
+            // Fetch Gmail account + refresh token
+            $EA = $this->fetchTable('CrmEmailAccounts');
+            $acc = $EA->get($accountId);
+            $svc = new \App\Service\GmailApiService();
+            $accessToken = $EA->decryptPassword($acc->oauth_access_token);
+            if (!$acc->oauth_expires_at || $acc->oauth_expires_at->isPast()) {
+                $tokens = $svc->refreshAccessToken($EA->decryptPassword($acc->oauth_refresh_token));
+                $accessToken = $tokens['access_token'];
+                $acc->oauth_access_token = $EA->encryptPassword($accessToken);
+                $acc->oauth_expires_at = new \Cake\I18n\DateTime('+' . (int)($tokens['expires_in'] ?? 3600) . ' seconds');
+                $EA->save($acc);
+            }
+
+            $binary = $svc->getAttachment($accessToken, $gmailId, $attId, 15 * 1024 * 1024);
+            if ($binary === null) {
+                throw new NotFoundException(__('Gmail API zwrocilo null - attachment prawdopodobnie usuniety lub token invalid.'));
+            }
+
+            $mime = (string)($att['mime'] ?? 'application/octet-stream');
+            $filename = (string)($att['filename'] ?? 'attachment-' . $idx);
+            $download = $this->request->getQuery('download') === '1';
+            $disposition = $download ? 'attachment' : 'inline';
+
+            $response = $this->response
+                ->withType($mime)
+                ->withHeader('Content-Disposition', $disposition . '; filename="' . str_replace('"', '', $filename) . '"')
+                ->withHeader('Content-Length', (string)strlen($binary))
+                ->withHeader('Cache-Control', 'private, max-age=3600')
+                ->withStringBody($binary);
+            return $response;
+        } catch (NotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            \Cake\Log\Log::warning('attachmentDownload exception: ' . $e->getMessage());
+            throw new NotFoundException('Attachment fetch failed: ' . $e->getMessage());
+        }
+    }
+
     public function replyByGmail(string $activityId): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);
