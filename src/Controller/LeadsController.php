@@ -133,15 +133,28 @@ class LeadsController extends AppController
         $displayStages = array_filter($stages, fn($s) => !in_array($s, ['lost', 'churned'], true));
 
         $Leads = $this->fetchTable('Leads');
+
+        // FALA 21 fix: sprawdz czy pipeline_type kolumna istnieje - fallback do
+        // starego zachowania (jeden pipeline dla wszystkich) gdy migracja nie odpalona
+        $hasPipelineColumn = false;
+        try {
+            $schema = $Leads->getSchema();
+            $hasPipelineColumn = in_array('pipeline_type', $schema->columns(), true);
+        } catch (\Throwable $e) {}
+
+        $baseWhere = [
+            'Leads.company_id' => $companyId,
+            'Leads.stage NOT IN' => ['lost', 'churned'],
+        ];
+        if ($hasPipelineColumn) {
+            $baseWhere['Leads.pipeline_type'] = $pipelineType;
+        }
+
         $rows = $Leads->find()
             ->contain(['AssignedUser' => function ($q) {
                 return $q->select(['id', 'first_name', 'last_name']);
             }])
-            ->where([
-                'Leads.company_id' => $companyId,
-                'Leads.pipeline_type' => $pipelineType,
-                'Leads.stage NOT IN' => ['lost', 'churned'],
-            ])
+            ->where($baseWhere)
             ->orderByDesc('Leads.kanban_pinned')
             ->orderByDesc('Leads.modified')
             ->limit(500)
@@ -155,14 +168,24 @@ class LeadsController extends AppController
             }
         }
 
-        // Liczniki per pipeline dla tabs
+        // Liczniki per pipeline dla tabs (tylko gdy kolumna istnieje)
         $pipelineCounts = [];
-        foreach (\App\Model\Table\LeadsTable::PIPELINE_TYPES as $pt) {
-            $pipelineCounts[$pt] = $Leads->find()->where([
-                'company_id' => $companyId,
-                'pipeline_type' => $pt,
-                'stage NOT IN' => ['lost', 'churned'],
-            ])->count();
+        if ($hasPipelineColumn) {
+            foreach (\App\Model\Table\LeadsTable::PIPELINE_TYPES as $pt) {
+                $pipelineCounts[$pt] = $Leads->find()->where([
+                    'company_id' => $companyId,
+                    'pipeline_type' => $pt,
+                    'stage NOT IN' => ['lost', 'churned'],
+                ])->count();
+            }
+        } else {
+            // Fallback: pokaz tylko tab 'spot' z pelnym countem
+            foreach (\App\Model\Table\LeadsTable::PIPELINE_TYPES as $pt) {
+                $pipelineCounts[$pt] = $pt === 'spot' ? $Leads->find()->where([
+                    'company_id' => $companyId,
+                    'stage NOT IN' => ['lost', 'churned'],
+                ])->count() : 0;
+            }
         }
 
         $stats = $Leads->pipelineStats($companyId);
@@ -882,6 +905,18 @@ class LeadsController extends AppController
         $companyId = $identity?->get('company_id');
 
         $Leads = $this->fetchTable('Leads');
+
+        // FALA 22 fix: sprawdz czy pipeline_type kolumna istnieje (migracja odpalona)
+        $hasPipelineColumn = false;
+        try {
+            $schema = $Leads->getSchema();
+            $hasPipelineColumn = in_array('pipeline_type', $schema->columns(), true);
+        } catch (\Throwable $e) {}
+        if (!$hasPipelineColumn) {
+            $this->Flash->error(__('Executive Dashboard wymaga migracji AddPipelineTypeToLeads. Uruchom: /crm/admin/tools → "Uruchom pending migracje" a potem odśwież tę stronę.'));
+            $this->redirect(['controller' => 'CrmAdmin', 'action' => 'tools']);
+            return;
+        }
 
         // 1. WEIGHTED FORECAST - SUM(value_pln * probability/100) per pipeline
         //    Wszystkie leady aktywne (nie lost/churned)
