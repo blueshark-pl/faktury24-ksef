@@ -731,7 +731,7 @@ foreach ($lead->lead_activities as $__a) {
                                         <td class="text-end"><?= !empty($s['pallets']) ? (int)$s['pallets'] . ' ' . h($s['pallet_type'] ?? '') : '-' ?></td>
                                         <td><?php if (!empty($s['vehicle_type'])): ?><span class="badge bg-secondary"><?= h($s['vehicle_type']) ?></span><?php endif; ?></td>
                                         <td>
-                                            <div class="input-group input-group-sm" style="width: 155px;">
+                                            <div class="input-group input-group-sm" style="width: 200px;">
                                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm price-input" style="font-size: 11px;" value="<?= $existingPrice > 0 ? h($existingPrice) : '' ?>" placeholder="—">
                                                 <select class="form-select form-select-sm currency-input" style="font-size: 11px; max-width: 55px;">
                                                     <?php foreach (['EUR', 'PLN', 'USD', 'GBP'] as $cur): ?>
@@ -739,6 +739,15 @@ foreach ($lead->lead_activities as $__a) {
                                                     <?php endforeach; ?>
                                                 </select>
                                                 <button type="button" class="btn btn-outline-primary btn-suggest-one" data-activity-id="<?= h($qr['activity_id']) ?>" data-shipment-index="<?= $i ?>" title="Wyceń AI"><i class="ri-magic-line"></i></button>
+                                                <button type="button" class="btn btn-outline-success btn-plan-route" title="Planer trasy"
+                                                        data-from-country="<?= h($s['from_country'] ?? '') ?>"
+                                                        data-from-postal="<?= h($s['from_postal'] ?? '') ?>"
+                                                        data-from-city="<?= h($s['from_city'] ?? '') ?>"
+                                                        data-to-country="<?= h($s['to_country'] ?? '') ?>"
+                                                        data-to-postal="<?= h($s['to_postal'] ?? '') ?>"
+                                                        data-to-city="<?= h($s['to_city'] ?? '') ?>">
+                                                    <i class="ri-route-line"></i>
+                                                </button>
                                             </div>
                                             <div class="small text-muted price-reason mt-1" style="font-size: 9px;"></div>
                                         </td>
@@ -864,6 +873,21 @@ foreach ($lead->lead_activities as $__a) {
                                 <button type="button" class="btn btn-success" id="ai-send" data-activity-id="">
                                     <i class="ri-send-plane-line"></i> Wyślij przez Gmail
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Planer trasy (iframe) -->
+                <div class="modal fade" id="planerModal" tabindex="-1">
+                    <div class="modal-dialog modal-fullscreen-lg-down modal-xl" style="max-width: 95%;">
+                        <div class="modal-content" style="height: 92vh;">
+                            <div class="modal-header py-2">
+                                <h5 class="modal-title"><i class="ri-route-line"></i> <?= __('Planer trasy') ?></h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body p-0" style="overflow: hidden;">
+                                <iframe id="planer-iframe" src="about:blank" style="width: 100%; height: 100%; border: none;"></iframe>
                             </div>
                         </div>
                     </div>
@@ -1760,6 +1784,26 @@ foreach ($lead->lead_activities as $__a) {
     document.querySelectorAll('.btn-suggest-one').forEach(function(btn) {
         btn.addEventListener('click', function() {
             suggestOne(btn.getAttribute('data-activity-id'), parseInt(btn.getAttribute('data-shipment-index'), 10));
+        });
+    });
+
+    // Planer trasy w modalu (iframe /planer-tras?embed=1&r=base64)
+    document.querySelectorAll('.btn-plan-route').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var fromParts = [btn.getAttribute('data-from-postal'), btn.getAttribute('data-from-city'), btn.getAttribute('data-from-country')].filter(Boolean).join(' ');
+            var toParts = [btn.getAttribute('data-to-postal'), btn.getAttribute('data-to-city'), btn.getAttribute('data-to-country')].filter(Boolean).join(' ');
+            var points = [
+                { address: fromParts, country: btn.getAttribute('data-from-country') || '' },
+                { address: toParts, country: btn.getAttribute('data-to-country') || '' }
+            ];
+            var payload = { points: points };
+            // Base64 encode UTF-8 safe (JS atob wymaga latin1)
+            var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+            var url = '/planer-tras?embed=1&r=' + encoded;
+            var iframe = document.getElementById('planer-iframe');
+            iframe.src = url;
+            var modal = new bootstrap.Modal(document.getElementById('planerModal'));
+            modal.show();
         });
     });
 
