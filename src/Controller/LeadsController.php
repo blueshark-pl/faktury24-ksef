@@ -47,6 +47,7 @@ class LeadsController extends AppController
         $sortMap = [
             'company_name' => 'Leads.company_name',
             'city'         => 'Leads.city',
+            'postal_code'  => 'Leads.postal_code',
             'stage'        => 'Leads.stage',
             'probability'  => 'Leads.probability',
             'value_pln'    => 'Leads.value_pln',
@@ -106,8 +107,57 @@ class LeadsController extends AppController
         if ($mine && $userId) {
             $query->where(['Leads.assigned_to_user_id' => $userId]);
         }
+        // FALA extras: postal_code, industry, vehicle_type filtry
+        $postal = trim((string)$this->request->getQuery('postal', ''));
+        if ($postal !== '') {
+            $query->where(['Leads.postal_code LIKE' => $postal . '%']);
+        }
+        $industryId = trim((string)$this->request->getQuery('industry', ''));
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            $tables = $conn->getSchemaCollection()->listTables();
+            $hasIndustry = in_array('lead_industries', $tables, true);
+            $hasVehicleType = in_array('lead_vehicle_types', $tables, true);
+        } catch (\Throwable $e) { $hasIndustry = $hasVehicleType = false; }
+
+        if ($industryId !== '' && $hasIndustry) {
+            $query->where(['Leads.industry_id' => $industryId]);
+        }
+        $vehicleTypeId = trim((string)$this->request->getQuery('vehicle_type', ''));
+        if ($vehicleTypeId !== '' && $hasVehicleType) {
+            $query->innerJoinWith('LeadVehicleTypes', function ($q) use ($vehicleTypeId) {
+                return $q->where(['LeadVehicleTypes.id' => $vehicleTypeId]);
+            });
+        }
+
+        // Contain dla wyswietlania kolumn
+        $indexContain = [];
+        if ($hasIndustry) $indexContain['LeadIndustries'] = [];
+        if ($hasVehicleType) $indexContain['LeadVehicleTypes'] = [];
+        if (!empty($indexContain)) $query->contain(array_merge(['AssignedUser' => function ($q) {
+            return $q->select(['id', 'first_name', 'last_name', 'email']);
+        }], $indexContain));
 
         $leads = $query->limit(500)->all();
+
+        // Dla filter dropdownow
+        $industriesForFilter = [];
+        $vehicleTypesForFilter = [];
+        if ($hasIndustry) {
+            try {
+                $industriesForFilter = $this->fetchTable('LeadIndustries')->find()
+                    ->where(['company_id' => $companyId])->orderByAsc('sort_order')->orderByAsc('name')
+                    ->all()->toArray();
+            } catch (\Throwable $e) {}
+        }
+        if ($hasVehicleType) {
+            try {
+                $vehicleTypesForFilter = $this->fetchTable('LeadVehicleTypes')->find()
+                    ->where(['company_id' => $companyId])->orderByAsc('sort_order')->orderByAsc('name')
+                    ->all()->toArray();
+            } catch (\Throwable $e) {}
+        }
+        $this->set(compact('industriesForFilter', 'vehicleTypesForFilter', 'postal', 'industryId', 'vehicleTypeId'));
 
         // Statystyki nagłówka
         $stats = $Leads->pipelineStats($companyId);
@@ -520,8 +570,8 @@ class LeadsController extends AppController
 
         if ($this->request->is('post')) {
             $data = $this->prepareLeadData($this->request->getData(), $companyId, $userId);
-            $lead = $Leads->patchEntity($lead, $data);
-            if ($Leads->save($lead)) {
+            $lead = $Leads->patchEntity($lead, $data, ['associated' => ['LeadVehicleTypes']]);
+            if ($Leads->save($lead, ['associated' => ['LeadVehicleTypes']])) {
                 $this->fetchTable('LeadActivities')->logSystem(
                     $companyId, $lead->id, 'note', __('Lead utworzony'),
                     sprintf('Firma: %s', $lead->company_name),
@@ -557,11 +607,16 @@ class LeadsController extends AppController
             throw new NotFoundException();
         }
 
+        // Fetch lead z vehicle_types dla replace-strategy w patchEntity
+        try {
+            $lead = $Leads->get($id, ['contain' => ['LeadVehicleTypes']]);
+        } catch (\Throwable $e) {}
+
         if ($this->request->is('post')) {
             $data = $this->prepareLeadData($this->request->getData(), $companyId, $userId, true);
             unset($data['company_id']);
-            $lead = $Leads->patchEntity($lead, $data);
-            if ($Leads->save($lead)) {
+            $lead = $Leads->patchEntity($lead, $data, ['associated' => ['LeadVehicleTypes']]);
+            if ($Leads->save($lead, ['associated' => ['LeadVehicleTypes']])) {
                 $this->Flash->success(__('Lead zaktualizowany.'));
                 $this->redirect(['action' => 'view', $lead->id]);
                 return;
@@ -2408,6 +2463,30 @@ class LeadsController extends AppController
     private function prepareLeadData(array $data, string $companyId, ?string $userId, bool $isEdit = false): array
     {
         $data['company_id'] = $companyId;
+
+        // FALA extras: industry_id (single FK) - waliduj czy nalezy do firmy
+        if (!empty($data['industry_id'])) {
+            try {
+                $I = $this->fetchTable('LeadIndustries');
+                $ok = $I->find()->where(['id' => $data['industry_id'], 'company_id' => $companyId])->count() > 0;
+                if (!$ok) $data['industry_id'] = null;
+            } catch (\Throwable $e) { $data['industry_id'] = null; }
+        } else {
+            $data['industry_id'] = null;
+        }
+
+        // FALA extras: vehicle_type_ids (multi) - buduj lead_vehicle_types entities do belongsToMany replace
+        $vtIds = (array)($data['vehicle_type_ids'] ?? []);
+        unset($data['vehicle_type_ids']);
+        try {
+            if (!empty($vtIds)) {
+                $V = $this->fetchTable('LeadVehicleTypes');
+                $entities = $V->find()->where(['company_id' => $companyId, 'id IN' => $vtIds])->all()->toArray();
+                $data['lead_vehicle_types'] = $entities;
+            } else {
+                $data['lead_vehicle_types'] = [];
+            }
+        } catch (\Throwable $e) {}
 
         // FALA 21: Multi-pipeline - walidacja + default
         if (empty($data['pipeline_type']) || !in_array($data['pipeline_type'], \App\Model\Table\LeadsTable::PIPELINE_TYPES, true)) {

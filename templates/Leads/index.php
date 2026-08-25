@@ -143,10 +143,34 @@ $stageBg = [
                     <option value="intermodal"    <?= $branch==='intermodal' ? 'selected':'' ?>><?= __('Intermodalny') ?></option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <input type="text" name="country" class="form-control form-control-sm text-uppercase"
-                       maxlength="2" value="<?= h($country) ?>" placeholder="<?= __('Kraj (PL, DE...)') ?>">
+                       maxlength="2" value="<?= h($country) ?>" placeholder="<?= __('Kraj') ?>">
             </div>
+            <div class="col-md-1">
+                <input type="text" name="postal" class="form-control form-control-sm"
+                       maxlength="10" value="<?= h($postal ?? '') ?>" placeholder="<?= __('Kod poczt.') ?>">
+            </div>
+            <?php if (!empty($industriesForFilter)): ?>
+            <div class="col-md-2">
+                <select name="industry" class="form-select form-select-sm">
+                    <option value=""><?= __('Wszystkie branże') ?></option>
+                    <?php foreach ($industriesForFilter as $ind): ?>
+                        <option value="<?= h($ind->id) ?>" <?= ($industryId ?? '') === $ind->id ? 'selected' : '' ?>><?= h($ind->name) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($vehicleTypesForFilter)): ?>
+            <div class="col-md-2">
+                <select name="vehicle_type" class="form-select form-select-sm">
+                    <option value=""><?= __('Wszystkie tabor') ?></option>
+                    <?php foreach ($vehicleTypesForFilter as $vt): ?>
+                        <option value="<?= h($vt->id) ?>" <?= ($vehicleTypeId ?? '') === $vt->id ? 'selected' : '' ?>><?= h($vt->name) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <div class="col-md-1">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="mine" value="1" id="fm" <?= $mine ? 'checked' : '' ?>>
@@ -180,9 +204,11 @@ $stageBg = [
                     <th style="width:32px;"><input type="checkbox" id="chk-all" class="form-check-input"></th>
                     <th><?= $sortLink('company_name', __('Firma')) ?></th>
                     <th><?= $sortLink('city', __('Kraj / Miasto')) ?></th>
+                    <th><?= $sortLink('postal_code', __('Kod poczt.')) ?></th>
                     <th><?= __('Osoba') ?></th>
                     <th><?= __('Kontakt') ?></th>
-                    <th><?= __('Gałąź') ?></th>
+                    <th><?= __('Branża') ?></th>
+                    <th><?= __('Tabor') ?></th>
                     <th class="text-center" title="Kontakt · Zapytanie · Oferta · Zlecenie">K·Z·O·Zl</th>
                     <th><?= $sortLink('stage', __('Etap')) ?></th>
                     <th><?= __('Opiekun') ?></th>
@@ -193,7 +219,7 @@ $stageBg = [
             </thead>
             <tbody>
                 <?php if (count($leads) === 0): ?>
-                    <tr><td colspan="12" class="text-center text-muted py-4"><?= __('Brak leadów spełniających filtry.') ?></td></tr>
+                    <tr><td colspan="14" class="text-center text-muted py-4"><?= __('Brak leadów spełniających filtry.') ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($leads as $lead):
                         $flagCls = 'crm-flag crm-flag-' . strtolower((string)$lead->country_code);
@@ -220,14 +246,26 @@ $stageBg = [
                             <?= h(strtoupper((string)$lead->country_code)) ?>
                             <?php if ($lead->city): ?> · <?= h($lead->city) ?><?php endif; ?>
                         </td>
+                        <td class="small"><?= h($lead->postal_code ?: '—') ?></td>
                         <td><?= h($lead->contact_person ?: '—') ?></td>
                         <td class="small text-muted">
                             <?php if ($lead->phone): ?><i class="ri-phone-line"></i> <?= h($lead->phone) ?><br><?php endif; ?>
                             <?php if ($lead->email): ?><i class="ri-mail-line"></i> <?= h($lead->email) ?><?php endif; ?>
                         </td>
                         <td>
-                            <?php if ($lead->branch_type): ?>
-                                <span class="badge bg-light text-dark border"><?= h($lead->branch_type) ?></span>
+                            <?php if (!empty($lead->lead_industry)): ?>
+                                <span class="badge bg-info"><?= h($lead->lead_industry->name) ?></span>
+                            <?php elseif ($lead->branch_type): ?>
+                                <span class="badge bg-light text-dark border" title="Legacy branch_type"><?= h($lead->branch_type) ?></span>
+                            <?php else: ?>
+                                <span class="text-muted small">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if (!empty($lead->lead_vehicle_types)): foreach ($lead->lead_vehicle_types as $vt): ?>
+                                <span class="badge bg-secondary" style="font-size: 10px;"><?= h($vt->name) ?></span>
+                            <?php endforeach; else: ?>
+                                <span class="text-muted small">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="text-center">

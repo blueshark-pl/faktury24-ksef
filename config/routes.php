@@ -197,6 +197,26 @@ return function (RouteBuilder $routes): void {
             ->setPass(['attachmentId']);
         $builder->post('/crm/{id}/labels', ['controller' => 'Leads', 'action' => 'assignLabels'])
             ->setPass(['id']);
+        // Branze CRUD
+        $builder->get('/crm/branze',                    ['controller' => 'LeadIndustries', 'action' => 'index']);
+        $builder->get('/crm/branze/dodaj',              ['controller' => 'LeadIndustries', 'action' => 'add']);
+        $builder->post('/crm/branze/dodaj',             ['controller' => 'LeadIndustries', 'action' => 'add']);
+        $builder->get('/crm/branze/edytuj/{id}',        ['controller' => 'LeadIndustries', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/branze/edytuj/{id}',       ['controller' => 'LeadIndustries', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/branze/usun/{id}',         ['controller' => 'LeadIndustries', 'action' => 'delete'])
+            ->setPass(['id']);
+        // Rodzaje taboru CRUD
+        $builder->get('/crm/rodzaje-taboru',            ['controller' => 'LeadVehicleTypes', 'action' => 'index']);
+        $builder->get('/crm/rodzaje-taboru/dodaj',      ['controller' => 'LeadVehicleTypes', 'action' => 'add']);
+        $builder->post('/crm/rodzaje-taboru/dodaj',     ['controller' => 'LeadVehicleTypes', 'action' => 'add']);
+        $builder->get('/crm/rodzaje-taboru/edytuj/{id}',['controller' => 'LeadVehicleTypes', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/rodzaje-taboru/edytuj/{id}',['controller' => 'LeadVehicleTypes', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/rodzaje-taboru/usun/{id}', ['controller' => 'LeadVehicleTypes', 'action' => 'delete'])
+            ->setPass(['id']);
         // Etykiety CRUD
         $builder->get('/crm/etykiety',                  ['controller' => 'LeadLabels', 'action' => 'index']);
         $builder->get('/crm/etykiety/dodaj',            ['controller' => 'LeadLabels', 'action' => 'add']);

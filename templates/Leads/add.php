@@ -82,14 +82,59 @@ $formUrl = $isEdit
                 </div>
                 <div class="row g-2 mt-1">
                     <div class="col-md-6">
-                        <label class="form-label small"><?= __('Gałąź transportu') ?></label>
-                        <select name="branch_type" class="form-select">
-                            <option value=""><?= __('— wybierz —') ?></option>
-                            <?php foreach ($branches as $k => $v): ?>
-                                <option value="<?= h($k) ?>" <?= $lead->branch_type === $k ? 'selected' : '' ?>><?= h($v) ?></option>
+                        <label class="form-label small"><?= __('Branża klienta') ?></label>
+                        <?php
+                        $industries = [];
+                        $vehicleTypes = [];
+                        $selectedVehicleTypeIds = [];
+                        try {
+                            $conn = \Cake\Datasource\ConnectionManager::get('default');
+                            $tables = $conn->getSchemaCollection()->listTables();
+                            if (in_array('lead_industries', $tables, true)) {
+                                $industries = $this->fetchTable('LeadIndustries')->find()
+                                    ->where(['company_id' => $this->request->getAttribute('identity')?->get('company_id')])
+                                    ->orderByAsc('sort_order')->orderByAsc('name')->all()->toArray();
+                            }
+                            if (in_array('lead_vehicle_types', $tables, true)) {
+                                $vehicleTypes = $this->fetchTable('LeadVehicleTypes')->find()
+                                    ->where(['company_id' => $this->request->getAttribute('identity')?->get('company_id')])
+                                    ->orderByAsc('sort_order')->orderByAsc('name')->all()->toArray();
+                                if ($isEdit) {
+                                    $selectedVehicleTypeIds = array_map(fn($v) => (string)$v->id, $lead->lead_vehicle_types ?? []);
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                        ?>
+                        <select name="industry_id" class="form-select">
+                            <option value=""><?= __('— brak / nie wybrano —') ?></option>
+                            <?php foreach ($industries as $ind): ?>
+                                <option value="<?= h($ind->id) ?>" <?= ($lead->industry_id ?? '') === $ind->id ? 'selected' : '' ?>><?= h($ind->name) ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <div class="form-text small">
+                            <a href="<?= $this->Url->build(['controller' => 'LeadIndustries', 'action' => 'index']) ?>" target="_blank"><i class="ri-external-link-line"></i> <?= __('Zarządzaj słownikiem branż') ?></a>
+                        </div>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label small"><?= __('Rodzaje taboru (multi)') ?></label>
+                        <div style="max-height: 120px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; padding: 6px;">
+                            <?php if (empty($vehicleTypes)): ?>
+                                <span class="text-muted small"><?= __('Brak. Dodaj w słowniku.') ?></span>
+                            <?php else: foreach ($vehicleTypes as $vt): $checked = in_array((string)$vt->id, $selectedVehicleTypeIds, true); ?>
+                                <label class="d-block small mb-1" style="cursor: pointer;">
+                                    <input type="checkbox" name="vehicle_type_ids[]" value="<?= h($vt->id) ?>" <?= $checked ? 'checked' : '' ?>>
+                                    <?= h($vt->name) ?>
+                                </label>
+                            <?php endforeach; endif; ?>
+                        </div>
+                        <div class="form-text small">
+                            <a href="<?= $this->Url->build(['controller' => 'LeadVehicleTypes', 'action' => 'index']) ?>" target="_blank"><i class="ri-external-link-line"></i> <?= __('Zarządzaj rodzajami taboru') ?></a>
+                        </div>
+                    </div>
+                </div>
+                <!-- DEPRECATED branch_type - zachowane jako hidden dla backward compat -->
+                <input type="hidden" name="branch_type" value="<?= h($lead->branch_type ?? '') ?>">
+                <div class="row g-2 mt-1">
                     <div class="col-md-6">
                         <label class="form-label small"><?= __('Źródło') ?></label>
                         <select name="source" class="form-select">

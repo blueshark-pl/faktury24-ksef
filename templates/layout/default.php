@@ -1645,6 +1645,20 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-briefcase-line me-1"></i>' . __('Branże'),
+                                        ['plugin' => false, 'controller' => 'LeadIndustries', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leadindustries', 'index')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
+                                        '<i class="ri-truck-line me-1"></i>' . __('Rodzaje taboru'),
+                                        ['plugin' => false, 'controller' => 'LeadVehicleTypes', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leadvehicletypes', 'index')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-upload-cloud-2-line me-1"></i>' . __('Import CSV'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'importCsv'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'importCsv')]

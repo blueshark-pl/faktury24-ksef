@@ -139,6 +139,15 @@ class LeadsTable extends Table
             'foreignKey' => 'lead_id',
             'targetForeignKey' => 'label_id',
         ]);
+        // FALA extras: branze (single) + rodzaje taboru (multi)
+        $this->belongsTo('LeadIndustries', [
+            'foreignKey' => 'industry_id', 'joinType' => 'LEFT',
+        ]);
+        $this->belongsToMany('LeadVehicleTypes', [
+            'joinTable' => 'leads_lead_vehicle_types',
+            'foreignKey' => 'lead_id',
+            'targetForeignKey' => 'vehicle_type_id',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

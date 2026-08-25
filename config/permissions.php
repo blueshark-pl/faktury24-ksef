@@ -507,6 +507,18 @@ return [
             'controller' => 'LeadLabels',
             'action' => ['index', 'add', 'edit', 'delete'],
         ],
+        // CRM Branze CRUD
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'LeadIndustries',
+            'action' => ['index', 'add', 'edit', 'delete'],
+        ],
+        // CRM Rodzaje taboru CRUD
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'LeadVehicleTypes',
+            'action' => ['index', 'add', 'edit', 'delete'],
+        ],
         // CRM Leady - dostep dla wszystkich rol operacyjnych/sprzedazowych
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
