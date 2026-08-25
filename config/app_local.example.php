@@ -134,6 +134,13 @@ return [
         // GPT-4o analizuje tresc + podpis, wyciaga dane firmy, tworzy lead source=email_inbound.
         // Wymaga OpenAI API key (Openai.apiKey).
         'autoCreateLeadsFromEmail' => env('CRM_AUTO_CREATE_LEADS', true),
+        // Token do webhooka cronu (bez auth). Endpoint:
+        //   GET /crm/cron/{command}?token=X
+        //   Commands: crm_email_poll, crm_workflow_run, crm_tasks_digest, alerts
+        // Wygeneruj: php -r "echo bin2hex(random_bytes(24));"
+        // Cyberfolks Cron Jobs:
+        //   */5 * * * *  curl -s "https://booklio.pl/crm/cron/crm_email_poll?token=XXX"
+        'cronToken' => env('CRM_CRON_TOKEN', ''),
     ],
 
     // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.

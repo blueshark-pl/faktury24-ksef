@@ -483,6 +483,13 @@ return [
                          'pollEmails', 'runCron', 'gitPull', 'fileCheck', 'nuclearClear',
                          'findLead', 'resetGmailHistory', 'analyzeLastEmail'],
         ],
+        // Cron webhook - bez auth (token-secured w app_local Crm.cronToken)
+        [
+            'role'       => '*',
+            'plugin'     => false,
+            'controller' => 'CrmAdmin',
+            'action'     => ['cronWebhook'],
+        ],
         // CRM Leady - publiczny formularz kontaktowy (bez auth dla anonimowych z www)
         [
             'role'       => '*',

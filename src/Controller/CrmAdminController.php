@@ -25,6 +25,15 @@ use Migrations\Migrations;
  */
 class CrmAdminController extends AppController
 {
+    public function beforeFilter(\Cake\Event\EventInterface $event)
+    {
+        parent::beforeFilter($event);
+        // Cron webhook = brak auth (token-secured w Configure Crm.cronToken)
+        if ($this->components()->has('Authentication')) {
+            $this->Authentication->allowUnauthenticated(['cronWebhook']);
+        }
+    }
+
     public function tools(): void
     {
         $this->request->allowMethod(['get']);
@@ -845,6 +854,80 @@ class CrmAdminController extends AppController
     public function pollEmails(): void
     {
         $this->runCommand('crm_email_poll');
+    }
+
+    /**
+     * GET /crm/cron/{command}?token=X - HTTP webhook dla cronu bez auth.
+     * Token = Configure Crm.cronToken (ustaw w app_local.php).
+     * Whitelist tych samych commands co runCron().
+     *
+     * Cyberfolks Cron Jobs example (co 5 min):
+     *   curl -s "https://booklio.pl/crm/cron/crm_email_poll?token=XXX"
+     */
+    public function cronWebhook(string $command): void
+    {
+        // Tylko GET - curl domyslnie GET, nie ma CSRF issue
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        @set_time_limit(600);
+        @ini_set('max_execution_time', '600');
+
+        // Token check
+        $expectedToken = trim((string)\Cake\Core\Configure::read('Crm.cronToken'));
+        $providedToken = trim((string)$this->request->getQuery('token'));
+        if ($expectedToken === '') {
+            $this->response = $this->response->withStatus(500)
+                ->withStringBody("Configure 'Crm.cronToken' not set in app_local.php\n");
+            return;
+        }
+        if (!hash_equals($expectedToken, $providedToken)) {
+            $this->response = $this->response->withStatus(401)
+                ->withStringBody("Invalid token\n");
+            return;
+        }
+
+        // Whitelist commands
+        $allowed = ['crm_email_poll', 'crm_workflow_run', 'crm_tasks_digest', 'alerts'];
+        if (!in_array($command, $allowed, true)) {
+            $this->response = $this->response->withStatus(400)
+                ->withStringBody("Command not allowed. Allowed: " . implode(', ', $allowed) . "\n");
+            return;
+        }
+
+        // Opcje z query
+        $options = [];
+        if ($this->request->getQuery('force') === '1') $options['force'] = true;
+        if ($this->request->getQuery('dry') === '1') $options['dry'] = true;
+
+        // Run command - reuse runCommand() ale zbieramy output do zwrocenia plain
+        try {
+            $classMap = [
+                'crm_email_poll'    => \App\Command\CrmEmailPollCommand::class,
+                'crm_workflow_run'  => \App\Command\CrmWorkflowRunCommand::class,
+                'crm_tasks_digest'  => \App\Command\CrmTasksDigestCommand::class,
+                'alerts'            => \App\Command\AlertsCommand::class,
+            ];
+            $class = $classMap[$command] ?? null;
+            if (!$class || !class_exists($class)) {
+                $this->response = $this->response->withStatus(500)
+                    ->withStringBody("Command class not found for: {$command}\n");
+                return;
+            }
+            $cmd = new $class();
+            $stubOutput = new StubConsoleOutput();
+            $stubErr = new StubConsoleOutput();
+            $io = new ConsoleIo($stubOutput, $stubErr, new StubConsoleInput([]));
+            $args = new Arguments([], $options, []);
+            $exitCode = $cmd->execute($args, $io);
+            $lines = array_merge($stubOutput->messages(), $stubErr->messages());
+            $out = "=== CRON WEBHOOK: {$command} ===\n\n"
+                . implode("\n", $lines) . "\n\nEXIT: {$exitCode}\n";
+            $this->response = $this->response->withType('text/plain')->withStatus(200)
+                ->withStringBody($out);
+        } catch (\Throwable $e) {
+            $this->response = $this->response->withStatus(500)
+                ->withStringBody("EXCEPTION: " . $e->getMessage() . "\n");
+        }
     }
 
     /**

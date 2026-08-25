@@ -245,6 +245,9 @@ return function (RouteBuilder $routes): void {
         $builder->post('/crm/admin/reset-gmail-history',    ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
         $builder->get('/crm/admin/reset-gmail-history',     ['controller' => 'CrmAdmin', 'action' => 'resetGmailHistory']);
         $builder->get('/crm/admin/analyze-last-email',      ['controller' => 'CrmAdmin', 'action' => 'analyzeLastEmail']);
+        // FALA extras: HTTP webhook dla cronu bez auth (token-secured w Crm.cronToken)
+        $builder->get('/crm/cron/{command}',                ['controller' => 'CrmAdmin', 'action' => 'cronWebhook'])
+            ->setPass(['command']);
         // FALA 7: Duplicate merge UI
         $builder->get('/crm/duplikaty',                     ['controller' => 'Leads', 'action' => 'duplicates']);
         $builder->get('/crm/merge',                         ['controller' => 'Leads', 'action' => 'mergeReview']);

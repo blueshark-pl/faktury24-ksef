@@ -233,9 +233,20 @@ $this->assign('title', __('CRM Admin Tools'));
 
 <div class="alert alert-secondary small mt-3">
     <strong>Setup crontab (jednorazowo na cyberfolks DirectAdmin → Cron Jobs):</strong>
-    <pre class="mt-2 mb-0" style="font-size:11px;">
+    <br><br>
+    <strong>Opcja A — PHP CLI</strong> (jeśli cyberfolks pozwala na php bin/cake):
+    <pre class="mt-1 mb-2" style="font-size:11px;">
 */5  * * * *  cd <?= h(ROOT) ?> && /usr/bin/php bin/cake.php crm_email_poll > /dev/null 2>&1
 */10 * * * *  cd <?= h(ROOT) ?> && /usr/bin/php bin/cake.php crm_workflow_run > /dev/null 2>&1
 0 7  * * 1-5  cd <?= h(ROOT) ?> && /usr/bin/php bin/cake.php crm_tasks_digest --stale-days=14 > /dev/null 2>&1
 0 8  * * *    cd <?= h(ROOT) ?> && /usr/bin/php bin/cake.php alerts > /dev/null 2>&1</pre>
+
+    <strong>Opcja B — HTTP webhook</strong> (gdy CLI brak — cyberfolks Cron Jobs z curl/wget):
+    <br><small class="text-muted">Wymaga ustawienia <code>Configure Crm.cronToken</code> w app_local.php:
+    <code>php -r "echo bin2hex(random_bytes(24));"</code></small>
+    <pre class="mt-1 mb-0" style="font-size:11px;">
+*/5  * * * *  curl -s "https://<?= h($_SERVER['HTTP_HOST'] ?? 'booklio.pl') ?>/crm/cron/crm_email_poll?token=TWOJ_TOKEN"    > /dev/null
+*/10 * * * *  curl -s "https://<?= h($_SERVER['HTTP_HOST'] ?? 'booklio.pl') ?>/crm/cron/crm_workflow_run?token=TWOJ_TOKEN"  > /dev/null
+0 7  * * 1-5  curl -s "https://<?= h($_SERVER['HTTP_HOST'] ?? 'booklio.pl') ?>/crm/cron/crm_tasks_digest?token=TWOJ_TOKEN" > /dev/null
+0 8  * * *    curl -s "https://<?= h($_SERVER['HTTP_HOST'] ?? 'booklio.pl') ?>/crm/cron/alerts?token=TWOJ_TOKEN"           > /dev/null</pre>
 </div>
