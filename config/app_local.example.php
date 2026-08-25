@@ -147,6 +147,13 @@ return [
         // Zostaw pusty ('') dla produkcji - maile ida do klientow normalnie.
         // Przyklad: 'krzysztof@3ck.pl' - wszystko trafia do mnie zamiast do klientow
         'testEmailOverride' => env('CRM_TEST_EMAIL_OVERRIDE', ''),
+        // Sidebar: role z ograniczonym menu (widza tylko Zlecenia + CRM Leady).
+        // Domyslnie puste - dla backward compat starych klientow booklio.
+        // Przyklad dla NordLogis: ['user', 'sales_manager']
+        //   - user             = 'Pracownik (spedytor)'
+        //   - sales_manager    = 'Kierownik Działu Handlowego'
+        // (asystent_spedytora nadal ma osobny wlasny minimal menu z Kontrahentami)
+        'restrictedMenuRoles' => [],
     ],
 
     // Gmail OAuth 2.0 (FALA 13) - alternatywa dla IMAP dla skrzynek Gmail/Workspace.

@@ -1429,11 +1429,18 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 // Wszystkie inne sekcje (fakturowanie, finanse, księgowość itp.)
                                 // są dla niego ukryte.
                                 $_isAssistant = (($currentRole ?? '') === 'asystent_spedytora');
+                                // FALA extras: Restricted menu (tylko Zlecenia + CRM Leady) - lista rol z app_local
+                                //   Configure Crm.restrictedMenuRoles = ['user', 'sales_manager']
+                                //   Domyslnie puste - dla backward compat innych klientow booklio
+                                $_restrictedRoles = (array)\Cake\Core\Configure::read('Crm.restrictedMenuRoles', []);
+                                $_isMinimalMenu = in_array(($currentRole ?? ''), $_restrictedRoles, true);
+                                // Combined: albo asystent, albo minimal menu - ukrywamy Fakturowanie/reszta
+                                $_hideAdvanced = $_isAssistant || $_isMinimalMenu;
                             ?>
                             <!-- Start::slide__category -->
                             <li class="slide__category"><span class="category-name">Booklio TMS</span></li>
                             <!-- End::slide__category -->
-                            <?php if (!$_isAssistant): ?>
+                            <?php if (!$_hideAdvanced): ?>
                             <!-- Fakturowanie -->
                             <li class="<?= $liClass(['invoices', 'nbp', 'legacyinvoices']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -1539,8 +1546,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                             </ul>
                             </li>
-                            <?php endif; /* !$_isAssistant — koniec Fakturowanie */ ?>
+                            <?php endif; /* !$_hideAdvanced — koniec Fakturowanie */ ?>
 
+                            <?php if (!$_isMinimalMenu): /* Kontrahenci - asystent widzi, user/sales_manager nie */ ?>
                             <!-- Kontrahenci -->
                             <li class="<?= $liClass(['contractors']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -1558,6 +1566,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                             </ul>
                             </li>
+                            <?php endif; /* !$_isMinimalMenu — koniec Kontrahenci */ ?>
 
                             <!-- Zlecenia Speed -->
                             <li class="<?= $liClass(['speedorders']) ?>">
@@ -1807,7 +1816,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
-                            <?php if (!$_isAssistant): /* asystent_spedytora — koniec menu, reszta ukryta */ ?>
+                            <?php if (!$_hideAdvanced): /* asystent + minimal menu users - reszta ukryta */ ?>
                             <!-- Towary i usługi -->
                             <li class="<?= $liClass(['products']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -1979,7 +1988,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
-                            <?php endif; /* !$_isAssistant — koniec sekcji TMS/Pomoc */ ?>
+                            <?php endif; /* !$_hideAdvanced — koniec sekcji TMS/Pomoc */ ?>
 
                             <?php
                             // Sekcja administracyjna – widoczna tylko dla administratorów
