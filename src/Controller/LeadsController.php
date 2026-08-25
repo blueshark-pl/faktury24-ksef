@@ -68,6 +68,22 @@ class LeadsController extends AppController
             ->where(['Leads.company_id' => $companyId])
             ->orderBy([$sortMap[$sortCol] => $sortDir]);
 
+        // FALA extras: filter archived (?archived=hide|show|only, default hide)
+        $archivedFilter = (string)$this->request->getQuery('archived', 'hide');
+        try {
+            $schema = $Leads->getSchema();
+            if (in_array('archived_at', $schema->columns(), true)) {
+                if ($archivedFilter === 'only') {
+                    $query->where(['Leads.archived_at IS NOT' => null]);
+                } elseif ($archivedFilter === 'show') {
+                    // pokaz wszystko - bez filtra
+                } else {
+                    $query->where(['Leads.archived_at IS' => null]);
+                }
+            }
+        } catch (\Throwable $e) {}
+        $this->set('archivedFilter', $archivedFilter);
+
         if ($q !== '') {
             $like = '%' . $q . '%';
             $query->where(['OR' => [
@@ -144,11 +160,20 @@ class LeadsController extends AppController
 
         $baseWhere = [
             'Leads.company_id' => $companyId,
-            'Leads.stage NOT IN' => ['lost', 'churned'],
+            'Leads.stage NOT IN' => ['lost', 'churned', 'disqualified'],
         ];
         if ($hasPipelineColumn) {
             $baseWhere['Leads.pipeline_type'] = $pipelineType;
         }
+        // FALA extras: domyslnie chowamy archived (chyba ze ?archived=1)
+        try {
+            $schema = $Leads->getSchema();
+            if (in_array('archived_at', $schema->columns(), true)) {
+                if ($this->request->getQuery('archived') !== '1') {
+                    $baseWhere['Leads.archived_at IS'] = null;
+                }
+            }
+        } catch (\Throwable $e) {}
 
         $rows = $Leads->find()
             ->contain(['AssignedUser' => function ($q) {
@@ -209,6 +234,8 @@ class LeadsController extends AppController
             'negotiation' => 'Negocjacje', 'contract' => 'Kontrakt', 'active' => 'Aktywny',
             // recurring
             'prospect' => 'Prospekt', 'trial' => 'Trial', 'churned' => 'Churned',
+            // FALA extras
+            'disqualified' => 'Zdyskwalifikowany',
         ];
         return $labels;
     }
@@ -2717,6 +2744,70 @@ class LeadsController extends AppController
      * Fetch Gmail attachment po attachment_id z crm_email_messages.attachments_json[index].
      * Streamuje binary do przegladarki z Content-Disposition inline (default) lub attachment.
      */
+    /**
+     * FALA extras: Archiwum leadow.
+     * POST /crm/{id}/archive - ustawia archived_at = now
+     * POST /crm/{id}/unarchive - ustawia archived_at = null
+     * Zachowuje activities i wszystkie inne pola - tylko widocznosc w Kanban/default liscie.
+     */
+    public function archive(string $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Leads = $this->fetchTable('Leads');
+        $lead = $Leads->get($id);
+        if ((string)$lead->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+        $lead->archived_at = new \Cake\I18n\DateTime();
+        if ($Leads->save($lead)) {
+            $this->Flash->success(__('Lead zarchiwizowany. Widoczny tylko z filtrem "Pokaż archiwum".'));
+            // Log activity - best effort
+            try {
+                $this->fetchTable('LeadActivities')->logSystem(
+                    (string)$companyId, (string)$lead->id, 'note',
+                    __('Zarchiwizowany'),
+                    __('Lead schowany z Kanban i domyślnej listy. Aby przywrócić - filter "Pokaż archiwum" + button Przywróć.'),
+                    ['action' => 'archive'], $identity?->get('id')
+                );
+            } catch (\Throwable $e) {}
+        } else {
+            $this->Flash->error(__('Błąd archiwizacji.'));
+        }
+        $this->redirect($this->request->referer() ?: ['action' => 'index']);
+        return $this->response;
+    }
+
+    public function unarchive(string $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Leads = $this->fetchTable('Leads');
+        $lead = $Leads->get($id);
+        if ((string)$lead->company_id !== (string)$companyId) {
+            throw new NotFoundException();
+        }
+        $lead->archived_at = null;
+        if ($Leads->save($lead)) {
+            $this->Flash->success(__('Lead przywrócony z archiwum.'));
+            try {
+                $this->fetchTable('LeadActivities')->logSystem(
+                    (string)$companyId, (string)$lead->id, 'note',
+                    __('Przywrócony z archiwum'), null,
+                    ['action' => 'unarchive'], $identity?->get('id')
+                );
+            } catch (\Throwable $e) {}
+        } else {
+            $this->Flash->error(__('Błąd przywracania.'));
+        }
+        $this->redirect($this->request->referer() ?: ['action' => 'view', $lead->id]);
+        return $this->response;
+    }
+
     public function attachmentDownload(string $activityId, string $index): \Cake\Http\Response
     {
         $this->request->allowMethod(['get']);

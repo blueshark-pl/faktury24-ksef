@@ -527,6 +527,8 @@ return [
                 'replyByGmail',
                 // FALA 23: download / inline preview zalacznikow
                 'attachmentDownload',
+                // FALA extras: archiwum leadow
+                'archive', 'unarchive',
                 // FALA 20: AI auto-quote workflow
                 'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
                 // FALA 22: Executive dashboard

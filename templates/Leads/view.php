@@ -86,6 +86,20 @@ $activityIcons = [
                  'confirm' => __('Utworzyć kontrahenta z tego leada?')]
             ) ?>
         <?php endif; ?>
+        <?php if (!empty($lead->archived_at)): ?>
+            <?= $this->Form->postLink(
+                '<i class="ri-inbox-unarchive-line"></i> ' . __('Przywróć z archiwum'),
+                ['action' => 'unarchive', $lead->id],
+                ['escape' => false, 'class' => 'btn btn-sm btn-outline-warning']
+            ) ?>
+        <?php else: ?>
+            <?= $this->Form->postLink(
+                '<i class="ri-inbox-archive-line"></i> ' . __('Archiwuj'),
+                ['action' => 'archive', $lead->id],
+                ['escape' => false, 'class' => 'btn btn-sm btn-outline-secondary',
+                 'confirm' => __('Zarchiwizować leada? Zniknie z Kanban i domyślnej listy (widoczny z filtrem "Pokaż archiwum"). Historia i aktywności zostają.')]
+            ) ?>
+        <?php endif; ?>
         <button type="button" class="btn btn-sm btn-outline-info" id="btn-ai-summarize" title="<?= __('GPT AI: podsumuj historie + rekomenduj') ?>">
             <i class="ri-magic-line"></i> AI Podsumuj
         </button>

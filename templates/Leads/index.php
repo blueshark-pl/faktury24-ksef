@@ -153,9 +153,17 @@ $stageBg = [
                     <label class="form-check-label small" for="fm"><?= __('Moje') ?></label>
                 </div>
             </div>
+            <div class="col-md-2">
+                <?php $af = $archivedFilter ?? 'hide'; ?>
+                <select name="archived" class="form-select form-select-sm">
+                    <option value="hide" <?= $af === 'hide' ? 'selected' : '' ?>><?= __('Archiwum: ukryj') ?></option>
+                    <option value="show" <?= $af === 'show' ? 'selected' : '' ?>><?= __('Archiwum: pokaż') ?></option>
+                    <option value="only" <?= $af === 'only' ? 'selected' : '' ?>><?= __('Archiwum: tylko') ?></option>
+                </select>
+            </div>
             <div class="col-md-2 text-end">
                 <button class="btn btn-sm btn-primary"><?= __('Filtruj') ?></button>
-                <?php if ($q || $stage || $branch || $country || $mine): ?>
+                <?php if ($q || $stage || $branch || $country || $mine || ($af ?? 'hide') !== 'hide'): ?>
                     <a href="<?= $this->Url->build(['action' => 'index']) ?>" class="btn btn-sm btn-outline-secondary"><?= __('Wyczyść') ?></a>
                 <?php endif; ?>
             </div>

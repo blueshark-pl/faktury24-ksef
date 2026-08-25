@@ -179,6 +179,11 @@ return function (RouteBuilder $routes): void {
         $builder->get('/crm/attachment/{activityId}/{index}', ['controller' => 'Leads', 'action' => 'attachmentDownload'])
             ->setPass(['activityId', 'index'])
             ->setPatterns(['index' => '\d+']);
+        // FALA extras: archiwum leadow
+        $builder->post('/crm/{id}/archive', ['controller' => 'Leads', 'action' => 'archive'])
+            ->setPass(['id']);
+        $builder->post('/crm/{id}/unarchive', ['controller' => 'Leads', 'action' => 'unarchive'])
+            ->setPass(['id']);
         // FALA 22: Executive dashboard
         $builder->get('/crm/manager', ['controller' => 'Leads', 'action' => 'managerDashboard']);
         // FALA 20: AI auto-quote workflow

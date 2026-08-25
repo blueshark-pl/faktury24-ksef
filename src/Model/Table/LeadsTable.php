@@ -47,13 +47,18 @@ class LeadsTable extends Table
             'contract',       // Podpisany kontrakt ramowy
             'active',         // Kontrakt czynny, generuje zlecenia
             'lost',
+            'disqualified',   // Klient odrzucil / spam / wrong contact / nie w naszej branzy
         ],
-        'spot' => self::STAGES,  // legacy: new/contact/inquiry/offer/order/lost
+        'spot' => [
+            'new', 'contact', 'inquiry', 'offer', 'order', 'lost',
+            'disqualified',
+        ],
         'recurring' => [
             'prospect',       // Potencjalny stały klient
             'trial',          // Pierwsze zlecenia probne (0-3 msc)
             'active',         // Regularne zlecenia (>3 msc)
             'churned',        // Odszedl / brak zlecen >60 dni
+            'disqualified',
         ],
     ];
 
@@ -66,11 +71,16 @@ class LeadsTable extends Table
     public const PIPELINE_PROBABILITY = [
         'long_term' => [
             'new' => 5, 'qualification' => 20, 'proposal' => 40,
-            'negotiation' => 65, 'contract' => 90, 'active' => 100, 'lost' => 0,
+            'negotiation' => 65, 'contract' => 90, 'active' => 100,
+            'lost' => 0, 'disqualified' => 0,
         ],
-        'spot' => self::STAGE_PROBABILITY,
+        'spot' => [
+            'new' => 10, 'contact' => 25, 'inquiry' => 50, 'offer' => 75,
+            'order' => 100, 'lost' => 0, 'disqualified' => 0,
+        ],
         'recurring' => [
-            'prospect' => 15, 'trial' => 50, 'active' => 100, 'churned' => 0,
+            'prospect' => 15, 'trial' => 50, 'active' => 100,
+            'churned' => 0, 'disqualified' => 0,
         ],
     ];
 
