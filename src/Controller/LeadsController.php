@@ -267,6 +267,35 @@ class LeadsController extends AppController
      * FALA extras: Trello-style peek modal - lekki JSON dla popup w Kanban.
      * GET /crm/peek/{id}.json
      */
+    /**
+     * FALA extras: Lista wszystkich etykiet firmy dla picker'a (dropdown w modal).
+     * GET /crm/labels-all.json
+     */
+    public function labelsAllJson(): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $this->response = $this->response->withType('application/json');
+
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            if (!in_array('lead_labels', $conn->getSchemaCollection()->listTables(), true)) {
+                return $this->response->withStringBody(json_encode(['ok' => true, 'labels' => []]));
+            }
+            $L = $this->fetchTable('LeadLabels');
+            $labels = $L->find()
+                ->where(['company_id' => $companyId])
+                ->orderByAsc('sort_order')->orderByAsc('name')
+                ->all()->toArray();
+            $out = array_map(fn($l) => ['id' => (string)$l->id, 'name' => $l->name, 'color' => $l->color], $labels);
+            return $this->response->withStringBody(json_encode(['ok' => true, 'labels' => $out], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            return $this->response->withStringBody(json_encode(['ok' => false, 'error' => $e->getMessage()]));
+        }
+    }
+
     public function peekJson(string $id): \Cake\Http\Response
     {
         $this->request->allowMethod(['get']);
@@ -287,7 +316,7 @@ class LeadsController extends AppController
                     return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
                 },
                 'LeadActivities' => function ($q) {
-                    return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(1);
+                    return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(10);
                 },
             ];
             // Opcjonalnie: labels + attachments - sprawdz czy tabele w DB (nie tylko Table klasa)
@@ -307,7 +336,8 @@ class LeadsController extends AppController
                 return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
             }
 
-            $lastAct = $lead->lead_activities[0] ?? null;
+            $activities = $lead->lead_activities ?? [];
+            $lastAct = $activities[0] ?? null;
             $u = $lead->assigned_user ?? null;
             $userName = $u ? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) : null;
 
@@ -338,6 +368,13 @@ class LeadsController extends AppController
                     'subject' => $lastAct->subject,
                     'date' => ($lastAct->happened_at ?? $lastAct->created)?->format('d.m.Y H:i'),
                 ] : null,
+                'activities' => array_map(fn($a) => [
+                    'id' => (string)$a->id,
+                    'type' => $a->activity_type,
+                    'subject' => $a->subject,
+                    'body' => $a->body ? mb_substr((string)$a->body, 0, 200) : null,
+                    'date' => ($a->happened_at ?? $a->created)?->format('d.m.Y H:i'),
+                ], $activities),
                 'labels' => array_map(fn($l) => [
                     'id' => (string)$l->id, 'name' => $l->name, 'color' => $l->color,
                 ], $lead->lead_labels ?? []),
@@ -398,7 +435,7 @@ class LeadsController extends AppController
         $companyId = $identity?->get('company_id');
 
         $Leads = $this->fetchTable('Leads');
-        $lead = $Leads->get($id, contain: [
+        $viewContain = [
             'AssignedUser' => function ($q) {
                 return $q->select(['id', 'first_name', 'last_name', 'email']);
             },
@@ -410,7 +447,15 @@ class LeadsController extends AppController
                     return $u->select(['id', 'first_name', 'last_name']);
                 }])->limit(200);
             },
-        ]);
+        ];
+        // FALA extras: LeadLabels + LeadAttachments jesli tabele istnieja
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            $tables = $conn->getSchemaCollection()->listTables();
+            if (in_array('lead_labels', $tables, true)) $viewContain['LeadLabels'] = [];
+            if (in_array('lead_attachments', $tables, true)) $viewContain['LeadAttachments'] = [];
+        } catch (\Throwable $e) {}
+        $lead = $Leads->get($id, contain: $viewContain);
         if ((string)$lead->company_id !== (string)$companyId) {
             throw new NotFoundException();
         }

@@ -408,6 +408,164 @@ foreach ($lead->lead_activities as $__a) {
             </div>
         </div>
         <?php endif; ?>
+
+        <!-- FALA extras: Etykiety (Trello-style) -->
+        <?php
+        $leadLabels = [];
+        try { $leadLabels = $lead->lead_labels ?? []; } catch (\Throwable $e) {}
+        ?>
+        <div class="card mt-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0"><i class="ri-price-tag-3-line"></i> <?= __('Etykiety') ?></h6>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="view-labels-btn">
+                        <i class="ri-add-line"></i>
+                    </button>
+                </div>
+                <div id="view-labels-display" class="d-flex flex-wrap gap-2">
+                    <?php if (empty($leadLabels)): ?>
+                        <span class="text-muted small"><?= __('Brak etykiet') ?></span>
+                    <?php else: foreach ($leadLabels as $lb): ?>
+                        <span style="background: <?= h($lb->color) ?>; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600;"><?= h($lb->name) ?></span>
+                    <?php endforeach; endif; ?>
+                </div>
+                <div class="label-picker-menu mt-2" id="view-labels-menu" style="display:none; padding: 8px; border: 1px solid #dfe1e6; border-radius: 6px; max-height: 240px; overflow-y: auto;"></div>
+            </div>
+        </div>
+
+        <!-- FALA extras: Załączniki -->
+        <?php
+        $leadAttachments = [];
+        try { $leadAttachments = $lead->lead_attachments ?? []; } catch (\Throwable $e) {}
+        ?>
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6 class="fw-bold mb-2"><i class="ri-attachment-2"></i> <?= __('Załączniki') ?><?= !empty($leadAttachments) ? ' (' . count($leadAttachments) . ')' : '' ?></h6>
+                <div id="view-attach-list">
+                    <?php foreach ($leadAttachments as $att):
+                        $mm = $att->mime ?? '';
+                        $ico = 'ri-file-line'; $col = '#5e6c84';
+                        if (str_starts_with($mm, 'image/')) { $ico = 'ri-image-line'; $col = '#2563eb'; }
+                        elseif ($mm === 'application/pdf') { $ico = 'ri-file-pdf-line'; $col = '#dc2626'; }
+                        elseif (str_contains($mm, 'spreadsheet') || str_contains($mm, 'excel')) { $ico = 'ri-file-excel-line'; $col = '#059669'; }
+                        elseif (str_contains($mm, 'word')) { $ico = 'ri-file-word-line'; $col = '#2563eb'; }
+                    ?>
+                        <div class="d-flex align-items-center gap-2 py-1" style="font-size: 12px;">
+                            <i class="<?= $ico ?>" style="color: <?= $col ?>; font-size: 16px;"></i>
+                            <a href="/<?= h($att->path) ?>" target="_blank" class="text-decoration-none flex-grow-1"><?= h($att->filename) ?></a>
+                            <span class="text-muted"><?= round((int)$att->size / 1024) ?>KB</span>
+                            <a href="<?= $this->Url->build(['action' => 'attachmentFile', $att->id, '?' => ['download' => 1]]) ?>" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="ri-download-line"></i></a>
+                            <?= $this->Form->postLink(
+                                '<i class="ri-delete-bin-line"></i>',
+                                ['action' => 'attachmentDelete', $att->id],
+                                ['escape' => false, 'class' => 'btn btn-sm btn-outline-danger py-0 px-1',
+                                 'confirm' => __('Usunąć załącznik „{0}"?', $att->filename)]
+                            ) ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div id="view-dropzone" style="border: 2px dashed #dfe1e6; border-radius: 6px; padding: 20px; text-align: center; color: #5e6c84; font-size: 13px; margin-top: 8px; cursor: pointer;">
+                    <i class="ri-upload-cloud-2-line" style="font-size: 24px; display: block; margin-bottom: 4px;"></i>
+                    <?= __('Upuść pliki lub kliknij') ?>
+                    <input type="file" id="view-file-input" multiple style="display:none;">
+                </div>
+                <div id="view-upload-status" class="small mt-2"></div>
+            </div>
+        </div>
+
+        <script>
+        // Widget etykiet i załączników w /crm/view
+        (function() {
+            var leadId = '<?= h($lead->id) ?>';
+            var csrf = '<?= $this->request->getAttribute('csrfToken') ?>';
+            var currentLabelIds = <?= json_encode(array_map(fn($l) => (string)$l->id, $leadLabels ?? [])) ?>;
+
+            // Etykiety picker
+            var lblBtn = document.getElementById('view-labels-btn');
+            var lblMenu = document.getElementById('view-labels-menu');
+            var lblLoaded = false;
+            if (lblBtn && lblMenu) {
+                lblBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (!lblLoaded) {
+                        fetch('<?= $this->Url->build(['action' => 'labelsAllJson']) ?>', {credentials: 'same-origin', headers: {'Accept':'application/json'}})
+                        .then(function(r){ return r.json(); }).then(function(j){
+                            if (!j.ok || !j.labels || !j.labels.length) {
+                                lblMenu.innerHTML = '<div class="small text-muted">Brak etykiet. <a href="/crm/etykiety" target="_blank">Utwórz</a></div>';
+                                lblMenu.style.display = 'block';
+                                lblLoaded = true;
+                                return;
+                            }
+                            var html = '';
+                            j.labels.forEach(function(lb) {
+                                var chk = currentLabelIds.indexOf(lb.id) !== -1 ? 'checked' : '';
+                                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px;cursor:pointer;font-size:12px;">'
+                                    + '<input type="checkbox" value="'+lb.id+'" '+chk+'>'
+                                    + '<span style="flex:1;background:'+lb.color+';color:#fff;padding:4px 10px;border-radius:4px;font-weight:600;">'+lb.name+'</span>'
+                                    + '</label>';
+                            });
+                            lblMenu.innerHTML = html;
+                            lblMenu.style.display = 'block';
+                            lblLoaded = true;
+                            lblMenu.querySelectorAll('input[type=checkbox]').forEach(function(chk){
+                                chk.addEventListener('change', function(){
+                                    if (chk.checked) currentLabelIds.push(chk.value);
+                                    else currentLabelIds = currentLabelIds.filter(function(x){return x !== chk.value;});
+                                    var fd = new FormData();
+                                    fd.append('_csrfToken', csrf);
+                                    currentLabelIds.forEach(function(id){ fd.append('label_ids[]', id); });
+                                    fetch('/crm/'+leadId+'/labels', {method:'POST', body:fd, credentials:'same-origin', headers:{'X-CSRF-Token':csrf}})
+                                    .then(function(r){return r.json();}).then(function(j){
+                                        if (j.ok) {
+                                            // Refresh display
+                                            var display = document.getElementById('view-labels-display');
+                                            var newHtml = '';
+                                            lblMenu.querySelectorAll('input[type=checkbox]:checked').forEach(function(c){
+                                                var sw = c.parentElement.querySelector('span');
+                                                newHtml += '<span style="background:'+sw.style.background+';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">'+sw.textContent+'</span>';
+                                            });
+                                            display.innerHTML = newHtml || '<span class="text-muted small">Brak etykiet</span>';
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    } else {
+                        lblMenu.style.display = lblMenu.style.display === 'none' ? 'block' : 'none';
+                    }
+                });
+            }
+
+            // Dropzone upload
+            var dz = document.getElementById('view-dropzone');
+            var fi = document.getElementById('view-file-input');
+            var status = document.getElementById('view-upload-status');
+            if (dz && fi) {
+                dz.addEventListener('click', function(){ fi.click(); });
+                dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.style.background = '#f0f9e0'; });
+                dz.addEventListener('dragleave', function(){ dz.style.background = ''; });
+                dz.addEventListener('drop', function(e){ e.preventDefault(); dz.style.background = ''; uploadFiles(e.dataTransfer.files); });
+                fi.addEventListener('change', function(){ uploadFiles(fi.files); });
+            }
+            function uploadFiles(files) {
+                Array.from(files).forEach(function(file) {
+                    var fd = new FormData();
+                    fd.append('_csrfToken', csrf);
+                    fd.append('file', file);
+                    status.textContent = '⏳ '+file.name;
+                    fetch('/crm/'+leadId+'/attachments/upload', {method:'POST', body:fd, credentials:'same-origin', headers:{'X-CSRF-Token':csrf}})
+                    .then(function(r){return r.json();}).then(function(j){
+                        if (j.ok) {
+                            status.textContent = '✓ '+j.attachment.filename+' - odswiez strone';
+                            setTimeout(function(){ location.reload(); }, 800);
+                        } else {
+                            status.textContent = '❌ '+file.name+': '+(j.error || 'unknown');
+                        }
+                    }).catch(function(e){ status.textContent = '❌ '+file.name+': '+e.message; });
+                });
+            }
+        })();
+        </script>
     </div>
 
     <!-- RIGHT: quote_requests aggregate + timeline + add activity -->

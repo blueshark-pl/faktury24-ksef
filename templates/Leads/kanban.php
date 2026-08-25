@@ -276,9 +276,9 @@ $myUserId = $identity?->get('id');
     <?php endforeach; ?>
 </div>
 
-<!-- Trello-style Lead Peek Modal -->
+<!-- Trello-style Lead Peek Modal (FULL DETAIL) -->
 <div class="modal fade" id="leadPeekModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content" style="background: #f4f5f7;">
             <div class="modal-header" id="peek-header" style="background: #fff; border-bottom: 1px solid #dfe1e6;">
                 <div class="flex-grow-1">
@@ -287,7 +287,7 @@ $myUserId = $identity?->get('id');
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
             </div>
-            <div class="modal-body" id="peek-body" style="padding: 20px;">
+            <div class="modal-body p-0" id="peek-body">
                 <div class="text-center py-5">
                     <i class="ri-loader-4-line" style="font-size: 32px; color: #5e6c84; animation: spin 1s linear infinite;"></i>
                 </div>
@@ -301,7 +301,58 @@ $myUserId = $identity?->get('id');
         </div>
     </div>
 </div>
-<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Trello peek modal - full detail */
+.peek-container { display: grid; grid-template-columns: 1fr 260px; gap: 0; min-height: 500px; }
+.peek-main { padding: 20px; overflow-y: auto; }
+.peek-sidebar { background: #fff; padding: 16px; border-left: 1px solid #dfe1e6; }
+.peek-sidebar h6 { text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; color: #5e6c84;
+    font-weight: 700; margin: 12px 0 6px; }
+.peek-sidebar h6:first-child { margin-top: 0; }
+.peek-sidebar .btn { display: flex; align-items: center; gap: 6px; text-align: left; font-size: 13px;
+    background: #f4f5f7; border: 0; color: #172b4d; padding: 6px 10px; border-radius: 3px; width: 100%; }
+.peek-sidebar .btn:hover { background: #dfe1e6; }
+
+/* Label picker dropdown */
+.label-picker-dropdown { position: relative; }
+.label-picker-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff;
+    border-radius: 6px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); padding: 8px; z-index: 1055;
+    max-height: 280px; overflow-y: auto; display: none; }
+.label-picker-menu.show { display: block; }
+.label-picker-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer;
+    border-radius: 4px; font-size: 12px; }
+.label-picker-item:hover { background: #f4f5f7; }
+.label-picker-item .label-swatch { flex-grow: 1; padding: 4px 12px; border-radius: 4px; color: #fff;
+    font-weight: 600; font-size: 11px; }
+.label-picker-item input { margin: 0; }
+
+/* Drop zone */
+.attach-dropzone { border: 2px dashed #dfe1e6; border-radius: 6px; padding: 24px; text-align: center;
+    color: #5e6c84; font-size: 13px; margin-top: 8px; transition: all 0.15s; cursor: pointer; }
+.attach-dropzone:hover { border-color: #94C81F; background: #fafffa; color: #6b8f14; }
+.attach-dropzone.drag-over { border-color: #94C81F; background: #f0f9e0; color: #6b8f14; transform: scale(1.02); }
+.attach-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: #fff;
+    border-radius: 4px; margin-bottom: 6px; }
+.attach-item .filename { flex-grow: 1; font-size: 13px; color: #172b4d; word-break: break-all; }
+
+/* Timeline w peek */
+.peek-timeline { display: flex; flex-direction: column; gap: 6px; }
+.peek-tl-item { display: flex; gap: 8px; padding: 8px; background: #fff; border-radius: 4px; }
+.peek-tl-ico { width: 24px; height: 24px; border-radius: 50%; background: #dfe1e6; color: #5e6c84;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; }
+.peek-tl-body { flex-grow: 1; font-size: 12px; color: #172b4d; }
+.peek-tl-body .subj { font-weight: 600; }
+.peek-tl-body .date { color: #5e6c84; font-size: 10px; margin-top: 2px; }
+
+/* Responsive - full width on mobile */
+@media (max-width: 768px) {
+    .peek-container { grid-template-columns: 1fr; }
+    .peek-sidebar { border-left: 0; border-top: 1px solid #dfe1e6; }
+}
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
@@ -364,7 +415,20 @@ $myUserId = $identity?->get('id');
 
     function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
+    var currentLeadId = null;
+    var currentLabelIds = []; // aktualnie przypisane
+
+    // Ikony per activity type
+    var activityIcons = {
+        phone_call: 'ri-phone-line', email_out: 'ri-mail-send-line', email_in: 'ri-mail-download-line',
+        meeting: 'ri-calendar-event-line', note: 'ri-sticky-note-line', task: 'ri-checkbox-line',
+        file: 'ri-attachment-2', stage_change: 'ri-arrow-right-up-line', assignment: 'ri-user-shared-line',
+        offer_sent: 'ri-file-paper-line', order_won: 'ri-trophy-line', order_lost: 'ri-close-circle-line',
+        quote_request: 'ri-file-list-3-line',
+    };
+
     window.openLeadPeek = function(leadId) {
+        currentLeadId = leadId;
         peekTitle.textContent = '';
         peekStageLabel.textContent = '';
         peekBody.innerHTML = '<div class="text-center py-5"><i class="ri-loader-4-line" style="font-size:32px;color:#5e6c84;animation:spin 1s linear infinite;"></i></div>';
@@ -375,124 +439,336 @@ $myUserId = $identity?->get('id');
             .then(function(r) { return r.json(); })
             .then(function(j) {
                 if (!j.ok) {
-                    peekBody.innerHTML = '<div class="alert alert-danger">' + esc(j.error || 'Blad') + '</div>';
+                    peekBody.innerHTML = '<div class="alert alert-danger m-3">' + esc(j.error || 'Blad') + '</div>';
                     return;
                 }
-                var l = j.lead;
-                var stageColor = stageColorMap[l.stage] || '#5e6c84';
-                var stageLbl = stageLabelMap[l.stage] || l.stage;
-
-                peekTitle.textContent = l.company_name || '(bez nazwy)';
-                peekStageLabel.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + stageColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(stageLbl);
-                peekHeader.style.borderTop = '4px solid ' + stageColor;
-
-                var html = '';
-
-                // KPI kafelki
-                html += '<div class="row g-2 mb-3">';
-                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
-                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.probability || 0) + '%</div>'
-                    + '<div class="small text-muted">Skuteczność</div></div></div>';
-                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
-                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.value_pln ? Number(l.value_pln).toLocaleString('pl-PL') + ' zł' : '—') + '</div>'
-                    + '<div class="small text-muted">Wartość</div></div></div>';
-                html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
-                    + '<div class="fw-bold" style="font-size:20px;color:#172b4d;">' + (l.days_in_stage != null ? l.days_in_stage + 'd' : '—') + '</div>'
-                    + '<div class="small text-muted">W etapie</div></div></div>';
-                html += '</div>';
-
-                // Dane firmy
-                html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                html += '<h6 class="fw-bold mb-2"><i class="ri-building-line"></i> Dane firmy</h6>';
-                if (l.nip)          html += '<div class="small"><strong>NIP:</strong> ' + esc(l.nip) + '</div>';
-                if (l.country_code || l.city) html += '<div class="small"><i class="ri-map-pin-2-line text-muted"></i> ' + esc((l.country_code || '') + ' ' + (l.postal_code || '') + ' ' + (l.city || '')) + '</div>';
-                if (l.street)       html += '<div class="small">' + esc(l.street) + '</div>';
-                if (l.branch_type)  html += '<div class="small mt-1"><span class="badge bg-secondary">' + esc(l.branch_type) + '</span></div>';
-                html += '</div>';
-
-                // Kontakt
-                if (l.contact_person || l.email || l.phone) {
-                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-user-line"></i> Kontakt</h6>';
-                    if (l.contact_person) html += '<div class="small fw-semibold">' + esc(l.contact_person) + '</div>';
-                    if (l.email) html += '<div class="small"><a href="mailto:' + esc(l.email) + '"><i class="ri-mail-line"></i> ' + esc(l.email) + '</a></div>';
-                    if (l.phone) html += '<div class="small"><a href="tel:' + esc(l.phone) + '"><i class="ri-phone-line"></i> ' + esc(l.phone) + '</a></div>';
-                    html += '</div>';
-                }
-
-                // Opiekun
-                if (l.assigned_user) {
-                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-user-star-line"></i> Opiekun</h6>';
-                    html += '<div class="d-flex gap-2 align-items-center">';
-                    if (l.assigned_user.avatar) {
-                        html += '<img src="' + esc(l.assigned_user.avatar) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">';
-                    } else {
-                        html += '<div style="width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">' + esc((l.assigned_user.name || '?').charAt(0)) + '</div>';
-                    }
-                    html += '<div><div class="small fw-semibold">' + esc(l.assigned_user.name || '') + '</div>';
-                    if (l.assigned_user.email) html += '<div class="small text-muted">' + esc(l.assigned_user.email) + '</div>';
-                    html += '</div></div>';
-                    html += '</div>';
-                }
-
-                // Notatka
-                if (l.note) {
-                    html += '<div class="mb-3 p-3" style="background:#fffae6;border-radius:6px;border-left:3px solid #f59e0b;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-sticky-note-line"></i> Notatka</h6>';
-                    html += '<div class="small" style="white-space:pre-wrap;">' + esc(l.note) + '</div>';
-                    html += '</div>';
-                }
-
-                // Etykiety
-                if (l.labels && l.labels.length) {
-                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-price-tag-3-line"></i> Etykiety</h6>';
-                    html += '<div class="d-flex flex-wrap gap-2">';
-                    l.labels.forEach(function(lb) {
-                        html += '<span style="background:' + esc(lb.color) + ';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + esc(lb.name) + '</span>';
-                    });
-                    html += '</div></div>';
-                }
-
-                // Załączniki
-                if (l.attachments && l.attachments.length) {
-                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-attachment-2"></i> Załączniki (' + l.attachments.length + ')</h6>';
-                    l.attachments.forEach(function(a) {
-                        var mm = a.mime || '';
-                        var ico = 'ri-file-line';
-                        var col = '#5e6c84';
-                        if (mm.indexOf('image/') === 0) { ico = 'ri-image-line'; col = '#2563eb'; }
-                        else if (mm === 'application/pdf') { ico = 'ri-file-pdf-line'; col = '#dc2626'; }
-                        else if (mm.indexOf('spreadsheet') !== -1 || mm.indexOf('excel') !== -1) { ico = 'ri-file-excel-line'; col = '#059669'; }
-                        else if (mm.indexOf('word') !== -1) { ico = 'ri-file-word-line'; col = '#2563eb'; }
-                        html += '<div class="d-flex align-items-center gap-2 py-1">';
-                        html += '<i class="' + ico + '" style="color:' + col + ';font-size:16px;"></i>';
-                        html += '<a href="' + esc(a.url) + '" target="_blank" class="small text-decoration-none flex-grow-1">' + esc(a.filename) + '</a>';
-                        html += '<span class="small text-muted">' + Math.round(a.size / 1024) + 'KB</span>';
-                        html += '<a href="/crm/attachment-file/' + esc(a.id) + '?download=1" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Pobierz"><i class="ri-download-line"></i></a>';
-                        html += '</div>';
-                    });
-                    html += '</div>';
-                }
-
-                // Ostatnia aktywność
-                if (l.last_activity) {
-                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
-                    html += '<h6 class="fw-bold mb-2"><i class="ri-history-line"></i> Ostatnia aktywność</h6>';
-                    html += '<div class="small">';
-                    html += '<span class="badge bg-secondary">' + esc(l.last_activity.type) + '</span> ';
-                    html += esc(l.last_activity.subject || '') + '</div>';
-                    html += '<div class="small text-muted mt-1">' + esc(l.last_activity.date || '') + '</div>';
-                    html += '</div>';
-                }
-
-                peekBody.innerHTML = html;
+                renderPeek(j.lead);
             })
             .catch(function(e) {
-                peekBody.innerHTML = '<div class="alert alert-danger">Blad sieci: ' + esc(e.message) + '</div>';
+                peekBody.innerHTML = '<div class="alert alert-danger m-3">Blad sieci: ' + esc(e.message) + '</div>';
             });
     };
+
+    function renderPeek(l) {
+        currentLabelIds = (l.labels || []).map(function(lb) { return lb.id; });
+        var stageColor = stageColorMap[l.stage] || '#5e6c84';
+        var stageLbl = stageLabelMap[l.stage] || l.stage;
+
+        peekTitle.textContent = l.company_name || '(bez nazwy)';
+        peekStageLabel.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + stageColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(stageLbl);
+        peekHeader.style.borderTop = '4px solid ' + stageColor;
+
+        var html = '<div class="peek-container">';
+
+        // === MAIN COLUMN ===
+        html += '<div class="peek-main">';
+
+        // KPI kafelki
+        html += '<div class="row g-2 mb-3">';
+        html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+            + '<div class="fw-bold" style="font-size:22px;color:' + stageColor + ';">' + (l.probability || 0) + '%</div>'
+            + '<div class="small text-muted">Skuteczność</div></div></div>';
+        html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+            + '<div class="fw-bold" style="font-size:22px;color:#172b4d;">' + (l.value_pln ? Number(l.value_pln).toLocaleString('pl-PL') + ' zł' : '—') + '</div>'
+            + '<div class="small text-muted">Wartość</div></div></div>';
+        html += '<div class="col-4"><div class="p-2 rounded text-center" style="background:#fff;">'
+            + '<div class="fw-bold" style="font-size:22px;color:#172b4d;">' + (l.days_in_stage != null ? l.days_in_stage + 'd' : '—') + '</div>'
+            + '<div class="small text-muted">W etapie</div></div></div>';
+        html += '</div>';
+
+        // ETYKIETY (Trello labels) - kolorowe badges
+        html += '<div class="mb-3">';
+        html += '<h6 class="fw-bold mb-2 text-uppercase small" style="color:#5e6c84;letter-spacing:0.5px;"><i class="ri-price-tag-3-line"></i> Etykiety</h6>';
+        html += '<div id="peek-labels-display" class="d-flex flex-wrap gap-2">';
+        if (l.labels && l.labels.length) {
+            l.labels.forEach(function(lb) {
+                html += '<span style="background:' + esc(lb.color) + ';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + esc(lb.name) + '</span>';
+            });
+        } else {
+            html += '<span class="text-muted small">Brak etykiet</span>';
+        }
+        html += '</div></div>';
+
+        // Dane firmy
+        html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+        html += '<h6 class="fw-bold mb-2"><i class="ri-building-line"></i> Dane firmy</h6>';
+        if (l.nip)          html += '<div class="small"><strong>NIP:</strong> ' + esc(l.nip) + '</div>';
+        if (l.country_code || l.city) html += '<div class="small"><i class="ri-map-pin-2-line text-muted"></i> ' + esc((l.country_code || '') + ' ' + (l.postal_code || '') + ' ' + (l.city || '')) + '</div>';
+        if (l.street)       html += '<div class="small">' + esc(l.street) + '</div>';
+        if (l.branch_type)  html += '<div class="small mt-1"><span class="badge bg-secondary">' + esc(l.branch_type) + '</span></div>';
+        html += '</div>';
+
+        // Kontakt
+        if (l.contact_person || l.email || l.phone) {
+            html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+            html += '<h6 class="fw-bold mb-2"><i class="ri-user-line"></i> Kontakt</h6>';
+            if (l.contact_person) html += '<div class="small fw-semibold">' + esc(l.contact_person) + '</div>';
+            if (l.email) html += '<div class="small"><a href="mailto:' + esc(l.email) + '"><i class="ri-mail-line"></i> ' + esc(l.email) + '</a></div>';
+            if (l.phone) html += '<div class="small"><a href="tel:' + esc(l.phone) + '"><i class="ri-phone-line"></i> ' + esc(l.phone) + '</a></div>';
+            html += '</div>';
+        }
+
+        // Notatka
+        if (l.note) {
+            html += '<div class="mb-3 p-3" style="background:#fffae6;border-radius:6px;border-left:3px solid #f59e0b;">';
+            html += '<h6 class="fw-bold mb-2"><i class="ri-sticky-note-line"></i> Notatka</h6>';
+            html += '<div class="small" style="white-space:pre-wrap;">' + esc(l.note) + '</div>';
+            html += '</div>';
+        }
+
+        // ZAŁĄCZNIKI + DROP ZONE
+        html += '<div class="mb-3">';
+        html += '<h6 class="fw-bold mb-2 text-uppercase small" style="color:#5e6c84;letter-spacing:0.5px;"><i class="ri-attachment-2"></i> Załączniki'
+             + ((l.attachments && l.attachments.length) ? ' (' + l.attachments.length + ')' : '') + '</h6>';
+        html += '<div id="peek-attachments-list">';
+        if (l.attachments && l.attachments.length) {
+            l.attachments.forEach(function(a) {
+                var mm = a.mime || '';
+                var ico = 'ri-file-line', col = '#5e6c84';
+                if (mm.indexOf('image/') === 0) { ico = 'ri-image-line'; col = '#2563eb'; }
+                else if (mm === 'application/pdf') { ico = 'ri-file-pdf-line'; col = '#dc2626'; }
+                else if (mm.indexOf('spreadsheet') !== -1 || mm.indexOf('excel') !== -1) { ico = 'ri-file-excel-line'; col = '#059669'; }
+                else if (mm.indexOf('word') !== -1) { ico = 'ri-file-word-line'; col = '#2563eb'; }
+                html += '<div class="attach-item">'
+                    + '<i class="' + ico + '" style="color:' + col + ';font-size:18px;"></i>'
+                    + '<a class="filename" href="' + esc(a.url) + '" target="_blank">' + esc(a.filename) + '</a>'
+                    + '<span class="text-muted small">' + Math.round(a.size / 1024) + 'KB</span>'
+                    + '<a href="/crm/attachment-file/' + esc(a.id) + '?download=1" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Pobierz"><i class="ri-download-line"></i></a>'
+                    + '</div>';
+            });
+        }
+        html += '</div>';
+        html += '<div class="attach-dropzone" id="peek-dropzone">'
+            + '<i class="ri-upload-cloud-2-line" style="font-size:32px;display:block;margin-bottom:6px;"></i>'
+            + 'Upuść pliki tutaj lub kliknij aby wybrać'
+            + '<input type="file" id="peek-file-input" multiple style="display:none;">'
+            + '</div>';
+        html += '<div id="peek-upload-status" class="small mt-2"></div>';
+        html += '</div>';
+
+        // TIMELINE (ostatnie 10)
+        if (l.activities && l.activities.length) {
+            html += '<div class="mb-3">';
+            html += '<h6 class="fw-bold mb-2 text-uppercase small" style="color:#5e6c84;letter-spacing:0.5px;"><i class="ri-history-line"></i> Timeline (' + l.activities.length + ')</h6>';
+            html += '<div class="peek-timeline">';
+            l.activities.forEach(function(a) {
+                var ico = activityIcons[a.type] || 'ri-more-line';
+                html += '<div class="peek-tl-item">'
+                    + '<div class="peek-tl-ico"><i class="' + ico + '"></i></div>'
+                    + '<div class="peek-tl-body">'
+                    +   '<span class="badge bg-light text-dark border">' + esc(a.type) + '</span> '
+                    +   '<span class="subj">' + esc(a.subject || '') + '</span>'
+                    +   (a.body ? '<div style="color:#5e6c84;margin-top:2px;">' + esc(a.body) + '</div>' : '')
+                    +   '<div class="date">' + esc(a.date || '') + '</div>'
+                    + '</div></div>';
+            });
+            html += '</div></div>';
+        }
+
+        html += '</div>'; // /peek-main
+
+        // === SIDEBAR ===
+        html += '<div class="peek-sidebar">';
+
+        // Opiekun
+        if (l.assigned_user) {
+            html += '<h6>Opiekun</h6>';
+            html += '<div class="d-flex gap-2 align-items-center mb-2">';
+            if (l.assigned_user.avatar) {
+                html += '<img src="' + esc(l.assigned_user.avatar) + '" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">';
+            } else {
+                html += '<div style="width:32px;height:32px;border-radius:50%;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">' + esc((l.assigned_user.name || '?').charAt(0)) + '</div>';
+            }
+            html += '<div style="min-width:0;flex:1;"><div class="small fw-semibold text-truncate">' + esc(l.assigned_user.name || '') + '</div></div>';
+            html += '</div>';
+        } else {
+            html += '<h6>Opiekun</h6><div class="small text-muted mb-2">Nieprzypisany</div>';
+        }
+
+        // ADD TO CARD (Trello-style)
+        html += '<h6>Dodaj do karty</h6>';
+        html += '<div class="d-flex flex-column gap-1 mb-3">';
+        html += '<div class="label-picker-dropdown">'
+            + '<button class="btn" type="button" id="peek-labels-toggle"><i class="ri-price-tag-3-line"></i> Etykiety</button>'
+            + '<div class="label-picker-menu" id="peek-labels-menu"></div>'
+            + '</div>';
+        html += '<button class="btn" type="button" onclick="document.getElementById(\'peek-file-input\').click();"><i class="ri-attachment-2"></i> Załącznik</button>';
+        html += '</div>';
+
+        // AKCJE (Trello-style)
+        html += '<h6>Akcje</h6>';
+        html += '<div class="d-flex flex-column gap-1">';
+        html += '<a class="btn" href="' + URL_VIEW + '/' + esc(l.id) + '"><i class="ri-external-link-line"></i> Pełny widok</a>';
+        if (l.email) html += '<a class="btn" href="mailto:' + esc(l.email) + '"><i class="ri-mail-line"></i> Napisz</a>';
+        if (l.phone) html += '<a class="btn" href="tel:' + esc(l.phone) + '"><i class="ri-phone-line"></i> Zadzwoń</a>';
+        html += '</div>';
+
+        html += '</div>'; // /peek-sidebar
+
+        html += '</div>'; // /peek-container
+
+        peekBody.innerHTML = html;
+
+        // Wire up event handlers
+        wireLabelsPicker(l.id);
+        wireDropzone(l.id);
+    }
+
+    // === LABELS PICKER ===
+    var URL_LABELS_ALL = '<?= $this->Url->build(['action' => 'labelsAllJson']) ?>';
+    var URL_ASSIGN = '<?= $this->Url->build(['action' => 'assignLabels']) ?>';
+
+    function wireLabelsPicker(leadId) {
+        var toggle = document.getElementById('peek-labels-toggle');
+        var menu = document.getElementById('peek-labels-menu');
+        if (!toggle || !menu) return;
+        var loaded = false;
+        toggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (!loaded) {
+                fetch(URL_LABELS_ALL, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                    .then(function(r){ return r.json(); })
+                    .then(function(j) {
+                        if (!j.ok || !j.labels) { menu.innerHTML = '<div class="small text-muted p-2">Brak etykiet. <a href="/crm/etykiety" target="_blank">Utwórz</a></div>'; loaded = true; menu.classList.add('show'); return; }
+                        if (j.labels.length === 0) { menu.innerHTML = '<div class="small text-muted p-2">Brak etykiet. <a href="/crm/etykiety" target="_blank">Utwórz pierwszą</a></div>'; loaded = true; menu.classList.add('show'); return; }
+                        var html = '';
+                        j.labels.forEach(function(lb) {
+                            var checked = currentLabelIds.indexOf(lb.id) !== -1 ? 'checked' : '';
+                            html += '<label class="label-picker-item">'
+                                + '<input type="checkbox" value="' + esc(lb.id) + '" ' + checked + '>'
+                                + '<span class="label-swatch" style="background:' + esc(lb.color) + ';">' + esc(lb.name) + '</span>'
+                                + '</label>';
+                        });
+                        html += '<div class="mt-2 pt-2 border-top small"><a href="/crm/etykiety" target="_blank"><i class="ri-add-line"></i> Zarządzaj etykietami</a></div>';
+                        menu.innerHTML = html;
+                        // Wire checkbox change - toggle assignment
+                        menu.querySelectorAll('input[type="checkbox"]').forEach(function(chk) {
+                            chk.addEventListener('change', function() {
+                                var id = chk.value;
+                                if (chk.checked) {
+                                    if (currentLabelIds.indexOf(id) === -1) currentLabelIds.push(id);
+                                } else {
+                                    currentLabelIds = currentLabelIds.filter(function(x) { return x !== id; });
+                                }
+                                saveLabels(leadId);
+                            });
+                        });
+                        loaded = true;
+                        menu.classList.add('show');
+                    });
+            } else {
+                menu.classList.toggle('show');
+            }
+        });
+        document.addEventListener('click', function(e) {
+            if (menu.classList.contains('show') && !menu.contains(e.target) && e.target !== toggle) {
+                menu.classList.remove('show');
+            }
+        });
+    }
+
+    function saveLabels(leadId) {
+        var fd = new FormData();
+        fd.append('_csrfToken', csrf);
+        currentLabelIds.forEach(function(id) { fd.append('label_ids[]', id); });
+        fetch(URL_ASSIGN.replace(/\/$/, '') + '/' + leadId, {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+        }).then(function(r) { return r.json(); }).then(function(j) {
+            if (j.ok) {
+                // Update display: pobierz labels z menu, zbuduj badge display
+                var menu = document.getElementById('peek-labels-menu');
+                var display = document.getElementById('peek-labels-display');
+                if (!display) return;
+                var newHtml = '';
+                menu.querySelectorAll('input[type="checkbox"]:checked').forEach(function(chk) {
+                    var swatch = chk.parentElement.querySelector('.label-swatch');
+                    newHtml += '<span style="background:' + swatch.style.background + ';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + swatch.textContent + '</span>';
+                });
+                display.innerHTML = newHtml || '<span class="text-muted small">Brak etykiet</span>';
+                // Update karty w Kanban
+                var card = document.querySelector('.crm-card[data-id="' + leadId + '"]');
+                if (card) {
+                    var strip = card.querySelector('.crm-label-strip');
+                    if (strip) {
+                        var stripHtml = '';
+                        menu.querySelectorAll('input[type="checkbox"]:checked').forEach(function(chk) {
+                            var sw = chk.parentElement.querySelector('.label-swatch');
+                            stripHtml += '<span style="background:' + sw.style.background + ';color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;margin:0 0 4px 4px;display:inline-block;">' + sw.textContent + '</span>';
+                        });
+                        strip.innerHTML = stripHtml;
+                    }
+                }
+            }
+        });
+    }
+
+    // === DROPZONE UPLOAD ===
+    function wireDropzone(leadId) {
+        var dz = document.getElementById('peek-dropzone');
+        var fi = document.getElementById('peek-file-input');
+        var status = document.getElementById('peek-upload-status');
+        if (!dz || !fi) return;
+
+        dz.addEventListener('click', function() { fi.click(); });
+        dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('drag-over'); });
+        dz.addEventListener('dragleave', function() { dz.classList.remove('drag-over'); });
+        dz.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dz.classList.remove('drag-over');
+            handleFiles(leadId, e.dataTransfer.files, status);
+        });
+        fi.addEventListener('change', function() {
+            handleFiles(leadId, fi.files, status);
+        });
+    }
+
+    function handleFiles(leadId, files, status) {
+        var total = files.length;
+        var done = 0, failed = 0;
+        var list = document.getElementById('peek-attachments-list');
+
+        Array.from(files).forEach(function(file) {
+            var fd = new FormData();
+            fd.append('_csrfToken', csrf);
+            fd.append('file', file);
+
+            status.innerHTML = '<i class="ri-loader-4-line"></i> Uploaduje ' + (done + 1) + '/' + total + ': ' + esc(file.name) + '...';
+            status.style.color = '#5e6c84';
+
+            fetch('/crm/' + leadId + '/attachments/upload', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+            }).then(function(r){ return r.json(); }).then(function(j) {
+                if (j.ok && j.attachment) {
+                    done++;
+                    // Append do listy
+                    var a = j.attachment;
+                    var mm = a.mime || '';
+                    var ico = 'ri-file-line', col = '#5e6c84';
+                    if (mm.indexOf('image/') === 0) { ico = 'ri-image-line'; col = '#2563eb'; }
+                    else if (mm === 'application/pdf') { ico = 'ri-file-pdf-line'; col = '#dc2626'; }
+                    else if (mm.indexOf('spreadsheet') !== -1) { ico = 'ri-file-excel-line'; col = '#059669'; }
+                    var div = document.createElement('div');
+                    div.className = 'attach-item';
+                    div.innerHTML = '<i class="' + ico + '" style="color:' + col + ';font-size:18px;"></i>'
+                        + '<a class="filename" href="' + a.url + '" target="_blank">' + esc(a.filename) + '</a>'
+                        + '<span class="text-muted small">' + Math.round(a.size / 1024) + 'KB</span>'
+                        + '<a href="/crm/attachment-file/' + a.id + '?download=1" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Pobierz"><i class="ri-download-line"></i></a>';
+                    list.appendChild(div);
+                    status.innerHTML = '<i class="ri-check-line text-success"></i> ' + done + '/' + total + ' uploaded' + (failed ? ' (' + failed + ' bledow)' : '');
+                    if (done + failed >= total) status.style.color = '#059669';
+                } else {
+                    failed++;
+                    status.innerHTML = '<i class="ri-error-warning-line text-danger"></i> Blad: ' + esc(j.error || 'unknown') + ' (' + esc(file.name) + ')';
+                    status.style.color = '#dc2626';
+                }
+            }).catch(function(e) {
+                failed++;
+                status.innerHTML = '<i class="ri-error-warning-line text-danger"></i> Blad sieci: ' + esc(e.message);
+                status.style.color = '#dc2626';
+            });
+        });
+    }
 })();
 </script>

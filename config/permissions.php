@@ -539,7 +539,7 @@ return [
                 // FALA extras: archiwum leadow
                 'archive', 'unarchive',
                 // FALA extras: Trello-style peek modal
-                'peekJson',
+                'peekJson', 'labelsAllJson',
                 // FALA extras: zalaczniki + etykiety
                 'attachmentUpload', 'attachmentFile', 'attachmentDelete', 'assignLabels',
                 // FALA 20: AI auto-quote workflow
