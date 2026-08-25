@@ -185,10 +185,17 @@ class LeadsController extends AppController
             }
         } catch (\Throwable $e) {}
 
+        $containKanban = ['AssignedUser' => function ($q) {
+            return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
+        }];
+        // FALA extras: user labels na kartach Kanban - jesli tabela istnieje
+        try {
+            $this->fetchTable('LeadLabels');
+            $containKanban['LeadLabels'] = [];
+        } catch (\Throwable $e) {}
+
         $rows = $Leads->find()
-            ->contain(['AssignedUser' => function ($q) {
-                return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
-            }])
+            ->contain($containKanban)
             ->where($baseWhere)
             ->orderByDesc('Leads.kanban_pinned')
             ->orderByDesc('Leads.modified')
@@ -272,16 +279,23 @@ class LeadsController extends AppController
 
         try {
             $Leads = $this->fetchTable('Leads');
-            $lead = $Leads->get($id, [
-                'contain' => [
-                    'AssignedUser' => function ($q) {
-                        return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
-                    },
-                    'LeadActivities' => function ($q) {
-                        return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(1);
-                    },
-                ],
-            ]);
+            $containSpec = [
+                'AssignedUser' => function ($q) {
+                    return $q->select(['id', 'first_name', 'last_name', 'email', 'avatar']);
+                },
+                'LeadActivities' => function ($q) {
+                    return $q->orderByDesc('happened_at')->orderByDesc('created')->limit(1);
+                },
+            ];
+            // Opcjonalnie: labels + attachments jesli tabele istnieja
+            try {
+                if ($this->fetchTable('LeadLabels')) $containSpec['LeadLabels'] = [];
+            } catch (\Throwable $e) {}
+            try {
+                if ($this->fetchTable('LeadAttachments')) $containSpec['LeadAttachments'] = [];
+            } catch (\Throwable $e) {}
+
+            $lead = $Leads->get($id, ['contain' => $containSpec]);
             if ((string)$lead->company_id !== (string)$companyId) {
                 return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
             }
@@ -317,6 +331,13 @@ class LeadsController extends AppController
                     'subject' => $lastAct->subject,
                     'date' => ($lastAct->happened_at ?? $lastAct->created)?->format('d.m.Y H:i'),
                 ] : null,
+                'labels' => array_map(fn($l) => [
+                    'id' => (string)$l->id, 'name' => $l->name, 'color' => $l->color,
+                ], $lead->lead_labels ?? []),
+                'attachments' => array_map(fn($a) => [
+                    'id' => (string)$a->id, 'filename' => $a->filename, 'mime' => $a->mime,
+                    'size' => (int)$a->size, 'url' => '/' . $a->path,
+                ], $lead->lead_attachments ?? []),
             ]]);
         } catch (\Throwable $e) {
             return $json(['ok' => false, 'error' => $e->getMessage()], 500);
@@ -2832,6 +2853,187 @@ class LeadsController extends AppController
      * POST /crm/{id}/unarchive - ustawia archived_at = null
      * Zachowuje activities i wszystkie inne pola - tylko widocznosc w Kanban/default liscie.
      */
+    /**
+     * FALA extras: Upload zalacznika do leada.
+     * POST /crm/{id}/attachments/upload (multipart form: file, note?)
+     */
+    public function attachmentUpload(string $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+        $userId = $identity?->get('id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data, JSON_UNESCAPED_UNICODE));
+            return $this->response;
+        };
+
+        try {
+            $Leads = $this->fetchTable('Leads');
+            $lead = $Leads->get($id);
+            if ((string)$lead->company_id !== (string)$companyId) {
+                return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+            }
+
+            $file = $this->request->getUploadedFile('file');
+            if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+                return $json(['ok' => false, 'error' => 'brak pliku lub blad uploadu'], 400);
+            }
+            $size = $file->getSize();
+            if ($size > 20 * 1024 * 1024) {
+                return $json(['ok' => false, 'error' => 'plik za duzy (max 20MB)'], 400);
+            }
+
+            $origName = $file->getClientFilename() ?: 'plik';
+            $ext = pathinfo($origName, PATHINFO_EXTENSION);
+            $ext = preg_replace('/[^a-zA-Z0-9]/', '', $ext);
+            $ext = mb_strtolower($ext);
+            if (strlen($ext) > 10) $ext = substr($ext, 0, 10);
+
+            $uuid = \Cake\Utility\Text::uuid();
+            $relDir = 'files/lead_attachments/' . $id;
+            $absDir = WWW_ROOT . $relDir;
+            if (!is_dir($absDir)) {
+                @mkdir($absDir, 0755, true);
+            }
+            $filename = $uuid . ($ext ? '.' . $ext : '');
+            $absPath = $absDir . DIRECTORY_SEPARATOR . $filename;
+            $relPath = $relDir . '/' . $filename;
+
+            $file->moveTo($absPath);
+
+            $Att = $this->fetchTable('LeadAttachments');
+            $entity = $Att->newEntity([
+                'id' => $uuid,
+                'company_id' => $companyId,
+                'lead_id' => $id,
+                'uploaded_by_user_id' => $userId,
+                'filename' => mb_substr($origName, 0, 255),
+                'path' => $relPath,
+                'mime' => $file->getClientMediaType() ?: 'application/octet-stream',
+                'size' => (int)$size,
+                'note' => trim((string)($this->request->getData('note') ?? '')) ?: null,
+            ]);
+            if (!$Att->save($entity)) {
+                @unlink($absPath);
+                return $json(['ok' => false, 'error' => 'blad zapisu', 'details' => $entity->getErrors()], 500);
+            }
+
+            // Log activity - best effort
+            try {
+                $this->fetchTable('LeadActivities')->logSystem(
+                    (string)$companyId, (string)$id, 'file',
+                    __('Załącznik: {0}', $entity->filename),
+                    $entity->note,
+                    ['attachment_id' => $entity->id, 'size' => $entity->size, 'mime' => $entity->mime],
+                    $userId
+                );
+            } catch (\Throwable $e) {}
+
+            return $json([
+                'ok' => true,
+                'attachment' => [
+                    'id' => $entity->id,
+                    'filename' => $entity->filename,
+                    'size' => $entity->size,
+                    'mime' => $entity->mime,
+                    'url' => '/' . $entity->path,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return $json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * FALA extras: Download zalacznika.
+     * GET /crm/attachment-file/{attachmentId}?download=1
+     */
+    public function attachmentFile(string $attachmentId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Att = $this->fetchTable('LeadAttachments');
+        $att = $Att->get($attachmentId);
+        if ((string)$att->company_id !== (string)$companyId) throw new NotFoundException();
+
+        $absPath = WWW_ROOT . $att->path;
+        if (!is_file($absPath)) throw new NotFoundException('plik nie istnieje na dysku');
+
+        $disposition = $this->request->getQuery('download') === '1' ? 'attachment' : 'inline';
+        return $this->response
+            ->withType($att->mime)
+            ->withHeader('Content-Disposition', $disposition . '; filename="' . str_replace('"', '', $att->filename) . '"')
+            ->withHeader('Content-Length', (string)filesize($absPath))
+            ->withStringBody(file_get_contents($absPath));
+    }
+
+    /**
+     * FALA extras: Usun zalacznik.
+     */
+    public function attachmentDelete(string $attachmentId): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $Att = $this->fetchTable('LeadAttachments');
+        $att = $Att->get($attachmentId);
+        if ((string)$att->company_id !== (string)$companyId) throw new NotFoundException();
+
+        $leadId = $att->lead_id;
+        $absPath = WWW_ROOT . $att->path;
+        if (is_file($absPath)) @unlink($absPath);
+        $Att->delete($att);
+        $this->Flash->success(__('Załącznik usunięty.'));
+        $this->redirect($this->request->referer() ?: ['action' => 'view', $leadId]);
+        return $this->response;
+    }
+
+    /**
+     * FALA extras: Przypisz/zamien etykiety dla leada (multi-assign).
+     * POST /crm/{id}/labels z body: label_ids[] (array UUID)
+     */
+    public function assignLabels(string $id): \Cake\Http\Response
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity = $this->request->getAttribute('identity');
+        $companyId = $identity?->get('company_id');
+
+        $json = function (array $data, int $code = 200) {
+            $this->response = $this->response->withType('application/json')->withStatus($code);
+            $this->response = $this->response->withStringBody(json_encode($data));
+            return $this->response;
+        };
+
+        $Leads = $this->fetchTable('Leads');
+        $lead = $Leads->get($id, ['contain' => ['LeadLabels']]);
+        if ((string)$lead->company_id !== (string)$companyId) {
+            return $json(['ok' => false, 'error' => 'brak dostepu'], 403);
+        }
+        $labelIds = (array)($this->request->getData('label_ids') ?? []);
+        $labelIds = array_values(array_unique(array_filter($labelIds, 'is_string')));
+
+        // Zbuduj entities z tych ID (belongsToMany replace strategy)
+        $LeadLabels = $this->fetchTable('LeadLabels');
+        $labels = $labelIds ? $LeadLabels->find()
+            ->where(['company_id' => $companyId, 'id IN' => $labelIds])
+            ->all()->toArray() : [];
+
+        $lead = $Leads->patchEntity($lead, ['lead_labels' => $labels], ['associated' => ['LeadLabels']]);
+        if ($Leads->save($lead, ['associated' => ['LeadLabels']])) {
+            return $json(['ok' => true, 'count' => count($labels)]);
+        }
+        return $json(['ok' => false, 'error' => 'save fail'], 500);
+    }
+
     public function archive(string $id): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);

@@ -1638,6 +1638,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-price-tag-3-line me-1"></i>' . __('Etykiety'),
+                                        ['plugin' => false, 'controller' => 'LeadLabels', 'action' => 'index'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leadlabels', 'index')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-upload-cloud-2-line me-1"></i>' . __('Import CSV'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'importCsv'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'importCsv')]

@@ -128,6 +128,17 @@ class LeadsTable extends Table
             'dependent'  => true,
             'cascadeCallbacks' => true,
         ]);
+        // FALA extras: zalaczniki + etykiety
+        $this->hasMany('LeadAttachments', [
+            'foreignKey' => 'lead_id',
+            'sort'       => ['LeadAttachments.created' => 'DESC'],
+            'dependent'  => true,
+        ]);
+        $this->belongsToMany('LeadLabels', [
+            'joinTable' => 'leads_lead_labels',
+            'foreignKey' => 'lead_id',
+            'targetForeignKey' => 'label_id',
+        ]);
     }
 
     public function validationDefault(Validator $validator): Validator

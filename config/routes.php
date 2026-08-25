@@ -187,6 +187,25 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->post('/crm/{id}/unarchive', ['controller' => 'Leads', 'action' => 'unarchive'])
             ->setPass(['id']);
+        // FALA extras: zalaczniki + etykiety
+        $builder->post('/crm/{id}/attachments/upload', ['controller' => 'Leads', 'action' => 'attachmentUpload'])
+            ->setPass(['id']);
+        $builder->get('/crm/attachment-file/{attachmentId}', ['controller' => 'Leads', 'action' => 'attachmentFile'])
+            ->setPass(['attachmentId']);
+        $builder->post('/crm/attachment-file/{attachmentId}/delete', ['controller' => 'Leads', 'action' => 'attachmentDelete'])
+            ->setPass(['attachmentId']);
+        $builder->post('/crm/{id}/labels', ['controller' => 'Leads', 'action' => 'assignLabels'])
+            ->setPass(['id']);
+        // Etykiety CRUD
+        $builder->get('/crm/etykiety',                  ['controller' => 'LeadLabels', 'action' => 'index']);
+        $builder->get('/crm/etykiety/dodaj',            ['controller' => 'LeadLabels', 'action' => 'add']);
+        $builder->post('/crm/etykiety/dodaj',           ['controller' => 'LeadLabels', 'action' => 'add']);
+        $builder->get('/crm/etykiety/edytuj/{id}',      ['controller' => 'LeadLabels', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/etykiety/edytuj/{id}',     ['controller' => 'LeadLabels', 'action' => 'edit'])
+            ->setPass(['id']);
+        $builder->post('/crm/etykiety/usun/{id}',       ['controller' => 'LeadLabels', 'action' => 'delete'])
+            ->setPass(['id']);
         // FALA 22: Executive dashboard
         $builder->get('/crm/manager', ['controller' => 'Leads', 'action' => 'managerDashboard']);
         // FALA 20: AI auto-quote workflow

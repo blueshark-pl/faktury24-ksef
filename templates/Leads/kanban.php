@@ -195,7 +195,19 @@ $myUserId = $identity?->get('id');
             ?>
             <div class="crm-card" data-id="<?= h($lead->id) ?>"
                  onclick="if(!event.target.closest('a,button')) window.openLeadPeek('<?= h($lead->id) ?>');">
-                <?php if (!empty($labels)): ?>
+                <?php
+                // FALA extras: user labels z lead_labels overrideuje auto-labels systemowe
+                $userLabels = $lead->lead_labels ?? [];
+                ?>
+                <?php if (!empty($userLabels)): ?>
+                <div class="crm-label-strip" style="gap: 4px; padding: 0 0 6px; margin: -8px -12px 0;">
+                    <?php foreach ($userLabels as $ul): ?>
+                        <span style="background: <?= h($ul->color) ?>; color: #fff; font-size: 10px; font-weight: 700;
+                                     padding: 2px 8px; border-radius: 3px; margin: 0 0 4px 4px; display: inline-block;"
+                              title="<?= h($ul->name) ?>"><?= h($ul->name) ?></span>
+                    <?php endforeach; ?>
+                </div>
+                <?php elseif (!empty($labels)): ?>
                 <div class="crm-label-strip">
                     <?php foreach ($labels as $lbl): ?>
                         <span class="crm-label" style="background: <?= $lbl['color'] ?>;"></span>
@@ -429,6 +441,39 @@ $myUserId = $identity?->get('id');
                     html += '<div class="mb-3 p-3" style="background:#fffae6;border-radius:6px;border-left:3px solid #f59e0b;">';
                     html += '<h6 class="fw-bold mb-2"><i class="ri-sticky-note-line"></i> Notatka</h6>';
                     html += '<div class="small" style="white-space:pre-wrap;">' + esc(l.note) + '</div>';
+                    html += '</div>';
+                }
+
+                // Etykiety
+                if (l.labels && l.labels.length) {
+                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-price-tag-3-line"></i> Etykiety</h6>';
+                    html += '<div class="d-flex flex-wrap gap-2">';
+                    l.labels.forEach(function(lb) {
+                        html += '<span style="background:' + esc(lb.color) + ';color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + esc(lb.name) + '</span>';
+                    });
+                    html += '</div></div>';
+                }
+
+                // Załączniki
+                if (l.attachments && l.attachments.length) {
+                    html += '<div class="mb-3 p-3" style="background:#fff;border-radius:6px;">';
+                    html += '<h6 class="fw-bold mb-2"><i class="ri-attachment-2"></i> Załączniki (' + l.attachments.length + ')</h6>';
+                    l.attachments.forEach(function(a) {
+                        var mm = a.mime || '';
+                        var ico = 'ri-file-line';
+                        var col = '#5e6c84';
+                        if (mm.indexOf('image/') === 0) { ico = 'ri-image-line'; col = '#2563eb'; }
+                        else if (mm === 'application/pdf') { ico = 'ri-file-pdf-line'; col = '#dc2626'; }
+                        else if (mm.indexOf('spreadsheet') !== -1 || mm.indexOf('excel') !== -1) { ico = 'ri-file-excel-line'; col = '#059669'; }
+                        else if (mm.indexOf('word') !== -1) { ico = 'ri-file-word-line'; col = '#2563eb'; }
+                        html += '<div class="d-flex align-items-center gap-2 py-1">';
+                        html += '<i class="' + ico + '" style="color:' + col + ';font-size:16px;"></i>';
+                        html += '<a href="' + esc(a.url) + '" target="_blank" class="small text-decoration-none flex-grow-1">' + esc(a.filename) + '</a>';
+                        html += '<span class="small text-muted">' + Math.round(a.size / 1024) + 'KB</span>';
+                        html += '<a href="/crm/attachment-file/' + esc(a.id) + '?download=1" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Pobierz"><i class="ri-download-line"></i></a>';
+                        html += '</div>';
+                    });
                     html += '</div>';
                 }
 

@@ -501,6 +501,12 @@ return [
             'controller' => 'Leads',
             'action'     => ['publicForm', 'publicFormThanks'],
         ],
+        // CRM Etykiety CRUD - te same role co Leads
+        [
+            'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
+            'controller' => 'LeadLabels',
+            'action' => ['index', 'add', 'edit', 'delete'],
+        ],
         // CRM Leady - dostep dla wszystkich rol operacyjnych/sprzedazowych
         [
             'role' => ['asystent_spedytora', 'mlodszy_spedytor', 'spedycja_manager', 'sales_manager', 'user'],
@@ -534,6 +540,8 @@ return [
                 'archive', 'unarchive',
                 // FALA extras: Trello-style peek modal
                 'peekJson',
+                // FALA extras: zalaczniki + etykiety
+                'attachmentUpload', 'attachmentFile', 'attachmentDelete', 'assignLabels',
                 // FALA 20: AI auto-quote workflow
                 'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
                 // FALA 22: Executive dashboard
