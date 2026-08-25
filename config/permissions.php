@@ -549,7 +549,7 @@ return [
                 // FALA 15: quote_request -> zlecenia
                 'createOrdersFromQuote',
                 // FALA 18: kolejka pilnych maili sklasyfikowanych przez AI
-                'urgentEmails',
+                'urgentEmails', 'myMentions',
                 // FALA 19: realny reply przez Gmail API
                 'replyByGmail',
                 // FALA 23: download / inline preview zalacznikow

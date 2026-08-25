@@ -332,6 +332,53 @@ class LeadsController extends AppController
      * POST /crm/labels/create-inline - body: name, color
      * Zwraca JSON z nowa etykieta - klient auto-assign do leada.
      */
+    /**
+     * FALA extras: Kolejka @mentions dla zalogowanego usera.
+     * GET /crm/wspomniano-mnie
+     */
+    public function myMentions(): void
+    {
+        $this->request->allowMethod(['get']);
+        $identity = $this->request->getAttribute('identity');
+        $userId = $identity?->get('id');
+        $companyId = $identity?->get('company_id');
+
+        try {
+            $conn = \Cake\Datasource\ConnectionManager::get('default');
+            if (!in_array('lead_activity_mentions', $conn->getSchemaCollection()->listTables(), true)) {
+                $this->Flash->error(__('Wspomnienia wymagaja migracji CreateLeadActivityMentions.'));
+                $this->redirect(['controller' => 'CrmAdmin', 'action' => 'tools']);
+                return;
+            }
+        } catch (\Throwable $e) {}
+
+        $M = $this->fetchTable('LeadActivityMentions');
+        $showRead = $this->request->getQuery('all') === '1';
+        $where = ['mentioned_user_id' => $userId, 'company_id' => $companyId];
+        if (!$showRead) $where['seen_at IS'] = null;
+
+        $mentions = $M->find()
+            ->where($where)
+            ->contain([
+                'LeadActivities',
+                'Leads' => function ($q) { return $q->select(['id', 'company_name', 'stage', 'nip']); },
+                'ByUser' => function ($q) { return $q->select(['id', 'first_name', 'last_name', 'avatar']); },
+            ])
+            ->orderByDesc('created')
+            ->limit(200)
+            ->all()->toArray();
+
+        // Auto mark as seen (opcjonalnie na click - tu na render, prostsze)
+        if (!$showRead && !empty($mentions)) {
+            $ids = array_map(fn($m) => (string)$m->id, $mentions);
+            try {
+                $M->updateAll(['seen_at' => new \Cake\I18n\DateTime()], ['id IN' => $ids]);
+            } catch (\Throwable $e) {}
+        }
+
+        $this->set(compact('mentions', 'showRead'));
+    }
+
     public function labelCreateInlineJson(): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);

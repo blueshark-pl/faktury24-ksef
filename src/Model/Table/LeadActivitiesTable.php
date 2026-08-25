@@ -74,6 +74,21 @@ class LeadActivitiesTable extends Table
                 // Validation errors nie throwaja - loguj recznie zeby command nie zwracal false success
                 Log::warning('LeadActivities::logSystem save failed (type=' . $type . '): '
                     . json_encode($entity->getErrors(), JSON_UNESCAPED_UNICODE));
+                return;
+            }
+
+            // FALA extras: parse @mentions z subject+body
+            try {
+                $conn = \Cake\Datasource\ConnectionManager::get('default');
+                if (in_array('lead_activity_mentions', $conn->getSchemaCollection()->listTables(), true)) {
+                    $Mentions = \Cake\ORM\TableRegistry::getTableLocator()->get('LeadActivityMentions');
+                    $text = trim(($subject ?? '') . ' ' . ($body ?? ''));
+                    if ($text !== '') {
+                        $Mentions->parseAndCreate($companyId, (string)$entity->id, $leadId, $text, $userId);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LeadActivities mention parse failed: ' . $e->getMessage());
             }
         } catch (\Throwable $e) {
             Log::warning('LeadActivities::logSystem exception (type=' . $type . '): ' . $e->getMessage());

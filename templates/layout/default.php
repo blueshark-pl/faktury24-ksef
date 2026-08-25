@@ -1636,6 +1636,31 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ) ?>
                                 </li>
                                 <li class="slide">
+                                    <?php
+                                    // FALA extras: badge z licznikiem unread mentions
+                                    $__unreadMentions = 0;
+                                    try {
+                                        $conn2 = \Cake\Datasource\ConnectionManager::get('default');
+                                        if (in_array('lead_activity_mentions', $conn2->getSchemaCollection()->listTables(), true)) {
+                                            $__uid = $identity?->get('id');
+                                            if ($__uid) {
+                                                $__unreadMentions = \Cake\ORM\TableRegistry::getTableLocator()
+                                                    ->get('LeadActivityMentions')->unreadCountFor((string)$__uid);
+                                            }
+                                        }
+                                    } catch (\Throwable $e) {}
+                                    $label = '<i class="ri-at-line me-1 text-primary"></i>' . __('Wspomniano mnie');
+                                    if ($__unreadMentions > 0) {
+                                        $label .= ' <span class="badge bg-primary ms-1">' . (int)$__unreadMentions . '</span>';
+                                    }
+                                    ?>
+                                    <?= $this->Html->link(
+                                        $label,
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'myMentions'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'myMentions')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
                                     <?= $this->Html->link(
                                         '<i class="ri-bar-chart-box-line me-1 text-primary"></i>' . __('Executive Dashboard'),
                                         ['plugin' => false, 'controller' => 'Leads', 'action' => 'managerDashboard'],
