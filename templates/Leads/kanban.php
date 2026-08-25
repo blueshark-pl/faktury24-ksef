@@ -355,26 +355,26 @@ $myUserId = $identity?->get('id');
 </style>
 
 <script>
-// FALA extras: auto-collapse sidebar na starcie Kanban (jak po kliku burger).
-// Kliknieta .sidemenu-toggle wywoluje istniejacy toggleSidemenu() z defaultmenu.min.js.
-// Warunek: tylko na desktop (mobile juz ma sidebar domyslnie zwiniety).
+// FALA extras: auto-collapse sidebar na starcie Kanban.
+// Uzywam window.load (po pelnym zaladowaniu vs DOMContentLoaded) + fallback timing.
+// Wyszla wczesniejsza wersja z sessionStorage flag - user zawsze chce zwiniete.
 (function() {
-    if (sessionStorage.getItem('crmKanbanSidebarAuto') === 'done') return;
-    if (window.innerWidth < 992) return;
-    document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() {
+    if (window.innerWidth < 992) return; // mobile juz zwiniety default
+    function autoCollapse() {
+        var html = document.documentElement;
+        // Jesli sidebar aktualnie widoczny (bez close-attr lub attr rozny od close-*) - kliknij toggle
+        var toggled = html.getAttribute('data-toggled') || '';
+        var isOpen = toggled.indexOf('close') === -1;
+        if (isOpen) {
             var btn = document.querySelector('.sidemenu-toggle');
-            if (btn) {
-                btn.click();
-                sessionStorage.setItem('crmKanbanSidebarAuto', 'done');
-            }
-        }, 100);
-    });
-    // Reset flagi gdy user wychodzi z Kanban - zeby przy kolejnym wejsciu tez sie zwinelo
-    window.addEventListener('beforeunload', function() {
-        var stillOnKanban = location.pathname.indexOf('/crm/kanban') === 0;
-        if (!stillOnKanban) sessionStorage.removeItem('crmKanbanSidebarAuto');
-    });
+            if (btn) btn.click();
+        }
+    }
+    if (document.readyState === 'complete') {
+        setTimeout(autoCollapse, 50);
+    } else {
+        window.addEventListener('load', function() { setTimeout(autoCollapse, 50); });
+    }
 })();
 </script>
 
