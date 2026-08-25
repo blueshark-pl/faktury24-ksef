@@ -281,24 +281,29 @@ $stageBg = [
                                 <?= h($stageLabels[$lead->stage] ?? $lead->stage) ?>
                             </span>
                         </td>
-                        <td>
+                        <td class="text-center">
                             <?php if ($assignedName):
                                 $avatarUrl = trim((string)($lead->assigned_user->avatar ?? ''));
                                 $avatarColors = ['#7c3aed', '#059669', '#dc2626', '#ea580c', '#2563eb', '#b45309', '#db2777', '#0891b2'];
                                 $avatarBg = $avatarColors[crc32((string)($lead->assigned_user->email ?? $lead->assigned_user->id)) % count($avatarColors)];
+                                $tooltip = h($assignedName) . ($lead->assigned_user->email ? ' &lt;' . h($lead->assigned_user->email) . '&gt;' : '');
                             ?>
                                 <?php if ($avatarUrl !== ''): ?>
                                     <img src="<?= h($avatarUrl) ?>" alt="<?= h($assignedName) ?>"
                                          class="crm-avatar" style="object-fit: cover;"
-                                         title="<?= h($assignedName) ?>"
+                                         data-bs-toggle="tooltip" data-bs-placement="left" data-bs-html="true"
+                                         title="<?= $tooltip ?>"
                                          onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';">
-                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>; display: none;" title="<?= h($assignedName) ?>"><?= h($initials) ?></span>
+                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>; display: none;"
+                                          data-bs-toggle="tooltip" data-bs-placement="left" data-bs-html="true"
+                                          title="<?= $tooltip ?>"><?= h($initials) ?></span>
                                 <?php else: ?>
-                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>;" title="<?= h($assignedName) ?>"><?= h($initials) ?></span>
+                                    <span class="crm-avatar" style="background: <?= $avatarBg ?>;"
+                                          data-bs-toggle="tooltip" data-bs-placement="left" data-bs-html="true"
+                                          title="<?= $tooltip ?>"><?= h($initials) ?></span>
                                 <?php endif; ?>
-                                <span class="small"><?= h($assignedName) ?></span>
                             <?php else: ?>
-                                <span class="text-muted small">—</span>
+                                <span class="text-muted small" title="<?= __('Nieprzypisany') ?>">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="text-end fw-semibold">
@@ -478,5 +483,12 @@ $stageBg = [
         });
     }
     renderViews();
+
+    // Init Bootstrap tooltips (kolumna Opiekun - avatar hover)
+    if (window.bootstrap && bootstrap.Tooltip) {
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+            new bootstrap.Tooltip(el);
+        });
+    }
 })();
 </script>
