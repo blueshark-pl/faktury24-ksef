@@ -1581,20 +1581,16 @@ $csrf = (string)$this->request->getAttribute('csrfToken');
 
 <script>
 (function () {
-    // ─── Embed mode: ukryj wszystko poza mapą ──────────────────────
+    // ─── Embed mode: ukryj chrome (sidebar/header/hero), pokaz wszystkie panele wyceny ──
     if (new URLSearchParams(window.location.search).get('embed') === '1') {
         document.body.classList.add('rp-embed-mode');
         var style = document.createElement('style');
         style.textContent = '.rp-embed-mode .rp-hero,'
             + '.rp-embed-mode .app-sidebar,'
-            + '.rp-embed-mode .app-header,'
-            + '.rp-embed-mode .col-lg-4.no-print,'
-            + '.rp-embed-mode #alternatives-card,'
-            + '.rp-embed-mode #legs-card,'
-            + '.rp-embed-mode #directions-card { display: none !important; }'
-            + '.rp-embed-mode .row.g-3 > .col-lg-8 { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }'
-            + '.rp-embed-mode #map { height: calc(100vh - 40px) !important; }'
-            + '.rp-embed-mode .main-content,.rp-embed-mode .page,.rp-embed-mode body { padding: 0 !important; margin: 0 !important; background: white !important; }';
+            + '.rp-embed-mode .app-header { display: none !important; }'
+            // Panele wyceny/kosztow/legs/alternatives ZOSTAJA widoczne (były ukryte -> user prosi je widziec)
+            + '.rp-embed-mode #map { height: 55vh !important; min-height: 400px; }'
+            + '.rp-embed-mode .main-content,.rp-embed-mode .page,.rp-embed-mode body { padding: 12px !important; margin: 0 !important; background: #f8f9fa !important; }';
         document.head.appendChild(style);
     }
 
