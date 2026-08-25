@@ -284,27 +284,21 @@ $myUserId = $identity?->get('id');
     <?php endforeach; ?>
 </div>
 
-<!-- Trello-style Lead Peek Modal (FULL DETAIL) -->
+<!-- Lead View Modal (iframe /crm/view/{id}?embed=1) -->
 <div class="modal fade" id="leadPeekModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content" style="background: #f4f5f7;">
-            <div class="modal-header" id="peek-header" style="background: #fff; border-bottom: 1px solid #dfe1e6;">
-                <div class="flex-grow-1">
-                    <div class="small text-muted" id="peek-stage-label" style="text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; font-size: 11px;"></div>
-                    <h5 class="modal-title mb-0 mt-1" id="peek-title" style="color: #172b4d;"></h5>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
-            </div>
-            <div class="modal-body p-0" id="peek-body">
-                <div class="text-center py-5">
-                    <i class="ri-loader-4-line" style="font-size: 32px; color: #5e6c84; animation: spin 1s linear infinite;"></i>
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl" style="max-width: 96%;">
+        <div class="modal-content" style="height: 94vh;">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="peek-title"><i class="ri-user-search-line"></i> <?= __('Lead') ?></h5>
+                <div>
+                    <a href="#" id="peek-view-full" class="btn btn-sm btn-outline-primary" target="_blank">
+                        <i class="ri-external-link-line"></i> <?= __('Otwórz pełny') ?>
+                    </a>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
                 </div>
             </div>
-            <div class="modal-footer" style="background: #fff; border-top: 1px solid #dfe1e6;">
-                <a href="#" id="peek-view-full" class="btn btn-sm btn-outline-primary" target="_blank">
-                    <i class="ri-external-link-line"></i> <?= __('Pełny widok') ?>
-                </a>
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal"><?= __('Zamknij') ?></button>
+            <div class="modal-body p-0" style="overflow: hidden;">
+                <iframe id="peek-iframe" src="about:blank" style="width: 100%; height: 100%; border: none;"></iframe>
             </div>
         </div>
     </div>
@@ -461,24 +455,17 @@ $myUserId = $identity?->get('id');
 
     window.openLeadPeek = function(leadId) {
         currentLeadId = leadId;
-        peekTitle.textContent = '';
-        peekStageLabel.textContent = '';
-        peekBody.innerHTML = '<div class="text-center py-5"><i class="ri-loader-4-line" style="font-size:32px;color:#5e6c84;animation:spin 1s linear infinite;"></i></div>';
+        // Iframe /crm/view/{id}?embed=1 - pełny widok bez duplikacji kodu
         peekViewFull.href = URL_VIEW + '/' + leadId;
+        var iframe = document.getElementById('peek-iframe');
+        iframe.src = URL_VIEW + '/' + leadId + '?embed=1';
+        // Znajdz nazwe firmy z klikniej karty dla title
+        var card = document.querySelector('.crm-card[data-id="' + leadId + '"]');
+        if (card) {
+            var titleEl = card.querySelector('.crm-card-title');
+            if (titleEl) peekTitle.innerHTML = '<i class="ri-user-search-line"></i> ' + esc(titleEl.textContent.trim());
+        }
         peekModal.show();
-
-        fetch(URL_PEEK + '/' + leadId, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-            .then(function(r) { return r.json(); })
-            .then(function(j) {
-                if (!j.ok) {
-                    peekBody.innerHTML = '<div class="alert alert-danger m-3">' + esc(j.error || 'Blad') + '</div>';
-                    return;
-                }
-                renderPeek(j.lead);
-            })
-            .catch(function(e) {
-                peekBody.innerHTML = '<div class="alert alert-danger m-3">Blad sieci: ' + esc(e.message) + '</div>';
-            });
     };
 
     function renderPeek(l) {

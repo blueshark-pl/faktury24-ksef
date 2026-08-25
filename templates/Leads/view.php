@@ -4,6 +4,21 @@
  * @var \App\Model\Entity\Lead $lead
  */
 $this->assign('title', __('Lead: ') . $lead->company_name);
+$isEmbed = $this->request->getQuery('embed') === '1';
+?>
+<?php if ($isEmbed): ?>
+<style>
+/* Embed mode - ukryj chrome dla iframe w modal Kanban */
+.app-sidebar, .app-header, .app-content > .page-header, footer.footer,
+.app-content > .breadcrumb, nav[aria-label="breadcrumb"] { display: none !important; }
+.main-content, .app-content, .page { margin: 0 !important; padding: 8px !important; }
+body { background: #fff !important; }
+.rp-hero { display: none !important; }
+</style>
+<?php endif; ?>
+<?php
+// Reset $this->assign() dla nastepnego layout call
+$this->assign('title', __('Lead: ') . $lead->company_name);
 
 $stageLabels = [
     'new' => __('Nowy lead'), 'contact' => __('Kontakt'), 'inquiry' => __('Zapytanie'),
