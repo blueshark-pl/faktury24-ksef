@@ -635,7 +635,7 @@ $myUserId = $identity?->get('id');
 
     // === LABELS PICKER ===
     var URL_LABELS_ALL = '<?= $this->Url->build(['action' => 'labelsAllJson']) ?>';
-    var URL_ASSIGN = '<?= $this->Url->build(['action' => 'assignLabels']) ?>';
+    var URL_ASSIGN_TPL = '/crm/__ID__/labels';
 
     function wireLabelsPicker(leadId) {
         var toggle = document.getElementById('peek-labels-toggle');
@@ -690,7 +690,7 @@ $myUserId = $identity?->get('id');
         var fd = new FormData();
         fd.append('_csrfToken', csrf);
         currentLabelIds.forEach(function(id) { fd.append('label_ids[]', id); });
-        fetch(URL_ASSIGN.replace(/\/$/, '') + '/' + leadId, {
+        fetch(URL_ASSIGN_TPL.replace('__ID__', encodeURIComponent(leadId)), {
             method: 'POST', body: fd, credentials: 'same-origin',
             headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
         }).then(function(r) { return r.json(); }).then(function(j) {

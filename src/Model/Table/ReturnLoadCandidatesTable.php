@@ -75,4 +75,94 @@ class ReturnLoadCandidatesTable extends Table
         }
         return round(min(100.0, $score), 2);
     }
+
+    /**
+     * FALA extras: Backhaul matching dla speed_order (nie plan).
+     * Dla zlecenia A → B szuka kandydatow na powrot z regionu B (unload)
+     * do dowolnego kraju/miasta, w oknie czasowym +6h .. +5 dni po delivery.
+     *
+     * @param string $companyId
+     * @param string $companyNipDigits NIP wlasnej firmy (do speed_orders.company_nip)
+     * @param object $sourceOrder speed_order (musi miec unload_country/city + date_delivery)
+     * @param float $maxDeadheadKm max odleglosc od unload (bez GPS = fallback nazwa miasta LIKE)
+     * @param int $maxCandidates limit wynikow (default 5)
+     * @return array {order, deadhead_km, gap_hours, score, reason}
+     */
+    public function findBackhaulForOrder(string $companyId, string $companyNipDigits, $sourceOrder, float $maxDeadheadKm = 200, int $maxCandidates = 5): array
+    {
+        $endCountry = strtoupper((string)($sourceOrder->unload_country ?? ''));
+        $endCity = mb_strtolower(trim((string)($sourceOrder->place_to_name ?? $sourceOrder->unload_city ?? '')));
+        $endTime = $sourceOrder->date_delivery;
+        if (!$endCountry && !$endCity) return [];
+
+        $endTimeImm = $endTime instanceof \DateTimeInterface
+            ? new \DateTimeImmutable($endTime->format('Y-m-d H:i:s'))
+            : new \DateTimeImmutable('+1 day');
+        $windowStart = $endTimeImm->modify('+6 hours'); // kierowca musi wyladowac + odpoczac
+        $windowEnd   = $endTimeImm->modify('+5 days');
+
+        $SO = \Cake\ORM\TableRegistry::getTableLocator()->get('SpeedOrders');
+        $companyNipList = [$companyNipDigits, 'PL' . $companyNipDigits];
+
+        // Szukaj OTWARTYCH zlecen (nie zafakturowane) z zaladunkiem w oknie + z pobliskiej lokalizacji
+        $whereGroup = ['SpeedOrders.company_nip IN' => $companyNipList,
+            'SpeedOrders.invoice_id IS' => null,
+            'SpeedOrders.id !=' => (int)$sourceOrder->id,
+            'SpeedOrders.date_load >=' => $windowStart->format('Y-m-d H:i:s'),
+            'SpeedOrders.date_load <=' => $windowEnd->format('Y-m-d H:i:s'),
+        ];
+
+        // Match: ten sam kraj zaladunku co unload zrodla LUB nazwa miasta LIKE
+        $orGroup = [];
+        if ($endCountry) {
+            $orGroup[] = ['SpeedOrders.load_country' => $endCountry];
+        }
+        if ($endCity && strlen($endCity) >= 3) {
+            $orGroup[] = ['LOWER(SpeedOrders.place_from_name) LIKE' => '%' . $endCity . '%'];
+        }
+        if (empty($orGroup)) return [];
+
+        $orders = $SO->find()
+            ->where($whereGroup)->where(['OR' => $orGroup])
+            ->select(['id', 'symbol', 'title1', 'place_from_name', 'place_to_name',
+                'load_country', 'unload_country', 'date_load', 'date_delivery',
+                'currency', 'netto', 'buyer_nip'])
+            ->orderByAsc('date_load')
+            ->limit(50)
+            ->all()->toArray();
+
+        $out = [];
+        foreach ($orders as $o) {
+            $matchesCity = $endCity && str_contains(mb_strtolower((string)$o->place_from_name), $endCity);
+            $sameCountry = $endCountry && strtoupper((string)$o->load_country) === $endCountry;
+            $deadhead = $matchesCity ? 0.0 : ($sameCountry ? 100.0 : 300.0);
+            if ($deadhead > $maxDeadheadKm && !$matchesCity) continue;
+
+            $loadTime = $o->date_load instanceof \DateTimeInterface
+                ? new \DateTimeImmutable($o->date_load->format('Y-m-d H:i:s'))
+                : new \DateTimeImmutable((string)$o->date_load);
+            $gapH = abs(($loadTime->getTimestamp() - $endTimeImm->getTimestamp()) / 3600);
+
+            $score = self::calcMatchScore($deadhead, $gapH, $o->netto ? (float)$o->netto : null);
+
+            $reasons = [];
+            if ($matchesCity) $reasons[] = 'to samo miasto zaladunku';
+            elseif ($sameCountry) $reasons[] = "kraj {$endCountry}";
+            $reasons[] = sprintf('deadhead ~%d km', (int)$deadhead);
+            $reasons[] = sprintf('gap %.0fh', $gapH);
+            if ($o->netto > 0) $reasons[] = sprintf('%s %s', number_format((float)$o->netto, 0, ',', ' '), $o->currency);
+
+            $out[] = [
+                'order' => $o,
+                'deadhead_km' => $deadhead,
+                'gap_hours' => round($gapH, 1),
+                'score' => $score,
+                'reason' => implode(' · ', $reasons),
+            ];
+        }
+
+        // Sortuj po score DESC
+        usort($out, fn($a, $b) => $b['score'] <=> $a['score']);
+        return array_slice($out, 0, $maxCandidates);
+    }
 }

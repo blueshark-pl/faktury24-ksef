@@ -354,8 +354,11 @@ class LeadsController extends AppController
 
         $M = $this->fetchTable('LeadActivityMentions');
         $showRead = $this->request->getQuery('all') === '1';
-        $where = ['mentioned_user_id' => $userId, 'company_id' => $companyId];
-        if (!$showRead) $where['seen_at IS'] = null;
+        $where = [
+            'LeadActivityMentions.mentioned_user_id' => $userId,
+            'LeadActivityMentions.company_id' => $companyId,
+        ];
+        if (!$showRead) $where['LeadActivityMentions.seen_at IS'] = null;
 
         $mentions = $M->find()
             ->where($where)
@@ -364,7 +367,7 @@ class LeadsController extends AppController
                 'Leads' => function ($q) { return $q->select(['id', 'company_name', 'stage', 'nip']); },
                 'ByUser' => function ($q) { return $q->select(['id', 'first_name', 'last_name', 'avatar']); },
             ])
-            ->orderByDesc('created')
+            ->orderByDesc('LeadActivityMentions.created')
             ->limit(200)
             ->all()->toArray();
 
