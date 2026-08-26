@@ -74,6 +74,34 @@ specyficzne nazwy: `allocated_amount`, `value_date`, `party_name` itp.
    otwierania każdej migracji. To zapobiega błędom typu `$alloc->amount` zamiast
    `$alloc->allocated_amount`.
 
+### 4b. Zmiany w CRM → aktualizuj FAQ
+Każda zmiana funkcjonalna w module CRM (nowy endpoint, nowe pole, nowa akcja UI,
+nowy cron, nowa integracja, zmiana zachowania istniejącej funkcji) **musi być
+odzwierciedlona w** [templates/Leads/faq.php](templates/Leads/faq.php).
+
+**FAQ jest publiczną dokumentacją modułu dla użytkownika końcowego** —
+dostępna pod `/crm/pomoc` (link w sidebarze pod „Nowy lead"). Jeśli funkcja
+istnieje w kodzie ale nie ma jej w FAQ, user nie wie że istnieje.
+
+**Workflow:**
+1. Po zaimplementowaniu zmiany w kontrolerze/widoku CRM → otwórz `templates/Leads/faq.php`
+2. Znajdź właściwą sekcję (jedna z 7 grup: Podstawy / Dashboardy / Komunikacja /
+   Automatyzacja i AI / Integracje / Narzędzia / Crony) LUB dopisz nowy moduł do tablicy `$modules`
+3. Każda karta ma strukturę: `id / icon / color / title / url / desc / features[] / howto`
+4. Zaktualizuj również sekcję Changelog w CLAUDE.md (standardowo)
+
+**Wyjątki gdzie NIE aktualizujemy FAQ:**
+- Bug fixy bez zmiany zachowania (500 → działa jak dokumentowano)
+- Refaktoring wewnętrzny (nie widać z zewnątrz)
+- Zmiany kosmetyczne (kolor buttona, spacing)
+- Dodatki czysto techniczne (nowe indeksy DB, nowe pola cache-only)
+
+**Wyjątek pozytywny — pamiętaj by dopisać nawet gdy zmiana wygląda mała:**
+- Nowy przycisk w widoku (bo user nie wie co robi)
+- Nowa kolumna w tabeli (bo user nie wie co znaczy)
+- Nowy filtr (bo user nie wie że można filtrować po X)
+- Nowy trigger workflow / nowa akcja (bo user nie wie że może to zautomatyzować)
+
 ### 5. Wszystko 2-językowo: PL + EN (i18n)
 Każdy widoczny dla użytkownika tekst musi przechodzić przez `__('...')` (CakePHP I18n).
 Dotyczy: nagłówków, etykiet, przycisków, placeholderów, opcji `<select>`, komunikatów
