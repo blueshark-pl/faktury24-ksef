@@ -1593,7 +1593,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </li>
 
                             <!-- CRM Leady (potencjalni klienci) -->
-                            <li class="<?= $liClass(['leads']) ?>">
+                            <li class="<?= $liClass(['leads', 'leadindustries', 'leadvehicletypes', 'leadlabels', 'crmcontracts', 'crmemailaccounts', 'crmadmin', 'crmdocumenttracks', 'crmpush']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
                                 <i class="ri-arrow-right-s-line side-menu__angle"></i>
                                 <i class="ri-user-search-line side-menu__icon"></i>
