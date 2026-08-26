@@ -361,8 +361,10 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons/css/flag-icons.min.css">
     <!-- CSRF token dla JS fetch calls (FALA push notifications) -->
     <meta name="csrfToken" content="<?= h($this->request->getAttribute('csrfToken')) ?>">
-    <!-- CRM Push init - service worker + browser subscription -->
-    <?php if (($currentRole ?? '') !== 'client'): ?>
+    <!-- CRM Push init - service worker + browser subscription
+         Wylaczone domyslnie - backend PushSender nie zaimplementowany.
+         Wlaczenie: Configure::write('Crm.pushEnabled', true) w app_local.php + wgrac PushSender + zainstalowac composer minishlink/web-push -->
+    <?php if (($currentRole ?? '') !== 'client' && \Cake\Core\Configure::read('Crm.pushEnabled', false)): ?>
         <?= $this->Html->script('/assets/js/crm-push-init.js', ['defer' => true]) ?>
     <?php endif; ?>
 
@@ -1640,10 +1642,11 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     // FALA extras: badge z licznikiem unread mentions
                                     $__unreadMentions = 0;
                                     try {
-                                        $conn2 = \Cake\Datasource\ConnectionManager::get('default');
-                                        if (in_array('lead_activity_mentions', $conn2->getSchemaCollection()->listTables(), true)) {
-                                            $__uid = $identity?->get('id');
-                                            if ($__uid) {
+                                        $__identity = $this->request->getAttribute('identity');
+                                        $__uid = $__identity?->get('id');
+                                        if ($__uid) {
+                                            $conn2 = \Cake\Datasource\ConnectionManager::get('default');
+                                            if (in_array('lead_activity_mentions', $conn2->getSchemaCollection()->listTables(), true)) {
                                                 $__unreadMentions = \Cake\ORM\TableRegistry::getTableLocator()
                                                     ->get('LeadActivityMentions')->unreadCountFor((string)$__uid);
                                             }

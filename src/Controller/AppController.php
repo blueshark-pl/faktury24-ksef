@@ -471,6 +471,22 @@ class AppController extends Controller
         if (in_array($role, $employeeRolesSkippingOnboarding, true)) {
             return;
         }
+        // Rola 'user' (Pracownik/spedytor) rowniez pomija onboarding JESLI byla dodana
+        // przez admina (brak `onboarding_prefill` w additional_data - ten flag jest
+        // ustawiany wylacznie przy self-register przez kreator). Bez tego admin-dodani
+        // pracownicy bez company_id dostawali redirect do onboardingu (bug UX).
+        if ($role === 'user') {
+            try {
+                $additionalDataRaw = $identity->get('additional_data');
+                $additionalData = is_string($additionalDataRaw) ? (json_decode($additionalDataRaw, true) ?: []) : (array)$additionalDataRaw;
+                if (empty($additionalData['onboarding_prefill'])) {
+                    $this->Flash->error(__('Twoje konto nie ma jeszcze przypisanej firmy. Poproś administratora o przypisanie w /admin/uzytkownicy.'));
+                    return;
+                }
+            } catch (\Throwable) {
+                return;
+            }
+        }
 
         // whitelist akcji (żeby nie robić pętli)
         $allowed = [

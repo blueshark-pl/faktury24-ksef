@@ -31,7 +31,9 @@ class LeadsController extends AppController
         $identity  = $this->request->getAttribute('identity');
         $companyId = $identity?->get('company_id');
         if (!$companyId) {
-            throw new BadRequestException(__('Brak firmy w sesji.'));
+            $this->Flash->error(__('Twoje konto nie ma jeszcze przypisanej firmy. Poproś administratora o przypisanie w /admin/uzytkownicy.'));
+            $this->redirect(['controller' => 'Users', 'action' => 'profile', 'plugin' => 'CakeDC/Users']);
+            return;
         }
 
         $q       = trim((string)$this->request->getQuery('q', ''));
