@@ -1704,6 +1704,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 </li>
                                 <li class="slide">
                                     <?= $this->Html->link(
+                                        '<i class="ri-question-line me-1 text-success"></i>' . __('Pomoc / FAQ'),
+                                        ['plugin' => false, 'controller' => 'Leads', 'action' => 'faq'],
+                                        ['escape' => false, 'class' => 'side-menu__item ' . $navActive('leads', 'faq')]
+                                    ) ?>
+                                </li>
+                                <li class="slide">
+                                    <?= $this->Html->link(
                                         '<i class="ri-file-list-3-line me-1"></i>' . __('Kontrakty ramowe'),
                                         ['plugin' => false, 'controller' => 'CrmContracts', 'action' => 'index'],
                                         ['escape' => false, 'class' => 'side-menu__item ' . $navActive('crmcontracts')]

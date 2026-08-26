@@ -182,6 +182,8 @@ return function (RouteBuilder $routes): void {
         // FALA 18: kolejka pilnych maili sklasyfikowanych przez AI (urgency>=4 lub action_required)
         $builder->get('/crm/pilne', ['controller' => 'Leads', 'action' => 'urgentEmails']);
         $builder->get('/crm/wspomniano-mnie', ['controller' => 'Leads', 'action' => 'myMentions']);
+        $builder->get('/crm/pomoc',           ['controller' => 'Leads', 'action' => 'faq']);
+        $builder->get('/crm/faq',             ['controller' => 'Leads', 'action' => 'faq']);
         // FALA 19: realny reply przez Gmail API (POST messages/send)
         $builder->post('/crm/reply/{activityId}', ['controller' => 'Leads', 'action' => 'replyByGmail'])
             ->setPass(['activityId']);

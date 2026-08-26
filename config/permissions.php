@@ -564,6 +564,8 @@ return [
                 'suggestPriceJson', 'savePricesJson', 'quotePdf', 'sendQuoteJson',
                 // FALA 22: Executive dashboard
                 'managerDashboard',
+                // FAQ / pomoc modulu
+                'faq',
             ],
         ],
         [

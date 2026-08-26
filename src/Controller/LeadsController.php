@@ -382,6 +382,15 @@ class LeadsController extends AppController
         $this->set(compact('mentions', 'showRead'));
     }
 
+    /**
+     * FAQ / pomoc modulu CRM - opisy wszystkich funkcji.
+     * GET /crm/pomoc
+     */
+    public function faq(): void
+    {
+        $this->request->allowMethod(['get']);
+    }
+
     public function labelCreateInlineJson(): \Cake\Http\Response
     {
         $this->request->allowMethod(['post']);
