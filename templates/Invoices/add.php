@@ -622,6 +622,10 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gus-modal">
                         <i class="ri-database-2-line me-1"></i> GUS z NIP
                     </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="contractor-manual-btn"
+                            title="Wpisz dane nabywcy ręcznie — bez dodawania do katalogu">
+                        <i class="ri-edit-line me-1"></i> Wpisz dane ręcznie
+                    </button>
                     <div class="ms-auto d-flex align-items-center small text-muted">
                         <i class="ri-shield-check-line me-1"></i> dane wypełnisz w 2 kliknięcia
                     </div>
@@ -2671,7 +2675,7 @@ $(function () {
           '<button type="button" class="btn btn-sm btn-outline-primary ctr-act-add"><i class="ri-add-line"></i> Dodaj nowego</button>'+
           '<button type="button" class="btn btn-sm btn-outline-primary ctr-act-gus"><i class="ri-download-2-line"></i> Pobierz z GUS</button>'+
           '<button type="button" class="btn btn-sm btn-outline-primary ctr-act-cat"><i class="ri-search-line"></i> Szukaj w katalogu</button>'+
-          '<button type="button" class="btn btn-sm btn-outline-secondary ctr-act-rec"><i class="ri-user-add-line"></i> Dodaj odbiorcę</button>'+
+          '<button type="button" class="btn btn-sm btn-outline-secondary ctr-act-manual"><i class="ri-edit-line"></i> Wpisz ręcznie jako nabywcę</button>'+
         '</div>'+
         '<button type="button" class="btn btn-sm btn-outline-secondary ms-2 ctr-act-clear" title="Wyczyść"><i class="ri-close-line"></i></button>'+
       '</div>'
@@ -2700,8 +2704,24 @@ $(function () {
       }); 
     });
     $dd.find('.ctr-act-clear').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); $('#contractor-select').val(null).trigger('change'); clearContractorSnapshot(); hideContractorSnapshot(); });
-    $dd.find('.ctr-act-rec').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); closeSelect2Then(()=> $('#recipient-create-modal').modal('show')); });
+    $dd.find('.ctr-act-manual').on('mousedown', function(e){
+      e.preventDefault(); e.stopPropagation();
+      var typed = ($dd.find('.select2-search__field').val()||'').toString().trim();
+      closeSelect2Then(function(){ revealManualContractor(typed); });
+    });
   }
+
+  // Ręczne wpisanie danych nabywcy (bez zapisu do katalogu). Opcjonalnie przenosi wpisany tekst do „Nazwa".
+  function revealManualContractor(prefillName){
+    showContractorSnapshot();
+    $('#save-to-catalog').prop('checked', false);
+    if (prefillName) {
+      var $n = $('[name="invoice_contractor[name]"]');
+      if ($n.length && !($n.val()||'').trim()) { $n.val(prefillName).trigger('change'); }
+    }
+    setTimeout(function(){ $('[name="invoice_contractor[name]"]').trigger('focus'); }, 150);
+  }
+  $('#contractor-manual-btn').on('click', function(){ revealManualContractor(''); });
 
   // ===== Odbiorca (modal + snapshot) =====
   $('#recipient-save-btn').on('click', function(){
