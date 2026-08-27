@@ -1269,16 +1269,20 @@ class KsefAuthorizationsController extends AppController
                         // In FA(3): P_8A = unit, P_8B = quantity. In ZAL ZamowienieWiersz: P_8AZ = unit, P_8BZ = quantity.
                         $qty  = $get(['P_8B','P_8BZ','Ilosc','LiczbaJednostek','Quantity']);
                         $unit = $get(['P_8A','P_8AZ','JednostkaMiary','Jednostka','Unit']);
-                        $price= $get(['P_9A','P_9AZ','CenaJednostkowa','CenaJedn','UnitPrice']);
+                        // FA(3) obsługuje warianty NETTO (P_9A/P_11) oraz BRUTTO (P_9B/P_11A).
+                        $priceNet   = $get(['P_9A','P_9AZ','CenaJednostkowa','CenaJedn','UnitPrice']);
+                        $priceGross = $get(['P_9B','P_9BZ','CenaJednBrutto','CenaJednostkowaBrutto']);
                         $net  = $get(['P_11','P_11NettoZ','WartoscNetto','Netto','NetAmount']);
                         $vatR = $get(['P_12','P_12Z','StawkaPodatku','StawkaVAT','VatRate']);
-                        $vatA = $get(['P_11VatZ','KwotaVat','KwotaVAT','VatAmount']);
-                        $grs  = $get(['WartoscBrutto','Brutto','GrossAmount']);
+                        // P_11Vat = kwota VAT wiersza w FA(3) (dotąd pomijana → VAT 0 na fakturach brutto)
+                        $vatA = $get(['P_11Vat','P_11VatZ','KwotaVat','KwotaVAT','VatAmount']);
+                        // P_11A = wartość sprzedaży brutto (faktury wystawione w kwotach brutto)
+                        $grs  = $get(['P_11A','WartoscBrutto','Brutto','GrossAmount']);
                         $currency = $get(['Waluta','Currency']);
                         $lineId = $get(['NrWierszaFa','NrWierszaZam','NrWiersza','LineId']);
 
                         // Skip empty entries (no meaningful fields)
-                        $hasAny = $name !== null || $qty !== null || $price !== null || $net !== null || $grs !== null;
+                        $hasAny = $name !== null || $qty !== null || $priceNet !== null || $priceGross !== null || $net !== null || $grs !== null;
                         if (!$hasAny) {
                             continue;
                         }
@@ -1289,12 +1293,40 @@ class KsefAuthorizationsController extends AppController
                             return is_numeric($s) ? (float)$s : null;
                         };
 
-                        $netF = $toFloat($net);
-                        $vatAF = $toFloat($vatA);
-                        $grsF = $toFloat($grs);
-                        // For some ZAL structures gross may be missing: derive gross if possible
+                        $qtyF        = $toFloat($qty);
+                        $rateF       = $toFloat($vatR);        // np. 23
+                        $netF        = $toFloat($net);
+                        $vatAF       = $toFloat($vatA);
+                        $grsF        = $toFloat($grs);
+                        $priceNetF   = $toFloat($priceNet);
+                        $priceGrossF = $toFloat($priceGross);
+
+                        // Uzupełnij brakujące wartości netto/VAT/brutto (faktury brutto: mamy P_11A + P_11Vat).
+                        if ($netF === null && $grsF !== null && $vatAF !== null) {
+                            $netF = round($grsF - $vatAF, 2);
+                        }
                         if ($grsF === null && $netF !== null && $vatAF !== null) {
-                            $grsF = $netF + $vatAF;
+                            $grsF = round($netF + $vatAF, 2);
+                        }
+                        if ($vatAF === null && $grsF !== null && $netF !== null) {
+                            $vatAF = round($grsF - $netF, 2);
+                        }
+                        // Gdy mamy tylko wartość brutto i stawkę — policz netto/VAT ze stawki.
+                        if ($netF === null && $grsF !== null && $rateF !== null && $rateF > 0) {
+                            $netF = round($grsF / (1 + $rateF / 100), 2);
+                            if ($vatAF === null) { $vatAF = round($grsF - $netF, 2); }
+                        }
+
+                        // Cena jednostkowa NETTO do wyświetlenia: P_9A, inaczej wyliczona z brutto/wartości.
+                        $unitPriceF = $priceNetF;
+                        if ($unitPriceF === null) {
+                            if ($priceGrossF !== null && $rateF !== null && $rateF > 0) {
+                                $unitPriceF = round($priceGrossF / (1 + $rateF / 100), 2);
+                            } elseif ($netF !== null && $qtyF !== null && $qtyF != 0.0) {
+                                $unitPriceF = round($netF / $qtyF, 2);
+                            } elseif ($priceGrossF !== null) {
+                                $unitPriceF = $priceGrossF;
+                            }
                         }
                         $isSaved = false;
                         $savedType = null;
@@ -1313,9 +1345,9 @@ class KsefAuthorizationsController extends AppController
                             'line_id' => $lineId,
                             'name' => $name,
                             'description' => $name,
-                            'quantity' => $toFloat($qty),
+                            'quantity' => $qtyF,
                             'unit' => $unit,
-                            'unit_price' => $toFloat($price),
+                            'unit_price' => $unitPriceF,
                             'net_amount' => $netF,
                             'vat_rate' => $vatR,
                             'vat_amount' => $vatAF,
