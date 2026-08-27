@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use Migrations\AbstractMigration;
+use Migrations\BaseMigration;
 
 /**
  * Domyslne przypisania role -> permissions.
@@ -15,8 +15,13 @@ use Migrations\AbstractMigration;
  *
  * Ta migracja tylko UZUPELNIA brakujace przypisania - nie usuwa istniejacych.
  */
-class AssignDefaultRolePermissions extends AbstractMigration
+class AssignDefaultRolePermissions extends BaseMigration
 {
+    private function quote(string $v): string
+    {
+        return "'" . str_replace("'", "''", $v) . "'";
+    }
+
     public function up(): void
     {
         // Mapa: rola -> [kody permissions]

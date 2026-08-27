@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use Migrations\AbstractMigration;
+use Migrations\BaseMigration;
 
 /**
  * Rozbudowa katalogu permissions do 110 kodow w 12 kategoriach.
@@ -25,8 +25,13 @@ use Migrations\AbstractMigration;
  * Domyslne przypisania per rola sa robione w osobnej migracji
  * (AssignDefaultRolePermissions - odpalana zaraz po tej).
  */
-class ExpandPermissionsCatalog extends AbstractMigration
+class ExpandPermissionsCatalog extends BaseMigration
 {
+    private function quote(string $v): string
+    {
+        return "'" . str_replace("'", "''", $v) . "'";
+    }
+
     public function up(): void
     {
         $now = date('Y-m-d H:i:s');
