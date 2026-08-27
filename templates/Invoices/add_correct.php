@@ -251,7 +251,10 @@ $gtuSelectHtml .= '</select>';
         if (!country) return;
         function applyCountry(){
           var $c = $('[name="invoice_contractor[country]"]');
-          if ($c.length && ($c.val()||'').toUpperCase() !== country) { $c.val(country).trigger('change'); }
+          if (!country || !$c.length) return;
+          $c.val(country);
+          try { $c.trigger('change'); } catch(e){}
+          try { $c.trigger('change.select2'); } catch(e){} // wymuś re-render tekstu Select2 (był stary „PL — Polska")
         }
         applyCountry();
         setTimeout(applyCountry, 250);

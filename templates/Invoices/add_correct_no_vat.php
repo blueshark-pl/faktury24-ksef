@@ -2543,7 +2543,10 @@ $('#gus-fetch-btn').on('click', function(){
         }
         function applyCountry(){
           var $c2 = $('[name="invoice_contractor[country]"]');
-          if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }
+          if (!country || !$c2.length) return;
+          $c2.val(country);
+          try { $c2.trigger('change'); } catch(e){}
+          try { $c2.trigger('change.select2'); } catch(e){} // wymuś re-render tekstu Select2
         }
         applyCountry(); setTimeout(applyCountry, 250); setTimeout(applyCountry, 700);
         $('[name="invoice_contractor[vat_prefix]"]').val((String(c.vat_prefix||'').toUpperCase()==='NONE')?'':(c.vat_prefix||''));
