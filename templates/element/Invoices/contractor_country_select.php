@@ -200,16 +200,61 @@ $countries = [
     'AE' => 'AE — Zjednoczone Emiraty Arabskie',
 ];
 ?>
-<label class="form-label" for="<?= h($selectId) ?>"><?= h($label) ?></label>
-<select class="form-select contractor-country-select" id="<?= h($selectId) ?>" name="<?= h($fieldName) ?>">
-<?php foreach ($countries as $code => $name): ?>
-  <option value="<?= h($code) ?>"<?= $value === $code ? ' selected' : '' ?>><?= h($name) ?></option>
-<?php endforeach; ?>
-</select>
+<div class="mb-3 contractor-country-wrap">
+  <label class="form-label" for="<?= h($selectId) ?>"><?= h($label) ?></label>
+  <select class="form-select contractor-country-select" id="<?= h($selectId) ?>" name="<?= h($fieldName) ?>">
+  <?php foreach ($countries as $code => $name): ?>
+    <option value="<?= h($code) ?>"<?= $value === $code ? ' selected' : '' ?>><?= h($name) ?></option>
+  <?php endforeach; ?>
+  </select>
+</div>
+<?php if (empty($GLOBALS['__ccsAssetsOnce'])): $GLOBALS['__ccsAssetsOnce'] = true; ?>
+<style>
+  /* Select2 kraju: wysokość i wyrównanie jak .form-control (koniec „przesuniętego" pola) */
+  .contractor-country-wrap .select2-container .select2-selection--single {
+    height: calc(1.5em + .75rem + 2px);
+    display: flex; align-items: center;
+    border-radius: .35rem;
+  }
+  .contractor-country-wrap .select2-container .select2-selection__rendered {
+    display: flex; align-items: center; gap: .45rem;
+    line-height: 1.5; padding-top: 0; padding-bottom: 0;
+  }
+  .contractor-country-wrap .select2-container .select2-selection__arrow { height: 100%; top: 0; }
+  /* Flagi (flag-icons, ładowane globalnie w layoucie) */
+  .contractor-country-wrap .select2-selection__rendered .fi,
+  .ccs-dd-results .select2-results__option .fi { margin-right: .1rem; vertical-align: -0.1em; border-radius: 2px; }
+</style>
+<?php endif; ?>
 <script>
 (function(){
   var id = <?= json_encode($selectId) ?>;
-  function init(){ if (window.$ && $.fn && $.fn.select2) { $('#'+id).select2({ width: '100%', allowClear: false, language: { searching: function(){ return 'Szukam…'; }, noResults: function(){ return 'Brak wyników'; } } }); } }
+  // flag-icons: iso2 lowercase; wyjątki bez własnej flagi w standardzie ISO
+  var FI_EXC = { xi: 'gb-nir' };
+  function flagHtml(code){
+    var cc = String(code||'').toLowerCase();
+    if (!cc) return null;
+    cc = FI_EXC[cc] || cc;
+    return '<span class="fi fi-' + cc + '"></span>';
+  }
+  function tpl(d){
+    if (!d || !d.id) { return d ? d.text : ''; }
+    var f = flagHtml(d.id);
+    var $s = window.jQuery('<span></span>');
+    if (f) { $s.append(f + ' '); }
+    $s.append(window.jQuery('<span></span>').text(d.text));
+    return $s;
+  }
+  function init(){
+    if (window.$ && $.fn && $.fn.select2) {
+      $('#'+id).select2({
+        width: '100%', allowClear: false,
+        templateResult: tpl, templateSelection: tpl,
+        dropdownCssClass: 'ccs-dd-results',
+        language: { searching: function(){ return 'Szukam…'; }, noResults: function(){ return 'Brak wyników'; } }
+      });
+    }
+  }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
 })();
 </script>
