@@ -3613,6 +3613,16 @@ $('#series-period-create-form').on('submit', function(e){
 <style>
   .select2-results__option .fi{ margin-right:.35rem; vertical-align: -0.1em; }
   .select2-selection__rendered .fi{ margin-right:.35rem; vertical-align: -0.1em; }
+
+  /* ── Sekcja „Identyfikatory UE / zagraniczne" — ładne blokady + wyrównanie flag ── */
+  #snapshot-intl-fields .country-select { width: 100%; }
+  #snapshot-intl-fields .country-select input[type="text"] { height: calc(1.5em + .5rem + 2px); border-radius: .25rem; }
+  #snapshot-intl-fields input, #inv-vat-prefix-wrapper { transition: background-color .15s ease, opacity .15s ease, filter .15s ease; }
+  #snapshot-intl-fields input:disabled, #snapshot-intl-fields input[readonly] { background-color: #f1f3f5 !important; color: #9aa0a6 !important; cursor: not-allowed !important; box-shadow: none !important; }
+  #inv-vat-prefix-wrapper.pe-none { opacity: .7 !important; filter: grayscale(1); cursor: not-allowed; }
+  #inv-vat-prefix-wrapper.pe-none .country-select input[type="text"] { background-color: #f1f3f5 !important; color: #9aa0a6 !important; cursor: not-allowed !important; }
+  #inv-vat-prefix-wrapper.pe-none .selected-flag { cursor: not-allowed !important; }
+  #inv-vat-prefix-none:checked ~ label { color: #6b7280; font-weight: 600; }
 </style>
 
 <!-- Modal: Dodaj rachunek bankowy -->
