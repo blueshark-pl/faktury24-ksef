@@ -2527,6 +2527,23 @@ $('#gus-fetch-btn').on('click', function(){
       if (d.contractor && (d.contractor.name || d.contractor.nip)) {
         applyContractor(d.contractor);
       }
+      // Kraj + identyfikatory UE nabywcy z oryginału — pewne ustawienie (Select2 kraju + sekcja corr-intl).
+      (function(){
+        var c = d.contractor || {};
+        var country = (c.country ? String(c.country).toUpperCase() : '');
+        function applyCountry(){
+          var $c2 = $('[name="invoice_contractor[country]"]');
+          if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }
+        }
+        applyCountry(); setTimeout(applyCountry, 250); setTimeout(applyCountry, 700);
+        $('[name="invoice_contractor[vat_prefix]"]').val((String(c.vat_prefix||'').toUpperCase()==='NONE')?'':(c.vat_prefix||''));
+        $('[name="invoice_contractor[vat_eu]"]').val(c.vat_eu || '');
+        $('[name="invoice_contractor[eori]"]').val(c.eori || '');
+        $('[name="invoice_contractor[tax_id_other]"]').val(c.tax_id_other || '');
+        $('[name="invoice_contractor[tax_id_other_country]"]').val(c.tax_id_other_country || '');
+        var hasIntl = (c.vat_prefix && String(c.vat_prefix).toUpperCase() !== 'NONE') || c.vat_eu || c.eori || c.tax_id_other;
+        if (hasIntl) { $('#corr-intl-toggle').prop('checked', true); $('#corr-intl-fields').removeClass('d-none'); }
+      })();
       if (Array.isArray(d.items) && d.items.length) {
         for (var i = 1; i < d.items.length; i++) { $('#btn-add-item').trigger('click'); }
         var rows = $('#items-body tr').filter(function(){ return $(this).find('.item-net').length; });

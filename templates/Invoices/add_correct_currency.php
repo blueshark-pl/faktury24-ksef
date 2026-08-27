@@ -213,6 +213,37 @@ $gtuSelectHtml .= '</select>';
         $('[name="invoice_contractor[phone]"]').val(c.phone || '');
         // pokaż snapshot
         var $snap = $('#contractor-snapshot'); if ($snap.length) $snap.slideDown(120);
+
+        // Kraj + identyfikatory UE nabywcy z oryginału — pewne ustawienie.
+        (function(){
+          // Kraj (Select2) — z retry, bo widget inicjalizuje się osobno i nadpisywał kraj na PL.
+          var country = (c.country ? String(c.country).toUpperCase() : '');
+          function applyCountry(){
+            var $c2 = $('[name="invoice_contractor[country]"]');
+            if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }
+          }
+          applyCountry(); setTimeout(applyCountry, 250); setTimeout(applyCountry, 700);
+
+          // Identyfikatory UE / zagraniczne (prefiks = countrySelect + hidden, jak w głównym formularzu)
+          var vp = c.vat_prefix || '';
+          var vpIsNone = String(vp).toUpperCase() === 'NONE';
+          var vpClean = vpIsNone ? '' : vp;
+          $('#inv-vat-prefix-hidden').val(vpClean);
+          $('[name="invoice_contractor[vat_eu]"]').val(c.vat_eu || '');
+          $('[name="invoice_contractor[eori]"]').val(c.eori || '');
+          $('[name="invoice_contractor[tax_id_other]"]').val(c.tax_id_other || '');
+          $('#inv-tax-id-country-hidden').val(c.tax_id_other_country || '');
+          var hasIntl = !!(vpClean || c.vat_eu || c.eori || c.tax_id_other || c.tax_id_other_country);
+          if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
+          function applyPrefixUI(){
+            if (window.jQuery && jQuery.fn.countrySelect) {
+              try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', String(vpClean).toLowerCase()); } catch(e){}
+              try { jQuery('#inv-tax-id-country-ui').countrySelect('selectCountry', String(c.tax_id_other_country||'').toLowerCase()); } catch(e){}
+            }
+            $('#inv-vat-prefix-none').prop('checked', vpIsNone);
+          }
+          applyPrefixUI(); setTimeout(applyPrefixUI, 300);
+        })();
       }
 
       // Odbiorca

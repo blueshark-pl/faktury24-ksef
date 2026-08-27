@@ -610,6 +610,11 @@ $gtuSelectHtml .= '</select>';
                       'country' => (string)($c->country ?? 'PL'),
                       'email' => (string)($c->email ?? ''),
                       'phone' => (string)($c->phone ?? ''),
+                      'vat_prefix' => (string)($c->vat_prefix ?? ''),
+                      'vat_eu' => (string)($c->vat_eu ?? ''),
+                      'eori' => (string)($c->eori ?? ''),
+                      'tax_id_other' => (string)($c->tax_id_other ?? ''),
+                      'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
                     ];
                   }
                   // Normalize original contents to plain arrays for JS
@@ -645,6 +650,22 @@ $gtuSelectHtml .= '</select>';
                     $('[name="invoice_contractor[country]"]').val(origCtr.country||'PL');
                     $('[name="invoice_contractor[email]"]').val(origCtr.email||'');
                     $('[name="invoice_contractor[phone]"]').val(origCtr.phone||'');
+                    // Kraj + identyfikatory UE — pewne ustawienie (Select2 kraju + sekcja corr-intl).
+                    (function(){
+                      var country = (origCtr.country ? String(origCtr.country).toUpperCase() : '');
+                      function applyCountry(){
+                        var $c2 = $('[name="invoice_contractor[country]"]');
+                        if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }
+                      }
+                      applyCountry(); setTimeout(applyCountry, 250); setTimeout(applyCountry, 700);
+                      $('[name="invoice_contractor[vat_prefix]"]').val((String(origCtr.vat_prefix||'').toUpperCase()==='NONE')?'':(origCtr.vat_prefix||''));
+                      $('[name="invoice_contractor[vat_eu]"]').val(origCtr.vat_eu || '');
+                      $('[name="invoice_contractor[eori]"]').val(origCtr.eori || '');
+                      $('[name="invoice_contractor[tax_id_other]"]').val(origCtr.tax_id_other || '');
+                      $('[name="invoice_contractor[tax_id_other_country]"]').val(origCtr.tax_id_other_country || '');
+                      var hasIntl = (origCtr.vat_prefix && String(origCtr.vat_prefix).toUpperCase() !== 'NONE') || origCtr.vat_eu || origCtr.eori || origCtr.tax_id_other;
+                      if (hasIntl) { $('#corr-intl-toggle').prop('checked', true); $('#corr-intl-fields').removeClass('d-none'); }
+                    })();
                   }
 
                   // Prefill items for margin correction: name, quantity, sale gross (price), purchase gross
