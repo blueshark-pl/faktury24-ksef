@@ -201,94 +201,15 @@ $countries = [
 ];
 ?>
 <label class="form-label" for="<?= h($selectId) ?>"><?= h($label) ?></label>
-<input type="hidden" name="<?= h($fieldName) ?>" id="<?= h($selectId) ?>-hidden" value="<?= h($value) ?>">
-<input type="text" id="<?= h($selectId) ?>" class="form-control" placeholder="Wybierz kraj">
+<select class="form-select contractor-country-select" id="<?= h($selectId) ?>" name="<?= h($fieldName) ?>">
+<?php foreach ($countries as $code => $name): ?>
+  <option value="<?= h($code) ?>"<?= $value === $code ? ' selected' : '' ?>><?= h($name) ?></option>
+<?php endforeach; ?>
+</select>
 <script>
 (function(){
   var id = <?= json_encode($selectId) ?>;
-  var hiddenId = id + '-hidden';
-  var countryData = {
-    AF: { name: 'Afganistan', iso2: 'af' }, AL: { name: 'Albania', iso2: 'al' }, DZ: { name: 'Algieria', iso2: 'dz' },
-    AD: { name: 'Andora', iso2: 'ad' }, AO: { name: 'Angola', iso2: 'ao' }, AG: { name: 'Antigua i Barbuda', iso2: 'ag' },
-    SA: { name: 'Arabia Saudyjska', iso2: 'sa' }, AR: { name: 'Argentyna', iso2: 'ar' }, AM: { name: 'Armenia', iso2: 'am' },
-    AU: { name: 'Australia', iso2: 'au' }, AT: { name: 'Austria', iso2: 'at' }, AZ: { name: 'Azerbejdżan', iso2: 'az' },
-    BS: { name: 'Bahamy', iso2: 'bs' }, BH: { name: 'Bahrajn', iso2: 'bh' }, BD: { name: 'Bangladesz', iso2: 'bd' },
-    BB: { name: 'Barbados', iso2: 'bb' }, BE: { name: 'Belgia', iso2: 'be' }, BZ: { name: 'Belize', iso2: 'bz' },
-    BJ: { name: 'Benin', iso2: 'bj' }, BT: { name: 'Bhutan', iso2: 'bt' }, BY: { name: 'Białoruś', iso2: 'by' },
-    BO: { name: 'Boliwia', iso2: 'bo' }, BA: { name: 'Bośnia i Hercegowina', iso2: 'ba' }, BW: { name: 'Botswana', iso2: 'bw' },
-    BR: { name: 'Brazylia', iso2: 'br' }, BN: { name: 'Brunei', iso2: 'bn' }, BG: { name: 'Bułgaria', iso2: 'bg' },
-    BF: { name: 'Burkina Faso', iso2: 'bf' }, BI: { name: 'Burundi', iso2: 'bi' }, CL: { name: 'Chile', iso2: 'cl' },
-    CN: { name: 'Chiny', iso2: 'cn' }, HR: { name: 'Chorwacja', iso2: 'hr' }, CY: { name: 'Cypr', iso2: 'cy' },
-    TD: { name: 'Czad', iso2: 'td' }, CZ: { name: 'Czechia', iso2: 'cz' }, DK: { name: 'Dania', iso2: 'dk' },
-    DJ: { name: 'Dżibuti', iso2: 'dj' }, EG: { name: 'Egipt', iso2: 'eg' }, EC: { name: 'Ekwador', iso2: 'ec' },
-    GQ: { name: 'Gwinea Równikowa', iso2: 'gq' }, ER: { name: 'Erytrea', iso2: 'er' }, EE: { name: 'Estonia', iso2: 'ee' },
-    ET: { name: 'Etiopia', iso2: 'et' }, PH: { name: 'Filipiny', iso2: 'ph' }, FI: { name: 'Finlandia', iso2: 'fi' },
-    FR: { name: 'Francja', iso2: 'fr' }, GA: { name: 'Gabon', iso2: 'ga' }, GM: { name: 'Gambia', iso2: 'gm' },
-    GE: { name: 'Gruzja', iso2: 'ge' }, GH: { name: 'Ghana', iso2: 'gh' }, GI: { name: 'Gibraltar', iso2: 'gi' },
-    GR: { name: 'Grecja', iso2: 'gr' }, GD: { name: 'Grenada', iso2: 'gd' }, GL: { name: 'Grenlandia', iso2: 'gl' },
-    GG: { name: 'Guernsey', iso2: 'gg' }, GN: { name: 'Gwinea', iso2: 'gn' }, GW: { name: 'Gwinea Bissau', iso2: 'gw' },
-    GY: { name: 'Guyana', iso2: 'gy' }, HT: { name: 'Haiti', iso2: 'ht' }, HM: { name: 'Heard i McDonalda', iso2: 'hm' },
-    HN: { name: 'Honduras', iso2: 'hn' }, HK: { name: 'Hongkong', iso2: 'hk' }, IN: { name: 'Indie', iso2: 'in' },
-    ID: { name: 'Indonezja', iso2: 'id' }, IQ: { name: 'Irak', iso2: 'iq' }, IR: { name: 'Iran', iso2: 'ir' },
-    IE: { name: 'Irlandia', iso2: 'ie' }, IS: { name: 'Islandia', iso2: 'is' }, IL: { name: 'Izrael', iso2: 'il' },
-    JM: { name: 'Jamajka', iso2: 'jm' }, JP: { name: 'Japonia', iso2: 'jp' }, JE: { name: 'Jersey', iso2: 'je' },
-    YE: { name: 'Jemen', iso2: 'ye' }, JO: { name: 'Jordania', iso2: 'jo' }, KH: { name: 'Kambodża', iso2: 'kh' },
-    CM: { name: 'Kamerun', iso2: 'cm' }, CA: { name: 'Kanada', iso2: 'ca' }, QA: { name: 'Katar', iso2: 'qa' },
-    KZ: { name: 'Kazachstan', iso2: 'kz' }, KE: { name: 'Kenia', iso2: 'ke' }, KG: { name: 'Kirgistan', iso2: 'kg' },
-    KI: { name: 'Kiribati', iso2: 'ki' }, KP: { name: 'Korei Północna', iso2: 'kp' }, KR: { name: 'Korea Południowa', iso2: 'kr' },
-    CW: { name: 'Curaçao', iso2: 'cw' }, KM: { name: 'Komory', iso2: 'km' }, CG: { name: 'Kongo', iso2: 'cg' },
-    CD: { name: 'Demokratyczna Republika Konga', iso2: 'cd' }, CR: { name: 'Kostaryka', iso2: 'cr' }, CI: { name: 'Côte d\'Ivoire', iso2: 'ci' },
-    KW: { name: 'Kuwejt', iso2: 'kw' }, LA: { name: 'Laos', iso2: 'la' }, LS: { name: 'Lesoto', iso2: 'ls' },
-    LV: { name: 'Łotwa', iso2: 'lv' }, LB: { name: 'Liban', iso2: 'lb' }, LR: { name: 'Liberia', iso2: 'lr' },
-    LY: { name: 'Libia', iso2: 'ly' }, LI: { name: 'Liechtenstein', iso2: 'li' }, LT: { name: 'Litwa', iso2: 'lt' },
-    LU: { name: 'Luksemburg', iso2: 'lu' }, MO: { name: 'Makau', iso2: 'mo' }, MK: { name: 'Macedonia Północna', iso2: 'mk' },
-    MG: { name: 'Madagaskar', iso2: 'mg' }, MY: { name: 'Malezja', iso2: 'my' }, MW: { name: 'Malawi', iso2: 'mw' },
-    MV: { name: 'Malediwy', iso2: 'mv' }, ML: { name: 'Mali', iso2: 'ml' }, MT: { name: 'Malta', iso2: 'mt' },
-    IM: { name: 'Wyspa Man', iso2: 'im' }, MP: { name: 'Mariana Północne', iso2: 'mp' }, MQ: { name: 'Martynika', iso2: 'mq' },
-    MA: { name: 'Maroko', iso2: 'ma' }, MH: { name: 'Wyspy Marshalla', iso2: 'mh' }, MU: { name: 'Mauritius', iso2: 'mu' },
-    MR: { name: 'Mauretania', iso2: 'mr' }, YT: { name: 'Majotta', iso2: 'yt' }, MX: { name: 'Meksyk', iso2: 'mx' },
-    FM: { name: 'Mikronezja', iso2: 'fm' }, MD: { name: 'Mołdawia', iso2: 'md' }, MC: { name: 'Monako', iso2: 'mc' },
-    MN: { name: 'Mongolia', iso2: 'mn' }, ME: { name: 'Czarnogóra', iso2: 'me' }, MS: { name: 'Montserrat', iso2: 'ms' },
-    MZ: { name: 'Mozambik', iso2: 'mz' }, MM: { name: 'Mjanma', iso2: 'mm' }, NA: { name: 'Namibia', iso2: 'na' },
-    NR: { name: 'Nauru', iso2: 'nr' }, NP: { name: 'Nepal', iso2: 'np' }, NE: { name: 'Niger', iso2: 'ne' },
-    NG: { name: 'Nigeria', iso2: 'ng' }, NU: { name: 'Niue', iso2: 'nu' }, NF: { name: 'Norfolk', iso2: 'nf' },
-    NO: { name: 'Norwegia', iso2: 'no' }, NC: { name: 'Nowa Kaledonia', iso2: 'nc' }, NZ: { name: 'Nowa Zelandia', iso2: 'nz' },
-    OM: { name: 'Oman', iso2: 'om' }, NL: { name: 'Niderlandy', iso2: 'nl' }, PK: { name: 'Pakistan', iso2: 'pk' },
-    PW: { name: 'Palau', iso2: 'pw' }, PS: { name: 'Palestyna', iso2: 'ps' }, PA: { name: 'Panama', iso2: 'pa' },
-    PG: { name: 'Papua-Nowa Gwinea', iso2: 'pg' }, PY: { name: 'Paragwaj', iso2: 'py' }, PE: { name: 'Peru', iso2: 'pe' },
-    PN: { name: 'Pitcairn', iso2: 'pn' }, PL: { name: 'Polska', iso2: 'pl' }, PT: { name: 'Portugalia', iso2: 'pt' },
-    PR: { name: 'Puerto Rico', iso2: 'pr' }, RE: { name: 'Reunion', iso2: 're' }, RO: { name: 'Rumunia', iso2: 'ro' },
-    RU: { name: 'Rosja', iso2: 'ru' }, RW: { name: 'Ruanda', iso2: 'rw' }, SH: { name: 'Św. Helena', iso2: 'sh' },
-    KN: { name: 'Św. Krzysztof i Nevis', iso2: 'kn' }, LC: { name: 'Św. Łucja', iso2: 'lc' }, PM: { name: 'Św. Pierre i Miquelon', iso2: 'pm' },
-    VC: { name: 'Św. Wincenty i Grenadyny', iso2: 'vc' }, BL: { name: 'Św. Bartłomiej', iso2: 'bl' }, MF: { name: 'Św. Martin', iso2: 'mf' },
-    SJ: { name: 'Svalbard i Jan Mayen', iso2: 'sj' }, SZ: { name: 'Eswatini', iso2: 'sz' }, SE: { name: 'Szwecja', iso2: 'se' },
-    CH: { name: 'Szwajcaria', iso2: 'ch' }, SR: { name: 'Surinam', iso2: 'sr' }, SG: { name: 'Singapur', iso2: 'sg' },
-    SK: { name: 'Słowacja', iso2: 'sk' }, SI: { name: 'Słowenia', iso2: 'si' }, US: { name: 'Stany Zjednoczone', iso2: 'us' },
-    GB: { name: 'Wielka Brytania', iso2: 'gb' }, SD: { name: 'Sudan', iso2: 'sd' }, SS: { name: 'Sudan Południowy', iso2: 'ss' },
-    SY: { name: 'Syria', iso2: 'sy' }, SB: { name: 'Wyspy Salomona', iso2: 'sb' }, TJ: { name: 'Tadżykistan', iso2: 'tj' },
-    TH: { name: 'Tajlandia', iso2: 'th' }, TW: { name: 'Tajwan', iso2: 'tw' }, TZ: { name: 'Tanzania', iso2: 'tz' },
-    TG: { name: 'Togo', iso2: 'tg' }, TK: { name: 'Tokelau', iso2: 'tk' }, TO: { name: 'Tonga', iso2: 'to' },
-    TT: { name: 'Trynidad i Tobago', iso2: 'tt' }, TN: { name: 'Tunezja', iso2: 'tn' }, TR: { name: 'Turcja', iso2: 'tr' },
-    TM: { name: 'Turkmenistan', iso2: 'tm' }, TC: { name: 'Wyspy Turks i Caicos', iso2: 'tc' }, TV: { name: 'Tuvalu', iso2: 'tv' },
-    UG: { name: 'Uganda', iso2: 'ug' }, UZ: { name: 'Uzbekistan', iso2: 'uz' }, UA: { name: 'Ukraina', iso2: 'ua' },
-    UY: { name: 'Urugwaj', iso2: 'uy' }, UE: { name: 'Zjednoczone Emiraty Arabskie', iso2: 'ae' }, VU: { name: 'Vanuatu', iso2: 'vu' },
-    VA: { name: 'Watykan', iso2: 'va' }, VE: { name: 'Wenezuela', iso2: 've' }, VN: { name: 'Wietnam', iso2: 'vn' },
-    GB_ENG: { name: 'Anglia', iso2: 'gb' }, GB_SCT: { name: 'Szkocja', iso2: 'gb' }, GB_WLS: { name: 'Walia', iso2: 'gb' },
-    VG: { name: 'Wyspy Dziewicze Brytyjskie', iso2: 'vg' }, VI: { name: 'Wyspy Dziewicze Stanów Zjednoczonych', iso2: 'vi' },
-    WF: { name: 'Wallis i Futuna', iso2: 'wf' }, EH: { name: 'Saharę Zachodnia', iso2: 'eh' }, WS: { name: 'Samoa', iso2: 'ws' },
-    ZA: { name: 'Republika Południowej Afryki', iso2: 'za' }, ZM: { name: 'Zambia', iso2: 'zm' }, ZW: { name: 'Zimbabwe', iso2: 'zw' }
-  };
-
-  function init() {
-    if (window.$ && $.fn && $.fn.countrySelect) {
-      var $el = $('#' + id);
-      var initVal = $('#' + hiddenId).val() || 'PL';
-      $el.countrySelect({ defaultCountry: initVal.toLowerCase(), preferredCountries: ['pl','de','cz','sk','gb','us'] });
-      try { var d = $el.countrySelect('getSelectedCountryData'); if (d && d.iso2) $('#' + hiddenId).val(d.iso2.toUpperCase()); } catch(e) {}
-      $el.on('change', function() { try { var d = $el.countrySelect('getSelectedCountryData'); if (d && d.iso2) $('#' + hiddenId).val(d.iso2.toUpperCase()); } catch(e) {} });
-    }
-  }
-
+  function init(){ if (window.$ && $.fn && $.fn.select2) { $('#'+id).select2({ width: '100%', allowClear: false, language: { searching: function(){ return 'Szukam…'; }, noResults: function(){ return 'Brak wyników'; } } }); } }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
 })();
 </script>

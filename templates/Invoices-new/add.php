@@ -51,6 +51,7 @@ try {
       'eori'                 => (string)($c->eori ?? ''),
       'tax_id_other'         => (string)($c->tax_id_other ?? ''),
       'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
+      'is_person'            => !empty($c->is_person),
     ];
   }
 } catch (\Throwable) {
@@ -679,121 +680,150 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
                 </div>
 
-              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, rozwinięty w edit -->
-              <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
+              <!-- Snapshot kontrahenta — UKRYTY NA START, rozwinięty po wyborze / w edit -->
+              <div id="contractor-snapshot" class="mt-3 bg-white border rounded p-4"<?= ($__isEdit) ? '' : ' style="display:none;"' ?>>
                 <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
-                <div class="row g-2">
-                  <div class="col-12 col-md-8">
-                    <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
+                <input type="hidden" id="snapshot-is-person" value="<?= !empty($__prefillContractor['is_person']) ? '1' : '0' ?>">
+                <!-- snapshot-is-person: dla edit mode auto-detect visibility -->
+
+                <div class="vstack gap-3">
+
+                <!-- Dane podstawowe -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-id-card-line me-1 text-primary"></i>Dane podstawowe</strong>
                   </div>
-                  <div class="col-12 col-md-4">
-                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa*', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '', 'placeholder' => 'np. ACME Sp. z o.o.', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?>
+                    </div>
                   </div>
-                  <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
-                  <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miasto', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '']) ?></div>
-                  <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
-                  <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
-                  <!-- Identyfikatory międzynarodowe nabywcy -->
-                  <div class="col-12">
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                      <small class="text-muted">Identyfikatory UE / zagraniczne</small>
-                      <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle">
-                        <label class="form-check-label small" for="snapshot-intl-toggle">Wypełnij</label>
+                </div>
+
+                <!-- Dane kontaktowe -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-phone-line me-1 text-primary"></i>Dane kontaktowe</strong>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'type' => 'email', 'placeholder' => 'biuro@firma.pl', 'value' => $invoice->invoice_contractor->email ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                  </div>
+                  <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
+                    <i class="ri-mail-close-line me-1"></i>
+                    Brak adresu e-mail nabywcy — można zapisać, ale wysyłka mailowa będzie niedostępna.
+                  </div>
+                </div>
+
+                <!-- Identyfikacja kontrahenta -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <strong class="small"><i class="ri-global-line me-1 text-primary"></i>Identyfikacja kontrahenta</strong>
+                  </div>
+                  <div class="btn-group btn-group-sm flex-wrap mb-3" role="group" id="snap-id-chips">
+                    <button type="button" class="btn btn-outline-primary active" data-snap-id="nip_pl"><i class="ri-flag-line me-1"></i> NIP (PL)</button>
+                    <button type="button" class="btn btn-outline-primary" data-snap-id="vat_eu"><i class="ri-global-line me-1"></i> VAT UE</button>
+                    <button type="button" class="btn btn-outline-primary" data-snap-id="non_eu"><i class="ri-earth-line me-1"></i> Spoza UE</button>
+                  </div>
+
+                  <!-- Panel: NIP PL -->
+                  <div data-snap-panel="nip_pl">
+                    <div class="row g-3">
+                      <div class="col-md-8">
+                        <label class="form-label small mb-1">NIP polski</label>
+                        <div class="input-group">
+                          <?= $this->Form->control('invoice_contractor.nip', ['label' => false, 'class' => 'form-control', 'placeholder' => '6571234567', 'value' => $invoice->invoice_contractor->nip ?? '', 'templates' => ['inputContainer' => '{{content}}']]) ?>
+                          <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gus-modal">
+                            <i class="ri-database-2-line me-1"></i> Pobierz z GUS
+                          </button>
+                        </div>
+                        <small class="text-muted">Automatycznie uzupełni adres i nazwę z rejestru GUS.</small>
                       </div>
                     </div>
                   </div>
-                  <div class="col-12 d-none" id="snapshot-intl-fields">
-                    <div class="row g-2">
-                      <div class="col-3">
+
+                  <!-- Panel: VAT UE -->
+                  <div data-snap-panel="vat_eu" class="d-none">
+                    <div class="alert alert-info py-2 px-3 mb-2 small d-flex align-items-start gap-2">
+                      <i class="ri-information-line mt-1 flex-shrink-0"></i>
+                      <span>Dotyczy także <strong>polskich firm</strong> rozliczających transakcje wewnątrzwspólnotowe — wybierz <strong>PL</strong> jako prefiks.</span>
+                    </div>
+                    <div class="row g-3">
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">Prefiks UE</label>
                         <input type="hidden" name="invoice_contractor[vat_prefix]" id="inv-vat-prefix-hidden" value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
                         <div id="inv-vat-prefix-wrapper">
-                          <input type="text" id="inv-vat-prefix-ui" class="form-control form-control-sm" placeholder="Prefiks VAT UE">
-                        </div>
-                        <div class="form-check mt-1">
-                          <input class="form-check-input" type="checkbox" id="inv-vat-prefix-none">
-                          <label class="form-check-label small text-muted" for="inv-vat-prefix-none">Brak (spoza UE)</label>
+                          <input type="text" id="inv-vat-prefix-ui" class="form-control form-control-sm" placeholder="Wybierz kraj UE">
                         </div>
                       </div>
-                      <div class="col-5">
-                        <input type="text" id="inv-vat-eu-field" name="invoice_contractor[vat_eu]" class="form-control form-control-sm" maxlength="32"
-                          placeholder="Numer VAT-UE (np. 123456789)"
-                          value="<?= h($invoice->invoice_contractor->vat_eu ?? '') ?>">
+                      <div class="col-md-5">
+                        <label class="form-label small mb-1">Numer VAT-UE</label>
+                        <input type="text" id="inv-vat-eu-field" name="invoice_contractor[vat_eu]" class="form-control form-control-sm" maxlength="32" placeholder="np. 123456789" value="<?= h($invoice->invoice_contractor->vat_eu ?? '') ?>">
                       </div>
-                      <div class="col-4">
-                        <input type="text" name="invoice_contractor[eori]" class="form-control form-control-sm" maxlength="32"
-                          placeholder="EORI (np. PL1234567890)"
-                          value="<?= h($invoice->invoice_contractor->eori ?? '') ?>">
+                      <div class="col-md-4">
+                        <label class="form-label small mb-1">EORI (opcjonalnie)</label>
+                        <input type="text" name="invoice_contractor[eori]" class="form-control form-control-sm" maxlength="32" placeholder="np. PL1234567890" value="<?= h($invoice->invoice_contractor->eori ?? '') ?>">
                       </div>
-                      <div class="col-8">
-                        <input type="text" name="invoice_contractor[tax_id_other]" class="form-control form-control-sm" maxlength="64"
-                          placeholder="Inny identyfikator podatkowy"
-                          value="<?= h($invoice->invoice_contractor->tax_id_other ?? '') ?>">
-                      </div>
-                      <div class="col-4">
+                    </div>
+                  </div>
+
+                  <!-- Panel: Spoza UE -->
+                  <div data-snap-panel="non_eu" class="d-none">
+                    <div class="row g-3">
+                      <div class="col-md-4">
+                        <label class="form-label small mb-1 d-block">Kraj (NrID)</label>
                         <input type="hidden" name="invoice_contractor[tax_id_other_country]" id="inv-tax-id-country-hidden" value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
-                        <input type="text" id="inv-tax-id-country-ui" class="form-control form-control-sm" placeholder="Kod kraju (NrID)">
+                        <input type="text" id="inv-tax-id-country-ui" class="form-control form-control-sm" placeholder="Wybierz kraj">
+                      </div>
+                      <div class="col-md-8">
+                        <label class="form-label small mb-1">Identyfikator podatkowy</label>
+                        <input type="text" name="invoice_contractor[tax_id_other]" class="form-control form-control-sm" maxlength="64" placeholder="np. 12-3456789" value="<?= h($invoice->invoice_contractor->tax_id_other ?? '') ?>">
                       </div>
                     </div>
                   </div>
                 </div>
-                <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
-                  <i class="ri-mail-close-line me-1"></i>
-                  Brak adresu e-mail nabywcy — można zapisać, ale wysyłka mailowa będzie niedostępna.
-                </div>
 
-                <!-- Checkbox: zapisz do katalogu + popover info -->
-                <div class="mt-2 d-flex align-items-center gap-2">
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="1" id="save-to-catalog" name="save_to_catalog">
-                    <label class="form-check-label" for="save-to-catalog">Zapisz zmiany do katalogu kontrahentów</label>
+                <!-- Dane adresowe -->
+                <div class="border rounded p-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <strong class="small"><i class="ri-map-pin-line me-1 text-primary"></i>Dane adresowe</strong>
                   </div>
-
-                  <button
-                    type="button"
-                    class="btn btn-link p-0 align-baseline text-decoration-none"
-                    id="catalog-help"
-                    data-bs-toggle="popover"
-                    data-bs-placement="right"
-                    title="Katalog kontrahentów — jak działa?"
-                    data-bs-html="true"
-                    data-bs-content="
-                      <div class='small text-start'>
-                        <p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p>
-                        <ul class='mb-2 ps-3'>
-                          <li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li>
-                          <li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li>
-                          <li>Dodawanie/edycja/usuwanie w: <em>CRM → Kontrahenci</em>.</li>
-                          <li>Możesz też dodać podczas wystawiania faktury — zaznaczając tę opcję.</li>
-                        </ul>
-                        <p>Dodatkowe korzyści:</p>
-                        <ul class='mb-0 ps-3'>
-                          <li>Możliwość zdefiniowania e-maila do wysyłki faktur i przypomnień.</li>
-                          <li>Podgląd historii faktur i płatności danego kontrahenta.</li>
-                        </ul>
-                      </div>
-                    ">
-                    <i class="ri-question-line"></i><span class="ms-1">Co to daje?</span>
-                  </button>
-
-                  <small id="save-to-catalog-hint" class="text-success d-none">
-                    <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
-                  </small>
+                  <div class="row g-3">
+                    <div class="col-md-3"><?= $this->element('Invoices/contractor_country_select', ['fieldName' => 'invoice_contractor[country]', 'selectId' => 'contractor-country-select', 'value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
+                    <div class="col-md-3"><?= $this->Form->control('invoice_contractor.city', ['label' => 'Miejscowość', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->city ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-4"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica i nr', 'class' => 'form-control', 'placeholder' => 'ul. i nr', 'value' => $invoice->invoice_contractor->street ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                    <div class="col-md-2"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod pocztowy', 'class' => 'form-control', 'placeholder' => '00-000', 'value' => $invoice->invoice_contractor->zip ?? '', 'templates' => ['inputContainer' => '<div class="">{{content}}</div>']]) ?></div>
+                  </div>
                 </div>
-                <div class="form-check mt-1">
-                  <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
-                  <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
-                  <button type="button" class="btn btn-link p-0 align-baseline" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                    title="Automatyczna wysyłka"
-                    data-bs-content="
-                      <div class='small text-start'>
-                        Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.
-                      </div>
-                    ">
-                    <i class="ri-question-line"></i>
-                  </button>
+
+                </div><!-- /vstack -->
+
+                <!-- Opcje zapisu -->
+                <div class="mt-3 pt-3 border-top">
+                  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" value="1" id="save-to-catalog" name="save_to_catalog">
+                      <label class="form-check-label" for="save-to-catalog">Zapisz zmiany do katalogu kontrahentów</label>
+                    </div>
+                    <button type="button" class="btn btn-link p-0 align-baseline text-decoration-none" id="catalog-help"
+                      data-bs-toggle="popover" data-bs-placement="right"
+                      title="Katalog kontrahentów — jak działa?" data-bs-html="true"
+                      data-bs-content="<div class='small text-start'><p><strong>Katalog kontrahentów</strong> służy przyspieszeniu wystawiania faktur i innych dokumentów księgowych.</p><ul class='mb-2 ps-3'><li>Zamiast ręcznie wpisywać dane — wybierasz z katalogu.</li><li>Wyszukiwanie: <em>NIP</em>, fragment/cała <em>nazwa</em>.</li></ul></div>">
+                      <i class="ri-question-line"></i><span class="ms-1">Co to daje?</span>
+                    </button>
+                    <small id="save-to-catalog-hint" class="text-success d-none">
+                      <i class="ri-check-line"></i> Zmiany zostaną zapisane w katalogu
+                    </small>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="auto-send" name="auto_send" value="1"<?= !empty($invoice->auto_send) ? ' checked' : '' ?>>
+                    <label class="form-check-label" for="auto-send">Automatyczna wysyłka na e-mail nabywcy</label>
+                    <button type="button" class="btn btn-link p-0 align-baseline ms-1" id="autosend-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
+                      title="Automatyczna wysyłka"
+                      data-bs-content="<div class='small text-start'>Jeśli zaznaczysz tę opcję, dokument trafi do kolejki wysyłki. Wysyłka obejmuje tylko dokumenty, które nie zostały wcześniej wysłane ręcznie.</div>">
+                      <i class="ri-question-line"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2015,6 +2045,9 @@ body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
 /* --- toolbar pod nabywcą --- */
 .ctr-toolbar{ position:sticky; top:0; z-index:2; background:#fff; padding:.5rem; border:1px dashed #e9ecef; border-radius:.5rem; }
 
+/* --- snapshot kontrahenta: reset marginesu labelów --- */
+#contractor-snapshot .form-label { margin-bottom: 0; }
+
 </style>
 <script>
 (function(){
@@ -2380,7 +2413,7 @@ $(function () {
   function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
   function fillContractorSnapshot(c){
     console.log('fillContractorSnapshot called with:', c);
-    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'' };
+    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'', is_person:c.is_person||false };
     console.log('Contractor data to fill:', data);
     function setField(key, val){
       var $targets = $('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+'"],#invoice-contractor-'+key+',#invoice_contractor_'+key);
@@ -2393,6 +2426,9 @@ $(function () {
       }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
+    // Aktualizuj hidden field i ukryj całą sekcję identyfikacji dla osób fizycznych (jak w contractors/index)
+    $('#snapshot-is-person').val(data.is_person ? '1' : '0');
+    jQuery('[data-snap-panel]').closest('.border.rounded.p-3').toggle(!data.is_person);
     // Zaktualizuj pickery krajów (countrySelect) po wyborze kontrahenta
     setTimeout(function(){
       if (window.jQuery && jQuery.fn.countrySelect) {
@@ -2423,10 +2459,15 @@ $(function () {
         if ($tcUI.length) try { $tcUI.countrySelect('selectCountry', (data.tax_id_other_country || '').toLowerCase()); } catch(e) {}
       }
     }, 50);
-    // Pokaż sekcję intl jeśli któreś pole wypełnione
-    var hasIntl = !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
-    $('#snapshot-intl-toggle').prop('checked', hasIntl);
-    $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
+    // Automatycznie wybierz chip na podstawie danych kontrahenta (tylko dla firm)
+    var vpIsNone = (data.vat_prefix || '') === 'NONE';
+    var idType = 'nip_pl';
+    if (vpIsNone || data.tax_id_other || data.tax_id_other_country) {
+      idType = 'non_eu';
+    } else if ((data.vat_prefix && data.vat_prefix !== 'NONE') || data.vat_eu || data.eori) {
+      idType = 'vat_eu';
+    }
+    snapIdChipSwitch(idType);
   }
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
@@ -2451,8 +2492,10 @@ $(function () {
       $('[name="invoice_contractor['+f+']"]').val(f==='country'?'PL':'');
     });
     $('#contractor-id-input').val('');
-    $('#snapshot-intl-toggle').prop('checked', false);
-    $('#snapshot-intl-fields').addClass('d-none');
+    $('#snapshot-is-person').val('0');
+    snapIdChipSwitch('nip_pl');
+    // Pokaż sekcję identyfikacji (reset widoczności dla firm)
+    jQuery('[data-snap-panel]').closest('.border.rounded.p-3').show();
     // reset pickerów
     if (window.jQuery && jQuery.fn.countrySelect) {
       try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', ''); } catch(e) {}
@@ -2518,7 +2561,7 @@ $(function () {
       if (!initVp) { try { $vpUI.countrySelect('selectCountry', ''); $vpH.val(''); } catch(e) {} }
       // Inicjalizacja stanu "Brak" — gdy sekcja intl widoczna i prefiks pusty LUB był "NONE" z katalogu.
       // val('') wymagane bo disabled field nie pozwala przesłać starszej wartości.
-      var sectionVisible = !jQuery('#snapshot-intl-fields').hasClass('d-none');
+      var sectionVisible = !jQuery('[data-snap-panel="vat_eu"]').hasClass('d-none');
       if ((!initVp || isInitNoneMarker) && sectionVisible) {
         $vpNone.prop('checked', true);
         $vpWrap.addClass('pe-none opacity-50');
@@ -2956,8 +2999,9 @@ $('#gus-fetch-btn').on('click', function(){
     $('#sum-tax').val(st.toFixed(2));
     $('#sum-gross').val(sg.toFixed(2));
     var _cur = getInvoiceCurrency(); $('.sum-currency-label').text(_cur ? _cur : '');
-    // odśwież termin (np. po zmianie daty wystawienia)
-    if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
+    // Nie przesuwaj istniejącego terminu płatności (edycja) — przelicz z presetu
+    // tylko gdy pole terminu jest puste (nowa faktura). Inaczej tylko odśwież podgląd.
+    if (!$dueDate.val()) { if ($duePreset.val() !== '_custom') recomputeFromPreset(); } else { recomputeFromDate(); }
     if (typeof mirrorSums === 'function') mirrorSums();
     // render VAT breakdown chips
     if (typeof renderVatBreakdown === 'function') renderVatBreakdown();
@@ -3362,16 +3406,40 @@ $('#gus-fetch-btn').on('click', function(){
     if (initCtrId) { loadRecipientsForContractor(initCtrId); }
   }
 
-  // ====== INTL IDS TOGGLE ======
-  $(document).on('change', '#snapshot-intl-toggle', function(){
-    $('#snapshot-intl-fields').toggleClass('d-none', !this.checked);
-  });
-  // Auto-show on edit if values present
-  (function(){
-    var hasIntl = ['vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].some(function(f){
-      return !!($('[name="invoice_contractor['+f+']"]').val()||'').trim();
+  // ====== CHIP-PICKER: TYP IDENTYFIKATORA KONTRAHENTA ======
+  function snapIdChipSwitch(type) {
+    $('#snap-id-chips button').each(function(){
+      $(this).toggleClass('active', $(this).data('snap-id') === type);
     });
-    if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
+    $('[data-snap-panel]').each(function(){
+      $(this).toggleClass('d-none', $(this).data('snap-panel') !== type);
+    });
+  }
+  $(document).on('click', '#snap-id-chips button', function(){
+    snapIdChipSwitch($(this).data('snap-id'));
+  });
+  // Page load: ustaw chip na podstawie trybu
+  (function(){
+    var idType = 'nip_pl';
+    // W edit mode: auto-detect typ na podstawie danych
+    if (<?= $__isEdit ? 'true' : 'false' ?>) {
+      var vpRaw = ($('[name="invoice_contractor[vat_prefix]"]').val() || '').trim();
+      var vpIsNone = vpRaw === 'NONE';
+      var vatEu = ($('[name="invoice_contractor[vat_eu]"]').val() || '').trim();
+      var eori = ($('[name="invoice_contractor[eori]"]').val() || '').trim();
+      var taxIdOther = ($('[name="invoice_contractor[tax_id_other]"]').val() || '').trim();
+      var taxIdOtherCountry = ($('[name="invoice_contractor[tax_id_other_country]"]').val() || '').trim();
+
+      if (vpIsNone || taxIdOther || taxIdOtherCountry) {
+        idType = 'non_eu';
+      } else if ((vpRaw && vpRaw !== 'NONE') || vatEu || eori) {
+        idType = 'vat_eu';
+      }
+      // Schowaj sekcję identyfikacji dla osób fizycznych (jak w contractors/index)
+      var isPerson = $('#snapshot-is-person').val() === '1';
+      jQuery('[data-snap-panel]').closest('.border.rounded.p-3').toggle(!isPerson);
+    }
+    snapIdChipSwitch(idType);
   })();
 
   // ====== DODAJ WIERSZ ======

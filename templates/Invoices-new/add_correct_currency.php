@@ -6,19 +6,19 @@
  * @var array $vatRatesMap id => rate
  * @var array|null $recentContractors [['id'=>..,'label'=>..,'name'=>..,'nip'=>..,'street'=>..,'zip'=>..,'city'=>..,'country'=>..,'email'=>..,'phone'=>..], ...]
  */
-$__isEdit = !empty($isEdit) || !empty($invoice?->id);
-$this->assign('title', $__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę');
-
+$this->assign('title', 'Faktura walutowa');
+$_identity = $this->request->getAttribute('identity');
+$_role = strtolower((string)($_identity?->get('role') ?? ''));
+$_isAdmin = (bool)($_identity?->get('is_admin') ?? false);
 // Termin płatności — przy edycji oblicz rzeczywistą liczbę dni
 $__paymentDateVal = '';
-$__dueDaysPreset  = 7; // domyślne dla nowej faktury
+$__dueDaysPreset  = 7;
 $__dueDaysCustom  = false;
-if ($__isEdit && !empty($invoice->paymentdate)) {
+if (!empty($invoice->paymentdate)) {
     $pd = $invoice->paymentdate instanceof \DateTimeInterface
         ? $invoice->paymentdate
         : new \DateTime((string)$invoice->paymentdate);
     $__paymentDateVal = $pd->format('Y-m-d');
-    // oblicz różnicę vs data wystawienia
     $id_ = !empty($invoice->date)
         ? ($invoice->date instanceof \DateTimeInterface ? $invoice->date : new \DateTime((string)$invoice->date))
         : new \DateTime();
@@ -31,82 +31,57 @@ if ($__isEdit && !empty($invoice->paymentdate)) {
 }
 $__ksefModeEnabled = false;
 
+// Prefill kontrahenta i pozycji w trybie edycji — z zapisanej (roboczej) korekty
+$__isEdit = !empty($isEdit);
 $__prefillContractor = null;
-try {
-  $c = $invoice->invoice_contractor ?? null;
-  if (!empty($c)) {
-    $__prefillContractor = [
-      'id' => $invoice->contractor_id ?? null,
-      'name' => (string)($c->name ?? ''),
-      'label' => (string)($c->name ?? ''),
-      'nip' => (string)($c->nip ?? ''),
-      'street' => (string)($c->street ?? ''),
-      'zip' => (string)($c->zip ?? ''),
-      'city' => (string)($c->city ?? ''),
-      'country' => (string)($c->country ?? ''),
-      'email' => (string)($c->email ?? ''),
-      'phone' => (string)($c->phone ?? ''),
-      'vat_prefix'           => (string)($c->vat_prefix ?? ''),
-      'vat_eu'               => (string)($c->vat_eu ?? ''),
-      'eori'                 => (string)($c->eori ?? ''),
-      'tax_id_other'         => (string)($c->tax_id_other ?? ''),
-      'tax_id_other_country' => (string)($c->tax_id_other_country ?? ''),
-    ];
-  }
-} catch (\Throwable) {
-  $__prefillContractor = null;
-}
-
 $__prefillItems = [];
-try {
-  if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
-    foreach ($invoice->invoice_contents as $it) {
-      $__prefillItems[] = [
-        'name'              => (string)($it->name ?? ''),
-        'quantity'          => $it->quantity ?? 1,
-        'unit'              => (string)($it->unit ?? 'szt.'),
-        'price'             => $it->price ?? 0,
-        'discount_percent'  => $it->discount_percent ?? 0,
-        'vat_code_id'       => $it->vat_code_id ?? null,
-        'gtu_code'          => (string)($it->gtu_code ?? ''),
-        'pkwiu'             => (string)($it->pkwiu ?? ''),
-        'gtin'              => (string)($it->gtin ?? ''),
-        'cn_code'           => (string)($it->cn_code ?? ''),
-        'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
-        'procedure_marking' => (string)($it->procedure_marking ?? ''),
-        // price_mode is not stored; default to net to match backend calculations
-        'price_mode' => 'net',
+if ($__isEdit) {
+  try {
+    $__c = $invoice->invoice_contractor ?? null;
+    if (!empty($__c)) {
+      $__prefillContractor = [
+        'id'      => $invoice->contractor_id ?? null,
+        'name'    => (string)($__c->name ?? ''),
+        'label'   => (string)($__c->name ?? ''),
+        'nip'     => (string)($__c->nip ?? ''),
+        'street'  => (string)($__c->street ?? ''),
+        'zip'     => (string)($__c->zip ?? ''),
+        'city'    => (string)($__c->city ?? ''),
+        'country' => (string)($__c->country ?? ''),
+        'email'   => (string)($__c->email ?? ''),
+        'phone'   => (string)($__c->phone ?? ''),
+        'vat_prefix'           => (string)($__c->vat_prefix ?? ''),
+        'vat_eu'               => (string)($__c->vat_eu ?? ''),
+        'eori'                 => (string)($__c->eori ?? ''),
+        'tax_id_other'         => (string)($__c->tax_id_other ?? ''),
+        'tax_id_other_country' => (string)($__c->tax_id_other_country ?? ''),
       ];
     }
-  }
-} catch (\Throwable) {
-  $__prefillItems = [];
-}
+  } catch (\Throwable $e) { $__prefillContractor = null; }
 
-// Wiersze faktury korygowanej (prefill przy tworzeniu korekty)
-$__originalItems = [];
-try {
-  if (!$__isEdit && !empty($original->invoice_contents) && is_iterable($original->invoice_contents)) {
-    foreach ($original->invoice_contents as $it) {
-      $__originalItems[] = [
-        'name'              => (string)($it->name ?? ''),
-        'quantity'          => $it->quantity ?? 1,
-        'unit'              => (string)($it->unit ?? 'szt.'),
-        'price'             => $it->price ?? 0,
-        'discount_percent'  => $it->discount_percent ?? 0,
-        'vat_code_id'       => $it->vat_code_id ?? null,
-        'gtu_code'          => (string)($it->gtu_code ?? ''),
-        'pkwiu'             => (string)($it->pkwiu ?? ''),
-        'gtin'              => (string)($it->gtin ?? ''),
-        'cn_code'           => (string)($it->cn_code ?? ''),
-        'excise_amount'     => $it->excise_amount !== null ? (string)$it->excise_amount : '',
-        'procedure_marking' => (string)($it->procedure_marking ?? ''),
-        'price_mode'        => 'net',
-      ];
+  try {
+    if (!empty($invoice->invoice_contents) && is_iterable($invoice->invoice_contents)) {
+      foreach ($invoice->invoice_contents as $__it) {
+        $__prefillItems[] = [
+          'name'              => (string)($__it->name ?? ''),
+          'quantity'          => $__it->quantity ?? 1,
+          'unit'              => (string)($__it->unit ?? 'szt.'),
+          'price'             => $__it->price ?? 0,
+          'price_mode'        => (string)($__it->price_mode ?? 'net'),
+          'vat_code_id'       => (string)($__it->vat_code_id ?? ''),
+          'discount_percent'  => $__it->discount_percent ?? 0,
+          'gtu_code'          => (string)($__it->gtu_code ?? ''),
+          'netto'             => $__it->netto ?? 0,
+          'brutto'            => $__it->brutto ?? 0,
+          'pkwiu'             => (string)($__it->pkwiu ?? ''),
+          'gtin'              => (string)($__it->gtin ?? ''),
+          'cn_code'           => (string)($__it->cn_code ?? ''),
+          'excise_amount'     => $__it->excise_amount !== null ? (string)$__it->excise_amount : '',
+          'procedure_marking' => (string)($__it->procedure_marking ?? ''),
+        ];
+      }
     }
-  }
-} catch (\Throwable) {
-  $__originalItems = [];
+  } catch (\Throwable $e) { $__prefillItems = []; }
 }
 
 // pre-render VAT select do klonowania w wierszach
@@ -147,33 +122,21 @@ $gtuSelectHtml .= '</select>';
 <?php if (!empty($original?->id)): ?>
   <?= $this->Form->hidden('parent_id', ['value' => $original->id]) ?>
 <?php endif; ?>
-<?php
-$__kindBanners = [
-  'internal'         => ['label' => 'Dokument wewnętrzny',  'color' => 'secondary', 'icon' => 'ri-file-paper-line',   'note' => 'Dokument ewidencjonowany wewnętrznie — nie podlega wysyłce do KSeF.'],
-  'internalEvidence' => ['label' => 'Ewidencja wewnętrzna', 'color' => 'secondary', 'icon' => 'ri-file-list-3-line',  'note' => 'Dowód wewnętrzny — nie podlega wysyłce do KSeF.'],
-  'oss'              => ['label' => 'OSS – One Stop Shop',  'color' => 'info',      'icon' => 'ri-global-line',        'note' => 'Faktura OSS rozliczana w procedurze unijnej — nie podlega krajowemu KSeF.'],
-];
-$__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
-?>
-<?php if ($__kindBannerInfo): ?>
-<div class="alert alert-<?= $__kindBannerInfo['color'] ?> d-flex align-items-center gap-2 mb-0 mt-3" role="alert">
-  <i class="<?= $__kindBannerInfo['icon'] ?> fs-5 flex-shrink-0"></i>
-  <div><strong><?= $__kindBannerInfo['label'] ?></strong> — <?= $__kindBannerInfo['note'] ?></div>
-</div>
-<?php endif; ?>
 
 <!-- Start::page-header -->
 <div class="my-4 page-header-breadcrumb d-flex align-items-center justify-content-between flex-wrap gap-2">
   <div>
-    <h1 class="page-title fw-medium fs-18 mb-2"><?= !empty($original) ? 'Wystaw korektę' : ($__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę') ?></h1>
+  <h1 class="page-title fw-medium fs-18 mb-2">Faktura walutowa</h1>
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="<?= $this->Url->build('/') ?>">Start</a></li>
       <li class="breadcrumb-item" aria-current="page"><a href="javascript:void(0);">Faktury</a></li>
-      <li class="breadcrumb-item active" aria-current="page"><?= !empty($original) ? 'Wystaw korektę' : ($__isEdit ? 'Edytuj fakturę' : 'Wystaw fakturę') ?></li>
+  <li class="breadcrumb-item active" aria-current="page">Faktura walutowa</li>
     </ol>
   </div>
   <div class="btn-list">
-    
+    <button type="button" id="btn-export" class="btn btn-secondary-light btn-wave">
+      <i class="ri-upload-cloud-line align-middle me-1"></i> Export Draft
+    </button>
   </div>
 </div>
 <!-- End::page-header -->
@@ -182,14 +145,192 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
   <div class="alert alert-info d-flex align-items-center" role="alert">
     <i class="ri-information-line me-2 fs-18"></i>
     <div>
-      Wystawiasz korektę VAT do dokumentu:
-      <strong><?= h($original->fullnumber ?? ('#'.$original->id)) ?></strong>
-      z dnia <?= h($original->date ? $original->date->format('Y-m-d') : '') ?>.
+      <?php $__corrDoc = $correctedOriginal ?? $original; ?>
+      Wystawiasz korektę do faktury pierwotnej: <strong><?= h($__corrDoc->fullnumber ?? (string)$__corrDoc->id) ?></strong>
+      z dnia <strong><?= h($original->date ?? $original->sold_date ?? '') ?></strong>.
+      Dane kontrahenta, waluty i pozycji zostaną wstępnie uzupełnione.
     </div>
   </div>
 <?php endif; ?>
 
+<?php if (!empty($original) && empty($isEdit)): ?>
+<script>
+  window._originalPrefill = {
+    id: <?= json_encode($original->id) ?>,
+    fullnumber: <?= json_encode($original->fullnumber ?? '') ?>,
+    date: <?= json_encode($original->date ?? '') ?>,
+    sold_date: <?= json_encode($original->sold_date ?? '') ?>,
+    currency: <?= json_encode($original->currency ?? 'PLN') ?>,
+    paymentmethod: <?= json_encode($original->paymentmethod ?? '') ?>,
+    contractor: <?= json_encode($original->contractor ?? null) ?>,
+    invoice_contractor: <?= json_encode($original->invoice_contractor ?? null) ?>,
+    recipient: <?= json_encode($original->invoice_recipient ?? null) ?>,
+    items: <?= json_encode($original->items ?? []) ?>,
+    invoice_contents: <?= json_encode($original->invoice_contents ?? []) ?>,
+    currency_exchange: <?= json_encode((float)($original->currency_exchange ?? 0)) ?>
+  };
+
+  $(function(){
+    // Defer prefill — #btn-add-item click handler jest rejestrowany w innym $(function(){})
+    setTimeout(function(){
+    try {
+      var o = window._originalPrefill || {};
+      // Numer – podpowiedź, ale nie nadpisujemy jeśli użytkownik wpisał
+      if (o.fullnumber) {
+        $('#invoice-number-suggestion').text(o.fullnumber);
+        $('#invoice-number-hint').show();
+      }
+
+      // Daty: zwykle bieżąca dla korekty, więc nie nadpisujemy pól, tylko używamy do kursu NBP
+      // Waluta
+      if (o.currency) {
+        var $cur = $('#currency');
+        if ($cur.length) { $cur.val(String(o.currency).toUpperCase()).trigger('change'); }
+      }
+
+      // Metoda płatności
+      if (o.paymentmethod) {
+        $('[name="paymentmethod"]').val(o.paymentmethod).trigger('change');
+      }
+
+      // Kontrahent – preferuj zrzut InvoiceContractor jeśli istnieje
+      var c = o.invoice_contractor || o.contractor || null;
+      if (c) {
+        // wypełnij snapshot + hidden contractor_id jeśli mamy id
+        if (c.id) $('#contractor-id-input').val(c.id);
+        // jeśli w oryginale jest contractor_id, ustaw go także
+        if (o.contractor_id) $('#contractor-id-input').val(o.contractor_id);
+        // pola snapshotu
+        // nazwa nabywcy (invoice_contractor[name])
+        $('[name="invoice_contractor[name]"]').val(c.name || '');
+        $('[name="invoice_contractor[nip]"]').val(c.nip || '');
+        $('[name="invoice_contractor[street]"]').val(c.street || '');
+        $('[name="invoice_contractor[zip]"]').val(c.zip || '');
+        $('[name="invoice_contractor[city]"]').val(c.city || '');
+        $('[name="invoice_contractor[country]"]').val(c.country || 'PL');
+        $('[name="invoice_contractor[account_number]"]').val(c.account_number || '');
+        $('[name="invoice_contractor[email]"]').val(c.email || '');
+        $('[name="invoice_contractor[phone]"]').val(c.phone || '');
+        // pokaż snapshot
+        var $snap = $('#contractor-snapshot'); if ($snap.length) $snap.slideDown(120);
+      }
+
+      // Odbiorca
+      var r = o.recipient || null;
+      if (r) {
+        $('[name="invoice_recipient[name]"]').val(r.name || '');
+        $('[name="invoice_recipient[nip]"]').val(r.nip || '');
+        $('[name="invoice_recipient[street]"]').val(r.street || '');
+        $('[name="invoice_recipient[zip]"]').val(r.zip || '');
+        $('[name="invoice_recipient[city]"]').val(r.city || '');
+        $('[name="invoice_recipient[country]"]').val(r.country || 'PL');
+        $('[name="invoice_recipient[email]"]').val(r.email || '');
+        $('[name="invoice_recipient[phone]"]').val(r.phone || '');
+        var $rs = $('#recipient-snapshot'); if ($rs.length) $rs.slideDown(120);
+      }
+
+      // Pozycje – odwzorowanie produktów z oryginału (prostszy wariant jak w add_correct)
+      var srcItems = Array.isArray(o.invoice_contents) && o.invoice_contents.length ? o.invoice_contents : (Array.isArray(o.items) ? o.items : []);
+      if (srcItems.length) {
+        var $body = $('#items-body');
+
+        function ensureRow(i){
+          var rows = $body.find('tr');
+          // w tym widoku pierwszy TR to wiersz pozycji, ostatnie to "Dodaj" i sumy
+          var itemRows = rows.filter(function(){ return $(this).find('.item-product-select').length; });
+          if (itemRows.length <= i) {
+            for (var k = itemRows.length; k <= i; k++) {
+              $('#btn-add-item').trigger('click');
+            }
+            itemRows = $body.find('tr').filter(function(){ return $(this).find('.item-product-select').length; });
+          }
+          return itemRows.eq(i);
+        }
+
+        function fillRow($tr, item, idx){
+          try {
+            var name = item.name || item.product_name || '';
+            $tr.find('.item-name-hidden').val(name || '');
+            $tr.find('[name$="[quantity]"]').val(item.quantity ?? item.qty ?? 1);
+            if (item.unit) { $tr.find('.item-unit').val(item.unit); }
+
+            // cena – w tym widoku trzymasz jedną kolumnę ceny, tryb w hidden price_mode
+            var price = item.price;
+            if (price == null) {
+              // spróbuj wziąć netto/brutto jeśli dostępne
+              if (item.price_mode === 'gross' && (item.brutto || item.gross_price || item.price_gross)) {
+                price = item.brutto || item.gross_price || item.price_gross;
+              } else {
+                price = item.netto || item.net_price || item.price_net || 0;
+              }
+            }
+            var pNum = Number(price)||0;
+            $tr.find('.item-price').val(pNum.toFixed(2));
+
+            if (item.price_mode) { $tr.find('.item-price-mode').val(item.price_mode); }
+            if (item.vat_code_id || (item.vat && item.vat.id)) {
+              $tr.find('.item-vatcode').val(String(item.vat_code_id || item.vat.id));
+            }
+            $tr.find('[name$="[discount_percent]"]').val(item.discount_percent ?? 0);
+            if (item.gtu_code !== undefined) { $tr.find('.gtu-cell select, .item-gtu').val(item.gtu_code || ''); }
+            $tr.find('.item-pkwiu').val(item.pkwiu || '');
+            $tr.find('.item-gtin').val(item.gtin || '');
+            $tr.find('.item-cn-code').val(item.cn_code || '');
+            $tr.find('.item-excise').val(item.excise_amount || '');
+            $tr.find('.item-procedure').val(item.procedure_marking || '');
+
+            // Select produktu z nazwą
+            var $psel = $tr.find('.item-product-select');
+            if ($psel.length) {
+              var pid = item.product_id || ('NEW:'+ (name || ('Pozycja '+(idx+1))));
+              var label = name || ('Pozycja '+(idx+1));
+              var opt = new Option(label, pid, true, true);
+              $psel.find('option').remove();
+              $psel.append(opt).trigger('change');
+            }
+
+            if (typeof window.rowCalc === 'function') { window.rowCalc($tr); }
+          } catch (e) { console.warn('Prefill row error (currency)', e); }
+        }
+
+        srcItems.forEach(function(it, i){
+          var $tr = ensureRow(i);
+          if (!$tr.length) return;
+          fillRow($tr, it, i);
+        });
+      }
+
+      if (typeof window.allCalc === 'function') window.allCalc();
+      if (typeof window.mirrorSums === 'function') window.mirrorSums();
+    } catch (e) {
+      console.warn('Original prefill failed', e);
+    }
+    }, 0);
+  });
+</script>
+<?php endif; ?>
+
+<?php if ($__isEdit && !empty($__prefillContractor)): ?>
+<script>
+  $(function(){
+    var c = <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    if (!c || !c.name) return;
+    var $sel = $('#contractor-select');
+    if ($sel.length && $.fn.select2) {
+      var label = c.label || c.name || 'Kontrahent';
+      var value = c.id || ('LS:' + (c.nip || (c.name||'').slice(0,30)));
+      $sel.find('option[value="'+value+'"]').remove();
+      var opt = new Option(label, value, true, true);
+      $sel.append(opt).trigger('change');
+      $('#contractor-id-input').val(c.id || '');
+    }
+    $('#contractor-snapshot').show();
+  });
+</script>
+<?php endif; ?>
+
 <div class="row">
+    <!-- PRAWA KOLUMNA: karty -->
   <div class="col-xxl-12">
     <div class="card custom-card">
       <div class="card-header d-flex align-items-center justify-content-between pe-2">
@@ -198,12 +339,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           <li class="nav-item"><button class="nav-link" id="tab-accounting" data-bs-toggle="tab" data-bs-target="#pane-accounting" type="button" role="tab">Księgowe</button></li>
           <li class="nav-item"><button class="nav-link" id="tab-adv" data-bs-toggle="tab" data-bs-target="#pane-adv" type="button" role="tab">Zaawansowane</button></li>
         </ul>
-        <?php
-        $_identity = $this->request->getAttribute('identity');
-        $_role = strtolower((string)($_identity?->get('role') ?? ''));
-        $_isAdmin = (bool)($_identity?->get('is_admin') ?? false);
-        //if ($_isAdmin || $_role !== 'user'):
-        ?>
+        <?php //if ($this->Identity->hasRole('admin')): ?>
         <div class="dropdown ms-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" type="button" id="inv-extra-tabs-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Dodatkowe opcje">
             <i class="ri-settings-3-line"></i>
@@ -222,78 +358,138 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
             </li>
           </ul>
         </div>
+        <?php //endif; ?>
         <script>
         $(function(){
-          var $gearBtn = $('#inv-extra-tabs-btn');
-
-          $(document).on('click', '[data-extra-tab]', function(){
-            var paneId = $(this).data('extra-tab');
-            $('#invTabs .nav-link').removeClass('active').attr('aria-selected', 'false');
-            $('#invTabs .nav-link').each(function(){ $(this).attr('tabindex', '-1'); });
-            $('.tab-content > .tab-pane').removeClass('show active');
-            $('#' + paneId).addClass('show active');
-            $gearBtn.removeClass('btn-outline-secondary').addClass('btn-secondary');
+          var $gearBtn = $("#inv-extra-tabs-btn");
+          $(document).on("click", "[data-extra-tab]", function(){
+            var paneId = $(this).data("extra-tab");
+            $("#invTabs .nav-link").removeClass("active").attr("aria-selected", "false");
+            $("#invTabs .nav-link").each(function(){ $(this).attr("tabindex", "-1"); });
+            $(".tab-content > .tab-pane").removeClass("show active");
+            $("#" + paneId).addClass("show active");
+            $gearBtn.removeClass("btn-outline-secondary").addClass("btn-secondary");
           });
-
-          $('#invTabs').on('click', '.nav-link', function(){
-            $gearBtn.removeClass('btn-secondary').addClass('btn-outline-secondary');
-            $('.tab-content > .tab-pane[id^="pane-"]:not(#pane-basic):not(#pane-accounting):not(#pane-adv)').removeClass('show active');
+          $("#invTabs").on("click", ".nav-link", function(){
+            $gearBtn.removeClass("btn-secondary").addClass("btn-outline-secondary");
+            $("[data-extra-tab]").each(function(){ $("#" + $(this).data("extra-tab")).removeClass("show active"); });
           });
         });
         </script>
-        <?php //endif; // !user role — inv-extra-tabs-btn ?>
       </div>
 
       <div class="card-body tab-content">
+        <div class="mb-3">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div class="invoice-pills d-flex flex-wrap gap-2">
+                <div class="pill">
+                  <span class="pill-label">Netto</span>
+                  <span class="pill-values">
+                    <span class="pill-value" id="pill-net">0,00</span>
+                    <span class="pill-subvalue" id="pill-net-sub"></span>
+                  </span>
+                </div>
+                <div class="pill">
+                  <span class="pill-label">VAT</span>
+                  <span class="pill-values">
+                    <span class="pill-value" id="pill-vat">0,00</span>
+                    <span class="pill-subvalue" id="pill-vat-sub"></span>
+                  </span>
+                </div>
+                <div class="pill pill-accent">
+                  <span class="pill-label">Brutto</span>
+                  <span class="pill-values">
+                    <span class="pill-value" id="pill-gross">0,00</span>
+                    <span class="pill-subvalue" id="pill-gross-sub"></span>
+                  </span>
+                </div>
+              </div>
+              <small class="text-muted" id="pills-hint">Kwoty w PLN</small>
+                <div class="ms-auto">
+                  <div id="price-mode-toggle" class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Tryb ceny">
+                      <button type="button" class="btn btn-outline-secondary" data-mode="net" aria-pressed="false">Ceny netto</button>
+                      <button type="button" class="btn btn-outline-secondary" data-mode="gross" aria-pressed="false">Ceny brutto</button>
+                    </div>
+                    <button type="button" class="btn btn-light btn-sm" id="apply-mode-to-existing" title="Przelicz istniejące pozycje"><i class="ri-refresh-line"></i> Przelicz</button>
+                  </div>
+                </div>
+            </div>
+        </div>
 
         <!-- PODSTAWOWE -->
-<div class="tab-pane fade show active" id="pane-basic" role="tabpanel" aria-labelledby="tab-basic">
-
-          <!-- Grupa: Identyfikacja faktury -->
-          <div class="form-group">
-            <div class="form-group-title">Identyfikacja faktury</div>
-            <div class="row g-3">
-              <div class="col-lg-6">
-                <?= $this->Form->control('fullnumber', [
-                  'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
-                  'id' => 'invoice-number', 'readonly' => true, 'tabindex' => '-1',
-                ]) ?>
-              </div>
-              <div class="col-lg-6">
-                <?= $this->Form->hidden('invoice_series_id', [
-                  'id'    => 'invoice-series-id-hidden',
-                  'value' => $invoice->invoice_series_id ?? null,
-                ]) ?>
-                <?= $this->Form->control('series', [
-                  'label' => 'Schemat numeracji',
-                  'type'  => 'select',
-                  'empty' => true,
-                  'class' => 'form-select',
-                  'id'    => 'series-select',
-                  'value' => $invoice->series ?? null,
-                ]) ?>
-              </div>
+        <div class="tab-pane fade show active" id="pane-basic" role="tabpanel" aria-labelledby="tab-basic">
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <?= $this->Form->control('fullnumber', [
+                'label' => 'Numer faktury', 'class' => 'form-control', 'placeholder' => 'auto',
+                'id' => 'invoice-number'
+              ]) ?>
+              <small class="text-muted" id="invoice-number-hint" style="display: none;">
+                <i class="ri-information-line"></i> Numer faktury: <span id="invoice-number-suggestion"></span>
+              </small>
             </div>
-          </div>
+            <div class="col-lg-4">
+              <?= $this->Form->control('series', [
+                'label' => 'Seria',
+                'type'  => 'select',
+                'empty' => true,
+                'class' => 'form-select',
+                'id'    => 'series-select',
+            // opcjonalnie: ustaw bieżącą wartość jeśli istnieje
+            'value' => $invoice->series ?? null,
+            ]) ?>
+            <?= $this->Form->hidden('invoice_series_id', ['id' => 'invoice-series-id-hidden', 'value' => $invoice->invoice_series_id ?? null]) ?>
+            </div>
 
-          <!-- Grupa: Daty -->
-          <div class="form-group">
-            <div class="form-group-title">Daty</div>
-            <div class="row g-3">
-              <div class="col-lg-3">
-                <?= $this->Form->control('date', [
-                  'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
-                  'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->date) ? $invoice->date->format('Y-m-d') : null)
+            <div class="col-lg-2">
+            <?= $this->Form->control('date', [
+              'type' => 'date', 'label' => 'Data wystawienia', 'class' => 'form-control', 'id' => 'issue-date', 'required' => true,
+              'value' => ($__isEdit && !empty($invoice->date)) ? $invoice->date->format('Y-m-d') : date('Y-m-d')
+            ]) ?>
+            </div>
+
+            <div class="col-lg-2">
+            <?= $this->Form->control('sold_date', [
+              'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
+              'value' => ($__isEdit && !empty($invoice->sold_date)) ? $invoice->sold_date->format('Y-m-d') : (!empty($original->sold_date) ? $original->sold_date->format('Y-m-d') : (!empty($original->date) ? $original->date->format('Y-m-d') : date('Y-m-d')))
+            ]) ?>
+            </div>
+
+            
+<div class="row g-2">
+            <div class="col-lg-2">
+            <?= $this->Form->control('paymentmethod', [
+              'label' => 'Metoda płatności', 'type' => 'select',
+              'options' => ['transfer' => 'Przelew', 'cash' => 'Gotówka', 'card' => 'Karta'],
+              'class' => 'form-select', 'value' => 'transfer'
+            ]) ?>
+            </div>
+            
+              <div class="col-lg-2">
+                <?= $this->Form->control('alreadypaid', [
+                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
                 ]) ?>
               </div>
-              <div class="col-lg-3">
-                <?= $this->Form->control('sold_date', [
-                  'type' => 'date', 'label' => 'Data sprzedaży', 'class' => 'form-control', 'id' => 'sold-date',
-                  'value' => !$__isEdit ? date('Y-m-d') : (!empty($invoice->sold_date) ? $invoice->sold_date->format('Y-m-d') : null)
-                ]) ?>
+              
+              <div class="col-lg-2 d-flex align-items-end">
+                <div class="form-check">
+                  <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
+                  <input class="form-check-input" type="checkbox" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
+                  <label class="form-check-label" for="is-paid-check">Oznacz jako opłacone</label>
+                </div>
               </div>
-              <div class="col-lg-6">
-                <label class="form-label mb-1">Termin płatności</label>
+              <div class="col-lg-2">
+                <div id="paid-at-group" style="display:<?= $__isPaid ? '' : 'none' ?>;">
+                  <?= $this->Form->control('paid_at', ['type' => 'date', 'label' => 'Data zapłaty', 'class' => 'form-control', 'value' => $invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '']) ?>
+                </div>
+              </div>
+              
+            </div>
+              
+            <div class="col-lg-6">
+              <label class="form-label mb-1">Termin płatności</label>
+              <div class="border rounded p-2">
                 <div class="row g-2 align-items-center" id="due-combined">
                   <div class="col-7">
                     <select id="due-days-preset" class="form-select" aria-label="Termin płatności — preset dni">
@@ -310,70 +506,40 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     </div>
                   </div>
                 </div>
-                <small class="text-muted d-block mt-1">
+                <small class="text-muted d-block mt-2">
                   Obliczony termin: <span id="due-preview" class="fw-medium">—</span>
                 </small>
               </div>
             </div>
-          </div>
 
-          <!-- Grupa: Płatność -->
-          <div class="form-group">
-            <?php $__isPaid = (($invoice->paymentstate ?? '') === 'paid'); ?>
-            <?php $__alreadyPaidVal = (float)($invoice->alreadypaid ?? 0); ?>
-            <?php $__partialEnabled = $__alreadyPaidVal > 0; ?>
-            <div class="form-group-title">Płatność</div>
-            <div class="row g-3 align-items-start">
-              <div class="col-lg-3">
-                <?= $this->Form->control('paymentmethod', [
-                  'label' => 'Metoda płatności', 'type' => 'select',
-                  'options' => [
-                    'voucher'  => 'Bon',
-                    'cheque'   => 'Czek',
-                    'card'     => 'Karta',
-                    'credit'   => 'Kredyt',
-                    'mobile'   => 'Mobilna',
-                    'other'    => 'Płatność inna',
-                    'transfer' => 'Przelew',
-                    'cash'     => 'Gotówka'
-                  ],
-                  'empty' => '— Wybierz metodę —',
-                  'value' => !$__isEdit ? 'transfer' : ($invoice->paymentmethod ?? null),
-                  'class' => 'form-select', 'required' => true
-                ]) ?>
-              </div>
-              <div class="col-lg-3">
-                <div class="d-flex align-items-center justify-content-between">
-                  <label class="form-label mb-0" for="paid-at">Data zapłaty</label>
-                  <div class="form-check form-switch m-0 ps-0">
-                    <input class="form-check-input ms-0" type="checkbox" role="switch" value="1" id="is-paid-check"<?= $__isPaid ? ' checked' : '' ?>>
-                    <input type="hidden" name="paymentstate_marker" value="">
+            <!-- Waluta i kurs przeniesione z zakładki Zaawansowane -->
+            <div class="col-12 d-flex align-items-center gap-2">
+              <?= $this->Form->control('currency', [
+                'label' => 'Waluta', 'class' => 'form-select', 'id' => 'currency',
+                'value' => !empty($invoice->currency) ? strtoupper((string)$invoice->currency) : 'PLN',
+                'options' => ['PLN'=>'PLN','EUR'=>'EUR','USD'=>'USD','GBP'=>'GBP','CZK'=>'CZK']
+              ]) ?>
+              <button type="button" class="btn btn-link p-0 align-baseline" id="currency-help" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="left"
+                title="Waluta i kurs"
+                data-bs-content="
+                  <div class='small text-start'>
+                    <p>Po wyborze waluty obcej możesz podać kurs pomocniczy do przeliczeń <em>poglądowo</em> — nie wpływa on na poprawność księgowania.</p>
+                    <p>Na wydruku pojawi się automatycznie średni kurs NBP z ostatniego dnia roboczego poprzedzającego datę wystawienia/sprzedaży (wg typu transakcji).</p>
                   </div>
-                </div>
-                <input type="date" name="paid_at" id="paid-at" class="form-control"
-                       value="<?= h($invoice->paid_at?->i18nFormat('yyyy-MM-dd') ?? '') ?>"
-                       <?= $__isPaid ? '' : 'disabled' ?>>
-                <small class="text-muted d-block paid-at-hint mt-1"<?= $__isPaid ? ' style="display:none"' : '' ?>>
-                  Przełącz, aby oznaczyć fakturę jako opłaconą.
-                </small>
-              </div>
-              <div class="col-lg-3">
-                <?= $this->Form->control('alreadypaid', [
-                  'label' => 'Zapłacono (kwota)', 'type' => 'number', 'step' => '0.01', 'class' => 'form-control', 'value' => $invoice->alreadypaid ?? 0
-                ]) ?>
-              </div>
-              <div class="col-lg-3" id="partial-paid-at-group">
-                <?= $this->Form->control('partial_paid_at', [
-                  'type' => 'date', 'label' => 'Data częściowej płatności', 'class' => 'form-control',
-                  'disabled' => !$__partialEnabled,
-                ]) ?>
-                <small class="text-muted d-block partial-paid-hint mt-1"<?= $__partialEnabled ? ' style="display:none"' : '' ?>>
-                  Aktywne po wpisaniu kwoty w „Zapłacono".
-                </small>
-              </div>
+                ">
+                <i class="ri-question-line"></i>
+              </button>
             </div>
-          </div>
 
+            <div class="col-12" id="fx-rate-group"<?= ($__isEdit && !empty($invoice->currency) && strtoupper((string)$invoice->currency) !== 'PLN') ? '' : ' style="display:none;"' ?>>
+              <?= $this->Form->control('fx_rate', [
+                'label' => 'Kurs (poglądowo)', 'type' => 'number', 'step' => '0.0001',
+                'class' => 'form-control', 'id' => 'fx-rate',
+                'value' => !empty($invoice->fx_rate) ? $invoice->fx_rate : ($invoice->currency_exchange ?? '')
+              ]) ?>
+            </div>
+
+          </div>
         </div>
 
         <!-- KSIĘGOWE -->
@@ -448,10 +614,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                   </div>">
                 <i class="ri-question-line"></i>
               </button>
-              <small id="mpp-auto-note" class="text-muted ms-1"></small>
             </div>
-
-            <!-- Status nabywcy — przeniesiony do tab_fa3_extended.php (zakładka KSeF FA(3)) -->
 
             <!-- Faktura do paragonu: pola paragonu (pokazywane przy zaznaczonym FP) -->
             <div id="receipt-extra" class="row g-2 ms-1" style="display:none;">
@@ -461,26 +624,6 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
               <div class="col-4">
                 <?= $this->Form->control('receipt_date', ['label' => 'Data paragonu', 'type' => 'date', 'class' => 'form-control']) ?>
               </div>
-            </div>
-
-            <!-- Oznaczenie TP (powiązania) -->
-            <?php
-            $__ann = [];
-            if (!empty($invoice->annotations)) {
-                $__dec = is_array($invoice->annotations) ? $invoice->annotations : json_decode((string)$invoice->annotations, true);
-                if (is_array($__dec)) $__ann = $__dec;
-            }
-            ?>
-            <div class="d-flex align-items-start gap-2">
-              <div class="form-check form-switch m-0">
-                <input class="form-check-input" type="checkbox" id="ann-tp" name="annotations[tp]" value="1"<?= !empty($__ann['tp']) ? ' checked' : '' ?>>
-                <label class="form-check-label" for="ann-tp">Oznaczenie TP (powiązania)</label>
-              </div>
-              <button type="button" class="btn btn-link p-0 align-baseline" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="right"
-                title="Oznaczenie TP"
-                data-bs-content="<div class='small text-start'>Informacja, że między sprzedawcą a&nbsp;nabywcą istnieją powiązania. To przede wszystkim oznaczenie ewidencyjne/JPK; w&nbsp;KSeF może pojawić się na fakturze jako dodatkowa informacja.</div>">
-                <i class="ri-question-line"></i>
-              </button>
             </div>
 
             <script>
@@ -494,7 +637,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                   $('[name="receipt_date"]').val('');
                 }
               }
-              $(document).on('change', '#flag-fp', toggleReceiptExtra);
+                    if (typeof mirrorSums === 'function') mirrorSums();
               // initialize on load
               $(toggleReceiptExtra);
 
@@ -539,12 +682,10 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
           </div>
         </div>
 
-        <!-- ADNOTACJE -->
-        <?= $this->element('Invoices/tab_annotations') ?>
-
         <!-- ZAAWANSOWANE -->
         <div class="tab-pane fade" id="pane-adv" role="tabpanel" aria-labelledby="tab-adv">
           <div class="row g-3">
+            <!-- Waluta i kurs przeniesione do zakładki Podstawowe -->
 
             <?php /* Język faktury – zawsze polski, pole ukryte
             <?= $this->Form->control('lang', [
@@ -554,20 +695,10 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
             */ ?>
             <?= $this->Form->hidden('lang', ['value' => 'pl']) ?>
 
-            <?php
-              $__existingBankId   = $__isEdit ? (string)($invoice->company_bank_account_id ?? '') : '';
-              $__existingBankIban = $__isEdit ? (string)($invoice->invoice_company_detail->bank_account ?? '') : '';
-            ?>
             <label class="form-label">Rachunek na fakturze</label>
-            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"
-              data-prefill-id="<?= h($__existingBankId) ?>"
-              data-prefill-iban="<?= h($__existingBankIban) ?>">
-              <?php if ($__existingBankId): ?>
-                <option value="<?= h($__existingBankId) ?>" selected><?= h($__existingBankIban) ?></option>
-              <?php endif ?>
-            </select>
-            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden', 'value' => $__existingBankIban]) ?>
-            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden', 'value' => $__existingBankId]) ?>
+            <select id="bank-account-select" class="form-select" data-placeholder="Wybierz rachunek lub wyszukaj"></select>
+            <?= $this->Form->hidden('invoice_company_detail.bank_account', ['id' => 'bank-account-hidden']) ?>
+            <?= $this->Form->hidden('company_bank_account_id', ['id' => 'bank-account-id-hidden']) ?>
             <small class="text-muted d-block mt-1">
               Rachunki firmy dodasz w <em>Ustawienia → Moja firma → Rachunki bankowe</em> lub bezpośrednio tutaj przyciskiem „Dodaj rachunek”.
             </small>
@@ -579,6 +710,9 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
 
           </div>
         </div>
+
+        <!-- ADNOTACJE -->
+        <?= $this->element('Invoices/tab_annotations') ?>
 
         <!-- IDENTYFIKATORY MIĘDZYNARODOWE -->
         <?= $this->element('Invoices/tab_identifiers') ?>
@@ -592,13 +726,25 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
   <div class="col-xxl-12">
     <div class="card custom-card">
       <div class="card-header d-md-flex d-block">
-        <div class="card-title">Wystaw fakturę</div>
-        <!-- <div class="ms-auto mt-md-0 mt-2">
-          
-          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-            'class' => 'btn btn-sm btn-primary', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
-          ]) ?>
-        </div> -->
+  <div class="card-title">Faktura walutowa</div>
+        <div class="ms-auto mt-md-0 mt-2">
+          <?php if ($_isAdmin || $_role !== 'user'): ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-sm btn-outline-secondary', 'name' => 'save_draft'
+            ]) ?>
+            <?php if ($__ksefModeEnabled): ?>
+              <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+                'class' => 'btn btn-sm btn-primary ms-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+              ]) ?>
+            <?php else: ?>
+              <?= $this->Form->button('Zapisz i wystaw', [
+                'class' => 'btn btn-sm btn-primary ms-1', 'name' => 'save_only'
+              ]) ?>
+            <?php endif; ?>
+          <?php else: ?>
+            <?= $this->Form->button('Zapisz jako roboczą', ['class' => 'btn btn-sm btn-primary ms-1', 'name' => 'save_draft']) ?>
+          <?php endif; ?>
+        </div>
       </div>
 
       <div class="card-body">
@@ -628,15 +774,10 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
 
                 <!-- ODBIORCA (opcjonalny) -->
-                <?php $showRecipient = !empty($invoice->invoice_recipient->name); ?>
-                <?php if (!$showRecipient): ?>
-                <div class="mt-2 d-flex align-items-center gap-2 flex-wrap" id="recipient-add-wrap">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line"></i> Dodaj odbiorcę</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-from-db-btn" style="display:none!important"><i class="ri-database-2-line"></i> Z bazy</button>
-                    <select id="recipient-db-select" style="display:none;min-width:220px;max-width:350px;" class="form-select form-select-sm"></select>
+                <div class="mt-2" id="recipient-add-wrap"<?= !empty($invoice->invoice_recipient->name) ? ' style="display:none;"' : '' ?>>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="recipient-add-btn"><i class="ri-user-add-line me-1"></i> Dodaj odbiorcę (inny podmiot)</button>
                 </div>
-                <?php endif; ?>
-                <div id="recipient-snapshot" class="mt-3 border rounded p-2" style="<?= $showRecipient ? '' : 'display:none;' ?>">
+                <div id="recipient-snapshot" class="mt-3 border rounded p-2"<?= !empty($invoice->invoice_recipient->name) ? '' : ' style="display:none;"' ?>>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="fw-semibold">Odbiorca</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="recipient-edit-btn"><i class="ri-edit-2-line"></i> Edytuj</button>
@@ -651,7 +792,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     <div class="col-8"><?= $this->Form->control('invoice_recipient.street', ['label' => 'Ulica', 'class' => 'form-control']) ?></div>
                     <div class="col-4"><?= $this->Form->control('invoice_recipient.zip', ['label' => 'Kod', 'class' => 'form-control']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.city', ['label' => 'Miasto', 'class' => 'form-control']) ?></div>
-                    <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['fieldName' => 'invoice_recipient[country]', 'selectId' => 'recipient-country-select', 'value' => $invoice->invoice_recipient->country ?? 'PL']) ?></div>
+                    <div class="col-6"><?= $this->Form->control('invoice_recipient.country', ['label' => 'Kraj', 'class' => 'form-control', 'value' => 'PL']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.email', ['label' => 'Email', 'class' => 'form-control']) ?></div>
                     <div class="col-6"><?= $this->Form->control('invoice_recipient.phone', ['label' => 'Telefon', 'class' => 'form-control']) ?></div>
                     <div class="col-12">
@@ -679,9 +820,8 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </div>
                 </div>
 
-              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, rozwinięty w edit -->
+              <!-- Snapshot kontrahenta (invoice_contractors) — UKRYTY NA START, widoczny w trybie edycji -->
               <div id="contractor-snapshot" class="mt-2"<?= ($__isEdit && !empty($__prefillContractor)) ? '' : ' style="display:none;"' ?>>
-                <?= $this->Form->hidden('contractor_source', ['value' => '']) ?>
                 <div class="row g-2">
                   <div class="col-12 col-md-8">
                     <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
@@ -738,10 +878,6 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                       </div>
                     </div>
                   </div>
-                </div>
-                <div id="email-missing-info" class="alert alert-warning py-1 px-2 small mt-2 d-none">
-                  <i class="ri-mail-close-line me-1"></i>
-                  Brak adresu e-mail nabywcy — można zapisać, ale wysyłka mailowa będzie niedostępna.
                 </div>
 
                 <!-- Checkbox: zapisz do katalogu + popover info -->
@@ -814,7 +950,7 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                     <th style="min-width:260px;">PRODUKT</th>
                     <th style="width:120px;">ILOŚĆ</th>
                     <th style="width:80px;">JM</th>
-                    <th style="width:180px;">CENA</th>
+                    <th style="width:140px;">CENA NETTO</th>
                     <th style="width:170px;">STAWKA VAT
                     <button type="button"
                         id="vat-help"
@@ -845,16 +981,8 @@ $__kindBannerInfo = $__kindBanners[$kind ?? ''] ?? null;
                 </thead>
 
               <tbody id="items-body">
-<?php
-$__renderItems = [];
-if ($__isEdit && !empty($__prefillItems)) {
-    $__renderItems = $__prefillItems;
-} elseif (!$__isEdit && !empty($__originalItems)) {
-    $__renderItems = $__originalItems;
-}
-?>
-<?php if (!empty($__renderItems)): ?>
-<?php foreach ($__renderItems as $__i => $__it):
+<?php if ($__isEdit && !empty($__prefillItems)): ?>
+<?php foreach ($__prefillItems as $__i => $__it):
   $__vatOpts = '';
   foreach ($vats as $__vid => $__vlabel) {
     $__sel = ((string)$__vid === (string)($__it['vat_code_id'] ?? '')) ? ' selected' : '';
@@ -868,86 +996,54 @@ if ($__isEdit && !empty($__prefillItems)) {
   $__itemName = (string)($__it['name'] ?? '');
   $__newOpt = $__itemName !== '' ? '<option value="'.h('NEW:'.$__itemName).'" selected>'.h($__itemName).'</option>' : '';
   $__pm = (string)($__it['price_mode'] ?? 'net');
-  $__netto = number_format((float)($__it['netto'] ?? 0), 2, '.', '');
-  $__brutto = number_format((float)($__it['brutto'] ?? 0), 2, '.', '');
 ?>
-<tr class="item-row" draggable="true">
+<tr>
   <td>
-    <div class="d-flex align-items-center gap-1">
-      <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-      <div class="flex-grow-1 min-w-0">
-        <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Nazwa produktu lub usługi"><?= $__newOpt ?></select>
-      </div>
-    </div>
+    <select class="form-select item-product-select" data-index="<?= (int)$__i ?>" data-placeholder="Wybierz lub wpisz produkt"><?= $__newOpt ?></select>
     <input type="hidden" name="items[<?= (int)$__i ?>][name]" class="item-name-hidden" value="<?= h($__itemName) ?>">
-    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h($__it['pkwiu'] ?? '') ?>">
-    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h($__it['gtin'] ?? '') ?>">
-    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h($__it['cn_code'] ?? '') ?>">
-    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h($__it['excise_amount'] ?? '') ?>">
-    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h($__it['procedure_marking'] ?? '') ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][price_mode]" class="item-price-mode" value="<?= h($__pm) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][pkwiu]" class="item-pkwiu" value="<?= h((string)($__it['pkwiu'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][gtin]" class="item-gtin" value="<?= h((string)($__it['gtin'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][cn_code]" class="item-cn-code" value="<?= h((string)($__it['cn_code'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][excise_amount]" class="item-excise" value="<?= h((string)($__it['excise_amount'] ?? '')) ?>">
+    <input type="hidden" name="items[<?= (int)$__i ?>][procedure_marking]" class="item-procedure" value="<?= h((string)($__it['procedure_marking'] ?? '')) ?>">
   </td>
-  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" inputmode="decimal" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
+  <td><input name="items[<?= (int)$__i ?>][quantity]" type="number" step="0.001" value="<?= h((float)($__it['quantity'] ?? 1)) ?>" class="form-control text-end item-qty" required></td>
   <td><input name="items[<?= (int)$__i ?>][unit]" type="text" value="<?= h((string)($__it['unit'] ?? 'szt.')) ?>" class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
-  <td>
-    <div class="d-flex align-items-center gap-1">
-      <input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" inputmode="decimal" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required>
-      <select name="items[<?= (int)$__i ?>][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
-        <option value="net"<?= $__pm === 'net' ? ' selected' : '' ?>>Netto</option>
-        <option value="gross"<?= $__pm === 'gross' ? ' selected' : '' ?>>Brutto</option>
-      </select>
-    </div>
-  </td>
+  <td><input name="items[<?= (int)$__i ?>][price]" type="number" step="0.01" value="<?= h(number_format((float)($__it['price'] ?? 0), 2, '.', '')) ?>" class="form-control text-end item-price" required></td>
   <td class="vat-cell"><select class="form-select item-vatcode" name="items[<?= (int)$__i ?>][vat_code_id]" required><?= $__vatOpts ?></select></td>
-  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" inputmode="decimal" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
-  <td><input class="form-control text-end item-net" value="<?= $__netto ?>" readonly></td>
-  <td><input class="form-control text-end item-gross" value="<?= $__brutto ?>" readonly></td>
+  <td><input name="items[<?= (int)$__i ?>][discount_percent]" type="number" step="0.01" value="<?= h((float)($__it['discount_percent'] ?? 0)) ?>" class="form-control text-end item-disc"></td>
+  <td><input class="form-control text-end item-net" value="<?= number_format((float)($__it['netto'] ?? 0), 2, '.', '') ?>" readonly></td>
+  <td><input class="form-control text-end item-gross" value="<?= number_format((float)($__it['brutto'] ?? 0), 2, '.', '') ?>" readonly></td>
   <td class="gtu-cell"><select class="form-select item-gtu" name="items[<?= (int)$__i ?>][gtu_code]"><?= $__gtuOpts ?></select></td>
   <td>
-    <div class="d-flex gap-1">
-      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
-      <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
-    </div>
+    <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
   </td>
 </tr>
 <?php endforeach; ?>
 <?php else: ?>
-                <!-- pierwszy pusty wiersz (nowa faktura bez prefill) -->
-                  <tr class="item-row" draggable="true">
+                <!-- pierwszy (wymagany) wiersz -->
+                <tr>
   <td>
-      <div class="d-flex align-items-center gap-1">
-        <span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>
-        <div class="flex-grow-1 min-w-0">
-          <select class="form-select item-product-select" data-index="0" data-placeholder="Nazwa produktu lub usługi"></select>
-        </div>
-      </div>
-    <input type="hidden" name="items[0][name]" class="item-name-hidden" value="">
+    <select class="form-select item-product-select" data-index="0" data-placeholder="Wybierz lub wpisz produkt"></select>
+    <input type="hidden" name="items[0][name]" class="item-name-hidden">
+    <input type="hidden" name="items[0][price_mode]" class="item-price-mode" value="net">
     <input type="hidden" name="items[0][pkwiu]" class="item-pkwiu" value="">
     <input type="hidden" name="items[0][gtin]" class="item-gtin" value="">
     <input type="hidden" name="items[0][cn_code]" class="item-cn-code" value="">
     <input type="hidden" name="items[0][excise_amount]" class="item-excise" value="">
     <input type="hidden" name="items[0][procedure_marking]" class="item-procedure" value="">
   </td>
-  <td><input name="items[0][quantity]" type="number" step="0.001" inputmode="decimal" value="1" class="form-control text-end item-qty" required></td>
+  <td><input name="items[0][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>
   <td><input name="items[0][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>
-  <td>
-    <div class="d-flex align-items-center gap-1">
-      <input name="items[0][price]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-price" required>
-      <select name="items[0][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">
-        <option value="net" selected>Netto</option>
-        <option value="gross">Brutto</option>
-      </select>
-    </div>
-  </td>
+  <td><input name="items[0][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required></td>
   <td class="vat-cell"><?= $vatSelectHtml ?></td>
-  <td><input name="items[0][discount_percent]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-disc"></td>
+  <td><input name="items[0][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>
   <td><input class="form-control text-end item-net" value="0.00" readonly></td>
   <td><input class="form-control text-end item-gross" value="0.00" readonly></td>
   <td class="gtu-cell"><?= $gtuSelectHtml ?></td>
   <td>
-    <div class="d-flex gap-1">
-      <button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button>
-      <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
-    </div>
+    <button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button>
   </td>
 </tr>
 <?php endif; ?>
@@ -984,17 +1080,32 @@ if ($__isEdit && !empty($__prefillItems)) {
   </td>
 </tr>
 
-               <!-- wiersz: VAT breakdown (stawki) -->
-              <tr>
-  <td colspan="9" class="pt-0">
-    <div id="vat-breakdown" class="d-flex flex-wrap gap-2 align-items-center mt-2"></div>
-  </td>
-</tr>
-
-               <!-- wiersz: Kwota słownie -->
-              <tr>
-  <td colspan="9" class="pt-0">
-    <div id="amount-in-words" class="text-muted fst-italic mt-1"></div>
+                <!-- wiersz: Przeliczenie na PLN (poglądowo) -->
+               <tr id="pln-preview-row" style="display:none;">
+  <td colspan="5"></td>
+  <td colspan="4">
+    <div class="border rounded p-2 bg-white">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-medium"><i class="ri-exchange-dollar-line me-1"></i> Przeliczenie na PLN (poglądowo)</div>
+        <div class="text-muted small" id="pln-rate-label">Kurs: —</div>
+      </div>
+      <table class="table table-sm text-nowrap mb-0 table-borderless">
+        <tbody>
+          <tr>
+            <th scope="row"><div class="fw-medium">Netto w PLN:</div></th>
+            <td class="text-end"><span id="sum-net-pln">0,00</span></td>
+          </tr>
+          <tr>
+            <th scope="row"><div class="fw-medium">VAT w PLN:</div></th>
+            <td class="text-end"><span id="sum-tax-pln">0,00</span></td>
+          </tr>
+          <tr>
+            <th scope="row"><div class="fw-medium">Brutto w PLN:</div></th>
+            <td class="text-end"><span id="sum-gross-pln">0,00</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </td>
 </tr>
 
@@ -1006,57 +1117,75 @@ if ($__isEdit && !empty($__prefillItems)) {
         <div class="mt-3">
           <?= $this->Form->control('description', ['label' => 'Uwagi', 'type' => 'textarea', 'rows' => 3, 'class' => 'form-control']) ?>
         </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- PRAWA KOLUMNA: karty -->
-
-</div>
-
-<script>document.body && document.body.classList.add('has-invoice-sticky-bar');</script>
-<!-- Sticky action bar: pills (suma) + CTA. Pozostaje w <form> aby submit działał. -->
-<div class="invoice-sticky-bar" id="invoice-sticky-bar">
-  <div class="container-fluid d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <div class="invoice-pills d-flex flex-wrap gap-2">
-      <div class="pill">
-        <span class="pill-label">Netto</span>
-        <span class="pill-value" id="pill-net">0,00</span>
-      </div>
-      <div class="pill">
-        <span class="pill-label">VAT</span>
-        <span class="pill-value" id="pill-vat">0,00</span>
-      </div>
-      <div class="pill pill-accent">
-        <span class="pill-label">Brutto</span>
-        <span class="pill-value" id="pill-gross">0,00</span>
-      </div>
-    </div>
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <button type="button" id="btn-calc-toggle" class="btn btn-light btn-sm">
-        <i class="ri-calculator-line me-1"></i> Kalkulator
-      </button>
-      <?php if ($_isAdmin || $_role !== 'user'): ?>
-        <?= $this->Form->button('<i class="ri-draft-line me-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
-          'class' => 'btn btn-outline-secondary btn-sm', 'escapeTitle' => false, 'name' => 'save_draft'
-        ]) ?>
-        <?php if ($__ksefModeEnabled): ?>
-          <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
-            'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+        <?php if (!empty($original) || $__isEdit): ?>
+        <div class="mt-3">
+          <?= $this->Form->control('correction_reason', [
+            'label' => 'Powód korekty', 'type' => 'textarea', 'rows' => 2, 'class' => 'form-control',
+            'placeholder' => 'Krótko opisz przyczynę korekty (np. błędna ilość/cena, pomyłka w stawce VAT, zwrot towaru)'
           ]) ?>
-        <?php else: ?>
-          <?= $this->Form->button('<i class="ri-save-line me-1 align-middle d-inline-block"></i> Zapisz i wystaw', [
-            'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_only'
+        </div>
+        <div class="mt-2">
+          <?= $this->Form->control('correction_type', [
+            'label' => 'Skutek korekty w ewidencji VAT (TypKorekty)', 'type' => 'select', 'class' => 'form-select',
+            'options' => [
+              '1' => '1 — w dacie ujęcia faktury pierwotnej (błąd pierwotny, korygujemy wstecz)',
+              '2' => '2 — w dacie wystawienia faktury korygującej (rabat, uzgodnienie — bieżący okres)',
+              '3' => '3 — w dacie innej / różne daty dla różnych pozycji',
+            ],
+            'empty' => '— Wybierz skutek —',
+            'value' => in_array((string)($invoice->correction_type ?? ''), ['1','2','3']) ? $invoice->correction_type : ''
           ]) ?>
+          <small class="text-muted">Wymagane przez KSeF (FA(3)). Typ 1: wina sprzedawcy — cofasz do okresu pierwotnego. Typ 2: uzgodnienie z nabywcą — rozliczasz w bieżącym okresie.</small>
+        </div>
+
+        <!-- NrFaKorygowany — korekta numeru faktury (XSD FA(3), pole opcjonalne) -->
+        <div class="mt-3 border rounded p-3 bg-body-tertiary">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="ri-edit-2-line text-warning"></i>
+            <strong class="small">Korekta numeru faktury (opcjonalnie)</strong>
+          </div>
+          <?= $this->Form->control('corrected_invoice_number', [
+            'label' => 'Poprawny numer faktury (NrFaKorygowany)',
+            'class' => 'form-control',
+            'placeholder' => 'np. FV/05/2026',
+            'value' => $invoice->corrected_invoice_number ?? ''
+          ]) ?>
+          <div class="form-text">
+            Wypełnij <strong>tylko</strong> gdy przyczyną korekty jest błędny numer faktury pierwotnej.
+            Numer pierwotny (błędny) zostanie zapisany jako <code>NrFaKorygowanej</code>,
+            a wpisany tutaj jako <code>NrFaKorygowany</code> w XML KSeF.
+          </div>
+        </div>
         <?php endif; ?>
-      <?php else: ?>
-        <?= $this->Form->button('<i class="ri-draft-line me-1 align-middle d-inline-block"></i> Zapisz jako roboczą', [
-          'class' => 'btn btn-primary btn-sm fw-semibold', 'escapeTitle' => false, 'name' => 'save_draft'
-        ]) ?>
-      <?php endif; ?>
+      </div>
+
+      <div class="card-footer text-end">
+        <?php if ($_isAdmin || $_role !== 'user'): ?>
+          <?php if ($__ksefModeEnabled): ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-outline-primary m-1',
+              'name' => 'save_draft'
+            ]) ?>
+            <?= $this->Form->button('Zapisz i wyślij do KSeF <i class="ri-send-plane-line ms-1 align-middle d-inline-block"></i>', [
+              'class' => 'btn btn-primary m-1', 'escapeTitle' => false, 'name' => 'save_and_send_ksef'
+            ]) ?>
+          <?php else: ?>
+            <?= $this->Form->button('Zapisz jako roboczą', [
+              'class' => 'btn btn-outline-secondary m-1', 'name' => 'save_draft'
+            ]) ?>
+            <?= $this->Form->button('Zapisz i wystaw', [
+              'class' => 'btn btn-primary m-1',
+              'name' => 'save_only'
+            ]) ?>
+          <?php endif; ?>
+        <?php else: ?>
+          <?= $this->Form->button('Zapisz jako roboczą', ['class' => 'btn btn-primary m-1', 'name' => 'save_draft']) ?>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
+
+  
 </div>
 
 <?= $this->Form->end() ?>
@@ -1070,23 +1199,25 @@ if ($__isEdit && !empty($__prefillItems)) {
       </div>
       <div class="modal-body">
         <p class="mb-3">Czy na pewno chcesz zapisać tę fakturę i natychmiast wysłać ją do KSeF?</p>
-        <?php
-          $envFromSess = (string)($this->getRequest()->getSession()->read('Ksef.status.env') ?? '');
-          $defaultEnv = $envFromSess !== '' ? $envFromSess : 'prod';
-        ?>
-        <div class="mt-2">
-          <label class="form-label small mb-1">Środowisko KSeF</label>
-          <select id="ksef-env" class="form-select form-select-sm" style="max-width: 200px;">
-            <option value="test" <?= $defaultEnv === 'test' ? 'selected' : '' ?>>Test</option>
-            <option value="prod" <?= $defaultEnv === 'prod' ? 'selected' : '' ?>>Produkcyjne</option>
-          </select>
+        <div class="row g-3 align-items-center">
+          <div class="col-sm-5">
+            <label for="ksef-env" class="col-form-label">Środowisko</label>
+          </div>
+          <div class="col-sm-7">
+            <select id="ksef-env" class="form-select form-select-sm">
+              <option value="test">Test</option>
+              <option value="prod">Production</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <div class="form-text">Domyślnie używane będzie środowisko testowe. Zmień na Production tylko jeśli masz pewność.</div>
+          </div>
         </div>
+        <hr>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>
-        <button type="button" class="btn btn-primary" id="ksef-confirm-send-btn">
-          Wyślij do KSeF
-        </button>
+        <button type="button" class="btn btn-primary" id="ksef-confirm-send-btn">Wyślij do KSeF</button>
       </div>
     </div>
   </div>
@@ -1094,6 +1225,38 @@ if ($__isEdit && !empty($__prefillItems)) {
   <input type="hidden" name="ksef_send" id="ksef-send-flag" value="0">
   <input type="hidden" name="ksef_env" id="ksef-env-hidden" value="test">
 </div>
+
+<script>
+// KSeF confirm modal for "Zapisz i wyślij do KSeF" (walutowa)
+$(function(){
+  var $form = $('form.needs-validation').first();
+  if (!$form.length) return;
+  // intercept button
+  $(document).on('click', 'button[name="save_and_send_ksef"]', function(e){
+    e.preventDefault();
+    var modalEl = document.getElementById('ksef-confirm-modal');
+    if (!modalEl) { $form.trigger('submit'); return; }
+    try { $('#ksef-confirm-modal').modal('show'); } catch(_){ new bootstrap.Modal(modalEl).show(); }
+  });
+  // confirm send
+  $(document).on('click', '#ksef-confirm-send-btn', function(){
+    var env = ($('#ksef-env').val()||'test');
+    if ($form.find('input[name="ksef_env"]').length === 0) {
+      $('<input>').attr({type:'hidden', name:'ksef_env', value: env}).appendTo($form);
+    } else {
+      $form.find('input[name="ksef_env"]').val(env);
+    }
+    if ($form.find('input[name="ksef_send"]').length === 0) {
+      $('<input>').attr({type:'hidden', name:'ksef_send', value: '1'}).appendTo($form);
+    } else {
+      $form.find('input[name="ksef_send"]').val('1');
+    }
+    var modalEl = document.getElementById('ksef-confirm-modal');
+    try { $('#ksef-confirm-modal').modal('hide'); } catch(_){ if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide(); }
+    $form.trigger('submit');
+  });
+});
+</script>
 <div class="modal fade" id="recipient-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -1164,12 +1327,12 @@ if ($__isEdit && !empty($__prefillItems)) {
     </div>
   </div>
 </div>
-<!-- Modal: Nowy schemat numeracji -->
+<!-- Modal: Nowa seria -->
 <div class="modal fade" id="series-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj schemat numeracji</h6>
+        <h6 class="modal-title">Dodaj serię</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -1181,7 +1344,7 @@ if ($__isEdit && !empty($__prefillItems)) {
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa/oznaczenie schematu numeracji*',
+          'label' => 'Nazwa/oznaczenie serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-name'
@@ -1195,7 +1358,7 @@ if ($__isEdit && !empty($__prefillItems)) {
         
         <div class="alert alert-info small">
           <strong>Instrukcja wzorców numeracji:</strong><br>
-          Możliwe jest definiowanie własnych wzorców numeracji dokumentów.<br><br>
+          Możliwe jest definiowanie własnych wzorców serii dokumentów.<br><br>
           
           <strong>Przykładowe wzorce:</strong><br>
           • <code>[numer]/[rok]</code><br>
@@ -1227,7 +1390,7 @@ if ($__isEdit && !empty($__prefillItems)) {
         <div class="row">
           <div class="col-md-6">
             <?= $this->Form->control('invoice_series_type_id', [
-              'label' => 'Typ numeracji (opcjonalnie)',
+              'label' => 'Typ serii (opcjonalnie)',
               'type' => 'select',
               'empty' => '-- Wybierz typ --',
               'class' => 'form-select',
@@ -1236,7 +1399,7 @@ if ($__isEdit && !empty($__prefillItems)) {
           </div>
           <div class="col-md-6">
             <?= $this->Form->control('invoice_series_period_id', [
-              'label' => 'Okres numeracji (opcjonalnie)',
+              'label' => 'Okres serii (opcjonalnie)',
               'type' => 'select',
               'empty' => '-- Wybierz okres --',
               'class' => 'form-select',
@@ -1251,7 +1414,7 @@ if ($__isEdit && !empty($__prefillItems)) {
             'id' => 'series-is-default'
           ]) ?>
           <label class="form-check-label" for="series-is-default">
-            Ustaw jako domyślny schemat numeracji
+            Ustaw jako domyślną serię
           </label>
         </div>
       </div>
@@ -1348,11 +1511,11 @@ if ($__isEdit && !empty($__prefillItems)) {
             ]) ?>
           </div>
 
-          <div class="col-md-4">
-            <?= $this->Form->control('eu_vat', [
-              'label' => 'EU VAT',
-              'class' => 'form-control'
-            ]) ?>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check form-switch mt-2">
+              <input class="form-check-input" type="checkbox" id="eu-vat-switch" name="eu_vat" value="1">
+              <label class="form-check-label" for="eu-vat-switch">VAT UE aktywny</label>
+            </div>
           </div>
 
           <div class="col-md-4">
@@ -1451,248 +1614,14 @@ if ($__isEdit && !empty($__prefillItems)) {
   </div>
 </div>
 
-<!-- Modal: Dodaj produkt -->
-<datalist id="prod-units-list">
-  <option value="szt.">szt. – sztuki</option>
-  <option value="kg">kg – kilogram</option>
-  <option value="g">g – gram</option>
-  <option value="l">l – litr</option>
-  <option value="ml">ml – mililitr</option>
-  <option value="m">m – metr</option>
-  <option value="m2">m² – metr kwadratowy</option>
-  <option value="m3">m³ – metr sześcienny</option>
-  <option value="km">km – kilometr</option>
-  <option value="cm">cm – centymetr</option>
-  <option value="t">t – tona</option>
-  <option value="h">h – godzina</option>
-  <option value="godz.">godz. – godzina</option>
-  <option value="min.">min. – minuta</option>
-  <option value="dn.">dn. – dzień</option>
-  <option value="mies.">mies. – miesiąc</option>
-  <option value="rok">rok</option>
-  <option value="kpl.">kpl. – komplet</option>
-  <option value="op.">op. – opakowanie</option>
-  <option value="par">par – para</option>
-  <option value="zest.">zest. – zestaw</option>
-  <option value="usł.">usł. – usługa</option>
-  <option value="MB">MB – megabajt</option>
-  <option value="GB">GB – gigabajt</option>
-  <option value="TB">TB – terabajt</option>
-</datalist>
+<?= $this->element('Invoices/product_create_modal') ?>
 
-<div class="modal fade" id="product-create-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title"><i class="ri-price-tag-3-line me-1"></i> Dodaj produkt / usługę</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <?= $this->Form->create(null, ['url' => ['controller' => 'Products','action' => 'add'], 'id' => 'product-create-form']) ?>
-      <div class="modal-body">
-
-        <!-- Podstawowe informacje -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Nazwa <span class="text-danger">*</span></label>
-          <input type="text" name="name" id="product-create-name" class="form-control" required placeholder="Nazwa produktu lub usługi">
-          <div class="invalid-feedback">Podaj nazwę.</div>
-        </div>
-
-        <div class="row g-2 mb-3">
-          <div class="col-6">
-            <label class="form-label fw-semibold">Kod / SKU</label>
-            <input type="text" name="code" id="product-create-code" class="form-control" placeholder="np. PRD-001 (auto)">
-          </div>
-          <div class="col-6">
-            <label class="form-label fw-semibold">Typ</label>
-            <select name="is_service" class="form-select" id="product-create-type">
-              <option value="0">📦 Produkt / towar</option>
-              <option value="1">🔧 Usługa</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Cena i jednostka -->
-        <div class="row g-2 mb-3">
-          <div class="col-4">
-            <label class="form-label fw-semibold">Jednostka miary</label>
-            <input type="text" name="unit_name" id="product-create-unit" class="form-control"
-              value="szt." list="prod-units-list" autocomplete="off"
-              placeholder="np. szt., kg, h…">
-            <div class="form-text">Wpisz lub wybierz z listy</div>
-          </div>
-          <div class="col-4">
-            <label class="form-label fw-semibold">Cena netto</label>
-            <div class="input-group">
-              <input type="number" name="net_price" step="0.01" min="0" class="form-control text-end" placeholder="0.00" id="product-create-price">
-              <span class="input-group-text" id="prod-currency-label">PLN</span>
-            </div>
-          </div>
-          <div class="col-4">
-            <label class="form-label fw-semibold">Stawka VAT</label>
-            <?= $this->Form->control('vat_id', ['label' => false, 'type' => 'select', 'options' => $vats, 'class' => 'form-select', 'id' => 'product-create-vat']) ?>
-          </div>
-        </div>
-
-        <!-- Klasyfikacja -->
-        <div class="row g-2 mb-3">
-          <div class="col-6">
-            <label class="form-label fw-semibold">PKWiU</label>
-            <input type="text" name="pkwiu" class="form-control" placeholder="np. 62.01.10.0" id="product-create-pkwiu">
-          </div>
-          <div class="col-6">
-            <label class="form-label fw-semibold">Kod GTU</label>
-            <select name="gtu_code" class="form-select" id="product-create-gtu">
-              <option value="">— brak GTU —</option>
-              <option value="GTU_01">GTU_01 – napoje alkoholowe</option>
-              <option value="GTU_02">GTU_02 – paliwa silnikowe</option>
-              <option value="GTU_03">GTU_03 – oleje opałowe / smarowe</option>
-              <option value="GTU_04">GTU_04 – wyroby tytoniowe</option>
-              <option value="GTU_05">GTU_05 – odpady</option>
-              <option value="GTU_06">GTU_06 – urządzenia elektroniczne</option>
-              <option value="GTU_07">GTU_07 – pojazdy i części</option>
-              <option value="GTU_08">GTU_08 – metale szlachetne</option>
-              <option value="GTU_09">GTU_09 – leki i wyroby medyczne</option>
-              <option value="GTU_10">GTU_10 – budynki, budowle i grunty</option>
-              <option value="GTU_11">GTU_11 – usługi w zakresie przenoszenia uprawnień do emisji</option>
-              <option value="GTU_12">GTU_12 – usługi niematerialne (IT, doradcze, reklamowe…)</option>
-              <option value="GTU_13">GTU_13 – transport i gospodarka magazynowa</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="row g-2 mb-3">
-          <div class="col-12">
-            <label class="form-label fw-semibold">Opis</label>
-            <textarea name="description" rows="2" class="form-control" placeholder="Opcjonalny opis produktu / usługi"></textarea>
-          </div>
-        </div>
-
-        <div class="row g-2 mb-2">
-          <div class="col-12">
-            <label class="form-label fw-semibold">Kod kreskowy / EAN</label>
-            <input type="text" name="barcode" class="form-control" placeholder="np. 5901234123457">
-          </div>
-        </div>
-
-        <!-- Sekcja KSeF – zwijana -->
-        <div class="border rounded p-0 mt-3">
-          <button type="button" class="btn btn-link text-decoration-none d-flex align-items-center w-100 px-3 py-2 text-start gap-1"
-            data-bs-toggle="collapse" data-bs-target="#prod-ksef-section" aria-expanded="false" aria-controls="prod-ksef-section"
-            id="prod-ksef-toggle">
-            <i class="ri-arrow-right-s-line" id="prod-ksef-chevron" style="transition: transform .2s"></i>
-            <span class="small fw-semibold text-muted">Pola klasyfikacyjne KSeF / JPK</span>
-            <span class="badge bg-secondary-subtle text-secondary ms-1 small">opcjonalne</span>
-          </button>
-          <div class="collapse" id="prod-ksef-section">
-            <div class="px-3 pb-3 pt-1">
-
-              <div class="row g-2 mb-2">
-                <div class="col-4">
-                  <label class="form-label small">GTIN / EAN
-                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                      data-bs-toggle="tooltip" title="Unikatowy kod handlowy produktu (EAN-8, EAN-13, UPC). Np. 5901234123457.">
-                      <i class="ri-question-line text-muted"></i>
-                    </button>
-                  </label>
-                  <input type="text" name="gtin" class="form-control form-control-sm" placeholder="5901234123457">
-                </div>
-                <div class="col-4">
-                  <label class="form-label small">Kod CN
-                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                      data-bs-toggle="tooltip" title="Kod towaru wg Nomenklatury Scalonej (CN) – dla obrotu międzynarodowego.">
-                      <i class="ri-question-line text-muted"></i>
-                    </button>
-                  </label>
-                  <input type="text" name="cn_code" class="form-control form-control-sm" placeholder="8471 30 00">
-                </div>
-                <div class="col-4">
-                  <label class="form-label small">PKOB
-                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                      data-bs-toggle="tooltip" title="Polska Klasyfikacja Obiektów Budowlanych – dla budynków i budowli.">
-                      <i class="ri-question-line text-muted"></i>
-                    </button>
-                  </label>
-                  <input type="text" name="pkob" class="form-control form-control-sm" placeholder="1110">
-                </div>
-              </div>
-
-              <div class="row g-2 mb-2">
-                <div class="col-6">
-                  <label class="form-label small">Kwota akcyzy
-                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                      data-bs-toggle="tooltip" title="Kwota podatku akcyzowego zawarta w cenie (paliwa, alkohol, tytoń).">
-                      <i class="ri-question-line text-muted"></i>
-                    </button>
-                  </label>
-                  <input type="number" name="excise_amount" step="0.01" min="0" class="form-control form-control-sm" placeholder="0.00">
-                </div>
-                <div class="col-6 d-flex align-items-end pb-1">
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="prod-attachment15" name="is_attachment15" value="1">
-                    <label class="form-check-label small" for="prod-attachment15">
-                      Towar/usługa z zał.&nbsp;15 (MPP)
-                      <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                        data-bs-toggle="tooltip" title="Pozycja z załącznika nr 15 ustawy o VAT – obowiązkowy mechanizm podzielonej płatności.">
-                        <i class="ri-question-line text-muted"></i>
-                      </button>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row g-2">
-                <div class="col-12">
-                  <label class="form-label small">Oznaczenie procedury (FA(3))
-                    <button type="button" class="btn btn-link p-0 ms-1 align-baseline" tabindex="-1"
-                      data-bs-toggle="tooltip" title="Dodatkowe oznaczenia procedur wymagane w KSeF / JPK_VAT (np. metoda kasowa, powiązane podmioty).">
-                      <i class="ri-question-line text-muted"></i>
-                    </button>
-                  </label>
-                  <select name="procedure_marking" class="form-select form-select-sm">
-                    <option value="">— brak —</option>
-                    <option value="MR_T">MR_T – metoda kasowa (dostawa towarów)</option>
-                    <option value="MR_UZ">MR_UZ – metoda kasowa (świadczenie usług)</option>
-                    <option value="EE">EE – energia elektryczna, gaz, usługi dystrybucji</option>
-                    <option value="TP">TP – podmioty powiązane (art. 32 ustawy VAT)</option>
-                    <option value="TT_WNT">TT_WNT – WNT w transakcji trójstronnej uproszczonej</option>
-                    <option value="TT_D">TT_D – dostawa w transakcji trójstronnej uproszczonej</option>
-                    <option value="I_42">I_42 – WDT po imporcie w procedurze celnej 42</option>
-                    <option value="I_63">I_63 – WDT po imporcie w procedurze celnej 63</option>
-                    <option value="B_SPV">B_SPV – transfer bonu jednego przeznaczenia</option>
-                    <option value="B_SPV_DOSTAWA">B_SPV_DOSTAWA – dostawa towarów dot. bonu jednego przeznaczenia</option>
-                    <option value="B_MPV_PROWIZJA">B_MPV_PROWIZJA – prowizja dot. bonu różnego przeznaczenia</option>
-                    <option value="MPP">MPP – mechanizm podzielonej płatności</option>
-                  </select>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-
-        <?= $this->Form->hidden('unit_id', ['value' => 1]) ?>
-        <?= $this->Form->hidden('currency', ['value' => 'PLN']) ?>
-        <?= $this->Form->hidden('is_active', ['value' => 1]) ?>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Anuluj</button>
-        <button type="submit" id="product-create-submit" class="btn btn-primary">
-          <span class="spinner-border spinner-border-sm d-none me-1" id="prod-submit-spinner" role="status" aria-hidden="true"></span>
-          <i class="ri-save-line me-1" id="prod-submit-icon"></i>
-          <span>Zapisz produkt</span>
-        </button>
-      </div>
-      <?= $this->Form->end() ?>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Dodaj typ numeracji -->
+<!-- Modal: Dodaj typ serii -->
 <div class="modal fade" id="series-type-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj typ numeracji</h6>
+        <h6 class="modal-title">Dodaj typ serii</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -1704,14 +1633,14 @@ if ($__isEdit && !empty($__prefillItems)) {
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa typu numeracji*',
+          'label' => 'Nazwa typu serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-type-name'
         ]) ?>
         
         <?= $this->Form->control('invoice_series_period_id', [
-          'label' => 'Okres numeracji (opcjonalnie)',
+          'label' => 'Okres serii (opcjonalnie)',
           'type' => 'select',
           'empty' => '-- Wybierz okres --',
           'class' => 'form-select',
@@ -1719,7 +1648,7 @@ if ($__isEdit && !empty($__prefillItems)) {
         ]) ?>
         
         <?= $this->Form->control('series_template', [
-          'label' => 'Szablon numeracji (opcjonalnie)',
+          'label' => 'Szablon serii (opcjonalnie)',
           'class' => 'form-control',
           'placeholder' => 'np. {YYYY}/{MM}/{NR}',
           'id' => 'series-type-template'
@@ -1747,12 +1676,12 @@ if ($__isEdit && !empty($__prefillItems)) {
   </div>
 </div>
 
-<!-- Modal: Dodaj okres numeracji -->
+<!-- Modal: Dodaj okres serii -->
 <div class="modal fade" id="series-period-create-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h6 class="modal-title">Dodaj okres numeracji</h6>
+        <h6 class="modal-title">Dodaj okres serii</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
@@ -1764,7 +1693,7 @@ if ($__isEdit && !empty($__prefillItems)) {
 
       <div class="modal-body">
         <?= $this->Form->control('name', [
-          'label' => 'Nazwa okresu numeracji*',
+          'label' => 'Nazwa okresu serii*',
           'required' => true,
           'class' => 'form-control',
           'id' => 'series-period-name',
@@ -1798,12 +1727,6 @@ if ($__isEdit && !empty($__prefillItems)) {
 <style>
   #contractors-table tbody tr.catalog-row{ cursor:pointer; }
   #contractors-table tbody tr.catalog-row:hover{ background:#f5f7fb; }
-
-  .item-product-select + .select2-container { width: 100% !important; }
-  @media (max-width:1199.98px) { .select2-selection__rendered { font-size: .8125rem !important; } }
-
-  /* Szerokość pola ceny */
-  .item-price { min-width: 90px; }
 
   /* Nagłówki grup Select2 */
   .select2-results__group{
@@ -1866,57 +1789,6 @@ if ($__isEdit && !empty($__prefillItems)) {
   .invoice-compact th[style*="min-width:260px"]{ min-width:220px !important; }
   .invoice-compact th, .invoice-compact td{ white-space: nowrap; }
 
-  /* Ukryj natywne strzałki spinnera w polach liczbowych — na wąskich kolumnach zjadały całe pole */
-  .invoice-compact input[type="number"]::-webkit-outer-spin-button,
-  .invoice-compact input[type="number"]::-webkit-inner-spin-button{
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  .invoice-compact input[type="number"]{
-    -moz-appearance: textfield;
-    appearance: textfield;
-  }
-
-  /* Compact density — 1366px i mniej */
-  @media (max-width: 1399.98px){
-    .invoice-compact .form-control,
-    .invoice-compact .form-select{
-      height: 32px;
-      padding: .2rem .4rem;
-      font-size: .82rem;
-    }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection--single,
-    .invoice-compact .select2-container--default .select2-selection--single{ height: 32px !important; }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection__rendered,
-    .invoice-compact .select2-container--default .select2-selection__rendered{ line-height: 30px !important; font-size: .82rem; }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection__arrow,
-    .invoice-compact .select2-container--default .select2-selection__arrow{ height: 30px !important; }
-    .invoice-compact #items-table tbody > tr > td{
-      padding: .25rem .35rem;
-    }
-    .invoice-compact #items-table thead th{
-      padding: .35rem .35rem;
-      font-size: .72rem;
-      letter-spacing: .2px;
-    }
-    .invoice-compact .btn-icon{ width: 28px; height: 28px; }
-    .invoice-compact .item-price-mode{ min-width: 78px !important; font-size: .76rem; }
-  }
-  @media (max-width: 1199.98px){
-    .invoice-compact .form-control,
-    .invoice-compact .form-select{
-      height: 30px;
-      padding: .15rem .35rem;
-      font-size: .78rem;
-    }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection--single,
-    .invoice-compact .select2-container--default .select2-selection--single{ height: 30px !important; }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection__rendered,
-    .invoice-compact .select2-container--default .select2-selection__rendered{ line-height: 28px !important; font-size: .78rem; }
-    .invoice-compact .select2-container--default.select2-compact .select2-selection__arrow,
-    .invoice-compact .select2-container--default .select2-selection__arrow{ height: 28px !important; }
-  }
-
   .invoice-compact #items-body tr:last-child table td,
   .invoice-compact #items-body tr:last-child table th{ padding: .2rem .25rem; }
   .invoice-compact .invoice-amount-input{ height: 34px; font-weight:600; }
@@ -1943,45 +1815,11 @@ if ($__isEdit && !empty($__prefillItems)) {
   background:#f8fafc; border:1px solid #eef1f4; border-radius:12px;
   padding:.5rem .75rem;
 }
+.invoice-pills .pill-values{ display:flex; flex-direction:column; align-items:flex-end; line-height:1.1; }
 .invoice-pills .pill-accent{ background:#eef6ff; border-color:#d7e9ff; }
 .invoice-pills .pill-label{ font-size:.75rem; color:#6c757d; }
 .invoice-pills .pill-value{ font-weight:700; font-variant-numeric: tabular-nums; }
-
-/* --- Sticky action bar (suma + CTA) --- */
-.invoice-sticky-bar{
-  position: fixed; bottom: 0; left: 0; right: 0;
-  z-index: 1030;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  box-shadow: 0 -8px 24px -12px rgba(15,23,42,.12);
-  padding: .55rem 0;
-  backdrop-filter: saturate(180%) blur(8px);
-  -webkit-backdrop-filter: saturate(180%) blur(8px);
-}
-.invoice-sticky-bar .invoice-pills .pill{ padding:.35rem .6rem; border-radius:10px; }
-.invoice-sticky-bar .invoice-pills .pill-value{ font-size:.95rem; }
-.invoice-sticky-bar .btn{ border-radius:8px; }
-/* odsuń stopkę strony żeby nie była zasłonięta */
-body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
-@media (max-width: 575.98px){
-  .invoice-sticky-bar .invoice-pills{ order: 2; width:100%; }
-  body.has-invoice-sticky-bar .main-content{ padding-bottom: 156px; }
-}
-
-/* --- Group headers w sekcji „Podstawowe" --- */
-.form-group-title{
-  font-size:.7rem;
-  font-weight:600;
-  letter-spacing:.6px;
-  text-transform:uppercase;
-  color:#64748b;
-  margin: .25rem 0 .5rem;
-  display:flex; align-items:center; gap:.5rem;
-}
-.form-group-title::after{
-  content:''; flex:1; height:1px; background:#e5e7eb;
-}
-.form-group + .form-group{ margin-top: 1.25rem; }
+.invoice-pills .pill-subvalue{ font-size:.75rem; color:#6c757d; }
 .invoice-pills .pill-badge{
   font-size:.75rem; font-weight:600; padding:.15rem .5rem; border-radius:999px;
   background:#fff3cd; color:#9a6700; border:1px solid #ffe69c;
@@ -2052,82 +1890,48 @@ body.has-invoice-sticky-bar .main-content{ padding-bottom: 88px; }
 
   // — Pastylki sum: tylko definicja (wywołasz ją z allCalc() w drugim bloku)
   window.mirrorSums = function(){
-    const net = document.getElementById('sum-net')?.value || '0.00';
-    const vat = document.getElementById('sum-tax')?.value || '0.00';
-    const gro = document.getElementById('sum-gross')?.value || '0.00';
+    const nStr = document.getElementById('sum-net')?.value || '0.00';
+    const tStr = document.getElementById('sum-tax')?.value || '0.00';
+    const gStr = document.getElementById('sum-gross')?.value || '0.00';
+    const net = parseFloat(nStr.replace(',', '.')) || 0;
+    const tax = parseFloat(tStr.replace(',', '.')) || 0;
+    const gro = parseFloat(gStr.replace(',', '.')) || 0;
     const pn = document.getElementById('pill-net');
     const pv = document.getElementById('pill-vat');
     const pg = document.getElementById('pill-gross');
-    if (pn) pn.textContent = net;
-    if (pv) pv.textContent = vat;
-    if (pg) pg.textContent = gro;
+    const pns = document.getElementById('pill-net-sub');
+    const pvs = document.getElementById('pill-vat-sub');
+    const pgs = document.getElementById('pill-gross-sub');
+    const hint = document.getElementById('pills-hint');
+    const curSel = document.getElementById('currency');
+    const cur = (curSel && curSel.value ? curSel.value : 'PLN').toUpperCase();
+    const fxInp = document.getElementById('fx-rate');
+    const fx = fxInp && fxInp.value ? parseFloat(fxInp.value) : NaN;
+    const nf = new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    if (cur !== 'PLN' && isFinite(fx) && fx > 0) {
+      const nPLN = net * fx;
+      const tPLN = tax * fx;
+      const gPLN = gro * fx;
+      if (pn) pn.textContent = nf.format(nPLN);
+      if (pv) pv.textContent = nf.format(tPLN);
+      if (pg) pg.textContent = nf.format(gPLN);
+      if (pns) pns.textContent = nf.format(net) + ' ' + cur;
+      if (pvs) pvs.textContent = nf.format(tax) + ' ' + cur;
+      if (pgs) pgs.textContent = nf.format(gro) + ' ' + cur;
+      if (hint) hint.textContent = 'Kwoty przeliczone na PLN — obok w ' + cur + ' (kurs: ' + (isFinite(fx) ? fx.toFixed(4) : '-') + ')';
+    } else {
+      // PLN or no valid rate – show base as PLN, hide subs
+      if (pn) pn.textContent = nf.format(net);
+      if (pv) pv.textContent = nf.format(tax);
+      if (pg) pg.textContent = nf.format(gro);
+      if (pns) pns.textContent = '';
+      if (pvs) pvs.textContent = '';
+      if (pgs) pgs.textContent = '';
+      if (hint) hint.textContent = 'Kwoty w PLN';
+    }
   };
 })();
-</script>
-<script>
-(function(){
-  // Aktywuj/dezaktywuj pole „Data częściowej płatności" w zależności od kwoty „Zapłacono"
-  function togglePartialPaid(){
-    var v = parseFloat(($('[name="alreadypaid"]').val()||'0').replace(',','.'));
-    var on = isFinite(v) && v > 0;
-    var $input = $('[name="partial_paid_at"]');
-    var $group = $('#partial-paid-at-group');
-
-    if (on) {
-      $input.prop('disabled', false).attr('required', true);
-      $group.find('.partial-paid-hint').hide();
-    } else {
-      $input.val('').prop('disabled', true).removeAttr('required');
-      $group.find('.partial-paid-hint').show();
-    }
-  }
-  $(document).on('input change', '[name="alreadypaid"]', togglePartialPaid);
-  $(togglePartialPaid);
-})();
-</script>
-
-<script>
-// KSeF confirm modal for "Zapisz i wyślij do KSeF"
-$(function(){
-  var $form = $('form.needs-validation').first();
-  if (!$form.length) return;
-  // open modal instead of direct submit
-  $(document).on('click', 'button[name="save_and_send_ksef"]', function(e){
-    e.preventDefault();
-    var modalEl = document.getElementById('ksef-confirm-modal');
-    if (!modalEl) { $form.trigger('submit'); return; }
-    try { $('#ksef-confirm-modal').modal('show'); } catch(_){ new bootstrap.Modal(modalEl).show(); }
-  });
-  // confirm send
-  $(document).on('click', '#ksef-confirm-send-btn', function(){
-    var env = ($('#ksef-env').val() || $('#ksef-env-hidden').val() || 'prod');
-    if ($form.find('input[name="ksef_env"]').length === 0) {
-      $('<input>').attr({type:'hidden', name:'ksef_env', value: env}).appendTo($form);
-    } else {
-      $form.find('input[name="ksef_env"]').val(env);
-    }
-    if ($form.find('input[name="ksef_send"]').length === 0) {
-      $('<input>').attr({type:'hidden', name:'ksef_send', value: '1'}).appendTo($form);
-    } else {
-      $form.find('input[name="ksef_send"]').val('1');
-    }
-    // close modal and submit
-    var modalEl = document.getElementById('ksef-confirm-modal');
-    try { $('#ksef-confirm-modal').modal('hide'); } catch(_){ if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide(); }
-    $form.trigger('submit');
-  });
-  // Email missing reminder (non-blocking)
-  function updateEmailWarning(){
-    var v = ($('[name="invoice_contractor[email]"]').val()||'').trim();
-    if (!v){ $('#email-missing-info').removeClass('d-none'); } else { $('#email-missing-info').addClass('d-none'); }
-  }
-  $(document).on('input change', '[name="invoice_contractor[email]"]', updateEmailWarning);
-  $(updateEmailWarning);
-  $(document).on('submit', 'form.needs-validation', function(){
-    var v = ($('[name="invoice_contractor[email]"]').val()||'').trim();
-    if (!v){ toast('Brak adresu e-mail nabywcy. Zapis będzie wykonany, ale wysyłka mailowa będzie niedostępna.'); }
-  });
-});
 </script>
 <script>
 // AJAX validation for invoice form (no page reload on errors)
@@ -2137,7 +1941,6 @@ $(function(){
   const csrf = $('meta[name="csrfToken"]').attr('content') || '';
 
   function clearErrors(){
-    $form.removeClass('was-validated');
     $form.find('.is-invalid').removeClass('is-invalid');
     $form.find('.invalid-feedback').remove();
     $('#form-errors-box').remove();
@@ -2168,7 +1971,6 @@ $(function(){
       });
       const json = await res.json();
       if (!json.success){
-        $form.addClass('was-validated');
         // Field mapping
         for (const [path, msg] of Object.entries(json.errors||{})){
           if (path.startsWith('items.')){
@@ -2185,8 +1987,6 @@ $(function(){
           }
         }
         showSummary(json.errors||{});
-      } else {
-        $form.removeClass('was-validated');
       }
 
       if (json.totals){
@@ -2196,29 +1996,25 @@ $(function(){
         $('#pill-gross').text(nf.format(json.totals.gross||0));
       }
 
-      return {ok: !!json.success, errors: json.errors||{}};
+      return !!json.success;
     }catch(err){
       console.error('validateAjax error', err);
-      return {ok: false, errors: {}};
+      return false;
     }
   }
 
   $('#btn-validate').on('click', async function(e){
     e.preventDefault();
-    const {ok, errors} = await runValidation();
+    const ok = await runValidation();
     if (ok){
       window.showToast('Formularz wygląda poprawnie. Możesz zapisać fakturę.', 'success');
     } else {
-      const msgs = Object.values(errors);
-      const html = msgs.length
-        ? 'Błędy:<br>• ' + msgs.map(m => $('<span>').text(m).html()).join('<br>• ')
-        : 'Formularz zawiera błędy. Sprawdź zaznaczone pola.';
-      window.showToast(html, 'danger', Math.min(4000 + msgs.length * 1500, 12000));
+      window.showToast('Formularz zawiera błędy. Sprawdź zaznaczone pola.', 'danger');
     }
   });
 
   $form.on('submit', async function(e){
-    const {ok} = await runValidation();
+    const ok = await runValidation();
     if (!ok){ e.preventDefault(); e.stopPropagation(); }
   });
 })();
@@ -2244,12 +2040,6 @@ $(function () {
   var nbpRateUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"nbpRate","_ext"=>"json"]) ?>';
   var nbpCurrenciesUrl = '<?= $this->Url->build(["controller"=>"Invoices","action"=>"nbpCurrencies","_ext"=>"json"]) ?>';
   var seriesNextNumberUrl = '<?= $this->Url->build(['controller'=>'InvoiceSeries','action'=>'nextNumber','_ext'=>'json']) ?>';
-  var isEdit = <?= json_encode($__isEdit ?? false) ?>;
-  var editPrefill = {
-    contractor: <?= json_encode($__prefillContractor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
-    items: <?= json_encode($__prefillItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
-  };
-  var originalItems = <?= json_encode($__originalItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
   var seriesPeriods = {
     '2b4003f9-06ec-4a97-b8ce-9a1b767d1f7a': 'roczny',
     '803fdc39-7c49-4921-a6ac-6c929fc0b6f5': 'ciągły', 
@@ -2257,18 +2047,13 @@ $(function () {
   };
   var $form = $('form.needs-validation').first();
   var $itemsBody = $('#items-body');
-  var idx = <?= max(1, count($__renderItems)) ?>;
+  var idx = <?= ($__isEdit && !empty($__prefillItems)) ? max(1, count($__prefillItems)) : 1 ?>;
   var currentProductRow = null;
 
   console.log('URLs initialized:', {
     contractorUrl: contractorUrl,
     productUrl: productUrl,
     gusUrl: gusUrl
-  });
-
-  // ===== Tooltips (m.in. modal produktu) =====
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
-    new bootstrap.Tooltip(el, { container: 'body', trigger: 'hover focus' });
   });
 
   // ===== GTU Popover =====
@@ -2343,32 +2128,7 @@ $(function () {
     });
   }
 
-  // === MPP Help Popover ===
-  if (document.getElementById('mpp-help')) {
-    new bootstrap.Popover(document.getElementById('mpp-help'), {
-      html: true, trigger: 'click', container: 'body', sanitize: false
-    });
-  }
-
-  // Zamknij wszystkie popovers po kliknięciu poza nimi
-  document.addEventListener('click', function(e) {
-    ['vat-help','gtu-help','mpp-help','catalog-help','fp-help','autosend-help'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (!el || el.contains(e.target) || e.target.closest('.popover')) return;
-      var p = bootstrap.Popover.getInstance(el);
-      if (p) p.hide();
-    });
-  });
-
-  function toast(msg, type){
-    var $body = $('#app-toast-body');
-    var safe = $('<div>').text(msg).html().replace(/\n/g, '<br>');
-    $body.html(safe);
-    var $toast = $('#app-toast');
-    $toast.removeClass('text-bg-danger text-bg-success text-bg-warning');
-    if (type === 'danger') $toast.addClass('text-bg-danger');
-    new bootstrap.Toast($toast[0]).show();
-  }
+  function toast(msg, type){ var $body=$('#app-toast-body'); var safe=$('<div>').text(msg).html().replace(/\n/g,'<br>'); $body.html(safe); var $toast=$('#app-toast'); $toast.removeClass('text-bg-danger text-bg-success text-bg-warning'); if(type==='danger') $toast.addClass('text-bg-danger'); new bootstrap.Toast($toast[0]).show(); }
   function closeSelect2Then(fn){
     var $sel = $('#contractor-select');
     try { $sel.select2('close'); } catch(_){}
@@ -2380,53 +2140,16 @@ $(function () {
   function hideContractorSnapshot(){ $('#contractor-snapshot').stop(true,true).slideUp(120); }
   function fillContractorSnapshot(c){
     console.log('fillContractorSnapshot called with:', c);
-    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'', vat_prefix:c.vat_prefix||'', vat_eu:c.vat_eu||'', eori:c.eori||'', tax_id_other:c.tax_id_other||'', tax_id_other_country:c.tax_id_other_country||'' };
+    var data = { name:c.name||c.label||'', nip:c.nip||'', street:c.street||'', zip:c.zip||c.postal_code||c.postalCode||'', city:c.city||'', country:c.country||'PL', email:c.email||'', phone:c.phone||'' };
     console.log('Contractor data to fill:', data);
     function setField(key, val){
       var $targets = $('[name="invoice_contractor['+key+']"],[name="invoice_contractor.'+key+'"],#invoice-contractor-'+key+',#invoice_contractor_'+key);
-      if ($targets.length) {
-        $targets.val(val==null?'':val);
-        // Dla select2 trigger('change') musi być po ustawieniu val
-        $targets.trigger('change');
-      } else {
-        var $any=$('[name="'+key+'"], #'+key); if ($any.length) $any.val(val==null?'':val).trigger('change');
-      }
+      console.log('Setting field', key, 'to', val, 'targets found:', $targets.length);
+      if ($targets.length) { $targets.val(val==null?'':val); $targets.trigger('change'); }
+      else { var $any=$('[name="'+key+'"], #'+key); if ($any.length) $any.val(val==null?'':val).trigger('change'); }
     }
     Object.keys(data).forEach(function(k){ setField(k, data[k]); });
-    // Zaktualizuj pickery krajów (countrySelect) po wyborze kontrahenta
-    setTimeout(function(){
-      if (window.jQuery && jQuery.fn.countrySelect) {
-        // główny kraj nabywcy
-        var $ctrySel = jQuery('[name="invoice_contractor[country]"]');
-        if ($ctrySel.length && $ctrySel.val() !== data.country) $ctrySel.val(data.country);
-        var $ctryUI = jQuery('#contractor-country-select');
-        if ($ctryUI.length && data.country) try { $ctryUI.countrySelect('selectCountry', data.country.toLowerCase()); } catch(e) {}
-        // vat_prefix — uwaga: katalog kontrahentów zapisuje "Brak (spoza UE)" jako vat_prefix="NONE"
-        var vpRaw = data.vat_prefix || '';
-        var vpIsNoneMarker = (vpRaw === 'NONE');
-        var vpClean = vpIsNoneMarker ? '' : vpRaw;  // do countrySelect dajemy puste, nie "NONE"
-        var $vpUI = jQuery('#inv-vat-prefix-ui');
-        if ($vpUI.length) try { $vpUI.countrySelect('selectCountry', vpClean.toLowerCase()); } catch(e) {}
-        var isNoneVp = vpIsNoneMarker || !vpClean;
-        jQuery('#inv-vat-prefix-none').prop('checked', isNoneVp);
-        jQuery('#inv-vat-prefix-wrapper').toggleClass('pe-none opacity-50', isNoneVp);
-        if (isNoneVp) {
-          jQuery('#inv-vat-prefix-hidden').val('');  // czyścimy "NONE" z hidden — XML dostaje empty
-          // KodUE i NrVatUE są parą XSD — bez prefiksu czyścimy i blokujemy pole Numer VAT-UE oraz EORI
-          jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
-          jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
-        } else {
-          jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
-          jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
-        }
-        var $tcUI = jQuery('#inv-tax-id-country-ui');
-        if ($tcUI.length) try { $tcUI.countrySelect('selectCountry', (data.tax_id_other_country || '').toLowerCase()); } catch(e) {}
-      }
-    }, 50);
-    // Pokaż sekcję intl jeśli któreś pole wypełnione
-    var hasIntl = !!(c.vat_prefix||c.vat_eu||c.eori||c.tax_id_other||c.tax_id_other_country);
-    $('#snapshot-intl-toggle').prop('checked', hasIntl);
-    $('#snapshot-intl-fields').toggleClass('d-none', !hasIntl);
+    setTimeout(function(){ var $c=$('[name="invoice_contractor[country]"]'); if($c.length && $c.val()!==data.country) $c.val(data.country).trigger('change'); }, 50);
   }
   function applyContractor(c) {
     console.log('applyContractor called with:', c);
@@ -2447,112 +2170,11 @@ $(function () {
     saveRecent({id: c.id || ('LS:'+ (c.nip || (c.name||''))), text: c.name || c.label});
   }
   function clearContractorSnapshot(){
-    ['name','nip','street','zip','city','country','email','phone','vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].forEach(function(f){
+    ['name','nip','street','zip','city','country','email','phone'].forEach(function(f){
       $('[name="invoice_contractor['+f+']"]').val(f==='country'?'PL':'');
     });
     $('#contractor-id-input').val('');
-    $('#snapshot-intl-toggle').prop('checked', false);
-    $('#snapshot-intl-fields').addClass('d-none');
-    // reset pickerów
-    if (window.jQuery && jQuery.fn.countrySelect) {
-      try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', ''); } catch(e) {}
-      try { jQuery('#inv-tax-id-country-ui').countrySelect('selectCountry', ''); } catch(e) {}
-    }
-    jQuery('#inv-vat-prefix-none').prop('checked', false);
-    jQuery('#inv-vat-prefix-wrapper').removeClass('pe-none opacity-50');
-    jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
-    jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
   }
-
-  // ── inicjalizacja pickerów kraju w sekcji snapshot ────────────────────────
-  (function initInvCountryPickers() {
-    if (!window.jQuery || !jQuery.fn.countrySelect) {
-      var waited = 0;
-      var t = setInterval(function() {
-        waited++;
-        if (window.jQuery && jQuery.fn.countrySelect) { clearInterval(t); initInvCountryPickers(); }
-        else if (waited > 120) clearInterval(t);
-      }, 50);
-      return;
-    }
-    var PL = window.CS_PL_NAMES || {};
-    var EU = window.CS_EU_CODES || [];
-
-    // Inicjalizacja wszystkich picker-ów zarejestrowanych przez contractor_country_select element
-    window.__flushCsQueue = function () {
-      (window.__csQueue || []).forEach(function (cfg) {
-        var $ui = jQuery('#' + cfg.uiId);
-        var $h  = jQuery('#' + cfg.hiddenId);
-        if (!$ui.length || $ui.data('cs-inited')) return;
-        $ui.data('cs-inited', true);
-        $ui.countrySelect({
-          defaultCountry: cfg.initVal || 'pl',
-          preferredCountries: ['pl', 'de', 'cz', 'sk', 'gb', 'us', 'fr', 'nl', 'be', 'it', 'es'],
-          localizedCountries: PL
-        });
-        $ui.closest('.country-select').css({ display: 'block', width: '100%' });
-        try { var d = $ui.countrySelect('getSelectedCountryData'); if (d && d.iso2) $h.val(d.iso2.toUpperCase()); } catch (e) {}
-        $ui.on('change', function () {
-          try { var d = $ui.countrySelect('getSelectedCountryData'); if (d && d.iso2) $h.val(d.iso2.toUpperCase()); } catch (e) {}
-        });
-      });
-      window.__csQueue = [];
-    };
-    window.__flushCsQueue();
-
-    // vat_prefix — tylko kraje UE.
-    // Katalog kontrahentów zapisuje "Brak (spoza UE)" jako vat_prefix="NONE" — traktujemy to jak puste.
-    var $vpUI = jQuery('#inv-vat-prefix-ui'), $vpH = jQuery('#inv-vat-prefix-hidden');
-    var $vpNone = jQuery('#inv-vat-prefix-none'), $vpWrap = jQuery('#inv-vat-prefix-wrapper');
-    if ($vpUI.length && !$vpUI.data('cs-inited')) {
-      $vpUI.data('cs-inited', true);
-      var rawInit = ($vpH.val() || '').toLowerCase();
-      var isInitNoneMarker = (rawInit === 'none');
-      var initVp = isInitNoneMarker ? '' : rawInit;
-      if (isInitNoneMarker) { $vpH.val(''); }  // strip "NONE" — XML/snapshot dostaje empty
-      $vpUI.countrySelect({ defaultCountry: initVp || 'pl', preferredCountries: ['pl','de','fr','cz','sk','nl','be','it','es'], localizedCountries: PL });
-      try { var d = $vpUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $vpH.val(d.iso2.toUpperCase()); } catch(e) {}
-      $vpUI.on('change', function() {
-        try { var d = $vpUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) { $vpH.val(d.iso2.toUpperCase()); $vpNone.prop('checked', false); $vpWrap.removeClass('pe-none opacity-50'); } } catch(e) {}
-      });
-      if (!initVp) { try { $vpUI.countrySelect('selectCountry', ''); $vpH.val(''); } catch(e) {} }
-      // Inicjalizacja stanu "Brak" — gdy sekcja intl widoczna i prefiks pusty LUB był "NONE" z katalogu.
-      // val('') wymagane bo disabled field nie pozwala przesłać starszej wartości.
-      var sectionVisible = !jQuery('#snapshot-intl-fields').hasClass('d-none');
-      if ((!initVp || isInitNoneMarker) && sectionVisible) {
-        $vpNone.prop('checked', true);
-        $vpWrap.addClass('pe-none opacity-50');
-        jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
-        jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
-      }
-      // Obsługa checkboxa "Brak prefiks UE"
-      $vpNone.on('change', function() {
-        if ($vpNone.is(':checked')) {
-          try { $vpUI.countrySelect('selectCountry', ''); } catch(e) {}
-          $vpH.val('');
-          $vpWrap.addClass('pe-none opacity-50');
-          // KodUE i NrVatUE są parą XSD — bez prefiksu czyścimy i blokujemy numer VAT-UE oraz EORI
-          jQuery('#inv-vat-eu-field').val('').prop('disabled', true).addClass('bg-light text-muted');
-          jQuery('[name="invoice_contractor[eori]"]').val('').prop('disabled', true).addClass('bg-light text-muted');
-        } else {
-          $vpWrap.removeClass('pe-none opacity-50');
-          jQuery('#inv-vat-eu-field').prop('disabled', false).removeClass('bg-light text-muted');
-          jQuery('[name="invoice_contractor[eori]"]').prop('disabled', false).removeClass('bg-light text-muted');
-        }
-      });
-    }
-
-    // tax_id_other_country — wszystkie kraje
-    var $tcUI = jQuery('#inv-tax-id-country-ui'), $tcH = jQuery('#inv-tax-id-country-hidden');
-    if ($tcUI.length && !$tcUI.data('cs-inited')) {
-      $tcUI.data('cs-inited', true);
-      var initTc = ($tcH.val() || '').toLowerCase();
-      $tcUI.countrySelect({ defaultCountry: initTc || 'pl', preferredCountries: ['pl','de','cz','sk','gb','us'], localizedCountries: PL });
-      try { var d = $tcUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $tcH.val(d.iso2.toUpperCase()); } catch(e) {}
-      $tcUI.on('change', function() { try { var d = $tcUI.countrySelect('getSelectedCountryData'); if (d && d.iso2) $tcH.val(d.iso2.toUpperCase()); } catch(e) {} });
-      if (!initTc) { try { $tcUI.countrySelect('selectCountry', ''); $tcH.val(''); } catch(e) {} }
-    }
-  })();
 
   // ====== OSTATNIO WYBIERANI ======
   function getRecent(){ try{return JSON.parse(localStorage.getItem('recentContractors')||'[]');}catch(e){return [];} }
@@ -2594,14 +2216,49 @@ $(function () {
       templateSelection: function (d) { return d.text || d.id || ''; }
     })
     .on('select2:open', function(){ showContractorSnapshot(); injectContractorToolbar(); })
-    .on('select2:select', function(e){ var d=e.params.data||{}; fillContractorSnapshot(d); showContractorSnapshot(); saveRecent(d); $('#contractor-id-input').val(d.id || ''); loadRecipientsForContractor(d.id || ''); })
+    .on('select2:select', function(e){ var d=e.params.data||{}; fillContractorSnapshot(d); showContractorSnapshot(); saveRecent(d); $('#contractor-id-input').val(d.id || ''); })
     .on('select2:clear', function(){ clearContractorSnapshot(); hideContractorSnapshot(); });
   }
+
+  // ===== Prefill & auto NIP (walutowa) =====
+  var lastContractorSearchTerm = '';
+  $(document).on('keyup', '.select2-container--open .select2-search__field', function(){
+    lastContractorSearchTerm = $(this).val() || '';
+  });
+
+  $('#gus-modal').on('show.bs.modal', function(){
+    var candidate = (lastContractorSearchTerm || '').replace(/\D/g,'');
+    if (candidate.length !== 10) {
+      var alt = ($('[name="invoice_contractor[nip]"]').val()||'').replace(/\D/g,'');
+      if (alt.length === 10) candidate = alt;
+    }
+    if (candidate.length === 10) $('#gus-nip').val(candidate);
+  });
+
+  $('#contractor-create-modal').on('show.bs.modal', function(){
+    var map = {
+      name: $('[name="invoice_contractor[name]"]').val(),
+      nip: $('[name="invoice_contractor[nip]"]').val(),
+      street: $('[name="invoice_contractor[street]"]').val(),
+      postal_code: $('[name="invoice_contractor[zip]"]').val(),
+      city: $('[name="invoice_contractor[city]"]').val(),
+      country: $('[name="invoice_contractor[country]"]').val(),
+      email: $('[name="invoice_contractor[email]"]').val(),
+      phone: $('[name="invoice_contractor[phone]"]').val()
+    };
+    Object.entries(map).forEach(function([k,v]){
+      if (!v) return;
+      var $field = $('#contractor-create-form').find('[name="'+k+'"]');
+      if ($field.length) {
+        if ($field.is(':checkbox')) $field.prop('checked', !!v); else $field.val(v);
+      }
+    });
+  });
 
   // ====== SELECT2 TYPÓW SERII ======
   if ($.fn && $.fn.select2) {
     $('#series-type-select').select2({
-      placeholder: 'Wybierz typ numeracji',
+      placeholder: 'Wybierz typ serii',
       allowClear: true,
       ajax: {
         url: seriesTypesUrl,
@@ -2613,7 +2270,7 @@ $(function () {
         }
       },
       language: { 
-        noResults: ()=> 'Brak typów numeracji',
+        noResults: ()=> 'Brak typów serii',
         searching: ()=> 'Szukam…'
       }
     });
@@ -2622,7 +2279,7 @@ $(function () {
   // ====== SELECT2 OKRESÓW SERII ======
   if ($.fn && $.fn.select2) {
     $('#series-period-select').select2({
-      placeholder: 'Wybierz okres numeracji',
+      placeholder: 'Wybierz okres serii',
       allowClear: true,
       ajax: {
         url: seriesPeriodsUrl,
@@ -2634,16 +2291,48 @@ $(function () {
         }
       },
       language: { 
-        noResults: ()=> 'Brak okresów numeracji',
+        noResults: ()=> 'Brak okresów serii',
         searching: ()=> 'Szukam…'
       }
     });
   }
 
-  // ====== Podgląd numeru faktury — WYŁĄCZONY ======
-  // Numer rezerwowany przy zapisie szkic/wystawienie; w UI nie pokazujemy „przewidywanego" numeru,
-  // bo użytkownicy myśleli, że faktura już go ma, podczas gdy w roboczych nie ma jeszcze numeru.
-  window.updateInvoiceNumberHint = function updateInvoiceNumberHint() { /* no-op */ };
+  // ====== SPRAWDZANIE AKTUALNEGO NUMERU FAKTURY ======
+  function updateInvoiceNumberHint() {
+    var series = $('#series-select').val();
+    var $hint = $('#invoice-number-hint');
+    var $suggestion = $('#invoice-number-suggestion');
+    var $template = $('#invoice-number-template');
+    
+    console.log('updateInvoiceNumberHint called with series:', series);
+    
+    if (!series || series === '') {
+      $hint.hide();
+      return;
+    }
+    
+    var issueDate = $('#issue-date').val() || '';
+    
+    $.ajax({
+      url: seriesNextNumberUrl,
+      method: 'GET',
+      data: { series: series, date: issueDate },
+      headers: { 'Accept': 'application/json' }
+    }).done(function(res) {
+      console.log('nextNumber API response:', res);
+      console.log('Template from API:', res.template);
+      console.log('Formatted from API:', res.formatted);
+      if (res && res.success) {
+        $suggestion.text(res.formatted);
+        $hint.show();
+      } else {
+        $hint.hide();
+      }
+    }).fail(function(xhr, status, error) {
+      console.log('nextNumber API failed:', status, error);
+      $hint.hide();
+    });
+  }
 
   // Sprawdź numer przy zmianie serii
   $(document).on('change', '#series-select', function() {
@@ -2678,18 +2367,7 @@ $(function () {
     );
     $search.after(toolbar);
     $dd.find('.ctr-act-add').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); closeSelect2Then(()=> $('#contractor-create-modal').modal('show')); });
-    $dd.find('.ctr-act-gus').on('mousedown', function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      var typed = ($dd.find('.select2-search__field').val()||'').toString();
-      var nipFromSearch = typed.replace(/\D/g,'');
-      closeSelect2Then(()=> {
-        if (nipFromSearch && nipFromSearch.length === 10) {
-          $('#gus-nip').val(nipFromSearch);
-        }
-        $('#gus-modal').modal('show');
-      });
-    });
+    $dd.find('.ctr-act-gus').on('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); closeSelect2Then(()=> $('#gus-modal').modal('show')); });
     $dd.find('.ctr-act-cat').on('mousedown', function(e){ 
       e.preventDefault(); 
       e.stopPropagation(); 
@@ -2704,13 +2382,18 @@ $(function () {
   }
 
   // ===== Odbiorca (modal + snapshot) =====
+  $('#recipient-add-btn').on('click', function(){
+    $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
+    $('#recipient-country').val('PL');
+    $('#recipient-rola').val('2');
+    $('#recipient-create-modal').modal('show');
+  });
   $('#recipient-save-btn').on('click', function(){
     var data = {
       name:$('#recipient-name').val()||'', nip:$('#recipient-nip').val()||'',
       email:$('#recipient-email').val()||'', phone:$('#recipient-phone').val()||'',
       zip:$('#recipient-zip').val()||'', street:$('#recipient-street').val()||'',
-      city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL',
-      rola:$('#recipient-rola').val()||'2'
+      city:$('#recipient-city').val()||'', country:$('#recipient-country').val()||'PL', rola:$('#recipient-rola').val()||'2'
     };
     Object.keys(data).forEach(function(k){
       var $t = $('[name="invoice_recipient['+k+']"], [name="invoice_recipient.'+k+']');
@@ -2719,12 +2402,6 @@ $(function () {
     $('#recipient-snapshot').slideDown(120);
     $('#recipient-add-wrap').hide();
     $('#recipient-create-modal').modal('hide');
-  });
-  $('#recipient-add-btn').on('click', function(){
-    $('#recipient-name,#recipient-nip,#recipient-email,#recipient-phone,#recipient-zip,#recipient-street,#recipient-city').val('');
-    $('#recipient-country').val('PL');
-    $('#recipient-rola').val('2');
-    $('#recipient-create-modal').modal('show');
   });
   $('#recipient-edit-btn').on('click', function(){
     $('#recipient-name').val($('[name="invoice_recipient[name]"]').val()||'');
@@ -2738,68 +2415,7 @@ $(function () {
     $('#recipient-rola').val($('[name="invoice_recipient[rola]"]').val()||'2');
     $('#recipient-create-modal').modal('show');
   });
-
-  // ===== Odbiorcy z bazy (wg wybranego kontrahenta) =====
-  var __recipientsCache = {};
-  function fillRecipientFromDb(r) {
-    var fields = {
-      name:   r.name   || '',
-      nip:    r.nip    || '',
-      email:  r.email  || '',
-      phone:  r.phone  || '',
-      street: r.street || '',
-      zip:    r.postal_code || '',
-      city:   r.city   || '',
-      country: r.country || 'PL'
-    };
-    Object.keys(fields).forEach(function(k){
-      $('[name="invoice_recipient['+k+']"]').val(fields[k]).trigger('change');
-    });
-    $('#recipient-snapshot').slideDown(120);
-    $('#recipient-add-wrap').hide();
-  }
-  function loadRecipientsForContractor(contractorId) {
-    if (!contractorId) { $('#recipient-from-db-btn').hide(); return; }
-    if (__recipientsCache[contractorId] !== undefined) {
-      if (__recipientsCache[contractorId].length > 0) {
-        $('#recipient-from-db-btn').css('display','');
-      }
-      return;
-    }
-    $.getJSON('/recipients/by-contractor/' + contractorId, function(res){
-      __recipientsCache[contractorId] = (res && res.recipients) ? res.recipients : [];
-      if (__recipientsCache[contractorId].length > 0) {
-        $('#recipient-from-db-btn').css('display','');
-      }
-    }).fail(function(){ __recipientsCache[contractorId] = []; });
-  }
-  $('#recipient-from-db-btn').on('click', function(){
-    var contractorId = $('#contractor-id-input').val();
-    var list = __recipientsCache[contractorId] || [];
-    if (!list.length) return;
-    var $sel = $('#recipient-db-select');
-    $sel.empty().append('<option value="">-- wybierz odbiorcę --</option>');
-    list.forEach(function(r){
-      var label = r.name + (r.city ? ', ' + r.city : '') + (r.nip ? ' ('+r.nip+')' : '');
-      $sel.append('<option value="'+r.id+'">'+$('<span>').text(label).html()+'</option>');
-    });
-    $sel.show().off('change.rdb').on('change.rdb', function(){
-      var rid = $(this).val();
-      if (!rid) return;
-      var r = list.find(function(x){ return String(x.id) === String(rid); });
-      if (r) { fillRecipientFromDb(r); $sel.hide().val(''); }
-    });
-  });
-  // Podpinamy do zdarzeń wyboru kontrahenta
-  $(document).on('contractor:selected', function(e, id){ loadRecipientsForContractor(id); });
-
 // ====== GUS modal ======
-// Prefill GUS modal NIP from buyer/recipient when opening
-$('#gus-modal').on('shown.bs.modal', function(){
-  var nip = ($('[name="invoice_contractor[nip]"]').val()||$('[name="invoice_contractor.nip"]').val()||'').replace(/\D/g,'');
-  if(!nip){ nip = ($('#recipient-nip').val()||$('[name="invoice_recipient[nip]"]').val()||$('[name="invoice_recipient.nip"]').val()||'').replace(/\D/g,''); }
-  if(nip){ $('#gus-nip').val(nip); }
-});
 $('#gus-fetch-btn').on('click', function(){
   var nip = ($('#gus-nip').val()||'').replace(/\D/g,'');
   if(nip.length!==10){ toast('Podaj prawidłowy 10-cyfrowy NIP.'); return; }
@@ -2819,10 +2435,6 @@ $('#gus-fetch-btn').on('click', function(){
 
       fillContractorSnapshot(c);
       showContractorSnapshot();
-      // Auto-enable saving contractor to catalog when fetched from GUS
-      $('#save-to-catalog').prop('checked', true);
-      $('#save-to-catalog-hint').removeClass('d-none');
-      $('[name="contractor_source"]').val('gus');
 
       if ($.fn && $.fn.select2) {
         var label = c.label || c.name || (c.nip ? (c.name+' ('+c.nip+')') : c.name) || 'Kontrahent';
@@ -2848,58 +2460,58 @@ $('#gus-fetch-btn').on('click', function(){
 
   // ====== POZYCJE – OBLICZENIA ======
   function toNum(v, def){ var n=parseFloat(v); return isFinite(n)?n:(def||0); }
-  function countItemRows(){
-    var n = 0;
-    $itemsBody.find('tr').each(function(){ if ($(this).find('.item-net').length) n++; });
-    return n;
+  // ===== Global price mode (net/gross) =====
+  function getDefaultPriceMode(){ try{return (localStorage.getItem('invoice_price_mode_default')||'net');}catch(e){return 'net';} }
+  function setDefaultPriceMode(m){ try{ localStorage.setItem('invoice_price_mode_default', m); }catch(e){} updatePriceModeToolbar(); }
+  function updatePriceModeToolbar(){
+    var cur = getDefaultPriceMode();
+    var $btns = $('#price-mode-toggle [data-mode]');
+    $btns.removeClass('btn-primary active').addClass('btn-outline-secondary').attr('aria-pressed','false');
+    $('#price-mode-toggle [data-mode="'+cur+'"]').removeClass('btn-outline-secondary').addClass('btn-primary active').attr('aria-pressed','true');
+    // dynamic label for price column
+    $('#items-table thead th').each(function(){
+      var txt = $(this).text().trim();
+      if (txt.match(/^CENA/i)) {
+        $(this).contents().filter(function(){return this.nodeType===3;}).first().replaceWith('CENA '+(cur==='gross'?'BRUTTO':'NETTO')); }
+    });
   }
-  function getDefaultPriceMode(){ return 'net'; }
   function convertRowPriceMode($tr, newMode){
-    var oldMode = ($tr.find('.item-price-mode').val()||'net');
-    if (oldMode === newMode) { $tr.find('.item-price-mode').val(newMode); return; }
-    var p = toNum($tr.find('.item-price').val(), 0);
+    var oldMode = ($tr.find('.item-price-mode').val()||getDefaultPriceMode());
+    if (oldMode === newMode) return;
     var vatCode = $tr.find('.item-vatcode').val();
-    var rate = toNum(vatRates[vatCode], 0);
+    var rate = toNum(vatRates[vatCode],0);
+    var p = toNum($tr.find('.item-price').val(),0);
+    var factor = 1 + rate/100;
     var newPrice = p;
-    if (newMode === 'gross' && oldMode === 'net'){
-      newPrice = rate > 0 ? +(p * (1 + rate/100)).toFixed(2) : p;
-    } else if (newMode === 'net' && oldMode === 'gross'){
-      newPrice = rate > 0 ? +(p / (1 + rate/100)).toFixed(2) : p;
-    }
+    if (oldMode==='net' && newMode==='gross') newPrice = p * factor;
+    if (oldMode==='gross' && newMode==='net') newPrice = p / factor;
+    $tr.find('.item-price').val(newPrice.toFixed(2));
     $tr.find('.item-price-mode').val(newMode);
-    $tr.find('.item-price').val((newPrice||0).toFixed(2));
     rowCalc($tr);
   }
+  // init toolbar state ASAP
+  $(updatePriceModeToolbar);
+  $(document).off('click.priceModeToggle').on('click.priceModeToggle', '#price-mode-toggle [data-mode]', function(){
+    var m = $(this).data('mode'); if (!m) return; setDefaultPriceMode(m); });
+  $(document).off('click.applyPriceMode').on('click.applyPriceMode', '#apply-mode-to-existing', function(){
+    var m = getDefaultPriceMode(); $('#items-body tr').each(function(){ convertRowPriceMode($(this), m); }); allCalc(); });
+
   function rowCalc($tr){
     var q = toNum($tr.find('.item-qty').val(), 0);
     var p = toNum($tr.find('.item-price').val(), 0);
     var disc = toNum($tr.find('.item-disc').val(), 0);
     var vatCode = $tr.find('.item-vatcode').val();
     var rate = toNum(vatRates[vatCode], 0);
-    var mode = ($tr.find('.item-price-mode').val() || 'net');
-    var net, tax, gross;
-    if (mode === 'gross') {
-      // Treat input price as unit gross, apply discount on gross, then derive net/tax
-      var unitGrossAfterDisc = p * (1 - disc/100);
-      var grossSum = +(q * unitGrossAfterDisc).toFixed(2);
-      if (rate > 0) {
-        net = +(grossSum / (1 + rate/100)).toFixed(2);
-        tax = +(grossSum - net).toFixed(2);
-      } else {
-        net = grossSum;
-        tax = 0;
-      }
-      gross = grossSum;
-    } else {
-      // Default: input price is unit net, apply discount on net, then add VAT
-      var unitNetAfterDisc = p * (1 - disc/100);
-      net  = +(q * unitNetAfterDisc).toFixed(2);
-      tax  = +(net * (rate/100)).toFixed(2);
-      gross= +(net + tax).toFixed(2);
-    }
+    var mode = ($tr.find('.item-price-mode').val()||getDefaultPriceMode());
+    var unitNetBase = (mode==='gross') ? (p / (1 + rate/100)) : p;
+    var unit = unitNetBase * (1 - disc/100);
+    var net  = +(q * unit).toFixed(2);
+    var tax  = +(net * (rate/100)).toFixed(2);
+    var gross= +(net + tax).toFixed(2);
     $tr.find('.item-net').val(net.toFixed(2));
     $tr.find('.item-gross').val(gross.toFixed(2));
   }
+  window.rowCalc = rowCalc;
 
   // ===== Termin płatności — połączony preset + data =====
   const $issue = $('#issue-date');
@@ -2933,15 +2545,6 @@ $('#gus-fetch-btn').on('click', function(){
   }
 
   // ===== Guard & sumy =====
-  function getInvoiceCurrency(){
-    var v = ($('#invoice-currency').val() || $('[name="currency"]').val() || 'PLN');
-    return String(v||'PLN').toUpperCase();
-  }
-  function getPaymentMethod(){
-    var v = ($('#paymentmethod').val() || $('[name="paymentmethod"]').val() || 'transfer');
-    return String(v||'transfer');
-  }
-
   function allCalc(){
     var sn = 0, sg = 0;
     $itemsBody.find('tr').each(function(){
@@ -2955,411 +2558,183 @@ $('#gus-fetch-btn').on('click', function(){
     $('#sum-net').val(sn.toFixed(2));
     $('#sum-tax').val(st.toFixed(2));
     $('#sum-gross').val(sg.toFixed(2));
-    var _cur = getInvoiceCurrency(); $('.sum-currency-label').text(_cur ? _cur : '');
-    // odśwież termin (np. po zmianie daty wystawienia)
-    if ($duePreset.val() !== '_custom') recomputeFromPreset(); else recomputeFromDate();
+    var _cur = (($('#currency').val()||'PLN').toUpperCase()); $('.sum-currency-label').text(_cur ? _cur : '');
+    // Nie przesuwaj istniejącego terminu płatności (edycja/korekta) — przelicz z presetu
+    // tylko gdy pole terminu jest puste (nowa faktura). Inaczej tylko odśwież podgląd.
+    if (!$dueDate.val()) { if ($duePreset.val() !== '_custom') recomputeFromPreset(); } else { recomputeFromDate(); }
     if (typeof mirrorSums === 'function') mirrorSums();
-    // render VAT breakdown chips
-    if (typeof renderVatBreakdown === 'function') renderVatBreakdown();
-    // render amount in words
-    if (typeof renderAmountInWords === 'function') renderAmountInWords();
+    if (typeof updatePlnPreview === 'function') updatePlnPreview();
   }
   function guardMinRows(){
-    var rows = countItemRows();
+    var rows = $itemsBody.find('tr').length - 2; // - add + sum
     $itemsBody.find('.btn-remove').prop('disabled', rows <= 1).attr('title', rows <= 1 ? 'Musi pozostać co najmniej 1 pozycja' : 'Usuń');
   }
+  window.allCalc = allCalc;
 
-  // ===== VAT breakdown (stawki) =====
-  var activeVatFilter = null; // stores vat_code_id when filtered
-  function computeVatBreakdown(){
-    var map = {}; // key: vat_code_id
-    $itemsBody.find('tr').each(function(){
-      var $tr = $(this);
-      var $net = $tr.find('.item-net');
-      var $gro = $tr.find('.item-gross');
-      var $vat = $tr.find('.item-vatcode');
-      if (!$net.length || !$gro.length || !$vat.length) return;
-      var code = $vat.val();
-      if (!code) return;
-      var net = toNum($net.val(), 0);
-      var gro = toNum($gro.val(), 0);
-      var tax = +(gro - net).toFixed(2);
-      var rate = toNum(vatRates[code], 0);
-      if (!map[code]) {
-        map[code] = { code: code, rate: rate, net: 0, tax: 0, gross: 0, count: 0 };
-      }
-      map[code].net += net;
-      map[code].tax += tax;
-      map[code].gross += gro;
-      map[code].count += 1;
-    });
-    // round
-    Object.keys(map).forEach(function(k){
-      var o = map[k];
-      o.net = +o.net.toFixed(2);
-      o.tax = +o.tax.toFixed(2);
-      o.gross = +o.gross.toFixed(2);
-    });
-    // to array, sort by rate desc
-    return Object.values(map).sort(function(a,b){ return (b.rate||0) - (a.rate||0); });
+  // ====== OSTATNIO UŻYWANE PRODUKTY ======
+  function getRecentProducts(){
+    try { return JSON.parse(localStorage.getItem('recentProducts')||'[]'); } catch(e){ return []; }
   }
-  function renderVatBreakdown(){
-    var data = computeVatBreakdown();
-    var $box = $('#vat-breakdown');
-    if (!$box.length) return;
-    $box.empty();
-    if (!data.length) return;
-    // helper formatting
-    function rateLabel(o){ return (o.rate > 0 ? (o.rate + '%') : '0%'); }
-    // master chip "Wszystkie"
-    var allActive = !activeVatFilter;
-    var $all = $('<button type="button" class="btn btn-sm rounded-pill me-1 mb-1"></button>')
-      .addClass(allActive ? 'btn-primary' : 'btn-outline-secondary')
-      .attr('data-vat-code','')
-      .text('Wszystkie stawki');
-    $box.append($all);
-    // per rate chips
-    data.forEach(function(o){
-      var $chip = $('<button type="button" class="btn btn-sm rounded-pill me-1 mb-1"></button>')
-        .addClass(activeVatFilter === o.code ? 'btn-primary' : 'btn-outline-secondary')
-        .attr('data-vat-code', o.code)
-        .attr('title', 'Netto: '+ o.net.toFixed(2) +' • VAT: '+ o.tax.toFixed(2) +' • Brutto: '+ o.gross.toFixed(2))
-        .text(rateLabel(o) + ' • ' + o.gross.toFixed(2));
-      $box.append($chip);
-    });
+  function saveRecentProduct(d){
+    if (!d || !d.id) return;
+    if (String(d.id).indexOf('NEW:') === 0) return;
+    var list = getRecentProducts().filter(function(x){ return x.id !== d.id; });
+    var entry = {
+      id: d.id,
+      text: d.text || d.name || '',
+      price: (typeof d.price !== 'undefined') ? Number(d.price) : (typeof d.net_price !== 'undefined' ? Number(d.net_price) : null),
+      vat_id: d.vat_id || d.vat_code_id || null,
+      unit: d.unit || '',
+      gtu_code: d.gtu_code || '',
+      pkwiu: d.pkwiu || '',
+      gtin: d.gtin || '',
+      cn_code: d.cn_code || '',
+      excise_amount: (d.excise_amount !== null && d.excise_amount !== undefined) ? d.excise_amount : '',
+      procedure_marking: d.procedure_marking || ''
+    };
+    list.unshift(entry);
+    if (list.length > 8) list = list.slice(0,8);
+    try { localStorage.setItem('recentProducts', JSON.stringify(list)); } catch(e){}
   }
-
-  // click handler for chips (use delegation)
-  $(document).on('click', '#vat-breakdown [data-vat-code]', function(){
-    var code = $(this).attr('data-vat-code') || '';
-    activeVatFilter = code || null;
-    // highlight matching rows
-    $itemsBody.find('tr').removeClass('highlight-vat-row');
-    if (activeVatFilter) {
-      $itemsBody.find('tr').each(function(){
-        var $tr = $(this);
-        var v = $tr.find('.item-vatcode').val();
-        if (v && v === activeVatFilter) { $tr.addClass('highlight-vat-row'); }
+  function injectProductRecentToolbar($dd, $tr, $sel){
+    if (!$dd.length || $dd.find('.prod-recent').length) return;
+    var rec = getRecentProducts();
+    if (!rec.length) return;
+    var $search = $dd.find('.select2-search--dropdown');
+    var $wrap = $('<div class="prod-recent p-2 border-bottom bg-white small"></div>');
+    $wrap.append('<div class="text-muted mb-1">Ostatnio używane</div>');
+    var $row = $('<div class="d-flex flex-wrap gap-1"></div>');
+    rec.forEach(function(p){
+      var label = $('<div>').text(p.text || '').html();
+      var $btn = $('<button type="button" class="btn btn-light btn-sm"></button>').html(label);
+      $btn.on('mousedown', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        try { $sel.select2('close'); } catch(_){}
+        $tr.find('.item-name-hidden').val(p.text || '');
+        if (p.vat_id) { $tr.find('.item-vatcode').val(p.vat_id); }
+        if (p.unit) { $tr.find('.item-unit').val(p.unit); }
+        var mode = ($tr.find('.item-price-mode').val() || 'net');
+        var rate = toNum(vatRates[p.vat_id], 0);
+        var netPrice = toNum(p.price, 0);
+        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+        $tr.find('.item-price').val(disp.toFixed(2));
+        // Classification fields
+        if (p.gtu_code) { $tr.find('.item-gtu').val(p.gtu_code); }
+        $tr.find('.item-pkwiu').val(p.pkwiu || '');
+        $tr.find('.item-gtin').val(p.gtin || '');
+        $tr.find('.item-cn-code').val(p.cn_code || '');
+        $tr.find('.item-excise').val(p.excise_amount || '');
+        $tr.find('.item-procedure').val(p.procedure_marking || '');
+        // Ensure the select shows chosen product
+        var opt = new Option(p.text || '', p.id, true, true);
+        $sel.find('option[value="'+p.id+'"]').remove();
+        $sel.append(opt).trigger('change');
+        rowCalc($tr); allCalc();
       });
-    }
-    renderVatBreakdown();
-  });
-
-  // ===== Kwota słownie (PL) =====
-  function pluralForm(n, forms){
-    // forms: [one, few, many]
-    n = Math.abs(n);
-    if (n === 1) return forms[0];
-    var n10 = n % 10, n100 = n % 100;
-    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return forms[1];
-    return forms[2];
-  }
-  function threeDigitsToWordsPL(n){
-    var S = ['','jeden','dwa','trzy','cztery','pięć','sześć','siedem','osiem','dziewięć'];
-    var TEEN = ['dziesięć','jedenaście','dwanaście','trzynaście','czternaście','piętnaście','szesnaście','siedemnaście','osiemnaście','dziewiętnaście'];
-    var T = ['','dziesięć','dwadzieścia','trzydzieści','czterdzieści','pięćdziesiąt','sześćdziesiąt','siedemdziesiąt','osiemdziesiąt','dziewięćdziesiąt'];
-    var H = ['','sto','dwieście','trzysta','czterysta','pięćset','sześćset','siedemset','osiemset','dziewięćset'];
-    var h = Math.floor(n/100), d = Math.floor((n%100)/10), u = n%10;
-    var parts = [];
-    if (h) parts.push(H[h]);
-    if (d === 1) { parts.push(TEEN[u]); return parts.join(' '); }
-    if (d) parts.push(T[d]);
-    if (u) parts.push(S[u]);
-    return parts.join(' ');
-  }
-  function numberToWordsPLInt(n){
-    if (n === 0) return 'zero';
-    var scales = [
-      { one:'', few:'', many:'' },
-      { one:'tysiąc', few:'tysiące', many:'tysięcy' },
-      { one:'milion', few:'miliony', many:'milionów' },
-      { one:'miliard', few:'miliardy', many:'miliardów' }
-    ];
-    var words = [];
-    var i = 0;
-    while (n > 0) {
-      var chunk = n % 1000;
-      if (chunk) {
-        var chunkWords = threeDigitsToWordsPL(chunk);
-        var form = pluralForm(chunk, [scales[i].one, scales[i].few, scales[i].many]);
-        if (i === 1 && chunk === 1) { // 1 tysiąc (bez "jeden")
-          words.unshift(form);
-        } else if (i > 0 && form) {
-          words.unshift((chunkWords ? (chunkWords+' ') : '') + form);
-        } else {
-          words.unshift(chunkWords);
-        }
-      }
-      n = Math.floor(n/1000); i++;
-    }
-    return words.filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
-  }
-  function renderAmountInWords(){
-    var $box = $('#amount-in-words'); if(!$box.length) return;
-    var grossStr = $('#sum-gross').val()||'0,00';
-    var gross = parseFloat(String(grossStr).replace(',','.')||'0')||0;
-    var cur = ($('#currency').val()||'PLN').toUpperCase();
-    var intPart = Math.floor(gross + 0.0000001);
-    var frac = Math.round((gross - intPart) * 100);
-    if (cur === 'PLN'){
-      var zlForms = ['złoty','złote','złotych'];
-      var grForms = ['grosz','grosze','groszy'];
-      var words = numberToWordsPLInt(intPart);
-      var zl = pluralForm(intPart, zlForms);
-      var gr = pluralForm(frac, grForms);
-      var text = (words ? (words + ' ' + zl) : 'zero ' + zl) + ' ' + (frac<10?('0'+frac):frac) + ' ' + gr;
-      $box.text('Kwota słownie: ' + text);
-    } else {
-      // Fallback: pokaż kwotę liczbowo z kodem waluty
-      var formatted = gross.toFixed(2).replace('.', ',');
-      $box.text('Kwota słownie: ' + formatted + ' ' + cur);
-    }
+      $row.append($btn);
+    });
+    $wrap.append($row);
+    $search.after($wrap);
   }
 
-  // ====== PRODUKT: SELECT2 DLA WIERSZA ======
-  function initProductLookupForRow($tr) {
+  // ====== PRODUKT: INIT SELECT2 DLA WIERSZA ======
+  function initProductSelectForRow($tr){
     if (!($.fn && $.fn.select2)) return;
     var $sel = $tr.find('.item-product-select');
     var $nameHidden = $tr.find('.item-name-hidden');
-    if (!$sel.length || $sel.data('select2')) return;
 
     $sel.select2({
-      placeholder: $sel.data('placeholder') || 'Nazwa produktu lub usługi',
+      placeholder: $sel.data('placeholder') || 'Wybierz lub wpisz produkt',
       ajax: {
         url: productUrl, dataType: 'json', delay: 200,
-        data: function(p){ return { q: p.term }; },
-        processResults: function(data){
+        data: function (p) { return { q: p.term }; },
+        processResults: function (data) {
           if (data && data.success && data.results) {
-            return { results: $.map(data.results, function(p){ return $.extend({ id: p.id, text: p.name || p.text }, p); }) };
+            return { 
+              results: $.map(data.results, function (p) { 
+                return $.extend({ 
+                  id: p.id, 
+                  text: p.name || p.text 
+                }, p); 
+              }) 
+            };
           }
           return { results: [] };
         }
       },
       minimumInputLength: 1,
       tags: true,
-      createTag: function(params){ var t=$.trim(params.term||''); return t ? { id:'NEW:'+t, text:t, isNew:true } : null; },
+      createTag: function (params) { var term=$.trim(params.term||''); if(!term) return null; return { id:'NEW:'+term, text:term, isNew:true }; },
       language: {
         noResults: function(){
-          return '<div class=”p-2 text-center”><div class=”small text-muted mb-1”>Brak produktów</div>'+
-            '<button type=”button” class=”btn btn-sm btn-primary add-product-inline”><i class=”ri-add-line”></i> Dodaj produkt</button></div>';
+          return ''+
+            '<div class="p-2 text-center">'+
+              '<div class="small text-muted mb-1">Brak produktów</div>'+
+              '<button type="button" class="btn btn-sm btn-primary add-product-inline">'+
+                '<i class="ri-add-line"></i> Dodaj produkt'+
+              '</button>'+
+            '</div>';
         }
       },
-      escapeMarkup: function(m){ return m; },
+      escapeMarkup: function (m) { return m; },
       width: '100%'
     })
-    // select2:closing — zapisz nazwę do hidden input
-    .on('select2:closing', function(){
-      var inst = $sel.data('select2');
-      var sfVal = (inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '').trim();
-      var name = sfVal || $nameHidden.val().trim();
-      if (name) $nameHidden.val(name);
-    })
-    // select2:close — aktualizuj opcję i wyświetlenie bezpośrednio w DOM
-    .on('select2:close', function(){
-      var name = $nameHidden.val().trim();
-      if (!name) return;
-      var optVal = 'NEW:' + name;
-      // Zaktualizuj underlying <select>
-      $sel.find('option').filter(function(){ return String(this.value).indexOf('NEW:') === 0; }).remove();
-      $sel.append($('<option></option>').val(optVal).text(name).prop('selected', true));
-      $sel.val(optVal);
-      // Bezpośrednia aktualizacja renderowanego tekstu Select2
-      $sel.siblings('.select2-container').find('.select2-selection__rendered')
-        .attr('title', name)
-        .text(name);
-    })
     .on('select2:open', function(){
-      // Wstrzyknij przycisk “Dodaj produkt” na górze dropdownu
       var $dd = $('.select2-container--open .select2-dropdown');
-      if ($dd.length && !$dd.find('.s2-add-btn').length) {
-        var $addBtn = $('<button>').attr('type','button')
-          .addClass('btn btn-sm btn-outline-primary w-100 s2-open-add')
-          .html('<i class=”ri-add-line”></i> Dodaj nowy produkt');
-        var $addWrap = $('<div>').addClass('s2-add-btn px-2 py-1 border-bottom').append($addBtn);
-        $dd.find('.select2-search--dropdown').after($addWrap);
-        $dd.on('mousedown', '.s2-open-add', function(e){
-          e.preventDefault();
-          var inst2 = $sel.data('select2');
-          var q2 = inst2 && inst2.dropdown && inst2.dropdown.$search ? inst2.dropdown.$search.val() : '';
-          $('#product-create-name').val(q2 || '');
+      if ($dd.find('.prod-toolbar').length === 0) {
+        var $search = $dd.find('.select2-search--dropdown');
+        $search.after(
+          '<div class="prod-toolbar p-2 border-bottom bg-white">'+
+            '<button type="button" class="btn btn-sm btn-outline-primary s2-add-product"><i class="ri-add-line"></i> Dodaj produkt</button>'+
+          '</div>'
+        );
+        $dd.on('mousedown', '.s2-add-product', function(e){
+          e.preventDefault(); e.stopPropagation();
+          var inst = $sel.data('select2');
+          var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+          $('#product-create-name').val(query || '');
           $('#product-create-modal').modal('show');
           currentProductRow = $tr;
           $sel.select2('close');
         });
       }
-      // Prepopuluj search field aktualną nazwą + synchronizuj każdy keystroke do hidden input
-      var cur = ($nameHidden.val() || '').trim();
-      setTimeout(function(){
-        var $sf = $('.select2-container--open .select2-search__field');
-        if (!$sf.length) return;
-        if (cur) { $sf.val(cur); $sf[0].setSelectionRange(cur.length, cur.length); }
-        $sf.off('input.namecapture').on('input.namecapture', function(){
-          var v = (this.value || '').trim();
-          if (v) $nameHidden.val(v);
-        });
-      }, 10);
+      // Inject recent products bar
+      injectProductRecentToolbar($dd, $tr, $sel);
     })
-    .on('select2:select', function(e){
+    .on('select2:select', function (e) {
       var d = (e.params && e.params.data) || {};
       if (String(d.id || '').indexOf('NEW:') === 0) {
-        // input.namecapture już zsynchronizował $nameHidden — nie nadpisuj starą wartością
+        var name = d.text || String(d.id).slice(4);
+        $nameHidden.val(name);
       } else {
         $nameHidden.val(d.name || d.text || '');
-        if (d.vat_id) { $tr.find('.item-vatcode').val(d.vat_id); }
-        if (d.unit)   { $tr.find('.item-unit').val(d.unit); }
-        if (typeof d.price !== 'undefined' && d.price !== null) {
-          var net  = Number(d.price) || 0;
-          var mode = ($tr.find('.item-price-mode').val() || 'net');
-          var rate = toNum(vatRates[$tr.find('.item-vatcode').val()], 0);
-          $tr.find('.item-price').val(((mode==='gross') ? +(net*(1+rate/100)) : +net).toFixed(2));
+        if (typeof d.price !== 'undefined' && d.price !== null && d.price !== '') {
+          $tr.find('.item-price').val(Number(d.price).toFixed(2));
         }
-        if (d.gtu_code) { $tr.find('.item-gtu').val(d.gtu_code); }
+        // Use correct VAT field name - should be vat_id from the search response
+        var $vat = $tr.find('.item-vatcode');
+        if ($vat.length && d.vat_id) $vat.val(d.vat_id);
+        if (d.unit) { $tr.find('.item-unit').val(d.unit); }
+        if (d.gtu_code && $tr.find('.item-gtu').length) { $tr.find('.item-gtu').val(d.gtu_code); }
         $tr.find('.item-pkwiu').val(d.pkwiu || '');
         $tr.find('.item-gtin').val(d.gtin || '');
         $tr.find('.item-cn-code').val(d.cn_code || '');
-        $tr.find('.item-excise').val(d.excise_amount != null ? d.excise_amount : '');
+        $tr.find('.item-excise').val(d.excise_amount !== null && d.excise_amount !== undefined ? d.excise_amount : '');
         $tr.find('.item-procedure').val(d.procedure_marking || '');
         rowCalc($tr); allCalc();
       }
     });
 
-    $(document).off('mousedown.addProductInline').on('mousedown.addProductInline', '.add-product-inline', function(ev){
+    // „Dodaj produkt” w „Brak wyników”
+    $(document).off('mousedown.addProductInline').on('mousedown.addProductInline', '.add-product-inline', function (ev) {
       ev.preventDefault();
       var inst = $sel.data('select2');
-      var q = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
-      $('#product-create-name').val(q || '');
+      var query = inst && inst.dropdown && inst.dropdown.$search ? inst.dropdown.$search.val() : '';
+      $('#product-create-name').val(query || '');
       $('#product-create-modal').modal('show');
       currentProductRow = $tr;
       $sel.select2('close');
     });
-  }
-
-  // ====== INICJALIZACJA ISTNIEJĄCYCH WIERSZY ======
-  (function initExistingRows(){
-    var $rows = $itemsBody.find('tr.item-row');
-    $rows.each(function(){
-      var $tr = $(this);
-      initProductLookupForRow($tr);
-      $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
-      $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
-      $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
-      rowCalc($tr);
-    });
-    idx = Math.max(1, $rows.length);
-    allCalc(); guardMinRows();
-  })();
-
-  // ====== PREFILL: EDIT MODE (normal invoices) ======
-  function prefillRow($tr, item){
-    if (!$tr || !$tr.length || !item) return;
-    var name = (item.name || '').toString();
-    var qty = (typeof item.quantity !== 'undefined' && item.quantity !== null) ? item.quantity : 1;
-    var price = (typeof item.price !== 'undefined' && item.price !== null) ? item.price : 0;
-    var disc = (typeof item.discount_percent !== 'undefined' && item.discount_percent !== null) ? item.discount_percent : 0;
-    var vatId = (typeof item.vat_code_id !== 'undefined') ? item.vat_code_id : null;
-    var gtu = (item.gtu_code || '').toString();
-    var mode = (item.price_mode || 'net').toString();
-
-    $tr.find('.item-qty').val(qty);
-    if (item.unit) { $tr.find('.item-unit').val(item.unit); }
-    $tr.find('.item-price').val(Number(price || 0).toFixed(2));
-    $tr.find('.item-disc').val(Number(disc || 0));
-    if ($tr.find('.item-price-mode').length){ $tr.find('.item-price-mode').val(mode); }
-    if (vatId !== null && vatId !== '') { $tr.find('.item-vatcode').val(vatId); }
-    if ($tr.find('.item-gtu').length){ $tr.find('.item-gtu').val(gtu); }
-    $tr.find('.item-pkwiu').val(item.pkwiu || '');
-    $tr.find('.item-gtin').val(item.gtin || '');
-    $tr.find('.item-cn-code').val(item.cn_code || '');
-    $tr.find('.item-excise').val(item.excise_amount || '');
-    $tr.find('.item-procedure').val(item.procedure_marking || '');
-
-    $tr.find('.item-name-hidden').val(name);
-    var $sel = $tr.find('.item-product-select');
-    if ($sel.length && name) {
-      var optVal = 'NEW:' + name;
-      $sel.find('option[value="' + optVal + '"]').remove();
-      $sel.append(new Option(name, optVal, true, true)).trigger('change');
-    }
-    rowCalc($tr);
-  }
-
-  function addItemRow() {
-    var $addRow = $('#btn-add-item').closest('tr');
-    var html = '' +
-      '<tr class="item-row" draggable="true">' +
-        '<td>' +
-          '<div class="d-flex align-items-center gap-1">'+
-            '<span class="drag-handle text-muted" title="Przeciągnij, aby zmienić kolejność" role="button"><i class="ri-drag-move-2-line"></i></span>'+
-            '<div class="flex-grow-1 min-w-0"><select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Nazwa produktu lub usługi"></select></div>'+
-          '</div>'+
-          '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
-          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
-          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
-          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
-          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
-          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
-        '</td>' +
-        '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" inputmode="decimal" value="1" class="form-control text-end item-qty" required></td>' +
-        '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
-        '<td>'+
-          '<div class="d-flex align-items-center gap-1">'+
-            '<input name="items['+idx+'][price]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-price" required>'+
-            '<select name="items['+idx+'][price_mode]" class="form-select item-price-mode" style="width:auto; min-width:92px">'+
-              '<option value="net" selected>Netto</option>'+
-              '<option value="gross">Brutto</option>'+
-            '</select>'+
-          '</div>'+
-        '</td>' +
-        '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>' +
-        '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" inputmode="decimal" value="0" class="form-control text-end item-disc"></td>' +
-        '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
-        '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
-        '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
-        '<td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-icon btn-secondary-light btn-duplicate" title="Duplikuj"><i class="ri-file-copy-line"></i></button><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></div></td>' +
-      '</tr>';
-    $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
-    var $tr = $addRow.prev();
-    initProductLookupForRow($tr);
-    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode,.item-price-mode', function(){ rowCalc($tr); allCalc(); });
-    $tr.find('.item-price-mode').val(getDefaultPriceMode()).trigger('change');
-    $tr.find('.btn-remove').on('click', function(){ var rows=countItemRows(); if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
-    rowCalc($tr); guardMinRows();
-    idx++;
-    return $tr;
-  }
-
-  function prefillItems(items){
-    if (!items || !items.length) return;
-
-    // Fill first row
-    var $first = $itemsBody.find('tr.item-row').first();
-    prefillRow($first, items[0]);
-
-    // Add remaining rows
-    for (var i=1; i<items.length; i++){
-      var $tr = addItemRow();
-      prefillRow($tr, items[i]);
-    }
-    allCalc();
-  }
-
-  if (isEdit) {
-    try {
-      // Contractor snapshot + select2 preselect
-      if (editPrefill && editPrefill.contractor) {
-        applyContractor(editPrefill.contractor);
-      } else {
-        // If no contractor data but entity has snapshot fields, show snapshot so user sees it
-        if (($('[name="invoice_contractor[name]"]').val()||'').trim() !== '') { showContractorSnapshot(); }
-      }
-
-      // Items are already rendered by PHP in edit mode — no JS prefill needed
-    } catch (e) {
-      console.warn('Edit prefill failed', e);
-    }
-    // Załaduj listę odbiorców dla wybranego kontrahenta (edit mode)
-    var initCtrId = $('#contractor-id-input').val();
-    if (initCtrId) { loadRecipientsForContractor(initCtrId); }
   }
 
   // ====== INTL IDS TOGGLE ======
@@ -3374,60 +2749,80 @@ $('#gus-fetch-btn').on('click', function(){
     if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
   })();
 
+  // Sync vat_prefix UI ↔ hidden
+  $(document).on('input change', '#inv-vat-prefix-ui', function(){
+    var v = ($(this).val()||'').toUpperCase().slice(0,2);
+    $('#inv-vat-prefix-hidden').val(v);
+  });
+  $(document).on('change', '#inv-vat-prefix-none', function(){
+    var none = this.checked;
+    $('#inv-vat-prefix-wrapper').toggleClass('pe-none opacity-50', none);
+    if (none) { $('#inv-vat-prefix-ui').val(''); $('#inv-vat-prefix-hidden').val(''); }
+  });
+  // Sync tax_id_other_country UI ↔ hidden
+  $(document).on('input change', '#inv-tax-id-country-ui', function(){
+    var v = ($(this).val()||'').toUpperCase().slice(0,2);
+    $('#inv-tax-id-country-hidden').val(v);
+  });
+  // Init UI from hidden values on load
+  (function(){
+    var vp = $('#inv-vat-prefix-hidden').val() || '';
+    if (vp) $('#inv-vat-prefix-ui').val(vp);
+    var tc = $('#inv-tax-id-country-hidden').val() || '';
+    if (tc) $('#inv-tax-id-country-ui').val(tc);
+  })();
+
+  // ====== INIT WSZYSTKICH ISTNIEJĄCYCH WIERSZY ======
+  (function initExistingRows(){
+    var defMode = getDefaultPriceMode();
+    $itemsBody.find('tr').filter(function(){ return $(this).find('.item-product-select').length; }).each(function(){
+      var $tr = $(this);
+      initProductSelectForRow($tr);
+      // ustaw price_mode tylko jeśli nieustawione (nie nadpisuj wartości z DB w edycji)
+      var $pm = $tr.find('.item-price-mode');
+      if (!$pm.val()) { $pm.val(defMode); }
+      $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){ rowCalc($tr); allCalc(); });
+      $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').filter(function(){ return $(this).find('.item-product-select').length; }).length; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+      rowCalc($tr);
+    });
+    allCalc(); guardMinRows();
+  })();
+
   // ====== DODAJ WIERSZ ======
   $('#btn-add-item').on('click', function () {
-    addItemRow();
-    allCalc();
+    var $addRow = $('#btn-add-item').closest('tr');
+    var html = '' +
+      '<tr>' +
+        '<td>' +
+          '<select class="form-select item-product-select" data-index="'+idx+'" data-placeholder="Wybierz lub wpisz produkt"></select>' +
+          '<input type="hidden" name="items['+idx+'][name]" class="item-name-hidden">' +
+          '<input type="hidden" name="items['+idx+'][pkwiu]" class="item-pkwiu" value="">' +
+          '<input type="hidden" name="items['+idx+'][gtin]" class="item-gtin" value="">' +
+          '<input type="hidden" name="items['+idx+'][cn_code]" class="item-cn-code" value="">' +
+          '<input type="hidden" name="items['+idx+'][excise_amount]" class="item-excise" value="">' +
+          '<input type="hidden" name="items['+idx+'][procedure_marking]" class="item-procedure" value="">' +
+        '</td>' +
+        '<td><input name="items['+idx+'][quantity]" type="number" step="0.001" value="1" class="form-control text-end item-qty" required></td>' +
+        '<td><input name="items['+idx+'][unit]" type="text" value="szt." class="form-control item-unit" style="width:70px;" list="prod-units-list" autocomplete="off"></td>' +
+        '<td><input name="items['+idx+'][price]" type="number" step="0.01" value="0" class="form-control text-end item-price" required><input type="hidden" name="items['+idx+'][price_mode]" class="item-price-mode" value="'+getDefaultPriceMode()+'"></td>' +
+        '<td class="vat-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $vatSelectHtml) ?></td>' +
+        '<td><input name="items['+idx+'][discount_percent]" type="number" step="0.01" value="0" class="form-control text-end item-disc"></td>' +
+        '<td><input class="form-control text-end item-net" value="0.00" readonly></td>' +
+        '<td><input class="form-control text-end item-gross" value="0.00" readonly></td>' +
+        '<td class="gtu-cell"><?= str_replace(["\\","'"], ["\\\\","\\'"], $gtuSelectHtml) ?></td>' +
+        '<td><button type="button" class="btn btn-sm btn-icon btn-danger-light btn-remove" title="Usuń"><i class="ri-delete-bin-5-line"></i></button></td>' +
+      '</tr>';
+    $addRow.before(html.replaceAll('items[0][vat_code_id]', 'items['+idx+'][vat_code_id]').replaceAll('items[0][gtu_code]', 'items['+idx+'][gtu_code]'));
+    var $tr = $addRow.prev();
+    initProductSelectForRow($tr);
+    $tr.on('input change', '.item-qty,.item-price,.item-disc,.item-vatcode', function(){ rowCalc($tr); allCalc(); });
+    $tr.find('.btn-remove').on('click', function(){ var rows=$itemsBody.find('tr').length-2; if(rows>1){ $tr.remove(); allCalc(); guardMinRows(); } });
+    rowCalc($tr); allCalc(); guardMinRows();
+    idx++;
   });
-
-  // Toolbar/recalc-modal usunięte — domyślny tryb ceny to 'net' (per wiersz wybierany w kolumnie CENA)
 
   // ====== „Dodaj produkt” (ikona w wierszu) ======
   $itemsBody.on('click', '.btn-new-product', function(){ currentProductRow = $(this).closest('tr'); $('#product-create-modal').modal('show'); });
-
-  // ====== Duplikuj wiersz ======
-  $itemsBody.on('click', '.btn-duplicate', function(){
-    var $src = $(this).closest('tr');
-    var $dst = addItemRow();
-    // Skopiuj wartości z wiersza źródłowego
-    $dst.find('.item-qty').val($src.find('.item-qty').val());
-    $dst.find('.item-price').val($src.find('.item-price').val());
-    $dst.find('.item-price-mode').val($src.find('.item-price-mode').val());
-    $dst.find('.item-disc').val($src.find('.item-disc').val());
-    $dst.find('.item-vatcode').val($src.find('.item-vatcode').val());
-    var srcName = $src.find('.item-name-hidden').val() || '';
-    $dst.find('.item-name-hidden').val(srcName);
-    if (srcName) {
-      var $dstSel = $dst.find('.item-product-select');
-      var optVal = 'NEW:' + srcName;
-      $dstSel.find('option[value="' + optVal + '"]').remove();
-      $dstSel.append(new Option(srcName, optVal, true, true)).trigger('change');
-    }
-    rowCalc($dst); allCalc(); guardMinRows();
-  });
-
-  // ====== Drag & drop reorder ======
-  var dragArmed = false, dragSrc = null;
-  $itemsBody.on('mousedown', '.drag-handle', function(){ dragArmed = true; });
-  $itemsBody.on('dragstart', 'tr.item-row', function(e){
-    if (!dragArmed) { e.preventDefault(); return; }
-    dragSrc = this;
-    e.originalEvent.dataTransfer.effectAllowed = 'move';
-    $(this).addClass('dragging');
-  });
-  $(document).on('mouseup', function(){ dragArmed = false; });
-  $itemsBody.on('dragover', 'tr.item-row', function(e){ e.preventDefault(); e.originalEvent.dataTransfer.dropEffect='move'; });
-  $itemsBody.on('drop', 'tr.item-row', function(e){
-    e.preventDefault();
-    var src = dragSrc; var dst = this;
-    if (!src || src === dst) return;
-    var $dst = $(dst);
-    var mid = $dst.offset().top + $dst.outerHeight()/2;
-    if (e.originalEvent.clientY > mid) { $dst.after(src); } else { $dst.before(src); }
-    $(src).removeClass('dragging'); dragSrc = null; dragArmed = false;
-    allCalc(); guardMinRows();
-  });
-  $itemsBody.on('dragend', 'tr.item-row', function(){ $(this).removeClass('dragging'); dragSrc=null; dragArmed=false; });
 
   // Auto-generate product code from name
   $(document).on('input', '#product-create-name', function() {
@@ -3443,14 +2838,7 @@ $('#gus-fetch-btn').on('click', function(){
     }
   });
 
-  // ====== PRODUKT: obrót strzałki w sekcji KSeF ======
-  $('#prod-ksef-section').on('show.bs.collapse', function () {
-    $('#prod-ksef-chevron').css('transform', 'rotate(90deg)');
-  }).on('hide.bs.collapse', function () {
-    $('#prod-ksef-chevron').css('transform', 'rotate(0deg)');
-  });
-
-  // ====== PRODUKT: MODAL AJAX ADD ======
+    // ====== PRODUKT: MODAL AJAX ADD ======
   $('#product-create-form').on('submit', function (e) {
     e.preventDefault();
     var $f    = $(this);
@@ -3466,7 +2854,7 @@ $('#gus-fetch-btn').on('click', function(){
     }
     $f.find('[name="name"]').removeClass('is-invalid');
 
-    // Auto-code jeśli puste
+    // Auto-code jesli puste
     var code = $f.find('[name="code"]').val();
     if (!code && name) {
       $f.find('[name="code"]').val(name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10).toUpperCase());
@@ -3496,31 +2884,42 @@ $('#gus-fetch-btn').on('click', function(){
         var prodName = product.name || name;
         var netPrice = parseFloat(product.net_price || '0') || 0;
 
+        // Nazwa
         currentProductRow.find('.item-name-hidden').val(prodName);
+
+        // VAT + cena
         var $vat = currentProductRow.find('.item-vatcode');
         if ($vat.length && product.vat_id) $vat.val(product.vat_id);
-        var mode = (currentProductRow.find('.item-price-mode').val() || 'net');
-        var rate = toNum(vatRates[currentProductRow.find('.item-vatcode').val()], 0);
-        var disp = (mode === 'gross') ? +(netPrice * (1 + rate/100)).toFixed(2) : +netPrice.toFixed(2);
+        var mode           = (currentProductRow.find('.item-price-mode').val() || 'net');
+        var effectiveVatId = currentProductRow.find('.item-vatcode').val();
+        var rate           = toNum(vatRates[effectiveVatId], 0);
+        var disp           = (mode === 'gross') ? +(netPrice * (1 + rate / 100)).toFixed(2) : +netPrice.toFixed(2);
         currentProductRow.find('.item-price').val(disp.toFixed(2));
-        if (product.gtu_code) currentProductRow.find('.item-gtu').val(product.gtu_code);
-        currentProductRow.find('.item-pkwiu').val(product.pkwiu || '');
-        currentProductRow.find('.item-gtin').val(product.gtin || '');
-        currentProductRow.find('.item-cn-code').val(product.cn_code || '');
-        currentProductRow.find('.item-excise').val(product.excise_amount != null ? product.excise_amount : '');
-        currentProductRow.find('.item-procedure').val(product.procedure_marking || '');
-        if ($.fn && $.fn.select2) {
-          var $sel2 = currentProductRow.find('.item-product-select');
-          var opt2 = new Option(prodName, product.id, true, true);
-          $sel2.find('option[value="' + product.id + '"]').remove();
-          $sel2.append(opt2).trigger('change');
+
+        // GTU – przepisz z produktu do wiersza
+        if (product.gtu_code && currentProductRow.find('.item-gtu').length) {
+          currentProductRow.find('.item-gtu').val(product.gtu_code);
         }
-        rowCalc(currentProductRow); allCalc();
+
+        // Select2 – pokaz nazwe produktu
+        if ($.fn && $.fn.select2) {
+          var $sel        = currentProductRow.find('.item-product-select');
+          var displayText = prodName;
+          if (product.is_service) displayText += ' (usluga)';
+          var opt = new Option(displayText, product.id, true, true);
+          $sel.append(opt).trigger('change');
+        }
+
+        // Zapamietaj w ostatnich
+        if (typeof saveRecentProduct === 'function') saveRecentProduct({ id: product.id, text: prodName, price: netPrice, vat_id: product.vat_id });
+
+        rowCalc(currentProductRow);
+        allCalc();
         $('#product-create-modal').modal('hide');
         $f[0].reset();
-        // Przywróć domyślną jednostkę po resecie
+        // Przywroc domyslna jednostke po resecie
         $f.find('[name="unit_name"]').val('szt.');
-        toast(data.message || 'Produkt został dodany.');
+        toast(data.message || 'Produkt zostal dodany.');
       } else {
         var fieldLabels = {
           name: 'Nazwa', net_price: 'Cena netto', vat_id: 'Stawka VAT',
@@ -3529,14 +2928,14 @@ $('#gus-fetch-btn').on('click', function(){
         };
         var errorLabels = {
           _empty: 'pole wymagane', _required: 'pole wymagane',
-          maxLength: 'za długa wartość', uuid: 'nieprawidłowy format',
-          decimal: 'nieprawidłowa liczba', _isUnique: 'taka wartość już istnieje'
+          maxLength: 'za dluga wartosc', uuid: 'nieprawidlowy format',
+          decimal: 'nieprawidlowa liczba', _isUnique: 'taka wartosc juz istnieje'
         };
-        var lines = [data.message || 'Nie udało się dodać produktu.'];
+        var lines = [data.message || 'Nie udalo sie dodac produktu.'];
         if (data.errors && typeof data.errors === 'object') {
           $.each(data.errors, function(field, errs) {
             if (field === 'company_id' && errs && errs._isUnique) {
-              lines.push('Produkt z taką nazwą lub kodem już istnieje.');
+              lines.push('Produkt z taka nazwa lub kodem juz istnieje.');
               return;
             }
             var label = fieldLabels[field] || field;
@@ -3556,16 +2955,16 @@ $('#gus-fetch-btn').on('click', function(){
     }).fail(function (xhr) {
       resetBtn();
       console.error('product add fail', xhr.status, xhr.responseText);
-      toast('Błąd komunikacji przy dodawaniu produktu.', 'danger');
+      toast('Blad komunikacji przy dodawaniu produktu.', 'danger');
     });
   });
 
-  // Czyść walidację przy wpisywaniu
+  // Czysc walidacje przy wpisywaniu
   $('#product-create-form').on('input', '[name="name"]', function () {
     $(this).removeClass('is-invalid');
   });
 
-  // Reset jednostki po zamknięciu modalu
+  // Reset jednostki po zamknieciu modalu
   $('#product-create-modal').on('hidden.bs.modal', function () {
     $('#product-create-form')[0].reset();
     $('#product-create-form [name="unit_name"]').val('szt.');
@@ -3593,8 +2992,7 @@ $('#gus-fetch-btn').on('click', function(){
         // Close modal and reset form
         $('#contractor-create-modal').modal('hide');
         $f[0].reset();
-        catalogData = [];
-
+        
         toast(data.message || 'Kontrahent został dodany i przypisany.');
       } else {
         toast(data.message || 'Nie udało się dodać kontrahenta.');
@@ -3605,50 +3003,75 @@ $('#gus-fetch-btn').on('click', function(){
     });
   });
 
+  // ====== KONTRAHENT: MODAL AJAX ADD ======
+  $('#contractor-create-form').on('submit', function (e) {
+    e.preventDefault();
+    var $f = $(this);
+    $.ajax({
+      url: $f.attr('action'),
+      method: 'POST',
+      data: new FormData(this),
+      processData: false, contentType: false,
+      headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+    }).done(function (data) {
+      if (data && data.success && data.contractor) {
+        var contractor = data.contractor;
+        
+        // Apply contractor to invoice form
+        applyContractor(contractor);
+        
+        // Close modal and reset form
+        $('#contractor-create-modal').modal('hide');
+        $f[0].reset();
+        
+        // Refresh catalog data if modal is open
+        catalogData = [];
+        
+        toast(data.message || 'Kontrahent został dodany.');
+      } else {
+        toast(data.message || 'Nie udało się dodać kontrahenta.');
+      }
+    }).fail(function (xhr) {
+      console.error('contractor add fail', xhr.status, xhr.responseText);
+      toast('Błąd komunikacji przy dodawaniu kontrahenta.');
+    });
+  });
 
   // ====== WALIDACJA: min 1 wiersz ======
   function syncItemNamesBeforeSubmit(){
-    $itemsBody.find('tr.item-row').each(function(){
+    $itemsBody.find('tr').each(function(){
       var $tr = $(this);
-      var $hidden = $tr.find('.item-name-hidden');
-      if (!$hidden.length || $hidden.val()) return;
-      var txt = ($tr.find('.item-product-select option:selected').text() || '').trim();
-      if (txt && txt !== 'Nazwa produktu lub usługi') $hidden.val(txt);
+      if (!$tr.find('.item-name-hidden').length) return;
+      var $nameHidden = $tr.find('.item-name-hidden');
+      var current = ($nameHidden.val() || '').toString().trim();
+      if (current !== '') return;
+      var selectedText = ($tr.find('.item-product-select option:selected').text() || '').toString().trim();
+      if (!selectedText || selectedText === 'Wybierz lub wpisz produkt') return;
+      $nameHidden.val(selectedText);
     });
   }
   $form.on('submit', function (e) {
     syncItemNamesBeforeSubmit();
-    var rows = countItemRows();
+    var rows = $itemsBody.find('tr').length - 2;
     if (rows < 1) { e.preventDefault(); e.stopPropagation(); toast('Dodaj co najmniej jedną pozycję.'); return false; }
+    $form.addClass('was-validated');
   });
 
   // ====== „Zapłacono (kwota)” ======
   var $paidCheck = $('#is-paid-check');
-  var $paidAt    = $('#paid-at');
-  var $paidHint  = $('.paid-at-hint');
+  var $paidAtGrp = $('#paid-at-group');
   var $paidInput = $('[name="alreadypaid"]');
   function getTotal(){ return parseFloat($('#sum-gross').val() || '0') || 0; }
   function syncPaidAmountIfLocked(){ if ($paidCheck.is(':checked')) { $paidInput.val(getTotal().toFixed(2)); } }
   function togglePaidLock(){
-    if ($paidCheck.is(':checked')) {
-      $paidAt.prop('disabled', false);
-      $paidHint.hide();
-      $paidInput.prop('readOnly', true).addClass('bg-light');
-      syncPaidAmountIfLocked();
-    } else {
-      $paidAt.val('').prop('disabled', true);
-      $paidHint.show();
-      $paidInput.prop('readOnly', false).removeClass('bg-light');
-    }
+    if ($paidCheck.is(':checked')) { $paidAtGrp.stop(true,true).slideDown(120); $paidInput.prop('readOnly', true).addClass('bg-light'); syncPaidAmountIfLocked(); }
+    else { $paidAtGrp.stop(true,true).slideUp(120).find('input').val(''); $paidInput.prop('readOnly', false).removeClass('bg-light'); }
   }
   $paidInput.on('input change', function(){ if ($paidCheck.is(':checked')) { syncPaidAmountIfLocked(); } });
   $paidCheck.on('change', togglePaidLock);
   togglePaidLock(); // init
 
-  // Re-sync alreadypaid po KAŻDEJ zmianie pozycji/sum, gdy "Oznacz jako opłacone" jest zaznaczone.
-  // Bez tego, jeśli user kliknął checkbox PRZED wpisaniem pozycji, alreadypaid zostawało na 0
-  // (poprzedni getTotal() zwracał 0) i przy save invoice szedł jako nieopłacony.
-  // setTimeout(0) zapewnia uruchomienie PO recompute (allCalc), które fires na te same eventy.
+  // Re-sync alreadypaid po zmianie pozycji/sum, gdy "Oznacz jako opłacone" jest zaznaczone.
   $(document).on('input change',
     '.item-qty, .item-price, .item-price-mode, .item-vatcode, .item-discount, .item-net, .item-gross',
     function(){ setTimeout(syncPaidAmountIfLocked, 0); }
@@ -3733,8 +3156,8 @@ $('#gus-fetch-btn').on('click', function(){
   $(document).on('click', '.contractor-menu .action-open-catalog', function(e){ e.preventDefault(); openCatalog(); });
 
   // Inicjalizacja popoverów informacyjnych (inne)
-  ['catalog-help','fp-help','currency-help','autosend-help'].forEach(function(id){
-    var el = document.getElementById(id); if (el) new bootstrap.Popover(el, {container:'body', sanitize:false});
+  ['catalog-help','fp-help','currency-help','autosend-help','supply-goods-help','mpp-help'].forEach(function(id){
+    var el = document.getElementById(id); if (el) new bootstrap.Popover(el, {container:'body', sanitize:false, trigger:'click'});
   });
 
   // Waluta (pokazanie pola kursu)
@@ -3743,7 +3166,7 @@ $('#gus-fetch-btn').on('click', function(){
   const $fxInput  = $('#fx-rate');
   const $issueDate= $('#issue-date');
   const $soldDate = $('#sold-date');
-  function onCurrencyChange(){ const cur = ($currency.val()||'PLN').toUpperCase(); $fxGroup.toggle(cur !== 'PLN'); }
+  function onCurrencyChange(){ const cur = ($currency.val()||'PLN').toUpperCase(); $fxGroup.toggle(cur !== 'PLN'); if (typeof updatePlnPreview === 'function') updatePlnPreview(); if (typeof mirrorSums === 'function') mirrorSums(); }
   $currency.on('change', onCurrencyChange); onCurrencyChange();
 
   // Fetch NBP rate and prefill fx-rate for foreign currency
@@ -3756,11 +3179,28 @@ $('#gus-fetch-btn').on('click', function(){
       var json = await res.json();
       if (json && json.success && json.rate){
         $fxInput.val(Number(json.rate).toFixed(4));
-        // Optional: show a small hint
+        // store meta for preview
+        try { $fxInput.data('rateDate', json.effectiveDate || ''); } catch(_) {}
+        // Show standard NBP hint
         var hintId = 'fx-rate-hint';
         var $hint = $('#'+hintId);
-        var text = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+(json.effectiveDate||'')+': '+Number(json.rate).toFixed(4)+' '+cur+'/PLN';
+        var text = 'Średni kurs NBP ('+(json.table||'?')+') z dnia '+(json.effectiveDate||'')+': 1 '+cur+' = '+Number(json.rate).toFixed(4)+' PLN';
         if ($hint.length) { $hint.text(text); } else { $fxGroup.after('<small id="'+hintId+'" class="text-muted d-block mt-1">'+text+'</small>'); }
+        // Show notice if original invoice used a different rate
+        var origRate = (window._originalPrefill && window._originalPrefill.currency_exchange) ? Number(window._originalPrefill.currency_exchange) : 0;
+        var newRate  = Number(json.rate);
+        console.log('[fx-rate-diff] _originalPrefill:', window._originalPrefill);
+        console.log('[fx-rate-diff] origRate:', origRate, '| newRate (NBP):', newRate, '| diff:', Math.abs(origRate - newRate));
+        var $diffNotice = $('#fx-rate-diff-notice');
+        if (origRate > 0 && Math.abs(origRate - newRate) >= 0.0001) {
+          var msg = '<i class="ri-error-warning-line me-1"></i>Faktura korygowana miała kurs: <strong>' + origRate.toFixed(4) + ' PLN</strong>. Aktualny kurs NBP wynosi <strong>' + newRate.toFixed(4) + ' PLN</strong>.';
+          if ($diffNotice.length) { $diffNotice.html(msg).show(); }
+          else { $('#'+hintId).after('<div id="fx-rate-diff-notice" class="alert alert-warning py-1 px-2 mt-1 small">' + msg + '</div>'); }
+        } else {
+          $diffNotice.hide();
+        }
+  if (typeof updatePlnPreview === 'function') updatePlnPreview();
+  if (typeof mirrorSums === 'function') mirrorSums();
       }
     } catch (e) { /* ignore */ }
   }
@@ -3768,6 +3208,9 @@ $('#gus-fetch-btn').on('click', function(){
   $issueDate.on('change', fetchNbpRate);
   $soldDate.on('change', fetchNbpRate);
   setTimeout(fetchNbpRate, 0);
+
+  // Update PLN preview on fx rate manual change
+  $fxInput.on('input change', function(){ if (typeof updatePlnPreview === 'function') updatePlnPreview(); if (typeof mirrorSums === 'function') mirrorSums(); });
 
   // Enhance currency select with Select2 + NBP currencies (filterable)
   if ($.fn && $.fn.select2) {
@@ -3841,15 +3284,15 @@ $('#gus-fetch-btn').on('click', function(){
             var label = r.text || (r.bank_name ? (r.bank_name + ' ' + (r.iban||'')) : (r.iban||''));
             return $.extend({ id: r.id, text: label }, r);
           });
-          // jeśli brak wyboru i brak prefilla – spróbuj zaznaczyć domyślny przy pierwszym załadowaniu wyników
+          // jeśli brak wyboru – spróbuj zaznaczyć domyślny przy pierwszym załadowaniu wyników
           setTimeout(function(){
             var $sel = $('#bank-account-select');
-            var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
-            if (!$sel.val() && !hasPrefill && items.length){
+            if (!$sel.val() && items.length){
               var def = items.find(function(i){ return i.is_default; });
-              if (def){
-                var opt=new Option(def.text, def.id, true, true);
+              if (def){ 
+                var opt=new Option(def.text, def.id, true, true); 
                 $sel.append(opt).trigger('change');
+                // ustaw hiddeny (snapshot IBAN i ID)
                 $('#bank-account-hidden').val(def.iban || def.text || '').trigger('change');
                 $('#bank-account-id-hidden').val(def.id || '').trigger('change');
               }
@@ -3887,11 +3330,12 @@ $('#gus-fetch-btn').on('click', function(){
       $dd.on('mousedown', '.s2-add-bank', function(e){ e.preventDefault(); e.stopPropagation(); try{$('#bank-account-select').select2('close');}catch(_){}; $('#bank-account-create-modal').modal('show'); });
     }
 
-    // Prefill default on initial load — tylko jeśli nie ma już wybranego konta (nowa faktura)
+    // Prefill default on initial load (no search term)
+    // Trigger a silent query to load first results and pick default if available
     setTimeout(function(){
       var $sel = $('#bank-account-select');
-      var hasPrefill = !!($sel.data('prefill-id') || $sel.data('prefill-iban'));
-      if (!$sel.val() && !hasPrefill) {
+      if (!$sel.val()) {
+        // Force an initial fetch by opening and closing programmatically
         try { $sel.select2('open'); } catch(_){ }
         setTimeout(function(){ try { $sel.select2('close'); } catch(_){ } }, 0);
       }
@@ -3910,7 +3354,6 @@ $('#gus-fetch-btn').on('click', function(){
   $dueDate.on('change', recomputeFromDate);
   setTimeout(function(){
     if ($dueDate.val()) {
-      // Mamy już datę (edycja lub wpisana ręcznie) — pokaż preview bez nadpisywania
       recomputeFromDate();
     } else if ($duePreset.val() && $duePreset.val() !== '_custom') {
       recomputeFromPreset();
@@ -3918,7 +3361,6 @@ $('#gus-fetch-btn').on('click', function(){
   }, 0);
 // ====== SELECT2: Seria faktury ======
 if ($.fn && $.fn.select2) {
-  var kind = '<?= h($kind ?? "vat") ?>';
   var $series = $('#series-select').select2({
     placeholder: 'Wybierz serię',
     allowClear: true,
@@ -3927,24 +3369,15 @@ if ($.fn && $.fn.select2) {
       url: seriesSearchUrl,
       dataType: 'json',
       delay: 200,
-      data: function (params) {
-        var payload = { q: (params.term || ''), limit: 20 };
-        var kindTypeMap = {
-          'vat': 'vat', 'currency': 'currency', 'novat': 'novat',
-          'proforma': 'proforma', 'advance': 'advance', 'margin': 'margin',
-          'correction': 'kor', 'internal': 'internal',
-          'internalEvidence': 'internalevidence', 'oss': 'oss'
-        };
-        if (kindTypeMap[kind]) payload.type = kindTypeMap[kind];
-        return payload;
-      },
+      data: function (params) { return { q: (params.term || ''), limit: 20, type: 'currency' }; },
       processResults: function (data) {
         // oczekiwany format: [{id: '2025/10', text:'2025/10', pattern:'...', next_no:123}, ...]
         var items = $.map(data.results || data || [], function (s) {
-          return { 
-            id: s.id || s.name || s.text, 
-            text: s.text || s.name || s.id, 
-            pattern: s.template || s.pattern, 
+          return {
+            id: s.id,
+            text: s.text || s.name || s.id,
+            name: s.name || s.text,
+            pattern: s.template || s.pattern,
             next_no: s.start_no || s.next_no,
             is_default: s.is_default || false
           };
@@ -3974,61 +3407,46 @@ if ($.fn && $.fn.select2) {
       return $('<div>'+ $('<div>').text(d.text).html() +' '+ (meta.join(' ')||'') +'</div>')[0];
     }
   })
-  .on('select2:open', function(){
-    injectSeriesToolbar();
+  .on('select2:open', function(){ injectSeriesToolbar(); })
+  .on('select2:select', function(e){
+    var d = (e.params && e.params.data) || {};
+    $('#invoice-series-id-hidden').val(d.id || '');
   })
-  .on('select2:select', function(e) {
-    // Gdy użytkownik wybiera serię — zapisz UUID w hidden field
-    var selectedData = e.params.data;
-    var uuid = selectedData.id || '';
-    $('#invoice-series-id-hidden').val(uuid);
-  })
-  .on('select2:clear', function() {
-    $('#invoice-series-id-hidden').val('');
-  });
+  .on('select2:clear', function(){ $('#invoice-series-id-hidden').val(''); });
 
-  // jeśli mamy w entity bieżącą wartość — preloaduj po UUID lub nazwie
+  // Preload: edycja — przywróć UUID; nowa faktura — auto-załaduj domyślną
   (function preloadSeries(){
-    var curUuid  = '<?= h($invoice->invoice_series_id ?? '') ?>';
-    var curName  = '<?= h($invoice->series ?? '') ?>';
-    var cur      = curUuid || curName;
-    if (cur) {
-      var label = curName || curUuid;
-      var opt = new Option(label, curUuid || curName, true, true);
+    var curId   = '<?= h($invoice->invoice_series_id ?? '') ?>';
+    var curName = '<?= h($invoice->series ?? '') ?>';
+    if (curId) {
+      var opt = new Option(curName || curId, curId, true, true);
       $series.append(opt).trigger('change');
-      $('#invoice-series-id-hidden').val(curUuid);
-      if (typeof window.updateInvoiceNumberHint === 'function') updateInvoiceNumberHint();
+      $('#invoice-series-id-hidden').val(curId);
     } else {
-      // Jeśli nie ma wcześniej wybranej serii, spróbuj załadować domyślną
       loadDefaultSeries();
     }
   })();
 
-  // Funkcja ładowania domyślnej serii
+  // Ładowanie domyślnej serii — typ currency, fallback do wszystkich
   function loadDefaultSeries() {
-    var kindTypeMap = {
-      'vat': 'vat', 'currency': 'currency', 'novat': 'novat',
-      'proforma': 'proforma', 'advance': 'advance', 'margin': 'margin',
-      'correction': 'kor', 'internal': 'internal',
-      'internalEvidence': 'internalevidence', 'oss': 'oss'
-    };
-    $.ajax({
-      url: seriesSearchUrl,
-      dataType: 'json',
-      data: (function(){
-        var d = { q: '', limit: 50 };
-        if (kindTypeMap[kind]) d.type = kindTypeMap[kind];
-        return d;
-      })()
-    }).done(function(data) {
-      var items = data.results || data || [];
-      var defaultItem = items.find(function(item) { return item.is_default; });
-      if (defaultItem) {
-        var opt = new Option(defaultItem.text || defaultItem.name, defaultItem.id || defaultItem.name, true, true);
-        $series.append(opt).trigger('change');
-        if (typeof window.updateInvoiceNumberHint === 'function') updateInvoiceNumberHint();
-      }
-    });
+    $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50, type: 'currency' } })
+      .done(function(data) {
+        var items = data.results || data || [];
+        if (!items.length) {
+          $.ajax({ url: seriesSearchUrl, dataType: 'json', data: { q: '', limit: 50 } })
+            .done(function(d2) { applyDefaultSeries(d2.results || d2 || []); });
+          return;
+        }
+        applyDefaultSeries(items);
+      });
+  }
+  function applyDefaultSeries(items) {
+    var pick = items.find(function(i){ return i.is_default; }) || items[0] || null;
+    if (pick) {
+      var opt = new Option(pick.text || pick.name, pick.id, true, true);
+      $series.append(opt).trigger('change');
+      $('#invoice-series-id-hidden').val(pick.id);
+    }
   }
 }
 
@@ -4154,12 +3572,6 @@ $('#series-period-create-form').on('submit', function(e){
 <style>
   .select2-results__option .fi{ margin-right:.35rem; vertical-align: -0.1em; }
   .select2-selection__rendered .fi{ margin-right:.35rem; vertical-align: -0.1em; }
-  /* Highlight rows when filtering by VAT chip */
-  #items-body tr.highlight-vat-row {
-    background-color: rgba(255, 193, 7, 0.15); /* bootstrap warning tint */
-  }
-  .drag-handle{ cursor: grab; }
-  .item-row.dragging{ opacity: .7; }
 </style>
 
 <!-- Modal: Dodaj rachunek bankowy -->
@@ -4212,241 +3624,3 @@ $('#series-period-create-form').on('submit', function(e){
     });
   </script>
 </div>
-
-<!-- Floating Calculator Panel -->
-<div id="calc-panel" class="calc-panel shadow rounded d-none" role="dialog" aria-label="Kalkulator">
-  <div class="calc-header d-flex justify-content-between align-items-center px-2 py-1">
-    <div class="fw-medium"><i class="ri-calculator-line me-1"></i> Kalkulator</div>
-    <div class="d-flex align-items-center gap-1">
-      <button type="button" class="btn btn-sm btn-light" id="calc-insert" title="Wstaw do aktywnego pola"><i class="ri-input-cursor-move"></i></button>
-      <button type="button" class="btn btn-sm btn-light" id="calc-close" title="Zamknij"><i class="ri-close-line"></i></button>
-    </div>
-  </div>
-  <div class="calc-body p-2">
-    <input type="text" id="calc-input" class="form-control mb-2" placeholder="Wpisz działanie, np. 10*1.23" autocomplete="off">
-    <div class="calc-grid">
-      <button class="btn btn-light" data-key="7">7</button>
-      <button class="btn btn-light" data-key="8">8</button>
-      <button class="btn btn-light" data-key="9">9</button>
-      <button class="btn btn-secondary" data-key="/">/</button>
-
-      <button class="btn btn-light" data-key="4">4</button>
-      <button class="btn btn-light" data-key="5">5</button>
-      <button class="btn btn-light" data-key="6">6</button>
-      <button class="btn btn-secondary" data-key="*">*</button>
-
-      <button class="btn btn-light" data-key="1">1</button>
-      <button class="btn btn-light" data-key="2">2</button>
-      <button class="btn btn-light" data-key="3">3</button>
-      <button class="btn btn-secondary" data-key="-">-</button>
-
-  <button class="btn btn-warning" id="calc-clear" title="Wyczyść">C</button>
-  <button class="btn btn-light" data-key="0">0</button>
-  <button class="btn btn-secondary" data-key="%" title="Procent">%</button>
-  <button class="btn btn-secondary" data-key="+">+</button>
-
-  <button class="btn btn-light" data-key="(">(</button>
-  <button class="btn btn-light" data-key=")">)</button>
-  <button class="btn btn-light" id="calc-back" title="Kasuj znak">⌫</button>
-  <button class="btn btn-primary" id="calc-eq" title="Oblicz">=</button>
-    </div>
-  </div>
-</div>
-
-<script>
-$(function(){
-  // Calculator panel logic
-  var $panel = $('#calc-panel');
-  var $input = $('#calc-input');
-  var lastFocused = null;
-
-  // Restore position and visibility
-  (function initCalc(){
-    try{
-      var pos = JSON.parse(localStorage.getItem('calcPanelPos')||'null');
-      if (pos && typeof pos.left==='number' && typeof pos.top==='number') {
-        // Switch to left/top positioning explicitly
-        $panel.css({ right:'auto', bottom:'auto', left: pos.left+'px', top: pos.top+'px' });
-      }
-      var open = localStorage.getItem('calcPanelOpen') === '1';
-      if (open) { $panel.removeClass('d-none'); }
-    }catch(e){}
-  })();
-
-  // Toggle via footer button
-  $('#btn-calc-toggle').on('click', function(){
-    $panel.toggleClass('d-none');
-    // If becoming visible and no stored left/top, keep default right/bottom; focus input
-    try{ localStorage.setItem('calcPanelOpen', $panel.hasClass('d-none') ? '0' : '1'); }catch(e){}
-    if (!$panel.hasClass('d-none')) { $input.focus().select(); }
-  });
-  $('#calc-close').on('click', function(){
-    $panel.addClass('d-none');
-    try{ localStorage.setItem('calcPanelOpen','0'); }catch(e){}
-  });
-
-  // Track last focused input (outside calculator)
-  $(document).on('focusin', 'input,textarea', function(){
-    if ($(this).closest('#calc-panel').length) return;
-    lastFocused = this;
-  });
-
-  // Insert into active field
-  $('#calc-insert').on('click', function(){
-    if (!lastFocused) { if (typeof toast==='function') toast('Brak aktywnego pola.'); return; }
-    var val = ($input.val()||'').trim();
-    if (!val) return;
-    try { $(lastFocused).val(val).trigger('change'); } catch(e){}
-  });
-
-  // Keypad clicks
-  $panel.on('click', '[data-key]', function(){
-    var k = $(this).data('key');
-    if (typeof k === 'undefined') return;
-    var s = $input.val() || '';
-    $input.val(s + String(k));
-    $input.focus();
-  });
-
-  // Backspace
-  $('#calc-back').on('click', function(){
-    var s = $input.val() || '';
-    $input.val(s.slice(0, -1)).focus();
-  });
-
-  // Clear
-  $('#calc-clear').on('click', function(){ $input.val('').focus(); });
-
-  // Evaluate
-  function evalExpr(expr){
-    var src = String(expr||'').replace(/\s+/g,' ').trim();
-    if (!src) return '';
-    // allow only digits, operators, parentheses, comma/dot
-  if (!/^[0-9+\-*/().,%\s]+$/.test(src)) throw new Error('Niedozwolone znaki');
-  src = src.replace(/,/g, '.');
-  // Support percent: replace number% with (number/100)
-  src = src.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-    var res = Function('return ('+src+')')();
-    if (!isFinite(res)) throw new Error('Błąd obliczeń');
-    return res;
-  }
-  function doEval(){
-    try{
-      var res = evalExpr($input.val());
-      if (res === '') return;
-      // Keep as typed precision; format to up to 8 decimals
-      var out = (Math.round(res * 100000000) / 100000000).toString();
-      $input.val(out);
-    } catch(e){
-      $input.addClass('is-invalid');
-      setTimeout(function(){ $input.removeClass('is-invalid'); }, 600);
-      if (typeof toast==='function') toast(e.message || 'Błąd');
-    }
-  }
-  $('#calc-eq').on('click', doEval);
-  $input.on('keydown', function(ev){
-    if (ev.key === 'Enter') { ev.preventDefault(); doEval(); }
-    if (ev.key === 'Escape') { $panel.addClass('d-none'); try{ localStorage.setItem('calcPanelOpen','0'); }catch(e){} }
-  });
-
-  // Dragging
-  (function enableDrag(){
-    var dragging = false, sx=0, sy=0, sl=0, st=0;
-    function rectPos(){ var r = $panel[0].getBoundingClientRect(); return { left: r.left, top: r.top }; }
-    function save(){
-      var r = rectPos();
-      try{ localStorage.setItem('calcPanelPos', JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top) })); }catch(e){}
-    }
-    $panel.find('.calc-header').on('mousedown', function(ev){
-      dragging = true; sx = ev.clientX; sy = ev.clientY;
-      // Use current viewport coords; ensure switching to left/top positioning
-      var r = rectPos(); sl = r.left; st = r.top;
-      $panel.css({ right:'auto', bottom:'auto', left: sl+'px', top: st+'px' });
-      $('body').addClass('user-select-none');
-      ev.preventDefault();
-    });
-    $(document).on('mousemove.calcdrag', function(ev){
-      if (!dragging) return;
-      var dx = ev.clientX - sx, dy = ev.clientY - sy;
-      var nl = sl + dx, nt = st + dy;
-      // clamp within viewport
-      var vw = $(window).width(), vh = $(window).height();
-      var pw = $panel.outerWidth(), ph = $panel.outerHeight();
-      nl = Math.max(8, Math.min(vw - pw - 8, nl));
-      nt = Math.max(8, Math.min(vh - ph - 8, nt));
-      $panel.css({ left: nl+'px', top: nt+'px' });
-    });
-    $(document).on('mouseup.calcdrag', function(){ if (dragging){ dragging=false; $('body').removeClass('user-select-none'); save(); } });
-  })();
-});
-</script>
-
-<style>
-  .calc-panel{ position: fixed; right: 24px; bottom: 96px; width: 280px; background:#fff; z-index: 1055; border:1px solid rgba(0,0,0,.1); box-sizing: border-box; overflow: hidden; }
-  .calc-header{ cursor: move; background:#f8f9fa; border-bottom:1px solid rgba(0,0,0,.1); }
-  .calc-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap:.35rem; }
-  .calc-grid .btn{ padding: .45rem .5rem; }
-  .user-select-none{ user-select: none !important; }
-  .country-select .flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/img/flags.png') !important; }
-  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-    .country-select .flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/img/flags@2x.png') !important; }
-  }
-</style>
-<script>
-if (!window.__ctrCSLoaded) {
-  window.__ctrCSLoaded = true;
-  (function(){
-    if (!document.querySelector('link[href*="countrySelect"]')) {
-      var l = document.createElement('link');
-      l.rel = 'stylesheet';
-      l.href = 'https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/css/countrySelect.css';
-      l.integrity = 'sha512-WPc1lYhwI/V+DbzjPRw98rLrQznhpPZ7C/d7K6Vc5s7Sxw2zEk4xLodZwPP0SQ3aLJsBbuaYF0iovbFs2zzKlw==';
-      l.crossOrigin = 'anonymous';
-      document.head.appendChild(l);
-    }
-    if (!document.querySelector('script[src*="countrySelect"]')) {
-      var s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/js/countrySelect.min.js';
-      s.integrity = 'sha512-criuU34pNQDOIx2XSSIhHSvjfQcek130Y9fivItZPVfH7paZDEdtAMtwZxyPq/r2pyr9QpctipDFetLpUdKY4g==';
-      s.crossOrigin = 'anonymous';
-      document.head.appendChild(s);
-    }
-  })();
-}
-window.CS_PL_NAMES = window.CS_PL_NAMES || {
-  af:'Afganistan',al:'Albania',dz:'Algieria',ad:'Andora',ao:'Angola',ag:'Antigua i Barbuda',
-  sa:'Arabia Saudyjska',ar:'Argentyna',am:'Armenia',au:'Australia',at:'Austria',az:'Azerbejdżan',
-  bs:'Bahamy',bh:'Bahrajn',bd:'Bangladesz',bb:'Barbados',be:'Belgia',bz:'Belize',bj:'Benin',
-  bt:'Bhutan',by:'Białoruś',bo:'Boliwia',ba:'Bośnia i Hercegowina',bw:'Botswana',br:'Brazylia',
-  bn:'Brunei',bg:'Bułgaria',bf:'Burkina Faso',bi:'Burundi',cl:'Chile',cn:'Chiny',hr:'Chorwacja',
-  cy:'Cypr',td:'Czad',me:'Czarnogóra',cz:'Czechy',dk:'Dania',cd:'Dem. Republika Konga',
-  dj:'Dżibuti',dm:'Dominika',do:'Dominikana',eg:'Egipt',ec:'Ekwador',er:'Erytrea',ee:'Estonia',
-  et:'Etiopia',fj:'Fidżi',ph:'Filipiny',fi:'Finlandia',fr:'Francja',ga:'Gabon',gm:'Gambia',
-  gh:'Ghana',gr:'Grecja',gd:'Grenada',ge:'Gruzja',gy:'Gujana',gt:'Gwatemala',gn:'Gwinea',
-  gw:'Gwinea Bissau',gq:'Gwinea Równikowa',ht:'Haiti',es:'Hiszpania',hn:'Honduras',in:'Indie',
-  id:'Indonezja',iq:'Irak',ir:'Iran',ie:'Irlandia',is:'Islandia',il:'Izrael',jm:'Jamajka',
-  jp:'Japonia',ye:'Jemen',jo:'Jordania',kh:'Kambodża',cm:'Kamerun',ca:'Kanada',qa:'Katar',
-  kz:'Kazachstan',ke:'Kenia',kg:'Kirgistan',ki:'Kiribati',co:'Kolumbia',km:'Komory',cg:'Kongo',
-  kp:'Korea Północna',kr:'Korea Południowa',kw:'Kuwejt',la:'Laos',ls:'Lesotho',lb:'Liban',
-  lr:'Liberia',ly:'Libia',li:'Liechtenstein',lt:'Litwa',lu:'Luksemburg',lv:'Łotwa',
-  mk:'Macedonia Północna',mg:'Madagaskar',mw:'Malawi',mv:'Malediwy',my:'Malezja',ml:'Mali',
-  mt:'Malta',ma:'Maroko',mr:'Mauretania',mu:'Mauritius',mx:'Meksyk',fm:'Mikronezja',
-  md:'Mołdawia',mc:'Monako',mn:'Mongolia',mz:'Mozambik',mm:'Myanmar',na:'Namibia',nr:'Nauru',
-  np:'Nepal',nl:'Niderlandy',de:'Niemcy',ne:'Niger',ng:'Nigeria',ni:'Nikaragua',no:'Norwegia',
-  nz:'Nowa Zelandia',om:'Oman',pk:'Pakistan',pw:'Palau',pa:'Panama',pg:'Papua Nowa Gwinea',
-  py:'Paragwaj',pe:'Peru',pl:'Polska',pt:'Portugalia',za:'Republika Południowej Afryki',
-  cf:'Republika Środkowoafrykańska',ru:'Rosja',ro:'Rumunia',rw:'Rwanda',ws:'Samoa',
-  sm:'San Marino',sn:'Senegal',rs:'Serbia',sc:'Seszele',sl:'Sierra Leone',sg:'Singapur',
-  sk:'Słowacja',si:'Słowenia',so:'Somalia',lk:'Sri Lanka',us:'Stany Zjednoczone',
-  sz:'Eswatini',sd:'Sudan',ss:'Sudan Południowy',sr:'Surinam',sy:'Syria',ch:'Szwajcaria',
-  se:'Szwecja',tj:'Tadżykistan',th:'Tajlandia',tz:'Tanzania',tl:'Timor Wschodni',tg:'Togo',
-  to:'Tonga',tt:'Trynidad i Tobago',tn:'Tunezja',tr:'Turcja',tm:'Turkmenistan',tv:'Tuvalu',
-  ug:'Uganda',ua:'Ukraina',uy:'Urugwaj',uz:'Uzbekistan',vu:'Vanuatu',ve:'Wenezuela',
-  hu:'Węgry',gb:'Wielka Brytania',vn:'Wietnam',it:'Włochy',ci:'Wybrzeże Kości Słoniowej',
-  xi:'Irlandia Północna (XI)',zm:'Zambia',zw:'Zimbabwe',ae:'Zjednoczone Emiraty Arabskie'
-};
-window.CS_EU_CODES = window.CS_EU_CODES || [
-  'at','be','bg','cy','cz','de','dk','ee','es','fi','fr','gr','hr','hu','ie',
-  'it','lt','lu','lv','mt','nl','pl','pt','ro','se','si','sk','xi'
-];
-</script>
