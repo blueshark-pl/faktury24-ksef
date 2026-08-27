@@ -233,9 +233,22 @@ foreach ($lead->lead_activities as $__a) {
                     </span>
                 </h4>
                 <div class="text-muted small">
-                    <?php if ($lead->postal_code || $lead->city): ?>
-                        <i class="ri-map-pin-2-line"></i> <?= h(trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? ''))) ?>
-                        <?php if ($lead->street): ?> · <?= h($lead->street) ?><?php endif; ?>
+                    <?php if ($lead->postal_code || $lead->city):
+                        $__addrParts = array_filter([
+                            trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? '')),
+                            $lead->street ?? null,
+                            $lead->country_code ? strtoupper($lead->country_code) : null,
+                        ]);
+                        $__mapsQuery = urlencode(implode(', ', $__addrParts));
+                        $__addrLabel = h(trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? '')));
+                    ?>
+                        <a href="https://www.google.com/maps/search/?api=1&amp;query=<?= $__mapsQuery ?>"
+                           target="_blank" rel="noopener noreferrer"
+                           class="text-decoration-none text-muted"
+                           title="<?= __('Otwórz w Google Maps') ?>">
+                            <i class="ri-map-pin-2-line"></i> <?= $__addrLabel ?><?php if ($lead->street): ?> · <?= h($lead->street) ?><?php endif; ?>
+                            <i class="ri-external-link-line small ms-1" style="font-size: 10px; opacity: .6;"></i>
+                        </a>
                     <?php endif; ?>
                     <?php if ($lead->country_code): ?> · <?= h(strtoupper($lead->country_code)) ?><?php endif; ?>
                     <?php if ($lead->nip): ?> · <span class="text-muted">NIP <?= h($lead->nip) ?></span><?php endif; ?>
@@ -332,10 +345,23 @@ foreach ($lead->lead_activities as $__a) {
                 <?php if ($lead->country_code): ?>
                     <div class="info-row"><div class="info-label"><?= __('Kraj') ?></div><div><?= h(strtoupper($lead->country_code)) ?></div></div>
                 <?php endif; ?>
-                <?php if ($lead->postal_code || $lead->city): ?>
+                <?php if ($lead->postal_code || $lead->city):
+                    $__addrPartsCard = array_filter([
+                        trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? '')),
+                        $lead->street ?? null,
+                        $lead->country_code ? strtoupper($lead->country_code) : null,
+                    ]);
+                    $__mapsQueryCard = urlencode(implode(', ', $__addrPartsCard));
+                ?>
                     <div class="info-row"><div class="info-label"><?= __('Adres') ?></div><div>
-                        <?= h(trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? ''))) ?>
-                        <?php if ($lead->street): ?><br><?= h($lead->street) ?><?php endif; ?>
+                        <a href="https://www.google.com/maps/search/?api=1&amp;query=<?= $__mapsQueryCard ?>"
+                           target="_blank" rel="noopener noreferrer"
+                           class="text-decoration-none"
+                           title="<?= __('Otwórz w Google Maps') ?>">
+                            <?= h(trim(($lead->postal_code ?? '') . ' ' . ($lead->city ?? ''))) ?>
+                            <?php if ($lead->street): ?><br><?= h($lead->street) ?><?php endif; ?>
+                            <i class="ri-map-pin-line ms-1 text-primary" title="<?= __('Otwórz w Google Maps') ?>"></i>
+                        </a>
                     </div></div>
                 <?php endif; ?>
                 <?php if ($lead->branch_type): ?>
