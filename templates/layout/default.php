@@ -103,10 +103,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
 
       /* Tabela pozycji (faktury/korekty): długa nazwa produktu w Select2 nie może
          rozpychać kolumny i ukrywać pozostałych komórek. min-width:0 pozwala elementom
-         flex się kurczyć, a max-width ogranicza kontener Select2 do szerokości komórki. */
+         flex się kurczyć, a max-width ogranicza kontener Select2 do szerokości komórki.
+         Wyjątek: pole CENY musi zostać używalne — nie może zwinąć się do zera obok
+         selecta Netto/Brutto (przy długiej nazwie tabela przewija się poziomo). */
       .item-row .d-flex { min-width: 0; max-width: 100%; }
       .item-product-select + .select2-container { max-width: 100%; min-width: 0; }
       .item-row .select2-selection__rendered { overflow: hidden; text-overflow: ellipsis; }
+      .item-row .item-price { min-width: 72px; flex: 1 1 auto; }
 
       /* Zawsze widoczny scrollbar poziomy w table-responsive */
       .table-responsive {
