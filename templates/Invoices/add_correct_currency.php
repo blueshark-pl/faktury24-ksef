@@ -234,25 +234,12 @@ $gtuSelectHtml .= '</select>';
           }
           applyCountry(); setTimeout(applyCountry, 250); setTimeout(applyCountry, 700);
 
-          // Identyfikatory UE / zagraniczne (prefiks = countrySelect + hidden, jak w głównym formularzu)
-          var vp = c.vat_prefix || '';
-          var vpIsNone = String(vp).toUpperCase() === 'NONE';
-          var vpClean = vpIsNone ? '' : vp;
-          $('#inv-vat-prefix-hidden').val(vpClean);
-          $('[name="invoice_contractor[vat_eu]"]').val(c.vat_eu || '');
-          $('[name="invoice_contractor[eori]"]').val(c.eori || '');
-          $('[name="invoice_contractor[tax_id_other]"]').val(c.tax_id_other || '');
-          $('#inv-tax-id-country-hidden').val(c.tax_id_other_country || '');
-          var hasIntl = !!(vpClean || c.vat_eu || c.eori || c.tax_id_other || c.tax_id_other_country);
-          if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
-          function applyPrefixUI(){
-            if (window.jQuery && jQuery.fn.countrySelect) {
-              try { jQuery('#inv-vat-prefix-ui').countrySelect('selectCountry', String(vpClean).toLowerCase()); } catch(e){}
-              try { jQuery('#inv-tax-id-country-ui').countrySelect('selectCountry', String(c.tax_id_other_country||'').toLowerCase()); } catch(e){}
-            }
-            $('#inv-vat-prefix-none').prop('checked', vpIsNone);
-          }
-          applyPrefixUI(); setTimeout(applyPrefixUI, 300);
+          // Identyfikatory UE / zagraniczne — przez helper elementu intl_ids_section
+          // (hidden + widgety flag + „Brak (spoza UE)").
+          (function tryApply(tries){
+            if (typeof window.applyIntlIds === 'function') { window.applyIntlIds(c); return; }
+            if ((tries||0) < 40) setTimeout(function(){ tryApply((tries||0)+1); }, 150);
+          })(0);
         })();
       }
 
@@ -876,49 +863,8 @@ $gtuSelectHtml .= '</select>';
                   <div class="col-6"><?= $this->element('Invoices/contractor_country_select', ['value' => $invoice->invoice_contractor->country ?? 'PL']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.email', ['label' => 'Email', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->email ?? '']) ?></div>
                   <div class="col-6"><?= $this->Form->control('invoice_contractor.phone', ['label' => 'Telefon', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->phone ?? '']) ?></div>
-                  <!-- Identyfikatory międzynarodowe nabywcy -->
-                  <div class="col-12">
-                    <div class="d-flex align-items-center gap-2 mt-1">
-                      <small class="text-muted">Identyfikatory UE / zagraniczne</small>
-                      <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" id="snapshot-intl-toggle">
-                        <label class="form-check-label small" for="snapshot-intl-toggle">Wypełnij</label>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="col-12 d-none" id="snapshot-intl-fields">
-                    <div class="row g-2">
-                      <div class="col-3">
-                        <input type="hidden" name="invoice_contractor[vat_prefix]" id="inv-vat-prefix-hidden" value="<?= h($invoice->invoice_contractor->vat_prefix ?? '') ?>">
-                        <div id="inv-vat-prefix-wrapper">
-                          <input type="text" id="inv-vat-prefix-ui" class="form-control form-control-sm" placeholder="Prefiks VAT UE">
-                        </div>
-                        <div class="form-check mt-1">
-                          <input class="form-check-input" type="checkbox" id="inv-vat-prefix-none">
-                          <label class="form-check-label small text-muted" for="inv-vat-prefix-none">Brak (spoza UE)</label>
-                        </div>
-                      </div>
-                      <div class="col-5">
-                        <input type="text" id="inv-vat-eu-field" name="invoice_contractor[vat_eu]" class="form-control form-control-sm" maxlength="32"
-                          placeholder="Numer VAT-UE (np. 123456789)"
-                          value="<?= h($invoice->invoice_contractor->vat_eu ?? '') ?>">
-                      </div>
-                      <div class="col-4">
-                        <input type="text" name="invoice_contractor[eori]" class="form-control form-control-sm" maxlength="32"
-                          placeholder="EORI (np. PL1234567890)"
-                          value="<?= h($invoice->invoice_contractor->eori ?? '') ?>">
-                      </div>
-                      <div class="col-8">
-                        <input type="text" name="invoice_contractor[tax_id_other]" class="form-control form-control-sm" maxlength="64"
-                          placeholder="Inny identyfikator podatkowy"
-                          value="<?= h($invoice->invoice_contractor->tax_id_other ?? '') ?>">
-                      </div>
-                      <div class="col-4">
-                        <input type="hidden" name="invoice_contractor[tax_id_other_country]" id="inv-tax-id-country-hidden" value="<?= h($invoice->invoice_contractor->tax_id_other_country ?? '') ?>">
-                        <input type="text" id="inv-tax-id-country-ui" class="form-control form-control-sm" placeholder="Kod kraju (NrID)">
-                      </div>
-                    </div>
-                  </div>
+                  <!-- Identyfikatory UE / zagraniczne nabywcy (flagi + blokady, wspólny element) -->
+                  <?= $this->element('Invoices/intl_ids_section', ['cc' => $invoice->invoice_contractor ?? null]) ?>
                 </div>
 
                 <!-- Checkbox: zapisz do katalogu + popover info -->
@@ -2778,40 +2724,10 @@ $('#gus-fetch-btn').on('click', function(){
     });
   }
 
-  // ====== INTL IDS TOGGLE ======
-  $(document).on('change', '#snapshot-intl-toggle', function(){
-    $('#snapshot-intl-fields').toggleClass('d-none', !this.checked);
-  });
-  // Auto-show on edit if values present
-  (function(){
-    var hasIntl = ['vat_prefix','vat_eu','eori','tax_id_other','tax_id_other_country'].some(function(f){
-      return !!($('[name="invoice_contractor['+f+']"]').val()||'').trim();
-    });
-    if (hasIntl) { $('#snapshot-intl-toggle').prop('checked', true); $('#snapshot-intl-fields').removeClass('d-none'); }
-  })();
-
-  // Sync vat_prefix UI ↔ hidden
-  $(document).on('input change', '#inv-vat-prefix-ui', function(){
-    var v = ($(this).val()||'').toUpperCase().slice(0,2);
-    $('#inv-vat-prefix-hidden').val(v);
-  });
-  $(document).on('change', '#inv-vat-prefix-none', function(){
-    var none = this.checked;
-    $('#inv-vat-prefix-wrapper').toggleClass('pe-none opacity-50', none);
-    if (none) { $('#inv-vat-prefix-ui').val(''); $('#inv-vat-prefix-hidden').val(''); }
-  });
-  // Sync tax_id_other_country UI ↔ hidden
-  $(document).on('input change', '#inv-tax-id-country-ui', function(){
-    var v = ($(this).val()||'').toUpperCase().slice(0,2);
-    $('#inv-tax-id-country-hidden').val(v);
-  });
-  // Init UI from hidden values on load
-  (function(){
-    var vp = $('#inv-vat-prefix-hidden').val() || '';
-    if (vp) $('#inv-vat-prefix-ui').val(vp);
-    var tc = $('#inv-tax-id-country-hidden').val() || '';
-    if (tc) $('#inv-tax-id-country-ui').val(tc);
-  })();
+  // ====== INTL IDS ======
+  // Toggle, sync flag↔hidden i blokada „Brak (spoza UE)" obsługuje wspólny element
+  // Invoices/intl_ids_section (countrySelect z flagami). Stare tekstowe handlery usunięte —
+  // z widgetem kopiowałyby nazwę kraju do hidden i psuły KodUE.
 
   // ====== INIT WSZYSTKICH ISTNIEJĄCYCH WIERSZY ======
   (function initExistingRows(){
