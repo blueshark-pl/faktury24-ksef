@@ -13,9 +13,14 @@ $catLabels = [
     'invoices'      => __('Faktury sprzedaży'),
     'contractors'   => __('Kontrahenci'),
     'speed_orders'  => __('Zlecenia transportowe'),
+    'crm'           => __('CRM Leady'),
     'cost_invoices' => __('Faktury kosztowe'),
-    'finance'       => __('Rozliczenia i bank'),
-    'reports'       => __('Raporty'),
+    'finance'       => __('Rozliczenia, bank, KSeF'),
+    'fleet'         => __('Flota pojazdów'),
+    'route'         => __('Planer tras i oferty'),
+    'reports'       => __('Raporty i compliance'),
+    'fuel_cards'    => __('Karty paliwowe E100'),
+    'support'       => __('Zgłoszenia i zadania'),
     'admin'         => __('Administracja'),
     'portal'        => __('Portal klienta'),
     'general'       => __('Inne'),
@@ -24,9 +29,14 @@ $catIcons = [
     'invoices'      => 'ri-file-list-3-line',
     'contractors'   => 'ri-building-line',
     'speed_orders'  => 'ri-truck-line',
+    'crm'           => 'ri-user-search-line',
     'cost_invoices' => 'ri-bill-line',
     'finance'       => 'ri-bank-line',
+    'fleet'         => 'ri-roadster-line',
+    'route'         => 'ri-route-line',
     'reports'       => 'ri-bar-chart-line',
+    'fuel_cards'    => 'ri-gas-station-line',
+    'support'       => 'ri-customer-service-2-line',
     'admin'         => 'ri-shield-keyhole-line',
     'portal'        => 'ri-global-line',
     'general'       => 'ri-folder-line',
@@ -94,9 +104,9 @@ $catIcons = [
         <div class="card shadow-sm">
             <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
                 <strong><?= __('Uprawnienia') ?></strong>
-                <?php if ($role->code === 'admin'): ?>
+                <?php if (in_array($role->code, ['admin', 'pracownik_administracyjny'], true)): ?>
                     <span class="badge bg-warning-transparent">
-                        <i class="ri-information-line"></i> <?= __('Admin ma wildcard w permissions.php — uprawnienia z DB są ignorowane') ?>
+                        <i class="ri-information-line"></i> <?= __('Ta rola ma wildcard w permissions.php — uprawnienia z DB są ignorowane') ?>
                     </span>
                 <?php else: ?>
                     <div class="d-flex gap-2 small">
@@ -107,10 +117,14 @@ $catIcons = [
                 <?php endif; ?>
             </div>
             <div class="card-body">
-                <?php if ($role->code === 'admin'): ?>
+                <?php if (in_array($role->code, ['admin', 'pracownik_administracyjny'], true)): ?>
                     <div class="alert alert-warning mb-0">
                         <i class="ri-shield-star-line me-1"></i>
-                        <?= __('Rola admin ma wpis wildcard (*) w pliku permissions.php i automatycznie ma dostęp do wszystkiego. Zmiana uprawnień w DB nie ma wpływu.') ?>
+                        <?php if ($role->code === 'admin'): ?>
+                            <?= __('Rola admin ma wpis wildcard (*) w pliku permissions.php i automatycznie ma dostęp do wszystkiego. Zmiana uprawnień w DB nie ma wpływu.') ?>
+                        <?php else: ?>
+                            <?= __('Rola pracownik_administracyjny ma wildcard w permissions.php — dostęp do wszystkiego jak dotychczasowy „user". Aby ograniczyć zakres, usuń jej wildcard w permissions.php i przypisz konkretne uprawnienia poniżej.') ?>
+                        <?php endif; ?>
                     </div>
                 <?php else: ?>
                     <?php foreach ($permissionsByCategory as $cat => $perms):

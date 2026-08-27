@@ -74,6 +74,28 @@ specyficzne nazwy: `allocated_amount`, `value_date`, `party_name` itp.
    otwierania każdej migracji. To zapobiega błędom typu `$alloc->amount` zamiast
    `$alloc->allocated_amount`.
 
+### 4c. Nowa rola / zmiana dostępu → pytaj o zakres
+Przy dodawaniu nowej roli lub zmianie zakresu dostępu istniejącej roli — **zawsze najpierw**
+zapytaj usera:
+1. **Które moduły ma widzieć w sidebarze** (Fakturowanie, Kontrahenci, Zlecenia,
+   CRM Leady, Planer tras, Floty, Księgowość, Wyciągi, Admin…)?
+2. **Które akcje ma mieć** w każdym module (podgląd / dodawanie / edycja / usuwanie /
+   akceptacja / eksport / import)?
+3. **Czy backend ma być zawężony** (permissions.php) czy tylko UI (sidebar)?
+4. **Jakie relacje z istniejącymi rolami** (nadzbiór / podzbiór / równoważne)?
+
+Bez tej rozmowy łatwo o rozjazd: sidebar zawężony ale backend nadal pełny (bezpieczeństwo),
+albo backend zawężony ale sidebar pokazuje przycisk (UX).
+
+**Nowe role dodawaj w 3 miejscach:**
+1. **Migracja** `config/Migrations/YYYYMMDDHHMMSS_Add<Role>Role.php` — INSERT do tabeli `roles`
+2. **`config/permissions.php`** — wpisz rolę explicit (lub jako alias przez wildcard blok
+   po admin) w każdym module do którego ma dostęp
+3. **`templates/layout/default.php`** — flag `$_is<RoleName>` + zawijanie sekcji sidebara
+
+**Panel admina `/admin/role`** pozwala zarządzać przypisaniem uprawnień per rola z UI —
+uzupełniaj katalog `permissions` w migracji seed'a razem z nowymi modułami.
+
 ### 4b. Zmiany w CRM → aktualizuj FAQ
 Każda zmiana funkcjonalna w module CRM (nowy endpoint, nowe pole, nowa akcja UI,
 nowy cron, nowa integracja, zmiana zachowania istniejącej funkcji) **musi być
