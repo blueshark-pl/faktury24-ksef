@@ -104,6 +104,15 @@ return [
             'controller' => '*',
             'action' => '*',
         ],
+        // pracownik_administracyjny - pelen dostep operacyjny + biuro (jak dotychczasowy 'user'),
+        // rola bez prefixu Admin (nie panel administracyjny, tylko dostep operacyjny do wszystkich modulow).
+        [
+            'role' => 'pracownik_administracyjny',
+            'prefix' => false,
+            'plugin' => '*',
+            'controller' => '*',
+            'action' => '*',
+        ],
         // Impersonation 'stop' — DOSTĘPNE dla każdej roli żeby admin
         // wcielony w klienta/pracownika mógł wrócić do siebie. Walidacja
         // wewnątrz akcji sprawdza session.Impersonation.original_user_id.

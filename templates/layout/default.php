@@ -1442,8 +1442,13 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 //   Domyslnie puste - dla backward compat innych klientow booklio
                                 $_restrictedRoles = (array)\Cake\Core\Configure::read('Crm.restrictedMenuRoles', []);
                                 $_isMinimalMenu = in_array(($currentRole ?? ''), $_restrictedRoles, true);
-                                // Combined: albo asystent, albo minimal menu - ukrywamy Fakturowanie/reszta
-                                $_hideAdvanced = $_isAssistant || $_isMinimalMenu;
+                                // NOWE: rola 'user' (Pracownik/spedytor) widzi tylko 4 sekcje:
+                                // Kontrahenci, Zlecenia, CRM Leady, Planer tras.
+                                // Reszta (Fakturowanie, floty, ksiegowosc, admin) - tylko dla
+                                // 'pracownik_administracyjny' i wyzszych rol.
+                                $_isMinimalUser = (($currentRole ?? '') === 'user');
+                                // Combined: albo asystent, albo minimal menu, albo user - ukrywamy Fakturowanie/reszta
+                                $_hideAdvanced = $_isAssistant || $_isMinimalMenu || $_isMinimalUser;
                             ?>
                             <!-- Start::slide__category -->
                             <li class="slide__category"><span class="category-name">Booklio TMS</span></li>
@@ -1556,7 +1561,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </li>
                             <?php endif; /* !$_hideAdvanced — koniec Fakturowanie */ ?>
 
-                            <?php if (!$_isMinimalMenu): /* Kontrahenci - asystent widzi, user/sales_manager nie */ ?>
+                            <?php if (!$_isMinimalMenu || $_isMinimalUser): /* Kontrahenci: asystent widzi, user (Pracownik/spedytor) tez widzi, sales_manager w restricted menu nie */ ?>
                             <!-- Kontrahenci -->
                             <li class="<?= $liClass(['contractors']) ?>">
                             <a href="javascript:void(0);" class="side-menu__item">
@@ -1743,6 +1748,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                             </ul>
                             </li>
 
+                            <?php if (!$_isMinimalUser): /* user (Pracownik/spedytor) nie widzi slownika adresow/floty/kierowcow */ ?>
                             <!-- Słownik adresów transportowych -->
                             <li class="slide <?= $navActive('TransportAddresses', 'index') || $navActive('TransportAddresses', 'add') || $navActive('TransportAddresses', 'edit') ?>">
                                 <?= $this->Html->link(
@@ -1778,8 +1784,9 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+                            <?php endif; /* !$_isMinimalUser - koniec floty/slownika */ ?>
 
-                            <!-- Planer tras (HERE truck routing) -->
+                            <!-- Planer tras (HERE truck routing) - widoczny takze dla roli 'user' -->
                             <li class="slide <?= $navActive('RoutePlanner', 'index') ?>">
                                 <?= $this->Html->link(
                                     '<i class="ri-route-line side-menu__icon"></i><span class="side-menu__label">' . __('Planer tras') . '</span>',
@@ -1788,6 +1795,7 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                 ) ?>
                             </li>
 
+                            <?php if (!$_isMinimalUser): /* user (Pracownik/spedytor) nie widzi kategorii tolls/zestawow/grafikow/serwisow/analytics */ ?>
                             <!-- Kategorie typów pojazdu (mapowanie tolls) -->
                             <li class="slide <?= $navActive('VehicleTypeCategories') ?>">
                                 <?= $this->Html->link(
@@ -1877,6 +1885,8 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
                                     ['escape' => false, 'class' => 'side-menu__item']
                                 ) ?>
                             </li>
+
+                            <?php endif; /* !$_isMinimalUser - koniec Kategorie tolls/Zestawy/Grafiki/Serwisy/Analytics dla user */ ?>
 
                             <?php if (!$_hideAdvanced): /* asystent + minimal menu users - reszta ukryta */ ?>
                             <!-- Towary i usługi -->
