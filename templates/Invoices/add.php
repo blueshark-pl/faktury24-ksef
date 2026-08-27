@@ -4411,6 +4411,39 @@ $(function(){
   @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
     .country-select .flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/country-select-js/2.1.1/img/flags@2x.png') !important; }
   }
+
+  /* ── Sekcja „Identyfikatory UE / zagraniczne" — ładne blokady + wyrównanie flag ── */
+  #snapshot-intl-fields .country-select { width: 100%; }
+  /* Wyrównaj wysokość pickera z flagą do pól form-control-sm (spójny rząd) */
+  #snapshot-intl-fields .country-select input[type="text"] {
+    height: calc(1.5em + .5rem + 2px);
+    border-radius: .25rem;
+  }
+  /* Płynne przejścia stanu blokady */
+  #snapshot-intl-fields input,
+  #inv-vat-prefix-wrapper { transition: background-color .15s ease, opacity .15s ease, filter .15s ease; }
+  /* Zablokowane pole (disabled) — jeden spójny, czytelny wygląd */
+  #snapshot-intl-fields input:disabled,
+  #snapshot-intl-fields input[readonly] {
+    background-color: #f1f3f5 !important;
+    color: #9aa0a6 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+  }
+  /* Zablokowany prefiks (flaga) przy „Brak (spoza UE)" — szarość zamiast samego wyblaknięcia */
+  #inv-vat-prefix-wrapper.pe-none {
+    opacity: .7 !important;    /* nadpisujemy Bootstrapowe .opacity-50 (ma !important) — grayscale + lekkie przygaszenie */
+    filter: grayscale(1);
+    cursor: not-allowed;
+  }
+  #inv-vat-prefix-wrapper.pe-none .country-select input[type="text"] {
+    background-color: #f1f3f5 !important;
+    color: #9aa0a6 !important;
+    cursor: not-allowed !important;
+  }
+  #inv-vat-prefix-wrapper.pe-none .selected-flag { cursor: not-allowed !important; }
+  /* Checkbox „Brak (spoza UE)" — lekko wyróżniony gdy aktywny */
+  #inv-vat-prefix-none:checked ~ label { color: #6b7280; font-weight: 600; }
 </style>
 <script>
 if (!window.__ctrCSLoaded) {
