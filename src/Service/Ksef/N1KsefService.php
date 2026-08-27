@@ -68,7 +68,50 @@ final class N1KsefService
             enableTrace: $enableTrace
         );
 
-        return $builder->build();
+        $client = $builder->build();
+        // Po świeżej autoryzacji zapisz tokeny — kolejne buildy pominą pełny auth
+        // (makeClientBuilder: szybka ścieżka reużycia access tokenu z magazynu).
+        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+
+        return $client;
+    }
+
+    /**
+     * Zapisuje access/refresh token z klienta do magazynu (DbKsefTokenStorage),
+     * żeby kolejne buildClient() pomijały pełną autoryzację certyfikatem.
+     * Bezpieczne: każdy błąd tylko logowany.
+     */
+    private function persistClientTokens($client, string $contextKey): void
+    {
+        try {
+            if (!method_exists($client, 'getAccessToken')) {
+                return;
+            }
+            $access = $client->getAccessToken();
+            if ($access === null || $access->validUntil === null) {
+                return;
+            }
+            $exp = $access->validUntil->getTimestamp();
+            if (($exp - 90) <= time()) {
+                return; // nie zapisuj już-wygasających
+            }
+            // Nie duplikuj wpisów: zapis tylko gdy token inny niż już zapisany
+            // (przy reuse szybką ścieżką klient trzyma ten sam token).
+            $stored = $this->storage->getTokens($contextKey);
+            if (!empty($stored['accessToken']) && (string)$stored['accessToken'] === (string)$access->token) {
+                return;
+            }
+            $refresh = method_exists($client, 'getRefreshToken') ? $client->getRefreshToken() : null;
+            $this->storage->saveTokens(
+                $contextKey,
+                (string)$access->token,
+                $refresh !== null ? (string)$refresh->token : null,
+                $exp
+            );
+            $this->logDebug('KSeF auth: zapisano tokeny do magazynu (exp ' . date('Y-m-d H:i:s', $exp) . ').');
+        } catch (\Throwable $e) {
+            $this->logDebug('KSeF auth: nie zapisano tokenów: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -123,8 +166,34 @@ final class N1KsefService
             $builder = $builder->withValidateXml(true);
         }
 
+        // ── SZYBKA ŚCIEŻKA: ważny access token z magazynu ───────────────────
+        // Gdy accessToken jest ustawiony, ClientBuilder pomija PEŁNĄ autoryzację
+        // certyfikatem (challenge → XAdES → polling → redeem, ~5-10 s + limity KSeF).
+        // Tokeny zapisuje persistClientTokens() po pierwszej autoryzacji — kolejne
+        // buildy są natychmiastowe. Bufor 90 s chroni przed użyciem tokenu tuż przed exp.
+        $storedTokenUsed = false;
+        if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])
+            && ((int)$tokens['accessExp'] - 90) > time()
+        ) {
+            $builder = $builder->withAccessToken(
+                \N1ebieski\KSEFClient\ValueObjects\AccessToken::from(
+                    (string)$tokens['accessToken'],
+                    (new \DateTimeImmutable())->setTimestamp((int)$tokens['accessExp'])
+                )
+            );
+            if (!empty($tokens['refreshToken'])) {
+                $builder = $builder->withRefreshToken(
+                    \N1ebieski\KSEFClient\ValueObjects\RefreshToken::from((string)$tokens['refreshToken'])
+                );
+            }
+            $storedTokenUsed = true;
+            $this->logDebug('KSeF auth: reuse access token z magazynu (exp '
+                . date('Y-m-d H:i:s', (int)$tokens['accessExp']) . ') — pomijam auth certyfikatem.');
+        }
+
         // Preferuj certyfikat, ale wspieraj też tokeny
         $certUsed = false;
+        if (!$storedTokenUsed) {
         $masterCertCompanyId = (string)($this->readConfig('Ksef.masterCertCompanyId') ?? getenv('KSEF_MASTER_CERT_COMPANY_ID') ?? '');
         $certCompanyId = $masterCertCompanyId !== '' ? $masterCertCompanyId : $companyId;
         if ($masterCertCompanyId !== '') {
@@ -177,12 +246,27 @@ final class N1KsefService
             }
         }
 
-        if (!$certUsed) {
-            if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])) {
-                $builder = $builder->withAccessToken((string)$tokens['accessToken'], (int)$tokens['accessExp']);
+        } // koniec if (!$storedTokenUsed) — sekcja certyfikatu pominięta przy reuse tokenu
+
+        if ($storedTokenUsed) {
+            // Identifier (NIP) potrzebny także przy pracy na tokenie z magazynu
+            $nip = $overrideIdentifierNip ? preg_replace('/\D+/', '', (string)$overrideIdentifierNip) : (string)($creds['nip'] ?? '');
+            if (!empty($nip)) {
+                $builder = $builder->withIdentifier($nip);
             }
-            if (!empty($tokens['refreshToken']) && !empty($tokens['accessExp'])) {
-                $builder = $builder->withRefreshToken((string)$tokens['refreshToken'], (int)$tokens['accessExp']);
+        } elseif (!$certUsed) {
+            if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])) {
+                $builder = $builder->withAccessToken(
+                    \N1ebieski\KSEFClient\ValueObjects\AccessToken::from(
+                        (string)$tokens['accessToken'],
+                        (new \DateTimeImmutable())->setTimestamp((int)$tokens['accessExp'])
+                    )
+                );
+            }
+            if (!empty($tokens['refreshToken'])) {
+                $builder = $builder->withRefreshToken(
+                    \N1ebieski\KSEFClient\ValueObjects\RefreshToken::from((string)$tokens['refreshToken'])
+                );
             }
             if (!empty($creds['sysToken']) && !empty($creds['nip'])) {
                 $builder = $builder->withKsefToken((string)$creds['sysToken']);
@@ -971,6 +1055,8 @@ final class N1KsefService
 
         $client = $builder->build();
         $messages[] = ['stage' => 'setup', 'level' => 'success', 'ts' => $nowTs(), 'message' => 'Klient gotowy'];
+        // Utrwal tokeny także ze ścieżki wysyłki — kolejne operacje pominą pełny auth.
+        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
 
         // Zbierz oczekiwany NIP (sprzedawcy) – wykorzystamy do ewentualnej korekty XML
         $expectedNipSource = null;
