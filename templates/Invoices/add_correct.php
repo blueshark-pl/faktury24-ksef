@@ -790,7 +790,8 @@ $gtuSelectHtml .= '</select>';
                     <?= $this->Form->control('invoice_contractor.name', ['label' => 'Nazwa', 'class' => 'form-control', 'required' => true, 'value' => $invoice->invoice_contractor->name ?? '']) ?>
                   </div>
                   <div class="col-12 col-md-4">
-                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
+                    <?= $this->Form->control('invoice_contractor.nip', ['label' => 'NIP (PL)', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->nip ?? '']) ?>
+                    <small class="text-muted d-block mt-1">Kontrahent zagraniczny? Identyfikator wpisz niżej w „Identyfikatory UE / zagraniczne”.</small>
                   </div>
                   <div class="col-8"><?= $this->Form->control('invoice_contractor.street', ['label' => 'Ulica', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->street ?? '']) ?></div>
                   <div class="col-4"><?= $this->Form->control('invoice_contractor.zip', ['label' => 'Kod', 'class' => 'form-control', 'value' => $invoice->invoice_contractor->zip ?? '']) ?></div>

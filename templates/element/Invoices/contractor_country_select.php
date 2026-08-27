@@ -200,8 +200,10 @@ $countries = [
     'AE' => 'AE — Zjednoczone Emiraty Arabskie',
 ];
 ?>
-<div class="mb-3 contractor-country-wrap">
-  <label class="form-label" for="<?= h($selectId) ?>"><?= h($label) ?></label>
+<?php /* Struktura 1:1 jak FormHelper->control (div.input.select + goły label) —
+         identyczne marginesy/typografia co sąsiednie pola (koniec przesunięcia). */ ?>
+<div class="input select">
+  <label for="<?= h($selectId) ?>"><?= h($label) ?></label>
   <select class="form-select contractor-country-select" id="<?= h($selectId) ?>" name="<?= h($fieldName) ?>">
   <?php foreach ($countries as $code => $name): ?>
     <option value="<?= h($code) ?>"<?= $value === $code ? ' selected' : '' ?>><?= h($name) ?></option>
@@ -210,20 +212,10 @@ $countries = [
 </div>
 <?php if (empty($GLOBALS['__ccsAssetsOnce'])): $GLOBALS['__ccsAssetsOnce'] = true; ?>
 <style>
-  /* Select2 kraju: wysokość i wyrównanie jak .form-control (koniec „przesuniętego" pola) */
-  .contractor-country-wrap .select2-container .select2-selection--single {
-    height: calc(1.5em + .75rem + 2px);
-    display: flex; align-items: center;
-    border-radius: .35rem;
-  }
-  .contractor-country-wrap .select2-container .select2-selection__rendered {
-    display: flex; align-items: center; gap: .45rem;
-    line-height: 1.5; padding-top: 0; padding-bottom: 0;
-  }
-  .contractor-country-wrap .select2-container .select2-selection__arrow { height: 100%; top: 0; }
-  /* Flagi (flag-icons, ładowane globalnie w layoucie) */
-  .contractor-country-wrap .select2-selection__rendered .fi,
-  .ccs-dd-results .select2-results__option .fi { margin-right: .1rem; vertical-align: -0.1em; border-radius: 2px; }
+  /* Flagi w selektorze kraju (flag-icons z layoutu). Wyrównanie pola zostawiamy motywowi —
+     własny flex „kurczył" pole do zawartości. */
+  .select2-selection__rendered .fi { margin-right: .35rem; vertical-align: -0.1em; border-radius: 2px; }
+  .ccs-dd-results .select2-results__option .fi { margin-right: .35rem; vertical-align: -0.1em; border-radius: 2px; }
 </style>
 <?php endif; ?>
 <script>
