@@ -237,6 +237,21 @@ $gtuSelectHtml .= '</select>';
         if (hasIntl) { $('#corr-intl-toggle').prop('checked', true); $('#corr-intl-fields').removeClass('d-none'); }
       })();
 
+      // Kraj nabywcy z oryginału — ustaw pewnie na Select2 kraju. Samo setField bywa nadpisywane
+      // przez późniejszą inicjalizację Select2 (element ma własny init) → kraj wracał do PL.
+      // Kilka prób po inicjalizacji widgetu gwarantuje właściwą wartość (np. SE).
+      (function(){
+        var country = (d && d.contractor && d.contractor.country) ? String(d.contractor.country).toUpperCase() : '';
+        if (!country) return;
+        function applyCountry(){
+          var $c = $('[name="invoice_contractor[country]"]');
+          if ($c.length && ($c.val()||'').toUpperCase() !== country) { $c.val(country).trigger('change'); }
+        }
+        applyCountry();
+        setTimeout(applyCountry, 250);
+        setTimeout(applyCountry, 700);
+      })();
+
       if (Array.isArray(d.items) && d.items.length) {
         var items = d.items;
         var $tbody = $('#items-body');
