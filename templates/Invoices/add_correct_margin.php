@@ -653,6 +653,11 @@ $gtuSelectHtml .= '</select>';
                     // Kraj + identyfikatory UE — pewne ustawienie (Select2 kraju + sekcja corr-intl).
                     (function(){
                       var country = (origCtr.country ? String(origCtr.country).toUpperCase() : '');
+                      if (!country) {
+                        var _vp = String(origCtr.vat_prefix||'').toUpperCase();
+                        if (_vp && _vp !== 'NONE') { country = (_vp === 'EL' ? 'GR' : _vp); }
+                        else if (origCtr.tax_id_other_country) { country = String(origCtr.tax_id_other_country).toUpperCase(); }
+                      }
                       function applyCountry(){
                         var $c2 = $('[name="invoice_contractor[country]"]');
                         if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }

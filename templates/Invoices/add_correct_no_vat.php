@@ -2512,6 +2512,11 @@ $('#gus-fetch-btn').on('click', function(){
           country: <?= json_encode($original->invoice_contractor->country ?? 'PL') ?>,
           email: <?= json_encode($original->invoice_contractor->email ?? '') ?>,
           phone: <?= json_encode($original->invoice_contractor->phone ?? '') ?>,
+          vat_prefix: <?= json_encode($original->invoice_contractor->vat_prefix ?? '') ?>,
+          vat_eu: <?= json_encode($original->invoice_contractor->vat_eu ?? '') ?>,
+          eori: <?= json_encode($original->invoice_contractor->eori ?? '') ?>,
+          tax_id_other: <?= json_encode($original->invoice_contractor->tax_id_other ?? '') ?>,
+          tax_id_other_country: <?= json_encode($original->invoice_contractor->tax_id_other_country ?? '') ?>,
           label: <?= json_encode((($original->invoice_contractor->name ?? '') . ((($original->invoice_contractor->nip ?? '') !== '') ? (' (' . $original->invoice_contractor->nip . ')') : ''))) ?>
         },
         items: <?= json_encode(array_map(function($it){
@@ -2531,6 +2536,11 @@ $('#gus-fetch-btn').on('click', function(){
       (function(){
         var c = d.contractor || {};
         var country = (c.country ? String(c.country).toUpperCase() : '');
+        if (!country) {
+          var _vp = String(c.vat_prefix||'').toUpperCase();
+          if (_vp && _vp !== 'NONE') { country = (_vp === 'EL' ? 'GR' : _vp); }
+          else if (c.tax_id_other_country) { country = String(c.tax_id_other_country).toUpperCase(); }
+        }
         function applyCountry(){
           var $c2 = $('[name="invoice_contractor[country]"]');
           if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }

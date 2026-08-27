@@ -241,7 +241,13 @@ $gtuSelectHtml .= '</select>';
       // przez późniejszą inicjalizację Select2 (element ma własny init) → kraj wracał do PL.
       // Kilka prób po inicjalizacji widgetu gwarantuje właściwą wartość (np. SE).
       (function(){
-        var country = (d && d.contractor && d.contractor.country) ? String(d.contractor.country).toUpperCase() : '';
+        var _c = (d && d.contractor) ? d.contractor : {};
+        var country = _c.country ? String(_c.country).toUpperCase() : '';
+        if (!country) {
+          var _vp = String(_c.vat_prefix||'').toUpperCase();
+          if (_vp && _vp !== 'NONE') { country = (_vp === 'EL' ? 'GR' : _vp); }
+          else if (_c.tax_id_other_country) { country = String(_c.tax_id_other_country).toUpperCase(); }
+        }
         if (!country) return;
         function applyCountry(){
           var $c = $('[name="invoice_contractor[country]"]');

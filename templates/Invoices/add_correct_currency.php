@@ -217,7 +217,14 @@ $gtuSelectHtml .= '</select>';
         // Kraj + identyfikatory UE nabywcy z oryginału — pewne ustawienie.
         (function(){
           // Kraj (Select2) — z retry, bo widget inicjalizuje się osobno i nadpisywał kraj na PL.
+          // Gdy adresowy kraj pusty, wyprowadź go z identyfikatora: prefiks VAT-UE (EL→GR)
+          // albo kod kraju NrID (tax_id_other_country). Ratuje kontrahentów bez zapisanego kraju.
           var country = (c.country ? String(c.country).toUpperCase() : '');
+          if (!country) {
+            var _vp = String(c.vat_prefix||'').toUpperCase();
+            if (_vp && _vp !== 'NONE') { country = (_vp === 'EL' ? 'GR' : _vp); }
+            else if (c.tax_id_other_country) { country = String(c.tax_id_other_country).toUpperCase(); }
+          }
           function applyCountry(){
             var $c2 = $('[name="invoice_contractor[country]"]');
             if (country && $c2.length && ($c2.val()||'').toUpperCase() !== country) { $c2.val(country).trigger('change'); }
