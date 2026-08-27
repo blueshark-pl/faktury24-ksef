@@ -69,9 +69,11 @@ final class N1KsefService
         );
 
         $client = $builder->build();
-        // Po świeżej autoryzacji zapisz tokeny — kolejne buildy pominą pełny auth
-        // (makeClientBuilder: szybka ścieżka reużycia access tokenu z magazynu).
-        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+        // Utrwalaj tokeny tylko dla WŁASNEJ tożsamości firmy (bez override as_nip),
+        // aby nie zapisać sesji innego podmiotu pod company_id konta API (izolacja).
+        if (empty($overrideIdentifierNip)) {
+            $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+        }
 
         return $client;
     }
@@ -171,8 +173,12 @@ final class N1KsefService
         // certyfikatem (challenge → XAdES → polling → redeem, ~5-10 s + limity KSeF).
         // Tokeny zapisuje persistClientTokens() po pierwszej autoryzacji — kolejne
         // buildy są natychmiastowe. Bufor 90 s chroni przed użyciem tokenu tuż przed exp.
+        // IZOLACJA: reuse tokenu TYLKO dla własnej tożsamości firmy (brak override as_nip).
+        // Przy delegacji (np. portal → as_nip innego podmiotu) token jest kluczowany po
+        // company_id konta API, więc NIE wolno go reużyć dla innej firmy — pełny login.
         $storedTokenUsed = false;
-        if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])
+        if (empty($overrideIdentifierNip)
+            && !empty($tokens['accessToken']) && !empty($tokens['accessExp'])
             && ((int)$tokens['accessExp'] - 90) > time()
         ) {
             $builder = $builder->withAccessToken(
@@ -255,18 +261,21 @@ final class N1KsefService
                 $builder = $builder->withIdentifier($nip);
             }
         } elseif (!$certUsed) {
-            if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])) {
-                $builder = $builder->withAccessToken(
-                    \N1ebieski\KSEFClient\ValueObjects\AccessToken::from(
-                        (string)$tokens['accessToken'],
-                        (new \DateTimeImmutable())->setTimestamp((int)$tokens['accessExp'])
-                    )
-                );
-            }
-            if (!empty($tokens['refreshToken'])) {
-                $builder = $builder->withRefreshToken(
-                    \N1ebieski\KSEFClient\ValueObjects\RefreshToken::from((string)$tokens['refreshToken'])
-                );
+            // Stored token stosujemy tylko dla własnej tożsamości (bez override as_nip) — izolacja.
+            if (empty($overrideIdentifierNip)) {
+                if (!empty($tokens['accessToken']) && !empty($tokens['accessExp'])) {
+                    $builder = $builder->withAccessToken(
+                        \N1ebieski\KSEFClient\ValueObjects\AccessToken::from(
+                            (string)$tokens['accessToken'],
+                            (new \DateTimeImmutable())->setTimestamp((int)$tokens['accessExp'])
+                        )
+                    );
+                }
+                if (!empty($tokens['refreshToken'])) {
+                    $builder = $builder->withRefreshToken(
+                        \N1ebieski\KSEFClient\ValueObjects\RefreshToken::from((string)$tokens['refreshToken'])
+                    );
+                }
             }
             if (!empty($creds['sysToken']) && !empty($creds['nip'])) {
                 $builder = $builder->withKsefToken((string)$creds['sysToken']);
