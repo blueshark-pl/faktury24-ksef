@@ -108,6 +108,13 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
           <?= $this->Form->postLink('<i class="ri-refresh-line me-1"></i>Odśwież status',
               ['action' => 'refreshKsefStatus', $invoice->id, '?' => ['env' => 'prod']],
               ['class' => 'btn btn-outline-secondary btn-sm', 'escape' => false, 'title' => 'Sprawdź status przez próbę pobrania z KSeF']) ?>
+          <?php if (empty($invoice->ksef_number) && !empty($invoice->fullnumber) && (($invoice->workflow_status ?? '') !== 'draft')): ?>
+            <button type="button" class="btn btn-outline-primary btn-sm ksef-sync-btn"
+                    data-url="<?= h($this->Url->build(['action' => 'refreshKsefNumber', $invoice->id])) ?>"
+                    title="Sprawdź w KSeF, czy faktura została przyjęta (np. po błędzie „Trwa przetwarzanie&quot;/„Duplikat&quot;) i uzupełnij numer KSeF">
+              <i class="ri-refresh-line me-1"></i>Uzupełnij nr KSeF
+            </button>
+          <?php endif; ?>
           <?= $this->Html->link('<i class="ri-download-line me-1"></i>Pobierz FA(3) XML',
               ['action' => 'downloadFa3Xml', $invoice->id],
               ['class' => 'btn btn-outline-success btn-sm', 'escape' => false, 'title' => 'Wygeneruj i pobierz FA(3) XML']) ?>
@@ -789,4 +796,38 @@ document.addEventListener('DOMContentLoaded', function() {
     return div.innerHTML;
   }
 });
+</script>
+<script>
+// ===== Uzupełnij nr KSeF (wysyłka przeszła w KSeF, ale numer nie zapisał się lokalnie) =====
+(function(){
+  var meta = document.querySelector('meta[name="csrfToken"]');
+  var token = meta ? meta.getAttribute('content') : (document.getElementById('ksef-csrf')?.value || '');
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.ksef-sync-btn');
+    if (!btn) return;
+    e.preventDefault();
+    var url = btn.getAttribute('data-url');
+    if (!url || btn.disabled) return;
+    btn.disabled = true;
+    fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' } })
+      .then(function(r){ return r.json().catch(function(){ return { success: false, message: 'Nieoczekiwana odpowiedź serwera.' }; }); })
+      .then(function(d){
+        if (d.success) {
+          if (window.Swal) {
+            Swal.fire({ icon: 'success', title: 'Numer KSeF uzupełniony', text: d.ksef_number || d.message, timer: 2500, showConfirmButton: false })
+              .then(function(){ location.reload(); });
+          } else { alert(d.message || 'Uzupełniono numer KSeF.'); location.reload(); }
+        } else {
+          if (window.Swal) { Swal.fire({ icon: 'info', title: 'Synchronizacja z KSeF', text: d.message || 'Nie udało się uzupełnić numeru.' }); }
+          else { alert(d.message || 'Nie udało się uzupełnić numeru KSeF.'); }
+          btn.disabled = false;
+        }
+      })
+      .catch(function(err){
+        if (window.Swal) { Swal.fire({ icon: 'error', title: 'Błąd synchronizacji', text: String(err) }); }
+        else { alert('Błąd synchronizacji: ' + err); }
+        btn.disabled = false;
+      });
+  });
+})();
 </script>

@@ -52,6 +52,8 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id']);
         $builder->get('/recipients/by-contractor/{contractorId}', ['controller' => 'Recipients', 'action' => 'byContractor'])
             ->setPass(['contractorId']);
+        $builder->post('/invoices/{id}/refresh-ksef-number', ['controller' => 'Invoices', 'action' => 'refreshKsefNumber'])
+            ->setPass(['id']);
         $builder->get('/invoices/{id}/preview-ksef-number', ['controller' => 'Invoices', 'action' => 'previewKsefNumber'])
             ->setPass(['id']);
         $builder->connect('/invoices/ksef-auth/active', ['controller' => 'Invoices', 'action' => 'ksefAuthActive']);

@@ -4998,6 +4998,7 @@ private function makeClient(string $environment): KsefClient
             'xml_invalid'    => ['label' => 'Niepoprawny XML',     'icon' => 'ri-file-warning-line',     'color' => 'warning'],
             'xsd_invalid'    => ['label' => 'Błąd walidacji XSD',  'icon' => 'ri-file-warning-line',     'color' => 'danger'],
             'upo_downloaded' => ['label' => 'Pobrano UPO',         'icon' => 'ri-download-2-line',       'color' => 'success'],
+            'ksef_sync'      => ['label' => 'Synchronizacja z KSeF', 'icon' => 'ri-refresh-line',        'color' => 'success'],
         ];
 
         $logs = [];
@@ -6570,6 +6571,131 @@ private function makeClient(string $environment): KsefClient
      * GET /invoices/preview-ksef-number/{id}
      * Zwraca podgląd numeru który zostanie nadany fakturze przy wysyłce do KSeF — bez zapisu.
      */
+    /**
+     * POST /invoices/{id}/refresh-ksef-number — synchronizacja numeru KSeF.
+     *
+     * Scenariusz: wysyłka faktycznie przeszła (KSeF przyjął fakturę), ale aplikacja
+     * potraktowała status przejściowy (np. HTTP 150 „Trwa przetwarzanie") jako błąd
+     * i nie zapisała numeru KSeF — kolejne próby kończą się 440 „Duplikat faktury",
+     * a faktura lokalnie widnieje jako niewysłana. Akcja odpytuje KSeF o faktury
+     * WYSTAWIONE (Subject1) po numerze faktury i uzupełnia ksef_number + status.
+     * Zwraca JSON: { success, ksef_number?, message }.
+     */
+    public function refreshKsefNumber(string $id)
+    {
+        $this->request->allowMethod(['post']);
+        $this->autoRender = false;
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
+
+        $json = function (array $payload, int $status = 200) {
+            return $this->response->withStatus($status)->withType('application/json')
+                ->withStringBody(json_encode($payload, JSON_UNESCAPED_UNICODE));
+        };
+
+        $invoice = $this->Invoices->find()
+            ->where(['id' => $id, 'company_id' => $companyId])
+            ->first();
+        if (!$invoice) {
+            return $json(['success' => false, 'message' => 'Nie znaleziono faktury.'], 404);
+        }
+
+        if (trim((string)($invoice->ksef_number ?? '')) !== '') {
+            return $json([
+                'success' => true,
+                'ksef_number' => (string)$invoice->ksef_number,
+                'message' => 'Faktura ma już numer KSeF: ' . (string)$invoice->ksef_number,
+            ]);
+        }
+
+        $envRaw = (string)($this->request->getData('env') ?? $this->request->getQuery('env') ?? 'prod');
+        $environment = ($envRaw === 'test') ? 'test' : 'prod';
+
+        $fullnumber = trim((string)($invoice->fullnumber ?? ''));
+        if ($fullnumber === '') {
+            return $json(['success' => false, 'message' => 'Faktura nie ma numeru — nie można wyszukać w KSeF.']);
+        }
+
+        // Zakres dat: od daty faktury (z zapasem) do dziś — filtr po dacie przyjęcia w KSeF.
+        $fromStr = date('Y-m-d', strtotime('-60 days'));
+        try {
+            $d = $invoice->date;
+            if (is_object($d) && method_exists($d, 'format')) {
+                $fromStr = date('Y-m-d', strtotime($d->format('Y-m-d') . ' -3 days'));
+            }
+        } catch (\Throwable) {
+            // zostaje domyślne -60 dni
+        }
+        $toStr = date('Y-m-d');
+
+        try {
+            $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+            $vm = $service->buildIssuedViewModel($companyId, $environment, [
+                'inv'  => $fullnumber,
+                'from' => $fromStr,
+                'to'   => $toStr,
+            ]);
+        } catch (\Throwable $e) {
+            return $json(['success' => false, 'message' => 'Błąd zapytania do KSeF: ' . $e->getMessage()], 502);
+        }
+        if (!empty($vm['error'])) {
+            return $json(['success' => false, 'message' => (string)$vm['error']], 502);
+        }
+
+        // Dokładne dopasowanie numeru faktury + niepusty numer KSeF (deduplikacja po numerze KSeF).
+        $rows = is_array($vm['invoices'] ?? null) ? $vm['invoices'] : [];
+        $hits = [];
+        foreach ($rows as $r) {
+            $num = trim((string)($r['fullnumber'] ?? ''));
+            $kn  = trim((string)($r['ksef_number'] ?? ''));
+            if ($kn !== '' && $num === $fullnumber) {
+                $hits[$kn] = $r;
+            }
+        }
+        $hits = array_values($hits);
+
+        if (count($hits) === 0) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'ksef_sync', [
+                'env' => $environment,
+                'message' => 'Nie znaleziono faktury ' . $fullnumber . ' wśród wystawionych w KSeF (zakres ' . $fromStr . ' – ' . $toStr . ').',
+            ]);
+            return $json([
+                'success' => false,
+                'message' => 'Nie znaleziono faktury ' . $fullnumber . ' wśród wystawionych w KSeF (' . $environment . '). '
+                    . 'Jeśli wysyłka była przed chwilą, spróbuj ponownie za kilka minut.',
+            ]);
+        }
+        if (count($hits) > 1) {
+            return $json([
+                'success' => false,
+                'message' => 'W KSeF znaleziono ' . count($hits) . ' różne numery KSeF dla faktury ' . $fullnumber
+                    . ' — nie można jednoznacznie uzupełnić. Sprawdź ręcznie w KSeF.',
+            ]);
+        }
+
+        $ksefNumber = trim((string)$hits[0]['ksef_number']);
+        $invoice->set('ksef_number', $ksefNumber);
+        $invoice->set('ksef_status', '200');
+        $desc = trim((string)($invoice->ksef_desc ?? ''));
+        $invoice->set('ksef_desc', trim($desc . ' [numer KSeF uzupełniony synchronizacją ' . date('Y-m-d H:i') . ']'));
+        $invoice->set('workflow_status', 'sent');
+        if (!$this->Invoices->save($invoice)) {
+            return $json(['success' => false, 'message' => 'Znaleziono numer ' . $ksefNumber . ', ale nie udało się zapisać faktury.'], 500);
+        }
+        $this->logKsefSendEvent($companyId, (string)$invoice->id, 'ksef_sync', [
+            'env' => $environment,
+            'status_code' => '200',
+            'ksef_number' => $ksefNumber,
+            'message' => 'Numer KSeF uzupełniony synchronizacją — faktura była przyjęta w KSeF.',
+        ]);
+
+        return $json([
+            'success' => true,
+            'ksef_number' => $ksefNumber,
+            'message' => 'Uzupełniono numer KSeF: ' . $ksefNumber,
+        ]);
+    }
+
     public function previewKsefNumber(string $id)
     {
         $this->request->allowMethod(['get']);

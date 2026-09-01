@@ -817,7 +817,19 @@ $isDemo = (bool)(Configure::read('App.demo') ?? false);
               <?php
                 $__ksefNum = trim((string)($inv->ksef_number ?? ''));
                 echo ($__ksefNum !== '') ? h($__ksefNum) : '<span class="text-muted">brak</span>';
+                // Wysyłka mogła przejść mimo błędu (np. HTTP 150 „przetwarzanie", potem 440 „duplikat")
+                // — pokaż przycisk synchronizacji numeru KSeF, gdy brak numeru a status wskazuje problem.
+                $__ksefErr = ((string)($inv->workflow_status ?? '') === 'error')
+                  || (preg_match('/^\d{3}$/', $status) === 1 && (int)$status !== 200)
+                  || in_array($key, ['error', 'rejected'], true);
+                if ($__ksefNum === '' && $__ksefErr):
               ?>
+                <button type="button" class="btn btn-sm btn-outline-primary btn-icon ms-1 ksef-sync-btn"
+                        data-url="<?= h($this->Url->build(['action' => 'refreshKsefNumber', $inv->id])) ?>"
+                        title="Sprawdź w KSeF i uzupełnij numer — wysyłka mogła przejść mimo zgłoszonego błędu">
+                  <i class="ri-refresh-line"></i>
+                </button>
+              <?php endif; ?>
             </td>
             <td class="col-ksef_desc">
               <?= $inv->ksef_desc ? h(Text::truncate((string)$inv->ksef_desc, 40, ['ellipsis' => '…', 'exact' => false])) : '<span class="text-muted">—</span>' ?>
@@ -2837,5 +2849,39 @@ function duplicateInvoicePerform(invoiceId, paymentStatus) {
       }
     })();
   })();
+})();
+</script>
+<script>
+// ===== Synchronizacja numeru KSeF (faktury z błędem wysyłki, które KSeF jednak przyjął) =====
+(function(){
+  var meta = document.querySelector('meta[name="csrfToken"]');
+  var token = meta ? meta.getAttribute('content') : '';
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.ksef-sync-btn');
+    if (!btn) return;
+    e.preventDefault();
+    var url = btn.getAttribute('data-url');
+    if (!url || btn.disabled) return;
+    btn.disabled = true;
+    fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' } })
+      .then(function(r){ return r.json().catch(function(){ return { success: false, message: 'Nieoczekiwana odpowiedź serwera.' }; }); })
+      .then(function(d){
+        if (d.success) {
+          if (window.Swal) {
+            Swal.fire({ icon: 'success', title: 'Numer KSeF uzupełniony', text: d.ksef_number || d.message, timer: 2500, showConfirmButton: false })
+              .then(function(){ location.reload(); });
+          } else { alert(d.message || 'Uzupełniono numer KSeF.'); location.reload(); }
+        } else {
+          if (window.Swal) { Swal.fire({ icon: 'info', title: 'Synchronizacja z KSeF', text: d.message || 'Nie udało się uzupełnić numeru.' }); }
+          else { alert(d.message || 'Nie udało się uzupełnić numeru KSeF.'); }
+          btn.disabled = false;
+        }
+      })
+      .catch(function(err){
+        if (window.Swal) { Swal.fire({ icon: 'error', title: 'Błąd synchronizacji', text: String(err) }); }
+        else { alert('Błąd synchronizacji: ' + err); }
+        btn.disabled = false;
+      });
+  });
 })();
 </script>
