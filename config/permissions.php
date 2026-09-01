@@ -210,6 +210,7 @@ return [
                 'sendToKsef',
                 'previewKsefNumber',
                 'refreshKsefStatus',
+                'refreshKsefNumber',
                 'downloadKsef',
                 'downloadFa3Xml',
                 'downloadUpo',
