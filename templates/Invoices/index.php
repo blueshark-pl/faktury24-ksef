@@ -2864,7 +2864,15 @@ function duplicateInvoicePerform(invoiceId, paymentStatus) {
     if (!url || btn.disabled) return;
     btn.disabled = true;
     fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' } })
-      .then(function(r){ return r.json().catch(function(){ return { success: false, message: 'Nieoczekiwana odpowiedź serwera.' }; }); })
+      .then(function(r){
+        return r.text().then(function(t){
+          try { return JSON.parse(t); }
+          catch(e){
+            var snippet = (t || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+            return { success: false, message: 'Nieoczekiwana odpowiedź serwera (HTTP ' + r.status + '): ' + snippet };
+          }
+        });
+      })
       .then(function(d){
         if (d.success) {
           if (window.Swal) {

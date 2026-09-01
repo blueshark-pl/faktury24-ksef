@@ -6585,13 +6585,35 @@ private function makeClient(string $environment): KsefClient
     {
         $this->request->allowMethod(['post']);
         $this->autoRender = false;
-        $identity  = $this->getRequest()->getAttribute('identity');
-        $companyId = (string)($identity?->get('company_id') ?? '');
 
         $json = function (array $payload, int $status = 200) {
             return $this->response->withStatus($status)->withType('application/json')
                 ->withStringBody(json_encode($payload, JSON_UNESCAPED_UNICODE));
         };
+
+        // Twardy try/catch całości: każdy wyjątek ma wrócić jako JSON (frontend pokazuje message),
+        // nigdy jako HTML-owa strona błędu („Nieoczekiwana odpowiedź serwera").
+        try {
+            return $this->doRefreshKsefNumber($id, $json);
+        } catch (\Throwable $e) {
+            try {
+                \Cake\Log\Log::error('[KSEF-SYNC] inv=' . $id . ' ' . get_class($e) . ': ' . $e->getMessage()
+                    . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            } catch (\Throwable) {
+                // ignore
+            }
+            return $json([
+                'success' => false,
+                'message' => 'Błąd synchronizacji: ' . get_class($e) . ': ' . ($e->getMessage() ?: '(brak treści)'),
+            ], 500);
+        }
+    }
+
+    /** @param callable $json fabryka odpowiedzi JSON z refreshKsefNumber() */
+    private function doRefreshKsefNumber(string $id, callable $json)
+    {
+        $identity  = $this->getRequest()->getAttribute('identity');
+        $companyId = (string)($identity?->get('company_id') ?? '');
 
         $invoice = $this->Invoices->find()
             ->where(['id' => $id, 'company_id' => $companyId])
