@@ -1180,11 +1180,26 @@ $appVersion = trim((string)(Configure::read('App.version') ?? ''));
             </div>
           </div>
           <div class="modal-body p-0">
-            <iframe id="manualPdfFrame" src="/faktury24_manual.pdf" width="100%" style="height:78vh;border:0;" title="Instrukcja obsługi"></iframe>
+            <!-- Lazy-load: src ustawiany dopiero przy otwarciu modala. Stały src w layoucie
+                 powodował pobieranie PDF przy KAŻDYM załadowaniu strony (u przeglądarek
+                 z ustawieniem „PDF -> Zapisz plik" każde okno = plik w Pobranych). -->
+            <iframe id="manualPdfFrame" src="about:blank" data-src="/faktury24_manual.pdf" width="100%" style="height:78vh;border:0;" title="Instrukcja obsługi"></iframe>
           </div>
         </div>
       </div>
     </div>
+    <script>
+      (function(){
+        var m = document.getElementById('manualPdfModal');
+        if (!m) return;
+        m.addEventListener('show.bs.modal', function(){
+          var f = document.getElementById('manualPdfFrame');
+          if (f && f.getAttribute('src') !== f.getAttribute('data-src')) {
+            f.setAttribute('src', f.getAttribute('data-src'));
+          }
+        });
+      })();
+    </script>
 
     <?php
         // ---------- JS na dole (lepsza wydajność) ----------
