@@ -269,11 +269,22 @@ $stageBg = [
                             <?php endif; ?>
                         </td>
                         <td class="text-center">
-                            <div class="crm-stage-cells">
-                                <span class="c <?= $lead->flag_contact ? 'on' : '' ?>" title="Kontakt">✓</span>
-                                <span class="c <?= $lead->flag_inquiry ? 'on' : '' ?>" title="Zapytanie">✓</span>
-                                <span class="c <?= $lead->flag_offer   ? 'on' : '' ?>" title="Oferta">✓</span>
-                                <span class="c <?= $lead->flag_order   ? 'on' : '' ?>" title="Zlecenie">✓</span>
+                            <?php
+                                // FALA 21+: pipeline_type long_term/recurring => zawsze pelny K·Z·O·Zl
+                                $__ef = method_exists($lead, 'getEffectiveFlags') ? $lead->getEffectiveFlags() : [
+                                    'contact' => (bool)$lead->flag_contact,
+                                    'inquiry' => (bool)$lead->flag_inquiry,
+                                    'offer'   => (bool)$lead->flag_offer,
+                                    'order'   => (bool)$lead->flag_order,
+                                ];
+                                $__isContractType = in_array((string)($lead->pipeline_type ?? 'spot'), ['long_term', 'recurring'], true);
+                                $__tooltipSuffix = $__isContractType ? ' (kontrakt - zawsze pelny cykl)' : '';
+                            ?>
+                            <div class="crm-stage-cells" <?php if ($__isContractType): ?>title="<?= h(($lead->pipeline_type === 'long_term' ? 'Kontrakt dlugoterminowy' : 'Klient regularny')) ?>"<?php endif; ?>>
+                                <span class="c <?= $__ef['contact'] ? 'on' : '' ?>" title="Kontakt<?= $__tooltipSuffix ?>">✓</span>
+                                <span class="c <?= $__ef['inquiry'] ? 'on' : '' ?>" title="Zapytanie<?= $__tooltipSuffix ?>">✓</span>
+                                <span class="c <?= $__ef['offer']   ? 'on' : '' ?>" title="Oferta<?= $__tooltipSuffix ?>">✓</span>
+                                <span class="c <?= $__ef['order']   ? 'on' : '' ?>" title="Zlecenie<?= $__tooltipSuffix ?>">✓</span>
                             </div>
                         </td>
                         <td>

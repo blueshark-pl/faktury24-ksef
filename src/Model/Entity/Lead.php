@@ -69,6 +69,39 @@ class Lead extends Entity
     }
 
     /**
+     * FALA 21+: efektywne flagi K·Z·O·Zl (kontakt/zapytanie/oferta/zlecenie)
+     * do widoku listy /crm oraz kartonu Kanban.
+     *
+     * Zasada biznesowa (wg wymagania):
+     *  - pipeline_type = 'spot' (SPOT jednorazowe zlecenia): wyliczane wg
+     *    flag_contact/flag_inquiry/flag_offer/flag_order (sticky sekwencja
+     *    new -> contact -> inquiry -> offer -> order).
+     *  - pipeline_type = 'long_term' (Kontrakt dlugoterminowy): WSZYSTKIE
+     *    zawsze ✓ - kontrakt oznacza ze klient przeszedl wszystkie etapy
+     *    relacji, nawet jesli w bazie flag_* sa puste (bo etapy nazywaja
+     *    sie inaczej: qualification/proposal/negotiation/contract/active).
+     *  - pipeline_type = 'recurring' (Klient regularny): analogicznie - klient
+     *    z regularnymi zleceniami DEFINICYJNIE przeszedl ta sciezke.
+     *
+     * @return array{contact: bool, inquiry: bool, offer: bool, order: bool}
+     */
+    public function getEffectiveFlags(): array
+    {
+        $pt = (string)($this->pipeline_type ?? 'spot');
+        // Kontrakt i regularny klient - zawsze pelen komplet checkboxow.
+        if (in_array($pt, ['long_term', 'recurring'], true)) {
+            return ['contact' => true, 'inquiry' => true, 'offer' => true, 'order' => true];
+        }
+        // SPOT - flagi z bazy (sticky).
+        return [
+            'contact' => (bool)$this->flag_contact,
+            'inquiry' => (bool)$this->flag_inquiry,
+            'offer'   => (bool)$this->flag_offer,
+            'order'   => (bool)$this->flag_order,
+        ];
+    }
+
+    /**
      * Kolor stage do UI (Bootstrap/tailwind-friendly).
      */
     public function getStageColor(): string
