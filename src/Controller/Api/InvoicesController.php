@@ -75,7 +75,7 @@ class InvoicesController extends AppController
         try {
             $authentication = $this->request->getAttribute('authentication');
             if ($authentication && method_exists($authentication, 'allowUnauthenticated')) {
-                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'pdf', 'bySellerNip', 'jpkV7m']);
+                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'sendKsefBulk', 'pdf', 'bySellerNip', 'jpkV7m']);
             }
         } catch (\Throwable) {}
     }
@@ -826,6 +826,127 @@ class InvoicesController extends AppController
             'ksef_number'     => $inv->ksef_number ?? null,
             'success'         => $sent,
             'error'           => $sent ? null : ($send['error'] ?? 'Błąd wysyłki do KSeF'),
+            'error_code'      => $sent ? null : ($send['errorCode'] ?? null),
+            'retry_after'     => $send['retryAfter'] ?? null,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/invoices/send-ksef-bulk — wiele faktur w JEDNEJ sesji KSeF
+    // Body: {"ids": ["uuid", ...]} (max 50). KSeF limituje otwieranie sesji (120/h),
+    // dlatego /send-ksef (sesja per faktura) daje max ~2 faktury/min.
+    // Odpowiedź: data.items[] = {id, fullnumber, success, workflow_status, ksef_status, ksef_number, error, error_code},
+    //            data.rate_limited (bool) + data.retry_after (s) gdy KSeF zwrócił 429.
+    // -------------------------------------------------------------------------
+    public function sendKsefBulk(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+        try { @set_time_limit(600); } catch (\Throwable $e) {}
+        $companyId = (string)$token->company_id;
+
+        $body = (array)$this->request->getData();
+        if (!isset($body['ids'])) {
+            $raw = json_decode((string)$this->request->getBody(), true);
+            if (is_array($raw)) {
+                $body = $raw;
+            }
+        }
+        $ids = $body['ids'] ?? null;
+        if (!is_array($ids) || empty($ids)) {
+            return $this->jsonError(400, 'Podaj listę ids (tablica UUID faktur, max 50).');
+        }
+        $ids = array_values(array_unique(array_map('strval', array_slice($ids, 0, 50))));
+
+        $Invoices = $this->fetchTable('Invoices');
+        $rows = $Invoices->find()
+            ->contain(['InvoiceContractors', 'InvoiceCompanyDetails', 'InvoiceContents' => ['Vats'], 'Companies'])
+            ->where(['Invoices.id IN' => $ids, 'Invoices.company_id' => $companyId])
+            ->all()
+            ->indexBy('id')
+            ->toArray();
+
+        $items = [];
+        $toSend = [];
+        foreach ($ids as $id) {
+            $inv = $rows[$id] ?? null;
+            if ($inv === null) {
+                $items[$id] = ['id' => $id, 'success' => false, 'error' => 'Faktura nie znaleziona.', 'error_code' => 'NOT_FOUND'];
+                continue;
+            }
+            if (!$inv->is_api) {
+                $items[$id] = ['id' => $id, 'success' => false, 'error' => 'Akcja dostępna tylko dla faktur utworzonych przez API.', 'error_code' => 'NOT_API'];
+                continue;
+            }
+            $status = (string)($inv->workflow_status ?? '');
+            if ($status === 'sent') {
+                $items[$id] = ['id' => $id, 'fullnumber' => $inv->fullnumber, 'success' => true, 'skipped' => 'already_sent',
+                    'workflow_status' => 'sent', 'ksef_status' => $inv->ksef_status, 'ksef_number' => $inv->ksef_number, 'error' => null, 'error_code' => null];
+                continue;
+            }
+            if ($status === 'draft') {
+                $items[$id] = ['id' => $id, 'success' => false, 'error' => 'Faktura jest szkicem — najpierw wywołaj /issue.', 'error_code' => 'DRAFT'];
+                continue;
+            }
+            if ($status === 'sending') {
+                $modifiedTs = ($inv->modified instanceof \DateTimeInterface) ? $inv->modified->getTimestamp() : 0;
+                if ($modifiedTs > time() - 300) {
+                    $items[$id] = ['id' => $id, 'success' => false, 'error' => 'Faktura jest w trakcie wysyłki do KSeF (status: sending).', 'error_code' => 'SENDING'];
+                    continue;
+                }
+            }
+            $toSend[$id] = $inv;
+        }
+
+        $rateLimited = false;
+        $retryAfter = null;
+        $sessionRef = null;
+        if (!empty($toSend)) {
+            $mainController = new \App\Controller\InvoicesController($this->request);
+            $bulk = $mainController->sendInvoicesToKsefBulk(array_values($toSend), $companyId, 'prod', 'api_bulk');
+            $rateLimited = !empty($bulk['rate_limited']);
+            $retryAfter = $bulk['retry_after'] ?? null;
+            $sessionRef = $bulk['session_reference'] ?? null;
+
+            $fresh = $Invoices->find()
+                ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number'])
+                ->where(['Invoices.id IN' => array_keys($toSend)])
+                ->all()
+                ->indexBy('id')
+                ->toArray();
+            foreach ($toSend as $id => $inv) {
+                $r = $bulk['items'][$id] ?? ['success' => false, 'error' => 'Brak wyniku.'];
+                $f = $fresh[$id] ?? null;
+                $items[$id] = [
+                    'id'              => $id,
+                    'fullnumber'      => $f->fullnumber ?? $inv->fullnumber,
+                    'success'         => !empty($r['success']),
+                    'workflow_status' => $f->workflow_status ?? null,
+                    'ksef_status'     => $f->ksef_status ?? null,
+                    'ksef_number'     => $f->ksef_number ?? null,
+                    'error'           => !empty($r['success']) ? null : ($r['error'] ?? 'Błąd wysyłki do KSeF'),
+                    'error_code'      => $r['errorCode'] ?? null,
+                ];
+            }
+        }
+
+        $sent = 0;
+        foreach ($items as $it) {
+            if (!empty($it['success']) && empty($it['skipped'])) {
+                $sent++;
+            }
+        }
+
+        return $this->jsonOk(200, [
+            'sent'              => $sent,
+            'total'             => count($ids),
+            'rate_limited'      => $rateLimited,
+            'retry_after'       => $retryAfter,
+            'session_reference' => $sessionRef,
+            'items'             => array_values($items),
         ]);
     }
 

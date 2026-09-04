@@ -143,6 +143,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->get('/invoices/jpk-v7m', ['controller' => 'Invoices', 'action' => 'jpkV7m']);
         // POST /api/v1/invoices       — wystaw fakturę VAT
         $builder->post('/invoices', ['controller' => 'Invoices', 'action' => 'create']);
+        // POST /api/v1/invoices/send-ksef-bulk — wiele faktur w JEDNEJ sesji KSeF (body: {ids: [...]}, max 50)
+        $builder->post('/invoices/send-ksef-bulk', ['controller' => 'Invoices', 'action' => 'sendKsefBulk']);
         // GET  /api/v1/invoices/{id}  — szczegóły faktury
         $builder->get('/invoices/{id}', ['controller' => 'Invoices', 'action' => 'get'])
             ->setPass(['id']);

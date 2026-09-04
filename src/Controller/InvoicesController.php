@@ -6495,8 +6495,16 @@ private function makeClient(string $environment): KsefClient
                 ->where(['id' => (string)$invoice->id])
                 ->first();
             $hasKsefNumber = !empty(trim((string)($reload->ksef_number ?? $invoice->ksef_number ?? '')));
+            // HTTP 429 (limit KSeF, np. 120 otwarć sesji/h) to błąd przejściowy: faktura wraca do 'issued'
+            // z opisem i zostanie ponowiona — zamiast lądować w 'error' bez treści.
+            $exInfo = $this->describeKsefException($e);
+            $rateLimited = $exInfo['rate_limited'];
             if (!$hasKsefNumber) {
-                $invoice->set('workflow_status', 'error');
+                $invoice->set('workflow_status', $rateLimited ? 'issued' : 'error');
+                if ($rateLimited) {
+                    $invoice->set('ksef_status', '429');
+                    $invoice->set('ksef_desc', 'KSeF: ' . $exInfo['message']);
+                }
                 $this->Invoices->save($invoice);
             } else {
                 // Zostaw status 'sent' jeżeli istnieje numer KSeF — błąd to retry/duplikat
@@ -6515,6 +6523,9 @@ private function makeClient(string $environment): KsefClient
                     $ksefMessage = ($details[0]['exceptionCode'] ?? '') . ' ' . ($details[0]['exceptionDescription'] ?? '');
                     $ksefMessage = trim($ksefMessage);
                 }
+            }
+            if (empty($ksefMessage)) {
+                $ksefMessage = $exInfo['message'];
             }
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'send_exception', [
                 'source'          => $source,
@@ -6539,8 +6550,307 @@ private function makeClient(string $environment): KsefClient
                 return ['success' => false, 'error' => 'Błąd autoryzacji KSeF (403): ' . ($ksefMessage ?: 'Brak dostępu.')];
             }
             $errorMsg = $ksefMessage ?: get_class($e);
+            if ($rateLimited) {
+                return [
+                    'success'    => false,
+                    'errorCode'  => 'RATE_LIMIT',
+                    'retryAfter' => $exInfo['retry_after'],
+                    'error'      => 'Limit KSeF (429): ' . $exInfo['message'],
+                ];
+            }
             return ['success' => false, 'error' => 'Błąd wysyłki do KSeF (' . $httpCode . '): ' . $errorMsg];
         }
+    }
+
+    /**
+     * Wysyłka wielu faktur w JEDNEJ sesji interaktywnej KSeF.
+     *
+     * KSeF (prod) limituje otwieranie sesji do 120/h — sesja per faktura (sendInvoiceToKsefCore) daje
+     * więc maksymalnie ~2 faktury/min. W jednej sesji można wysłać wiele dokumentów; limit dotyczy
+     * tylko otwarcia. Per faktura stosujemy te same bezpieczniki co Core (typ, tryb KSeF, nabywca,
+     * okno dat, idempotencja, atomowy lock 'sending', XML + XSD), potem wspólna sesja i zapis
+     * wyników identyczny jak w Core (statusy, numer KSeF, hash XML, logi, auto-mail).
+     *
+     * @param Invoice[] $invoices
+     * @return array{items: array<string, array>, rate_limited: bool, retry_after: ?int, session_reference: ?string}
+     */
+    public function sendInvoicesToKsefBulk(array $invoices, string $companyId, string $environment = 'prod', string $source = 'api_bulk'): array
+    {
+        $items = [];
+        $prepared = []; // id => ['invoice' => Invoice, 'xml' => string]
+        $xsdPath = ROOT . DS . 'src' . DS . 'faktura.xsd';
+
+        foreach ($invoices as $invoice) {
+            $id = (string)$invoice->id;
+            $fail = function (string $error, ?string $code = null) use (&$items, $id): void {
+                $items[$id] = ['success' => false, 'error' => $error, 'errorCode' => $code];
+            };
+
+            if (in_array($invoice->type, self::KSEF_BLOCKED_TYPES, true)) {
+                $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => 'Typ dokumentu "' . $invoice->type . '" nie może być wysłany do KSeF.']);
+                $fail('Dokument typu „' . $invoice->type . '" nie podlega wysyłce do KSeF.');
+                continue;
+            }
+            if (!$this->isKsefModeEnabled($companyId)) {
+                $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => 'Tryb KSeF wyłączony dla firmy.']);
+                $fail('Tryb KSeF jest wyłączony dla tej firmy.');
+                continue;
+            }
+            if ($this->buyerDataMissing($invoice) && !$this->noBuyerSendConfirmed()) {
+                $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => 'Brak danych nabywcy (nazwa/NIP/VAT UE) — wysyłka wymaga świadomego potwierdzenia.']);
+                $fail(self::NO_BUYER_ERROR, 'NO_BUYER');
+                continue;
+            }
+            $dateError = $this->validateSendDateWindow($invoice);
+            if ($dateError !== null) {
+                $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => $dateError]);
+                $fail($dateError . ' Wysyłka do KSeF została zablokowana.');
+                continue;
+            }
+            $existingKsefNumber = trim((string)($invoice->ksef_number ?? ''));
+            if ($existingKsefNumber !== '' && trim((string)($invoice->workflow_status ?? '')) === 'sent') {
+                $this->logKsefSendEvent($companyId, $id, 'idempotent_skip', ['source' => $source, 'message' => 'Faktura już wysłana do KSeF — pomijam ponowną wysyłkę.', 'ksef_number' => $existingKsefNumber]);
+                $items[$id] = ['success' => true, 'result' => [
+                    'ok' => true, 'statusCode' => (string)($invoice->ksef_status ?? '200'), 'statusDesc' => (string)($invoice->ksef_desc ?? ''),
+                    'ksefNumber' => $existingKsefNumber, 'sessionReference' => (string)($invoice->ksef_session_reference ?? ''), 'invoiceReference' => (string)($invoice->ksef_invoice_reference ?? ''),
+                ]];
+                continue;
+            }
+            try {
+                $this->ensureInvoiceNumberForSend($invoice, $companyId);
+            } catch (\Throwable $e) {
+                $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => $e->getMessage()]);
+                $fail($e->getMessage());
+                continue;
+            }
+
+            // Atomowy lock — identyczny jak w sendInvoiceToKsefCore (stale 'sending' > 5 min do przejęcia).
+            $lockStmt = $this->Invoices->getConnection()->execute(
+                "UPDATE invoices
+                 SET workflow_status = 'sending', modified = NOW()
+                 WHERE id = ?
+                   AND (ksef_number IS NULL OR ksef_number = '')
+                   AND (workflow_status IS NULL
+                        OR workflow_status NOT IN ('sent','sending')
+                        OR (workflow_status = 'sending' AND modified < (NOW() - INTERVAL 5 MINUTE)))",
+                [$id]
+            );
+            if ($lockStmt->rowCount() !== 1) {
+                $this->logKsefSendEvent($companyId, $id, 'lock_busy', ['source' => $source, 'message' => 'Wysyłka tej faktury jest już w toku przez inne żądanie.']);
+                $fail('Wysyłka tej faktury jest już w toku.', 'LOCK_BUSY');
+                continue;
+            }
+            $invoice->set('workflow_status', 'sending');
+
+            try {
+                $xml = $this->buildFa3Xml($invoice);
+            } catch (\Throwable $e) {
+                $xml = '';
+            }
+            if (!is_string($xml) || trim($xml) === '') {
+                $this->logKsefSendEvent($companyId, $id, 'xml_missing', ['source' => $source, 'message' => 'Brak XML FA(3) po generowaniu.']);
+                $invoice->set('workflow_status', 'error');
+                $this->Invoices->save($invoice);
+                $fail('Brak poprawnego XML FA (3). Operacja przerwana.');
+                continue;
+            }
+            if (file_exists($xsdPath)) {
+                $dom = new \DOMDocument();
+                $valid = @$dom->loadXML($xml);
+                $xsdErrors = [];
+                if ($valid) {
+                    libxml_use_internal_errors(true);
+                    $valid = $dom->schemaValidate($xsdPath);
+                    if (!$valid) {
+                        foreach (libxml_get_errors() as $err) {
+                            $xsdErrors[] = trim($err->message) . ' (linia ' . $err->line . ')';
+                        }
+                        libxml_clear_errors();
+                    }
+                    libxml_use_internal_errors(false);
+                }
+                if (!$valid) {
+                    $errMsg = $xsdErrors ? implode('; ', array_slice($xsdErrors, 0, 3)) : 'XML nie jest poprawnym dokumentem XML.';
+                    $this->logKsefSendEvent($companyId, $id, $xsdErrors ? 'xsd_invalid' : 'xml_invalid', ['source' => $source, 'message' => $errMsg]);
+                    $invoice->set('workflow_status', 'error');
+                    $this->Invoices->save($invoice);
+                    $fail('XML faktury nie przeszedł walidacji XSD FA(3): ' . $errMsg);
+                    continue;
+                }
+            }
+
+            $this->logKsefSendEvent($companyId, $id, 'send_attempt', ['source' => $source, 'env' => $environment]);
+            $prepared[$id] = ['invoice' => $invoice, 'xml' => $xml];
+        }
+
+        $rateLimited = false;
+        $retryAfter = null;
+        $sessionRef = null;
+        if (empty($prepared)) {
+            return ['items' => $items, 'rate_limited' => false, 'retry_after' => null, 'session_reference' => null];
+        }
+
+        $xmls = [];
+        foreach ($prepared as $id => $p) {
+            $xmls[$id] = $p['xml'];
+        }
+        $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+        try {
+            $batch = $service->sendInvoicesXmlBatch($companyId, $environment, $xmls);
+        } catch (\Throwable $e) {
+            // Sesja się nie otworzyła (np. 429 — limit sesji) → nic nie poszło do KSeF: zdejmij locki, faktury wracają do 'issued'.
+            $info = $this->describeKsefException($e);
+            $rateLimited = $info['rate_limited'];
+            $retryAfter = $info['retry_after'];
+            foreach ($prepared as $id => $p) {
+                $inv = $p['invoice'];
+                $inv->set('workflow_status', 'issued');
+                $inv->set('ksef_status', (string)(int)$e->getCode());
+                $inv->set('ksef_desc', 'KSeF: ' . $info['message']);
+                $this->Invoices->save($inv);
+                $this->logKsefSendEvent($companyId, $id, 'send_exception', [
+                    'source' => $source, 'env' => $environment, 'stage' => 'open_session',
+                    'message' => $info['message'], 'exception_class' => get_class($e), 'http_code' => $e->getCode(),
+                ]);
+                $items[$id] = [
+                    'success' => false,
+                    'error' => ($rateLimited ? 'Limit KSeF (429): ' : 'Błąd wysyłki do KSeF (' . (int)$e->getCode() . '): ') . $info['message'],
+                    'errorCode' => $rateLimited ? 'RATE_LIMIT' : null,
+                    'retryAfter' => $retryAfter,
+                ];
+            }
+            return ['items' => $items, 'rate_limited' => $rateLimited, 'retry_after' => $retryAfter, 'session_reference' => null];
+        }
+
+        $sessionRef = $batch['sessionReference'] ?? null;
+        foreach ($prepared as $id => $p) {
+            $invoice = $p['invoice'];
+            $res = $batch['items'][$id] ?? [
+                'ok' => false, 'statusCode' => 0, 'statusDesc' => 'Brak wyniku z sesji KSeF.', 'ksefNumber' => '',
+                'sessionReference' => (string)$sessionRef, 'invoiceReference' => '', 'error' => 'Brak wyniku z sesji KSeF.',
+            ];
+
+            if (!empty($res['error'])) {
+                // Wysyłka tego dokumentu w sesji nie powiodła się (wyjątek per dokument).
+                $ex = $res['exception'] ?? null;
+                $info = $ex instanceof \Throwable
+                    ? $this->describeKsefException($ex)
+                    : ['message' => (string)$res['error'], 'rate_limited' => false, 'retry_after' => null];
+                if ($info['rate_limited']) {
+                    $rateLimited = true;
+                    $retryAfter = $info['retry_after'];
+                }
+                $invoice->set('workflow_status', $info['rate_limited'] ? 'issued' : 'error');
+                $invoice->set('ksef_status', $ex instanceof \Throwable ? (string)(int)$ex->getCode() : '');
+                $invoice->set('ksef_desc', 'KSeF: ' . $info['message']);
+                if (!empty($res['sessionReference'])) {
+                    $invoice->set('ksef_session_reference', (string)$res['sessionReference']);
+                }
+                $this->Invoices->save($invoice);
+                $this->logKsefSendEvent($companyId, $id, 'send_exception', [
+                    'source' => $source, 'env' => $environment, 'stage' => 'send',
+                    'message' => $info['message'],
+                    'exception_class' => $ex instanceof \Throwable ? get_class($ex) : null,
+                    'http_code' => $ex instanceof \Throwable ? $ex->getCode() : null,
+                ]);
+                $items[$id] = [
+                    'success' => false,
+                    'error' => ($info['rate_limited'] ? 'Limit KSeF (429): ' : 'Błąd wysyłki do KSeF: ') . $info['message'],
+                    'errorCode' => $info['rate_limited'] ? 'RATE_LIMIT' : null,
+                    'retryAfter' => $info['retry_after'],
+                ];
+                continue;
+            }
+
+            if (!empty($res['pending'])) {
+                // Dokument wysłany, ale KSeF nie zwrócił jeszcze statusu — zostaje 'sending' z referencjami;
+                // numer dociągnie „Uzupełnij nr KSeF" (refreshKsefNumber).
+                if (!empty($res['sessionReference'])) $invoice->set('ksef_session_reference', (string)$res['sessionReference']);
+                if (!empty($res['invoiceReference'])) $invoice->set('ksef_invoice_reference', (string)$res['invoiceReference']);
+                $invoice->set('ksef_desc', (string)($res['statusDesc'] ?? ''));
+                $this->Invoices->save($invoice);
+                $this->logKsefSendEvent($companyId, $id, 'send_pending', [
+                    'source' => $source, 'env' => $environment,
+                    'session_reference' => (string)($res['sessionReference'] ?? ''), 'invoice_reference' => (string)($res['invoiceReference'] ?? ''),
+                ]);
+                $items[$id] = ['success' => false, 'error' => 'Wysłano do KSeF, status jeszcze niedostępny — numer uzupełni „Uzupełnij nr KSeF".', 'errorCode' => 'PENDING'];
+                continue;
+            }
+
+            // Wynik — jak w sendInvoiceToKsefCore.
+            $desc = (string)($res['statusDesc'] ?? '');
+            $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
+            $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
+            $invoice->set('ksef_desc', trim($desc . $refs));
+            if (!empty($res['ksefNumber']))        $invoice->set('ksef_number', (string)$res['ksefNumber']);
+            if (!empty($res['sessionReference']))  $invoice->set('ksef_session_reference', (string)$res['sessionReference']);
+            if (!empty($res['invoiceReference']))  $invoice->set('ksef_invoice_reference', (string)$res['invoiceReference']);
+            if (!empty($res['ok'])) {
+                $invoice->set('workflow_status', 'sent');
+                $invoice->set('ksef_xml_hash', rtrim(strtr(base64_encode(hash('sha256', $p['xml'], true)), '+/', '-_'), '='));
+            } elseif (!empty(trim((string)($invoice->ksef_number ?? '')))) {
+                $invoice->set('workflow_status', 'sent');
+            } else {
+                $invoice->set('workflow_status', 'error');
+            }
+            $invoice->set('planned_ksef_send_at', null);
+            $this->Invoices->save($invoice);
+
+            if (!empty($res['ok'])) {
+                $this->logKsefSendEvent($companyId, $id, 'send_success', [
+                    'source' => $source, 'env' => $environment,
+                    'status_code' => (string)($res['statusCode'] ?? ''), 'ksef_number' => (string)($res['ksefNumber'] ?? ''),
+                    'session_reference' => (string)($res['sessionReference'] ?? ''),
+                ]);
+                $this->enqueueAutoSendEmailIfEnabled($invoice, $companyId, $source);
+                $items[$id] = ['success' => true, 'result' => $res];
+            } else {
+                $this->logKsefSendEvent($companyId, $id, 'send_error', [
+                    'source' => $source, 'env' => $environment,
+                    'status_code' => (string)($res['statusCode'] ?? ''), 'message' => $desc,
+                ]);
+                $items[$id] = ['success' => false, 'error' => 'Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . $desc, 'result' => $res];
+            }
+        }
+
+        return ['items' => $items, 'rate_limited' => $rateLimited, 'retry_after' => $retryAfter, 'session_reference' => $sessionRef];
+    }
+
+    /**
+     * Czytelny opis wyjątku klienta KSeF (status.details / exceptionDetailList) + detekcja limitu 429
+     * z czasem odczekania w sekundach wyciągniętym z komunikatu KSeF („Spróbuj ponownie po 8 minutach i 36 sekundach").
+     *
+     * @return array{message:string, rate_limited:bool, retry_after:?int}
+     */
+    private function describeKsefException(\Throwable $e): array
+    {
+        $message = trim((string)$e->getMessage());
+        try {
+            $ctx = (property_exists($e, 'context') && $e->context !== null) ? json_decode(json_encode($e->context), true) : null;
+            if (is_array($ctx)) {
+                if (!empty($ctx['status']['details'][0])) {
+                    $message = (string)$ctx['status']['details'][0];
+                } elseif (!empty($ctx['exception']['exceptionDetailList'][0])) {
+                    $d = $ctx['exception']['exceptionDetailList'][0];
+                    $message = trim((string)($d['exceptionCode'] ?? '') . ' ' . (string)($d['exceptionDescription'] ?? ''));
+                }
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+        if ($message === '') {
+            $message = get_class($e) . ' (HTTP ' . (int)$e->getCode() . ')';
+        }
+        $rateLimited = (int)$e->getCode() === 429;
+        $retryAfter = null;
+        if ($rateLimited) {
+            $retryAfter = 0;
+            if (preg_match('/(\d+)\s*minut/u', $message, $mm)) { $retryAfter += 60 * (int)$mm[1]; }
+            if (preg_match('/(\d+)\s*sekund/u', $message, $ms)) { $retryAfter += (int)$ms[1]; }
+            if ($retryAfter <= 0) { $retryAfter = 60; }
+        }
+
+        return ['message' => $message, 'rate_limited' => $rateLimited, 'retry_after' => $retryAfter];
     }
 
     /**

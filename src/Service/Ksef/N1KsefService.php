@@ -1174,6 +1174,124 @@ final class N1KsefService
     }
 
     /**
+     * Wysyła wiele faktur (XML FA(3)) w JEDNEJ sesji interaktywnej KSeF.
+     * KSeF (prod) limituje otwieranie sesji (120/h) — sesja per faktura to max ~2 faktury/min,
+     * a w jednej sesji można wysłać wiele dokumentów. Wyjątek przy otwarciu sesji jest propagowany
+     * (żaden dokument nie poszedł); błędy per dokument trafiają do items[key]['error'] (+ 'exception').
+     *
+     * @param array<string,string> $xmlsByKey klucz (np. id faktury) => XML
+     * @return array{sessionReference:?string, items: array<string, array>}
+     *   items[key] = ['ok'=>bool,'statusCode'=>int,'statusDesc'=>string,'ksefNumber'=>string,
+     *                 'sessionReference'=>string,'invoiceReference'=>string,'error'=>?string, 'pending'?=>bool]
+     */
+    public function sendInvoicesXmlBatch(string $companyId, string $environment, array $xmlsByKey): array
+    {
+        $out = ['sessionReference' => null, 'items' => []];
+        if (empty($xmlsByKey)) {
+            return $out;
+        }
+        $this->ensureCaBundleConfigured($environment);
+        $builder = $this->makeClientBuilder(
+            companyId: $companyId,
+            environment: $environment,
+            overrideIdentifierNip: null,
+            overrideApiUrl: null,
+            withEncryptionKey: true
+        );
+        $client = $builder->build();
+        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+
+        // 1) Jedna sesja dla całej paczki (429/403 → wyjątek do wołającego)
+        $open = $client->sessions()->online()->open(new OpenRequest(FormCodeVO::Fa3))->object();
+        $sessionRef = (string)($open->referenceNumber ?? '');
+        if ($sessionRef === '') {
+            throw new \RuntimeException('Nie udało się otworzyć sesji online (brak referenceNumber).');
+        }
+        $out['sessionReference'] = $sessionRef;
+
+        // 2) Wysyłka dokumentów w tej samej sesji
+        $refs = [];
+        foreach ($xmlsByKey as $key => $xml) {
+            $key = (string)$key;
+            $xml = (string)$xml;
+            try {
+                $send = $client->sessions()->online()->send(new SendXmlRequest(
+                    referenceNumber: ReferenceNumberVO::from($sessionRef),
+                    faktura: $xml
+                ))->object();
+                $invRef = (string)($send->referenceNumber ?? '');
+                if ($invRef === '') {
+                    throw new \RuntimeException('Brak referenceNumber dokumentu po wysyłce.');
+                }
+                $refs[$key] = $invRef;
+                try {
+                    $this->dumpXmlSnapshot($xml, 'sent', $companyId, $environment, $this->extractInvoiceNumberFromXml($xml));
+                } catch (\Throwable $e) { /* ignore snapshot errors */ }
+            } catch (\Throwable $e) {
+                $out['items'][$key] = [
+                    'ok' => false, 'statusCode' => (int)$e->getCode(), 'statusDesc' => '', 'ksefNumber' => '',
+                    'sessionReference' => $sessionRef, 'invoiceReference' => '',
+                    'error' => trim((string)$e->getMessage()) !== '' ? trim((string)$e->getMessage()) : get_class($e),
+                    'exception' => $e,
+                ];
+            }
+        }
+
+        // 3) Zamknięcie sesji (statusy dokumentów można czytać po zamknięciu)
+        try {
+            $client->sessions()->online()->close(new CloseRequest(ReferenceNumberVO::from($sessionRef)));
+        } catch (\Throwable $e) { /* non-fatal */ }
+
+        // 4) Statusy: rundy po wszystkich dokumentach bez wyniku (200 lub >=400), do ~10 s
+        $pending = $refs;
+        $rounds = 0;
+        while (!empty($pending) && $rounds++ < 12) {
+            foreach ($pending as $key => $invRef) {
+                try {
+                    $status = $client->sessions()->invoices()->status(new InvoicesStatusRequest(
+                        referenceNumber: ReferenceNumberVO::from($sessionRef),
+                        invoiceReferenceNumber: ReferenceNumberVO::from($invRef)
+                    ))->object();
+                } catch (\Throwable $e) {
+                    continue; // kolejna runda
+                }
+                $code = (int)($status->status->code ?? 0);
+                if ($code === 200 || $code >= 400) {
+                    $ksefNumber = (string)($status->ksefNumber ?? '');
+                    $raw = null;
+                    if ($code >= 400) {
+                        try { $raw = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); } catch (\Throwable $e) { $raw = null; }
+                        if (class_exists('Cake\\Log\\Log')) {
+                            try { \Cake\Log\Log::info('[KSeF status error] ' . ($raw ?: 'unable to encode status')); } catch (\Throwable $e) {}
+                        }
+                    }
+                    $out['items'][$key] = [
+                        'ok' => $code === 200 && $ksefNumber !== '',
+                        'statusCode' => $code,
+                        'statusDesc' => (string)($status->status->description ?? ''),
+                        'ksefNumber' => $ksefNumber,
+                        'sessionReference' => $sessionRef,
+                        'invoiceReference' => $invRef,
+                        'error' => null,
+                        'statusRaw' => $raw,
+                    ];
+                    unset($pending[$key]);
+                }
+            }
+            if (!empty($pending)) {
+                usleep(800000);
+            }
+        }
+        foreach ($pending as $key => $invRef) {
+            $out['items'][$key] = [
+                'ok' => false, 'statusCode' => 0, 'statusDesc' => 'Brak statusu dokumentu w KSeF po wysyłce (przekroczono czas odczytu).',
+                'ksefNumber' => '', 'sessionReference' => $sessionRef, 'invoiceReference' => $invRef, 'error' => null, 'pending' => true,
+            ];
+        }
+
+        return $out;
+    }
+    /**
      * Buduje dane dla widoku "received" (metadane faktur otrzymanych) tak, aby kontroler mógł być cienki.
      * Zwraca gotowe: invoices/stats/apiInfo/trace/diag/status/certInfo.
      */
