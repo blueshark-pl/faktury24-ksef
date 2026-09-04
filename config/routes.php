@@ -145,6 +145,8 @@ $builder->connect('/invoices/ksef/metadata', ['controller' => 'Invoices', 'actio
         $builder->post('/invoices', ['controller' => 'Invoices', 'action' => 'create']);
         // POST /api/v1/invoices/send-ksef-bulk — wiele faktur w JEDNEJ sesji KSeF (body: {ids: [...]}, max 50)
         $builder->post('/invoices/send-ksef-bulk', ['controller' => 'Invoices', 'action' => 'sendKsefBulk']);
+        // POST /api/v1/invoices/ksef-batch-reconcile — wyniki faktur z sesji wsadowych, które były jeszcze w przetwarzaniu
+        $builder->post('/invoices/ksef-batch-reconcile', ['controller' => 'Invoices', 'action' => 'ksefBatchReconcile']);
         // GET  /api/v1/invoices/{id}  — szczegóły faktury
         $builder->get('/invoices/{id}', ['controller' => 'Invoices', 'action' => 'get'])
             ->setPass(['id']);

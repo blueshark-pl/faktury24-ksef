@@ -24,6 +24,9 @@ use N1ebieski\KSEFClient\Requests\Sessions\Online\Open\OpenRequest;
 use N1ebieski\KSEFClient\Requests\Sessions\Online\Send\SendXmlRequest;
 use N1ebieski\KSEFClient\Requests\Sessions\Online\Close\CloseRequest;
 use N1ebieski\KSEFClient\Requests\Sessions\Invoices\Status\StatusRequest as InvoicesStatusRequest;
+use N1ebieski\KSEFClient\Requests\Sessions\Batch\OpenAndSend\OpenAndSendXmlRequest;
+use N1ebieski\KSEFClient\Requests\Sessions\Batch\Close\CloseRequest as BatchCloseRequest;
+use N1ebieski\KSEFClient\Requests\Sessions\Status\StatusRequest as SessionStatusRequest;
 use N1ebieski\KSEFClient\ValueObjects\Requests\Sessions\FormCode as FormCodeVO;
 use N1ebieski\KSEFClient\ValueObjects\Requests\ReferenceNumber as ReferenceNumberVO;
 use function getenv;
@@ -1173,6 +1176,236 @@ final class N1KsefService
         ];
     }
 
+    /**
+     * Wysyłka WSADOWA (sesja batch): jedna paczka ZIP z wieloma fakturami.
+     * Limity KSeF (prod): sesja interaktywna = 120 otwarć/h i tylko 180 faktur/h; sesja wsadowa = 60 sesji/h,
+     * a wysyłka części paczki nie jest objęta limitem — dlatego to jedyna droga do masowej wysyłki.
+     * Po zamknięciu sesji KSeF przetwarza paczkę asynchronicznie: czekamy do $waitSeconds na status sesji,
+     * potem czytamy listę faktur sesji (GET /sessions/{ref}/invoices). Faktury bez wyniku → 'pending'
+     * (dociąga je reconcileBatchSession()).
+     *
+     * @param array<string,string> $xmlsByKey klucz (np. id faktury) => XML FA(3)
+     * @return array{sessionReference:?string, sessionStatus:?int, items: array<string, array>}
+     */
+    public function sendInvoicesXmlBatchSession(string $companyId, string $environment, array $xmlsByKey, int $waitSeconds = 150): array
+    {
+        $out = ['sessionReference' => null, 'sessionStatus' => null, 'items' => []];
+        if (empty($xmlsByKey)) {
+            return $out;
+        }
+        $this->ensureCaBundleConfigured($environment);
+        $client = $this->makeClientBuilder(
+            companyId: $companyId,
+            environment: $environment,
+            overrideIdentifierNip: null,
+            overrideApiUrl: null,
+            withEncryptionKey: true
+        )->build();
+        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+
+        $keys = array_values(array_map('strval', array_keys($xmlsByKey)));
+        $xmls = array_values(array_map('strval', $xmlsByKey));
+        $numbersByKey = [];
+        foreach ($keys as $i => $k) {
+            $numbersByKey[$k] = (string)($this->extractInvoiceNumberFromXml($xmls[$i]) ?? '');
+        }
+
+        // 1) Otwarcie sesji + upload paczki (klient: ZIP → części → AES → upload) — jedno wywołanie
+        $open = $client->sessions()->batch()->openAndSend(new OpenAndSendXmlRequest(FormCodeVO::Fa3, $xmls))->object();
+        $sessionRef = (string)($open->referenceNumber ?? '');
+        if ($sessionRef === '') {
+            throw new \RuntimeException('Nie udało się otworzyć sesji wsadowej (brak referenceNumber).');
+        }
+        $out['sessionReference'] = $sessionRef;
+        foreach ($xmls as $i => $xml) {
+            try { $this->dumpXmlSnapshot($xml, 'sent', $companyId, $environment, $numbersByKey[$keys[$i]] ?: null); } catch (\Throwable $e) { /* ignore */ }
+        }
+
+        // 2) Zamknięcie sesji = start przetwarzania po stronie KSeF
+        $client->sessions()->batch()->close(new BatchCloseRequest(ReferenceNumberVO::from($sessionRef)));
+
+        // 3) Status sesji (GET /sessions/{ref}: 120 req/min → odpytujemy co 3 s)
+        $deadline = microtime(true) + max(5, $waitSeconds);
+        $sessionStatus = null;
+        while (microtime(true) < $deadline) {
+            try {
+                $st = $client->sessions()->status(new SessionStatusRequest(ReferenceNumberVO::from($sessionRef)))->object();
+                $sessionStatus = (int)($st->status->code ?? 0);
+                if ($sessionStatus === 200 || $sessionStatus >= 400) {
+                    break;
+                }
+            } catch (\Throwable $e) {
+                // ponów w kolejnej pętli
+            }
+            usleep(3000000);
+        }
+        $out['sessionStatus'] = $sessionStatus;
+
+        // 4) Lista faktur sesji → wyniki per klucz
+        try {
+            $listed = $this->listSessionInvoices($client, $environment, $sessionRef);
+        } catch (\Throwable $e) {
+            $listed = [];
+        }
+        $out['items'] = $this->mapSessionInvoicesToItems($listed, $keys, $numbersByKey, $sessionRef, true);
+
+        return $out;
+    }
+
+    /**
+     * Dociąga wyniki faktur z wcześniejszej sesji wsadowej (dla 'pending').
+     *
+     * @param array<string,string> $numbersByKey klucz (id faktury) => numer faktury (P_2)
+     * @return array<string, array> items jak w sendInvoicesXmlBatchSession()
+     */
+    public function reconcileBatchSession(string $companyId, string $environment, string $sessionRef, array $numbersByKey): array
+    {
+        $this->ensureCaBundleConfigured($environment);
+        $client = $this->makeClientBuilder(
+            companyId: $companyId,
+            environment: $environment,
+            overrideIdentifierNip: null,
+            overrideApiUrl: null,
+            withEncryptionKey: false
+        )->build();
+        $this->persistClientTokens($client, $this->ctx($companyId, $environment));
+        $listed = $this->listSessionInvoices($client, $environment, $sessionRef);
+
+        return $this->mapSessionInvoicesToItems($listed, array_map('strval', array_keys($numbersByKey)), $numbersByKey, $sessionRef, false);
+    }
+
+    /**
+     * GET /sessions/{ref}/invoices (limit: 20 req/min, 200 req/h) — pełna lista faktur sesji (strony po 100).
+     * Klient n1ebieski nie ma tej metody, więc wołamy endpoint bezpośrednio tokenem dostępu z klienta.
+     *
+     * @return array<int, array> wpisy KSeF: ordinalNumber, invoiceNumber, ksefNumber, referenceNumber, status{code,description,details}
+     */
+    public function listSessionInvoices($client, string $environment, string $sessionRef): array
+    {
+        $token = method_exists($client, 'getAccessToken') ? $client->getAccessToken() : null;
+        $tokenStr = $token !== null ? (string)$token->token : '';
+        if ($tokenStr === '') {
+            throw new \RuntimeException('Brak tokenu dostępu do odczytu listy faktur sesji.');
+        }
+        $base = rtrim((string)$this->resolveApiUrl($environment), '/');
+        $items = [];
+        $continuation = null;
+        $pageOffset = 0;
+        $prevFirst = null;
+        for ($page = 0; $page < 50; $page++) {
+            $url = $base . '/sessions/' . rawurlencode($sessionRef) . '/invoices?pageSize=100'
+                . ($continuation === null && $pageOffset > 0 ? '&pageOffset=' . $pageOffset : '');
+            $headers = ['Accept: application/json', 'Authorization: Bearer ' . $tokenStr];
+            if ($continuation !== null) {
+                $headers[] = 'x-continuation-token: ' . $continuation;
+            }
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_TIMEOUT        => 30,
+            ]);
+            $body = curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = (string)curl_error($ch);
+            curl_close($ch);
+            if ($code !== 200 || !is_string($body)) {
+                throw new \RuntimeException('Lista faktur sesji ' . $sessionRef . ': HTTP ' . $code . ($err !== '' ? ' ' . $err : '') . ' ' . mb_substr((string)$body, 0, 300));
+            }
+            $json = json_decode($body, true);
+            $rows = is_array($json) && is_array($json['invoices'] ?? null) ? $json['invoices'] : [];
+            $first = isset($rows[0]['ordinalNumber']) ? (int)$rows[0]['ordinalNumber'] : null;
+            if ($first !== null && $first === $prevFirst) {
+                break; // brak stronicowania offsetem — nie powielaj
+            }
+            $prevFirst = $first;
+            foreach ($rows as $r) {
+                if (is_array($r)) {
+                    $items[] = $r;
+                }
+            }
+            $continuation = is_array($json) && !empty($json['continuationToken']) ? (string)$json['continuationToken'] : null;
+            if ($continuation === null) {
+                if (count($rows) < 100) {
+                    break;
+                }
+                $pageOffset += 100;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Mapuje wpisy listy faktur sesji na wyniki per klucz: po numerze faktury (P_2), a przy wysyłce także po
+     * ordinalNumber (pozycja w paczce). Brak wpisu lub status pośredni → 'pending'.
+     *
+     * @return array<string, array>
+     */
+    private function mapSessionInvoicesToItems(array $listed, array $keys, array $numbersByKey, string $sessionRef, bool $useOrdinal): array
+    {
+        $byOrdinal = [];
+        $byNumber = [];
+        foreach ($listed as $r) {
+            $ord = (int)($r['ordinalNumber'] ?? 0);
+            if ($ord > 0) {
+                $byOrdinal[$ord] = $r;
+            }
+            $num = (string)($r['invoiceNumber'] ?? '');
+            if ($num !== '') {
+                $byNumber[$num] = $r;
+            }
+        }
+        $items = [];
+        foreach (array_values($keys) as $i => $key) {
+            $key = (string)$key;
+            $num = (string)($numbersByKey[$key] ?? '');
+            $r = null;
+            if ($num !== '' && isset($byNumber[$num])) {
+                $r = $byNumber[$num];
+            } elseif ($useOrdinal && isset($byOrdinal[$i + 1])) {
+                $r = $byOrdinal[$i + 1];
+            }
+            $pending = [
+                'ok' => false, 'statusCode' => 0, 'statusDesc' => 'Sesja wsadowa w trakcie przetwarzania — status faktury jeszcze niedostępny.',
+                'ksefNumber' => '', 'sessionReference' => $sessionRef, 'invoiceReference' => '', 'error' => null, 'pending' => true,
+            ];
+            if ($r === null) {
+                $items[$key] = $pending;
+                continue;
+            }
+            $code = (int)($r['status']['code'] ?? 0);
+            if ($code !== 200 && $code < 400) {
+                $items[$key] = $pending;
+                continue;
+            }
+            $desc = (string)($r['status']['description'] ?? '');
+            $details = $r['status']['details'] ?? null;
+            if (is_array($details) && !empty($details)) {
+                $desc = trim($desc . ' ' . implode('; ', array_map('strval', $details)));
+            }
+            $ksefNumber = (string)($r['ksefNumber'] ?? '');
+            $raw = null;
+            if ($code >= 400) {
+                try { $raw = json_encode($r, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); } catch (\Throwable $e) { $raw = null; }
+                if (class_exists('Cake\\Log\\Log')) {
+                    try { \Cake\Log\Log::info('[KSeF batch status error] ' . ($raw ?: 'unable to encode status')); } catch (\Throwable $e) {}
+                }
+            }
+            $items[$key] = [
+                'ok' => $code === 200 && $ksefNumber !== '',
+                'statusCode' => $code,
+                'statusDesc' => $desc,
+                'ksefNumber' => $ksefNumber,
+                'sessionReference' => $sessionRef,
+                'invoiceReference' => (string)($r['referenceNumber'] ?? ''),
+                'error' => null,
+                'statusRaw' => $raw,
+            ];
+        }
+
+        return $items;
+    }
     /**
      * Wysyła wiele faktur (XML FA(3)) w JEDNEJ sesji interaktywnej KSeF.
      * KSeF (prod) limituje otwieranie sesji (120/h) — sesja per faktura to max ~2 faktury/min,

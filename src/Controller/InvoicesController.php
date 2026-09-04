@@ -6574,7 +6574,7 @@ private function makeClient(string $environment): KsefClient
      * @param Invoice[] $invoices
      * @return array{items: array<string, array>, rate_limited: bool, retry_after: ?int, session_reference: ?string}
      */
-    public function sendInvoicesToKsefBulk(array $invoices, string $companyId, string $environment = 'prod', string $source = 'api_bulk'): array
+    public function sendInvoicesToKsefBulk(array $invoices, string $companyId, string $environment = 'prod', string $source = 'api_bulk', string $mode = 'batch'): array
     {
         $items = [];
         $prepared = []; // id => ['invoice' => Invoice, 'xml' => string]
@@ -6696,7 +6696,11 @@ private function makeClient(string $environment): KsefClient
         }
         $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
         try {
-            $batch = $service->sendInvoicesXmlBatch($companyId, $environment, $xmls);
+            // 'batch' (domyślnie): sesja wsadowa — bez limitu faktur w paczce (60 sesji/h);
+            // 'online': sesja interaktywna — limit 180 faktur/h niezależnie od liczby sesji.
+            $batch = $mode === 'online'
+                ? $service->sendInvoicesXmlBatch($companyId, $environment, $xmls)
+                : $service->sendInvoicesXmlBatchSession($companyId, $environment, $xmls);
         } catch (\Throwable $e) {
             // Sesja się nie otworzyła (np. 429 — limit sesji) → nic nie poszło do KSeF: zdejmij locki, faktury wracają do 'issued'.
             $info = $this->describeKsefException($e);
@@ -6778,42 +6782,115 @@ private function makeClient(string $environment): KsefClient
             }
 
             // Wynik — jak w sendInvoiceToKsefCore.
-            $desc = (string)($res['statusDesc'] ?? '');
-            $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
-            $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
-            $invoice->set('ksef_desc', trim($desc . $refs));
-            if (!empty($res['ksefNumber']))        $invoice->set('ksef_number', (string)$res['ksefNumber']);
-            if (!empty($res['sessionReference']))  $invoice->set('ksef_session_reference', (string)$res['sessionReference']);
-            if (!empty($res['invoiceReference']))  $invoice->set('ksef_invoice_reference', (string)$res['invoiceReference']);
-            if (!empty($res['ok'])) {
-                $invoice->set('workflow_status', 'sent');
-                $invoice->set('ksef_xml_hash', rtrim(strtr(base64_encode(hash('sha256', $p['xml'], true)), '+/', '-_'), '='));
-            } elseif (!empty(trim((string)($invoice->ksef_number ?? '')))) {
-                $invoice->set('workflow_status', 'sent');
-            } else {
-                $invoice->set('workflow_status', 'error');
-            }
-            $invoice->set('planned_ksef_send_at', null);
-            $this->Invoices->save($invoice);
-
-            if (!empty($res['ok'])) {
-                $this->logKsefSendEvent($companyId, $id, 'send_success', [
-                    'source' => $source, 'env' => $environment,
-                    'status_code' => (string)($res['statusCode'] ?? ''), 'ksef_number' => (string)($res['ksefNumber'] ?? ''),
-                    'session_reference' => (string)($res['sessionReference'] ?? ''),
-                ]);
-                $this->enqueueAutoSendEmailIfEnabled($invoice, $companyId, $source);
-                $items[$id] = ['success' => true, 'result' => $res];
-            } else {
-                $this->logKsefSendEvent($companyId, $id, 'send_error', [
-                    'source' => $source, 'env' => $environment,
-                    'status_code' => (string)($res['statusCode'] ?? ''), 'message' => $desc,
-                ]);
-                $items[$id] = ['success' => false, 'error' => 'Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . $desc, 'result' => $res];
-            }
+            $items[$id] = $this->applyKsefSendResult($invoice, $companyId, $environment, $source, $res, $p['xml']);
         }
 
         return ['items' => $items, 'rate_limited' => $rateLimited, 'retry_after' => $retryAfter, 'session_reference' => $sessionRef];
+    }
+
+    /**
+     * Zapis wyniku wysyłki (status, numer KSeF, referencje, hash XML, logi, auto-mail) — identycznie jak w Core.
+     * $xml = null (reconcile) → hash XML pozostaje bez zmian.
+     */
+    private function applyKsefSendResult(Invoice $invoice, string $companyId, string $environment, string $source, array $res, ?string $xml): array
+    {
+        $id = (string)$invoice->id;
+        $desc = (string)($res['statusDesc'] ?? '');
+        $refs = ' [S=' . (string)($res['sessionReference'] ?? '') . ', I=' . (string)($res['invoiceReference'] ?? '') . ']';
+        $invoice->set('ksef_status', (string)($res['statusCode'] ?? ''));
+        $invoice->set('ksef_desc', trim($desc . $refs));
+        if (!empty($res['ksefNumber']))        $invoice->set('ksef_number', (string)$res['ksefNumber']);
+        if (!empty($res['sessionReference']))  $invoice->set('ksef_session_reference', (string)$res['sessionReference']);
+        if (!empty($res['invoiceReference']))  $invoice->set('ksef_invoice_reference', (string)$res['invoiceReference']);
+        if (!empty($res['ok'])) {
+            $invoice->set('workflow_status', 'sent');
+            if (is_string($xml) && $xml !== '') {
+                $invoice->set('ksef_xml_hash', rtrim(strtr(base64_encode(hash('sha256', $xml, true)), '+/', '-_'), '='));
+            }
+        } elseif (!empty(trim((string)($invoice->ksef_number ?? '')))) {
+            $invoice->set('workflow_status', 'sent');
+        } else {
+            $invoice->set('workflow_status', 'error');
+        }
+        $invoice->set('planned_ksef_send_at', null);
+        $this->Invoices->save($invoice);
+
+        if (!empty($res['ok'])) {
+            $this->logKsefSendEvent($companyId, $id, 'send_success', [
+                'source' => $source, 'env' => $environment,
+                'status_code' => (string)($res['statusCode'] ?? ''), 'ksef_number' => (string)($res['ksefNumber'] ?? ''),
+                'session_reference' => (string)($res['sessionReference'] ?? ''),
+            ]);
+            $this->enqueueAutoSendEmailIfEnabled($invoice, $companyId, $source);
+
+            return ['success' => true, 'result' => $res];
+        }
+        $this->logKsefSendEvent($companyId, $id, 'send_error', [
+            'source' => $source, 'env' => $environment,
+            'status_code' => (string)($res['statusCode'] ?? ''), 'message' => $desc,
+        ]);
+
+        return ['success' => false, 'error' => 'Nie udało się wysłać do KSeF (' . (string)($res['statusCode'] ?? '') . '): ' . $desc, 'result' => $res];
+    }
+
+    /**
+     * Dociąga wyniki faktur wysłanych sesją wsadową, których status nie był jeszcze dostępny:
+     * workflow 'sending' + ksef_session_reference ustawione + brak numeru KSeF (ostatnie 48 h).
+     * Grupuje po sesji, czyta listę faktur sesji i zapisuje wynik jak po zwykłej wysyłce.
+     *
+     * @return array<string, array> id => item (success/error), tylko faktury z rozstrzygniętym wynikiem
+     */
+    public function reconcileKsefBatchSessions(string $companyId, string $environment = 'prod', string $source = 'api_bulk'): array
+    {
+        $items = [];
+        try {
+            $pending = $this->Invoices->find()
+                ->where([
+                    'Invoices.company_id' => $companyId,
+                    'Invoices.workflow_status' => 'sending',
+                    'Invoices.ksef_session_reference IS NOT' => null,
+                    'Invoices.ksef_session_reference !=' => '',
+                    'OR' => [['Invoices.ksef_number IS' => null], ['Invoices.ksef_number' => '']],
+                    'Invoices.modified >=' => date('Y-m-d H:i:s', strtotime('-48 hours')),
+                ])
+                ->all()
+                ->toList();
+        } catch (\Throwable $e) {
+            return $items;
+        }
+        if (empty($pending)) {
+            return $items;
+        }
+        $bySession = [];
+        foreach ($pending as $inv) {
+            $bySession[(string)$inv->ksef_session_reference][(string)$inv->id] = $inv;
+        }
+        $service = new N1KsefService(new DbKsefTokenStorage(), new CertificateStorage());
+        foreach ($bySession as $sessionRef => $invoices) {
+            $numbersByKey = [];
+            foreach ($invoices as $id => $inv) {
+                $numbersByKey[$id] = (string)($inv->fullnumber ?? '');
+            }
+            try {
+                $results = $service->reconcileBatchSession($companyId, $environment, $sessionRef, $numbersByKey);
+            } catch (\Throwable $e) {
+                foreach ($invoices as $id => $inv) {
+                    $this->logKsefSendEvent($companyId, (string)$id, 'reconcile_error', [
+                        'source' => $source, 'env' => $environment, 'session_reference' => $sessionRef, 'message' => $e->getMessage(),
+                    ]);
+                }
+                continue;
+            }
+            foreach ($invoices as $id => $inv) {
+                $res = $results[$id] ?? null;
+                if ($res === null || !empty($res['pending'])) {
+                    continue; // nadal przetwarzana
+                }
+                $items[$id] = $this->applyKsefSendResult($inv, $companyId, $environment, $source, $res, null);
+            }
+        }
+
+        return $items;
     }
 
     /**

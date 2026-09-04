@@ -75,7 +75,7 @@ class InvoicesController extends AppController
         try {
             $authentication = $this->request->getAttribute('authentication');
             if ($authentication && method_exists($authentication, 'allowUnauthenticated')) {
-                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'sendKsefBulk', 'pdf', 'bySellerNip', 'jpkV7m']);
+                $authentication->allowUnauthenticated(['create', 'index', 'get', 'addPayment', 'status', 'issue', 'sendKsef', 'sendKsefBulk', 'ksefBatchReconcile', 'pdf', 'bySellerNip', 'jpkV7m']);
             }
         } catch (\Throwable) {}
     }
@@ -860,6 +860,7 @@ class InvoicesController extends AppController
             return $this->jsonError(400, 'Podaj listę ids (tablica UUID faktur, max 50).');
         }
         $ids = array_values(array_unique(array_map('strval', array_slice($ids, 0, 50))));
+        $mode = strtolower((string)($body['mode'] ?? 'batch')) === 'online' ? 'online' : 'batch';
 
         $Invoices = $this->fetchTable('Invoices');
         $rows = $Invoices->find()
@@ -904,9 +905,16 @@ class InvoicesController extends AppController
         $rateLimited = false;
         $retryAfter = null;
         $sessionRef = null;
+        $mainController = new \App\Controller\InvoicesController($this->request);
+        // Najpierw dociągnij wyniki z wcześniejszych sesji wsadowych (faktury 'sending' bez numeru KSeF).
+        $reconciled = [];
+        try {
+            $reconciled = $mainController->reconcileKsefBatchSessions($companyId, 'prod', 'api_reconcile');
+        } catch (\Throwable $e) {
+            $reconciled = [];
+        }
         if (!empty($toSend)) {
-            $mainController = new \App\Controller\InvoicesController($this->request);
-            $bulk = $mainController->sendInvoicesToKsefBulk(array_values($toSend), $companyId, 'prod', 'api_bulk');
+            $bulk = $mainController->sendInvoicesToKsefBulk(array_values($toSend), $companyId, 'prod', 'api_bulk', $mode);
             $rateLimited = !empty($bulk['rate_limited']);
             $retryAfter = $bulk['retry_after'] ?? null;
             $sessionRef = $bulk['session_reference'] ?? null;
@@ -941,13 +949,66 @@ class InvoicesController extends AppController
         }
 
         return $this->jsonOk(200, [
+            'mode'              => $mode,
             'sent'              => $sent,
             'total'             => count($ids),
             'rate_limited'      => $rateLimited,
             'retry_after'       => $retryAfter,
             'session_reference' => $sessionRef,
             'items'             => array_values($items),
+            'reconciled'        => $this->ksefItemsWithFreshStatus($reconciled),
         ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/invoices/ksef-batch-reconcile — dociąga wyniki faktur wysłanych sesją wsadową,
+    // których status nie był dostępny w chwili wysyłki (workflow 'sending' + referencja sesji, brak numeru KSeF).
+    // -------------------------------------------------------------------------
+    public function ksefBatchReconcile(): Response
+    {
+        $this->request->allowMethod(['post']);
+        $token = $this->authenticate();
+        if ($token === null) {
+            return $this->response;
+        }
+        $companyId = (string)$token->company_id;
+        $mainController = new \App\Controller\InvoicesController($this->request);
+        $reconciled = $mainController->reconcileKsefBatchSessions($companyId, 'prod', 'api_reconcile');
+
+        return $this->jsonOk(200, [
+            'reconciled' => count($reconciled),
+            'items'      => $this->ksefItemsWithFreshStatus($reconciled),
+        ]);
+    }
+
+    /** Uzupełnia wyniki (id => item) o świeże pola faktury z bazy; zwraca listę do JSON. */
+    private function ksefItemsWithFreshStatus(array $itemsById): array
+    {
+        if (empty($itemsById)) {
+            return [];
+        }
+        $fresh = $this->fetchTable('Invoices')->find()
+            ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number'])
+            ->where(['Invoices.id IN' => array_keys($itemsById)])
+            ->all()
+            ->indexBy('id')
+            ->toArray();
+        $out = [];
+        foreach ($itemsById as $id => $r) {
+            $f = $fresh[$id] ?? null;
+            $out[] = [
+                'id'              => (string)$id,
+                'fullnumber'      => $f->fullnumber ?? null,
+                'success'         => !empty($r['success']),
+                'workflow_status' => $f->workflow_status ?? null,
+                'ksef_status'     => $f->ksef_status ?? null,
+                'ksef_number'     => $f->ksef_number ?? null,
+                'error'           => !empty($r['success']) ? null : ($r['error'] ?? 'Błąd wysyłki do KSeF'),
+                'error_code'      => $r['errorCode'] ?? null,
+            ];
+        }
+
+        return $out;
     }
 
     // -------------------------------------------------------------------------
