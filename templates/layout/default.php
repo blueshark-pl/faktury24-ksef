@@ -1887,6 +1887,6 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
-<?= $this->Html->script('invoice-no-buyer-guard') ?>
+<?= $this->Html->script('/assets/js/invoice-no-buyer-guard.js?v=2') ?>
 </body>
 </html>

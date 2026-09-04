@@ -499,7 +499,7 @@ class InvoicesController extends AppController
         // Contractor: required minimal data (either selected contractor or snapshot filled)
         $contractorId = $data['contractor_id'] ?? null;
         $ctrName = $data['invoice_contractor']['name'] ?? null;
-        if (!$contractorId && !$ctrName) {
+        if (!$contractorId && !$ctrName && !$this->noBuyerSendConfirmed()) {
             $errors['invoice_contractor.name'] = 'Wybierz kontrahenta lub uzupełnij dane nabywcy.';
         }
 
