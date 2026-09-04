@@ -772,7 +772,7 @@ class InvoicesController extends AppController
 
         try {
             $inv = $Invoices->find()
-                ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number', 'is_api', 'company_id'])
+                ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number', 'is_api', 'company_id', 'modified'])
                 ->where(['Invoices.id' => $id, 'Invoices.company_id' => $companyId])
                 ->firstOrFail();
         } catch (\Cake\Datasource\Exception\RecordNotFoundException) {
@@ -784,8 +784,18 @@ class InvoicesController extends AppController
         }
 
         $status = (string)($inv->workflow_status ?? '');
-        if (in_array($status, ['sent', 'sending'], true)) {
-            return $this->jsonError(422, 'Faktura już została wysłana do KSeF (status: ' . $status . ').');
+        if ($status === 'sent') {
+            return $this->jsonError(422, 'Faktura już została wysłana do KSeF (status: sent).');
+        }
+        // 'sending' starsze niż 5 min = zawieszona wysyłka (timeout / fatal PHP w trakcie sesji KSeF).
+        // Przepuszczamy do sendInvoiceToKsefCore, który przejmuje nieaktualny lock (ten sam próg 5 min)
+        // i ponawia wysyłkę; ewentualny duplikat w KSeF kończy się statusem error + „Uzupełnij nr KSeF".
+        // Świeże 'sending' nadal blokujemy, żeby nie dublować trwającej wysyłki.
+        if ($status === 'sending') {
+            $modifiedTs = ($inv->modified instanceof \DateTimeInterface) ? $inv->modified->getTimestamp() : 0;
+            if ($modifiedTs > time() - 300) {
+                return $this->jsonError(422, 'Faktura jest w trakcie wysyłki do KSeF (status: sending).');
+            }
         }
         if ($status === 'draft') {
             return $this->jsonError(422, 'Faktura jest szkicem — najpierw wywołaj /issue.');
