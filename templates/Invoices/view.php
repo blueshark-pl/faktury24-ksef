@@ -297,6 +297,15 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
     <input type="hidden" id="ksef-invoice-id" value="<?= h((string)$invoice->id) ?>" />
     <input type="hidden" id="ksef-view-url" value="<?= h($this->Url->build(['action' => 'view', $invoice->id])) ?>" />
     <input type="hidden" id="ksef-session-ref" value="<?= h($sessionRef) ?>" />
+    <?php
+      // Brak danych nabywcy (nazwa/NIP/VAT UE/inny ID) → okno wysyłki wymaga świadomego potwierdzenia.
+      $__nb = $invoice->invoice_contractor ?? null;
+      $__noBuyer = $__nb === null || (
+          trim((string)($__nb->name ?? '')) === '' && trim((string)($__nb->nip ?? '')) === ''
+          && trim((string)($__nb->vat_eu ?? '')) === '' && trim((string)($__nb->tax_id_other ?? '')) === ''
+      );
+    ?>
+    <input type="hidden" id="ksef-no-buyer" value="<?= $__noBuyer ? '1' : '0' ?>" />
     <input type="hidden" id="ksef-issue-date" value="<?= h($invoice->date ? $invoice->date->format('Y-m-d') : '') ?>" />
 </div>
 
@@ -349,8 +358,15 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
         btn.title = 'Faktura została już wysłana do KSeF';
     }
 
+    const ksefNoBuyer = (document.getElementById('ksef-no-buyer') || {}).value === '1';
     async function doSend(url) {
         let sendSuccess = false;
+        if (ksefNoBuyer) {
+            const cb = document.getElementById('ksef-confirm-no-buyer');
+            const confirmed = (cb && cb.checked) || (!cb && window.confirm('Faktura nie ma danych nabywcy (nazwa, NIP, adres). Nabywca nie zobaczy jej w KSeF. Wysłać mimo to?'));
+            if (!confirmed) { btn.disabled = false; return; }
+            url += (url.indexOf('?') >= 0 ? '&' : '?') + 'confirm_no_buyer=1';
+        }
         btn.disabled = true;
         spinner.style.display = '';
         linksBox.innerHTML = '';
@@ -590,6 +606,25 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
                     dateWarningEl.innerHTML = '';
                 }
             }
+            // Ostrzeżenie o braku danych nabywcy + wymagane potwierdzenie (checkbox)
+            const buyerWarnEl = document.getElementById('ksef-buyer-warning');
+            if (buyerWarnEl) {
+                if (ksefNoBuyer) {
+                    buyerWarnEl.innerHTML = '<div class="alert alert-danger py-2 mb-2">'
+                        + '<strong>Faktura nie ma danych nabywcy</strong> (nazwa, NIP, adres). '
+                        + 'Trafi do KSeF jako faktura bez identyfikatora nabywcy — kontrahent <strong>nie zobaczy jej</strong> w swoim KSeF. '
+                        + 'Jeśli to pomyłka, anuluj i uzupełnij nabywcę w edycji faktury.'
+                        + '<div class="form-check mt-2 mb-0"><input class="form-check-input" type="checkbox" id="ksef-confirm-no-buyer">'
+                        + '<label class="form-check-label fw-semibold" for="ksef-confirm-no-buyer">Rozumiem, wysyłam fakturę bez danych nabywcy</label></div>'
+                        + '</div>';
+                    if (confirmSendBtn) confirmSendBtn.disabled = true;
+                    const cb = document.getElementById('ksef-confirm-no-buyer');
+                    if (cb) cb.addEventListener('change', function(){ if (confirmSendBtn) confirmSendBtn.disabled = !cb.checked; });
+                } else {
+                    buyerWarnEl.innerHTML = '';
+                    if (confirmSendBtn) confirmSendBtn.disabled = false;
+                }
+            }
             fetchPreviewNumber();
             bsConfirm.show();
         } else {
@@ -703,6 +738,7 @@ $canEdit = !in_array($workflowStatus, ['sending', 'sent'], true);
                     <li>Po zakończeniu zobaczysz status, numer KSeF oraz linki do pobrania dokumentu i UPO.</li>
                 </ul>
                 <div id="ksef-date-warning"></div>
+                <div id="ksef-buyer-warning"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Anuluj</button>

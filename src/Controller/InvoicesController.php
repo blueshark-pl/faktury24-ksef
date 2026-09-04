@@ -96,6 +96,47 @@ class InvoicesController extends AppController
         return array_key_exists('save_and_send_ksef', $data);
     }
 
+    /**
+     * Czy faktura nie ma ŻADNYCH danych nabywcy (nazwa, NIP, VAT UE, inny identyfikator)?
+     * Taka faktura poszłaby do KSeF jako Podmiot2 z <BrakID>1</BrakID> bez nazwy — nabywca nigdy jej
+     * nie zobaczy w swoim KSeF (zgłoszenie biura z 2026-09-03, FV/1/09/2026).
+     */
+    private function buyerDataMissing(Invoice $invoice): bool
+    {
+        $b = $invoice->invoice_contractor ?? null;
+        if ($b === null && !empty($invoice->id)) {
+            try {
+                $b = $this->fetchTable('InvoiceContractors')->find()->where(['invoice_id' => (string)$invoice->id])->first();
+            } catch (\Throwable) {
+                $b = null;
+            }
+        }
+        if ($b === null) {
+            return true;
+        }
+        foreach (['name', 'nip', 'vat_eu', 'tax_id_other'] as $field) {
+            $v = is_array($b) ? ($b[$field] ?? null) : ($b->{$field} ?? null);
+            if (trim((string)$v) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Użytkownik świadomie potwierdził wysyłkę bez danych nabywcy (checkbox w formularzu / w oknie wysyłki). */
+    private function noBuyerSendConfirmed(): bool
+    {
+        $v = $this->request->getData('confirm_no_buyer');
+        if ($v === null) {
+            $v = $this->request->getQuery('confirm_no_buyer');
+        }
+
+        return in_array(strtolower(trim((string)$v)), ['1', 'true', 'on', 'yes'], true);
+    }
+
+    private const NO_BUYER_ERROR = 'Faktura nie ma danych nabywcy (nazwa, NIP, adres) — nabywca nie zobaczy jej w KSeF. Uzupełnij dane nabywcy w edycji faktury albo potwierdź świadomie wysyłkę bez nabywcy.';
+
     private function nonDraftConditions(): array
     {
         return [
@@ -3104,6 +3145,14 @@ private function handleAdd(string $kind, bool $noVat = false): ?\Cake\Http\Respo
             $conn->commit();
 
             // Opcjonalna ścieżka: po zapisie wyślij od razu do KSeF z przesłanego pliku XML (FA (3))
+            if ($doSend && $this->buyerDataMissing($invoice) && !$this->noBuyerSendConfirmed()) {
+                $this->logKsefSendEvent((string)$companyId, (string)$invoice->id, 'blocked', [
+                    'message' => 'Brak danych nabywcy — automatyczna wysyłka po zapisie wstrzymana.',
+                    'source'  => 'add',
+                ]);
+                $this->Flash->warning('Faktura została zapisana, ale NIE została wysłana do KSeF: brak danych nabywcy (nazwa, NIP, adres). Uzupełnij nabywcę w edycji albo potwierdź wysyłkę bez nabywcy przyciskiem „Wyślij do KSeF”.');
+                return $this->redirect(['action' => 'view', $invoice->id]);
+            }
             if ($doSend) {
                 $dateError = $this->validateSendDateWindow($invoice);
                 if ($dateError !== null) {
@@ -6217,6 +6266,14 @@ private function makeClient(string $environment): KsefClient
             return ['success' => false, 'error' => 'Tryb KSeF jest wyłączony dla tej firmy.'];
         }
 
+        // Bezpiecznik: brak danych nabywcy → blokada, chyba że użytkownik potwierdził (confirm_no_buyer=1).
+        if ($this->buyerDataMissing($invoice) && !$this->noBuyerSendConfirmed()) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
+                'source'  => $source,
+                'message' => 'Brak danych nabywcy (nazwa/NIP/VAT UE) — wysyłka wymaga świadomego potwierdzenia.',
+            ]);
+            return ['success' => false, 'errorCode' => 'NO_BUYER', 'error' => self::NO_BUYER_ERROR];
+        }
         $dateError = $this->validateSendDateWindow($invoice);
         if ($dateError !== null) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
