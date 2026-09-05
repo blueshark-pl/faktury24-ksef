@@ -249,6 +249,34 @@ class InvoicesController extends AppController
         }
     }
 
+    /**
+     * Świadome ponowienie faktury z datą poza oknem KSeF: data wystawienia (P_1) → dziś, numer bez zmian.
+     * Zwraca null po zmianie albo komunikat błędu (np. faktura już wysłana / błąd zapisu).
+     */
+    private function redateInvoiceToToday(Invoice $invoice, string $companyId, string $source): ?string
+    {
+        if (!empty(trim((string)($invoice->ksef_number ?? '')))) {
+            return 'Faktura ma już numer KSeF — nie można zmienić daty wystawienia.';
+        }
+        $oldRaw = $invoice->date;
+        $old = (is_object($oldRaw) && method_exists($oldRaw, 'format')) ? $oldRaw->format('Y-m-d') : (string)$oldRaw;
+        $today = date('Y-m-d');
+        try {
+            $invoice->set('date', new \Cake\I18n\Date($today));
+            $this->Invoices->saveOrFail($invoice);
+        } catch (\Throwable $e) {
+            return 'Nie udało się zmienić daty wystawienia: ' . $e->getMessage();
+        }
+        $this->logKsefSendEvent($companyId, (string)$invoice->id, 'date_changed', [
+            'source'   => $source,
+            'message'  => 'Data wystawienia zmieniona z ' . $old . ' na ' . $today . ' przed wysyłką do KSeF (świadome ponowienie, numer bez zmian).',
+            'old_date' => $old,
+            'new_date' => $today,
+        ]);
+
+        return $this->validateSendDateWindow($invoice);
+    }
+
     private function validateSendDateWindow(Invoice $invoice): ?string
     {
         try {
@@ -6274,21 +6302,18 @@ private function makeClient(string $environment): KsefClient
             ]);
             return ['success' => false, 'errorCode' => 'NO_BUYER', 'error' => self::NO_BUYER_ERROR];
         }
-        // Okno daty: faktura z P_1 starszym niż wczoraj wymaga świadomego ponowienia (options.force_date, np. z portalu
-        // dla faktur zawieszonych) — decyzja i urządzenie trafiają do audytu.
+        // Okno daty: KSeF przyjmuje tylko P_1 z dziś/wczoraj. options.redate (świadome ponowienie z portalu) przestawia
+        // datę wystawienia na dziś — numer faktury bez zmian — i zapisuje to w logu wysyłki.
         $dateError = $this->validateSendDateWindow($invoice);
-        if ($dateError !== null && empty($options['force_date'])) {
+        if ($dateError !== null && !empty($options['redate'])) {
+            $dateError = $this->redateInvoiceToToday($invoice, $companyId, $source);
+        }
+        if ($dateError !== null) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
                 'source' => $source,
                 'message' => $dateError,
             ]);
             return ['success' => false, 'errorCode' => 'DATE_WINDOW', 'error' => $dateError . ' Wysyłka do KSeF została zablokowana.'];
-        }
-        if ($dateError !== null) {
-            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'date_override', [
-                'source' => $source,
-                'message' => 'Wysyłka mimo daty poza oknem (świadome ponowienie): ' . $dateError,
-            ]);
         }
 
         // 1) Idempotencja: faktura już wysłana z numerem KSeF → zwróć istniejące dane.
@@ -6610,13 +6635,13 @@ private function makeClient(string $environment): KsefClient
                 continue;
             }
             $dateError = $this->validateSendDateWindow($invoice);
-            if ($dateError !== null && empty($options['force_date'])) {
+            if ($dateError !== null && !empty($options['redate'])) {
+                $dateError = $this->redateInvoiceToToday($invoice, $companyId, $source);
+            }
+            if ($dateError !== null) {
                 $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => $dateError]);
                 $fail($dateError . ' Wysyłka do KSeF została zablokowana.', 'DATE_WINDOW');
                 continue;
-            }
-            if ($dateError !== null) {
-                $this->logKsefSendEvent($companyId, $id, 'date_override', ['source' => $source, 'message' => 'Wysyłka mimo daty poza oknem (świadome ponowienie): ' . $dateError]);
             }
             $existingKsefNumber = trim((string)($invoice->ksef_number ?? ''));
             if ($existingKsefNumber !== '' && trim((string)($invoice->workflow_status ?? '')) === 'sent') {

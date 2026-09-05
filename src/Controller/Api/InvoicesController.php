@@ -811,19 +811,19 @@ class InvoicesController extends AppController
 
         $invFull = $Invoices->get($id, contain: ['InvoiceContractors', 'InvoiceCompanyDetails', 'InvoiceContents' => ['Vats'], 'Companies']);
 
-        // force_date: świadome ponowienie faktury z datą poza oknem (np. zawieszona w sierpniu) — decyzja trafia do audytu.
+        // redate: świadome ponowienie faktury z datą poza oknem KSeF — data wystawienia → dziś, numer bez zmian (log: date_changed).
         $body = (array)$this->request->getData();
         if (!isset($body['force_date'])) {
             $raw = json_decode((string)$this->request->getBody(), true);
             if (is_array($raw)) { $body = $raw; }
         }
-        $fd = $body['force_date'] ?? false;
-        $options = ['force_date' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
+        $fd = $body['redate'] ?? ($body['force_date'] ?? false);
+        $options = ['redate' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
         $send = $mainController->sendInvoiceToKsefCore($invFull, $companyId, 'prod', null, 'sendToKsef', $options);
 
         // Odczytaj aktualny status po wysyłce
         $inv = $Invoices->find()
-            ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number'])
+            ->select(['id', 'fullnumber', 'workflow_status', 'ksef_status', 'ksef_number', 'date'])
             ->where(['Invoices.id' => $id])
             ->first();
 
@@ -839,6 +839,7 @@ class InvoicesController extends AppController
             'error'           => $sent ? null : ($send['error'] ?? 'Błąd wysyłki do KSeF'),
             'error_code'      => $sent ? null : ($send['errorCode'] ?? null),
             'retry_after'     => $send['retryAfter'] ?? null,
+            'date'            => ($inv && $inv->date instanceof \DateTimeInterface) ? $inv->date->format('Y-m-d') : null,
         ]);
     }
 
@@ -872,8 +873,8 @@ class InvoicesController extends AppController
         }
         $ids = array_values(array_unique(array_map('strval', array_slice($ids, 0, 50))));
         $mode = strtolower((string)($body['mode'] ?? 'batch')) === 'online' ? 'online' : 'batch';
-        $fd = $body['force_date'] ?? false;
-        $options = ['force_date' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
+        $fd = $body['redate'] ?? ($body['force_date'] ?? false);
+        $options = ['redate' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
 
         $Invoices = $this->fetchTable('Invoices');
         $rows = $Invoices->find()
