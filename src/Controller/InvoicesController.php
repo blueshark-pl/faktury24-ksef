@@ -6245,7 +6245,7 @@ private function makeClient(string $environment): KsefClient
      */
     private const KSEF_BLOCKED_TYPES = ['proforma', 'internal', 'internalEvidence', 'oss'];
 
-    public function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'prod', ?string $xml = null, string $source = 'sendToKsef'): array
+    public function sendInvoiceToKsefCore(Invoice $invoice, string $companyId, string $environment = 'prod', ?string $xml = null, string $source = 'sendToKsef', array $options = []): array
     {
         if (in_array($invoice->type, self::KSEF_BLOCKED_TYPES, true)) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
@@ -6274,13 +6274,21 @@ private function makeClient(string $environment): KsefClient
             ]);
             return ['success' => false, 'errorCode' => 'NO_BUYER', 'error' => self::NO_BUYER_ERROR];
         }
+        // Okno daty: faktura z P_1 starszym niż wczoraj wymaga świadomego ponowienia (options.force_date, np. z portalu
+        // dla faktur zawieszonych) — decyzja i urządzenie trafiają do audytu.
         $dateError = $this->validateSendDateWindow($invoice);
-        if ($dateError !== null) {
+        if ($dateError !== null && empty($options['force_date'])) {
             $this->logKsefSendEvent($companyId, (string)$invoice->id, 'blocked', [
                 'source' => $source,
                 'message' => $dateError,
             ]);
-            return ['success' => false, 'error' => $dateError . ' Wysyłka do KSeF została zablokowana.'];
+            return ['success' => false, 'errorCode' => 'DATE_WINDOW', 'error' => $dateError . ' Wysyłka do KSeF została zablokowana.'];
+        }
+        if ($dateError !== null) {
+            $this->logKsefSendEvent($companyId, (string)$invoice->id, 'date_override', [
+                'source' => $source,
+                'message' => 'Wysyłka mimo daty poza oknem (świadome ponowienie): ' . $dateError,
+            ]);
         }
 
         // 1) Idempotencja: faktura już wysłana z numerem KSeF → zwróć istniejące dane.
@@ -6574,7 +6582,7 @@ private function makeClient(string $environment): KsefClient
      * @param Invoice[] $invoices
      * @return array{items: array<string, array>, rate_limited: bool, retry_after: ?int, session_reference: ?string}
      */
-    public function sendInvoicesToKsefBulk(array $invoices, string $companyId, string $environment = 'prod', string $source = 'api_bulk', string $mode = 'batch'): array
+    public function sendInvoicesToKsefBulk(array $invoices, string $companyId, string $environment = 'prod', string $source = 'api_bulk', string $mode = 'batch', array $options = []): array
     {
         $items = [];
         $prepared = []; // id => ['invoice' => Invoice, 'xml' => string]
@@ -6602,10 +6610,13 @@ private function makeClient(string $environment): KsefClient
                 continue;
             }
             $dateError = $this->validateSendDateWindow($invoice);
-            if ($dateError !== null) {
+            if ($dateError !== null && empty($options['force_date'])) {
                 $this->logKsefSendEvent($companyId, $id, 'blocked', ['source' => $source, 'message' => $dateError]);
-                $fail($dateError . ' Wysyłka do KSeF została zablokowana.');
+                $fail($dateError . ' Wysyłka do KSeF została zablokowana.', 'DATE_WINDOW');
                 continue;
+            }
+            if ($dateError !== null) {
+                $this->logKsefSendEvent($companyId, $id, 'date_override', ['source' => $source, 'message' => 'Wysyłka mimo daty poza oknem (świadome ponowienie): ' . $dateError]);
             }
             $existingKsefNumber = trim((string)($invoice->ksef_number ?? ''));
             if ($existingKsefNumber !== '' && trim((string)($invoice->workflow_status ?? '')) === 'sent') {

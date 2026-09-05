@@ -796,6 +796,9 @@ class InvoicesController extends AppController
             if ($modifiedTs > time() - 300) {
                 return $this->jsonError(422, 'Faktura jest w trakcie wysyłki do KSeF (status: sending).');
             }
+            // Zawieszona wysyłka (crash/timeout) — wróć do 'issued', żeby status był prawdziwy także gdy wysyłka zostanie zablokowana.
+            $inv->set('workflow_status', 'issued');
+            try { $Invoices->save($inv); } catch (\Throwable $e) {}
         }
         if ($status === 'draft') {
             return $this->jsonError(422, 'Faktura jest szkicem — najpierw wywołaj /issue.');
@@ -808,7 +811,15 @@ class InvoicesController extends AppController
 
         $invFull = $Invoices->get($id, contain: ['InvoiceContractors', 'InvoiceCompanyDetails', 'InvoiceContents' => ['Vats'], 'Companies']);
 
-        $send = $mainController->sendInvoiceToKsefCore($invFull, $companyId);
+        // force_date: świadome ponowienie faktury z datą poza oknem (np. zawieszona w sierpniu) — decyzja trafia do audytu.
+        $body = (array)$this->request->getData();
+        if (!isset($body['force_date'])) {
+            $raw = json_decode((string)$this->request->getBody(), true);
+            if (is_array($raw)) { $body = $raw; }
+        }
+        $fd = $body['force_date'] ?? false;
+        $options = ['force_date' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
+        $send = $mainController->sendInvoiceToKsefCore($invFull, $companyId, 'prod', null, 'sendToKsef', $options);
 
         // Odczytaj aktualny status po wysyłce
         $inv = $Invoices->find()
@@ -861,6 +872,8 @@ class InvoicesController extends AppController
         }
         $ids = array_values(array_unique(array_map('strval', array_slice($ids, 0, 50))));
         $mode = strtolower((string)($body['mode'] ?? 'batch')) === 'online' ? 'online' : 'batch';
+        $fd = $body['force_date'] ?? false;
+        $options = ['force_date' => $fd === true || in_array((string)$fd, ['1', 'true'], true)];
 
         $Invoices = $this->fetchTable('Invoices');
         $rows = $Invoices->find()
@@ -898,6 +911,8 @@ class InvoicesController extends AppController
                     $items[$id] = ['id' => $id, 'success' => false, 'error' => 'Faktura jest w trakcie wysyłki do KSeF (status: sending).', 'error_code' => 'SENDING'];
                     continue;
                 }
+                $inv->set('workflow_status', 'issued');
+                try { $Invoices->save($inv); } catch (\Throwable $e) {}
             }
             $toSend[$id] = $inv;
         }
@@ -914,7 +929,7 @@ class InvoicesController extends AppController
             $reconciled = [];
         }
         if (!empty($toSend)) {
-            $bulk = $mainController->sendInvoicesToKsefBulk(array_values($toSend), $companyId, 'prod', 'api_bulk', $mode);
+            $bulk = $mainController->sendInvoicesToKsefBulk(array_values($toSend), $companyId, 'prod', 'api_bulk', $mode, $options);
             $rateLimited = !empty($bulk['rate_limited']);
             $retryAfter = $bulk['retry_after'] ?? null;
             $sessionRef = $bulk['session_reference'] ?? null;
